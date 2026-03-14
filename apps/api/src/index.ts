@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { DomainError, mapErrorToStatus } from '@medical-crm/utils';
-import { applySecurityMiddleware, perUserRateLimiter } from './middleware/security';
+import { applySecurityMiddleware, perUserRateLimiter } from './middleware/security.js';
 import { authMiddleware } from '@medical-crm/infrastructure/auth';
 
 const app = new Hono();

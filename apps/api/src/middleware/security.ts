@@ -13,11 +13,30 @@ declare module 'hono' {
   }
 }
 
+/**
+ * Extract client IP for rate limiting.
+ *
+ * IMPORTANT: In production, this server MUST sit behind a trusted reverse proxy
+ * (e.g. nginx, Cloudflare, ALB) that overwrites x-forwarded-for. If the proxy
+ * appends to the header instead, use the *rightmost* non-private IP:
+ *   xff.split(',').map(s => s.trim()).filter(isPublic).at(-1)
+ *
+ * We take the rightmost entry (set by the last trusted proxy hop) rather than
+ * the leftmost (which any client can spoof).  When there is only a single
+ * trusted proxy layer, rightmost === the value the proxy wrote.
+ *
+ * If TRUSTED_PROXY_COUNT is set, we use it to pick the correct entry from
+ * the right side of the x-forwarded-for chain.
+ */
 function getClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
   const xff = c.req.header('x-forwarded-for');
   if (xff) {
-    const first = xff.split(',')[0];
-    return first != null ? first.trim() : 'unknown';
+    const parts = xff.split(',').map((s) => s.trim());
+    const trustedHops = Number(process.env.TRUSTED_PROXY_COUNT ?? '1');
+    // Pick the entry written by the outermost trusted proxy
+    const idx = Math.max(0, parts.length - trustedHops);
+    const ip = parts[idx];
+    return ip != null && ip.length > 0 ? ip : 'unknown';
   }
   return c.req.header('x-real-ip') ?? 'unknown';
 }

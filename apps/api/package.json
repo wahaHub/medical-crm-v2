@@ -4,14 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "build": "tsc",
+    "dev": "tsx watch src/server.ts",
+    "start": "node --import tsx src/server.ts",
+    "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@hono/node-server": "^1.14.0",
     "hono": "^4.7.0",
     "hono-rate-limiter": "^0.4.0",
     "@medical-crm/config": "workspace:*",

@@ -1,7 +1,7 @@
 # Phase 2A Design: Domain Layer + Case CRUD + Documents + Progress
 
 **Date:** 2026-03-14
-**Status:** Draft
+**Status:** Review (post spec-review fixes applied)
 **Scope:** Domain entities, application use cases, repository implementations, API routes for Case + CaseProgress + Documents
 
 ---
@@ -36,7 +36,7 @@ Phase 1 delivered infrastructure (Hono API, Drizzle ORM, Keycloak auth, Next.js 
 
 ## 2. Domain Layer (`packages/domain/`)
 
-Zero external dependencies. Pure TypeScript. All business rules live here.
+Depends only on `@medical-crm/utils` for shared error types (`DomainError`, `ValidationError`, etc.). No infrastructure or framework dependencies. All business rules live here.
 
 ### 2.1 Entities
 
@@ -107,6 +107,8 @@ class CaseProgress {
   recordedById: string | null;
 }
 ```
+
+> **DB mapping note:** The `metadata` field maps to the existing `video_summary` JSONB column in the database. The column name is a v1 legacy — it already stores diagnosis details, phone call info, and other metadata (not just video summaries). The repository implementation handles this mapping: `entity.metadata ↔ row.videoSummary`. No DB migration needed for this field.
 
 ### 2.2 Value Objects
 
@@ -197,6 +199,10 @@ interface ICaseProgressRepository {
   findByCaseId(caseId: string): Promise<CaseProgress[]>;
   save(progress: CaseProgress): Promise<CaseProgress>;
 }
+
+interface IHospitalRepository {
+  findById(id: string): Promise<{ id: string; name: string; status: string } | null>;
+}
 ```
 
 ### 2.6 Storage Port
@@ -240,6 +246,7 @@ packages/domain/
       case-repository.port.ts
       document-repository.port.ts
       case-progress-repository.port.ts
+      hospital-repository.port.ts
       storage-service.port.ts
     services/
       case-assignment.service.ts
@@ -265,12 +272,28 @@ Depends on `@medical-crm/domain` (ports + entities). No infrastructure dependenc
 interface Actor {
   userId: string;
   email: string;
-  role: 'ADMIN' | 'HOSPITAL' | 'PATIENT';
+  role: 'ADMIN' | 'HOSPITAL' | 'PATIENT';  // single effective role
   hospitalId: string | null;
 }
 ```
 
-Extracted from auth middleware session. Passed to every use case for permission control.
+**Derivation from Session:** The existing Keycloak auth middleware provides `Session.roles: string[]` (array). A `toActor(session: Session): Actor` mapping function selects a single effective role using priority order: `ADMIN > HOSPITAL > PATIENT`. This function lives in `packages/application/src/types/actor.ts`.
+
+```typescript
+const ROLE_PRIORITY: string[] = ['ADMIN', 'HOSPITAL', 'PATIENT'];
+
+function toActor(session: Session): Actor {
+  const role = ROLE_PRIORITY.find(r => session.roles.includes(r)) ?? 'PATIENT';
+  return {
+    userId: session.userId,
+    email: session.email,
+    role: role as Actor['role'],
+    hospitalId: session.hospitalId,
+  };
+}
+```
+
+The route handler calls `toActor(c.get('session'))` before passing to use cases.
 
 ### 3.2 Use Cases
 
@@ -282,7 +305,8 @@ Extracted from auth middleware session. Passed to every use case for permission 
 | `ListCasesUseCase` | `ICaseRepository` | Hospital role: force filter by `actor.hospitalId`. Admin: no filter |
 | `GetCaseUseCase` | `ICaseRepository` | Basic case detail. Hospital: verify case belongs to their hospital |
 | `GetHospitalCaseDetailUseCase` | `ICaseRepository`, `ICaseProgressRepository`, `IDocumentRepository`, `IStorageService` | Aggregated view: case + progress split into diagnoses/phoneCalls/consultations + documents with signed URLs |
-| `AssignCaseUseCase` | `ICaseRepository`, `CaseAssignmentService` | Validate hospital status, call `case.assign()`, save |
+| `UpdateCaseUseCase` | `ICaseRepository` | Partial update of basic fields (primaryDiagnosis, symptoms, medicalHistory, patientCountry, patientLanguage). Hospital: verify case ownership |
+| `AssignCaseUseCase` | `ICaseRepository`, `IHospitalRepository`, `CaseAssignmentService` | Fetch hospital to verify ACTIVE status, call `case.assign()`, save |
 | `UpdateCaseStatusUseCase` | `ICaseRepository`, `ICaseProgressRepository` | Call `case.transitionStatus()`, auto-create STATUS_CHANGE progress entry |
 | `AdvanceCaseStageUseCase` | `ICaseRepository`, `ICaseProgressRepository` | Call `case.advanceStage()`, auto-create STATUS_CHANGE progress entry |
 | `GetCaseStatsUseCase` | `ICaseRepository` | Dashboard stats: total, unassigned, active, completed, cancelled |
@@ -308,14 +332,17 @@ Extracted from auth middleware session. Passed to every use case for permission 
 
 ```typescript
 interface CreateCaseInput {
+  patientId: string;             // existing user ID (admin selects from patient list)
   patientName: string;
   patientCountry?: string;
   patientLanguage?: string;      // default "en"
-  patientEmail?: string;
   primaryDiagnosis?: string;
   symptoms?: string[];
   medicalHistory?: string;
 }
+// Note: patientId is a required FK to the users table. The admin selects an
+// existing patient when creating a case. Patient user creation is a separate
+// flow handled by Keycloak registration, outside Phase 2A scope.
 
 interface UploadDocumentInput {
   caseId: string;
@@ -326,8 +353,12 @@ interface UploadDocumentInput {
   sensitivity: Sensitivity;
   language: string;
 }
+// Storage key generated by UploadDocumentUseCase: `documents/{caseId}/{uuid}/{fileName}`
+// UUID ensures uniqueness; caseId prefix enables per-case listing in storage.
 
-// Discriminated union for different progress types
+// Discriminated union for different progress types.
+// Maps to ProgressType enum: DIAGNOSIS → STATUS_CHANGE, PHONE_CALL → APPOINTMENT.
+// VIDEO_CONSULTATION and MESSAGE progress entries are auto-created by Phase 2B/2C systems.
 type AddProgressInput =
   | { type: 'DIAGNOSIS'; caseId: string; icdCode?: string; severity?: string;
       treatmentRecommendation?: string; suggestedTests?: string;
@@ -336,6 +367,11 @@ type AddProgressInput =
       summary?: string; duration?: number; nextFollowUp?: string; }
   | { type: 'STATUS_CHANGE'; caseId: string; reason?: string; }
   | { type: 'DOCUMENT_UPLOAD'; caseId: string; documentId: string; };
+// AddCaseProgressUseCase maps input types to ProgressType + stores typed data in metadata:
+// - DIAGNOSIS → progressType: STATUS_CHANGE, metadata: { kind: 'diagnosis', icdCode, ... }
+// - PHONE_CALL → progressType: APPOINTMENT, metadata: { kind: 'phone_call', callResult, ... }
+// - STATUS_CHANGE → progressType: STATUS_CHANGE, metadata: { kind: 'status_change', reason }
+// - DOCUMENT_UPLOAD → progressType: DOCUMENT_UPLOAD, metadata: { documentId }
 ```
 
 #### Output DTOs
@@ -362,11 +398,16 @@ interface CaseDTO {
 interface HospitalCaseDetailDTO {
   id: string;
   caseNumber: string;
-  status: string;                  // mapped from stage
+  displayStatus: string;           // derived from CaseStage for hospital UI compatibility:
+                                   // PENDING_ASSIGNMENT/TRANSFERRED_TO_HOSPITAL → "transferred"
+                                   // HOSPITAL_CONTACTED → "contacted"
+                                   // CONSULTATION_SCHEDULED → "consultation_scheduled"
+                                   // IN_TREATMENT → "in_treatment"
+                                   // TREATMENT_COMPLETED → "completed"
   patient: {
     id: string;
     name: string;
-    code: string;                  // deterministic generated code
+    code: string;                  // from users.patient_code column in DB
     country: string | null;
     language: string;
   };
@@ -382,7 +423,7 @@ interface HospitalCaseDetailDTO {
   phoneCalls: PhoneCallDTO[];      // extracted from progress
   consultationHistory: ConsultationHistoryDTO[];  // extracted from progress
   documents: DocumentWithUrlDTO[];
-  totalMessages: number;
+  totalMessages: number;           // hardcoded to 0 until Phase 2B (messages)
   createdAt: string;
   updatedAt: string;
 }
@@ -444,6 +485,7 @@ packages/application/
         list-cases.use-case.ts
         get-case.use-case.ts
         get-hospital-case-detail.use-case.ts
+        update-case.use-case.ts
         assign-case.use-case.ts
         update-case-status.use-case.ts
         advance-case-stage.use-case.ts
@@ -493,6 +535,7 @@ packages/infrastructure/
       drizzle-case.repository.ts
       drizzle-document.repository.ts
       drizzle-case-progress.repository.ts
+      drizzle-hospital.repository.ts
   storage/
     supabase-storage.adapter.ts
 ```
@@ -503,7 +546,7 @@ Key implementation details:
 
 - `findMany`: Composes WHERE from optional status, stage, hospitalId, search (ilike on patientName, caseNumber, primaryDiagnosis). Offset pagination with COUNT.
 - `save`: Upsert via `onConflictDoUpdate` on `id`. Auto-sets `updatedAt`.
-- `nextCaseNumber`: `SELECT MAX(case_number) FROM cases WHERE case_number LIKE 'CASE-{year}-%'`, parse sequence + 1.
+- `nextCaseNumber`: `SELECT MAX(case_number) FROM cases WHERE case_number LIKE 'CASE-{year}-%'`, parse sequence + 1. Uses optimistic retry: on unique constraint violation (`cases_case_number_key`), re-fetch MAX and retry (up to 3 attempts). This handles concurrent case creation without requiring advisory locks.
 - `countByFilters`: Single query with `COUNT(*) FILTER (WHERE ...)` for all stats.
 
 #### DrizzleDocumentRepository
@@ -574,6 +617,7 @@ All under `/api/v2/`, require auth middleware. Role enforcement in use case laye
 | `GET` | `/api/v2/cases` | ADMIN, HOSPITAL | List cases (hospital auto-filtered) |
 | `GET` | `/api/v2/cases/stats` | ADMIN, HOSPITAL | Dashboard statistics |
 | `GET` | `/api/v2/cases/:id` | ADMIN, HOSPITAL | Case detail (hospital gets aggregated view) |
+| `PATCH` | `/api/v2/cases/:id` | ADMIN, HOSPITAL | Update basic case fields (diagnosis, symptoms, etc.) |
 | `PATCH` | `/api/v2/cases/:id/status` | ADMIN, HOSPITAL | Update case status |
 | `PATCH` | `/api/v2/cases/:id/stage` | ADMIN, HOSPITAL | Advance case stage |
 | `POST` | `/api/v2/cases/:id/assign` | ADMIN | Assign case to hospital |
@@ -616,9 +660,13 @@ app.openapi(listCasesRoute, async (c) => {
 
 ### 5.4 Composition Root Extension
 
+The existing `getInfrastructure()` function is renamed to `getServices()` and expanded. The `Infrastructure` interface becomes `AppServices`. This is a breaking change to the composition root — the health route and any future consumers must update their import.
+
+**New dependency:** `@hono/zod-openapi` must be added to `apps/api/package.json`.
+
 ```typescript
 interface AppServices {
-  // infrastructure (existing)
+  // infrastructure (existing, migrated from Infrastructure interface)
   crmDb: CrmDatabase;
   mainSupabase: SupabaseClient;
   chinaSupabase: SupabaseClient;
@@ -627,6 +675,7 @@ interface AppServices {
   caseRepo: ICaseRepository;
   documentRepo: IDocumentRepository;
   progressRepo: ICaseProgressRepository;
+  hospitalRepo: IHospitalRepository;
   storage: IStorageService;
 
   // use cases (new)
@@ -634,6 +683,7 @@ interface AppServices {
   listCases: ListCasesUseCase;
   getCase: GetCaseUseCase;
   getHospitalCaseDetail: GetHospitalCaseDetailUseCase;
+  updateCase: UpdateCaseUseCase;
   assignCase: AssignCaseUseCase;
   updateCaseStatus: UpdateCaseStatusUseCase;
   advanceCaseStage: AdvanceCaseStageUseCase;
@@ -678,9 +728,16 @@ These tests connect to the real CRM database (dev environment):
 
 ```typescript
 // vitest.integration.config.ts — separate config
-// setup: connect to dev CRM DB via getCrmDb()
-// cleanup: DELETE FROM cases WHERE case_number LIKE 'TEST-%' (after each)
+// Each test runs inside a database transaction that is ROLLED BACK after the test.
+// This ensures zero side effects on the dev database and prevents data interference
+// between concurrent test runs.
+//
+// setup: getCrmDb() connection + begin transaction
+// afterEach: ROLLBACK transaction (all test data discarded)
 // teardown: close DB connection
+//
+// For tests that need committed data (e.g., testing unique constraints across
+// transactions), use a TEST- prefixed case number and explicit cleanup.
 ```
 
 Turbo task: `test:integration` (no cache, depends on build).

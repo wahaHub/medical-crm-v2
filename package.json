@@ -1,0 +1,23 @@
+{
+  "name": "medical-crm-v2",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:coverage": "turbo test -- --coverage",
+    "db:pull": "pnpm --filter @medical-crm/infrastructure drizzle-kit pull",
+    "db:generate": "pnpm --filter @medical-crm/infrastructure drizzle-kit generate",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.20.0"
+  }
+}

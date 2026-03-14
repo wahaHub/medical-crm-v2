@@ -1,7 +1,7 @@
 # Phase 2A Design: Domain Layer + Case CRUD + Documents + Progress
 
 **Date:** 2026-03-14
-**Status:** Review (post spec-review fixes applied)
+**Status:** Approved
 **Scope:** Domain entities, application use cases, repository implementations, API routes for Case + CaseProgress + Documents
 
 ---
@@ -301,7 +301,7 @@ The route handler calls `toActor(c.get('session'))` before passing to use cases.
 
 | Use Case | Constructor Dependencies | Description |
 |----------|------------------------|-------------|
-| `CreateCaseUseCase` | `ICaseRepository` | Generate CaseNumber, create with DRAFT/PENDING_ASSIGNMENT, save |
+| `CreateCaseUseCase` | `ICaseRepository` | Generate CaseNumber, create with DRAFT/PENDING_ASSIGNMENT (note: DB default is ACTIVE, use case must explicitly set DRAFT), save |
 | `ListCasesUseCase` | `ICaseRepository` | Hospital role: force filter by `actor.hospitalId`. Admin: no filter |
 | `GetCaseUseCase` | `ICaseRepository` | Basic case detail. Hospital: verify case belongs to their hospital |
 | `GetHospitalCaseDetailUseCase` | `ICaseRepository`, `ICaseProgressRepository`, `IDocumentRepository`, `IStorageService` | Aggregated view: case + progress split into diagnoses/phoneCalls/consultations + documents with signed URLs |
@@ -652,7 +652,7 @@ const listCasesRoute = createRoute({
 
 app.openapi(listCasesRoute, async (c) => {
   const query = c.req.valid('query');
-  const actor = c.get('session');
+  const actor = toActor(c.get('session'));  // derive Actor from Session
   const result = await getServices().listCases.execute(query, actor);
   return c.json(result, 200);
 });

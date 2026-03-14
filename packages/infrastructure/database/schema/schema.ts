@@ -200,10 +200,13 @@ export const caseProgress = pgTable("case_progress", {
 		}).onUpdate("cascade").onDelete("cascade"),
 ]);
 
-// NOTE: conversations and messages have a circular FK relationship in the DB
+// INTENTIONAL SCHEMA DRIFT: conversations and messages have a circular FK in the DB
 // (messages.conversation_id → conversations.id AND conversations.last_message_id → messages.id).
-// We define conversations first and omit the last_message_id FK from the Drizzle schema definition.
-// The FK constraint still exists in PostgreSQL; the relation is defined in relations.ts for queries.
+// The last_message_id FK is omitted from the Drizzle schema to break the circular dependency.
+// This is a known, intentional drift between the Drizzle schema and the live DB.
+// The FK constraint "conversations_last_message_id_fkey" still exists in PostgreSQL.
+// The Drizzle relation is defined in relations.ts for query purposes.
+// If running `drizzle-kit check`, this FK will show as a difference — this is expected.
 export const conversations = pgTable("conversations", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	caseId: uuid("case_id"),
@@ -219,7 +222,7 @@ export const conversations = pgTable("conversations", {
 }, (table) => [
 	index("conversations_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
 	index("conversations_category_idx").using("btree", table.category.asc().nullsLast().op("enum_ops")),
-	index("idx_conversations_hospital_category_time").using("btree", table.hospitalId.asc().nullsLast().op("timestamptz_ops"), table.category.asc().nullsLast().op("timestamptz_ops"), table.lastMessageAt.desc().nullsLast().op("timestamptz_ops")),
+	index("idx_conversations_hospital_category_time").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops"), table.category.asc().nullsLast().op("enum_ops"), table.lastMessageAt.desc().nullsLast().op("timestamptz_ops")),
 	foreignKey({
 			columns: [table.caseId],
 			foreignColumns: [cases.id],
@@ -246,7 +249,7 @@ export const messages = pgTable("messages", {
 	aiSummary: text("ai_summary"),
 }, (table) => [
 	index("idx_messages_ai_summary").using("btree", table.id.asc().nullsLast().op("uuid_ops")).where(sql`(ai_summary IS NOT NULL)`),
-	index("idx_messages_conversation_time").using("btree", table.conversationId.asc().nullsLast().op("timestamp_ops"), table.createdAt.desc().nullsFirst().op("timestamp_ops")),
+	index("idx_messages_conversation_time").using("btree", table.conversationId.asc().nullsLast().op("uuid_ops"), table.createdAt.desc().nullsFirst().op("timestamp_ops")),
 	index("messages_conversation_id_idx").using("btree", table.conversationId.asc().nullsLast().op("uuid_ops")),
 	index("messages_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamp_ops")),
 	index("messages_sender_id_idx").using("btree", table.senderId.asc().nullsLast().op("uuid_ops")),
@@ -349,7 +352,7 @@ export const translationTasks = pgTable("translation_tasks", {
 	index("idx_translation_tasks_created_at").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 	index("idx_translation_tasks_entity").using("btree", table.entityType.asc().nullsLast().op("text_ops"), table.entityId.asc().nullsLast().op("uuid_ops")),
 	index("idx_translation_tasks_hospital_type").using("btree", table.hospitalType.asc().nullsLast().op("text_ops")),
-	index("idx_translation_tasks_pending").using("btree", table.status.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("text_ops")).where(sql`(status = 'pending'::text)`),
+	index("idx_translation_tasks_pending").using("btree", table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(status = 'pending'::text)`),
 	index("idx_translation_tasks_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
 	unique("translation_tasks_hospital_type_entity_type_entity_id_sourc_key").on(table.hospitalType, table.entityType, table.entityId, table.sourceLanguage, table.targetLanguage),
 ]);

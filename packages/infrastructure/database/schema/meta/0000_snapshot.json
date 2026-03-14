@@ -1173,7 +1173,7 @@
               "expression": "conversation_id",
               "asc": true,
               "nulls": "last",
-              "opclass": "timestamp_ops",
+              "opclass": "uuid_ops",
               "isExpression": false
             },
             {
@@ -1980,14 +1980,14 @@
               "expression": "status",
               "asc": true,
               "nulls": "last",
-              "opclass": "timestamptz_ops",
+              "opclass": "text_ops",
               "isExpression": false
             },
             {
               "expression": "created_at",
               "asc": true,
               "nulls": "last",
-              "opclass": "text_ops",
+              "opclass": "timestamptz_ops",
               "isExpression": false
             }
           ],
@@ -2147,14 +2147,14 @@
               "expression": "hospital_id",
               "asc": true,
               "nulls": "last",
-              "opclass": "timestamptz_ops",
+              "opclass": "uuid_ops",
               "isExpression": false
             },
             {
               "expression": "category",
               "asc": true,
               "nulls": "last",
-              "opclass": "timestamptz_ops",
+              "opclass": "enum_ops",
               "isExpression": false
             },
             {
@@ -2185,20 +2185,6 @@
           ],
           "onDelete": "set null",
           "onUpdate": "cascade"
-        },
-        "conversations_last_message_id_fkey": {
-          "name": "conversations_last_message_id_fkey",
-          "tableFrom": "conversations",
-          "tableTo": "messages",
-          "schemaTo": "public",
-          "columnsFrom": [
-            "last_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
         },
         "conversations_last_sender_id_fkey": {
           "name": "conversations_last_sender_id_fkey",

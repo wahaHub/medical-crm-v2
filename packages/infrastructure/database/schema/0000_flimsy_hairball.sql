@@ -238,7 +238,8 @@ ALTER TABLE "consultations" ADD CONSTRAINT "consultations_case_id_fkey" FOREIGN 
 ALTER TABLE "consultations" ADD CONSTRAINT "consultations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "consultation_transcripts" ADD CONSTRAINT "consultation_transcripts_consultation_id_fkey" FOREIGN KEY ("consultation_id") REFERENCES "public"."consultations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "conversations" ADD CONSTRAINT "conversations_case_id_fkey" FOREIGN KEY ("case_id") REFERENCES "public"."cases"("id") ON DELETE set null ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "conversations" ADD CONSTRAINT "conversations_last_message_id_fkey" FOREIGN KEY ("last_message_id") REFERENCES "public"."messages"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+-- NOTE: conversations_last_message_id_fkey (last_message_id -> messages.id) intentionally omitted
+-- from Drizzle schema to break circular FK (messages <-> conversations). Constraint exists in DB.
 ALTER TABLE "conversations" ADD CONSTRAINT "conversations_last_sender_id_fkey" FOREIGN KEY ("last_sender_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "hospital_registration_tokens" ADD CONSTRAINT "hospital_registration_tokens_hospital_id_fkey" FOREIGN KEY ("hospital_id") REFERENCES "public"."hospitals"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 CREATE INDEX "cases_assigned_hospital_id_idx" ON "cases" USING btree ("assigned_hospital_id" uuid_ops);--> statement-breakpoint
@@ -266,7 +267,7 @@ CREATE INDEX "users_hospital_id_idx" ON "users" USING btree ("hospital_id" uuid_
 CREATE UNIQUE INDEX "users_patient_code_key" ON "users" USING btree ("patient_code" text_ops);--> statement-breakpoint
 CREATE INDEX "users_role_idx" ON "users" USING btree ("role" enum_ops);--> statement-breakpoint
 CREATE INDEX "idx_messages_ai_summary" ON "messages" USING btree ("id" uuid_ops) WHERE (ai_summary IS NOT NULL);--> statement-breakpoint
-CREATE INDEX "idx_messages_conversation_time" ON "messages" USING btree ("conversation_id" timestamp_ops,"created_at" timestamp_ops);--> statement-breakpoint
+CREATE INDEX "idx_messages_conversation_time" ON "messages" USING btree ("conversation_id" uuid_ops,"created_at" timestamp_ops);--> statement-breakpoint
 CREATE INDEX "messages_conversation_id_idx" ON "messages" USING btree ("conversation_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "messages_created_at_idx" ON "messages" USING btree ("created_at" timestamp_ops);--> statement-breakpoint
 CREATE INDEX "messages_sender_id_idx" ON "messages" USING btree ("sender_id" uuid_ops);--> statement-breakpoint
@@ -282,11 +283,11 @@ CREATE INDEX "idx_consultation_transcripts_status" ON "consultation_transcripts"
 CREATE INDEX "idx_translation_tasks_created_at" ON "translation_tasks" USING btree ("created_at" timestamptz_ops);--> statement-breakpoint
 CREATE INDEX "idx_translation_tasks_entity" ON "translation_tasks" USING btree ("entity_type" text_ops,"entity_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "idx_translation_tasks_hospital_type" ON "translation_tasks" USING btree ("hospital_type" text_ops);--> statement-breakpoint
-CREATE INDEX "idx_translation_tasks_pending" ON "translation_tasks" USING btree ("status" timestamptz_ops,"created_at" text_ops) WHERE (status = 'pending'::text);--> statement-breakpoint
+CREATE INDEX "idx_translation_tasks_pending" ON "translation_tasks" USING btree ("status" text_ops,"created_at" timestamptz_ops) WHERE (status = 'pending'::text);--> statement-breakpoint
 CREATE INDEX "idx_translation_tasks_status" ON "translation_tasks" USING btree ("status" text_ops);--> statement-breakpoint
 CREATE INDEX "conversations_case_id_idx" ON "conversations" USING btree ("case_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "conversations_category_idx" ON "conversations" USING btree ("category" enum_ops);--> statement-breakpoint
-CREATE INDEX "idx_conversations_hospital_category_time" ON "conversations" USING btree ("hospital_id" timestamptz_ops,"category" timestamptz_ops,"last_message_at" timestamptz_ops);--> statement-breakpoint
+CREATE INDEX "idx_conversations_hospital_category_time" ON "conversations" USING btree ("hospital_id" uuid_ops,"category" enum_ops,"last_message_at" timestamptz_ops);--> statement-breakpoint
 CREATE INDEX "hospital_registration_tokens_expires_at_idx" ON "hospital_registration_tokens" USING btree ("expires_at" timestamp_ops);--> statement-breakpoint
 CREATE INDEX "hospital_registration_tokens_hospital_id_idx" ON "hospital_registration_tokens" USING btree ("hospital_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "hospital_registration_tokens_token_idx" ON "hospital_registration_tokens" USING btree ("token" text_ops);--> statement-breakpoint

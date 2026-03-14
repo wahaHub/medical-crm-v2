@@ -208,12 +208,26 @@ interface IHospitalRepository {
 ### 2.6 Storage Port
 
 ```typescript
+interface PresignedUploadResult {
+  uploadUrl: string;           // the URL to PUT/POST the file to
+  storageKey: string;          // canonical key for later retrieval
+  path: string;                // bucket-relative path
+  token: string;               // upload authorization token
+  expiresIn: number;           // seconds until the upload URL expires
+}
+
 interface IStorageService {
-  createPresignedUpload(key: string, contentType: string): Promise<{ url: string; key: string }>;
+  createPresignedUpload(key: string, contentType: string): Promise<PresignedUploadResult>;
   getSignedUrl(key: string): Promise<string>;
   getSignedUrls(keys: string[]): Promise<Record<string, string>>;
 }
 ```
+
+**Path authorization strategy:** The storage adapter is a dumb signer — it signs whatever key it receives. **Authorization is enforced in the use case layer**, not the adapter:
+
+- `UploadDocumentUseCase`: generates the storage key using `documents/{caseId}/{uuid}/{fileName}`. The caseId is validated against the actor's permissions (hospital can only upload to their own cases) *before* the key is generated. No user-supplied path ever reaches the adapter.
+- `GetHospitalCaseDetailUseCase` / `ListDocumentsUseCase`: loads documents from the repository (which already enforces hospital isolation via caseId), then signs only those keys. A hospital user can never request a signed URL for a document outside their cases because the query itself is scoped.
+- The adapter does NOT validate paths — it trusts the use case layer to pass correct keys. This keeps the adapter simple and testable.
 
 ### 2.7 Domain Services
 
@@ -726,18 +740,22 @@ These tests connect to the real CRM database (dev environment):
 
 ### 6.3 Integration Test Setup
 
+**Environment:** Use a dedicated test database (e.g., `medical_crm_test`), NOT the shared dev database. The test DB is created from the same schema via `drizzle-kit push`. This eliminates data interference and allows destructive operations.
+
 ```typescript
 // vitest.integration.config.ts — separate config
-// Each test runs inside a database transaction that is ROLLED BACK after the test.
-// This ensures zero side effects on the dev database and prevents data interference
-// between concurrent test runs.
+// env: DATABASE_URL points to medical_crm_test (set in .env.test)
 //
-// setup: getCrmDb() connection + begin transaction
-// afterEach: ROLLBACK transaction (all test data discarded)
-// teardown: close DB connection
+// Primary strategy: transaction rollback
+// - beforeEach: BEGIN transaction
+// - afterEach: ROLLBACK (all test data discarded, zero side effects)
 //
-// For tests that need committed data (e.g., testing unique constraints across
-// transactions), use a TEST- prefixed case number and explicit cleanup.
+// For tests requiring committed data (unique constraints, concurrent inserts):
+// - Use TEST- prefixed identifiers
+// - afterEach: cascade cleanup across ALL related tables
+//   DELETE FROM case_progress WHERE case_id IN (SELECT id FROM cases WHERE case_number LIKE 'TEST-%');
+//   DELETE FROM documents WHERE case_id IN (SELECT id FROM cases WHERE case_number LIKE 'TEST-%');
+//   DELETE FROM cases WHERE case_number LIKE 'TEST-%';
 ```
 
 Turbo task: `test:integration` (no cache, depends on build).

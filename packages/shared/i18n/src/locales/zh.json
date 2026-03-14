@@ -1,0 +1,3398 @@
+{
+  "common": {
+    "brand": {
+      "medoraHealth": "Medora Health",
+      "hospitalSystem": "医院管理系统",
+      "hospitalSystemEn": "Hospital Management System"
+    },
+    "nav": {
+      "dashboard": "首页概览",
+      "profile": "个人资料",
+      "settings": "设置",
+      "messages": "消息",
+      "logout": "退出登录",
+      "viewAll": "查看全部",
+      "back": "返回",
+      "confirm": "确认",
+      "cancel": "取消",
+      "save": "保存",
+      "submit": "提交",
+      "submitting": "提交中...",
+      "error": "发生错误，请稍后再试",
+      "edit": "编辑",
+      "delete": "删除",
+      "search": "搜索",
+      "filter": "筛选"
+    },
+    "dashboard": "首页概览",
+    "settings": "设置",
+    "profile": "个人资料",
+    "loading": "加载中...",
+    "view": "查看",
+    "actions": {
+      "viewDetails": "查看详情",
+      "download": "下载",
+      "upload": "上传",
+      "print": "打印",
+      "export": "导出",
+      "refresh": "刷新",
+      "add": "添加",
+      "newConversation": "新建对话",
+      "create": "创建",
+      "update": "更新",
+      "clear": "清空",
+      "reset": "重置",
+      "close": "关闭",
+      "copy": "复制",
+      "paste": "粘贴",
+      "share": "分享",
+      "send": "发送",
+      "forward": "转发"
+    },
+    "boolean": {
+      "yes": "是",
+      "no": "否"
+    },
+    "labels": {
+      "name": "姓名",
+      "email": "邮箱",
+      "phone": "电话",
+      "address": "地址",
+      "city": "城市",
+      "gender": "性别",
+      "male": "男",
+      "female": "女",
+      "other": "其他",
+      "age": "年龄",
+      "yearsOld": "岁",
+      "date": "日期",
+      "time": "时间",
+      "description": "描述",
+      "notes": "备注",
+      "attachments": "附件",
+      "details": "详情",
+      "operations": "操作",
+      "quantity": "数量",
+      "unitPrice": "单价",
+      "subtotal": "小计",
+      "total": "合计",
+      "amount": "金额",
+      "source": "来源",
+      "channel": "渠道",
+      "pleaseSelect": "请选择"
+    },
+    "bodyParts": {
+      "headFace": "头面部",
+      "neck": "颈部",
+      "chest": "胸部",
+      "abdomen": "腹部",
+      "back": "腰背部",
+      "jointsLimbs": "关节四肢",
+      "rightLowerAbdomen": "右下腹",
+      "leftLowerAbdomen": "左下腹"
+    },
+    "symptoms": {
+      "pain": "疼痛",
+      "dullPain": "隐痛",
+      "severePain": "剧痛",
+      "sharpPain": "刺痛",
+      "distendingPain": "胀痛",
+      "numbness": "麻木",
+      "weakness": "无力",
+      "tightness": "紧绷感",
+      "difficultyBreathing": "呼吸困难",
+      "nauseaVomiting": "恶心呕吐",
+      "dizziness": "头晕",
+      "fever": "发热",
+      "decreasedAppetite": "食欲下降",
+      "persistent": "持续性",
+      "intermittent": "间歇性"
+    },
+    "medical": {
+      "case": "病例",
+      "caseId": "病例ID",
+      "patientCode": "患者代号",
+      "diagnosis": "诊断",
+      "treatment": "治疗",
+      "surgery": "手术",
+      "chemotherapy": "化疗",
+      "radiotherapy": "放疗",
+      "rehabilitation": "康复",
+      "followUp": "复查",
+      "prescription": "处方",
+      "examination": "检查",
+      "laboratoryTest": "化验",
+      "bUltrasound": "B超",
+      "ctScan": "CT",
+      "mri": "MRI",
+      "xRay": "X光",
+      "ecg": "心电图",
+      "bloodTest": "血液检查",
+      "imagingData": "影像资料",
+      "pathologyReport": "病理报告",
+      "laboratoryReport": "检验报告",
+      "medicalImaging": "医疗影像"
+    },
+    "cities": {
+      "beijing": "北京",
+      "shanghai": "上海",
+      "guangzhou": "广州",
+      "hangzhou": "杭州",
+      "chengdu": "成都",
+      "xian": "西安",
+      "nanjing": "南京",
+      "wuhan": "武汉",
+      "shenzhen": "深圳"
+    },
+    "hospitals": {
+      "peking_union": "北京协和医院",
+      "shanghai_zhongshan": "上海中山医院",
+      "west_china": "四川华西医院",
+      "nanjing_drum_tower": "南京鼓楼医院",
+      "wuhan_tongji": "武汉同济医院",
+      "zhejiang_university": "浙江大学附属医院",
+      "tianjin_tumor": "天津肿瘤医院",
+      "medoraInternational": "Medora国际医院",
+      "singaporeGeneral": "新加坡中央医院",
+      "bumrungradInternational": "泰国康民医院",
+      "tokyoMedicalUniversity": "日本东京医科大学医院"
+    }
+  },
+  "dashboardHeader": {
+    "title": "医院管理系统",
+    "myAccount": "我的账户",
+    "hospitalProfile": "医院资料"
+  },
+  "doctor": {
+    "welcome": "欢迎回来，查看您今天的工作概览~",
+    "nav": {
+      "overview": "首页概览",
+      "cases": "病例管理",
+      "appointments": "预约管理",
+      "messages": "消息管理"
+    }
+  },
+  "doctorCases": {
+    "title": "病例管理",
+    "subtitle": "查看和管理您的所有病例",
+    "searchPlaceholder": "搜索病例ID、患者姓名、疾病...",
+    "filter": "筛选",
+    "stats": {
+      "all": "全部病例",
+      "pendingQuote": "待报价",
+      "pending": "待处理",
+      "processing": "处理中"
+    },
+    "listTitle": "病例列表",
+    "listDesc": "所有需要您关注的病例",
+    "tabs": {
+      "all": "全部",
+      "quote": "待报价",
+      "pending": "待处理",
+      "processing": "处理中"
+    }
+  },
+  "login": {
+    "title": "医院管理系统",
+    "subtitle": "Hospital Management System",
+    "loginToAccount": "登录账户",
+    "emailAddress": "邮箱地址",
+    "emailPlaceholder": "doctor@medora.com",
+    "password": "密码",
+    "rememberMe": "记住我",
+    "forgotPassword": "忘记密码？",
+    "loginButton": "登录",
+    "or": "或",
+    "continueWithGoogle": "使用 Google 登录",
+    "continueWithFacebook": "使用 Facebook 登录",
+    "signInWithGoogle": "使用 Google 登录",
+    "signInWithFacebook": "使用 Facebook 登录",
+    "noAccount": "没有账户？",
+    "contactAdmin": "联系管理员"
+  },
+  "admin": {
+    "title": "管理后台",
+    "systemAdmin": "系统管理员",
+    "dashboard": {
+      "welcome": "欢迎回来，管理员",
+      "systemStatus": "系统运行正常，今天有 {count} 个待处理事项",
+      "stats": {
+        "totalPatients": "总患者数",
+        "totalDoctors": "总医生数",
+        "salesConsultants": "销售顾问",
+        "activeCases": "活跃病例",
+        "newInquiries": "新咨询",
+        "pendingAssignment": "待分配",
+        "transferredToHospital": "已转交医院",
+        "newMessages": "新消息"
+      },
+      "recentUsers": {
+        "title": "最近用户",
+        "description": "系统中最新注册的用户",
+        "role": "角色",
+        "patient": "患者",
+        "doctor": "医生",
+        "salesConsultant": "销售顾问",
+        "hospital": "医院",
+        "status": "状态",
+        "active": "活跃",
+        "pending": "待审"
+      },
+      "pendingActions": {
+        "title": "待处理事项",
+        "description": "需要您关注的任务",
+        "review": "审核",
+        "quotation": "报价",
+        "payment": "支付",
+        "assignment": "分配",
+        "message": "消息",
+        "response": "回复",
+        "newDoctorRegistration": "新医生注册申请",
+        "quotationPendingReview": "病例待审核报价",
+        "paymentPendingConfirmation": "待确认的支付记录",
+        "intakeCompletedPendingAssignment": "Intake 已完成待分配医院",
+        "marketingMessagePendingReview": "营销消息待审核",
+        "patientMessagesPendingResponse": "患者消息待回复",
+        "priority": "优先级",
+        "high": "高",
+        "medium": "中",
+        "low": "低"
+      },
+      "pendingTransfers": {
+        "title": "待转交医院案例",
+        "description": "已完成 Medical Intake，需要分配给医院的案例",
+        "caseId": "案例编号",
+        "intakeCompletedAt": "Intake 完成时间",
+        "suggestedHospitals": "推荐医院",
+        "assignHospital": "分配医院",
+        "intakeCompleted": "Intake 已完成"
+      },
+      "pendingJourneys": {
+        "title": "待协调旅程",
+        "description": "需要安排住宿和医院的患者",
+        "patient": "患者",
+        "caseId": "病例ID",
+        "preferredHospital": "期望医院",
+        "preferredAccommodation": "期望住宿",
+        "preferredTiming": "期望时间",
+        "within1Month": "1个月内",
+        "1to3Months": "1-3个月",
+        "3to6Months": "3-6个月",
+        "pendingCoordination": "待协调",
+        "coordinateJourney": "协调旅程",
+        "accommodation": {
+          "hotelNearHospital": "医院附近酒店",
+          "servicedApartment": "服务式公寓",
+          "hotel": "酒店"
+        }
+      },
+      "recentCases": {
+        "title": "最近病例",
+        "description": "系统中最新创建的病例",
+        "caseId": "病例ID",
+        "patient": "患者",
+        "doctor": "医生",
+        "hospital": "分配医院",
+        "diagnosis": "诊断",
+        "status": "状态",
+        "inProgress": "进行中",
+        "pendingQuotation": "待报价",
+        "pendingPayment": "待支付",
+        "pendingAssignment": "待分配",
+        "transferredToHospital": "已转交医院",
+        "hospitalContacted": "医院已联系",
+        "completed": "已完成",
+        "notAssigned": "未分配",
+        "priority": "优先级",
+        "amount": "金额"
+      }
+    },
+    "settings": {
+      "title": "系统设置",
+      "description": "管理系统的配置和参数",
+      "status": {
+        "enabled": "已启用",
+        "disabled": "未启用"
+      },
+      "general": {
+        "title": "基础设置",
+        "description": "系统基本配置",
+        "systemNameLabel": "系统名称",
+        "systemNameDefault": "Medora Health 医院管理系统",
+        "systemLanguageLabel": "系统语言",
+        "timezoneLabel": "时区",
+        "save": "保存设置",
+        "languageOptions": {
+          "zh": "简体中文",
+          "en": "English",
+          "zht": "繁體中文"
+        },
+        "timezoneOptions": {
+          "asiaShanghai": "亚洲/上海 (UTC+8)",
+          "asiaTokyo": "亚洲/东京 (UTC+9)",
+          "americaNewYork": "美洲/纽约 (UTC-5)"
+        }
+      },
+      "security": {
+        "title": "安全设置",
+        "description": "系统安全和权限配置",
+        "twoFactor": {
+          "title": "双因素认证",
+          "description": "要求所有用户启用2FA"
+        },
+        "passwordPolicy": {
+          "title": "密码强度要求",
+          "description": "至少8位，包含大小写和数字"
+        },
+        "sessionTimeout": {
+          "title": "会话超时",
+          "description": "30分钟无操作自动登出"
+        },
+        "ipWhitelist": {
+          "title": "IP白名单",
+          "description": "限制登录IP范围"
+        }
+      },
+      "email": {
+        "title": "邮件配置",
+        "description": "系统邮件发送设置",
+        "smtpServer": "SMTP服务器",
+        "senderEmail": "发件人邮箱",
+        "test": "测试邮件配置"
+      },
+      "notifications": {
+        "title": "通知设置",
+        "description": "系统通知和提醒配置",
+        "newUser": {
+          "title": "新用户注册通知",
+          "description": "有新用户注册时通知管理员"
+        },
+        "caseStatus": {
+          "title": "病例状态变更",
+          "description": "病例状态更新时通知相关人员"
+        },
+        "maintenance": {
+          "title": "系统维护提醒",
+          "description": "系统维护前24小时提醒"
+        }
+      },
+      "database": {
+        "title": "数据库维护",
+        "description": "数据备份和恢复",
+        "lastBackupLabel": "最后备份",
+        "backupSizeLabel": "备份大小",
+        "lastBackup": "{time}",
+        "backupSize": "{size}",
+        "backupNow": "立即备份",
+        "restore": "恢复数据",
+        "autoBackup": "自动备份频率",
+        "options": {
+          "daily": "每天 02:00",
+          "weekly": "每周日 02:00",
+          "monthly": "每月1日 02:00"
+        }
+      },
+      "internationalization": {
+        "title": "国际化设置",
+        "description": "多语言和地区配置",
+        "supportedLanguages": "支持的语言",
+        "languages": {
+          "zh": "简体中文",
+          "en": "English",
+          "ja": "日本語",
+          "ko": "한국어"
+        },
+        "save": "保存语言设置"
+      }
+    },
+    "patientJourney": {
+      "status": {
+        "title": "旅程协调状态",
+        "caseId": "病例ID",
+        "pending": "待协调",
+        "confirmed": "已确认",
+        "completed": "已完成",
+        "unknown": "未知"
+      },
+      "preferences": {
+        "title": "患者期望信息",
+        "description": "患者在填写病例时提供的期望",
+        "preferredHospital": "期望就诊医院",
+        "preferredAccommodation": "期望住宿类型",
+        "budget": "预算范围",
+        "timing": "期望时间",
+        "specialRequirements": "特殊需求",
+        "specialRequirementsOptions": {
+          "needsChineseInterpreter": "需要中文翻译服务",
+          "wheelchairAccess": "需要无障碍/轮椅通道",
+          "dietaryRestrictions": "饮食禁忌或特殊饮食"
+        }
+      },
+      "hospital": {
+        "title": "医院安排",
+        "description": "为患者安排就诊医院",
+        "assigned": "指定医院",
+        "contact": "医院联系方式",
+        "address": "医院地址",
+        "assignedPlaceholder": "例如: 新加坡中央医院",
+        "contactPlaceholder": "例如: +65 6222 3322",
+        "addressPlaceholder": "请输入医院完整地址"
+      },
+      "accommodation": {
+        "hotelNearHospital": "医院附近酒店",
+        "title": "住宿安排",
+        "description": "为患者协调住宿",
+        "type": "住宿类型",
+        "name": "住宿名称",
+        "address": "住宿地址",
+        "checkIn": "入住日期",
+        "checkOut": "退房日期",
+        "namePlaceholder": "例如: 希尔顿酒店",
+        "addressPlaceholder": "请输入住宿地址",
+        "options": {
+          "pleaseSelect": "请选择",
+          "hotelNearHospital": "医院附近酒店",
+          "hotel": "酒店",
+          "servicedApartment": "服务式公寓",
+          "hospitalAccommodation": "医院住宿",
+          "homestay": "民宿"
+        }
+      },
+      "transportation": {
+        "title": "交通安排",
+        "description": "航班和当地交通信息",
+        "flightInfo": "航班信息",
+        "flightPlaceholder": "例如: CA123 北京-新加坡 2025-11-01 08:00",
+        "transportationArrangement": "当地交通安排",
+        "transportationPlaceholder": "例如: 机场接送服务、医院往返交通等"
+      },
+      "contact": {
+        "title": "当地联系人",
+        "description": "患者在当地的紧急联系人",
+        "name": "联系人姓名",
+        "phone": "联系电话",
+        "namePlaceholder": "请输入联系人姓名",
+        "phonePlaceholder": "请输入联系电话"
+      },
+      "costNotes": {
+        "title": "费用与备注",
+        "estimatedCost": "预估总费用",
+        "estimatedCostPlaceholder": "例如: 15,000 USD",
+        "notes": "备注说明",
+        "notesPlaceholder": "其他重要信息或特别说明..."
+      },
+      "actions": {
+        "save": "保存旅程信息",
+        "saving": "保存中...",
+        "sendToPatient": "发送给患者",
+        "markConfirmed": "标记为已确认",
+        "saved": "旅程信息已保存！",
+        "sent": "旅程计划已发送给患者！"
+      }
+    },
+    "users": {
+      "title": "用户管理",
+      "description": "管理系统中的所有用户账户",
+      "addUser": "添加用户",
+      "addHospital": "添加医院",
+      "searchPlaceholder": "搜索用户名、邮箱或手机号...",
+      "filter": "筛选",
+      "stats": {
+        "hospitals": "医院",
+        "patients": "患者",
+        "pendingReview": "待审核"
+      },
+      "roles": {
+        "hospital": "医院",
+        "patient": "患者"
+      },
+      "table": {
+        "user": "用户",
+        "role": "角色",
+        "contactInfo": "联系方式",
+        "status": "状态",
+        "data": "数据",
+        "cases": "案例数",
+        "registrationDate": "注册日期",
+        "actions": "操作"
+      },
+      "dataMetrics": {
+        "patients": "{count} 患者",
+        "cases": "{count} 病例"
+      }
+    },
+    "hospitals": {
+      "title": "医院管理",
+      "description": "管理所有合作医院信息",
+      "addHospital": "添加医院",
+      "searchPlaceholder": "搜索医院名称或专科...",
+      "filter": "筛选",
+      "stats": {
+        "total": "总医院数",
+        "active": "活跃医院",
+        "pending": "待审核",
+        "specialties": "专科数量"
+      },
+      "table": {
+        "hospital": "医院",
+        "specialties": "专科",
+        "location": "地点",
+        "status": "状态",
+        "cases": "案例数",
+        "joinDate": "合作日期",
+        "actions": "操作"
+      },
+      "detail": {
+        "back": "返回医院列表",
+        "basicInfo": "基本信息",
+        "specialtiesSection": "专科列表",
+        "contactInfo": "联系方式",
+        "accounts": "医院账号",
+        "statistics": "统计数据"
+      },
+      "form": {
+        "name": "医院名称",
+        "namePlaceholder": "请输入医院名称",
+        "address": "医院地址",
+        "addressPlaceholder": "请输入详细地址",
+        "phone": "联系电话",
+        "phonePlaceholder": "请输入联系电话",
+        "email": "邮箱",
+        "emailPlaceholder": "请输入邮箱",
+        "specialties": "专科",
+        "specialtiesPlaceholder": "选择专科",
+        "description": "医院介绍",
+        "descriptionPlaceholder": "请输入医院介绍"
+      }
+    },
+    "messages": {
+      "title": "消息中心",
+      "description": "管理患者和医院的所有沟通消息",
+      "inbox": "收件箱",
+      "sent": "已发送",
+      "pending": "待审核",
+      "stats": {
+        "unread": "未读消息",
+        "today": "今日消息",
+        "pendingReview": "待审核"
+      },
+      "channels": {
+        "all": "全部",
+        "whatsapp": "WhatsApp",
+        "messenger": "Messenger",
+        "email": "邮件"
+      },
+      "types": {
+        "lead": "Lead 接洽",
+        "followUp": "随访消息",
+        "treatmentUpdate": "治疗进度",
+        "marketing": "营销消息",
+        "appointment": "预约提醒",
+        "documentRequest": "文档请求"
+      },
+      "actions": {
+        "approve": "批准发送",
+        "reject": "拒绝",
+        "reply": "回复"
+      }
+    },
+    "cases": {
+      "title": "案例管理",
+      "description": "查看和管理所有患者案例",
+      "addCase": "新建案例",
+      "searchPlaceholder": "搜索案例编号或患者姓名...",
+      "pendingAssignment": "待分配",
+      "assign": "分配",
+      "noMatchingCases": "未找到匹配的案例",
+      "noCases": "暂无案例数据",
+      "diagnosis": {
+        "cardiacCheck": "心脏病检查",
+        "orthopedicSurgery": "骨科手术",
+        "fullCheckup": "全身体检",
+        "eyeSurgery": "眼科手术",
+        "dentalTreatment": "牙科治疗"
+      },
+      "stats": {
+        "pendingAssignment": "待分配",
+        "assignedToHospital": "已分配医院",
+        "inProgress": "进行中",
+        "completed": "已完成",
+        "urgent": "紧急"
+      },
+      "status": {
+        "draft": "草稿",
+        "active": "进行中",
+        "completed": "已完成",
+        "cancelled": "已取消",
+        "archived": "已归档"
+      },
+      "stage": {
+        "initial_inquiry": "初步咨询",
+        "medical_evaluation": "医疗评估",
+        "treatment_planning": "治疗计划",
+        "in_treatment": "治疗中",
+        "post_treatment": "治疗后随访",
+        "completed": "已完成",
+        "follow_up": "长期随访"
+      },
+      "table": {
+        "caseNumber": "案例编号",
+        "patientName": "患者姓名",
+        "assignedHospital": "分配医院",
+        "diagnosis": "主要诊断",
+        "status": "状态",
+        "stage": "阶段",
+        "tags": "标签",
+        "createdDate": "创建日期",
+        "actions": "操作"
+      }
+    },
+    "patientDetail": {
+      "back": "返回概览",
+      "patientBadge": "患者",
+      "activeBadge": "活跃",
+      "patientCode": "患者代号",
+      "caseId": "病例ID",
+      "registeredAt": "注册日期",
+      "contact": {
+        "ageGender": "年龄/性别"
+      },
+      "tabs": {
+        "journey": "旅程管理",
+        "visa": "签证安排",
+        "medical": "医疗信息"
+      }
+    },
+    "visaManagement": {
+      "title": "签证安排",
+      "description": "管理患者的签证申请和相关文件",
+      "new": "新建签证申请",
+      "dialogTitle": "新建签证申请",
+      "dialogDescription": "填写签证申请的基本信息",
+      "empty": {
+        "title": "暂无签证申请记录",
+        "action": "创建第一个签证申请"
+      },
+      "statusActionsLabel": "状态操作:",
+      "editTitle": "编辑签证申请",
+      "editDescription": "更新签证申请信息",
+      "list": {
+        "passport": "护照号",
+        "nationality": "国籍",
+        "medicalInfo": "医疗信息",
+        "diagnosis": "诊断详情",
+        "treatmentPurpose": "治疗目的",
+        "estimatedDuration": "预计治疗周期",
+        "estimatedCost": "预计费用",
+        "financialProof": "财务证明",
+        "financialType": "证明类型",
+        "bankStatements": "银行对账单",
+        "filesCount": "{count} 个文件",
+        "usContact": "美国联系信息",
+        "contactName": "联系人/机构",
+        "contactPhone": "联系电话",
+        "address": "地址",
+        "applicationDetails": "申请详情",
+        "applicationNumber": "申请编号",
+        "ds160": "DS-160编号",
+        "interviewDate": "面试日期",
+        "interviewLocation": "面试地点",
+        "notFilled": "未填写",
+        "notes": "备注"
+      },
+      "status": {
+        "not_started": "未开始",
+        "preparing": "准备中",
+        "submitted": "已提交",
+        "approved": "已批准",
+        "rejected": "已拒绝",
+        "expired": "已过期"
+      },
+      "visaTypes": {
+        "B2_medical": "B-2 医疗签证",
+        "tourist": "旅游签证",
+        "business": "商务签证",
+        "other": "其他"
+      },
+      "financial": {
+        "personalFunds": "个人资金",
+        "sponsor": "担保人资助",
+        "both": "个人资金 + 担保人"
+      },
+      "actions": {
+        "preparing": "准备中",
+        "submitted": "已提交",
+        "approved": "已批准",
+        "rejected": "已拒绝"
+      },
+      "form": {
+        "basicInfo": "基本信息",
+        "visaType": "签证类型",
+        "nationality": "国籍",
+        "passportNumber": "护照号码",
+        "medicalInfo": "医疗信息",
+        "diagnosisDetails": "诊断详情",
+        "diagnosisPlaceholder": "详细描述患者的医疗状况和诊断...",
+        "treatmentPurpose": "治疗目的",
+        "treatmentPlaceholder": "例如: 心脏搭桥手术、癌症治疗等",
+        "estimatedDuration": "预计治疗周期",
+        "durationPlaceholder": "例如: 3-4周",
+        "estimatedCost": "预计费用",
+        "costPlaceholder": "例如: $150,000 - $200,000",
+        "usContact": "美国联系信息",
+        "usContactName": "联系人/医疗机构名称",
+        "usContactNamePlaceholder": "例如: Medora国际医院",
+        "usContactPhone": "联系电话",
+        "usContactPhonePlaceholder": "+1 (555) 123-4567",
+        "usContactAddress": "地址",
+        "usContactAddressPlaceholder": "完整的美国地址",
+        "notes": "备注",
+        "notesPlaceholder": "添加任何额外的备注信息...",
+        "cancel": "取消",
+        "save": "保存"
+      }
+    },
+    "createUser": {
+      "title": "创建新用户",
+      "description": "为系统添加新的医生或销售顾问",
+      "backToUserManagement": "返回用户管理",
+      "successMessage": "用户创建成功！",
+      "redirecting": "正在跳转到用户管理页面...",
+      "selectRole": {
+        "title": "选择用户角色",
+        "description": "请选择要创建的用户类型",
+        "doctor": "医生",
+        "doctorDescription": "医院医疗人员，负责诊断和治疗患者",
+        "salesConsultant": "销售顾问",
+        "salesConsultantDescription": "负责患者引流和业务拓展的销售人员"
+      },
+      "userInfo": {
+        "title": "用户信息",
+        "description": "填写{role}的基本信息",
+        "nameLabel": "姓名 *",
+        "namePlaceholder": "请输入姓名",
+        "emailLabel": "邮箱 *",
+        "emailPlaceholder": "请输入邮箱地址",
+        "passwordLabel": "初始密码 *",
+        "passwordPlaceholder": "请设置初始密码",
+        "phoneLabel": "电话",
+        "phonePlaceholder": "请输入联系电话",
+        "genderLabel": "性别",
+        "genderPlaceholder": "请选择性别",
+        "locationLabel": "所在地",
+        "locationPlaceholder": "请输入城市或国家"
+      },
+      "doctorInfo": {
+        "title": "医生专业信息",
+        "specialtyLabel": "专业科室",
+        "specialtyPlaceholder": "请选择科室",
+        "cardiology": "心脏科",
+        "orthopedics": "骨科",
+        "oncology": "肿瘤科",
+        "neurology": "神经科",
+        "generalPractice": "全科",
+        "experienceLabel": "从业年限",
+        "experiencePlaceholder": "例如：10年",
+        "languagesLabel": "语言能力",
+        "languagesPlaceholder": "例如：中文、英文、日文"
+      },
+      "salesInfo": {
+        "title": "销售顾问专业信息",
+        "experienceLabel": "从业经验",
+        "experiencePlaceholder": "例如：5年医疗旅游销售经验",
+        "languagesLabel": "语言能力",
+        "languagesPlaceholder": "例如：中文、英文、俄语"
+      },
+      "actions": {
+        "createUser": "创建用户",
+        "creating": "创建中...",
+        "cancel": "取消"
+      }
+    }
+  },
+  "sales": {
+    "title": "销售门户",
+    "consultant": "销售顾问",
+    "nav": {
+      "dashboard": "工作台",
+      "leads": "线索管理",
+      "cases": "案例管理",
+      "tasks": "任务管理",
+      "quotations": "报价管理",
+      "payouts": "放款管理",
+      "claimPool": "获取患者"
+    },
+    "dashboard": {
+      "welcome": "👋 欢迎回来，销售顾问",
+      "stats": {
+        "leadsToFollowUp": "待跟进线索",
+        "newToday": "{count} 今日新增",
+        "newCasesThisMonth": "本月新增案例",
+        "vsLastMonth": "vs 上月 ↑{percent}%",
+        "revenueThisMonth": "本月成交金额",
+        "targetAchieved": "目标完成 {percent}%",
+        "pendingPayouts": "待放款金额",
+        "pendingItems": "{count} 笔待处理"
+      },
+      "salesFunnel": {
+        "title": "案例漏斗",
+        "consultation": "咨询中",
+        "evaluation": "评估中",
+        "quotation": "报价中",
+        "scheduled": "已预约",
+        "inTreatment": "治疗中",
+        "followUp": "随访中"
+      },
+      "todaysTasks": {
+        "title": "今日待办",
+        "followUpQuotation": "跟进{name}报价反馈",
+        "sendItinerary": "发送{name}行程确认",
+        "requestDocuments": "催收{name}补充资料",
+        "contactNewLead": "联系新线索 - {name}",
+        "tomorrow": "明天",
+        "high": "高",
+        "medium": "中"
+      },
+      "latestLeads": {
+        "title": "最新线索",
+        "website": "官网",
+        "agent": "代理",
+        "referral": "转介绍",
+        "hoursAgo": "{count}小时前",
+        "daysAgo": "{count}天前",
+        "followUp": "跟进"
+      },
+      "payoutProgress": {
+        "title": "放款进度",
+        "viewDetails": "查看详情",
+        "pendingReview": "待审核",
+        "underReview": "审核中",
+        "approved": "已批准",
+        "received": "已到账",
+        "receivedThisMonth": "本月已到账"
+      }
+    },
+    "submitPatient": {
+      "title": "提交新患者资料",
+      "description": "请按照步骤填写完整的患者病例信息",
+      "backToList": "返回患者列表",
+      "createAccount": {
+        "title": "创建患者账号",
+        "description": "填写患者基本信息，系统将发送邀请链接",
+        "infoText": "创建账号后，患者将收到邮件/短信邀请链接，可以自己登录填写详细的医疗信息（症状定位、病史、用药过敏、检查报告等）"
+      },
+      "form": {
+        "patientName": "患者姓名 *",
+        "patientNamePlaceholder": "请输入患者姓名",
+        "patientCode": "患者代号",
+        "patientCodePlaceholder": "例如: BJ-30s（可自动生成）",
+        "patientCodeHint": "留空将根据城市和年龄自动生成",
+        "gender": "性别 *",
+        "genderPlaceholder": "请选择",
+        "male": "男",
+        "female": "女",
+        "age": "年龄 *",
+        "agePlaceholder": "请输入年龄",
+        "city": "城市 *",
+        "cityPlaceholder": "例如: 北京",
+        "phone": "联系电话 *",
+        "phonePlaceholder": "请输入联系电话",
+        "email": "电子邮箱 *",
+        "emailPlaceholder": "用于接收邀请链接和通知",
+        "emailHint": "患者将通过此邮箱接收账号激活链接"
+      },
+      "nextSteps": {
+        "title": "📋 后续流程",
+        "step1": "创建患者账号并发送邀请链接",
+        "step2": "患者通过邮件链接激活账号并登录",
+        "step3": "患者在 Patient Portal 填写详细医疗信息（5个步骤）",
+        "step4": "患者提交后，医院可查看完整病例信息"
+      },
+      "actions": {
+        "cancel": "取消",
+        "createAndSend": "创建患者账号并发送邀请"
+      }
+    },
+    "claimPool": {
+      "title": "患者获取池",
+      "description": "获取新患者，赢取业务机会",
+      "urgency": {
+        "high": "紧急",
+        "medium": "中等",
+        "low": "普通"
+      },
+      "yearsOld": "岁",
+      "hours": "小时",
+      "timeRemaining": "剩余 {time}",
+      "claimDeadline": "获取截止时间",
+      "estimatedValue": "预估价值",
+      "currentClaims": "当前获取申请",
+      "highestClaim": "最高佣金报价",
+      "yourClaimLabel": "您的佣金报价（元）",
+      "claimPlaceholder": "输入您的佣金报价",
+      "submitClaim": "立即获取患者",
+      "claimSubmitted": "已提交获取: ¥{amount}",
+      "claimSuccess": "获取患者成功！您的佣金报价：¥{amount}"
+    },
+    "leads": {
+      "title": "线索管理",
+      "description": "管理您的潜在客户，及时跟进转化",
+      "createLead": "新建线索",
+      "searchPlaceholder": "搜索线索姓名、病情...",
+      "allStatus": "全部状态",
+      "allSources": "全部来源",
+      "loading": "加载中...",
+      "noData": "暂无数据",
+      "pagination": {
+        "showing": "显示",
+        "of": "共",
+        "items": "条",
+        "prev": "上一页",
+        "next": "下一页"
+      },
+      "status": {
+        "new": "新线索",
+        "assigned": "已分配",
+        "contacted": "已联系",
+        "qualifying": "资格评估中",
+        "collecting_records": "收集病历中",
+        "submitted_to_hospital": "已提交医院",
+        "plan_ready": "方案已出",
+        "negotiation": "报价决策中",
+        "ready_for_invitation": "待发邀请函",
+        "converted": "已转化",
+        "lost": "已流失",
+        "disqualified": "不合格",
+        "qualified": "已确认"
+      },
+      "sources": {
+        "website": "官网",
+        "whatsapp": "WhatsApp",
+        "facebook": "Facebook",
+        "agency": "代理",
+        "referral": "转介绍",
+        "manual": "手动录入",
+        "agent": "代理",
+        "advertisement": "广告"
+      },
+      "table": {
+        "leadId": "线索ID",
+        "name": "姓名",
+        "condition": "病情",
+        "city": "城市",
+        "source": "来源",
+        "status": "状态",
+        "createdTime": "创建时间",
+        "lastContact": "最后联系",
+        "actions": "操作"
+      },
+      "actions": {
+        "markAsContacted": "标记为已联系",
+        "markAsQualified": "标记为已确认",
+        "convertToCase": "转为案例",
+        "addNote": "添加备注",
+        "markAsLost": "标记为已流失"
+      },
+      "lostReason": "预算不足"
+    },
+    "leadDetail": {
+      "backToList": "返回线索列表",
+      "conditionDescription": "病情描述",
+      "budgetRange": "预算范围：",
+      "preferredTime": "期望时间：",
+      "followUpRecords": "跟进记录",
+      "addNotePlaceholder": "添加跟进备注...",
+      "addNote": "添加备注",
+      "noteAdded": "备注已添加：",
+      "recordContent": "线索创建，来源：官网咨询表单",
+      "system": "系统",
+      "statusAndActions": "状态与操作",
+      "currentStatus": "当前状态",
+      "availableActions": "可用操作",
+      "leadClosed": "线索已关闭",
+      "noActionsAvailable": "暂无可用操作",
+      "actions": {
+        "assignToSales": "分配给销售",
+        "markContacted": "标记为已联系",
+        "startQualifying": "开始资格评估",
+        "startCollectingRecords": "开始收集病历",
+        "submitToHospital": "提交医院评估",
+        "planReady": "方案已出",
+        "startNegotiation": "开始报价谈判",
+        "readyForInvitation": "准备发邀请函",
+        "convertToCase": "转为案例",
+        "convertDescription": "发出医疗邀请函，转为正式案例",
+        "markLost": "标记为流失",
+        "markDisqualified": "标记为不合格"
+      },
+      "quickActions": "快捷操作",
+      "makeCall": "拨打电话",
+      "sendEmail": "发送邮件",
+      "sendMessage": "发送消息",
+      "timeline": "时间轴",
+      "leadCreated": "线索创建",
+      "statusUpdated": "状态已更新",
+      "convertingToCase": "正在转换为案例...",
+      "executing": "正在执行"
+    },
+    "cases": {
+      "title": "案例管理",
+      "description": "管理您的医疗案例，跟踪全流程进度",
+      "createCase": "新建案例",
+      "searchPlaceholder": "搜索患者代号、病情...",
+      "viewMode": {
+        "list": "列表",
+        "kanban": "看板"
+      },
+      "table": {
+        "caseId": "案例ID",
+        "patient": "患者",
+        "condition": "病情",
+        "hospital": "医院",
+        "stage": "阶段",
+        "estimatedAmount": "预估金额",
+        "updateTime": "更新时间",
+        "actions": "操作"
+      },
+      "actions": {
+        "sendMessage": "发送消息",
+        "viewQuotation": "查看报价"
+      },
+      "priority": "优先级"
+    },
+    "tasks": {
+      "title": "任务管理",
+      "description": "管理您的待办事项，确保不遗漏任何跟进",
+      "createTask": "新建任务",
+      "dialog": {
+        "title": "新建任务",
+        "taskTitle": "任务标题 *",
+        "taskTitlePlaceholder": "输入任务标题...",
+        "taskDescription": "任务描述",
+        "taskDescriptionPlaceholder": "输入任务详情...",
+        "relatedCase": "关联案例",
+        "selectCase": "选择关联案例...",
+        "priority": "优先级",
+        "highPriority": "高优先级",
+        "mediumPriority": "中优先级",
+        "lowPriority": "低优先级",
+        "dueDate": "截止日期",
+        "create": "创建任务"
+      },
+      "searchPlaceholder": "搜索任务...",
+      "allPriorities": "全部优先级",
+      "status": {
+        "open": "待处理",
+        "inProgress": "进行中",
+        "done": "已完成",
+        "canceled": "已取消"
+      },
+      "priority": {
+        "high": "高",
+        "medium": "中",
+        "low": "低"
+      },
+      "groups": {
+        "dueToday": "今日到期",
+        "thisWeek": "本周待办",
+        "completedOn": "完成于 {date}"
+      },
+      "completedAt": "完成于 {date}",
+      "viewCase": "查看案例",
+      "taskData": {
+        "followUpQuotation": {
+          "title": "跟进{name}报价反馈",
+          "description": "联系患者确认是否接受报价方案"
+        },
+        "sendItinerary": {
+          "title": "发送{name}行程确认邮件",
+          "description": "确认患者行程安排，发送详细行程单"
+        },
+        "requestDocuments": {
+          "title": "催收{name}补充资料",
+          "description": "提醒患者提交最新检查报告"
+        },
+        "contactNewLead": {
+          "title": "联系新线索 - {name}",
+          "description": "初次电话联系，了解患者需求"
+        },
+        "prepareDocuments": {
+          "title": "准备{name}术前资料",
+          "description": "整理患者术前检查资料，发送给医院"
+        },
+        "followUpConsultation": {
+          "title": "跟进{name}咨询",
+          "description": "回复患者关于治疗方案的疑问"
+        }
+      }
+    },
+    "quotations": {
+      "title": "报价管理",
+      "description": "查看和管理所有案例的医院报价",
+      "searchPlaceholder": "搜索报价单号、患者代号...",
+      "status": {
+        "draft": "草稿",
+        "sent": "已发送",
+        "accepted": "已接受",
+        "rejected": "已拒绝",
+        "expired": "已过期"
+      },
+      "table": {
+        "quotationId": "报价单号",
+        "quotationNumber": "报价单号",
+        "case": "案例",
+        "hospital": "医院",
+        "amount": "金额",
+        "status": "状态",
+        "validUntil": "有效期",
+        "actions": "操作"
+      },
+      "actions": {
+        "sendToPatient": "转发给患者",
+        "downloadPdf": "下载 PDF"
+      },
+      "dialog": {
+        "quotationNumber": "报价单",
+        "case": "案例",
+        "patient": "患者",
+        "hospital": "医院",
+        "validUntil": "有效期至",
+        "itemDetails": "报价明细",
+        "item": "项目",
+        "quantity": "数量",
+        "unitPrice": "单价",
+        "subtotal": "小计",
+        "items": {
+          "heartBypassSurgery": "心脏搭桥手术",
+          "icuCare": "ICU 监护（3天）",
+          "generalWard": "普通病房（7天）",
+          "postOpRehab": "术后康复治疗",
+          "medicinesConsumables": "药品及耗材",
+          "mastectomy": "乳腺癌根治术",
+          "chemotherapy": "化疗（6周期）",
+          "hospitalizationCosts": "住院费用"
+        },
+        "total": "合计",
+        "notes": "备注"
+      }
+    },
+    "payouts": {
+      "title": "放款追踪",
+      "description": "查看您的佣金放款进度",
+      "status": {
+        "pending": "待审核",
+        "inReview": "审核中",
+        "approved": "已批准",
+        "paid": "已到账"
+      },
+      "summary": {
+        "total": "总放款金额",
+        "count": "{count} 笔"
+      },
+      "progressOverview": "放款进度概览",
+      "pendingAmount": "待放款",
+      "paidAmount": "已到账",
+      "monthlyPaid": "本月已到账",
+      "totalPending": "待放款总额",
+      "searchPlaceholder": "搜索案例ID、患者代号...",
+      "table": {
+        "case": "案例",
+        "patient": "患者",
+        "hospital": "医院",
+        "amount": "金额",
+        "status": "状态",
+        "date": "日期",
+        "expected": "预计",
+        "details": "详情",
+        "actions": "操作"
+      },
+      "dialog": {
+        "title": "放款详情",
+        "case": "案例",
+        "patientCode": "患者代号",
+        "hospital": "医院",
+        "condition": "病情",
+        "payoutAmount": "放款金额",
+        "channel": "放款渠道",
+        "currentStatus": "当前状态",
+        "expectedDate": "预计放款日期",
+        "actualDate": "实际到账日期",
+        "notes": "备注"
+      }
+    },
+    "profile": {
+      "jobTitle": "高级销售顾问",
+      "editProfile": "编辑资料",
+      "saveChanges": "保存更改",
+      "email": "邮箱",
+      "phone": "电话",
+      "location": "位置",
+      "performanceStats": "业绩统计",
+      "closedPatients": "已成交患者",
+      "totalRevenue": "总收入",
+      "conversionRate": "转化率",
+      "certifications": "资格认证",
+      "languageSkills": "语言能力",
+      "languages": {
+        "chinese": "中文",
+        "english": "英文",
+        "arabic": "阿拉伯语"
+      },
+      "proficiency": {
+        "native": "母语",
+        "fluent": "流利",
+        "good": "良好"
+      },
+      "workExperience": "工作经验",
+      "specialtyAreas": "专业领域",
+      "targetMarkets": "目标市场",
+      "personalIntro": "个人简介"
+    },
+    "agentLeads": {
+      "title": "创建代理线索",
+      "description": "提交来自代理推荐的新患者线索",
+      "formTitle": "代理线索信息",
+      "formDescription": "通过此表单创建的所有线索将自动标记为「代理」来源",
+      "source": "线索来源",
+      "sourceHint": "此线索将自动标记为代理来源",
+      "namePlaceholder": "请输入患者姓名",
+      "phonePlaceholder": "请输入联系电话",
+      "emailPlaceholder": "请输入邮箱地址（可选）",
+      "cityPlaceholder": "请输入所在城市",
+      "agePlaceholder": "请输入年龄",
+      "condition": "病情",
+      "conditionPlaceholder": "例如：心脏病、癌症、骨科手术等",
+      "urgency": "紧急程度",
+      "notesPlaceholder": "请输入额外信息、患者需求等",
+      "submitLead": "提交线索",
+      "submitSuccess": "代理线索创建成功！"
+    }
+  },
+  "messaging": {
+    "title": "消息中心",
+    "searchPlaceholder": "搜索对话...",
+    "inputPlaceholder": "输入消息...",
+    "autoTranslate": "AI自动翻译",
+    "roles": {
+      "doctor": "医生",
+      "patient": "患者"
+    },
+    "conversations": {
+      "drLiMin": "李敏医生",
+      "liMin": "李敏",
+      "drZhangHua": "张华医生",
+      "wangFang": "王芳"
+    },
+    "hospitals": {
+      "medoraInternational": "Medora国际医院"
+    },
+    "times": {
+      "10MinutesAgo": "10分钟前",
+      "1HourAgo": "1小时前",
+      "2HoursAgo": "2小时前",
+      "3HoursAgo": "3小时前"
+    },
+    "lastMessages": {
+      "recordsReceived": "患者的病历资料已收到，我们会尽快安排初步诊断",
+      "thankYou": "好的，谢谢您的帮助",
+      "provideXray": "请提供患者的最新X光片",
+      "costDetails": "我想了解一下费用明细"
+    },
+    "senders": {
+      "salesConsultant": "销售顾问"
+    },
+    "messages": {
+      "thanksForReferral": "您好，感谢您推荐的患者。我已经查看了病历资料。",
+      "complexCase": "李医生您好，这位患者的情况比较复杂，麻烦您详细评估一下治疗方案。",
+      "furtherExamination": "根据初步诊断，建议进行进一步的检查。预计治疗周期为2-3周。",
+      "costRange": "好的，我会把这个信息转达给患者。关于费用报价，大概在什么范围？",
+      "recordsReceivedLong": "患者的病历资料已收到，我们会尽快安排初步诊断"
+    }
+  },
+  "appointments": {
+    "create": "新建预约",
+    "createDesc": "为患者创建新的就诊时间，确认后将同步到日程表。",
+    "basicInfo": "基础信息",
+    "caseId": "病例编号",
+    "type": {
+      "firstVisit": "首诊",
+      "followUp": "复诊",
+      "remoteConsultation": "远程会诊",
+      "preSurgery": "术前沟通"
+    },
+    "typeConsult": "门诊咨询",
+    "typeFollow": "复诊",
+    "typeSurgery": "手术",
+    "typeRemote": "远程会诊",
+    "date": "日期",
+    "time": "时间",
+    "duration": "时长（分钟）",
+    "location": "地点/房间",
+    "locationPlaceholder": "例如：门诊楼 3 楼 305",
+    "notes": "备注",
+    "notesPlaceholder": "补充说明、准备事项等",
+    "previewTime": "预览时间",
+    "title": "预约日历",
+    "subtitle": "查看和管理您的患者预约安排",
+    "today": "今天",
+    "dayView": "日视图",
+    "weekView": "周视图",
+    "filterStatus": "筛选状态",
+    "allStatuses": "全部状态",
+    "newAppointment": "发起新预约",
+    "statusLegend": "状态说明",
+    "noAppointments": "无预约",
+    "language": "语言",
+    "firstTimeVisit": "首次来院",
+    "needsTranslator": "需要翻译",
+    "weekViewComingSoon": "周视图开发中...",
+    "weekViewDescription": "即将上线完整的周视图功能",
+    "status": {
+      "requested": "待确认",
+      "confirmed": "已确认",
+      "rescheduleRequested": "请求改期",
+      "checkedIn": "已报到",
+      "completed": "已完成",
+      "noShow": "未到",
+      "cancelled": "已取消"
+    },
+    "changeStatus": "更改预约状态",
+    "currentStatus": "当前状态",
+    "selectNewStatus": "选择新状态",
+    "cancelReason": "取消原因",
+    "optional": "选填",
+    "cancelReasonPlaceholder": "请填写取消预约的原因...",
+    "confirmCancel": "确认取消",
+    "statusDesc": {
+      "requested": "患者或销售已选择时间段，但医院还未最终确认",
+      "confirmed": "医院/医生已确认此时间段 - 正式安排",
+      "rescheduleRequested": "患者/销售提出改期，但还未确定新的时间",
+      "checkedIn": "患者已到达医院报到或进入视频等候室",
+      "completed": "本次预约诊疗已完成，已撰写会诊/门诊记录",
+      "noShow": "患者未按时出现 - 需要销售跟进回访",
+      "cancelled": "患者取消/医生取消/因其他原因取消"
+    }
+  },
+  "hospital": {
+    "title": "医院门户",
+    "hospitalStaff": "医院工作人员",
+    "welcome": "欢迎回来",
+    "welcomeDescription": "查看分配给您的病例，与患者沟通，管理预约",
+    "recentCases": "最近病例",
+    "recentCasesDescription": "分配给您医院的病例",
+    "noCasesYet": "暂无病例",
+    "nav": {
+      "dashboard": "首页概览",
+      "cases": "病例管理",
+      "appointments": "预约管理",
+      "consultations": "在线问诊",
+      "messages": "消息",
+      "invitationLetters": "邀请函管理",
+      "materials": "宣传材料",
+      "documents": "文档",
+      "profile": "医院资料"
+    },
+    "stats": {
+      "assignedCases": "分配的病例",
+      "activeCases": "活跃病例",
+      "newCases": "新转交",
+      "todayConsultations": "今日问诊",
+      "pendingMessages": "待处理消息",
+      "unreadMessages": "条未读消息",
+      "weeklyCompleted": "本周完成",
+      "upcomingAppointments": "即将到来的预约",
+      "thisWeek": "本周",
+      "documentsToReview": "待审核文档",
+      "pendingReview": "需要审核"
+    },
+    "dashboard": {
+      "todayConsultations": {
+        "title": "今日问诊",
+        "description": "今天安排的在线问诊",
+        "viewAll": "查看全部",
+        "aiTranslation": "AI翻译",
+        "minutes": "分钟",
+        "enterConsultation": "进入问诊",
+        "noConsultations": "今日暂无问诊安排"
+      },
+      "newCases": {
+        "title": "新分配案例",
+        "description": "等待您联系的新案例",
+        "viewAll": "查看全部",
+        "minutesAgo": "{minutes}分钟前",
+        "hoursAgo": "{hours}小时前",
+        "daysAgo": "{days}天前",
+        "noCases": "暂无新分配的案例"
+      },
+      "messages": {
+        "title": "患者消息",
+        "description": "通过 CRM 接收的消息",
+        "viewAll": "查看全部",
+        "noMessages": "暂无新消息"
+      },
+      "notifications": {
+        "title": "系统通知",
+        "description": "重要提醒和更新",
+        "consultationReminder": "问诊提醒",
+        "consultationsToday": "今日有 {count} 场问诊待进行",
+        "caseReminder": "案例提醒",
+        "newCasesWaiting": "有 {count} 个新案例等待您联系患者",
+        "weeklySummary": "本周小结",
+        "weeklyStats": "本周完成 {cases} 个案例，问诊 {consultations} 次"
+      },
+      "errors": {
+        "loadFailed": "加载失败，请刷新页面重试"
+      }
+    },
+    "materials": {
+      "title": "医院资料管理",
+      "description": "管理您的医院信息、手术项目、医生团队和案例展示",
+      "reviewNotice": {
+        "title": "资料审核说明",
+        "description": "您提交的资料将经AI系统预审并由人工复核后发布。请确保信息准确、专业。",
+        "reviewTime": "AI 审核 + 人工复核，审核时间半个工作日",
+        "bilingualSuggestion": "以下内容会被AI翻译成多国语言展示"
+      },
+      "consumerLink": {
+        "title": "消费者网站链接",
+        "description": "此链接可分享给患者，让他们查看您医院的详细信息",
+        "descriptionBeauty": "以下信息会被发布成医院信息，发布到 www.medorabeauty.com",
+        "descriptionRegular": "以下信息会被发布成医院信息，发布到 www.medicaltourismchina.health"
+      },
+      "tabs": {
+        "hospital": "医院信息",
+        "procedures": "手术项目",
+        "surgeons": "医生团队",
+        "cases": "案例展示"
+      },
+      "status": {
+        "draft": "草稿",
+        "pendingReview": "待审核",
+        "published": "已发布",
+        "rejected": "已拒绝"
+      },
+      "hospitalInfo": {
+        "title": "医院基本信息",
+        "basicInfo": "基本信息",
+        "hospitalName": "医院名称",
+        "yearEstablished": "成立年份",
+        "tagline": "标语",
+        "description": "描述",
+        "contactLocation": "联系方式与地址",
+        "address": "地址",
+        "phone": "电话",
+        "email": "邮箱",
+        "website": "网站",
+        "location": "位置",
+        "operatingHours": "营业时间",
+        "setHours": "设置时间",
+        "paymentMethods": "支付方式",
+        "promotionalMedia": "宣传媒体",
+        "hospitalPhotos": "医院照片",
+        "uploadPhoto": "上传照片",
+        "promotionalVideo": "宣传视频",
+        "uploadVideo": "上传宣传视频",
+        "noVideoUploaded": "暂无上传视频",
+        "videoTestimonials": "视频评价",
+        "addVideoTestimonial": "添加视频评价",
+        "patientSuccessStories": "患者成功故事",
+        "noVideoTestimonials": "暂无视频评价",
+        "patientName": "患者姓名",
+        "country": "国家",
+        "procedure": "手术项目",
+        "readyToSave": "准备保存",
+        "videoWillUpload": "点击保存后视频将上传",
+        "certifications": "认证资质",
+        "addCertification": "添加认证",
+        "selectCertType": "选择认证类型",
+        "year": "年份",
+        "since": "自",
+        "active": "有效",
+        "hospitalCapacity": "医院容量",
+        "beds": "床位数",
+        "patientCapacity": "患者容量",
+        "totalPatientsServed": "累计服务患者",
+        "multilingualStaff": "多语言员工",
+        "airportServices": "机场服务",
+        "followUpCare": "随访服务",
+        "amenities": "便利设施",
+        "nearbyAttractions": "周边景点",
+        "addNearbyAttraction": "添加周边景点",
+        "attractionName": "景点名称",
+        "distance": "距离",
+        "noNearbyAttractions": "暂无周边景点",
+        "notSet": "未设置",
+        "loading": "加载中..."
+      },
+      "operatingHoursModal": {
+        "title": "营业时间",
+        "weekdays": "工作日",
+        "apply": "应用",
+        "closed": "休息",
+        "noHoursSet": "未设置时间",
+        "save": "保存"
+      },
+      "procedures": {
+        "title": "手术项目与定价",
+        "addProcedure": "添加项目",
+        "addFirstProcedure": "添加第一个项目",
+        "editProcedure": "编辑项目",
+        "procedure": "手术项目",
+        "selectProcedure": "选择手术项目",
+        "loadingProcedures": "加载项目中...",
+        "currency": "货币",
+        "selectCurrency": "选择货币",
+        "minPrice": "最低价格",
+        "maxPrice": "最高价格",
+        "markAsPopular": "标记为热门",
+        "popular": "热门",
+        "noProcedures": "暂无手术项目"
+      },
+      "surgeons": {
+        "title": "医生团队",
+        "addSurgeon": "添加医生",
+        "addFirstSurgeon": "添加第一位医生",
+        "editSurgeon": "编辑医生",
+        "name": "姓名",
+        "titlePosition": "职称",
+        "yearsOfExperience": "从业年限",
+        "yearsExperience": "年经验",
+        "specialties": "擅长领域",
+        "loadingSpecialties": "加载擅长领域中...",
+        "languages": "语言能力",
+        "education": "教育背景",
+        "addEducation": "添加教育背景",
+        "certifications": "执业资质",
+        "addCertification": "添加资质",
+        "introduction": "个人简介",
+        "expertiseSpecialization": "专业技能",
+        "treatmentPhilosophy": "治疗理念",
+        "achievements": "成就荣誉",
+        "addAchievement": "添加成就",
+        "profilePhoto": "个人照片",
+        "uploadPhoto": "上传照片",
+        "noSurgeons": "暂无医生",
+        "more": "更多"
+      },
+      "cases": {
+        "title": "案例展示",
+        "addCase": "添加案例",
+        "addFirstCase": "添加第一个案例",
+        "editCase": "编辑案例",
+        "beforeAfterPhoto": "对比照片",
+        "uploadBeforeAfter": "上传对比照片",
+        "beforeAfterHint": "上传一张包含术前（左）和术后（右）的对比照片",
+        "before": "术前",
+        "after": "术后",
+        "leftBefore": "左：术前",
+        "rightAfter": "右：术后",
+        "procedureRequired": "手术项目 *",
+        "selectProcedure": "选择手术项目",
+        "loadingProcedures": "加载项目中...",
+        "leadSurgeon": "主刀医生",
+        "patientAgeRange": "患者年龄段",
+        "selectAgeRange": "选择年龄段",
+        "patientGender": "患者性别",
+        "selectGender": "选择性别",
+        "male": "男",
+        "female": "女",
+        "caseDescription": "案例描述",
+        "descriptionPlaceholder": "请用英文描述案例详情，包括患者背景、手术过程、恢复情况等...",
+        "noCases": "暂无案例",
+        "case": "案例"
+      },
+      "buttons": {
+        "edit": "编辑",
+        "save": "保存",
+        "saving": "保存中...",
+        "cancel": "取消",
+        "delete": "删除",
+        "add": "添加",
+        "upload": "上传",
+        "uploading": "上传中...",
+        "replace": "替换"
+      },
+      "errors": {
+        "uploadFailed": "上传失败: {message}",
+        "unknownError": "未知错误"
+      },
+      "days": {
+        "monday": "周一",
+        "tuesday": "周二",
+        "wednesday": "周三",
+        "thursday": "周四",
+        "friday": "周五",
+        "saturday": "周六",
+        "sunday": "周日"
+      },
+      "ageRanges": {
+        "20-30": "20-30岁",
+        "30-40": "30-40岁",
+        "40-50": "40-50岁",
+        "50-60": "50-60岁",
+        "60-70": "60-70岁",
+        "70+": "70岁以上"
+      }
+    },
+    "cases": {
+      "title": "病例管理",
+      "subtitle": "查看和管理分配给医院的所有病例",
+      "searchPlaceholder": "搜索病例ID、患者名称...",
+      "filter": "筛选",
+      "stats": {
+        "all": "全部病例",
+        "pendingQuote": "待报价",
+        "pending": "待处理",
+        "processing": "处理中"
+      },
+      "listTitle": "病例列表",
+      "listDesc": "点击病例查看详情",
+      "tabs": {
+        "all": "全部",
+        "new": "新转交",
+        "inProgress": "进行中",
+        "completed": "已完成"
+      },
+      "status": {
+        "transferredToHospital": "已转交",
+        "hospitalContacted": "已联系",
+        "consultationScheduled": "问诊已安排",
+        "inTreatment": "治疗中",
+        "completed": "已完成",
+        "closed": "已关闭"
+      },
+      "statsCards": {
+        "allCases": "全部病例",
+        "newHandovers": "新转交",
+        "inProgress": "进行中",
+        "pendingMessages": "待回复消息"
+      },
+      "patientInfo": {
+        "yearsOld": "岁",
+        "male": "男",
+        "female": "女"
+      },
+      "empty": "暂无符合条件的病例",
+      "errors": {
+        "loadFailed": "加载失败: {message}"
+      }
+    },
+    "messages": {
+      "title": "消息中心",
+      "description": "通过 CRM 系统与患者沟通",
+      "crmForwardingMode": "CRM 消息转发模式",
+      "forwardingInfo": {
+        "title": "CRM 消息转发系统",
+        "description": "您发送的所有消息将通过平台 CRM 系统自动转发至患者的联系方式。为保护患者隐私，您无法直接查看患者的电话、邮箱或 WhatsApp 号码。",
+        "emailSupport": "支持邮件转发",
+        "whatsappSupport": "支持 WhatsApp 转发",
+        "autoClassification": "消息类型自动分类"
+      },
+      "conversationList": {
+        "newMessage": "新建信息",
+        "searchPlaceholder": "搜索对话...",
+        "sections": {
+          "admin": "管理员",
+          "hospital": "医院",
+          "patients": "患者"
+        },
+        "unreadCount": "未读",
+        "time": {
+          "yesterday": "昨天",
+          "daysAgo": "{days}天前",
+          "justNow": "刚刚",
+          "minutesAgo": "{minutes}分钟前",
+          "hoursAgo": "{hours}小时前"
+        },
+        "empty": {
+          "noConversations": "暂无对话",
+          "noUnread": "暂无未读消息",
+          "noResults": "未找到匹配的对话"
+        },
+        "newConversationDialog": {
+          "title": "新建信息",
+          "description": "选择一个病例开始与患者对话",
+          "generalMessage": {
+            "title": "通用消息",
+            "description": "给患者发送通用消息"
+          },
+          "caseConsultation": {
+            "title": "病例问诊",
+            "description": "选择病例开始问诊"
+          },
+          "orSelectCase": "或选择关联案例",
+          "searchCases": "搜索病例...",
+          "noCases": "暂无可选病例",
+          "unknownPatient": "未知患者",
+          "diagnosisPending": "诊断待定",
+          "existingConversation": "已有对话 →",
+          "createConversation": "创建对话",
+          "caseInfo": {
+            "patient": "患者：",
+            "procedure": "项目：",
+            "hospital": "医院：",
+            "status": "状态："
+          },
+          "buttons": {
+            "cancel": "取消",
+            "startConversation": "开始对话"
+          }
+        }
+      },
+      "chat": {
+        "selectConversation": "选择一个对话开始聊天",
+        "unknown": "未知",
+        "admin": "管理员",
+        "hospital": "医院",
+        "online": "在线",
+        "offline": "离线",
+        "showTranslation": "显示翻译",
+        "noMessages": "暂无消息",
+        "today": "今天",
+        "yesterday": "昨天",
+        "translating": "翻译中...",
+        "clickToTranslate": "点击翻译",
+        "retry": "重试",
+        "sending": "发送中...",
+        "sent": "已发送",
+        "sendFailed": "发送失败",
+        "file": "文件",
+        "patientCode": "患者代号:",
+        "male": "男",
+        "female": "女",
+        "yearsOld": "岁",
+        "primaryDiagnosis": "主要诊断",
+        "language": "语言",
+        "caseNumber": "案例编号",
+        "viewFullCaseDetails": "查看完整病例详情",
+        "relatedCase": "关联案例",
+        "patientName": "患者姓名",
+        "caseInfo": "案例信息",
+        "enterMessage": "输入消息内容...",
+        "send": "发送",
+        "sendWithCount": "发送({count})",
+        "crmForwardingNotice": "消息将通过 CRM 系统转发至患者的 WhatsApp/邮箱 (为保护患者隐私，您无法直接查看联系方式)",
+        "download": "下载",
+        "filePreview": "文件预览",
+        "unknownType": "未知类型",
+        "aiSummary": "AI 摘要",
+        "generatingSummary": "生成摘要中...",
+        "summaryFailed": "摘要生成失败或超时",
+        "regenerate": "重新生成",
+        "loading": "加载中...",
+        "cannotLoadFile": "无法加载文件",
+        "videoNotSupported": "您的浏览器不支持视频播放",
+        "cannotPreview": "此文件类型不支持预览，请下载后查看",
+        "downloadFile": "下载文件",
+        "uploadFailed": "上传失败",
+        "sendFailedRetry": "发送失败，请重试",
+        "languages": {
+          "zh": "中文",
+          "en": "英文",
+          "es": "西班牙文",
+          "fr": "法文",
+          "de": "德文",
+          "ar": "阿拉伯文"
+        }
+      }
+    },
+    "caseDetail": {
+      "header": {
+        "casePrefix": "病例:",
+        "patientCodePrefix": "患者代号:",
+        "backToList": "返回病例列表",
+        "loadingFailed": "加载失败:",
+        "caseNotFound": "未找到病例"
+      },
+      "patientInfo": {
+        "yearsOld": "岁",
+        "male": "男",
+        "female": "女",
+        "medicalDocuments": "医疗文档",
+        "messageRecords": "消息记录"
+      },
+      "tabs": {
+        "intake": "Medical Intake",
+        "documents": "医疗档案",
+        "messages": "消息记录",
+        "diagnosis": "诊断意见",
+        "marketing": "营销邮件",
+        "coldcall": "电话跟进",
+        "invitation": "医疗邀请函",
+        "consultation": "在线问诊预约"
+      },
+      "medicalIntake": {
+        "step1": {
+          "title": "症状定位与快速分类",
+          "symptomLocation": "主要症状位置",
+          "symptomNature": "症状性质",
+          "onsetTime": "发病时间",
+          "progressTrend": "病情趋势",
+          "diagnosisStage": "诊断阶段",
+          "diseaseCategory": "疾病类别"
+        },
+        "step2": {
+          "title": "详细症状描述",
+          "detailedDescription": "详细描述",
+          "aggravatingFactors": "加重因素",
+          "relievingFactors": "缓解因素",
+          "previousTreatment": "既往治疗情况"
+        },
+        "step3": {
+          "title": "医疗史",
+          "medicalHistory": "既往病史",
+          "chronicConditions": "慢性病史",
+          "familyHistory": "家族病史"
+        },
+        "step4": {
+          "title": "用药与过敏史",
+          "currentMedications": "当前用药",
+          "drugAllergies": "药物过敏",
+          "foodAllergies": "食物过敏"
+        },
+        "step5": {
+          "title": "检查结果与治疗期望",
+          "examTypes": "已做检查",
+          "examDetails": "检查详情",
+          "labResults": "化验结果",
+          "treatmentExpectations": "治疗期望",
+          "budgetRange": "预算范围",
+          "expectedTimeline": "期望时间"
+        },
+        "step6": {
+          "title": "上传的检查报告与文档"
+        },
+        "view": "查看",
+        "download": "下载"
+      },
+      "documentsTab": {
+        "title": "医疗档案",
+        "description": "汇总本案例所有来源的医疗文档",
+        "sources": {
+          "invitationLetter": "医疗邀请函",
+          "diagnosis": "诊断附件",
+          "medicalIntake": "医疗档案",
+          "messageAttachment": "消息附件"
+        },
+        "countSuffix": "份",
+        "empty": {
+          "title": "暂无医疗档案",
+          "description": "上传邀请函、诊断报告或发送文件消息后将在此显示"
+        }
+      },
+      "messagesTab": {
+        "noMessages": "暂无消息记录",
+        "sent": "已发送",
+        "sending": "发送中",
+        "inputPlaceholder": "输入消息内容...",
+        "send": "发送",
+        "privacyNotice": "消息将通过 CRM 系统转发至患者（为保护患者隐私，您无法直接查看联系方式）",
+        "patientContext": {
+          "codePrefix": "代号:",
+          "nextAppointment": "下次预约",
+          "mainDiagnosis": "主要诊断",
+          "allergies": "过敏史",
+          "recentDocuments": "最近文档"
+        }
+      },
+      "diagnosisTab": {
+        "title": "诊断意见",
+        "description": "记录诊断结果和治疗建议",
+        "addDiagnosis": "添加诊断意见",
+        "type": {
+          "confirmed": "确诊意见",
+          "preliminary": "初步诊断",
+          "followup": "复诊意见"
+        },
+        "severity": {
+          "mild": "轻度",
+          "moderate": "中度",
+          "severe": "重度"
+        },
+        "detailedDiagnosis": "详细诊断说明",
+        "treatmentRecommendation": "治疗建议",
+        "suggestedTests": "建议进一步检查",
+        "costEstimate": "预估费用范围",
+        "treatmentDuration": "预估治疗周期",
+        "attachment": "附件文档",
+        "empty": {
+          "title": "暂无诊断意见",
+          "description": "点击上方按钮添加您的诊断意见和治疗建议"
+        }
+      },
+      "diagnosisDialog": {
+        "title": "添加诊断意见",
+        "description": "请填写您的诊断结果和治疗建议",
+        "diagnosisType": "诊断类型",
+        "diagnosisTypes": {
+          "preliminary": {
+            "label": "初步诊断",
+            "desc": "初次评估意见"
+          },
+          "confirmed": {
+            "label": "确诊意见",
+            "desc": "明确诊断结果"
+          },
+          "followup": {
+            "label": "复诊意见",
+            "desc": "治疗后复查"
+          }
+        },
+        "diagnosisName": "诊断名称",
+        "diagnosisNameRequired": "诊断名称 *",
+        "diagnosisNamePlaceholder": "例如：冠状动脉粥样硬化性心脏病",
+        "icdCode": "ICD-10 编码",
+        "icdCodePlaceholder": "例如：I25.1",
+        "severity": "严重程度",
+        "severityPlaceholder": "选择严重程度",
+        "detailedDiagnosis": "详细诊断说明",
+        "detailedDiagnosisPlaceholder": "详细描述诊断依据、病情分析...",
+        "treatmentRecommendation": "治疗建议",
+        "treatmentRecommendationPlaceholder": "推荐的治疗方案、用药建议、注意事项...",
+        "suggestedTests": "建议进一步检查",
+        "suggestedTestsPlaceholder": "例如：冠脉造影、24小时动态心电图",
+        "costEstimate": "预估费用范围",
+        "costEstimatePlaceholder": "选择费用范围",
+        "costOptions": {
+          "5k": "5千美元以下",
+          "5-10k": "5-10千美元",
+          "10-20k": "10-20千美元",
+          "20-50k": "20-50千美元",
+          "50k+": "50千美元以上"
+        },
+        "treatmentDuration": "预估治疗周期",
+        "treatmentDurationPlaceholder": "选择治疗周期",
+        "durationOptions": {
+          "1week": "1周以内",
+          "2weeks": "1-2周",
+          "1month": "2周-1个月",
+          "3months": "1-3个月",
+          "6months": "3个月以上"
+        },
+        "attachmentOptional": "附件文档（可选）",
+        "uploadPrompt": "点击上传诊断报告或检查结果",
+        "uploadHint": "支持 PDF、图片、Word 格式，最大 10MB",
+        "remove": "移除",
+        "notice": "诊断意见将作为案例的重要医疗记录保存，并可通过 CRM 系统发送给患者。",
+        "cancel": "取消",
+        "save": "保存诊断意见",
+        "fillRequired": "请填写诊断类型和诊断名称"
+      },
+      "marketingTab": {
+        "title": "营销邮件",
+        "description": "发送医院服务推广和优惠信息给患者",
+        "modules": {
+          "title": "邮件内容模块",
+          "description": "选择要包含在邮件中的内容模块，系统将自动生成专业的营销邮件",
+          "coreModules": "核心模块",
+          "featuredModules": "推荐内容",
+          "optionalModules": "可选模块（点击添加）",
+          "moduleTypes": {
+            "logo": {
+              "title": "Logo",
+              "desc": "医院/诊所标识"
+            },
+            "slogan": {
+              "title": "Slogan",
+              "desc": "品牌标语与价值主张"
+            },
+            "cases": {
+              "title": "成功案例",
+              "desc": "Before/After 对比图"
+            },
+            "reviews": {
+              "title": "患者评价",
+              "desc": "真实 Reviews 展示"
+            },
+            "hospital": {
+              "title": "医院介绍",
+              "desc": "设施与资质"
+            },
+            "doctors": {
+              "title": "专家团队",
+              "desc": "医生资历介绍"
+            },
+            "services": {
+              "title": "服务特色",
+              "desc": "核心优势"
+            },
+            "pricing": {
+              "title": "价格方案",
+              "desc": "套餐与优惠"
+            },
+            "travel": {
+              "title": "出行服务",
+              "desc": "接送与住宿"
+            },
+            "contact": {
+              "title": "联系方式",
+              "desc": "预约咨询"
+            }
+          },
+          "generate": "一键生成邮件内容"
+        },
+        "compose": {
+          "title": "编写邮件",
+          "subject": "邮件主题",
+          "subjectPlaceholder": "输入邮件主题...",
+          "content": "邮件内容",
+          "contentPlaceholder": "输入邮件内容...\n\n可以使用以下变量:\n{{patient_name}} - 患者姓名\n{{hospital_name}} - 医院名称\n{{treatment_type}} - 治疗类型",
+          "privacyNotice": "营销邮件将通过 CRM 系统发送。为保护患者隐私，您无法直接查看患者的邮箱地址。",
+          "saveDraft": "保存草稿",
+          "sendEmail": "发送邮件",
+          "sending": "发送中...",
+          "fillRequired": "请填写邮件主题和内容",
+          "sent": "营销邮件已提交，等待 AI 审核后发送"
+        },
+        "history": {
+          "title": "发送历史",
+          "statuses": {
+            "opened": "已打开",
+            "clicked": "已点击",
+            "delivered": "已送达",
+            "sent": "已发送",
+            "pending": "待发送"
+          },
+          "empty": "暂无发送历史"
+        }
+      },
+      "phoneTab": {
+        "title": "电话跟进",
+        "description": "记录电话沟通情况，跟进患者意向",
+        "makeCall": "发起通话",
+        "crmSystem": {
+          "title": "CRM 电话系统",
+          "description": "点击「发起通话」后，系统将通过 CRM 呼叫中心拨打患者电话。为保护患者隐私，您无法直接查看患者的电话号码。",
+          "features": {
+            "recording": "自动录音",
+            "saveRecords": "通话记录自动保存",
+            "aiSummary": "AI 通话摘要"
+          }
+        },
+        "logCall": {
+          "title": "记录通话",
+          "callType": "通话类型",
+          "callTypePlaceholder": "选择通话类型",
+          "callTypes": {
+            "outbound": "外呼 - 主动联系患者",
+            "inbound": "来电 - 患者回拨",
+            "missed": "未接通"
+          },
+          "callResult": "通话结果",
+          "callResultPlaceholder": "选择通话结果",
+          "callResults": {
+            "interested": "有意向 - 继续跟进",
+            "scheduled": "已预约 - 确定就诊时间",
+            "callback": "需回访 - 患者需考虑",
+            "notInterested": "无意向 - 暂不需要",
+            "noAnswer": "未接听"
+          },
+          "summary": "通话摘要",
+          "summaryPlaceholder": "记录通话内容要点...\n\n例如：患者对治疗方案感兴趣，询问了费用和住院时间，需要与家人商量后回复。",
+          "nextFollowUp": "下次跟进日期",
+          "cancel": "取消",
+          "save": "保存记录",
+          "saving": "保存中...",
+          "fillRequired": "请选择通话类型和通话结果",
+          "saved": "通话记录已保存"
+        },
+        "history": {
+          "title": "通话记录",
+          "types": {
+            "outbound": "外呼",
+            "inbound": "来电",
+            "missed": "未接通"
+          },
+          "results": {
+            "interested": "有意向",
+            "scheduled": "已预约",
+            "callback": "需回访",
+            "noAnswer": "未接听",
+            "notInterested": "无意向"
+          },
+          "nextFollowUpPrefix": "下次跟进:",
+          "empty": "暂无通话记录"
+        }
+      },
+      "coldcallTab": {
+        "form": {
+          "title": "记录通话",
+          "callType": "通话类型",
+          "callTypePlaceholder": "选择通话类型",
+          "callTypes": {
+            "outbound": "外呼 - 主动联系患者",
+            "inbound": "来电 - 患者回拨",
+            "missed": "未接通"
+          },
+          "callResult": "通话结果",
+          "callResultPlaceholder": "选择通话结果",
+          "callResults": {
+            "interested": "有意向 - 继续跟进",
+            "scheduled": "已预约 - 确定就诊时间",
+            "callback": "需回访 - 患者需考虑",
+            "notInterested": "无意向 - 暂不需要",
+            "noAnswer": "未接听"
+          },
+          "summary": "通话摘要",
+          "summaryPlaceholder": "记录通话内容要点...\n\n例如：患者对治疗方案感兴趣，询问了费用和住院时间，需要与家人商量后回复。",
+          "nextFollowUp": "下次跟进日期",
+          "cancel": "取消",
+          "save": "保存记录",
+          "saving": "保存中...",
+          "fillRequired": "请选择通话类型和通话结果",
+          "saved": "通话记录已保存"
+        },
+        "history": {
+          "title": "通话记录",
+          "types": {
+            "outbound": "外呼",
+            "inbound": "来电",
+            "missed": "未接通"
+          },
+          "results": {
+            "interested": "有意向",
+            "scheduled": "已预约",
+            "callback": "需回访",
+            "noAnswer": "未接听",
+            "notInterested": "无意向"
+          },
+          "nextFollowUpPrefix": "下次跟进:",
+          "empty": "暂无通话记录"
+        }
+      },
+      "consultationTab": {
+        "consultationType": "问诊类型",
+        "consultationTypePlaceholder": "选择问诊类型",
+        "consultationTypes": {
+          "initial": "初诊问诊",
+          "followup": "复诊问诊",
+          "consultation": "专家会诊",
+          "report": "报告解读"
+        },
+        "consultingDoctor": "问诊医生",
+        "doctorPlaceholder": "选择医生",
+        "doctors": {
+          "dr1": "王主任 - 心血管内科",
+          "dr2": "李教授 - 心血管外科",
+          "dr3": "张医生 - 心脏康复科"
+        }
+      },
+      "invitationUpload": {
+        "title": "医疗邀请函上传",
+        "description": "上传医院邀请函文件，支持 PDF、Word 和图片格式",
+        "dragAndDrop": "拖拽文件到此处上传",
+        "or": "或者",
+        "selectFile": "选择文件",
+        "supportedFormats": "支持格式: PDF, DOC, DOCX, JPG, PNG | 最大文件大小: 10MB",
+        "uploading": "正在上传...",
+        "stats": {
+          "totalUploads": "总上传数",
+          "verified": "已验证",
+          "processing": "处理中"
+        },
+        "uploadedFiles": "已上传邀请函",
+        "uploadedFilesDescription": "查看和管理已上传的邀请函文件",
+        "noFiles": "暂无上传文件",
+        "noFilesDescription": "上传邀请函文件后将在此处显示",
+        "uploadInstructions": "上传说明",
+        "uploadNote": "请上传医院正式签发的邀请函文件。系统将自动处理并验证文件内容。",
+        "feature1": "支持多文件上传",
+        "feature2": "自动验证文件",
+        "status": {
+          "uploaded": "已上传",
+          "processing": "处理中",
+          "verified": "已验证",
+          "error": "上传失败"
+        },
+        "actions": {
+          "view": "查看",
+          "download": "下载",
+          "delete": "删除"
+        },
+        "patient": "患者"
+      }
+    },
+    "consultations": {
+      "title": "在线问诊",
+      "description": "管理视频问诊、AI翻译和问诊记录",
+      "createButton": "创建问诊链接",
+      "searchPlaceholder": "搜索患者名称、病例ID...",
+      "filter": "筛选",
+      "loadError": "加载失败",
+      "createConsultation": "预约问诊",
+      "tabs": {
+        "all": "全部",
+        "scheduled": "已安排",
+        "completed": "已完成"
+      },
+      "stats": {
+        "scheduled": "已安排问诊",
+        "today": "今日问诊",
+        "needTranslation": "需要翻译",
+        "completed": "已完成"
+      },
+      "listTitle": "问诊列表",
+      "listDescription": "查看和管理所有在线问诊",
+      "noScheduled": "暂无已安排的问诊",
+      "noCompleted": "暂无已完成的问诊",
+      "noConsultations": "暂无问诊记录",
+      "aiFeatures": {
+        "title": "AI 问诊功能",
+        "description": "系统支持 AI 实时翻译和问诊总结功能，帮助医生与国际患者无障碍沟通。",
+        "multiLanguage": "支持 6 种语言实时翻译",
+        "bilingualSummary": "自动生成双语问诊总结"
+      },
+      "videoModal": {
+        "title": "问诊录像回放",
+        "consultationDate": "问诊日期",
+        "duration": "时长",
+        "minutes": "分钟",
+        "translation": "翻译服务",
+        "aiTranslation": "AI 实时翻译",
+        "none": "无",
+        "recordingRetention": "录像保存期限: 90 天",
+        "close": "关闭",
+        "downloadRecording": "下载录像",
+        "clickToPlay": "点击播放问诊录像"
+      },
+      "transcriptModal": {
+        "title": "完整对话记录",
+        "duration": "时长",
+        "minutes": "分钟",
+        "aiTranslation": "AI翻译",
+        "showTranslation": "显示翻译",
+        "loading": "加载对话记录中…",
+        "processing": "AI 转录进行中",
+        "processingNote": "通常需要几分钟，请稍后刷新查看",
+        "noTranscript": "对话记录暂未生成",
+        "noTranscriptNote": "视频问诊结束后，AI 将自动转录完整对话内容",
+        "close": "关闭",
+        "exportPDF": "导出 PDF",
+        "doctor": "医生",
+        "patient": "患者",
+        "doctorShort": "医",
+        "patientShort": "患",
+        "entriesCount": "共 {count} 条发言 · AI 自动转录，可能存在少量误差",
+        "willGenerateAfter": "转录记录将在问诊结束后生成"
+      },
+      "createModal": {
+        "title": "创建问诊链接",
+        "description": "为患者创建在线视频问诊预约",
+        "selectCase": "选择案例 *",
+        "loading": "加载中...",
+        "chooseCase": "选择一个案例",
+        "doctor": "问诊医生（可选）",
+        "doctorPlaceholder": "输入医生姓名...",
+        "scheduledTime": "问诊时间 *",
+        "duration": "问诊时长（分钟）",
+        "duration15": "15 分钟",
+        "duration30": "30 分钟",
+        "duration45": "45 分钟",
+        "duration60": "60 分钟",
+        "enableAiTranslation": "启用 AI 实时翻译（推荐用于国际患者）",
+        "notes": "备注（可选）",
+        "notesPlaceholder": "填写问诊相关备注...",
+        "crmNotification": "创建后，系统将自动通过 CRM 发送问诊提醒给患者，包含问诊链接和准备事项。",
+        "cancel": "取消",
+        "create": "创建问诊",
+        "creating": "创建中...",
+        "selectCaseAndTime": "请选择案例和问诊时间",
+        "created": "问诊预约已创建"
+      },
+      "card": {
+        "minutes": "分钟",
+        "aiTranslation": "AI翻译",
+        "patientLanguage": "患者语言",
+        "languages": {
+          "zh": "中文",
+          "en": "英文",
+          "es": "西班牙文",
+          "fr": "法文",
+          "de": "德文",
+          "bn": "孟加拉文"
+        },
+        "status": {
+          "scheduled": "已安排",
+          "inProgress": "进行中",
+          "completed": "已完成",
+          "cancelled": "已取消",
+          "noShow": "未出席"
+        },
+        "copied": "已复制",
+        "copyLink": "复制链接",
+        "enterConsultation": "进入问诊",
+        "collapse": "收起详情",
+        "viewDetails": "查看详情",
+        "aiSummary": "AI 问诊总结",
+        "aiGenerated": "AI 生成",
+        "symptoms": "主要症状",
+        "diagnosis": "初步诊断",
+        "recommendations": "医生建议",
+        "followUpPlan": "后续计划",
+        "prescriptions": "处方用药",
+        "usedAiTranslation": "此问诊使用了 AI 实时翻译服务",
+        "summaryProcessing": "AI 总结生成中",
+        "summaryProcessingNote": "通常需要 1-2 分钟，请稍后刷新查看",
+        "summaryWillGenerate": "AI 总结将在问诊完成后自动生成",
+        "notes": "备注",
+        "viewFullTranscript": "查看完整对话",
+        "viewFullVideo": "查看完整视频"
+      },
+      "empty": "暂无问诊记录"
+    }
+  },
+  "caseDetail": {
+    "tabs": {
+      "medicalInfo": "医疗信息",
+      "diagnosisReport": "诊断报告",
+      "messages": "消息",
+      "tasks": "任务",
+      "invitation": "医疗邀请函",
+      "journey": "旅程信息"
+    },
+    "metrics": {
+      "assignedTime": "指派时间",
+      "assignedTimeValue": "2025-10-15 14:30",
+      "lastUpdated": "最近更新",
+      "lastUpdatedValue": "2小时前",
+      "invitationStatus": "邀请函状态",
+      "invitationStatusValue": "待签发",
+      "riskLevel": "疾病风险",
+      "riskHigh": "高"
+    },
+    "medicalInfo": {
+      "labFiles": {
+        "title": "检验/影像文件",
+        "original": "原始文件",
+        "aiTranslate": "AI 翻译"
+      },
+      "doctorEvaluation": {
+        "title": "医生评估",
+        "description": "基于患者提供的信息，请填写专业医疗评估",
+        "add": "添加评估"
+      },
+      "mockData": {
+        "labFiles": {
+          "ultrasound": "B超检查.pdf",
+          "bloodTest": "血液检查.pdf",
+          "imaging": "影像资料.zip"
+        },
+        "step2": {
+          "primaryLocation": "腹部-右下腹",
+          "symptomNature": {
+            "intensePain": "剧痛",
+            "persistent": "持续性"
+          },
+          "onsetTime": "1-6个月",
+          "progressionTrend": "逐渐加重",
+          "progressionDescription": "疼痛从轻微到剧烈，夜间尤其明显",
+          "diagnosisStage": "尚未诊断",
+          "mainCategory": "手术类"
+        },
+        "step3": {
+          "detailedDescription": "右下腹持续性疼痛3天，伴有轻度发热（37.5°C），食欲下降。疼痛为持续性钝痛，偶尔加重为剧痛。活动时疼痛加重，平躺休息时稍有缓解。",
+          "progression": "第一天疼痛轻微，可以忍受；第二天疼痛加重，影响工作；第三天疼痛剧烈，无法正常活动。",
+          "aggravatingFactors": {
+            "activity": "活动时",
+            "afterMeals": "进食后",
+            "night": "夜间"
+          },
+          "relievingFactors": {
+            "rest": "休息后",
+            "afterMedication": "服药后"
+          },
+          "dailyLifeImpact": {
+            "workStudy": "工作/学习",
+            "sleepQuality": "睡眠质量",
+            "appetite": "食欲"
+          },
+          "dailyLifeImpactDetails": "无法正常工作，睡眠质量严重下降，食欲明显减退。",
+          "previousTreatments": "服用止痛药（布洛芬 400mg），效果一般，持续2-3小时后疼痛再次加重。"
+        },
+        "step4": {
+          "chronicConditionsDescription": "高血压5年，目前服药控制良好，血压稳定在 130/85 mmHg。"
+        },
+        "step5": {
+          "medicationTypeAntihypertensive": "降压药",
+          "medications": {
+            "amlodipine": {
+              "name": "氨氯地平",
+              "dosage": "5mg",
+              "frequency": "每日一次",
+              "duration": "5年",
+              "purpose": "控制血压"
+            }
+          },
+          "allergy": {
+            "substance": "青霉素",
+            "reaction": "皮疹、瘙痒"
+          }
+        },
+        "step6": {
+          "examTypes": {
+            "ultrasound": "B超",
+            "bloodTest": "血液检查"
+          },
+          "examDetails": "2024-01-12 在北京协和医院进行B超检查，显示右下腹软组织肿胀，阑尾区域回声异常。",
+          "labResults": "血常规：白细胞升高 WBC 15.2×10⁹/L (正常值 4-10)，中性粒细胞比例 85% (正常值 50-70%)。C反应蛋白 CRP 45 mg/L (正常值 <10)。",
+          "imagingDescription": "B超影像资料，拍摄于2024-01-12，显示阑尾肿大至 12mm。",
+          "filesProvisionNotes": "可以提供电子版检查报告和影像资料。"
+        },
+        "step7": {
+          "expectations": {
+            "diagnosisConfirmation": "诊断确认",
+            "treatmentPlan": "治疗方案",
+            "costEstimation": "费用评估"
+          },
+          "budgetRange": "5-10千美元",
+          "budgetNotes": "可以适当调整，优先考虑治疗效果",
+          "preferredTiming": "1个月内",
+          "timingConstraints": "工作安排比较紧张，希望尽快处理",
+          "preferredContactChannel": "微信",
+          "bestContactTime": "工作日晚上19:00-21:00",
+          "additionalNotes": "希望能尽快安排，疼痛持续加重严重影响工作和生活质量。如果需要手术，希望了解恢复期和注意事项。"
+        }
+      }
+    },
+    "diagnosisReport": {
+      "create": {
+        "title": "新建诊断报告",
+        "description": "填写诊断内容并上传相关附件",
+        "content": "诊断内容 *",
+        "contentPlaceholder": "请输入详细的诊断内容，包括症状分析、检查结果、诊断结论和治疗建议...",
+        "charCount": "已输入 {count} 字符",
+        "attachmentUpload": "附件上传",
+        "uploadHint": "点击选择文件或拖拽到此处",
+        "fileSize": "文件大小",
+        "supportedFormats": "支持格式: PDF, Word, JPG, PNG（最大 10MB）",
+        "clear": "清空",
+        "submit": "提交诊断报告"
+      },
+      "history": {
+        "title": "历史诊断报告",
+        "count": "共 {count} 份报告",
+        "status": {
+          "draft": "草稿",
+          "submitted": "已提交",
+          "approved": "已批准"
+        },
+        "attachments": "附件",
+        "viewDetails": "查看详情",
+        "download": "下载",
+        "emptyTitle": "暂无诊断报告",
+        "emptyDescription": "请在上方填写并提交第一份诊断报告"
+      }
+    },
+    "tasks": {
+      "assignee": "负责人",
+      "deadline": "截止",
+      "status": {
+        "pending": "待完成",
+        "completed": "已完成",
+        "inProgress": "进行中"
+      }
+    },
+    "journey": {
+      "title": "行程安排",
+      "description": "患者抵达及接待全流程概览",
+      "itineraryNumber": "行程单号",
+      "nodes": {
+        "arrival": "抵达",
+        "pickup": "专车接机服务",
+        "hotelCheckin": "入住酒店",
+        "hospitalAdmission": "入院办理"
+      },
+      "medicalButler": {
+        "title": "专属医疗管家",
+        "description": "全程负责患者在华期间的行程与生活服务"
+      },
+      "importantNotes": {
+        "title": "重要提示",
+        "bringDicom": "请提醒患者携带所有原始影像资料 (DICOM格式)",
+        "stopAnticoagulants": "术前需停用阿司匹林等抗凝药物至少 5 天",
+        "driverArrival": "接机司机会在航班落地前 30 分钟到达等候"
+      }
+    },
+    "invitation": {
+      "config": {
+        "title": "邀请函配置",
+        "description": "填写信息生成官方医疗邀请函",
+        "admissionDate": "拟入院日期",
+        "treatmentDuration": "预估治疗周期",
+        "treatmentPlan": "治疗方案概述",
+        "estimatedCost": "预估费用 (RMB)",
+        "sendToPatient": "发送给患者",
+        "downloadPdf": "下载 PDF"
+      },
+      "content": {
+        "title": "医疗治疗邀请函",
+        "invitationNumber": "邀请函编号",
+        "date": "日期",
+        "dearPatient": "尊敬的 {name} 先生/女士",
+        "arrangements": "行程与治疗安排",
+        "proposedAdmission": "拟入院日期",
+        "expectedDuration": "预计停留时间",
+        "proposedTreatment": "拟定治疗方案",
+        "visaNote": "本邀请函可用于申请医疗签证",
+        "attendingPhysician": "主治医师签名",
+        "department": "心血管科"
+      }
+    }
+  },
+  "patient": {
+    "title": "患者门户",
+    "nav": {
+      "dashboard": "首页概览",
+      "application": "我的申请",
+      "messages": "消息",
+      "appointments": "预约",
+      "journey": "旅程安排",
+      "materials": "医疗资料",
+      "consent": "知情同意",
+      "profile": "个人资料",
+      "myCase": "我的病例"
+    },
+    "dashboard": {
+      "welcome": "欢迎回来，李敏",
+      "subtitle": "祝您早日康复，我们会全程陪伴您的医疗旅程"
+    },
+    "myCase": {
+      "title": "我的病例",
+      "caseIdLabel": "病例ID",
+      "patientCodeLabel": "患者代号",
+      "status": {
+        "pendingQuote": "待报价"
+      },
+      "dispatchedAt": "派遣时间",
+      "lastUpdate": "最近更新",
+      "risk": "疾病风险",
+      "riskHigh": "高",
+      "complaint": "主诉",
+      "complaintDesc": "胸痛，气短3个月",
+      "history": "既往病史",
+      "historyDesc": "高血压病史5年，糖尿病病史2年",
+      "medications": "当前用药",
+      "medicationsDesc": "阿司匹林、美托洛尔、二甲双胍",
+      "allergies": "过敏史",
+      "allergiesDesc": "青霉素过敏",
+      "reportsTitle": "检验报告",
+      "actions": {
+        "viewDetails": "查看详情",
+        "chatWithDoctor": "与医生沟通"
+      }
+    },
+    "travelTimeline": {
+      "title": "旅程安排",
+      "flight": "航班信息",
+      "flightRoute": "{flight} · {from} → {to}",
+      "pickup": "接机服务",
+      "hotelCheckin": "酒店入住",
+      "hotelName": "{city}希尔顿酒店",
+      "hospitalAdmission": "医院报到",
+      "confirmed": "已确认",
+      "pending": "待确认",
+      "medicalButler": {
+        "title": "医疗管家",
+        "name": "张医疗管家",
+        "description": "24小时为您服务",
+        "contact": "联系"
+      }
+    },
+    "profile": {
+      "title": "个人资料",
+      "basicInfo": {
+        "title": "基本信息",
+        "patientId": "患者ID",
+        "genderAge": "性别 / 年龄",
+        "email": "邮箱",
+        "phone": "联系电话",
+        "city": "城市"
+      },
+      "medical": {
+        "title": "医疗信息",
+        "complaint": "主诉",
+        "complaintDesc": "胸痛，气短3个月",
+        "history": "既往病史",
+        "historyDesc": "高血压病史5年，糖尿病病史2年",
+        "medications": "当前用药",
+        "medicationsDesc": "阿司匹林、美托洛尔、二甲双胍",
+        "allergies": "过敏史",
+        "allergiesDesc": "青霉素过敏"
+      }
+    },
+    "quickActions": {
+      "invitation": {
+        "label": "查看医疗邀请函",
+        "description": "用于签证申请"
+      },
+      "appointment": {
+        "label": "预约时间",
+        "description": "2025-10-15 14:30"
+      },
+      "journey": {
+        "label": "旅程安排",
+        "description": "查看行程详情"
+      },
+      "quotation": {
+        "label": "费用报价",
+        "description": "查看详细费用"
+      }
+    },
+    "medicalInfoForm": {
+      "progress": {
+        "label": "进度",
+        "step": "步骤 {current} / {total}",
+        "completion": "完成度"
+      },
+      "buttons": {
+        "prev": "上一步",
+        "saveDraft": "保存草稿",
+        "next": "下一步",
+        "submit": "提交医疗信息"
+      },
+      "steps": {
+        "symptomLocation": {
+          "title": "症状定位",
+          "description": "症状位置与性质"
+        },
+        "detailedSymptoms": {
+          "title": "详细症状",
+          "description": "症状详细描述"
+        },
+        "medicalHistory": {
+          "title": "病史信息",
+          "description": "既往病史"
+        },
+        "medicationsAllergies": {
+          "title": "用药与过敏",
+          "description": "用药与过敏信息"
+        },
+        "examinations": {
+          "title": "检查报告",
+          "description": "检查与期望"
+        }
+      },
+      "step1": {
+        "title": "症状定位与性质",
+        "subtitle": "请描述您的主要症状",
+        "primaryLocation": {
+          "label": "主要症状位置",
+          "options": {
+            "head": "头面部",
+            "neck": "颈部",
+            "chest": "胸部",
+            "abdomen": "腹部",
+            "back": "腰背部",
+            "joints": "关节四肢",
+            "other": "其他"
+          }
+        },
+        "symptomNature": {
+          "label": "症状性质（可多选）",
+          "options": {
+            "dullPain": "隐痛",
+            "severePain": "剧痛",
+            "sharpPain": "刺痛",
+            "distendingPain": "胀痛",
+            "numbness": "麻木",
+            "weakness": "无力",
+            "tightness": "紧绷感",
+            "difficultyBreathing": "呼吸困难",
+            "nauseaVomiting": "恶心呕吐",
+            "dizziness": "头晕"
+          }
+        },
+        "onsetTime": {
+          "label": "发病时间",
+          "options": {
+            "lt1Month": "少于1个月",
+            "oneToSixMonths": "1-6个月",
+            "sixToTwelveMonths": "6-12个月",
+            "gt1Year": "1年以上"
+          }
+        },
+        "progressionTrend": {
+          "label": "进展趋势",
+          "options": {
+            "worsening": "逐渐加重",
+            "fluctuating": "时好时坏",
+            "stable": "保持稳定",
+            "improving": "逐渐好转"
+          }
+        },
+        "diagnosisStage": {
+          "label": "当前诊断阶段",
+          "options": {
+            "undiagnosed": "尚未诊断",
+            "preliminary": "初步诊断",
+            "confirmed": "已确诊",
+            "postTreatment": "治疗后复查"
+          }
+        },
+        "mainCategory": {
+          "label": "病情主类别",
+          "options": {
+            "surgery": "手术类",
+            "tumor": "肿瘤类",
+            "cardiovascular": "心血管类",
+            "fertility": "生殖生育类",
+            "cosmetic": "美容整形类",
+            "general": "综合内科",
+            "other": "其他"
+          }
+        }
+      },
+      "step2": {
+        "title": "症状详细描述",
+        "subtitle": "请详细描述您的症状",
+        "detailedSymptoms": {
+          "label": "详细症状描述",
+          "placeholder": "请尽可能详细地描述您的症状，包括具体表现、频率、强度等...",
+          "counter": "已输入 {count} 字符"
+        },
+        "aggravatingFactors": {
+          "label": "加重因素（可多选）",
+          "options": {
+            "activity": "活动时",
+            "afterMeals": "进食后",
+            "night": "夜间",
+            "stress": "精神压力",
+            "weather": "天气变化",
+            "posture": "体位改变"
+          }
+        },
+        "relievingFactors": {
+          "label": "缓解因素（可多选）",
+          "options": {
+            "rest": "休息后",
+            "medication": "服药后",
+            "heat": "热敷",
+            "cold": "冷敷",
+            "massage": "按摩",
+            "postureChange": "改变体位"
+          }
+        },
+        "dailyLifeImpact": {
+          "label": "对日常生活影响（可多选）",
+          "options": {
+            "workStudy": "工作/学习",
+            "sleep": "睡眠质量",
+            "mobility": "行动能力",
+            "appetite": "食欲",
+            "emotion": "情绪",
+            "social": "社交活动"
+          }
+        },
+        "previousTreatments": {
+          "label": "既往治疗尝试",
+          "placeholder": "请描述您之前尝试过的治疗方法、用药情况及效果..."
+        }
+      },
+      "step3": {
+        "title": "病史信息",
+        "subtitle": "请填写您的病史资料",
+        "pastMedicalHistory": {
+          "label": "既往病史（可多选）",
+          "options": {
+            "hypertension": "高血压",
+            "diabetes": "糖尿病",
+            "heartDisease": "心脏病",
+            "stroke": "脑卒中",
+            "hepatitis": "肝炎",
+            "kidneyDisease": "肾脏疾病",
+            "tumor": "肿瘤",
+            "tuberculosis": "肺结核",
+            "none": "无既往病史"
+          }
+        },
+        "chronicConditions": {
+          "label": "慢性病描述",
+          "placeholder": "请描述您的慢性病情况..."
+        },
+        "familyHistory": {
+          "label": "家族病史",
+          "placeholder": "请说明患病亲属关系及病种..."
+        }
+      },
+      "step4": {
+        "title": "用药与过敏信息",
+        "subtitle": "请填写您的用药和过敏情况",
+        "allergyNotice": "过敏信息非常重要，请务必如实填写。",
+        "currentMedications": {
+          "label": "当前用药情况",
+          "placeholder": "请列出您当前正在服用的药物，包括药名、剂量、频率等..."
+        },
+        "allergyHistory": "过敏史",
+        "drugAllergies": {
+          "label": "药物过敏",
+          "placeholder": "请列出过敏的药物名称和过敏反应..."
+        },
+        "foodAllergies": {
+          "label": "食物过敏",
+          "placeholder": "请列出过敏的食物和过敏反应..."
+        }
+      },
+      "step5": {
+        "title": "检查报告与治疗期望",
+        "subtitle": "请填写检查情况和治疗期望",
+        "examTypes": {
+          "label": "近期检查类型（可多选）",
+          "options": {
+            "ct": "CT扫描",
+            "mri": "核磁共振(MRI)",
+            "xray": "X光检查",
+            "ultrasound": "B超",
+            "bloodTest": "血液检查",
+            "ecg": "心电图(ECG)",
+            "endoscopy": "内窥镜"
+          }
+        },
+        "examDetails": {
+          "label": "检查详情",
+          "placeholder": "请描述检查时间、医院、主要发现等..."
+        },
+        "labResults": {
+          "label": "化验结果摘要",
+          "placeholder": "请描述异常指标、参考值等..."
+        },
+        "expectations": {
+          "label": "治疗期望（可多选）",
+          "options": {
+            "diagnosis": "诊断确认",
+            "treatmentPlan": "治疗方案",
+            "secondOpinion": "第二诊疗意见",
+            "costEstimation": "费用评估",
+            "followUp": "术后随访"
+          }
+        },
+        "budgetRange": {
+          "label": "预算范围",
+          "options": {
+            "0-5k": "0-5千美元",
+            "5-10k": "5-10千美元",
+            "10-20k": "10-20千美元",
+            "20-50k": "20-50千美元",
+            ">50k": "50千美元以上",
+            "uncertain": "尚不确定"
+          }
+        },
+        "preferredTiming": {
+          "label": "期望治疗时间",
+          "options": {
+            "within_1month": "1个月内",
+            "1-3months": "1-3个月",
+            "3-6months": "3-6个月",
+            ">6months": "6个月以后",
+            "flexible": "时间灵活"
+          }
+        },
+        "almostDone": "即将完成！请检查所有必填项是否已完成，然后点击\"提交\"按钮。"
+      }
+    },
+    "intakeDisplay": {
+      "submission": {
+        "title": "病例采集已提交",
+        "submittedAt": "提交时间"
+      },
+      "sections": {
+        "symptomLocation": {
+          "title": "症状定位与性质"
+        },
+        "detailedSymptoms": {
+          "title": "症状详细描述"
+        },
+        "medicalHistory": {
+          "title": "病史信息"
+        },
+        "medicationsAllergies": {
+          "title": "用药与过敏信息"
+        },
+        "examinations": {
+          "title": "检查报告"
+        },
+        "expectations": {
+          "title": "治疗期望与联系方式"
+        }
+      },
+      "fields": {
+        "otherSymptoms": "其他症状",
+        "progressionDescription": "进展描述",
+        "surgerySuggested": "是否被建议手术",
+        "pathologyDiagnosis": "是否有病理诊断",
+        "progression": "病情进展",
+        "dailyLifeImpactDetails": "影响详情",
+        "surgeryHistory": "手术史",
+        "surgeryDate": "时间",
+        "surgeryHospital": "医院",
+        "surgeryComplications": "并发症",
+        "medicationTypes": "用药类型",
+        "currentMedicationDetails": "当前用药详情",
+        "dosage": "剂量",
+        "frequency": "频率",
+        "duration": "时长",
+        "purpose": "用途",
+        "allergyImportant": "过敏信息（重要）",
+        "drugAllergies": "药物过敏",
+        "foodAllergies": "食物过敏",
+        "otherAllergies": "其他过敏",
+        "reaction": "反应",
+        "imagingData": "影像资料",
+        "pathologyReport": "病理报告",
+        "canProvideFiles": "可提供文件",
+        "fileNotes": "备注",
+        "otherExpectations": "其他期望",
+        "budgetNotes": "备注",
+        "timingConstraints": "限制",
+        "preferredContactChannel": "首选联系方式",
+        "bestContactTime": "最佳联系时间",
+        "additionalNotes": "补充信息"
+      }
+    },
+    "appointmentPage": {
+      "back": "返回首页",
+      "title": "预约时间",
+      "subtitle": "您的就诊预约详情",
+      "upcoming": {
+        "title": "即将到来的预约",
+        "statusConfirmed": "已确认",
+        "edit": "修改预约",
+        "dateLabel": "预约日期",
+        "dateValue": "2025年10月15日 星期三",
+        "timeLabel": "预约时间",
+        "timeValue": "14:30 - 15:30",
+        "timeNote": "请提前15分钟到达",
+        "locationLabel": "就诊地点",
+        "locationName": "门诊楼3楼 · 心血管内科",
+        "room": "诊室301",
+        "doctorTitle": "主治医生",
+        "doctorName": "Oven 医生",
+        "doctorRole": "心血管内科主任",
+        "doctorExperience": "从业20年 · 主任医师",
+        "phone": "+86 10 1234 5678",
+        "email": "doctor@medora.com"
+      },
+      "visitItems": {
+        "title": "就诊项目",
+        "list": {
+          "initialAssessment": "初步诊断及病史询问",
+          "vitals": "血压、血糖监测",
+          "ecg": "心电图检查",
+          "treatmentPlan": "制定初步治疗方案"
+        }
+      },
+      "preparation": {
+        "title": "就诊准备",
+        "steps": {
+          "documents": {
+            "title": "携带证件",
+            "description": "请携带护照、签证、医疗邀请函以及既往病历资料"
+          },
+          "fasting": {
+            "title": "空腹要求",
+            "description": "就诊当日需进行血液检查，请保持空腹8小时以上"
+          },
+          "medication": {
+            "title": "停药说明",
+            "description": "如正在服用其他药物，请提前告知医生，部分药物需要暂停"
+          },
+          "translation": {
+            "title": "翻译服务",
+            "description": "医院提供中英文医疗翻译，如需其他语言请提前预约"
+          }
+        }
+      },
+      "contact": {
+        "title": "需要帮助？",
+        "description": "如有任何疑问或需要修改预约，请联系我们的国际部：",
+        "or": " 或发送邮件至 ",
+        "phone": "+86 10 1234 5678",
+        "email": "international@medora.com"
+      }
+    }
+  },
+  "conditions": {
+    "heartBypassSurgery": "心脏搭桥手术",
+    "scoliosisCorrection": "脊柱侧弯矫正",
+    "kneeReplacement": "膝关节置换",
+    "cataractSurgery": "白内障手术",
+    "coronaryHeartDisease": "冠心病",
+    "breastCancer": "乳腺癌",
+    "lungCancer": "肺癌",
+    "thyroidCancer": "甲状腺癌",
+    "stomachCancer": "胃癌",
+    "boneCancer": "骨癌",
+    "kidneyCancer": "肾癌",
+    "liverCancer": "肝癌",
+    "gallbladderCancer": "胆囊癌",
+    "earlyStageLiverCancer": "肝癌早期",
+    "uterineFibroids": "子宫肌瘤",
+    "lumbarDiscHerniation": "腰椎突出"
+  },
+  "status": {
+    "all": "全部",
+    "active": "活跃",
+    "inactive": "非活跃",
+    "pending": "待处理",
+    "inProgress": "进行中",
+    "completed": "已完成",
+    "canceled": "已取消",
+    "draft": "草稿",
+    "sent": "已发送",
+    "received": "已接收",
+    "approved": "已批准",
+    "rejected": "已拒绝"
+  },
+  "timeDate": {
+    "today": "今天",
+    "yesterday": "昨天",
+    "tomorrow": "明天",
+    "thisWeek": "本周",
+    "lastWeek": "上周",
+    "thisMonth": "本月",
+    "lastMonth": "上月",
+    "minutesAgo": "{count}分钟前",
+    "hoursAgo": "{count}小时前",
+    "daysAgo": "{count}天前",
+    "weeksAgo": "{count}周前",
+    "monthsAgo": "{count}月前"
+  },
+  "caseIntake": {
+    "title": "病例问诊信息",
+    "subtitle": "请完整填写以下信息，以便我们为您提供更精准的医疗方案",
+    "backToDashboard": "返回 Dashboard",
+    "progress": "步骤 {current} / {total}",
+    "percentComplete": "{percent}% 完成",
+    "noStepsCompleted": "尚未完成任何步骤",
+    "privacyNotice": "您的所有信息将被严格保密，仅用于医疗评估，遵守隐私政策。",
+    "cancel": "取消",
+    "saveDraft": "保存草稿",
+    "saving": "保存中...",
+    "previous": "上一步",
+    "next": "下一步",
+    "submit": "提交",
+    "submitting": "提交中...",
+    "draftSaved": "草稿已保存",
+    "errorRequired": "请完成所有必填字段后再继续。",
+    "errorSubmit": "提交失败，请重试。",
+    "step2": {
+      "title": "快速分级",
+      "description": "告诉我们您的主要问题"
+    },
+    "step3": {
+      "title": "现病史",
+      "description": "详细症状与病情演变",
+      "detailedSymptoms": "详细症状描述",
+      "detailedSymptomsPlaceholder": "请详细描述您的症状，包括具体表现、严重程度、发作频率等（例如：右膝疼痛持续2年，走路时明显加重，休息后稍有缓解，每天发作3-4次）",
+      "detailedSymptomsTip": "提示：请尽可能详细地描述症状的具体情况、持续时间、发作规律等",
+      "progression": "病情演变",
+      "progressionPlaceholder": "请描述症状从开始到现在的变化趋势（例如：逐渐加重、时好时坏、保持稳定等）",
+      "aggravatingFactors": "加重因素（可多选）",
+      "aggravating": {
+        "activity": "活动/运动后",
+        "eating": "进食后",
+        "night": "夜间",
+        "stress": "情绪紧张时",
+        "weather": "天气变化",
+        "position": "特定体位",
+        "other": "其他加重因素"
+      },
+      "relievingFactors": "缓解因素（可多选）",
+      "relieving": {
+        "rest": "休息后",
+        "medication": "服药后",
+        "heat": "热敷",
+        "cold": "冷敷",
+        "massage": "按摩",
+        "positionChange": "改变体位",
+        "other": "其他缓解因素"
+      },
+      "impactOnLife": "对日常生活的影响（可多选）",
+      "impact": {
+        "work": "影响工作",
+        "sleep": "影响睡眠",
+        "mobility": "影响行动",
+        "appetite": "影响食欲",
+        "mood": "影响情绪",
+        "social": "影响社交",
+        "exercise": "无法运动",
+        "selfCare": "影响自理",
+        "detailedDescription": "详细说明影响情况"
+      },
+      "previousTreatments": "已尝试的治疗",
+      "previousTreatmentsPlaceholder": "请列出您已经尝试过的治疗方法及效果（例如：服用XX药物，效果一般；做过理疗，有所缓解等）"
+    },
+    "step4": {
+      "title": "既往史",
+      "description": "既往疾病与手术史",
+      "pastMedicalHistory": "既往重大疾病史",
+      "condition": {
+        "hypertension": "高血压",
+        "diabetes": "糖尿病",
+        "heartDisease": "心脏病",
+        "stroke": "脑卒中",
+        "hepatitis": "肝炎",
+        "kidneyDisease": "肾病",
+        "cancer": "肿瘤",
+        "tuberculosis": "结核"
+      },
+      "otherConditions": "其他疾病",
+      "pleaseSpecify": "请说明",
+      "noHistory": "无既往重大疾病",
+      "pastSurgicalHistory": "既往手术史",
+      "noSurgery": "无任何手术史",
+      "hasSurgery": "有手术史",
+      "surgery": "手术",
+      "surgeryName": "手术名称",
+      "surgeryDate": "手术时间",
+      "hospital": "医院名称",
+      "complications": "并发症或特殊情况",
+      "addSurgery": "添加手术记录",
+      "removeSurgery": "删除",
+      "optional": "可选",
+      "ifAny": "如有，请说明",
+      "chronicConditions": "慢性疾病",
+      "noChronic": "无慢性疾病",
+      "hasChronic": "有慢性疾病",
+      "chronicDescription": "请描述您的慢性疾病情况",
+      "familyHistory": "家族史",
+      "noFamily": "无重要家族病史",
+      "hasFamily": "有家族病史",
+      "familyDescription": "请说明家族中的遗传性疾病或重大疾病（例如：父亲有高血压、母亲有糖尿病等）"
+    },
+    "step5": {
+      "title": "用药与过敏",
+      "description": "当前用药与过敏情况",
+      "currentMedications": "长期用药情况",
+      "medicationTypes": "常见用药类型（可多选）",
+      "medType": {
+        "antihypertensive": "降压药",
+        "diabetes": "降糖药",
+        "anticoagulant": "抗凝药",
+        "painRelief": "止痛药",
+        "antibiotics": "抗生素",
+        "heart": "心脏药物",
+        "thyroid": "甲状腺药物",
+        "psychiatric": "精神类药物"
+      },
+      "detailedMedications": "详细用药清单（可选）",
+      "noMedications": "目前未服用任何药物",
+      "hasMedications": "正在服用药物",
+      "medication": "药物",
+      "medicationName": "药物名称",
+      "dosage": "剂量",
+      "frequency": "频率",
+      "duration": "用药时长",
+      "purpose": "用药目的",
+      "addMedication": "添加药物",
+      "allergyHistory": "过敏史",
+      "noAllergies": "无过敏史",
+      "hasAllergies": "有过敏史",
+      "drugAllergies": "药物过敏",
+      "drugName": "药物名称",
+      "reaction": "过敏反应",
+      "addDrugAllergy": "添加药物过敏",
+      "foodAllergies": "食物过敏",
+      "foodName": "食物名称",
+      "addFoodAllergy": "添加食物过敏",
+      "otherAllergies": "其他过敏（如环境过敏等）"
+    },
+    "step6": {
+      "title": "检查结果",
+      "description": "检查检验结果",
+      "recentExams": "近期检查情况（可多选）",
+      "selectExamTypes": "请选择您做过的检查类型",
+      "examType": {
+        "ct": "CT扫描",
+        "mri": "MRI（核磁共振）",
+        "xray": "X光检查",
+        "ultrasound": "超声检查",
+        "bloodTest": "血液检查",
+        "urineTest": "尿液检查",
+        "ecg": "心电图",
+        "endoscopy": "内窥镜检查",
+        "biopsy": "活检",
+        "petScan": "PET扫描"
+      },
+      "examDetails": "检查详情（可选）",
+      "examDetailsPlaceholder": "请简要说明检查时间、医院和主要发现（例如：2024年1月在XX医院做CT，发现...）",
+      "labResults": "实验室检查结果",
+      "noLabResults": "无实验室检查结果",
+      "hasLabResults": "有实验室检查结果",
+      "labResultsPlaceholder": "请列出主要的血液、尿液等检验结果（例如：血常规、肝功能、肾功能等）及异常指标",
+      "imaging": "影像资料情况",
+      "noImaging": "暂无影像资料",
+      "hasImaging": "有影像资料",
+      "imagingPlaceholder": "请说明您有哪些影像资料（例如：胸部CT光盘、MRI片子等）",
+      "pathology": "病理报告",
+      "noPathology": "无病理报告",
+      "hasPathology": "有病理报告",
+      "pathologyPlaceholder": "请粘贴或简要说明病理报告的主要内容（如肿瘤类型、分期等）",
+      "fileProvision": "资料提供意向",
+      "canProvide": "可以在后续提供检查报告和影像文件",
+      "cannotProvide": "暂时无法提供",
+      "additionalNotes": "补充说明",
+      "additionalNotesPlaceholder": "如有特殊情况或需要说明的，请在此填写",
+      "fileUploadNote": "注：文件上传功能将在后续开放，届时您可以通过邮件或系统上传相关资料。"
+    },
+    "step7": {
+      "title": "诊疗安排",
+      "description": "期待、预算与时间安排",
+      "treatmentExpectations": "本次就诊的主要期待",
+      "selectAll": "请选择所有符合的选项（可多选）",
+      "expectation": {
+        "diagnosis": "确认诊断",
+        "treatmentPlan": "制定治疗/手术方案",
+        "secondOpinion": "获取第二诊疗意见",
+        "costEvaluation": "评估在中国治疗的费用",
+        "postTreatment": "术后复查/康复安排"
+      },
+      "expectationOther": "其他期待或补充说明",
+      "expectationOtherPlaceholder": "如有其他期待，请在此说明",
+      "budgetRange": "预算范围",
+      "selectBudget": "请选择预算范围",
+      "budget": {
+        "0to5k": "0 - 5,000 美元",
+        "5to10k": "5,000 - 10,000 美元",
+        "10to20k": "10,000 - 20,000 美元",
+        "20to50k": "20,000 - 50,000 美元",
+        "over50k": "50,000 美元以上",
+        "uncertain": "不确定"
+      },
+      "budgetNotes": "预算说明",
+      "budgetNotesPlaceholder": "如有特殊预算考虑或需要说明的，请在此填写",
+      "budgetNote": "注：预算仅供参考，实际费用将根据具体治疗方案确定",
+      "preferredTiming": "计划就诊时间",
+      "selectTiming": "请选择期望的就诊时间",
+      "timing": {
+        "within1Month": "1 个月内",
+        "1to3Months": "1-3 个月",
+        "3to6Months": "3-6 个月",
+        "after6Months": "6 个月以后",
+        "flexible": "时间灵活"
+      },
+      "timingConstraints": "时间限制或特殊要求",
+      "timingConstraintsPlaceholder": "如有特定的时间要求或限制，请在此说明",
+      "contactPreferences": "联系方式偏好",
+      "preferredContact": "首选联系方式",
+      "contact": {
+        "email": "电子邮件",
+        "phone": "电话",
+        "wechat": "微信",
+        "whatsapp": "WhatsApp"
+      },
+      "bestContactTime": "最佳联系时间",
+      "bestContactTimePlaceholder": "例如：工作日上午、周末下午等",
+      "additionalInfo": "其他补充信息",
+      "additionalInfoPlaceholder": "如有其他需要补充的信息或特殊要求，请在此填写",
+      "additionalInfoHint": "例如：语言偏好、陪同人员需求、住宿安排等",
+      "almostDone": "即将完成",
+      "reviewMessage": "请检查所有信息是否准确无误，然后点击「提交」按钮。我们的医疗团队将在 24-48 小时内与您联系。"
+    },
+    "q1": {
+      "title": "问题 1：哪里最不舒服？（部位选择）",
+      "step1": "第一步：请先选择大概区域",
+      "step2": "第二步：请选择具体部位",
+      "selectRegion": "请先选择一个大概区域",
+      "otherLocation": "请说明具体部位"
+    },
+    "region": {
+      "head": "头部",
+      "neck": "颈部",
+      "chest": "胸部",
+      "abdomen": "腹部",
+      "backWaist": "腰背部",
+      "jointsLimbs": "四肢关节",
+      "other": "其他"
+    },
+    "location": {
+      "head": "头部",
+      "face": "面部",
+      "neckThroat": "颈部 / 咽喉",
+      "chestCenter": "胸口 / 心前区",
+      "chestLeft": "左胸",
+      "chestRight": "右胸",
+      "upperAbdomen": "上腹（心窝、中上腹）",
+      "rightUpperAbdomen": "右上腹",
+      "periumbilical": "中腹（肚脐周围）",
+      "rightLowerAbdomen": "右下腹",
+      "leftLowerAbdomen": "左下腹",
+      "wholeAbdomen": "全腹 / 说不清部位",
+      "waist": "腰部",
+      "back": "背部 / 肩胛间",
+      "shoulder": "肩关节",
+      "elbow": "肘关节",
+      "wristHand": "腕 / 手",
+      "hip": "髋关节",
+      "knee": "膝关节",
+      "ankleFoot": "踝 / 足",
+      "genitourinary": "泌尿生殖部位（小便处 / 外阴 / 阴囊等）",
+      "dizziness": "头晕说不清部位",
+      "other": "其他部位"
+    },
+    "q2": {
+      "title": "问题 2：是什么感觉？（症状性质）",
+      "prompt": "这种不舒服主要是哪种感觉最明显？（可多选）",
+      "painTypes": "疼痛类",
+      "sensoryAbnormalities": "感觉异常类",
+      "functionalIssues": "功能类",
+      "other": "其他",
+      "otherNotes": "其他症状性质（补充说明）"
+    },
+    "onsetCourse": {
+      "title": "疾病起始时间与演变",
+      "duration": "起病时长",
+      "pleaseSelect": "请选择",
+      "lessThan1Month": "少于 1 个月",
+      "1to6Months": "1-6 个月",
+      "6to12Months": "6-12 个月",
+      "moreThan1Year": "超过 1 年",
+      "progressionTrend": "病情演变趋势（单选）",
+      "worsening": "逐渐加重",
+      "fluctuating": "时好时坏",
+      "stable": "保持稳定",
+      "improving": "逐渐好转",
+      "additionalDescription": "补充说明",
+      "additionalPlaceholder": "请补充说明病情演变的详细情况"
+    },
+    "diagnosisStage": {
+      "title": "当前所在诊断阶段",
+      "undiagnosed": "尚未就医，仅有自感不适",
+      "preliminary": "已在当地医院就诊，有初步诊断",
+      "confirmed": "已确诊，正在考虑进一步治疗/手术",
+      "postTreatment": "术后 / 治疗后复查或康复咨询"
+    },
+    "mainCategory": {
+      "title": "主要疾病类型",
+      "pleaseSelect": "请选择最符合的类别",
+      "hint": "选择最接近您情况的类别，这将帮助我们为您匹配合适的医疗资源",
+      "surgery": "外科手术",
+      "tumor": "肿瘤相关",
+      "cardiovascular": "心血管疾病",
+      "fertility": "生殖 / 妇产科",
+      "cosmetic": "医疗美容 / 整形",
+      "general": "内科 / 综合",
+      "other": "其他"
+    },
+    "symptom": {
+      "dullPain": "隐痛（钝钝的、说不清）",
+      "severePain": "剧痛 / 绞痛（很厉害的痛）",
+      "stabbingPain": "刺痛（针扎一样）",
+      "distendingPain": "胀痛 / 酸胀",
+      "numbness": "麻木",
+      "weakness": "无力 / 软得抬不起来",
+      "tightness": "紧绷 / 压迫感",
+      "breathingDifficulty": "发闷 / 呼吸不畅",
+      "nausea": "恶心 / 想吐",
+      "dizziness": "眩晕 / 眼前发黑",
+      "unclear": "说不清，就是很不舒服"
+    },
+    "dashboard": {
+      "title": "病例问诊信息",
+      "description": "完善您的病例资料，帮助我们为您提供更精准的医疗方案和费用评估。",
+      "startButton": "开始填写病例信息",
+      "viewSubmitted": "查看已提交病例",
+      "draftAlert": "您有一份未完成的病例问诊信息，请继续填写。",
+      "timeEstimate": "填写时间约 10-15 分钟 · 支持保存草稿 · 信息严格保密"
+    }
+  }
+}

@@ -1,0 +1,3396 @@
+{
+  "common": {
+    "brand": {
+      "medoraHealth": "Medora Health",
+      "hospitalSystem": "Hospital Management System",
+      "hospitalSystemEn": "Hospital Management System"
+    },
+    "nav": {
+      "dashboard": "Dashboard",
+      "profile": "Profile",
+      "settings": "Settings",
+      "messages": "Messages",
+      "logout": "Logout",
+      "viewAll": "View All",
+      "back": "Back",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "save": "Save",
+      "submit": "Submit",
+      "submitting": "Submitting...",
+      "error": "Something went wrong, please try again",
+      "edit": "Edit",
+      "delete": "Delete",
+      "search": "Search",
+      "filter": "Filter"
+    },
+    "dashboard": "Dashboard",
+    "settings": "Settings",
+    "profile": "Profile",
+    "loading": "Loading...",
+    "view": "View",
+    "actions": {
+      "viewDetails": "View Details",
+      "download": "Download",
+      "upload": "Upload",
+      "print": "Print",
+      "export": "Export",
+      "refresh": "Refresh",
+      "add": "Add",
+      "newConversation": "New Conversation",
+      "create": "Create",
+      "update": "Update",
+      "clear": "Clear",
+      "reset": "Reset",
+      "close": "Close",
+      "copy": "Copy",
+      "paste": "Paste",
+      "share": "Share",
+      "send": "Send",
+      "forward": "Forward"
+    },
+    "boolean": {
+      "yes": "Yes",
+      "no": "No"
+    },
+    "labels": {
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "address": "Address",
+      "city": "City",
+      "gender": "Gender",
+      "male": "Male",
+      "female": "Female",
+      "other": "Other",
+      "age": "Age",
+      "yearsOld": "years old",
+      "date": "Date",
+      "time": "Time",
+      "description": "Description",
+      "notes": "Notes",
+      "attachments": "Attachments",
+      "details": "Details",
+      "operations": "Actions",
+      "quantity": "Quantity",
+      "unitPrice": "Unit Price",
+      "subtotal": "Subtotal",
+      "total": "Total",
+      "amount": "Amount",
+      "source": "Source",
+      "channel": "Channel",
+      "pleaseSelect": "Please select"
+    },
+    "bodyParts": {
+      "headFace": "Head and Face",
+      "neck": "Neck",
+      "chest": "Chest",
+      "abdomen": "Abdomen",
+      "back": "Back",
+      "jointsLimbs": "Joints and Limbs",
+      "rightLowerAbdomen": "Right Lower Abdomen",
+      "leftLowerAbdomen": "Left Lower Abdomen"
+    },
+    "symptoms": {
+      "pain": "Pain",
+      "dullPain": "Dull Pain",
+      "severePain": "Severe Pain",
+      "sharpPain": "Sharp Pain",
+      "distendingPain": "Distending Pain",
+      "numbness": "Numbness",
+      "weakness": "Weakness",
+      "tightness": "Tightness",
+      "difficultyBreathing": "Difficulty Breathing",
+      "nauseaVomiting": "Nausea and Vomiting",
+      "dizziness": "Dizziness",
+      "fever": "Fever",
+      "decreasedAppetite": "Decreased Appetite",
+      "persistent": "Persistent",
+      "intermittent": "Intermittent"
+    },
+    "medical": {
+      "case": "Case",
+      "caseId": "Case ID",
+      "patientCode": "Patient Code",
+      "diagnosis": "Diagnosis",
+      "treatment": "Treatment",
+      "surgery": "Surgery",
+      "chemotherapy": "Chemotherapy",
+      "radiotherapy": "Radiotherapy",
+      "rehabilitation": "Rehabilitation",
+      "followUp": "Follow-up",
+      "prescription": "Prescription",
+      "examination": "Examination",
+      "laboratoryTest": "Laboratory Test",
+      "bUltrasound": "B-Ultrasound",
+      "ctScan": "CT Scan",
+      "mri": "MRI",
+      "xRay": "X-Ray",
+      "ecg": "ECG",
+      "bloodTest": "Blood Test",
+      "imagingData": "Imaging Data",
+      "pathologyReport": "Pathology Report",
+      "laboratoryReport": "Laboratory Report",
+      "medicalImaging": "Medical Imaging"
+    },
+    "cities": {
+      "beijing": "Beijing",
+      "shanghai": "Shanghai",
+      "guangzhou": "Guangzhou",
+      "hangzhou": "Hangzhou",
+      "chengdu": "Chengdu",
+      "xian": "Xi'an",
+      "nanjing": "Nanjing",
+      "wuhan": "Wuhan",
+      "shenzhen": "Shenzhen"
+    },
+    "hospitals": {
+      "peking_union": "Peking Union Medical College Hospital",
+      "shanghai_zhongshan": "Shanghai Zhongshan Hospital",
+      "west_china": "West China Hospital",
+      "nanjing_drum_tower": "Nanjing Drum Tower Hospital",
+      "wuhan_tongji": "Wuhan Tongji Hospital",
+      "zhejiang_university": "Zhejiang University Affiliated Hospital",
+      "tianjin_tumor": "Tianjin Tumor Hospital",
+      "medoraInternational": "Medora International Hospital",
+      "singaporeGeneral": "Singapore General Hospital",
+      "bumrungradInternational": "Bumrungrad International Hospital",
+      "tokyoMedicalUniversity": "Tokyo Medical University Hospital"
+    }
+  },
+  "dashboardHeader": {
+    "title": "Hospital Management System",
+    "myAccount": "My Account",
+    "hospitalProfile": "Hospital Profile"
+  },
+  "doctor": {
+    "welcome": "Welcome back, review today's work overview",
+    "nav": {
+      "overview": "Overview",
+      "cases": "Cases",
+      "appointments": "Appointments",
+      "messages": "Messages"
+    }
+  },
+  "doctorCases": {
+    "title": "Case Management",
+    "subtitle": "View and manage all your cases",
+    "searchPlaceholder": "Search case ID, patient name, condition...",
+    "filter": "Filter",
+    "stats": {
+      "all": "All Cases",
+      "pendingQuote": "Pending Quote",
+      "pending": "Pending",
+      "processing": "Processing"
+    },
+    "listTitle": "Case List",
+    "listDesc": "All cases that need your attention",
+    "tabs": {
+      "all": "All",
+      "quote": "Pending Quote",
+      "pending": "Pending",
+      "processing": "Processing"
+    }
+  },
+  "login": {
+    "title": "Hospital Management System",
+    "subtitle": "Hospital Management System",
+    "loginToAccount": "Login to Account",
+    "emailAddress": "Email Address",
+    "emailPlaceholder": "doctor@medora.com",
+    "password": "Password",
+    "rememberMe": "Remember Me",
+    "forgotPassword": "Forgot Password?",
+    "loginButton": "Login",
+    "or": "Or",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithFacebook": "Continue with Facebook",
+    "signInWithGoogle": "Sign in with Google",
+    "signInWithFacebook": "Sign in with Facebook",
+    "noAccount": "Don't have an account?",
+    "contactAdmin": "Contact Administrator"
+  },
+  "admin": {
+    "title": "Admin Portal",
+    "systemAdmin": "System Administrator",
+    "dashboard": {
+      "welcome": "Welcome Back, Administrator",
+      "systemStatus": "System running normally, {count} pending items today",
+      "stats": {
+        "totalPatients": "Total Patients",
+        "totalDoctors": "Total Doctors",
+        "salesConsultants": "Sales Consultants",
+        "activeCases": "Active Cases",
+        "newInquiries": "New Inquiries",
+        "pendingAssignment": "Pending Assignment",
+        "transferredToHospital": "Transferred to Hospital",
+        "newMessages": "New Messages"
+      },
+      "recentUsers": {
+        "title": "Recent Users",
+        "description": "Latest registered users in the system",
+        "role": "Role",
+        "patient": "Patient",
+        "doctor": "Doctor",
+        "salesConsultant": "Sales Consultant",
+        "hospital": "Hospital",
+        "status": "Status",
+        "active": "Active",
+        "pending": "Pending"
+      },
+      "pendingActions": {
+        "title": "Pending Actions",
+        "description": "Tasks requiring your attention",
+        "review": "Review",
+        "quotation": "Quotation",
+        "payment": "Payment",
+        "assignment": "Assignment",
+        "message": "Message",
+        "response": "Response",
+        "newDoctorRegistration": "New doctor registration application",
+        "quotationPendingReview": "Case quotation pending review",
+        "paymentPendingConfirmation": "Payment records pending confirmation",
+        "intakeCompletedPendingAssignment": "Intake completed, pending hospital assignment",
+        "marketingMessagePendingReview": "Marketing messages pending review",
+        "patientMessagesPendingResponse": "Patient messages pending response",
+        "priority": "Priority",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low"
+      },
+      "pendingTransfers": {
+        "title": "Pending Hospital Transfers",
+        "description": "Cases with completed Medical Intake, ready for hospital assignment",
+        "caseId": "Case ID",
+        "intakeCompletedAt": "Intake Completed",
+        "suggestedHospitals": "Suggested Hospitals",
+        "assignHospital": "Assign Hospital",
+        "intakeCompleted": "Intake Completed"
+      },
+      "pendingJourneys": {
+        "title": "Pending Journeys",
+        "description": "Patients requiring accommodation and hospital arrangements",
+        "patient": "Patient",
+        "caseId": "Case ID",
+        "preferredHospital": "Preferred Hospital",
+        "preferredAccommodation": "Preferred Accommodation",
+        "preferredTiming": "Preferred Timing",
+        "within1Month": "Within 1 month",
+        "1to3Months": "1-3 months",
+        "3to6Months": "3-6 months",
+        "pendingCoordination": "Pending Coordination",
+        "coordinateJourney": "Coordinate Journey",
+        "accommodation": {
+          "hotelNearHospital": "Hotel near hospital",
+          "servicedApartment": "Serviced apartment",
+          "hotel": "Hotel"
+        }
+      },
+      "recentCases": {
+        "title": "Recent Cases",
+        "description": "Latest created cases in the system",
+        "caseId": "Case ID",
+        "patient": "Patient",
+        "doctor": "Doctor",
+        "hospital": "Assigned Hospital",
+        "diagnosis": "Diagnosis",
+        "status": "Status",
+        "inProgress": "In Progress",
+        "pendingQuotation": "Pending Quotation",
+        "pendingPayment": "Pending Payment",
+        "pendingAssignment": "Pending Assignment",
+        "transferredToHospital": "Transferred to Hospital",
+        "hospitalContacted": "Hospital Contacted",
+        "completed": "Completed",
+        "notAssigned": "Not Assigned",
+        "priority": "Priority",
+        "amount": "Amount"
+      }
+    },
+    "settings": {
+      "title": "System Settings",
+      "description": "Manage system configuration and parameters",
+      "status": {
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+      },
+      "general": {
+        "title": "General Settings",
+        "description": "Core system configuration",
+        "systemNameLabel": "System Name",
+        "systemNameDefault": "Medora Health Hospital System",
+        "systemLanguageLabel": "System Language",
+        "timezoneLabel": "Time Zone",
+        "save": "Save Settings",
+        "languageOptions": {
+          "zh": "Simplified Chinese",
+          "en": "English",
+          "zht": "Traditional Chinese"
+        },
+        "timezoneOptions": {
+          "asiaShanghai": "Asia/Shanghai (UTC+8)",
+          "asiaTokyo": "Asia/Tokyo (UTC+9)",
+          "americaNewYork": "America/New_York (UTC-5)"
+        }
+      },
+      "security": {
+        "title": "Security Settings",
+        "description": "System security and permission policies",
+        "twoFactor": {
+          "title": "Two-Factor Authentication",
+          "description": "Require all users to enable 2FA"
+        },
+        "passwordPolicy": {
+          "title": "Password Strength Requirements",
+          "description": "At least 8 characters with upper, lower case and numbers"
+        },
+        "sessionTimeout": {
+          "title": "Session Timeout",
+          "description": "Auto logout after 30 minutes of inactivity"
+        },
+        "ipWhitelist": {
+          "title": "IP Allowlist",
+          "description": "Restrict login to trusted IP ranges"
+        }
+      },
+      "email": {
+        "title": "Email Configuration",
+        "description": "System email sending settings",
+        "smtpServer": "SMTP Server",
+        "senderEmail": "Sender Email",
+        "test": "Test Email Settings"
+      },
+      "notifications": {
+        "title": "Notification Settings",
+        "description": "System notifications and alerts",
+        "newUser": {
+          "title": "New User Registration",
+          "description": "Notify admin when a new user registers"
+        },
+        "caseStatus": {
+          "title": "Case Status Updates",
+          "description": "Notify stakeholders when a case is updated"
+        },
+        "maintenance": {
+          "title": "System Maintenance Reminder",
+          "description": "Remind 24 hours before maintenance"
+        }
+      },
+      "database": {
+        "title": "Database Maintenance",
+        "description": "Data backup and restore",
+        "lastBackupLabel": "Last backup",
+        "backupSizeLabel": "Backup size",
+        "lastBackup": "{time}",
+        "backupSize": "{size}",
+        "backupNow": "Backup Now",
+        "restore": "Restore Data",
+        "autoBackup": "Automatic backup schedule",
+        "options": {
+          "daily": "Daily 02:00",
+          "weekly": "Sunday 02:00",
+          "monthly": "1st day 02:00"
+        }
+      },
+      "internationalization": {
+        "title": "Internationalization Settings",
+        "description": "Multilingual and locale configuration",
+        "supportedLanguages": "Supported languages",
+        "languages": {
+          "zh": "Simplified Chinese",
+          "en": "English",
+          "ja": "Japanese",
+          "ko": "Korean"
+        },
+        "save": "Save Language Settings"
+      }
+    },
+    "patientJourney": {
+      "status": {
+        "title": "Journey Coordination Status",
+        "caseId": "Case ID",
+        "pending": "Pending Coordination",
+        "confirmed": "Confirmed",
+        "completed": "Completed",
+        "unknown": "Unknown"
+      },
+      "preferences": {
+        "title": "Patient Preferences",
+        "description": "Expectations provided when submitting the case",
+        "preferredHospital": "Preferred Hospital",
+        "preferredAccommodation": "Preferred Accommodation",
+        "budget": "Budget Range",
+        "timing": "Preferred Timing",
+        "specialRequirements": "Special Requirements",
+        "specialRequirementsOptions": {
+          "needsChineseInterpreter": "Need Chinese interpreter",
+          "wheelchairAccess": "Wheelchair access needed",
+          "dietaryRestrictions": "Dietary restrictions / special diet"
+        }
+      },
+      "hospital": {
+        "title": "Hospital Arrangement",
+        "description": "Arrange the hospital for the patient",
+        "assigned": "Assigned Hospital",
+        "contact": "Hospital Contact",
+        "address": "Hospital Address",
+        "assignedPlaceholder": "e.g., Singapore General Hospital",
+        "contactPlaceholder": "e.g., +65 6222 3322",
+        "addressPlaceholder": "Enter full hospital address"
+      },
+      "accommodation": {
+        "title": "Accommodation Arrangement",
+        "description": "Coordinate accommodation",
+        "type": "Accommodation Type",
+        "name": "Accommodation Name",
+        "address": "Accommodation Address",
+        "checkIn": "Check-in Date",
+        "checkOut": "Check-out Date",
+        "namePlaceholder": "e.g., Hilton Hotel",
+        "addressPlaceholder": "Enter accommodation address",
+        "options": {
+          "pleaseSelect": "Please Select",
+          "hotelNearHospital": "Hotel near hospital",
+          "hotel": "Hotel",
+          "servicedApartment": "Serviced Apartment",
+          "hospitalAccommodation": "Hospital Accommodation",
+          "homestay": "Homestay"
+        }
+      },
+      "transportation": {
+        "title": "Transportation",
+        "description": "Flight and local transportation information",
+        "flightInfo": "Flight Information",
+        "flightPlaceholder": "e.g., CA123 Beijing-Singapore 2025-11-01 08:00",
+        "transportationArrangement": "Local Transportation",
+        "transportationPlaceholder": "e.g., airport pickup, hospital transfers"
+      },
+      "contact": {
+        "title": "Local Contact",
+        "description": "Emergency contact at the destination",
+        "name": "Contact Name",
+        "phone": "Contact Phone",
+        "namePlaceholder": "Enter contact name",
+        "phonePlaceholder": "Enter phone number"
+      },
+      "costNotes": {
+        "title": "Cost & Notes",
+        "estimatedCost": "Estimated Total Cost",
+        "estimatedCostPlaceholder": "e.g., 15,000 USD",
+        "notes": "Notes",
+        "notesPlaceholder": "Other important information..."
+      },
+      "actions": {
+        "save": "Save Journey Info",
+        "saving": "Saving...",
+        "sendToPatient": "Send to Patient",
+        "markConfirmed": "Mark as Confirmed",
+        "saved": "Journey info saved!",
+        "sent": "Journey plan sent to patient!"
+      }
+    },
+    "users": {
+      "title": "User Management",
+      "description": "Manage all user accounts in the system",
+      "addUser": "Add User",
+      "addHospital": "Add Hospital",
+      "searchPlaceholder": "Search by name, email or phone...",
+      "filter": "Filter",
+      "stats": {
+        "hospitals": "Hospitals",
+        "patients": "Patients",
+        "pendingReview": "Pending Review"
+      },
+      "roles": {
+        "hospital": "Hospital",
+        "patient": "Patient"
+      },
+      "table": {
+        "user": "User",
+        "role": "Role",
+        "contactInfo": "Contact Info",
+        "status": "Status",
+        "data": "Data",
+        "cases": "Cases",
+        "registrationDate": "Registration Date",
+        "actions": "Actions"
+      },
+      "dataMetrics": {
+        "patients": "{count} Patients",
+        "cases": "{count} Cases"
+      }
+    },
+    "hospitals": {
+      "title": "Hospital Management",
+      "description": "Manage all partner hospitals",
+      "addHospital": "Add Hospital",
+      "searchPlaceholder": "Search hospital name or specialty...",
+      "filter": "Filter",
+      "stats": {
+        "total": "Total Hospitals",
+        "active": "Active Hospitals",
+        "pending": "Pending Review",
+        "specialties": "Specialties"
+      },
+      "table": {
+        "hospital": "Hospital",
+        "specialties": "Specialties",
+        "location": "Location",
+        "status": "Status",
+        "cases": "Cases",
+        "joinDate": "Join Date",
+        "actions": "Actions"
+      },
+      "detail": {
+        "back": "Back to Hospital List",
+        "basicInfo": "Basic Info",
+        "specialtiesSection": "Specialties",
+        "contactInfo": "Contact Info",
+        "accounts": "Hospital Accounts",
+        "statistics": "Statistics"
+      },
+      "form": {
+        "name": "Hospital Name",
+        "namePlaceholder": "Enter hospital name",
+        "address": "Address",
+        "addressPlaceholder": "Enter full address",
+        "phone": "Phone",
+        "phonePlaceholder": "Enter phone number",
+        "email": "Email",
+        "emailPlaceholder": "Enter email",
+        "specialties": "Specialties",
+        "specialtiesPlaceholder": "Select specialties",
+        "description": "Description",
+        "descriptionPlaceholder": "Enter hospital description"
+      }
+    },
+    "messages": {
+      "title": "Message Center",
+      "description": "Manage all communications with patients and hospitals",
+      "inbox": "Inbox",
+      "sent": "Sent",
+      "pending": "Pending Review",
+      "stats": {
+        "unread": "Unread",
+        "today": "Today",
+        "pendingReview": "Pending Review"
+      },
+      "channels": {
+        "all": "All",
+        "whatsapp": "WhatsApp",
+        "messenger": "Messenger",
+        "email": "Email"
+      },
+      "types": {
+        "lead": "Lead Contact",
+        "followUp": "Follow-up",
+        "treatmentUpdate": "Treatment Update",
+        "marketing": "Marketing",
+        "appointment": "Appointment Reminder",
+        "documentRequest": "Document Request"
+      },
+      "actions": {
+        "approve": "Approve",
+        "reject": "Reject",
+        "reply": "Reply"
+      }
+    },
+    "cases": {
+      "title": "Case Management",
+      "description": "View and manage all patient cases",
+      "addCase": "New Case",
+      "searchPlaceholder": "Search case number or patient name...",
+      "pendingAssignment": "Pending Assignment",
+      "assign": "Assign",
+      "noMatchingCases": "No matching cases found",
+      "noCases": "No cases yet",
+      "diagnosis": {
+        "cardiacCheck": "Cardiac examination",
+        "orthopedicSurgery": "Orthopedic surgery",
+        "fullCheckup": "Full-body check-up",
+        "eyeSurgery": "Eye surgery",
+        "dentalTreatment": "Dental treatment"
+      },
+      "stats": {
+        "pendingAssignment": "Pending Assignment",
+        "assignedToHospital": "Assigned to Hospital",
+        "inProgress": "In Progress",
+        "completed": "Completed",
+        "urgent": "Urgent"
+      },
+      "status": {
+        "draft": "Draft",
+        "active": "Active",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "archived": "Archived"
+      },
+      "stage": {
+        "initial_inquiry": "Initial Inquiry",
+        "medical_evaluation": "Medical Evaluation",
+        "treatment_planning": "Treatment Planning",
+        "in_treatment": "In Treatment",
+        "post_treatment": "Post Treatment",
+        "completed": "Completed",
+        "follow_up": "Follow-up"
+      },
+      "table": {
+        "caseNumber": "Case Number",
+        "patientName": "Patient Name",
+        "assignedHospital": "Assigned Hospital",
+        "diagnosis": "Diagnosis",
+        "status": "Status",
+        "stage": "Stage",
+        "tags": "Tags",
+        "createdDate": "Created Date",
+        "actions": "Actions"
+      }
+    },
+    "patientDetail": {
+      "back": "Back to Overview",
+      "patientBadge": "Patient",
+      "activeBadge": "Active",
+      "patientCode": "Patient Code",
+      "caseId": "Case ID",
+      "registeredAt": "Registered On",
+      "contact": {
+        "ageGender": "Age / Gender"
+      },
+      "tabs": {
+        "journey": "Journey Management",
+        "visa": "Visa Arrangement",
+        "medical": "Medical Info"
+      }
+    },
+    "visaManagement": {
+      "title": "Visa Arrangement",
+      "description": "Manage patient visa applications and related documents",
+      "new": "New Visa Application",
+      "dialogTitle": "New Visa Application",
+      "dialogDescription": "Fill in basic visa information",
+      "empty": {
+        "title": "No visa applications yet",
+        "action": "Create the first visa application"
+      },
+      "statusActionsLabel": "Status actions:",
+      "editTitle": "Edit Visa Application",
+      "editDescription": "Update visa application information",
+      "list": {
+        "passport": "Passport No",
+        "nationality": "Nationality",
+        "medicalInfo": "Medical Information",
+        "diagnosis": "Diagnosis Details",
+        "treatmentPurpose": "Treatment Purpose",
+        "estimatedDuration": "Estimated Treatment Duration",
+        "estimatedCost": "Estimated Cost",
+        "financialProof": "Financial Proof",
+        "financialType": "Proof Type",
+        "bankStatements": "Bank Statements",
+        "filesCount": "{count} files",
+        "usContact": "US Contact Information",
+        "contactName": "Contact/Organization",
+        "contactPhone": "Contact Phone",
+        "address": "Address",
+        "applicationDetails": "Application Details",
+        "applicationNumber": "Application Number",
+        "ds160": "DS-160 Number",
+        "interviewDate": "Interview Date",
+        "interviewLocation": "Interview Location",
+        "notFilled": "Not provided",
+        "notes": "Notes"
+      },
+      "status": {
+        "not_started": "Not Started",
+        "preparing": "Preparing",
+        "submitted": "Submitted",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "expired": "Expired"
+      },
+      "visaTypes": {
+        "B2_medical": "B-2 Medical Visa",
+        "tourist": "Tourist Visa",
+        "business": "Business Visa",
+        "other": "Other"
+      },
+      "financial": {
+        "personalFunds": "Personal funds",
+        "sponsor": "Sponsor support",
+        "both": "Personal funds + Sponsor"
+      },
+      "actions": {
+        "preparing": "Preparing",
+        "submitted": "Submitted",
+        "approved": "Approved",
+        "rejected": "Rejected"
+      },
+      "form": {
+        "basicInfo": "Basic Information",
+        "visaType": "Visa Type",
+        "nationality": "Nationality",
+        "passportNumber": "Passport Number",
+        "medicalInfo": "Medical Information",
+        "diagnosisDetails": "Diagnosis Details",
+        "diagnosisPlaceholder": "Describe the condition and diagnosis...",
+        "treatmentPurpose": "Treatment Purpose",
+        "treatmentPlaceholder": "e.g., bypass surgery, cancer treatment",
+        "estimatedDuration": "Estimated Treatment Duration",
+        "durationPlaceholder": "e.g., 3-4 weeks",
+        "estimatedCost": "Estimated Cost",
+        "costPlaceholder": "e.g., $150,000 - $200,000",
+        "usContact": "US Contact Information",
+        "usContactName": "Contact/Organization Name",
+        "usContactNamePlaceholder": "e.g., Medora International Hospital",
+        "usContactPhone": "Contact Phone",
+        "usContactPhonePlaceholder": "+1 (555) 123-4567",
+        "usContactAddress": "Address",
+        "usContactAddressPlaceholder": "Full US address",
+        "notes": "Notes",
+        "notesPlaceholder": "Add any extra notes...",
+        "cancel": "Cancel",
+        "save": "Save"
+      }
+    },
+    "createUser": {
+      "title": "Create New User",
+      "description": "Add new doctor or sales consultant to the system",
+      "backToUserManagement": "Back to User Management",
+      "successMessage": "User Created Successfully!",
+      "redirecting": "Redirecting to user management page...",
+      "selectRole": {
+        "title": "Select User Role",
+        "description": "Please select the type of user to create",
+        "doctor": "Doctor",
+        "doctorDescription": "Hospital medical staff responsible for diagnosis and treatment",
+        "salesConsultant": "Sales Consultant",
+        "salesConsultantDescription": "Sales staff responsible for patient acquisition and business development"
+      },
+      "userInfo": {
+        "title": "User Information",
+        "description": "Fill in basic information for {role}",
+        "nameLabel": "Name *",
+        "namePlaceholder": "Enter name",
+        "emailLabel": "Email *",
+        "emailPlaceholder": "Enter email address",
+        "passwordLabel": "Initial Password *",
+        "passwordPlaceholder": "Set initial password",
+        "phoneLabel": "Phone",
+        "phonePlaceholder": "Enter contact phone",
+        "genderLabel": "Gender",
+        "genderPlaceholder": "Select gender",
+        "locationLabel": "Location",
+        "locationPlaceholder": "Enter city or country"
+      },
+      "doctorInfo": {
+        "title": "Doctor Professional Information",
+        "specialtyLabel": "Specialty",
+        "specialtyPlaceholder": "Select department",
+        "cardiology": "Cardiology",
+        "orthopedics": "Orthopedics",
+        "oncology": "Oncology",
+        "neurology": "Neurology",
+        "generalPractice": "General Practice",
+        "experienceLabel": "Years of Experience",
+        "experiencePlaceholder": "e.g., 10 years",
+        "languagesLabel": "Languages",
+        "languagesPlaceholder": "e.g., Chinese, English, Japanese"
+      },
+      "salesInfo": {
+        "title": "Sales Consultant Professional Information",
+        "experienceLabel": "Work Experience",
+        "experiencePlaceholder": "e.g., 5 years medical tourism sales experience",
+        "languagesLabel": "Languages",
+        "languagesPlaceholder": "e.g., Chinese, English, Russian"
+      },
+      "actions": {
+        "createUser": "Create User",
+        "creating": "Creating...",
+        "cancel": "Cancel"
+      }
+    }
+  },
+  "sales": {
+    "title": "Sales Portal",
+    "consultant": "Sales Consultant",
+    "nav": {
+      "dashboard": "Dashboard",
+      "leads": "Leads",
+      "cases": "Cases",
+      "tasks": "Tasks",
+      "quotations": "Quotations",
+      "payouts": "Payouts",
+      "claimPool": "Claim Pool"
+    },
+    "dashboard": {
+      "welcome": "👋 Welcome Back, Sales Consultant",
+      "stats": {
+        "leadsToFollowUp": "Leads to Follow Up",
+        "newToday": "{count} New Today",
+        "newCasesThisMonth": "New Cases This Month",
+        "vsLastMonth": "vs Last Month ↑{percent}%",
+        "revenueThisMonth": "Revenue This Month",
+        "targetAchieved": "Target Achieved {percent}%",
+        "pendingPayouts": "Pending Payouts",
+        "pendingItems": "{count} Pending Items"
+      },
+      "salesFunnel": {
+        "title": "Sales Funnel",
+        "consultation": "Consultation",
+        "evaluation": "Evaluation",
+        "quotation": "Quotation",
+        "scheduled": "Scheduled",
+        "inTreatment": "In Treatment",
+        "followUp": "Follow-up"
+      },
+      "todaysTasks": {
+        "title": "Today's Tasks",
+        "followUpQuotation": "Follow up {name}'s quotation feedback",
+        "sendItinerary": "Send {name}'s itinerary confirmation",
+        "requestDocuments": "Request additional documents from {name}",
+        "contactNewLead": "Contact new lead - {name}",
+        "tomorrow": "Tomorrow",
+        "high": "High",
+        "medium": "Medium"
+      },
+      "latestLeads": {
+        "title": "Latest Leads",
+        "website": "Website",
+        "agent": "Agent",
+        "referral": "Referral",
+        "hoursAgo": "{count} hours ago",
+        "daysAgo": "{count} days ago",
+        "followUp": "Follow Up"
+      },
+      "payoutProgress": {
+        "title": "Payout Progress",
+        "viewDetails": "View Details",
+        "pendingReview": "Pending Review",
+        "underReview": "Under Review",
+        "approved": "Approved",
+        "received": "Received",
+        "receivedThisMonth": "Received This Month"
+      }
+    },
+    "submitPatient": {
+      "title": "Submit New Patient Information",
+      "description": "Please fill in complete patient case information step by step",
+      "backToList": "Back to Patient List",
+      "createAccount": {
+        "title": "Create Patient Account",
+        "description": "Fill in basic patient information, system will send invitation link",
+        "infoText": "After account creation, patients will receive email/SMS invitation link to log in and fill in detailed medical information (symptoms, medical history, drug allergies, examination reports, etc.)"
+      },
+      "form": {
+        "patientName": "Patient Name *",
+        "patientNamePlaceholder": "Enter patient name",
+        "patientCode": "Patient Code",
+        "patientCodePlaceholder": "e.g., BJ-30s (auto-generated)",
+        "patientCodeHint": "Leave blank for auto-generation based on city and age",
+        "gender": "Gender *",
+        "genderPlaceholder": "Please select",
+        "male": "Male",
+        "female": "Female",
+        "age": "Age *",
+        "agePlaceholder": "Enter age",
+        "city": "City *",
+        "cityPlaceholder": "e.g., Beijing",
+        "phone": "Contact Phone *",
+        "phonePlaceholder": "Enter contact phone",
+        "email": "Email *",
+        "emailPlaceholder": "For receiving invitation links and notifications",
+        "emailHint": "Patient will receive account activation link via this email"
+      },
+      "nextSteps": {
+        "title": "📋 Next Steps",
+        "step1": "Create patient account and send invitation link",
+        "step2": "Patient activates account and logs in via email link",
+        "step3": "Patient fills in detailed medical information in Patient Portal (5 steps)",
+        "step4": "After patient submission, hospital can view complete case information"
+      },
+      "actions": {
+        "cancel": "Cancel",
+        "createAndSend": "Create Patient Account and Send Invitation"
+      }
+    },
+    "claimPool": {
+      "title": "Patient Claim Pool",
+      "description": "Claim on new patients and win business opportunities",
+      "urgency": {
+        "high": "Urgent",
+        "medium": "Medium",
+        "low": "Normal"
+      },
+      "yearsOld": " years old",
+      "hours": " hours",
+      "timeRemaining": "Remaining {time}",
+      "claimDeadline": "Claim Deadline",
+      "estimatedValue": "Estimated Value",
+      "currentClaims": "Current Claims",
+      "highestClaim": "Highest Commission Claim",
+      "yourClaimLabel": "Your Commission Claim (CNY)",
+      "claimPlaceholder": "Enter your commission claim",
+      "submitClaim": "Submit Claim",
+      "claimSubmitted": "Claim Submitted: ¥{amount}",
+      "claimSuccess": "Claim successful! Your commission claim: ¥{amount}"
+    },
+    "leads": {
+      "title": "Lead Management",
+      "description": "Manage your potential customers and follow up for conversions",
+      "createLead": "Create Lead",
+      "searchPlaceholder": "Search lead name, condition...",
+      "allStatus": "All Status",
+      "allSources": "All Sources",
+      "loading": "Loading...",
+      "noData": "No data",
+      "pagination": {
+        "showing": "Showing",
+        "of": "of",
+        "items": "items",
+        "prev": "Previous",
+        "next": "Next"
+      },
+      "status": {
+        "new": "New Lead",
+        "assigned": "Assigned",
+        "contacted": "Contacted",
+        "qualifying": "Qualifying",
+        "collecting_records": "Collecting Records",
+        "submitted_to_hospital": "Submitted to Hospital",
+        "plan_ready": "Plan Ready",
+        "negotiation": "Negotiation",
+        "ready_for_invitation": "Ready for Invitation",
+        "converted": "Converted",
+        "lost": "Lost",
+        "disqualified": "Disqualified",
+        "qualified": "Qualified"
+      },
+      "sources": {
+        "website": "Website",
+        "whatsapp": "WhatsApp",
+        "facebook": "Facebook",
+        "agency": "Agent",
+        "referral": "Referral",
+        "manual": "Manual Entry",
+        "agent": "Agent",
+        "advertisement": "Advertisement"
+      },
+      "table": {
+        "leadId": "Lead ID",
+        "name": "Name",
+        "condition": "Condition",
+        "city": "City",
+        "source": "Source",
+        "status": "Status",
+        "createdTime": "Created Time",
+        "lastContact": "Last Contact",
+        "actions": "Actions"
+      },
+      "actions": {
+        "markAsContacted": "Mark as Contacted",
+        "markAsQualified": "Mark as Qualified",
+        "convertToCase": "Convert to Case",
+        "addNote": "Add Note",
+        "markAsLost": "Mark as Lost"
+      },
+      "lostReason": "Insufficient Budget"
+    },
+    "leadDetail": {
+      "backToList": "Back to Leads List",
+      "conditionDescription": "Condition Description",
+      "budgetRange": "Budget Range: ",
+      "preferredTime": "Preferred Time: ",
+      "followUpRecords": "Follow-up Records",
+      "addNotePlaceholder": "Add follow-up notes...",
+      "addNote": "Add Note",
+      "noteAdded": "Note added: ",
+      "recordContent": "Lead created, source: Website inquiry form",
+      "system": "System",
+      "statusAndActions": "Status & Actions",
+      "currentStatus": "Current Status",
+      "availableActions": "Available Actions",
+      "leadClosed": "Lead is closed",
+      "noActionsAvailable": "No actions available",
+      "actions": {
+        "assignToSales": "Assign to Sales",
+        "markContacted": "Mark as Contacted",
+        "startQualifying": "Start Qualifying",
+        "startCollectingRecords": "Start Collecting Records",
+        "submitToHospital": "Submit to Hospital",
+        "planReady": "Plan Ready",
+        "startNegotiation": "Start Negotiation",
+        "readyForInvitation": "Ready for Invitation",
+        "convertToCase": "Convert to Case",
+        "convertDescription": "Issue medical invitation and convert to case",
+        "markLost": "Mark as Lost",
+        "markDisqualified": "Mark as Disqualified"
+      },
+      "quickActions": "Quick Actions",
+      "makeCall": "Make Call",
+      "sendEmail": "Send Email",
+      "sendMessage": "Send Message",
+      "timeline": "Timeline",
+      "leadCreated": "Lead Created",
+      "statusUpdated": "Status updated",
+      "convertingToCase": "Converting to case...",
+      "executing": "Executing"
+    },
+    "cases": {
+      "title": "Case Management",
+      "description": "Manage your medical cases and track the entire process",
+      "createCase": "Create Case",
+      "searchPlaceholder": "Search patient code, condition...",
+      "viewMode": {
+        "list": "List",
+        "kanban": "Kanban"
+      },
+      "table": {
+        "caseId": "Case ID",
+        "patient": "Patient",
+        "condition": "Condition",
+        "hospital": "Hospital",
+        "stage": "Stage",
+        "estimatedAmount": "Estimated Amount",
+        "updateTime": "Update Time",
+        "actions": "Actions"
+      },
+      "actions": {
+        "sendMessage": "Send Message",
+        "viewQuotation": "View Quotation"
+      },
+      "priority": " Priority"
+    },
+    "tasks": {
+      "title": "Task Management",
+      "description": "Manage your to-do items and ensure no follow-ups are missed",
+      "createTask": "Create Task",
+      "dialog": {
+        "title": "Create New Task",
+        "taskTitle": "Task Title *",
+        "taskTitlePlaceholder": "Enter task title...",
+        "taskDescription": "Task Description",
+        "taskDescriptionPlaceholder": "Enter task details...",
+        "relatedCase": "Related Case",
+        "selectCase": "Select related case...",
+        "priority": "Priority",
+        "highPriority": "High Priority",
+        "mediumPriority": "Medium Priority",
+        "lowPriority": "Low Priority",
+        "dueDate": "Due Date",
+        "create": "Create Task"
+      },
+      "searchPlaceholder": "Search tasks...",
+      "allPriorities": "All Priorities",
+      "status": {
+        "open": "Open",
+        "inProgress": "In Progress",
+        "done": "Done",
+        "canceled": "Canceled"
+      },
+      "priority": {
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low"
+      },
+      "groups": {
+        "dueToday": "Due Today",
+        "thisWeek": "This Week",
+        "completedOn": "Completed on {date}"
+      },
+      "completedAt": "Completed on {date}",
+      "viewCase": "View Case",
+      "taskData": {
+        "followUpQuotation": {
+          "title": "Follow up {name}'s quotation feedback",
+          "description": "Contact patient to confirm acceptance of quotation plan"
+        },
+        "sendItinerary": {
+          "title": "Send {name}'s itinerary confirmation email",
+          "description": "Confirm patient itinerary, send detailed schedule"
+        },
+        "requestDocuments": {
+          "title": "Request additional documents from {name}",
+          "description": "Remind patient to submit latest examination report"
+        },
+        "contactNewLead": {
+          "title": "Contact new lead - {name}",
+          "description": "Initial phone contact, understand patient needs"
+        },
+        "prepareDocuments": {
+          "title": "Prepare pre-operative documents for {name}",
+          "description": "Organize patient pre-operative examination documents, send to hospital"
+        },
+        "followUpConsultation": {
+          "title": "Follow up {name}'s consultation",
+          "description": "Reply to patient's questions about treatment plan"
+        }
+      }
+    },
+    "quotations": {
+      "title": "Quotation Management",
+      "description": "View and manage all case hospital quotations",
+      "searchPlaceholder": "Search quotation number, patient code...",
+      "status": {
+        "draft": "Draft",
+        "sent": "Sent",
+        "accepted": "Accepted",
+        "rejected": "Rejected",
+        "expired": "Expired"
+      },
+      "table": {
+        "quotationId": "Quotation ID",
+        "quotationNumber": "Quotation Number",
+        "case": "Case",
+        "hospital": "Hospital",
+        "amount": "Amount",
+        "status": "Status",
+        "validUntil": "Valid Until",
+        "actions": "Actions"
+      },
+      "actions": {
+        "sendToPatient": "Forward to Patient",
+        "downloadPdf": "Download PDF"
+      },
+      "dialog": {
+        "quotationNumber": "Quotation",
+        "case": "Case",
+        "patient": "Patient",
+        "hospital": "Hospital",
+        "validUntil": "Valid Until",
+        "itemDetails": "Quotation Details",
+        "item": "Item",
+        "quantity": "Quantity",
+        "unitPrice": "Unit Price",
+        "subtotal": "Subtotal",
+        "items": {
+          "heartBypassSurgery": "Heart Bypass Surgery",
+          "icuCare": "ICU Care (3 days)",
+          "generalWard": "General Ward (7 days)",
+          "postOpRehab": "Post-operative Rehabilitation",
+          "medicinesConsumables": "Medicines & Consumables",
+          "mastectomy": "Mastectomy",
+          "chemotherapy": "Chemotherapy (6 cycles)",
+          "hospitalizationCosts": "Hospitalization Costs"
+        },
+        "total": "Total",
+        "notes": "Notes"
+      }
+    },
+    "payouts": {
+      "title": "Payout Tracking",
+      "description": "View your commission payout progress",
+      "status": {
+        "pending": "Pending Review",
+        "inReview": "Under Review",
+        "approved": "Approved",
+        "paid": "Paid"
+      },
+      "summary": {
+        "total": "Total Payouts",
+        "count": "{count} Transactions"
+      },
+      "progressOverview": "Payout Progress Overview",
+      "pendingAmount": "Pending Payout",
+      "paidAmount": "Paid Out",
+      "monthlyPaid": "Paid This Month",
+      "totalPending": "Total Pending",
+      "searchPlaceholder": "Search case ID, patient code...",
+      "table": {
+        "case": "Case",
+        "patient": "Patient",
+        "hospital": "Hospital",
+        "amount": "Amount",
+        "status": "Status",
+        "date": "Date",
+        "expected": "Expected",
+        "details": "Details",
+        "actions": "Actions"
+      },
+      "dialog": {
+        "title": "Payout Details",
+        "case": "Case",
+        "patientCode": "Patient Code",
+        "hospital": "Hospital",
+        "condition": "Condition",
+        "payoutAmount": "Payout Amount",
+        "channel": "Payout Channel",
+        "currentStatus": "Current Status",
+        "expectedDate": "Expected Payout Date",
+        "actualDate": "Actual Receipt Date",
+        "notes": "Notes"
+      }
+    },
+    "profile": {
+      "jobTitle": "Senior Sales Consultant",
+      "editProfile": "Edit Profile",
+      "saveChanges": "Save Changes",
+      "email": "Email",
+      "phone": "Phone",
+      "location": "Location",
+      "performanceStats": "Performance Stats",
+      "closedPatients": "Closed Patients",
+      "totalRevenue": "Total Revenue",
+      "conversionRate": "Conversion Rate",
+      "certifications": "Certifications",
+      "languageSkills": "Language Skills",
+      "languages": {
+        "chinese": "Chinese",
+        "english": "English",
+        "arabic": "Arabic"
+      },
+      "proficiency": {
+        "native": "Native",
+        "fluent": "Fluent",
+        "good": "Good"
+      },
+      "workExperience": "Professional Experience",
+      "specialtyAreas": "Specialty Areas",
+      "targetMarkets": "Target Markets",
+      "personalIntro": "Personal Introduction"
+    },
+    "agentLeads": {
+      "title": "Create Agent Lead",
+      "description": "Submit new patient lead from agent referral",
+      "formTitle": "Agent Lead Information",
+      "formDescription": "All leads created through this form will be marked as 'Agent' source",
+      "source": "Lead Source",
+      "sourceHint": "This lead will be automatically marked as Agent source",
+      "namePlaceholder": "Enter patient name",
+      "phonePlaceholder": "Enter contact phone",
+      "emailPlaceholder": "Enter email address (optional)",
+      "cityPlaceholder": "Enter city",
+      "agePlaceholder": "Enter age",
+      "condition": "Medical Condition",
+      "conditionPlaceholder": "e.g., Heart disease, Cancer, Orthopedic surgery",
+      "urgency": "Urgency Level",
+      "notesPlaceholder": "Enter additional information, patient requirements, etc.",
+      "submitLead": "Submit Lead",
+      "submitSuccess": "Agent lead created successfully!"
+    }
+  },
+  "messaging": {
+    "title": "Message Center",
+    "searchPlaceholder": "Search conversations...",
+    "inputPlaceholder": "Type a message...",
+    "autoTranslate": "AI Auto-Translate",
+    "roles": {
+      "doctor": "Doctor",
+      "patient": "Patient"
+    },
+    "conversations": {
+      "drLiMin": "Dr. Li Min",
+      "liMin": "Li Min",
+      "drZhangHua": "Dr. Zhang Hua",
+      "wangFang": "Wang Fang"
+    },
+    "hospitals": {
+      "medoraInternational": "Medora International Hospital"
+    },
+    "times": {
+      "10MinutesAgo": "10 minutes ago",
+      "1HourAgo": "1 hour ago",
+      "2HoursAgo": "2 hours ago",
+      "3HoursAgo": "3 hours ago"
+    },
+    "lastMessages": {
+      "recordsReceived": "Patient records received, we will arrange initial diagnosis soon",
+      "thankYou": "Okay, thank you for your help",
+      "provideXray": "Please provide the patient's latest X-ray",
+      "costDetails": "I would like to know about the cost details"
+    },
+    "senders": {
+      "salesConsultant": "Sales Consultant"
+    },
+    "messages": {
+      "thanksForReferral": "Hello, thank you for referring this patient. I have reviewed the medical records.",
+      "complexCase": "Hello Dr. Li, this patient's condition is quite complex, please provide a detailed treatment plan assessment.",
+      "furtherExamination": "Based on initial diagnosis, further examination is recommended. Estimated treatment period is 2-3 weeks.",
+      "costRange": "Okay, I will convey this information to the patient. Regarding the cost quotation, what is the approximate range?",
+      "recordsReceivedLong": "Patient records received, we will arrange initial diagnosis soon"
+    }
+  },
+  "appointments": {
+    "create": "Create Appointment",
+    "createDesc": "Set up a new appointment for the patient; once confirmed it will sync to the calendar.",
+    "basicInfo": "Basic Information",
+    "caseId": "Case ID",
+    "type": {
+      "firstVisit": "First Visit",
+      "followUp": "Follow-up",
+      "remoteConsultation": "Remote Consultation",
+      "preSurgery": "Pre-surgery"
+    },
+    "typeConsult": "Consultation",
+    "typeFollow": "Follow-up",
+    "typeSurgery": "Surgery",
+    "typeRemote": "Remote Consultation",
+    "date": "Date",
+    "time": "Time",
+    "duration": "Duration (minutes)",
+    "location": "Location/Room",
+    "locationPlaceholder": "e.g. Outpatient Building Level 3 Room 305",
+    "notes": "Notes",
+    "notesPlaceholder": "Additional details or preparation instructions",
+    "previewTime": "Preview time",
+    "title": "Appointment Calendar",
+    "subtitle": "View and manage your patient appointments",
+    "today": "Today",
+    "dayView": "Day View",
+    "weekView": "Week View",
+    "filterStatus": "Filter Status",
+    "allStatuses": "All Statuses",
+    "newAppointment": "Start New Appointment",
+    "statusLegend": "Status Legend",
+    "noAppointments": "No Appointments",
+    "language": "Language",
+    "firstTimeVisit": "First Visit",
+    "needsTranslator": "Needs Translator",
+    "weekViewComingSoon": "Week View Coming Soon...",
+    "weekViewDescription": "Full week view functionality will be available soon",
+    "status": {
+      "requested": "Requested",
+      "confirmed": "Confirmed",
+      "rescheduleRequested": "Reschedule Requested",
+      "checkedIn": "Checked In",
+      "completed": "Completed",
+      "noShow": "No Show",
+      "cancelled": "Cancelled"
+    },
+    "changeStatus": "Change Appointment Status",
+    "currentStatus": "Current Status",
+    "selectNewStatus": "Select New Status",
+    "cancelReason": "Cancellation Reason",
+    "optional": "Optional",
+    "cancelReasonPlaceholder": "Please provide the reason for cancellation...",
+    "confirmCancel": "Confirm Cancellation",
+    "statusDesc": {
+      "requested": "Patient or sales has selected a time slot, awaiting hospital confirmation",
+      "confirmed": "Hospital/doctor has confirmed this time slot - official schedule",
+      "rescheduleRequested": "Patient/sales has requested to reschedule, new time not yet determined",
+      "checkedIn": "Patient has checked in at hospital or entered video waiting room",
+      "completed": "Appointment consultation completed, medical records have been written",
+      "noShow": "Patient did not show up as scheduled - needs follow-up",
+      "cancelled": "Appointment cancelled by patient, doctor, or other reasons"
+    }
+  },
+  "hospital": {
+    "title": "Hospital Portal",
+    "hospitalStaff": "Hospital Staff",
+    "welcome": "Welcome back",
+    "welcomeDescription": "View assigned cases, communicate with patients, and manage appointments",
+    "recentCases": "Recent Cases",
+    "recentCasesDescription": "Cases assigned to your hospital",
+    "noCasesYet": "No cases yet",
+    "nav": {
+      "dashboard": "Dashboard",
+      "cases": "Cases",
+      "appointments": "Appointments",
+      "consultations": "Consultations",
+      "messages": "Messages",
+      "invitationLetters": "Invitation Letters",
+      "materials": "Marketing Materials",
+      "documents": "Documents",
+      "profile": "Hospital Profile"
+    },
+    "stats": {
+      "assignedCases": "Assigned Cases",
+      "activeCases": "Active cases",
+      "newCases": "New Handovers",
+      "todayConsultations": "Today's Consultations",
+      "pendingMessages": "Pending Messages",
+      "unreadMessages": "unread messages",
+      "weeklyCompleted": "Weekly Completed",
+      "upcomingAppointments": "Upcoming Appointments",
+      "thisWeek": "This week",
+      "documentsToReview": "Documents to Review",
+      "pendingReview": "Pending review"
+    },
+    "dashboard": {
+      "todayConsultations": {
+        "title": "Today's Consultations",
+        "description": "Today's scheduled online consultations",
+        "viewAll": "View All",
+        "aiTranslation": "AI Translation",
+        "minutes": "minutes",
+        "enterConsultation": "Enter Consultation",
+        "noConsultations": "No consultations scheduled today"
+      },
+      "newCases": {
+        "title": "New Assigned Cases",
+        "description": "New cases awaiting your contact",
+        "viewAll": "View All",
+        "minutesAgo": "{minutes} minutes ago",
+        "hoursAgo": "{hours} hours ago",
+        "daysAgo": "{days} days ago",
+        "noCases": "No new assigned cases"
+      },
+      "messages": {
+        "title": "Patient Messages",
+        "description": "Messages received through CRM",
+        "viewAll": "View All",
+        "noMessages": "No new messages"
+      },
+      "notifications": {
+        "title": "System Notifications",
+        "description": "Important reminders and updates",
+        "consultationReminder": "Consultation Reminder",
+        "consultationsToday": "You have {count} consultations scheduled today",
+        "caseReminder": "Case Reminder",
+        "newCasesWaiting": "{count} new cases are waiting for you to contact patients",
+        "weeklySummary": "Weekly Summary",
+        "weeklyStats": "Completed {cases} cases and {consultations} consultations this week"
+      },
+      "errors": {
+        "loadFailed": "Failed to load. Please refresh the page and try again."
+      }
+    },
+    "materials": {
+      "title": "Hospital Materials Management",
+      "description": "Manage your hospital information, procedures, surgeon team, and case gallery",
+      "reviewNotice": {
+        "title": "Review Instructions",
+        "description": "Your submitted materials will be pre-reviewed by AI and verified by our team before publication. Please ensure information is accurate and professional.",
+        "reviewTime": "AI review + human verification, within 0.5 business days",
+        "bilingualSuggestion": "Content will be AI-translated into multiple languages"
+      },
+      "consumerLink": {
+        "title": "Consumer Website Link",
+        "description": "Share this link with patients to let them view your hospital details",
+        "descriptionBeauty": "The following information will be published as hospital information on www.medorabeauty.com",
+        "descriptionRegular": "The following information will be published as hospital information on www.medicaltourismchina.health"
+      },
+      "tabs": {
+        "hospital": "Hospital Info",
+        "procedures": "Procedures",
+        "surgeons": "Surgeon Team",
+        "cases": "Case Gallery"
+      },
+      "status": {
+        "draft": "Draft",
+        "pendingReview": "Pending Review",
+        "published": "Published",
+        "rejected": "Rejected"
+      },
+      "hospitalInfo": {
+        "title": "Hospital Basic Information",
+        "basicInfo": "Basic Information",
+        "hospitalName": "Hospital Name",
+        "yearEstablished": "Year Established",
+        "tagline": "Tagline",
+        "description": "Description",
+        "contactLocation": "Contact & Location",
+        "address": "Address",
+        "phone": "Phone",
+        "email": "Email",
+        "website": "Website",
+        "location": "Location",
+        "operatingHours": "Operating Hours",
+        "setHours": "Set Hours",
+        "paymentMethods": "Payment Methods",
+        "promotionalMedia": "Promotional Media",
+        "hospitalPhotos": "Hospital Photos",
+        "uploadPhoto": "Upload Photo",
+        "promotionalVideo": "Promotional Video",
+        "uploadVideo": "Upload Promotional Video",
+        "noVideoUploaded": "No video uploaded",
+        "videoTestimonials": "Video Testimonials",
+        "addVideoTestimonial": "Add Video Testimonial",
+        "patientSuccessStories": "Patient Success Stories",
+        "noVideoTestimonials": "No video testimonials",
+        "patientName": "Patient Name",
+        "country": "Country",
+        "procedure": "Procedure",
+        "readyToSave": "Ready to Save",
+        "videoWillUpload": "Video will upload after clicking Save",
+        "certifications": "Certifications",
+        "addCertification": "Add Certification",
+        "selectCertType": "Select Certification Type",
+        "year": "Year",
+        "since": "Since",
+        "active": "Active",
+        "hospitalCapacity": "Hospital Capacity",
+        "beds": "Number of Beds",
+        "patientCapacity": "Patient Capacity",
+        "totalPatientsServed": "Total Patients Served",
+        "multilingualStaff": "Multilingual Staff",
+        "airportServices": "Airport Services",
+        "followUpCare": "Follow-up Care",
+        "amenities": "Amenities",
+        "nearbyAttractions": "Nearby Attractions",
+        "addNearbyAttraction": "Add Nearby Attraction",
+        "attractionName": "Attraction Name",
+        "distance": "Distance",
+        "noNearbyAttractions": "No nearby attractions",
+        "notSet": "Not Set",
+        "loading": "Loading..."
+      },
+      "buttons": {
+        "edit": "Edit",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "add": "Add",
+        "upload": "Upload",
+        "uploading": "Uploading...",
+        "replace": "Replace"
+      },
+      "errors": {
+        "uploadFailed": "Upload failed: {message}",
+        "unknownError": "Unknown error"
+      },
+      "operatingHoursModal": {
+        "title": "Operating Hours",
+        "weekdays": "Weekdays",
+        "apply": "Apply",
+        "closed": "Closed",
+        "noHoursSet": "No hours set",
+        "save": "Save"
+      },
+      "procedures": {
+        "title": "Procedures & Pricing",
+        "addProcedure": "Add Procedure",
+        "addFirstProcedure": "Add First Procedure",
+        "editProcedure": "Edit Procedure",
+        "procedure": "Procedure",
+        "selectProcedure": "Select Procedure",
+        "loadingProcedures": "Loading procedures...",
+        "currency": "Currency",
+        "selectCurrency": "Select Currency",
+        "minPrice": "Min Price",
+        "maxPrice": "Max Price",
+        "markAsPopular": "Mark as Popular",
+        "popular": "Popular",
+        "noProcedures": "No procedures"
+      },
+      "surgeons": {
+        "title": "Surgeon Team",
+        "addSurgeon": "Add Surgeon",
+        "addFirstSurgeon": "Add First Surgeon",
+        "editSurgeon": "Edit Surgeon",
+        "name": "Name",
+        "titlePosition": "Title/Position",
+        "yearsOfExperience": "Years of Experience",
+        "yearsExperience": "Years Experience",
+        "specialties": "Specialties",
+        "loadingSpecialties": "Loading specialties...",
+        "languages": "Languages",
+        "education": "Education",
+        "addEducation": "Add Education",
+        "certifications": "Certifications",
+        "addCertification": "Add Certification",
+        "introduction": "Introduction",
+        "expertiseSpecialization": "Expertise & Specialization",
+        "treatmentPhilosophy": "Treatment Philosophy",
+        "achievements": "Achievements",
+        "addAchievement": "Add Achievement",
+        "profilePhoto": "Profile Photo",
+        "uploadPhoto": "Upload Photo",
+        "noSurgeons": "No surgeons",
+        "more": "More"
+      },
+      "cases": {
+        "title": "Case Gallery",
+        "addCase": "Add Case",
+        "addFirstCase": "Add First Case",
+        "editCase": "Edit Case",
+        "beforeAfterPhoto": "Before/After Photo",
+        "uploadBeforeAfter": "Upload Before/After Photo",
+        "beforeAfterHint": "Upload a comparison photo with before (left) and after (right)",
+        "before": "Before",
+        "after": "After",
+        "leftBefore": "Left: Before",
+        "rightAfter": "Right: After",
+        "procedureRequired": "Procedure *",
+        "selectProcedure": "Select Procedure",
+        "loadingProcedures": "Loading procedures...",
+        "leadSurgeon": "Lead Surgeon",
+        "patientAgeRange": "Patient Age Range",
+        "selectAgeRange": "Select Age Range",
+        "patientGender": "Patient Gender",
+        "selectGender": "Select Gender",
+        "male": "Male",
+        "female": "Female",
+        "caseDescription": "Case Description",
+        "descriptionPlaceholder": "Please describe the case details in English, including patient background, procedure, recovery, etc...",
+        "noCases": "No cases",
+        "case": "Case"
+      },
+      "days": {
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday",
+        "sunday": "Sunday"
+      },
+      "ageRanges": {
+        "20-30": "20-30 years",
+        "30-40": "30-40 years",
+        "40-50": "40-50 years",
+        "50-60": "50-60 years",
+        "60-70": "60-70 years",
+        "70+": "70+ years"
+      }
+    },
+    "cases": {
+      "title": "Case Management",
+      "subtitle": "View and manage all cases assigned to the hospital",
+      "searchPlaceholder": "Search case ID, patient name...",
+      "filter": "Filter",
+      "stats": {
+        "all": "All Cases",
+        "pendingQuote": "Pending Quote",
+        "pending": "Pending",
+        "processing": "Processing"
+      },
+      "listTitle": "Case List",
+      "listDesc": "Click case to view details",
+      "tabs": {
+        "all": "All",
+        "new": "New Handovers",
+        "inProgress": "In Progress",
+        "completed": "Completed"
+      },
+      "status": {
+        "transferredToHospital": "Transferred",
+        "hospitalContacted": "Contacted",
+        "consultationScheduled": "Consultation Scheduled",
+        "inTreatment": "In Treatment",
+        "completed": "Completed",
+        "closed": "Closed"
+      },
+      "statsCards": {
+        "allCases": "All Cases",
+        "newHandovers": "New Handovers",
+        "inProgress": "In Progress",
+        "pendingMessages": "Pending Messages"
+      },
+      "patientInfo": {
+        "yearsOld": "years old",
+        "male": "Male",
+        "female": "Female"
+      },
+      "empty": "No cases found",
+      "errors": {
+        "loadFailed": "Failed to load: {message}"
+      }
+    },
+    "messages": {
+      "title": "Message Center",
+      "description": "Communicate with patients through CRM system",
+      "crmForwardingMode": "CRM Message Forwarding Mode",
+      "forwardingInfo": {
+        "title": "CRM Message Forwarding System",
+        "description": "All messages you send will be automatically forwarded to patients' contact information through the platform CRM system. To protect patient privacy, you cannot directly view patients' phone numbers, emails, or WhatsApp numbers.",
+        "emailSupport": "Email forwarding supported",
+        "whatsappSupport": "WhatsApp forwarding supported",
+        "autoClassification": "Automatic message type classification"
+      },
+      "conversationList": {
+        "newMessage": "New Message",
+        "searchPlaceholder": "Search conversations...",
+        "sections": {
+          "admin": "Admin",
+          "hospital": "Hospital",
+          "patients": "Patients"
+        },
+        "unreadCount": "Unread",
+        "time": {
+          "yesterday": "Yesterday",
+          "daysAgo": "{days} days ago",
+          "justNow": "Just now",
+          "minutesAgo": "{minutes} min ago",
+          "hoursAgo": "{hours} hours ago"
+        },
+        "empty": {
+          "noConversations": "No conversations yet",
+          "noUnread": "No unread messages",
+          "noResults": "No matching conversations found"
+        },
+        "newConversationDialog": {
+          "title": "New Message",
+          "description": "Start a new conversation with a patient",
+          "generalMessage": {
+            "title": "General Message",
+            "description": "Send a general message to patient"
+          },
+          "caseConsultation": {
+            "title": "Case Consultation",
+            "description": "Choose a case and start consulting"
+          },
+          "orSelectCase": "or select a case",
+          "searchCases": "Search cases...",
+          "noCases": "No cases available",
+          "unknownPatient": "Unknown Patient",
+          "diagnosisPending": "Diagnosis Pending",
+          "existingConversation": "Existing Conversation →",
+          "createConversation": "Create Conversation",
+          "caseInfo": {
+            "patient": "Patient:",
+            "procedure": "Procedure:",
+            "hospital": "Hospital:",
+            "status": "Status:"
+          },
+          "buttons": {
+            "cancel": "Cancel",
+            "startConversation": "Start Conversation"
+          }
+        }
+      },
+      "chat": {
+        "selectConversation": "Select a conversation to start chatting",
+        "unknown": "Unknown",
+        "admin": "Admin",
+        "hospital": "Hospital",
+        "online": "Online",
+        "offline": "Offline",
+        "showTranslation": "Show Translation",
+        "noMessages": "No messages yet",
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "translating": "Translating...",
+        "clickToTranslate": "Click to translate",
+        "retry": "Retry",
+        "sending": "Sending...",
+        "sent": "Sent",
+        "sendFailed": "Send failed",
+        "file": "File",
+        "patientCode": "Patient Code:",
+        "male": "Male",
+        "female": "Female",
+        "yearsOld": "years old",
+        "primaryDiagnosis": "Primary Diagnosis",
+        "language": "Language",
+        "caseNumber": "Case Number",
+        "viewFullCaseDetails": "View Full Case Details",
+        "relatedCase": "Related Case",
+        "patientName": "Patient Name",
+        "caseInfo": "Case Info",
+        "enterMessage": "Enter message content...",
+        "send": "Send",
+        "sendWithCount": "Send ({count})",
+        "crmForwardingNotice": "Messages will be forwarded to patient's WhatsApp/Email via CRM system (to protect patient privacy, you cannot directly view contact information)",
+        "download": "Download",
+        "filePreview": "File Preview",
+        "unknownType": "Unknown Type",
+        "aiSummary": "AI Summary",
+        "generatingSummary": "Generating summary...",
+        "summaryFailed": "Summary generation failed or timed out",
+        "regenerate": "Regenerate",
+        "loading": "Loading...",
+        "cannotLoadFile": "Cannot load file",
+        "videoNotSupported": "Your browser does not support video playback",
+        "cannotPreview": "This file type cannot be previewed, please download to view",
+        "downloadFile": "Download File",
+        "uploadFailed": "Upload failed",
+        "sendFailedRetry": "Send failed, please retry",
+        "languages": {
+          "zh": "Chinese",
+          "en": "English",
+          "es": "Spanish",
+          "fr": "French",
+          "de": "German",
+          "ar": "Arabic"
+        }
+      }
+    },
+    "caseDetail": {
+      "header": {
+        "casePrefix": "Case:",
+        "patientCodePrefix": "Patient Code:",
+        "backToList": "Back to Case List",
+        "loadingFailed": "Loading failed:",
+        "caseNotFound": "Case not found"
+      },
+      "patientInfo": {
+        "yearsOld": "years old",
+        "male": "Male",
+        "female": "Female",
+        "medicalDocuments": "Medical Documents",
+        "messageRecords": "Message Records"
+      },
+      "tabs": {
+        "intake": "Medical Intake",
+        "documents": "Medical Records",
+        "messages": "Message Records",
+        "diagnosis": "Diagnosis",
+        "marketing": "Marketing Email",
+        "coldcall": "Phone Follow-up",
+        "invitation": "Medical Invitation Letter",
+        "consultation": "Online Consultation"
+      },
+      "medicalIntake": {
+        "step1": {
+          "title": "Symptom Localization & Classification",
+          "symptomLocation": "Symptom Location",
+          "symptomNature": "Symptom Nature",
+          "onsetTime": "Onset Time",
+          "progressTrend": "Progress Trend",
+          "diagnosisStage": "Diagnosis Stage",
+          "diseaseCategory": "Disease Category"
+        },
+        "step2": {
+          "title": "Detailed Symptom Description",
+          "detailedDescription": "Detailed Description",
+          "aggravatingFactors": "Aggravating Factors",
+          "relievingFactors": "Relieving Factors",
+          "previousTreatment": "Previous Treatment"
+        },
+        "step3": {
+          "title": "Medical History",
+          "medicalHistory": "Medical History",
+          "chronicConditions": "Chronic Conditions",
+          "familyHistory": "Family History"
+        },
+        "step4": {
+          "title": "Medications & Allergies",
+          "currentMedications": "Current Medications",
+          "drugAllergies": "Drug Allergies",
+          "foodAllergies": "Food Allergies"
+        },
+        "step5": {
+          "title": "Examination Results & Treatment Expectations",
+          "examTypes": "Examinations Done",
+          "examDetails": "Exam Details",
+          "labResults": "Lab Results",
+          "treatmentExpectations": "Treatment Expectations",
+          "budgetRange": "Budget Range",
+          "expectedTimeline": "Expected Timeline"
+        },
+        "step6": {
+          "title": "Uploaded Examination Reports & Documents"
+        },
+        "view": "View",
+        "download": "Download"
+      },
+      "documentsTab": {
+        "title": "Medical Records",
+        "description": "All medical documents from this case",
+        "sources": {
+          "invitationLetter": "Medical Invitation Letter",
+          "diagnosis": "Diagnosis Attachments",
+          "medicalIntake": "Medical Records",
+          "messageAttachment": "Message Attachments"
+        },
+        "countSuffix": "items",
+        "empty": {
+          "title": "No medical records yet",
+          "description": "Upload invitation letters, diagnosis reports, or send file messages to display here"
+        }
+      },
+      "messagesTab": {
+        "noMessages": "No message records",
+        "sent": "Sent",
+        "sending": "Sending",
+        "inputPlaceholder": "Enter message content...",
+        "send": "Send",
+        "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+        "patientContext": {
+          "codePrefix": "Code:",
+          "nextAppointment": "Next Appointment",
+          "mainDiagnosis": "Main Diagnosis",
+          "allergies": "Allergy History",
+          "recentDocuments": "Recent Documents"
+        }
+      },
+      "diagnosisTab": {
+        "title": "Diagnosis",
+        "description": "Record diagnosis results and treatment recommendations",
+        "addDiagnosis": "Add Diagnosis",
+        "type": {
+          "confirmed": "Confirmed Diagnosis",
+          "preliminary": "Preliminary Diagnosis",
+          "followup": "Follow-up Opinion"
+        },
+        "severity": {
+          "mild": "Mild",
+          "moderate": "Moderate",
+          "severe": "Severe"
+        },
+        "detailedDiagnosis": "Detailed Diagnosis",
+        "treatmentRecommendation": "Treatment Recommendation",
+        "suggestedTests": "Suggested Further Tests",
+        "costEstimate": "Estimated Cost",
+        "treatmentDuration": "Treatment Duration",
+        "attachment": "Attachment",
+        "empty": {
+          "title": "No diagnosis yet",
+          "description": "Click the button above to add your diagnosis and treatment recommendations"
+        }
+      },
+      "diagnosisDialog": {
+        "title": "Add Diagnosis",
+        "description": "Please fill in your diagnosis results and treatment recommendations",
+        "diagnosisType": "Diagnosis Type",
+        "diagnosisTypes": {
+          "preliminary": {
+            "label": "Preliminary Diagnosis",
+            "desc": "Initial assessment"
+          },
+          "confirmed": {
+            "label": "Confirmed Diagnosis",
+            "desc": "Definitive diagnosis"
+          },
+          "followup": {
+            "label": "Follow-up Opinion",
+            "desc": "Post-treatment review"
+          }
+        },
+        "diagnosisName": "Diagnosis Name",
+        "diagnosisNameRequired": "Diagnosis Name *",
+        "diagnosisNamePlaceholder": "e.g., Coronary Atherosclerotic Heart Disease",
+        "icdCode": "ICD-10 Code",
+        "icdCodePlaceholder": "e.g., I25.1",
+        "severity": "Severity",
+        "severityPlaceholder": "Select severity",
+        "detailedDiagnosis": "Detailed Diagnosis",
+        "detailedDiagnosisPlaceholder": "Describe diagnosis basis, condition analysis...",
+        "treatmentRecommendation": "Treatment Recommendation",
+        "treatmentRecommendationPlaceholder": "Recommended treatment plan, medication advice, precautions...",
+        "suggestedTests": "Suggested Further Tests",
+        "suggestedTestsPlaceholder": "e.g., Coronary angiography, 24-hour Holter monitor",
+        "costEstimate": "Estimated Cost Range",
+        "costEstimatePlaceholder": "Select cost range",
+        "costOptions": {
+          "5k": "Under 5K USD",
+          "5-10k": "5-10K USD",
+          "10-20k": "10-20K USD",
+          "20-50k": "20-50K USD",
+          "50k+": "Over 50K USD"
+        },
+        "treatmentDuration": "Estimated Treatment Duration",
+        "treatmentDurationPlaceholder": "Select treatment duration",
+        "durationOptions": {
+          "1week": "Within 1 week",
+          "2weeks": "1-2 weeks",
+          "1month": "2 weeks - 1 month",
+          "3months": "1-3 months",
+          "6months": "Over 3 months"
+        },
+        "attachmentOptional": "Attachment Document (Optional)",
+        "uploadPrompt": "Click to upload diagnosis report or examination results",
+        "uploadHint": "Supports PDF, images, Word formats, max 10MB",
+        "remove": "Remove",
+        "notice": "Diagnosis will be saved as important medical records and can be sent to patients through CRM system.",
+        "cancel": "Cancel",
+        "save": "Save Diagnosis",
+        "fillRequired": "Please fill in diagnosis type and name"
+      },
+      "marketingTab": {
+        "title": "Marketing Email",
+        "description": "Send hospital service promotions and offers to patients",
+        "modules": {
+          "title": "Email Content Modules",
+          "description": "Select content modules to include in the email, the system will automatically generate professional marketing emails",
+          "coreModules": "Core Modules",
+          "featuredModules": "Featured Content",
+          "optionalModules": "Optional Modules (Click to Add)",
+          "moduleTypes": {
+            "logo": {
+              "title": "Logo",
+              "desc": "Hospital/clinic logo"
+            },
+            "slogan": {
+              "title": "Slogan",
+              "desc": "Brand tagline & value proposition"
+            },
+            "cases": {
+              "title": "Success Stories",
+              "desc": "Before/After comparisons"
+            },
+            "reviews": {
+              "title": "Patient Reviews",
+              "desc": "Real reviews showcase"
+            },
+            "hospital": {
+              "title": "Hospital Introduction",
+              "desc": "Facilities & qualifications"
+            },
+            "doctors": {
+              "title": "Expert Team",
+              "desc": "Doctor credentials"
+            },
+            "services": {
+              "title": "Service Features",
+              "desc": "Core advantages"
+            },
+            "pricing": {
+              "title": "Pricing Plans",
+              "desc": "Packages & offers"
+            },
+            "travel": {
+              "title": "Travel Services",
+              "desc": "Transport & accommodation"
+            },
+            "contact": {
+              "title": "Contact Information",
+              "desc": "Booking consultation"
+            }
+          },
+          "generate": "Auto-generate Email Content"
+        },
+        "compose": {
+          "title": "Compose Email",
+          "subject": "Email Subject",
+          "subjectPlaceholder": "Enter email subject...",
+          "content": "Email Content",
+          "contentPlaceholder": "Enter email content...\n\nYou can use these variables:\n{{patient_name}} - Patient name\n{{hospital_name}} - Hospital name\n{{treatment_type}} - Treatment type",
+          "privacyNotice": "Marketing emails will be sent through CRM system. To protect patient privacy, you cannot directly view patients' email addresses.",
+          "saveDraft": "Save Draft",
+          "sendEmail": "Send Email",
+          "sending": "Sending...",
+          "fillRequired": "Please fill in email subject and content",
+          "sent": "Marketing email submitted, waiting for AI review before sending"
+        },
+        "history": {
+          "title": "Send History",
+          "statuses": {
+            "opened": "Opened",
+            "clicked": "Clicked",
+            "delivered": "Delivered",
+            "sent": "Sent",
+            "pending": "Pending"
+          },
+          "empty": "No send history"
+        }
+      },
+      "phoneTab": {
+        "title": "Phone Follow-up",
+        "description": "Record phone communication and follow up on patient intent",
+        "makeCall": "Make Call",
+        "crmSystem": {
+          "title": "CRM Phone System",
+          "description": "Click 'Make Call' to dial the patient through CRM call center. To protect patient privacy, you cannot directly view the patient's phone number.",
+          "features": {
+            "recording": "Auto recording",
+            "saveRecords": "Call records auto-saved",
+            "aiSummary": "AI call summary"
+          }
+        },
+        "logCall": {
+          "title": "Log Call",
+          "callType": "Call Type",
+          "callTypePlaceholder": "Select call type",
+          "callTypes": {
+            "outbound": "Outbound - Initiated contact",
+            "inbound": "Inbound - Patient callback",
+            "missed": "Not connected"
+          },
+          "callResult": "Call Result",
+          "callResultPlaceholder": "Select call result",
+          "callResults": {
+            "interested": "Interested - Continue follow-up",
+            "scheduled": "Scheduled - Confirmed appointment",
+            "callback": "Callback - Patient considering",
+            "notInterested": "Not interested - Not needed now",
+            "noAnswer": "No answer"
+          },
+          "summary": "Call Summary",
+          "summaryPlaceholder": "Record key points of call...\n\nExample: Patient interested in treatment plan, asked about costs and hospitalization time, needs to discuss with family before replying.",
+          "nextFollowUp": "Next Follow-up Date",
+          "cancel": "Cancel",
+          "save": "Save Record",
+          "saving": "Saving...",
+          "fillRequired": "Please select call type and result",
+          "saved": "Call record saved"
+        },
+        "history": {
+          "title": "Call Records",
+          "types": {
+            "outbound": "Outbound",
+            "inbound": "Inbound",
+            "missed": "Not connected"
+          },
+          "results": {
+            "interested": "Interested",
+            "scheduled": "Scheduled",
+            "callback": "Callback needed",
+            "noAnswer": "No answer",
+            "notInterested": "Not interested"
+          },
+          "nextFollowUpPrefix": "Next follow-up:",
+          "empty": "No call records"
+        }
+      },
+      "consultationTab": {
+        "consultationType": "Consultation Type",
+        "consultationTypePlaceholder": "Select consultation type",
+        "consultationTypes": {
+          "initial": "Initial Consultation",
+          "followup": "Follow-up Consultation",
+          "consultation": "Expert Consultation",
+          "report": "Report Interpretation"
+        },
+        "consultingDoctor": "Consulting Doctor",
+        "doctorPlaceholder": "Select doctor",
+        "doctors": {
+          "dr1": "Dr. Wang - Cardiology",
+          "dr2": "Prof. Li - Cardiovascular Surgery",
+          "dr3": "Dr. Zhang - Cardiac Rehabilitation"
+        }
+      },
+      "coldcallTab": {
+        "form": {
+          "title": "Record Phone Call",
+          "callType": "Call Type",
+          "callTypePlaceholder": "Select call type",
+          "callTypes": {
+            "outbound": "Outbound Call",
+            "inbound": "Inbound Call",
+            "missed": "Missed Call"
+          },
+          "callResult": "Call Result",
+          "callResultPlaceholder": "Select call result",
+          "callResults": {
+            "interested": "Patient Interested",
+            "scheduled": "Appointment Scheduled",
+            "callback": "Callback Requested",
+            "notInterested": "Not Interested",
+            "noAnswer": "No Answer"
+          },
+          "summary": "Call Summary",
+          "summaryPlaceholder": "Enter notes about the conversation...",
+          "nextFollowUp": "Next Follow-up Date",
+          "cancel": "Cancel",
+          "save": "Save Record",
+          "saving": "Saving...",
+          "fillRequired": "Please fill in call type and result",
+          "saved": "Phone call recorded successfully!"
+        },
+        "history": {
+          "title": "Call History",
+          "empty": "No phone call records yet",
+          "types": {
+            "outbound": "Outbound",
+            "inbound": "Inbound",
+            "missed": "Missed"
+          },
+          "results": {
+            "interested": "Interested",
+            "scheduled": "Scheduled",
+            "callback": "Callback",
+            "notInterested": "Not Interested",
+            "noAnswer": "No Answer"
+          },
+          "nextFollowUpPrefix": "Next follow-up:"
+        }
+      },
+      "invitationUpload": {
+        "title": "Medical Invitation Letter Upload",
+        "description": "Upload hospital invitation letter files, supports PDF, Word and image formats",
+        "dragAndDrop": "Drag files here to upload",
+        "or": "or",
+        "selectFile": "Select File",
+        "supportedFormats": "Supported formats: PDF, DOC, DOCX, JPG, PNG | Max file size: 10MB",
+        "uploading": "Uploading...",
+        "stats": {
+          "totalUploads": "Total Uploads",
+          "verified": "Verified",
+          "processing": "Processing"
+        },
+        "uploadedFiles": "Uploaded Invitation Letters",
+        "uploadedFilesDescription": "View and manage uploaded invitation letter files",
+        "noFiles": "No uploaded files",
+        "noFilesDescription": "Uploaded invitation letter files will appear here",
+        "uploadInstructions": "Upload Instructions",
+        "uploadNote": "Please upload the official invitation letter issued by the hospital. The system will automatically process and verify the file content.",
+        "feature1": "Supports multiple file uploads",
+        "feature2": "Automatic file verification",
+        "status": {
+          "uploaded": "Uploaded",
+          "processing": "Processing",
+          "verified": "Verified",
+          "error": "Upload Failed"
+        },
+        "actions": {
+          "view": "View",
+          "download": "Download",
+          "delete": "Delete"
+        },
+        "patient": "Patient"
+      }
+    },
+    "consultations": {
+      "title": "Online Consultations",
+      "description": "Manage video consultations, AI translation and consultation records",
+      "createButton": "Create Consultation Link",
+      "searchPlaceholder": "Search patient name, case ID...",
+      "filter": "Filter",
+      "loadError": "Failed to load",
+      "createConsultation": "Schedule Consultation",
+      "tabs": {
+        "all": "All",
+        "scheduled": "Scheduled",
+        "completed": "Completed"
+      },
+      "stats": {
+        "scheduled": "Scheduled Consultations",
+        "today": "Today's Consultations",
+        "needTranslation": "Need Translation",
+        "completed": "Completed"
+      },
+      "listTitle": "Consultation List",
+      "listDescription": "View and manage all online consultations",
+      "noScheduled": "No scheduled consultations",
+      "noCompleted": "No completed consultations",
+      "noConsultations": "No consultation records",
+      "aiFeatures": {
+        "title": "AI Consultation Features",
+        "description": "The system supports AI real-time translation and consultation summary features to help doctors communicate seamlessly with international patients.",
+        "multiLanguage": "Supports 6 languages real-time translation",
+        "bilingualSummary": "Auto-generates bilingual consultation summary"
+      },
+      "videoModal": {
+        "title": "Consultation Recording Playback",
+        "consultationDate": "Consultation Date",
+        "duration": "Duration",
+        "minutes": "minutes",
+        "translation": "Translation Service",
+        "aiTranslation": "AI Real-time Translation",
+        "none": "None",
+        "recordingRetention": "Recording retention: 90 days",
+        "close": "Close",
+        "downloadRecording": "Download Recording",
+        "clickToPlay": "Click to play consultation recording"
+      },
+      "transcriptModal": {
+        "title": "Full Conversation Record",
+        "duration": "Duration",
+        "minutes": "minutes",
+        "aiTranslation": "AI Translation",
+        "showTranslation": "Show Translation",
+        "loading": "Loading conversation record...",
+        "processing": "AI Transcription in Progress",
+        "processingNote": "Usually takes a few minutes, please refresh later",
+        "noTranscript": "Transcript Not Yet Generated",
+        "noTranscriptNote": "After video consultation ends, AI will automatically transcribe the full conversation",
+        "close": "Close",
+        "exportPDF": "Export PDF",
+        "doctor": "Doctor",
+        "patient": "Patient",
+        "doctorShort": "Dr",
+        "patientShort": "Pt",
+        "entriesCount": "{count} statements total · AI auto-transcription, minor errors may exist",
+        "willGenerateAfter": "Transcript will be generated after consultation ends"
+      },
+      "createModal": {
+        "title": "Create Consultation Link",
+        "description": "Create online video consultation appointment for patient",
+        "selectCase": "Select Case *",
+        "loading": "Loading...",
+        "chooseCase": "Choose a case",
+        "doctor": "Consulting Doctor (Optional)",
+        "doctorPlaceholder": "Enter doctor name...",
+        "scheduledTime": "Consultation Time *",
+        "duration": "Consultation Duration (minutes)",
+        "duration15": "15 minutes",
+        "duration30": "30 minutes",
+        "duration45": "45 minutes",
+        "duration60": "60 minutes",
+        "enableAiTranslation": "Enable AI Real-time Translation (Recommended for international patients)",
+        "notes": "Notes (Optional)",
+        "notesPlaceholder": "Enter consultation-related notes...",
+        "crmNotification": "After creation, the system will automatically send consultation reminder to patient via CRM, including consultation link and preparation items.",
+        "cancel": "Cancel",
+        "create": "Create Consultation",
+        "creating": "Creating...",
+        "selectCaseAndTime": "Please select case and consultation time",
+        "created": "Consultation appointment created"
+      },
+      "card": {
+        "minutes": "min",
+        "aiTranslation": "AI Translation",
+        "patientLanguage": "Patient Language",
+        "languages": {
+          "zh": "Chinese",
+          "en": "English",
+          "es": "Spanish",
+          "fr": "French",
+          "de": "German",
+          "bn": "Bengali"
+        },
+        "status": {
+          "scheduled": "Scheduled",
+          "inProgress": "In Progress",
+          "completed": "Completed",
+          "cancelled": "Cancelled",
+          "noShow": "No Show"
+        },
+        "copied": "Copied",
+        "copyLink": "Copy Link",
+        "enterConsultation": "Enter Consultation",
+        "collapse": "Collapse Details",
+        "viewDetails": "View Details",
+        "aiSummary": "AI Consultation Summary",
+        "aiGenerated": "AI Generated",
+        "symptoms": "Main Symptoms",
+        "diagnosis": "Preliminary Diagnosis",
+        "recommendations": "Doctor's Recommendations",
+        "followUpPlan": "Follow-up Plan",
+        "prescriptions": "Prescriptions",
+        "usedAiTranslation": "This consultation used AI real-time translation service",
+        "summaryProcessing": "AI Summary Generating",
+        "summaryProcessingNote": "Usually takes 1-2 minutes, please refresh later",
+        "summaryWillGenerate": "AI summary will be auto-generated after consultation completes",
+        "notes": "Notes",
+        "viewFullTranscript": "View Full Conversation",
+        "viewFullVideo": "View Full Video"
+      },
+      "empty": "No consultations"
+    }
+  },
+  "caseDetail": {
+    "tabs": {
+      "medicalInfo": "Medical Information",
+      "diagnosisReport": "Diagnosis Report",
+      "messages": "Messages",
+      "tasks": "Tasks",
+      "invitation": "Medical Invitation",
+      "journey": "Journey Information"
+    },
+    "metrics": {
+      "assignedTime": "Assigned Time",
+      "assignedTimeValue": "2025-10-15 14:30",
+      "lastUpdated": "Last Updated",
+      "lastUpdatedValue": "2 hours ago",
+      "invitationStatus": "Invitation Status",
+      "invitationStatusValue": "Pending issuance",
+      "riskLevel": "Risk Level",
+      "riskHigh": "High"
+    },
+    "medicalInfo": {
+      "labFiles": {
+        "title": "Lab & Imaging Files",
+        "original": "Original File",
+        "aiTranslate": "AI Translation"
+      },
+      "doctorEvaluation": {
+        "title": "Doctor Evaluation",
+        "description": "Based on the provided information, please fill in a professional medical assessment",
+        "add": "Add Evaluation"
+      },
+      "mockData": {
+        "labFiles": {
+          "ultrasound": "Ultrasound Exam.pdf",
+          "bloodTest": "Blood Test.pdf",
+          "imaging": "Imaging Archive.zip"
+        },
+        "step2": {
+          "primaryLocation": "Abdomen - Right lower quadrant",
+          "symptomNature": {
+            "intensePain": "Severe pain",
+            "persistent": "Persistent"
+          },
+          "onsetTime": "1-6 months",
+          "progressionTrend": "Gradually worsening",
+          "progressionDescription": "Pain progressed from mild to severe, especially at night",
+          "diagnosisStage": "Not yet diagnosed",
+          "mainCategory": "Surgical"
+        },
+        "step3": {
+          "detailedDescription": "Persistent right lower quadrant pain for 3 days with mild fever (37.5°C) and loss of appetite. Pain is dull and persistent, occasionally becoming severe. Worsens with activity, slightly relieved by lying down.",
+          "progression": "Day 1: mild and tolerable; Day 2: worsened and affected work; Day 3: severe pain, unable to carry out normal activities.",
+          "aggravatingFactors": {
+            "activity": "During activity",
+            "afterMeals": "After meals",
+            "night": "At night"
+          },
+          "relievingFactors": {
+            "rest": "After rest",
+            "afterMedication": "After medication"
+          },
+          "dailyLifeImpact": {
+            "workStudy": "Work/Study",
+            "sleepQuality": "Sleep quality",
+            "appetite": "Appetite"
+          },
+          "dailyLifeImpactDetails": "Unable to work normally, sleep quality severely reduced, appetite markedly decreased.",
+          "previousTreatments": "Took painkiller (Ibuprofen 400mg), moderate effect; pain returns 2-3 hours later."
+        },
+        "step4": {
+          "chronicConditionsDescription": "Hypertension for 5 years, well controlled with medication, blood pressure stable at 130/85 mmHg."
+        },
+        "step5": {
+          "medicationTypeAntihypertensive": "Antihypertensive",
+          "medications": {
+            "amlodipine": {
+              "name": "Amlodipine",
+              "dosage": "5mg",
+              "frequency": "Once daily",
+              "duration": "5 years",
+              "purpose": "Control blood pressure"
+            }
+          },
+          "allergy": {
+            "substance": "Penicillin",
+            "reaction": "Rash, itching"
+          }
+        },
+        "step6": {
+          "examTypes": {
+            "ultrasound": "Ultrasound",
+            "bloodTest": "Blood test"
+          },
+          "examDetails": "Ultrasound on 2024-01-12 at Peking Union Medical College Hospital showed swelling of right lower abdominal soft tissue and abnormal echo in the appendix region.",
+          "labResults": "CBC: elevated WBC 15.2×10⁹/L (normal 4-10), neutrophils 85% (normal 50-70%). CRP 45 mg/L (normal <10).",
+          "imagingDescription": "Ultrasound imaging taken 2024-01-12 shows appendix enlarged to 12mm.",
+          "filesProvisionNotes": "Can provide electronic exam reports and imaging files."
+        },
+        "step7": {
+          "expectations": {
+            "diagnosisConfirmation": "Diagnostic confirmation",
+            "treatmentPlan": "Treatment plan",
+            "costEstimation": "Cost estimation"
+          },
+          "budgetRange": "5-10k USD",
+          "budgetNotes": "Can adjust slightly; prioritize treatment efficacy",
+          "preferredTiming": "Within 1 month",
+          "timingConstraints": "Work schedule is tight, hopes to proceed soon",
+          "preferredContactChannel": "WeChat",
+          "bestContactTime": "Weekdays 19:00-21:00",
+          "additionalNotes": "Hopes to arrange soon; worsening pain severely impacts work and life. If surgery is needed, would like to understand recovery and precautions."
+        }
+      }
+    },
+    "diagnosisReport": {
+      "create": {
+        "title": "Create Diagnosis Report",
+        "description": "Fill in diagnosis content and upload related attachments",
+        "content": "Diagnosis Content *",
+        "contentPlaceholder": "Please enter detailed diagnosis content, including symptom analysis, examination results, diagnosis conclusions and treatment recommendations...",
+        "charCount": "{count} characters entered",
+        "attachmentUpload": "Attachment Upload",
+        "uploadHint": "Click to select file or drag here",
+        "fileSize": "File Size",
+        "supportedFormats": "Supported formats: PDF, Word, JPG, PNG (max 10MB)",
+        "clear": "Clear",
+        "submit": "Submit Diagnosis Report"
+      },
+      "history": {
+        "title": "Diagnosis Report History",
+        "count": "{count} reports in total",
+        "status": {
+          "draft": "Draft",
+          "submitted": "Submitted",
+          "approved": "Approved"
+        },
+        "attachments": "Attachments",
+        "viewDetails": "View Details",
+        "download": "Download",
+        "emptyTitle": "No diagnosis reports yet",
+        "emptyDescription": "Please fill in and submit the first diagnosis report above"
+      }
+    },
+    "tasks": {
+      "assignee": "Assignee",
+      "deadline": "Deadline",
+      "status": {
+        "pending": "Pending",
+        "completed": "Completed",
+        "inProgress": "In Progress"
+      }
+    },
+    "journey": {
+      "title": "Itinerary Arrangement",
+      "description": "Patient arrival and reception full process overview",
+      "itineraryNumber": "Itinerary Number",
+      "nodes": {
+        "arrival": "Arrival",
+        "pickup": "Private car pickup service",
+        "hotelCheckin": "Hotel check-in",
+        "hospitalAdmission": "Hospital admission"
+      },
+      "medicalButler": {
+        "title": "Dedicated Medical Butler",
+        "description": "Full responsibility for patient's itinerary and life services during their stay in China"
+      },
+      "importantNotes": {
+        "title": "Important Notes",
+        "bringDicom": "Please remind patient to bring all original imaging data (DICOM format)",
+        "stopAnticoagulants": "Anticoagulant medications such as aspirin must be stopped at least 5 days before surgery",
+        "driverArrival": "Pickup driver will arrive 30 minutes before flight landing"
+      }
+    },
+    "invitation": {
+      "config": {
+        "title": "Invitation Configuration",
+        "description": "Fill in information to generate official medical invitation letter",
+        "admissionDate": "Proposed Admission Date",
+        "treatmentDuration": "Estimated Treatment Duration",
+        "treatmentPlan": "Treatment Plan Overview",
+        "estimatedCost": "Estimated Cost (RMB)",
+        "sendToPatient": "Send to Patient",
+        "downloadPdf": "Download PDF"
+      },
+      "content": {
+        "title": "Medical Treatment Invitation Letter",
+        "invitationNumber": "Invitation Number",
+        "date": "Date",
+        "dearPatient": "Dear Mr./Ms. {name}",
+        "arrangements": "Itinerary and Treatment Arrangements",
+        "proposedAdmission": "Proposed Admission Date",
+        "expectedDuration": "Expected Stay Duration",
+        "proposedTreatment": "Proposed Treatment Plan",
+        "visaNote": "This invitation letter can be used for medical visa application",
+        "attendingPhysician": "Attending Physician Signature",
+        "department": "Cardiology Department"
+      }
+    }
+  },
+  "patient": {
+    "title": "Patient Portal",
+    "nav": {
+      "dashboard": "Overview",
+      "application": "Application",
+      "messages": "Messages",
+      "appointments": "Appointments",
+      "journey": "Journey",
+      "materials": "Medical Info",
+      "consent": "Consent Forms",
+      "profile": "Profile",
+      "myCase": "My Case"
+    },
+    "dashboard": {
+      "welcome": "Welcome back, Li Min",
+      "subtitle": "Wishing you a speedy recovery, we will accompany you throughout your medical journey"
+    },
+    "myCase": {
+      "title": "My Case",
+      "caseIdLabel": "Case ID",
+      "patientCodeLabel": "Patient Code",
+      "status": {
+        "pendingQuote": "Pending Quote"
+      },
+      "dispatchedAt": "Dispatch Time",
+      "lastUpdate": "Last Update",
+      "risk": "Risk Level",
+      "riskHigh": "High",
+      "complaint": "Chief Complaint",
+      "complaintDesc": "Chest pain, shortness of breath for 3 months",
+      "history": "Medical History",
+      "historyDesc": "Hypertension for 5 years, diabetes for 2 years",
+      "medications": "Current Medications",
+      "medicationsDesc": "Aspirin, Metoprolol, Metformin",
+      "allergies": "Allergies",
+      "allergiesDesc": "Penicillin allergy",
+      "reportsTitle": "Test Reports",
+      "actions": {
+        "viewDetails": "View Details",
+        "chatWithDoctor": "Chat with Doctor"
+      }
+    },
+    "travelTimeline": {
+      "title": "Itinerary",
+      "flight": "Flight Information",
+      "flightRoute": "{flight} · {from} → {to}",
+      "pickup": "Pickup Service",
+      "hotelCheckin": "Hotel Check-in",
+      "hotelName": "Hilton Hotel {city}",
+      "hospitalAdmission": "Hospital Admission",
+      "confirmed": "Confirmed",
+      "pending": "Pending",
+      "medicalButler": {
+        "title": "Medical Butler",
+        "name": "Medical Butler Zhang",
+        "description": "Available 24/7 to assist you",
+        "contact": "Contact"
+      }
+    },
+    "profile": {
+      "title": "Profile",
+      "basicInfo": {
+        "title": "Basic Information",
+        "patientId": "Patient ID",
+        "genderAge": "Gender / Age",
+        "email": "Email",
+        "phone": "Phone",
+        "city": "City"
+      },
+      "medical": {
+        "title": "Medical Information",
+        "complaint": "Chief Complaint",
+        "complaintDesc": "Chest pain, shortness of breath for 3 months",
+        "history": "Past Medical History",
+        "historyDesc": "Hypertension for 5 years, diabetes for 2 years",
+        "medications": "Current Medications",
+        "medicationsDesc": "Aspirin, Metoprolol, Metformin",
+        "allergies": "Allergies",
+        "allergiesDesc": "Penicillin allergy"
+      }
+    },
+    "quickActions": {
+      "invitation": {
+        "label": "View Medical Invitation Letter",
+        "description": "For visa application"
+      },
+      "appointment": {
+        "label": "Appointment Time",
+        "description": "2025-10-15 14:30"
+      },
+      "journey": {
+        "label": "Travel Arrangements",
+        "description": "View itinerary details"
+      },
+      "quotation": {
+        "label": "Cost Quotation",
+        "description": "View detailed costs"
+      }
+    },
+    "medicalInfoForm": {
+      "progress": {
+        "label": "Progress",
+        "step": "Step {current} / {total}",
+        "completion": "Completion"
+      },
+      "buttons": {
+        "prev": "Previous",
+        "saveDraft": "Save Draft",
+        "next": "Next",
+        "submit": "Submit Medical Info"
+      },
+      "steps": {
+        "symptomLocation": {
+          "title": "Symptom Location",
+          "description": "Symptom location and nature"
+        },
+        "detailedSymptoms": {
+          "title": "Detailed Symptoms",
+          "description": "Detailed symptom description"
+        },
+        "medicalHistory": {
+          "title": "Medical History",
+          "description": "Past medical history"
+        },
+        "medicationsAllergies": {
+          "title": "Medications & Allergies",
+          "description": "Medications and allergies information"
+        },
+        "examinations": {
+          "title": "Exams & Expectations",
+          "description": "Examinations and expectations"
+        }
+      },
+      "step1": {
+        "title": "Symptom Location & Nature",
+        "subtitle": "Please describe your main symptoms",
+        "primaryLocation": {
+          "label": "Primary symptom location",
+          "options": {
+            "head": "Head and face",
+            "neck": "Neck",
+            "chest": "Chest",
+            "abdomen": "Abdomen",
+            "back": "Back and waist",
+            "joints": "Joints and limbs",
+            "other": "Other"
+          }
+        },
+        "symptomNature": {
+          "label": "Symptom nature (multi-select)",
+          "options": {
+            "dullPain": "Dull pain",
+            "severePain": "Severe pain",
+            "sharpPain": "Sharp pain",
+            "distendingPain": "Distending pain",
+            "numbness": "Numbness",
+            "weakness": "Weakness",
+            "tightness": "Tightness",
+            "difficultyBreathing": "Difficulty breathing",
+            "nauseaVomiting": "Nausea and vomiting",
+            "dizziness": "Dizziness"
+          }
+        },
+        "onsetTime": {
+          "label": "Onset time",
+          "options": {
+            "lt1Month": "Less than 1 month",
+            "oneToSixMonths": "1-6 months",
+            "sixToTwelveMonths": "6-12 months",
+            "gt1Year": "More than 1 year"
+          }
+        },
+        "progressionTrend": {
+          "label": "Progression trend",
+          "options": {
+            "worsening": "Getting worse",
+            "fluctuating": "Fluctuating",
+            "stable": "Stable",
+            "improving": "Improving"
+          }
+        },
+        "diagnosisStage": {
+          "label": "Current diagnosis stage",
+          "options": {
+            "undiagnosed": "Not diagnosed yet",
+            "preliminary": "Preliminary diagnosis",
+            "confirmed": "Confirmed",
+            "postTreatment": "Post-treatment follow-up"
+          }
+        },
+        "mainCategory": {
+          "label": "Main condition category",
+          "options": {
+            "surgery": "Surgical",
+            "tumor": "Tumor/Oncology",
+            "cardiovascular": "Cardiovascular",
+            "fertility": "Fertility/Reproductive",
+            "cosmetic": "Cosmetic/Plastic",
+            "general": "General internal medicine",
+            "other": "Other"
+          }
+        }
+      },
+      "step2": {
+        "title": "Detailed Symptom Description",
+        "subtitle": "Please describe your symptoms in detail",
+        "detailedSymptoms": {
+          "label": "Detailed symptom description",
+          "placeholder": "Please describe your symptoms in detail, including manifestations, frequency, intensity, etc.",
+          "counter": "Characters entered: {count}"
+        },
+        "aggravatingFactors": {
+          "label": "Aggravating factors (multi-select)",
+          "options": {
+            "activity": "During activity",
+            "afterMeals": "After meals",
+            "night": "At night",
+            "stress": "Stress",
+            "weather": "Weather changes",
+            "posture": "Posture changes"
+          }
+        },
+        "relievingFactors": {
+          "label": "Relieving factors (multi-select)",
+          "options": {
+            "rest": "After rest",
+            "medication": "After medication",
+            "heat": "Heat therapy",
+            "cold": "Cold therapy",
+            "massage": "Massage",
+            "postureChange": "Posture adjustment"
+          }
+        },
+        "dailyLifeImpact": {
+          "label": "Impact on daily life (multi-select)",
+          "options": {
+            "workStudy": "Work/Study",
+            "sleep": "Sleep quality",
+            "mobility": "Mobility",
+            "appetite": "Appetite",
+            "emotion": "Mood",
+            "social": "Social activities"
+          }
+        },
+        "previousTreatments": {
+          "label": "Previous treatments tried",
+          "placeholder": "Describe treatments or medications you have tried and their effectiveness."
+        }
+      },
+      "step3": {
+        "title": "Medical History",
+        "subtitle": "Please fill in your medical history",
+        "pastMedicalHistory": {
+          "label": "Past medical history (multi-select)",
+          "options": {
+            "hypertension": "Hypertension",
+            "diabetes": "Diabetes",
+            "heartDisease": "Heart disease",
+            "stroke": "Stroke",
+            "hepatitis": "Hepatitis",
+            "kidneyDisease": "Kidney disease",
+            "tumor": "Tumor",
+            "tuberculosis": "Tuberculosis",
+            "none": "No past medical history"
+          }
+        },
+        "chronicConditions": {
+          "label": "Chronic conditions",
+          "placeholder": "Describe your chronic conditions."
+        },
+        "familyHistory": {
+          "label": "Family history",
+          "placeholder": "Describe relatives with conditions and details."
+        }
+      },
+      "step4": {
+        "title": "Medications & Allergies",
+        "subtitle": "Please provide your medications and allergies",
+        "allergyNotice": "Allergy information is very important, please fill it truthfully.",
+        "currentMedications": {
+          "label": "Current medications",
+          "placeholder": "List medications you are taking, including name, dosage, and frequency."
+        },
+        "allergyHistory": "Allergy history",
+        "drugAllergies": {
+          "label": "Drug allergies",
+          "placeholder": "List drug names and reactions."
+        },
+        "foodAllergies": {
+          "label": "Food allergies",
+          "placeholder": "List foods and allergic reactions."
+        }
+      },
+      "step5": {
+        "title": "Exams & Treatment Expectations",
+        "subtitle": "Please provide exam information and expectations",
+        "examTypes": {
+          "label": "Recent exam types (multi-select)",
+          "options": {
+            "ct": "CT Scan",
+            "mri": "MRI",
+            "xray": "X-ray",
+            "ultrasound": "Ultrasound",
+            "bloodTest": "Blood test",
+            "ecg": "ECG",
+            "endoscopy": "Endoscopy"
+          }
+        },
+        "examDetails": {
+          "label": "Exam details",
+          "placeholder": "Describe exam dates, hospitals, and main findings."
+        },
+        "labResults": {
+          "label": "Lab results summary",
+          "placeholder": "Describe abnormal indicators and reference values."
+        },
+        "expectations": {
+          "label": "Treatment expectations (multi-select)",
+          "options": {
+            "diagnosis": "Diagnosis confirmation",
+            "treatmentPlan": "Treatment plan",
+            "secondOpinion": "Second opinion",
+            "costEstimation": "Cost estimation",
+            "followUp": "Post-operative follow-up"
+          }
+        },
+        "budgetRange": {
+          "label": "Budget range",
+          "options": {
+            "0-5k": "0-5k USD",
+            "5-10k": "5-10k USD",
+            "10-20k": "10-20k USD",
+            "20-50k": "20-50k USD",
+            ">50k": "Above 50k USD",
+            "uncertain": "Not sure yet"
+          }
+        },
+        "preferredTiming": {
+          "label": "Preferred treatment time",
+          "options": {
+            "within_1month": "Within 1 month",
+            "1-3months": "1-3 months",
+            "3-6months": "3-6 months",
+            ">6months": "After 6 months",
+            "flexible": "Flexible"
+          }
+        },
+        "almostDone": "Almost done! Please check required fields before clicking \"Submit\"."
+      }
+    },
+    "intakeDisplay": {
+      "submission": {
+        "title": "Patient intake submitted",
+        "submittedAt": "Submitted at"
+      },
+      "sections": {
+        "symptomLocation": {
+          "title": "Symptom location & nature"
+        },
+        "detailedSymptoms": {
+          "title": "Detailed symptoms"
+        },
+        "medicalHistory": {
+          "title": "Medical history"
+        },
+        "medicationsAllergies": {
+          "title": "Medications & allergies"
+        },
+        "examinations": {
+          "title": "Examinations"
+        },
+        "expectations": {
+          "title": "Treatment expectations & contact"
+        }
+      },
+      "fields": {
+        "otherSymptoms": "Other symptoms",
+        "progressionDescription": "Progression description",
+        "surgerySuggested": "Surgery suggested",
+        "pathologyDiagnosis": "Pathology diagnosis available",
+        "progression": "Condition progression",
+        "dailyLifeImpactDetails": "Impact details",
+        "surgeryHistory": "Surgical history",
+        "surgeryDate": "Date",
+        "surgeryHospital": "Hospital",
+        "surgeryComplications": "Complications",
+        "medicationTypes": "Medication types",
+        "currentMedicationDetails": "Current medications",
+        "dosage": "Dosage",
+        "frequency": "Frequency",
+        "duration": "Duration",
+        "purpose": "Purpose",
+        "allergyImportant": "Allergy information (important)",
+        "drugAllergies": "Drug allergies",
+        "foodAllergies": "Food allergies",
+        "otherAllergies": "Other allergies",
+        "reaction": "Reaction",
+        "imagingData": "Imaging data",
+        "pathologyReport": "Pathology report",
+        "canProvideFiles": "Can provide files",
+        "fileNotes": "Notes",
+        "otherExpectations": "Other expectations",
+        "budgetNotes": "Notes",
+        "timingConstraints": "Constraints",
+        "preferredContactChannel": "Preferred contact channel",
+        "bestContactTime": "Best contact time",
+        "additionalNotes": "Additional notes"
+      }
+    },
+    "appointmentPage": {
+      "back": "Back to Home",
+      "title": "Appointment Time",
+      "subtitle": "Your appointment details",
+      "upcoming": {
+        "title": "Upcoming Appointment",
+        "statusConfirmed": "Confirmed",
+        "edit": "Reschedule",
+        "dateLabel": "Appointment Date",
+        "dateValue": "Wednesday, Oct 15, 2025",
+        "timeLabel": "Appointment Time",
+        "timeValue": "14:30 - 15:30",
+        "timeNote": "Please arrive 15 minutes early",
+        "locationLabel": "Location",
+        "locationName": "Outpatient Building 3F · Cardiology",
+        "room": "Room 301",
+        "doctorTitle": "Attending Physician",
+        "doctorName": "Dr. Oven",
+        "doctorRole": "Cardiology Director",
+        "doctorExperience": "20 years experience · Chief Physician",
+        "phone": "+86 10 1234 5678",
+        "email": "doctor@medora.com"
+      },
+      "visitItems": {
+        "title": "Visit Items",
+        "list": {
+          "initialAssessment": "Initial assessment and medical history",
+          "vitals": "Blood pressure and glucose monitoring",
+          "ecg": "Electrocardiogram",
+          "treatmentPlan": "Initial treatment plan"
+        }
+      },
+      "preparation": {
+        "title": "Preparation",
+        "steps": {
+          "documents": {
+            "title": "Bring documents",
+            "description": "Please bring passport, visa, medical invitation letter, and past records"
+          },
+          "fasting": {
+            "title": "Fasting",
+            "description": "Blood tests are scheduled. Please fast for at least 8 hours."
+          },
+          "medication": {
+            "title": "Medication guidance",
+            "description": "Inform the doctor about current medications. Some may need to be paused."
+          },
+          "translation": {
+            "title": "Translation service",
+            "description": "Chinese-English translation available; book in advance for other languages."
+          }
+        }
+      },
+      "contact": {
+        "title": "Need help?",
+        "description": "For questions or to reschedule, contact our international department:",
+        "or": " or email ",
+        "phone": "+86 10 1234 5678",
+        "email": "international@medora.com"
+      }
+    }
+  },
+  "conditions": {
+    "heartBypassSurgery": "Heart Bypass Surgery",
+    "scoliosisCorrection": "Scoliosis Correction",
+    "kneeReplacement": "Knee Replacement",
+    "cataractSurgery": "Cataract Surgery",
+    "coronaryHeartDisease": "Coronary Heart Disease",
+    "breastCancer": "Breast Cancer",
+    "lungCancer": "Lung Cancer",
+    "thyroidCancer": "Thyroid Cancer",
+    "stomachCancer": "Stomach Cancer",
+    "boneCancer": "Bone Cancer",
+    "kidneyCancer": "Kidney Cancer",
+    "liverCancer": "Liver Cancer",
+    "gallbladderCancer": "Gallbladder Cancer",
+    "earlyStageLiverCancer": "Early-stage Liver Cancer",
+    "uterineFibroids": "Uterine Fibroids",
+    "lumbarDiscHerniation": "Lumbar Disc Herniation"
+  },
+  "status": {
+    "all": "All",
+    "active": "Active",
+    "inactive": "Inactive",
+    "pending": "Pending",
+    "inProgress": "In Progress",
+    "completed": "Completed",
+    "canceled": "Canceled",
+    "draft": "Draft",
+    "sent": "Sent",
+    "received": "Received",
+    "approved": "Approved",
+    "rejected": "Rejected"
+  },
+  "timeDate": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "tomorrow": "Tomorrow",
+    "thisWeek": "This Week",
+    "lastWeek": "Last Week",
+    "thisMonth": "This Month",
+    "lastMonth": "Last Month",
+    "minutesAgo": "{count} minutes ago",
+    "hoursAgo": "{count} hours ago",
+    "daysAgo": "{count} days ago",
+    "weeksAgo": "{count} weeks ago",
+    "monthsAgo": "{count} months ago"
+  },
+  "caseIntake": {
+    "title": "Medical Case Intake",
+    "subtitle": "Please complete the following information to help us provide you with the best medical care",
+    "backToDashboard": "Back to Dashboard",
+    "progress": "Step {current} of {total}",
+    "percentComplete": "{percent}% Complete",
+    "noStepsCompleted": "No steps completed yet",
+    "privacyNotice": "All your information is strictly confidential and will only be used for medical evaluation in accordance with our privacy policy.",
+    "cancel": "Cancel",
+    "saveDraft": "Save Draft",
+    "saving": "Saving...",
+    "previous": "Previous",
+    "next": "Next",
+    "submit": "Submit",
+    "submitting": "Submitting...",
+    "draftSaved": "Draft saved successfully",
+    "errorRequired": "Please complete all required fields before proceeding.",
+    "errorSubmit": "Failed to submit. Please try again.",
+    "step2": {
+      "title": "Quick Triage",
+      "description": "Tell us about your main concern"
+    },
+    "step3": {
+      "title": "Present Illness",
+      "description": "Detailed symptoms and progression",
+      "detailedSymptoms": "Detailed Symptoms",
+      "detailedSymptomsPlaceholder": "Please describe your symptoms in detail, including manifestations, severity, frequency, etc. (e.g., Right knee pain for 2 years, significantly worse when walking, slightly relieved after rest, occurs 3-4 times daily)",
+      "detailedSymptomsTip": "Tip: Please describe symptoms as detailed as possible, including duration, patterns, etc.",
+      "progression": "Disease Progression",
+      "progressionPlaceholder": "Please describe how symptoms have changed over time (e.g., gradually worsening, fluctuating, stable, etc.)",
+      "aggravatingFactors": "Aggravating Factors (Multiple Choice)",
+      "aggravating": {
+        "activity": "After activity/exercise",
+        "eating": "After eating",
+        "night": "At night",
+        "stress": "When stressed",
+        "weather": "Weather changes",
+        "position": "Certain positions",
+        "other": "Other aggravating factors"
+      },
+      "relievingFactors": "Relieving Factors (Multiple Choice)",
+      "relieving": {
+        "rest": "After rest",
+        "medication": "After medication",
+        "heat": "Heat application",
+        "cold": "Cold application",
+        "massage": "Massage",
+        "positionChange": "Position change",
+        "other": "Other relieving factors"
+      },
+      "impactOnLife": "Impact on Daily Life (Multiple Choice)",
+      "impact": {
+        "work": "Affects work",
+        "sleep": "Affects sleep",
+        "mobility": "Affects mobility",
+        "appetite": "Affects appetite",
+        "mood": "Affects mood",
+        "social": "Affects social life",
+        "exercise": "Cannot exercise",
+        "selfCare": "Affects self-care",
+        "detailedDescription": "Detailed description of impact"
+      },
+      "previousTreatments": "Previous Treatments Tried",
+      "previousTreatmentsPlaceholder": "Please list treatments you have tried and their effects (e.g., took XX medication with moderate effect; physical therapy provided some relief, etc.)"
+    },
+    "step4": {
+      "title": "Medical History",
+      "description": "Past conditions and surgeries",
+      "pastMedicalHistory": "Past Major Medical Conditions",
+      "condition": {
+        "hypertension": "Hypertension",
+        "diabetes": "Diabetes",
+        "heartDisease": "Heart Disease",
+        "stroke": "Stroke",
+        "hepatitis": "Hepatitis",
+        "kidneyDisease": "Kidney Disease",
+        "cancer": "Cancer",
+        "tuberculosis": "Tuberculosis"
+      },
+      "otherConditions": "Other Conditions",
+      "pleaseSpecify": "Please specify",
+      "noHistory": "No past major medical conditions",
+      "pastSurgicalHistory": "Past Surgical History",
+      "noSurgery": "No surgical history",
+      "hasSurgery": "Have surgical history",
+      "surgery": "Surgery",
+      "surgeryName": "Surgery Name",
+      "surgeryDate": "Date",
+      "hospital": "Hospital",
+      "complications": "Complications",
+      "addSurgery": "Add Surgery Record",
+      "removeSurgery": "Remove",
+      "optional": "Optional",
+      "ifAny": "If any, please specify",
+      "chronicConditions": "Chronic Conditions",
+      "noChronic": "No chronic conditions",
+      "hasChronic": "Have chronic conditions",
+      "chronicDescription": "Please describe your chronic conditions",
+      "familyHistory": "Family History",
+      "noFamily": "No significant family history",
+      "hasFamily": "Have family history",
+      "familyDescription": "Please describe hereditary or major diseases in your family (e.g., father has hypertension, mother has diabetes, etc.)"
+    },
+    "step5": {
+      "title": "Medications & Allergies",
+      "description": "Current medications and allergies",
+      "currentMedications": "Current Medications",
+      "medicationTypes": "Common Medication Types (Multiple Choice)",
+      "medType": {
+        "antihypertensive": "Antihypertensive",
+        "diabetes": "Diabetes medication",
+        "anticoagulant": "Anticoagulant",
+        "painRelief": "Pain relief",
+        "antibiotics": "Antibiotics",
+        "heart": "Heart medication",
+        "thyroid": "Thyroid medication",
+        "psychiatric": "Psychiatric medication"
+      },
+      "detailedMedications": "Detailed Medication List (Optional)",
+      "noMedications": "Not currently taking any medications",
+      "hasMedications": "Currently taking medications",
+      "medication": "Medication",
+      "medicationName": "Medication Name",
+      "dosage": "Dosage",
+      "frequency": "Frequency",
+      "duration": "Duration",
+      "purpose": "Purpose",
+      "addMedication": "Add Medication",
+      "allergyHistory": "Allergy History",
+      "noAllergies": "No known allergies",
+      "hasAllergies": "Have allergies",
+      "drugAllergies": "Drug Allergies",
+      "drugName": "Drug Name",
+      "reaction": "Reaction",
+      "addDrugAllergy": "Add Drug Allergy",
+      "foodAllergies": "Food Allergies",
+      "foodName": "Food Name",
+      "addFoodAllergy": "Add Food Allergy",
+      "otherAllergies": "Other Allergies (e.g., environmental)"
+    },
+    "step6": {
+      "title": "Test Results",
+      "description": "Examinations and lab results",
+      "recentExams": "Recent Medical Examinations (Multiple Choice)",
+      "selectExamTypes": "Please select examination types you have had",
+      "examType": {
+        "ct": "CT Scan",
+        "mri": "MRI",
+        "xray": "X-ray",
+        "ultrasound": "Ultrasound",
+        "bloodTest": "Blood Test",
+        "urineTest": "Urine Test",
+        "ecg": "ECG/EKG",
+        "endoscopy": "Endoscopy",
+        "biopsy": "Biopsy",
+        "petScan": "PET Scan"
+      },
+      "examDetails": "Examination Details (Optional)",
+      "examDetailsPlaceholder": "Please briefly describe examination dates, hospitals, and key findings (e.g., CT at XX Hospital in Jan 2024, found...)",
+      "labResults": "Laboratory Test Results",
+      "noLabResults": "No laboratory test results",
+      "hasLabResults": "Have laboratory test results",
+      "labResultsPlaceholder": "Please list main blood, urine, and other test results (e.g., CBC, liver function, kidney function) and abnormal values",
+      "imaging": "Medical Imaging Availability",
+      "noImaging": "No imaging available",
+      "hasImaging": "Have imaging available",
+      "imagingPlaceholder": "Please describe what imaging you have (e.g., chest CT disc, MRI films, etc.)",
+      "pathology": "Pathology Reports",
+      "noPathology": "No pathology report",
+      "hasPathology": "Have pathology report",
+      "pathologyPlaceholder": "Please paste or briefly describe the main content of the pathology report (e.g., tumor type, staging, etc.)",
+      "fileProvision": "Document Provision Intent",
+      "canProvide": "Can provide examination reports and imaging files later",
+      "cannotProvide": "Cannot provide at this time",
+      "additionalNotes": "Additional Notes",
+      "additionalNotesPlaceholder": "If there are special circumstances or notes, please write here",
+      "fileUploadNote": "Note: File upload feature will be available later. You can then upload documents via email or system."
+    },
+    "step7": {
+      "title": "Treatment Plan",
+      "description": "Expectations, budget, and timing",
+      "treatmentExpectations": "Main Treatment Expectations",
+      "selectAll": "Please select all that apply (multiple selections allowed)",
+      "expectation": {
+        "diagnosis": "Confirm diagnosis",
+        "treatmentPlan": "Develop treatment/surgery plan",
+        "secondOpinion": "Get second medical opinion",
+        "costEvaluation": "Evaluate treatment costs in China",
+        "postTreatment": "Post-treatment follow-up/recovery"
+      },
+      "expectationOther": "Other expectations or notes",
+      "expectationOtherPlaceholder": "If you have other expectations, please specify here",
+      "budgetRange": "Budget Range",
+      "selectBudget": "Please select budget range",
+      "budget": {
+        "0to5k": "$0 - $5,000 USD",
+        "5to10k": "$5,000 - $10,000 USD",
+        "10to20k": "$10,000 - $20,000 USD",
+        "20to50k": "$20,000 - $50,000 USD",
+        "over50k": "Over $50,000 USD",
+        "uncertain": "Uncertain"
+      },
+      "budgetNotes": "Budget Notes",
+      "budgetNotesPlaceholder": "If you have special budget considerations or notes, please write here",
+      "budgetNote": "Note: Budget is for reference only. Actual costs will be determined based on specific treatment plan",
+      "preferredTiming": "Preferred Timing",
+      "selectTiming": "Please select preferred timing",
+      "timing": {
+        "within1Month": "Within 1 month",
+        "1to3Months": "1-3 months",
+        "3to6Months": "3-6 months",
+        "after6Months": "After 6 months",
+        "flexible": "Flexible"
+      },
+      "timingConstraints": "Timing Constraints or Special Requirements",
+      "timingConstraintsPlaceholder": "If you have specific timing requirements or constraints, please specify here",
+      "contactPreferences": "Contact Preferences",
+      "preferredContact": "Preferred Contact Method",
+      "contact": {
+        "email": "Email",
+        "phone": "Phone",
+        "wechat": "WeChat",
+        "whatsapp": "WhatsApp"
+      },
+      "bestContactTime": "Best Time to Contact",
+      "bestContactTimePlaceholder": "e.g., Weekday mornings, weekend afternoons, etc.",
+      "additionalInfo": "Additional Information",
+      "additionalInfoPlaceholder": "If you have any other information or special requirements, please write here",
+      "additionalInfoHint": "e.g., Language preferences, companion needs, accommodation arrangements, etc.",
+      "almostDone": "Almost Done",
+      "reviewMessage": "Please review all information for accuracy, then click \"Submit\". Our medical team will contact you within 24-48 hours."
+    },
+    "q1": {
+      "title": "Q1: Where is the main discomfort? (Location)",
+      "step1": "Step 1: Select general region",
+      "step2": "Step 2: Select specific location",
+      "selectRegion": "Please select a general region first",
+      "otherLocation": "Please specify location"
+    },
+    "region": {
+      "head": "Head",
+      "neck": "Neck",
+      "chest": "Chest",
+      "abdomen": "Abdomen",
+      "backWaist": "Back/Waist",
+      "jointsLimbs": "Joints/Limbs",
+      "other": "Other"
+    },
+    "location": {
+      "head": "Head",
+      "face": "Face",
+      "neckThroat": "Neck / Throat",
+      "chestCenter": "Chest center / Precordial",
+      "chestLeft": "Left chest",
+      "chestRight": "Right chest",
+      "upperAbdomen": "Upper abdomen (epigastric)",
+      "rightUpperAbdomen": "Right upper abdomen",
+      "periumbilical": "Periumbilical (around navel)",
+      "rightLowerAbdomen": "Right lower abdomen",
+      "leftLowerAbdomen": "Left lower abdomen",
+      "wholeAbdomen": "Whole abdomen / unclear location",
+      "waist": "Waist/Lower back",
+      "back": "Back / Interscapular",
+      "shoulder": "Shoulder joint",
+      "elbow": "Elbow joint",
+      "wristHand": "Wrist / Hand",
+      "hip": "Hip joint",
+      "knee": "Knee joint",
+      "ankleFoot": "Ankle / Foot",
+      "genitourinary": "Genitourinary (urinary/genital area)",
+      "dizziness": "Dizziness (no specific location)",
+      "other": "Other location"
+    },
+    "q2": {
+      "title": "Q2: What does it feel like? (Symptom Nature)",
+      "prompt": "What sensations are most prominent? (Multiple choice)",
+      "painTypes": "Pain Types",
+      "sensoryAbnormalities": "Sensory Abnormalities",
+      "functionalIssues": "Functional Issues",
+      "other": "Other",
+      "otherNotes": "Other symptom characteristics (additional notes)"
+    },
+    "onsetCourse": {
+      "title": "Disease Onset and Course",
+      "duration": "Duration",
+      "pleaseSelect": "Please select",
+      "lessThan1Month": "Less than 1 month",
+      "1to6Months": "1-6 months",
+      "6to12Months": "6-12 months",
+      "moreThan1Year": "More than 1 year",
+      "progressionTrend": "Disease Progression Trend (Single Choice)",
+      "worsening": "Gradually worsening",
+      "fluctuating": "Fluctuating",
+      "stable": "Stable",
+      "improving": "Improving",
+      "additionalDescription": "Additional Description",
+      "additionalPlaceholder": "Please provide additional details about disease progression"
+    },
+    "diagnosisStage": {
+      "title": "Current Diagnosis Stage",
+      "undiagnosed": "Not yet diagnosed, self-reported symptoms only",
+      "preliminary": "Seen by local doctor, preliminary diagnosis received",
+      "confirmed": "Confirmed diagnosis, considering further treatment/surgery",
+      "postTreatment": "Post-treatment follow-up or recovery consultation"
+    },
+    "mainCategory": {
+      "title": "Main Medical Category",
+      "pleaseSelect": "Please select the most relevant category",
+      "hint": "Select the category that best matches your situation to help us match appropriate medical resources",
+      "surgery": "Surgery",
+      "tumor": "Tumor/Cancer",
+      "cardiovascular": "Cardiovascular",
+      "fertility": "Fertility/Gynecology",
+      "cosmetic": "Cosmetic/Plastic Surgery",
+      "general": "General Medicine",
+      "other": "Other"
+    },
+    "symptom": {
+      "dullPain": "Dull pain (vague, unclear)",
+      "severePain": "Severe/Colicky pain (very intense)",
+      "stabbingPain": "Stabbing pain (like needles)",
+      "distendingPain": "Distending/Aching pain",
+      "numbness": "Numbness",
+      "weakness": "Weakness / Cannot lift",
+      "tightness": "Tightness / Pressure",
+      "breathingDifficulty": "Breathing difficulty / Chest tightness",
+      "nausea": "Nausea / Vomiting",
+      "dizziness": "Dizziness / Blackout",
+      "unclear": "Unclear, just feeling very uncomfortable"
+    },
+    "dashboard": {
+      "title": "Medical Case Intake",
+      "description": "Complete your medical case information to help us provide you with accurate treatment plans and cost estimates.",
+      "startButton": "Start Case Intake",
+      "viewSubmitted": "View Submitted Cases",
+      "draftAlert": "You have an incomplete case intake. Please continue filling it out.",
+      "timeEstimate": "Takes about 10-15 minutes · Draft saving supported · Strictly confidential"
+    }
+  }
+}

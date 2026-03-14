@@ -1,0 +1,1977 @@
+{
+  "common": {
+    "brand": {
+      "medoraHealth": "Medora Health",
+      "hospitalSystem": "হাসপাতাল ব্যবস্থাপনা সিস্টেম",
+      "hospitalSystemEn": "Hospital Management System"
+    },
+    "nav": {
+      "dashboard": "ড্যাশবোর্ড",
+      "profile": "প্রোফাইল",
+      "settings": "সেটিংস",
+      "messages": "বার্তা",
+      "logout": "লগআউট",
+      "viewAll": "সব দেখুন",
+      "back": "ফিরে যান",
+      "confirm": "নিশ্চিত করুন",
+      "cancel": "বাতিল করুন",
+      "save": "সংরক্ষণ করুন",
+      "submit": "জমা দিন",
+      "edit": "সম্পাদনা করুন",
+      "delete": "মুছে ফেলুন",
+      "search": "অনুসন্ধান করুন",
+      "filter": "ফিল্টার করুন"
+    },
+    "dashboard": "ড্যাশবোর্ড",
+    "settings": "সেটিংস",
+    "profile": "প্রোফাইল",
+    "actions": {
+      "viewDetails": "বিস্তারিত দেখুন",
+      "download": "ডাউনলোড করুন",
+      "upload": "আপলোড করুন",
+      "print": "মুদ্রণ করুন",
+      "export": "রপ্তানি করুন",
+      "refresh": "রিফ্রেশ করুন",
+      "add": "যোগ করুন",
+      "newConversation": "নতুন কথোপকথন",
+      "create": "তৈরি করুন",
+      "update": "আপডেট করুন",
+      "clear": "পরিষ্কার করুন",
+      "reset": "রিসেট করুন",
+      "close": "বন্ধ করুন",
+      "copy": "কপি করুন",
+      "paste": "পেস্ট করুন",
+      "share": "শেয়ার করুন",
+      "send": "পাঠান",
+      "forward": "ফরওয়ার্ড করুন"
+    },
+    "boolean": {
+      "yes": "হ্যাঁ",
+      "no": "না"
+    },
+    "labels": {
+      "name": "নাম",
+      "email": "ইমেইল",
+      "phone": "ফোন",
+      "address": "ঠিকানা",
+      "city": "শহর",
+      "gender": "লিঙ্গ",
+      "male": "পুরুষ",
+      "female": "মহিলা",
+      "other": "অন্যান্য",
+      "age": "বয়স",
+      "yearsOld": "বছর বয়সী",
+      "date": "তারিখ",
+      "time": "সময়",
+      "description": "বর্ণনা",
+      "notes": "নোট",
+      "attachments": "সংযুক্তি",
+      "details": "বিস্তারিত",
+      "operations": "কার্যক্রম",
+      "quantity": "পরিমাণ",
+      "unitPrice": "একক মূল্য",
+      "subtotal": "উপমোট",
+      "total": "মোট",
+      "amount": "পরিমাণ",
+      "source": "উৎস",
+      "channel": "চ্যানেল",
+      "pleaseSelect": "অনুগ্রহ করে নির্বাচন করুন"
+    },
+    "bodyParts": {
+      "headFace": "মাথা এবং মুখ",
+      "neck": "ঘাড়",
+      "chest": "বুক",
+      "abdomen": "পেট",
+      "back": "পিঠ",
+      "jointsLimbs": "জোড়া এবং অঙ্গপ্রত্যঙ্গ",
+      "rightLowerAbdomen": "ডান নিম্ন পেট",
+      "leftLowerAbdomen": "বাম নিম্ন পেট"
+    },
+    "symptoms": {
+      "pain": "ব্যথা",
+      "dullPain": "মৃদু ব্যথা",
+      "severePain": "তীব্র ব্যথা",
+      "sharpPain": "তীক্ষ্ণ ব্যথা",
+      "distendingPain": "ফোলা ব্যথা",
+      "numbness": "অসাড়তা",
+      "weakness": "দুর্বলতা",
+      "tightness": "আঁটসাঁট অনুভূতি",
+      "difficultyBreathing": "শ্বাসকষ্ট",
+      "nauseaVomiting": "বমি বমি ভাব এবং বমি",
+      "dizziness": "মাথা ঘোরা",
+      "fever": "জ্বর",
+      "decreasedAppetite": "ক্ষুধা হ্রাস",
+      "persistent": "ক্রমাগত",
+      "intermittent": "মাঝে মাঝে"
+    },
+    "medical": {
+      "case": "কেস",
+      "caseId": "কেস আইডি",
+      "patientCode": "রোগীর কোড",
+      "diagnosis": "রোগ নির্ণয়",
+      "treatment": "চিকিৎসা",
+      "surgery": "অস্ত্রোপচার",
+      "chemotherapy": "কেমোথেরাপি",
+      "radiotherapy": "রেডিওথেরাপি",
+      "rehabilitation": "পুনর্বাসন",
+      "followUp": "ফলো-আপ",
+      "prescription": "প্রেসক্রিপশন",
+      "examination": "পরীক্ষা",
+      "laboratoryTest": "ল্যাবরেটরি পরীক্ষা",
+      "bUltrasound": "বি-আল্ট্রাসাউন্ড",
+      "ctScan": "সিটি স্ক্যান",
+      "mri": "এমআরআই",
+      "xRay": "এক্স-রে",
+      "ecg": "ইসিজি",
+      "bloodTest": "রক্ত পরীক্ষা",
+      "imagingData": "ইমেজিং ডেটা",
+      "pathologyReport": "প্যাথলজি রিপোর্ট",
+      "laboratoryReport": "ল্যাবরেটরি রিপোর্ট",
+      "medicalImaging": "মেডিকেল ইমেজিং"
+    },
+    "cities": {
+      "beijing": "বেইজিং",
+      "shanghai": "সাংহাই",
+      "guangzhou": "গুয়াংজু",
+      "hangzhou": "হাংঝৌ",
+      "chengdu": "চেংডু",
+      "xian": "সি'আন",
+      "nanjing": "নানজিং",
+      "wuhan": "উহান",
+      "shenzhen": "শেনজেন"
+    },
+    "hospitals": {
+      "peking_union": "পেকিং ইউনিয়ন মেডিকেল কলেজ হাসপাতাল",
+      "shanghai_zhongshan": "শাংহাই ঝংশান হাসপাতাল",
+      "west_china": "ওয়েস্ট চায়না হাসপাতাল",
+      "nanjing_drum_tower": "নানজিং ড্রাম টাওয়ার হাসপাতাল",
+      "wuhan_tongji": "উহান তঙ্গজি হাসপাতাল",
+      "zhejiang_university": "ঝেজিয়াং বিশ্ববিদ্যালয় সংযুক্ত হাসপাতাল",
+      "tianjin_tumor": "তিয়ানজিন টিউমার হাসপাতাল",
+      "medoraInternational": "মেডোরা আন্তর্জাতিক হাসপাতাল",
+      "singaporeGeneral": "সিঙ্গাপুর জেনারেল হাসপাতাল",
+      "bumrungradInternational": "বামরুনগ্রাদ আন্তর্জাতিক হাসপাতাল",
+      "tokyoMedicalUniversity": "টোকিও মেডিকেল বিশ্ববিদ্যালয় হাসপাতাল"
+    }
+  },
+  "login": {
+    "title": "হাসপাতাল ব্যবস্থাপনা সিস্টেম",
+    "subtitle": "Hospital Management System",
+    "loginToAccount": "অ্যাকাউন্টে লগইন করুন",
+    "emailAddress": "ইমেইল ঠিকানা",
+    "emailPlaceholder": "doctor@medora.com",
+    "password": "পাসওয়ার্ড",
+    "rememberMe": "আমাকে মনে রাখুন",
+    "forgotPassword": "পাসওয়ার্ড ভুলে গেছেন?",
+    "loginButton": "লগইন",
+    "or": "অথবা",
+    "continueWithGoogle": "Google দিয়ে চালিয়ে যান",
+    "continueWithFacebook": "Facebook দিয়ে চালিয়ে যান",
+    "signInWithGoogle": "Google দিয়ে সাইন ইন করুন",
+    "signInWithFacebook": "Facebook দিয়ে সাইন ইন করুন",
+    "noAccount": "কোন অ্যাকাউন্ট নেই?",
+    "contactAdmin": "প্রশাসকের সাথে যোগাযোগ করুন"
+  },
+  "dashboardHeader": {
+    "title": "হাসপাতাল ব্যবস্থাপনা সিস্টেম",
+    "myAccount": "আমার অ্যাকাউন্ট",
+    "hospitalProfile": "হাসপাতাল প্রোফাইল"
+  },
+  "doctor": {
+    "welcome": "ফিরে আসার জন্য স্বাগতম, আজকের কাজের সারাংশ দেখুন",
+    "nav": {
+      "overview": "সারাংশ",
+      "cases": "কেস ব্যবস্থাপনা",
+      "appointments": "অ্যাপয়েন্টমেন্ট ব্যবস্থাপনা",
+      "messages": "বার্তা ব্যবস্থাপনা"
+    }
+  },
+  "admin": {
+    "title": "প্রশাসক পোর্টাল",
+    "systemAdmin": "সিস্টেম প্রশাসক",
+    "dashboard": {
+      "welcome": "স্বাগতম, প্রশাসক",
+      "systemStatus": "সিস্টেম স্বাভাবিকভাবে চলছে, আজ {count}টি মুলতুবি কাজ",
+      "stats": {
+        "totalPatients": "মোট রোগী",
+        "totalDoctors": "মোট ডাক্তার",
+        "salesConsultants": "বিক্রয় পরামর্শদাতা",
+        "activeCases": "সক্রিয় কেস"
+      },
+      "recentUsers": {
+        "title": "সাম্প্রতিক ব্যবহারকারী",
+        "description": "সিস্টেমে সর্বশেষ নিবন্ধিত ব্যবহারকারী",
+        "role": "ভূমিকা",
+        "patient": "রোগী",
+        "doctor": "ডাক্তার",
+        "salesConsultant": "বিক্রয় পরামর্শদাতা",
+        "status": "স্ট্যাটাস",
+        "active": "সক্রিয়",
+        "pending": "মুলতুবি"
+      },
+      "pendingActions": {
+        "title": "মুলতুবি কাজ",
+        "description": "আপনার মনোযোগের প্রয়োজন এমন কাজ",
+        "review": "পর্যালোচনা",
+        "quotation": "কোটেশন",
+        "payment": "পেমেন্ট",
+        "newDoctorRegistration": "নতুন ডাক্তার নিবন্ধন আবেদন",
+        "quotationPendingReview": "কেস কোটেশন পর্যালোচনার জন্য অপেক্ষমাণ",
+        "paymentPendingConfirmation": "পেমেন্ট রেকর্ড নিশ্চিতকরণের জন্য অপেক্ষমাণ",
+        "priority": "অগ্রাধিকার",
+        "high": "উচ্চ",
+        "medium": "মধ্যম",
+        "low": "নিম্ন"
+      },
+      "pendingJourneys": {
+        "title": "মুলতুবি যাত্রা",
+        "description": "যে রোগীদের আবাসন এবং হাসপাতালের ব্যবস্থা প্রয়োজন",
+        "patient": "রোগী",
+        "caseId": "কেস আইডি",
+        "preferredHospital": "পছন্দের হাসপাতাল",
+        "preferredAccommodation": "পছন্দের আবাসন",
+        "preferredTiming": "পছন্দের সময়",
+        "within1Month": "১ মাসের মধ্যে",
+        "1to3Months": "১-৩ মাস",
+        "3to6Months": "৩-৬ মাস",
+        "pendingCoordination": "সমন্বয় মুলতুবি",
+        "coordinateJourney": "যাত্রা সমন্বয় করুন",
+        "accommodation": {
+          "hotelNearHospital": "Hotel near hospital",
+          "servicedApartment": "Serviced apartment",
+          "hotel": "Hotel"
+        }
+      },
+      "recentCases": {
+        "title": "সাম্প্রতিক কেস",
+        "description": "সিস্টেমে সর্বশেষ তৈরি কেস",
+        "caseId": "কেস আইডি",
+        "patient": "রোগী",
+        "doctor": "ডাক্তার",
+        "diagnosis": "রোগ নির্ণয়",
+        "status": "স্ট্যাটাস",
+        "inProgress": "প্রক্রিয়াধীন",
+        "pendingQuotation": "কোটেশন মুলতুবি",
+        "pendingPayment": "পেমেন্ট মুলতুবি",
+        "completed": "সম্পন্ন",
+        "priority": "অগ্রাধিকার",
+        "amount": "পরিমাণ"
+      }
+    },
+    "settings": {
+      "title": "সিস্টেম সেটিংস",
+      "description": "সিস্টেমের কনফিগারেশন ও প্যারামিটার পরিচালনা করুন",
+      "status": {
+        "enabled": "সক্রিয়",
+        "disabled": "নিষ্ক্রিয়"
+      },
+      "general": {
+        "title": "সাধারণ সেটিংস",
+        "description": "কোর সিস্টেম কনফিগারেশন",
+        "systemNameLabel": "সিস্টেমের নাম",
+        "systemNameDefault": "Medora Health হাসপাতাল ব্যবস্থাপনা সিস্টেম",
+        "systemLanguageLabel": "সিস্টেম ভাষা",
+        "timezoneLabel": "সময় অঞ্চল",
+        "save": "সেটিংস সংরক্ষণ",
+        "languageOptions": {
+          "zh": "সরলীকৃত চীনা",
+          "en": "ইংরেজি",
+          "zht": "প্রচলিত চীনা"
+        },
+        "timezoneOptions": {
+          "asiaShanghai": "Asia/Shanghai (UTC+8)",
+          "asiaTokyo": "Asia/Tokyo (UTC+9)",
+          "americaNewYork": "America/New_York (UTC-5)"
+        }
+      },
+      "security": {
+        "title": "সুরক্ষা সেটিংস",
+        "description": "সিস্টেম সুরক্ষা এবং অনুমতি নীতি",
+        "twoFactor": {
+          "title": "দুই স্তরের যাচাইকরণ",
+          "description": "সব ব্যবহারকারীর জন্য 2FA বাধ্যতামূলক"
+        },
+        "passwordPolicy": {
+          "title": "পাসওয়ার্ড শক্তির নিয়ম",
+          "description": "কমপক্ষে ৮ অক্ষর, বড়/ছোট হাতের ও সংখ্যা"
+        },
+        "sessionTimeout": {
+          "title": "সেশন টাইমআউট",
+          "description": "৩০ মিনিট নিষ্ক্রিয় থাকলে স্বয়ংক্রিয় লগআউট"
+        },
+        "ipWhitelist": {
+          "title": "IP হোয়াইটলিস্ট",
+          "description": "বিশ্বস্ত IP রেঞ্জে লগইন সীমিত করুন"
+        }
+      },
+      "email": {
+        "title": "ইমেইল কনফিগারেশন",
+        "description": "সিস্টেম ইমেইল প্রেরণের সেটিংস",
+        "smtpServer": "SMTP সার্ভার",
+        "senderEmail": "প্রেরকের ইমেইল",
+        "test": "ইমেইল কনফিগারেশন পরীক্ষা করুন"
+      },
+      "notifications": {
+        "title": "বিজ্ঞপ্তি সেটিংস",
+        "description": "সিস্টেম নোটিফিকেশন ও সতর্কতা",
+        "newUser": {
+          "title": "নতুন ব্যবহারকারী নিবন্ধন",
+          "description": "নতুন ব্যবহারকারী নিবন্ধিত হলে অ্যাডমিনকে জানান"
+        },
+        "caseStatus": {
+          "title": "কেস স্ট্যাটাস আপডেট",
+          "description": "কেস আপডেট হলে সংশ্লিষ্টদের জানান"
+        },
+        "maintenance": {
+          "title": "সিস্টেম রক্ষণাবেক্ষণ স্মারক",
+          "description": "রক্ষণাবেক্ষণের ২৪ ঘন্টা আগে স্মরণ করান"
+        }
+      },
+      "database": {
+        "title": "ডাটাবেস রক্ষণাবেক্ষণ",
+        "description": "ডেটা ব্যাকআপ এবং পুনরুদ্ধার",
+        "lastBackupLabel": "সর্বশেষ ব্যাকআপ",
+        "backupSizeLabel": "ব্যাকআপ আকার",
+        "lastBackup": "{time}",
+        "backupSize": "{size}",
+        "backupNow": "এখন ব্যাকআপ নিন",
+        "restore": "ডেটা পুনরুদ্ধার",
+        "autoBackup": "স্বয়ংক্রিয় ব্যাকআপ সময়সূচি",
+        "options": {
+          "daily": "দৈনিক 02:00",
+          "weekly": "রবিবার 02:00",
+          "monthly": "প্রতি মাসের 1 তারিখ 02:00"
+        }
+      },
+      "internationalization": {
+        "title": "আন্তর্জাতিককরণ সেটিংস",
+        "description": "বহুভাষা ও অঞ্চল কনফিগারেশন",
+        "supportedLanguages": "সমর্থিত ভাষা",
+        "languages": {
+          "zh": "সরলীকৃত চীনা",
+          "en": "ইংরেজি",
+          "ja": "জাপানি",
+          "ko": "কোরিয়ান"
+        },
+        "save": "ভাষা সেটিংস সংরক্ষণ করুন"
+      }
+    },
+    "users": {
+      "title": "ব্যবহারকারী ব্যবস্থাপনা",
+      "description": "সিস্টেমের সমস্ত ব্যবহারকারী অ্যাকাউন্ট পরিচালনা করুন",
+      "addUser": "ব্যবহারকারী যোগ করুন",
+      "searchPlaceholder": "নাম, ইমেইল বা ফোন দ্বারা অনুসন্ধান করুন...",
+      "filter": "ফিল্টার",
+      "stats": {
+        "doctors": "ডাক্তার",
+        "patients": "রোগী",
+        "salesConsultants": "বিক্রয় পরামর্শদাতা",
+        "pendingReview": "পর্যালোচনা মুলতুবি"
+      },
+      "table": {
+        "user": "ব্যবহারকারী",
+        "role": "ভূমিকা",
+        "contactInfo": "যোগাযোগের তথ্য",
+        "status": "স্ট্যাটাস",
+        "data": "ডেটা",
+        "registrationDate": "নিবন্ধনের তারিখ",
+        "actions": "কার্যক্রম"
+      },
+      "dataMetrics": {
+        "patients": "{count} রোগী",
+        "cases": "{count} কেস",
+        "deals": "{count} লেনদেন"
+      }
+    },
+    "payouts": {
+      "title": "পেআউট ব্যবস্থাপনা",
+      "subtitle": "সমস্ত সেলস দলের পেআউট রেকর্ড ট্র্যাক ও রিভিউ করুন",
+      "tableTitle": "পেআউট রেকর্ড",
+      "salesRep": "বিক্রয় প্রতিনিধি",
+      "table": {
+        "id": "পেআউট আইডি",
+        "case": "কেস",
+        "patient": "রোগী",
+        "hospital": "হাসপাতাল",
+        "amount": "পরিমাণ",
+        "status": "স্ট্যাটাস",
+        "date": "তারিখ"
+      }
+    },
+    "cases": {
+      "title": "কেস ব্যবস্থাপনা",
+      "description": "সমস্ত রোগীর কেস দেখুন এবং পরিচালনা করুন",
+      "searchPlaceholder": "কেস আইডি, রোগী বা ডাক্তার দ্বারা অনুসন্ধান করুন...",
+      "diagnosis": {
+        "cardiacCheck": "হৃদরোগ পরীক্ষা",
+        "orthopedicSurgery": "অর্থোপেডিক সার্জারি",
+        "fullCheckup": "সম্পূর্ণ মেডিকেল চেক-আপ",
+        "eyeSurgery": "চক্ষু অস্ত্রোপচার",
+        "dentalTreatment": "দন্ত চিকিৎসা"
+      },
+      "stats": {
+        "inProgress": "প্রক্রিয়াধীন",
+        "pendingQuote": "কোটেশন মুলতুবি",
+        "pendingPayment": "পেমেন্ট মুলতুবি",
+        "completed": "সম্পন্ন",
+        "urgent": "জরুরি"
+      },
+      "table": {
+        "caseId": "কেস আইডি",
+        "patient": "রোগী",
+        "doctor": "ডাক্তার",
+        "salesConsultant": "বিক্রয় পরামর্শদাতা",
+        "diagnosis": "রোগ নির্ণয়",
+        "status": "স্ট্যাটাস",
+        "priority": "অগ্রাধিকার",
+        "amount": "পরিমাণ",
+        "date": "তারিখ",
+        "view": "দেখুন"
+      }
+    },
+    "patientDetail": {
+      "back": "Back to Overview",
+      "patientBadge": "Patient",
+      "activeBadge": "Active",
+      "patientCode": "Patient Code",
+      "caseId": "Case ID",
+      "registeredAt": "Registered On",
+      "contact": {
+        "ageGender": "Age / Gender"
+      },
+      "tabs": {
+        "journey": "Journey Management",
+        "visa": "Visa Arrangement",
+        "medical": "Medical Info"
+      }
+    },
+    "patientJourney": {
+      "status": {
+        "title": "Journey Coordination Status",
+        "caseId": "Case ID",
+        "pending": "Pending Coordination",
+        "confirmed": "Confirmed",
+        "completed": "Completed",
+        "unknown": "Unknown"
+      },
+      "preferences": {
+        "title": "Patient Preferences",
+        "description": "Expectations provided when submitting the case",
+        "preferredHospital": "Preferred Hospital",
+        "preferredAccommodation": "Preferred Accommodation",
+        "budget": "Budget Range",
+        "timing": "Preferred Timing",
+        "specialRequirements": "Special Requirements",
+        "specialRequirementsOptions": {
+          "needsChineseInterpreter": "চীনা দোভাষী প্রয়োজন",
+          "wheelchairAccess": "হুইলচেয়ার প্রবেশাধিকার প্রয়োজন",
+          "dietaryRestrictions": "খাদ্য সীমাবদ্ধতা / বিশেষ ডায়েট"
+        }
+      },
+      "hospital": {
+        "title": "Hospital Arrangement",
+        "description": "Arrange the hospital for the patient",
+        "assigned": "Assigned Hospital",
+        "contact": "Hospital Contact",
+        "address": "Hospital Address",
+        "assignedPlaceholder": "e.g., Singapore General Hospital",
+        "contactPlaceholder": "e.g., +65 6222 3322",
+        "addressPlaceholder": "Enter full hospital address"
+      },
+      "accommodation": {
+        "title": "Accommodation Arrangement",
+        "description": "Coordinate accommodation",
+        "type": "Accommodation Type",
+        "name": "Accommodation Name",
+        "address": "Accommodation Address",
+        "checkIn": "Check-in Date",
+        "checkOut": "Check-out Date",
+        "namePlaceholder": "e.g., Hilton Hotel",
+        "addressPlaceholder": "Enter accommodation address",
+        "options": {
+          "pleaseSelect": "Please Select",
+        "hotelNearHospital": "Hotel near hospital",
+          "hotel": "Hotel",
+          "servicedApartment": "Serviced Apartment",
+          "hospitalAccommodation": "Hospital Accommodation",
+          "homestay": "Homestay"
+        }
+      },
+      "transportation": {
+        "title": "Transportation",
+        "description": "Flight and local transportation information",
+        "flightInfo": "Flight Information",
+        "flightPlaceholder": "e.g., CA123 Beijing-Singapore 2025-11-01 08:00",
+        "transportationArrangement": "Local Transportation",
+        "transportationPlaceholder": "e.g., airport pickup, hospital transfers"
+      },
+      "contact": {
+        "title": "Local Contact",
+        "description": "Emergency contact at the destination",
+        "name": "Contact Name",
+        "phone": "Contact Phone",
+        "namePlaceholder": "Enter contact name",
+        "phonePlaceholder": "Enter phone number"
+      },
+      "costNotes": {
+        "title": "Cost & Notes",
+        "estimatedCost": "Estimated Total Cost",
+        "estimatedCostPlaceholder": "e.g., 15,000 USD",
+        "notes": "Notes",
+        "notesPlaceholder": "Other important information..."
+      },
+      "actions": {
+        "save": "Save Journey Info",
+        "saving": "Saving...",
+        "sendToPatient": "Send to Patient",
+        "markConfirmed": "Mark as Confirmed",
+        "saved": "Journey info saved!",
+        "sent": "Journey plan sent to patient!"
+      }
+    },
+    "visaManagement": {
+      "title": "Visa Arrangement",
+      "description": "Manage patient visa applications and related documents",
+      "new": "New Visa Application",
+      "dialogTitle": "New Visa Application",
+      "dialogDescription": "Fill in basic visa information",
+      "empty": {
+        "title": "No visa applications yet",
+        "action": "Create the first visa application"
+      },
+      "statusActionsLabel": "Status actions:",
+      "editTitle": "Edit Visa Application",
+      "editDescription": "Update visa application information",
+      "list": {
+        "passport": "Passport No",
+        "nationality": "Nationality",
+        "medicalInfo": "Medical Information",
+        "diagnosis": "Diagnosis Details",
+        "treatmentPurpose": "Treatment Purpose",
+        "estimatedDuration": "Estimated Treatment Duration",
+        "estimatedCost": "Estimated Cost",
+        "financialProof": "Financial Proof",
+        "financialType": "Proof Type",
+        "bankStatements": "Bank Statements",
+        "filesCount": "{count} files",
+        "usContact": "US Contact Information",
+        "contactName": "Contact/Organization",
+        "contactPhone": "Contact Phone",
+        "address": "Address",
+        "applicationDetails": "Application Details",
+        "applicationNumber": "Application Number",
+        "ds160": "DS-160 Number",
+        "interviewDate": "Interview Date",
+        "interviewLocation": "Interview Location",
+        "notFilled": "Not provided",
+        "notes": "Notes"
+      },
+      "status": {
+        "not_started": "Not Started",
+        "preparing": "Preparing",
+        "submitted": "Submitted",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "expired": "Expired"
+      },
+      "visaTypes": {
+        "B2_medical": "B-2 Medical Visa",
+        "tourist": "Tourist Visa",
+        "business": "Business Visa",
+        "other": "Other"
+      },
+      "financial": {
+        "personalFunds": "Personal funds",
+        "sponsor": "Sponsor support",
+        "both": "Personal funds + Sponsor"
+      },
+      "actions": {
+        "preparing": "Preparing",
+        "submitted": "Submitted",
+        "approved": "Approved",
+        "rejected": "Rejected"
+      },
+      "form": {
+        "basicInfo": "Basic Information",
+        "visaType": "Visa Type",
+        "nationality": "Nationality",
+        "passportNumber": "Passport Number",
+        "medicalInfo": "Medical Information",
+        "diagnosisDetails": "Diagnosis Details",
+        "diagnosisPlaceholder": "Describe the condition and diagnosis...",
+        "treatmentPurpose": "Treatment Purpose",
+        "treatmentPlaceholder": "e.g., bypass surgery, cancer treatment",
+        "estimatedDuration": "Estimated Treatment Duration",
+        "durationPlaceholder": "e.g., 3-4 weeks",
+        "estimatedCost": "Estimated Cost",
+        "costPlaceholder": "e.g., $150,000 - $200,000",
+        "usContact": "US Contact Information",
+        "usContactName": "Contact/Organization Name",
+        "usContactNamePlaceholder": "e.g., Medora International Hospital",
+        "usContactPhone": "Contact Phone",
+        "usContactPhonePlaceholder": "+1 (555) 123-4567",
+        "usContactAddress": "Address",
+        "usContactAddressPlaceholder": "Full US address",
+        "notes": "Notes",
+        "notesPlaceholder": "Add any extra notes...",
+        "cancel": "Cancel",
+        "save": "Save"
+      }
+    },
+    "createUser": {
+      "title": "নতুন ব্যবহারকারী তৈরি করুন",
+      "description": "সিস্টেমে নতুন ডাক্তার বা বিক্রয় পরামর্শদাতা যোগ করুন",
+      "backToUserManagement": "ব্যবহারকারী ব্যবস্থাপনায় ফিরে যান",
+      "successMessage": "ব্যবহারকারী সফলভাবে তৈরি হয়েছে!",
+      "redirecting": "ব্যবহারকারী ব্যবস্থাপনা পৃষ্ঠায় পুনঃনির্দেশ করা হচ্ছে...",
+      "selectRole": {
+        "title": "ব্যবহারকারীর ভূমিকা নির্বাচন করুন",
+        "description": "অনুগ্রহ করে তৈরি করার জন্য ব্যবহারকারীর ধরন নির্বাচন করুন",
+        "doctor": "ডাক্তার",
+        "doctorDescription": "রোগ নির্ণয় এবং চিকিৎসার জন্য দায়ী হাসপাতালের চিকিৎসা কর্মী",
+        "salesConsultant": "বিক্রয় পরামর্শদাতা",
+        "salesConsultantDescription": "রোগী অধিগ্রহণ এবং ব্যবসা উন্নয়নের জন্য দায়ী বিক্রয় কর্মী"
+      },
+      "userInfo": {
+        "title": "ব্যবহারকারীর তথ্য",
+        "description": "{role} এর জন্য মৌলিক তথ্য পূরণ করুন",
+        "nameLabel": "নাম *",
+        "namePlaceholder": "নাম লিখুন",
+        "emailLabel": "ইমেইল *",
+        "emailPlaceholder": "ইমেইল ঠিকানা লিখুন",
+        "passwordLabel": "প্রাথমিক পাসওয়ার্ড *",
+        "passwordPlaceholder": "প্রাথমিক পাসওয়ার্ড সেট করুন",
+        "phoneLabel": "ফোন",
+        "phonePlaceholder": "যোগাযোগের ফোন লিখুন",
+        "genderLabel": "লিঙ্গ",
+        "genderPlaceholder": "লিঙ্গ নির্বাচন করুন",
+        "locationLabel": "অবস্থান",
+        "locationPlaceholder": "শহর বা দেশ লিখুন"
+      },
+      "doctorInfo": {
+        "title": "ডাক্তারের পেশাগত তথ্য",
+        "specialtyLabel": "বিশেষত্ব",
+        "specialtyPlaceholder": "বিভাগ নির্বাচন করুন",
+        "cardiology": "হৃদরোগবিদ্যা",
+        "orthopedics": "অর্থোপেডিক্স",
+        "oncology": "অনকোলজি",
+        "neurology": "নিউরোলজি",
+        "generalPractice": "সাধারণ চিকিৎসা",
+        "experienceLabel": "অভিজ্ঞতার বছর",
+        "experiencePlaceholder": "যেমন, ১০ বছর",
+        "languagesLabel": "ভাষা",
+        "languagesPlaceholder": "যেমন, চীনা, ইংরেজি, জাপানি"
+      },
+      "salesInfo": {
+        "title": "বিক্রয় পরামর্শদাতার পেশাগত তথ্য",
+        "experienceLabel": "কাজের অভিজ্ঞতা",
+        "experiencePlaceholder": "যেমন, ৫ বছরের চিকিৎসা পর্যটন বিক্রয় অভিজ্ঞতা",
+        "languagesLabel": "ভাষা",
+        "languagesPlaceholder": "যেমন, চীনা, ইংরেজি, রাশিয়ান"
+      },
+      "actions": {
+        "createUser": "ব্যবহারকারী তৈরি করুন",
+        "creating": "তৈরি করা হচ্ছে...",
+        "cancel": "বাতিল করুন"
+      }
+    }
+  },
+  "sales": {
+    "title": "বিক্রয় পোর্টাল",
+    "consultant": "বিক্রয় পরামর্শদাতা",
+    "nav": {
+      "dashboard": "ড্যাশবোর্ড",
+      "leads": "লিড",
+      "cases": "কেস",
+      "tasks": "কাজ",
+      "quotations": "কোটেশন",
+      "payouts": "পেমেন্ট",
+      "claimPool": "বিড পুল"
+    },
+    "dashboard": {
+      "welcome": "👋 স্বাগতম, বিক্রয় পরামর্শদাতা",
+      "stats": {
+        "leadsToFollowUp": "ফলো-আপের জন্য লিড",
+        "newToday": "{count} আজ নতুন",
+        "newCasesThisMonth": "এই মাসে নতুন কেস",
+        "vsLastMonth": "vs গত মাস ↑{percent}%",
+        "revenueThisMonth": "এই মাসের আয়",
+        "targetAchieved": "লক্ষ্য অর্জিত {percent}%",
+        "pendingPayouts": "মুলতুবি পেমেন্ট",
+        "pendingItems": "{count} মুলতুবি আইটেম"
+      },
+      "salesFunnel": {
+        "title": "বিক্রয় ফানেল",
+        "consultation": "পরামর্শ",
+        "evaluation": "মূল্যায়ন",
+        "quotation": "কোটেশন",
+        "scheduled": "নির্ধারিত",
+        "inTreatment": "চিকিৎসায়",
+        "followUp": "ফলো-আপ"
+      },
+      "todaysTasks": {
+        "title": "আজকের কাজ",
+        "followUpQuotation": "{name} এর কোটেশন ফিডব্যাক ফলো-আপ করুন",
+        "sendItinerary": "{name} এর ভ্রমণসূচি নিশ্চিতকরণ পাঠান",
+        "requestDocuments": "{name} এর কাছ থেকে অতিরিক্ত নথি অনুরোধ করুন",
+        "contactNewLead": "নতুন লিডের সাথে যোগাযোগ করুন - {name}",
+        "tomorrow": "আগামীকাল",
+        "high": "উচ্চ",
+        "medium": "মধ্যম"
+      },
+      "latestLeads": {
+        "title": "সর্বশেষ লিড",
+        "website": "ওয়েবসাইট",
+        "agent": "এজেন্ট",
+        "referral": "রেফারেল",
+        "hoursAgo": "{count} ঘণ্টা আগে",
+        "daysAgo": "{count} দিন আগে",
+        "followUp": "ফলো-আপ"
+      },
+      "payoutProgress": {
+        "title": "পেমেন্ট অগ্রগতি",
+        "viewDetails": "বিস্তারিত দেখুন",
+        "pendingReview": "পর্যালোচনা মুলতুবি",
+        "underReview": "পর্যালোচনাধীন",
+        "approved": "অনুমোদিত",
+        "received": "প্রাপ্ত",
+        "receivedThisMonth": "এই মাসে প্রাপ্ত"
+      }
+    },
+    "submitPatient": {
+      "title": "নতুন রোগীর তথ্য জমা দিন",
+      "description": "অনুগ্রহ করে ধাপে ধাপে সম্পূর্ণ রোগীর কেস তথ্য পূরণ করুন",
+      "backToList": "রোগী তালিকায় ফিরে যান",
+      "createAccount": {
+        "title": "রোগীর অ্যাকাউন্ট তৈরি করুন",
+        "description": "রোগীর মৌলিক তথ্য পূরণ করুন, সিস্টেম আমন্ত্রণ লিঙ্ক পাঠাবে",
+        "infoText": "অ্যাকাউন্ট তৈরির পরে, রোগীরা ইমেইল/এসএমএস আমন্ত্রণ লিঙ্ক পাবেন লগইন করতে এবং বিস্তারিত চিকিৎসা তথ্য পূরণ করতে (লক্ষণ, চিকিৎসা ইতিহাস, ওষুধের অ্যালার্জি, পরীক্ষা রিপোর্ট ইত্যাদি)"
+      },
+      "form": {
+        "patientName": "রোগীর নাম *",
+        "patientNamePlaceholder": "রোগীর নাম লিখুন",
+        "patientCode": "রোগীর কোড",
+        "patientCodePlaceholder": "যেমন, BJ-30s (স্বয়ংক্রিয়ভাবে তৈরি)",
+        "patientCodeHint": "শহর এবং বয়সের উপর ভিত্তি করে স্বয়ংক্রিয় তৈরির জন্য খালি রাখুন",
+        "gender": "লিঙ্গ *",
+        "genderPlaceholder": "অনুগ্রহ করে নির্বাচন করুন",
+        "male": "পুরুষ",
+        "female": "মহিলা",
+        "age": "বয়স *",
+        "agePlaceholder": "বয়স লিখুন",
+        "city": "শহর *",
+        "cityPlaceholder": "যেমন, বেইজিং",
+        "phone": "যোগাযোগের ফোন *",
+        "phonePlaceholder": "যোগাযোগের ফোন লিখুন",
+        "email": "ইমেইল *",
+        "emailPlaceholder": "আমন্ত্রণ লিঙ্ক এবং বিজ্ঞপ্তি পাওয়ার জন্য",
+        "emailHint": "রোগী এই ইমেইলের মাধ্যমে অ্যাকাউন্ট সক্রিয়করণ লিঙ্ক পাবেন"
+      },
+      "nextSteps": {
+        "title": "📋 পরবর্তী পদক্ষেপ",
+        "step1": "রোগীর অ্যাকাউন্ট তৈরি করুন এবং আমন্ত্রণ লিঙ্ক পাঠান",
+        "step2": "রোগী ইমেইল লিঙ্কের মাধ্যমে অ্যাকাউন্ট সক্রিয় করে এবং লগইন করে",
+        "step3": "রোগী পেশেন্ট পোর্টালে বিস্তারিত চিকিৎসা তথ্য পূরণ করে (৫টি ধাপ)",
+        "step4": "রোগী জমা দেওয়ার পরে, হাসপাতাল সম্পূর্ণ কেস তথ্য দেখতে পারে"
+      },
+      "actions": {
+        "cancel": "বাতিল করুন",
+        "createAndSend": "রোগীর অ্যাকাউন্ট তৈরি করুন এবং আমন্ত্রণ পাঠান"
+      }
+    },
+    "claimPool": {
+      "title": "রোগী বিড পুল",
+      "description": "নতুন রোগীদের জন্য বিড করুন, ব্যবসায়িক সুযোগ জিতুন",
+      "urgency": {
+        "high": "জরুরি",
+        "medium": "মধ্যম",
+        "low": "সাধারণ"
+      },
+      "yearsOld": " বছর বয়স",
+      "hours": " ঘন্টা",
+      "timeRemaining": "বাকি {time}",
+      "claimDeadline": "বিডের শেষ সময়",
+      "estimatedValue": "আনুমানিক মূল্য",
+      "currentClaims": "বর্তমান বিড",
+      "highestClaim": "সর্বোচ্চ কমিশন বিড",
+      "yourClaimLabel": "আপনার কমিশন (CNY)",
+      "claimPlaceholder": "আপনার কমিশন লিখুন",
+      "submitClaim": "বিড জমা দিন",
+      "claimSubmitted": "বিড জমা: ¥{amount}",
+      "claimSuccess": "বিড সফল! আপনার কমিশন: ¥{amount}"
+    },
+    "leadDetail": {
+      "backToList": "লিড তালিকায় ফিরে যান",
+      "conditionDescription": "অবস্থার বিবরণ",
+      "budgetRange": "বাজেট পরিসীমা: ",
+      "preferredTime": "পছন্দের সময়: ",
+      "followUpRecords": "ফলো-আপ রেকর্ড",
+      "addNotePlaceholder": "ফলো-আপ নোট যোগ করুন...",
+      "addNote": "নোট যোগ করুন",
+      "noteAdded": "নোট যোগ করা হয়েছে: ",
+      "recordContent": "লিড তৈরি, উৎস: ওয়েবসাইট অনুসন্ধান ফর্ম",
+      "system": "সিস্টেম",
+      "statusAndActions": "স্ট্যাটাস এবং ক্রিয়া",
+      "currentStatus": "বর্তমান স্ট্যাটাস",
+      "markAsContacted": "যোগাযোগ করা হয়েছে হিসাবে চিহ্নিত করুন",
+      "markAsQualified": "যোগ্য হিসাবে চিহ্নিত করুন",
+      "convertToCase": "কেসে রূপান্তর করুন",
+      "markAsLost": "হারিয়ে গেছে হিসাবে চিহ্নিত করুন",
+      "quickActions": "দ্রুত ক্রিয়া",
+      "makeCall": "কল করুন",
+      "sendEmail": "ইমেল পাঠান",
+      "sendMessage": "বার্তা পাঠান",
+      "timeline": "সময়রেখা",
+      "leadCreated": "লিড তৈরি",
+      "statusUpdated": "স্ট্যাটাস আপডেট করা হয়েছে",
+      "convertingToCase": "কেসে রূপান্তরিত হচ্ছে...",
+      "executing": "সম্পাদন করা হচ্ছে"
+    },
+    "cases": {
+      "title": "কেস ম্যানেজমেন্ট",
+      "description": "আপনার চিকিৎসা কেস পরিচালনা করুন এবং সম্পূর্ণ প্রক্রিয়া ট্র্যাক করুন",
+      "createCase": "কেস তৈরি করুন",
+      "searchPlaceholder": "রোগীর কোড, অবস্থা অনুসন্ধান করুন...",
+      "viewMode": {
+        "list": "তালিকা",
+        "kanban": "কানবান"
+      },
+      "table": {
+        "caseId": "কেস আইডি",
+        "patient": "রোগী",
+        "condition": "অবস্থা",
+        "hospital": "হাসপাতাল",
+        "stage": "পর্যায়",
+        "estimatedAmount": "আনুমানিক পরিমাণ",
+        "updateTime": "আপডেট সময়",
+        "actions": "ক্রিয়া"
+      },
+      "actions": {
+        "sendMessage": "বার্তা পাঠান",
+        "viewQuotation": "উদ্ধৃতি দেখুন"
+      },
+      "priority": " অগ্রাধিকার"
+    },
+    "tasks": {
+      "title": "কাজ ম্যানেজমেন্ট",
+      "description": "আপনার করণীয় কাজগুলি পরিচালনা করুন এবং কোনো ফলো-আপ মিস না করা নিশ্চিত করুন",
+      "createTask": "কাজ তৈরি করুন",
+      "dialog": {
+        "title": "নতুন কাজ তৈরি করুন",
+        "taskTitle": "কাজের শিরোনাম *",
+        "taskTitlePlaceholder": "কাজের শিরোনাম লিখুন...",
+        "taskDescription": "কাজের বিবরণ",
+        "taskDescriptionPlaceholder": "কাজের বিবরণ লিখুন...",
+        "relatedCase": "সম্পর্কিত কেস",
+        "selectCase": "সম্পর্কিত কেস নির্বাচন করুন...",
+        "priority": "অগ্রাধিকার",
+        "highPriority": "উচ্চ অগ্রাধিকার",
+        "mediumPriority": "মধ্যম অগ্রাধিকার",
+        "lowPriority": "নিম্ন অগ্রাধিকার",
+        "dueDate": "সময়সীমা",
+        "create": "কাজ তৈরি করুন"
+      },
+      "searchPlaceholder": "কাজ অনুসন্ধান করুন...",
+      "allPriorities": "সমস্ত অগ্রাধিকার",
+      "status": {
+        "open": "খোলা",
+        "inProgress": "চলমান",
+        "done": "সম্পন্ন",
+        "canceled": "বাতিল"
+      },
+      "priority": {
+        "high": "উচ্চ",
+        "medium": "মধ্যম",
+        "low": "নিম্ন"
+      },
+      "groups": {
+        "dueToday": "আজ শেষ হবে",
+        "thisWeek": "এই সপ্তাহ",
+        "completedOn": "{date} তারিখে সম্পন্ন"
+      },
+      "completedAt": "{date} তারিখে সম্পন্ন",
+      "viewCase": "কেস দেখুন",
+      "taskData": {
+        "followUpQuotation": {
+          "title": "{name} এর উদ্ধৃতি প্রতিক্রিয়া ফলো-আপ করুন",
+          "description": "উদ্ধৃতি পরিকল্পনা গ্রহণ নিশ্চিত করতে রোগীর সাথে যোগাযোগ করুন"
+        },
+        "sendItinerary": {
+          "title": "{name} এর ভ্রমণসূচি নিশ্চিতকরণ ইমেল পাঠান",
+          "description": "রোগীর ভ্রমণসূচি নিশ্চিত করুন, বিস্তারিত সময়সূচী পাঠান"
+        },
+        "requestDocuments": {
+          "title": "{name} থেকে অতিরিক্ত নথি অনুরোধ করুন",
+          "description": "রোগীকে সর্বশেষ পরীক্ষার রিপোর্ট জমা দিতে মনে করিয়ে দিন"
+        },
+        "contactNewLead": {
+          "title": "নতুন লিড যোগাযোগ করুন - {name}",
+          "description": "প্রথম ফোন যোগাযোগ, রোগীর প্রয়োজন বুঝুন"
+        },
+        "prepareDocuments": {
+          "title": "{name} এর প্রাক-অস্ত্রোপচার নথি প্রস্তুত করুন",
+          "description": "রোগীর প্রাক-অস্ত্রোপচার পরীক্ষার নথি সংগঠিত করুন, হাসপাতালে পাঠান"
+        },
+        "followUpConsultation": {
+          "title": "{name} এর পরামর্শ ফলো-আপ করুন",
+          "description": "চিকিৎসা পরিকল্পনা সম্পর্কে রোগীর প্রশ্নের উত্তর দিন"
+        }
+      }
+    },
+    "quotations": {
+      "title": "উদ্ধৃতি ম্যানেজমেন্ট",
+      "description": "সমস্ত কেস হাসপাতাল উদ্ধৃতি দেখুন এবং পরিচালনা করুন",
+      "searchPlaceholder": "উদ্ধৃতি নম্বর, রোগীর কোড অনুসন্ধান করুন...",
+      "status": {
+        "draft": "খসড়া",
+        "sent": "পাঠানো",
+        "accepted": "গৃহীত",
+        "rejected": "প্রত্যাখ্যাত",
+        "expired": "মেয়াদোত্তীর্ণ"
+      },
+      "table": {
+        "quotationId": "উদ্ধৃতি আইডি",
+        "quotationNumber": "উদ্ধৃতি নম্বর",
+        "case": "কেস",
+        "hospital": "হাসপাতাল",
+        "amount": "পরিমাণ",
+        "status": "স্ট্যাটাস",
+        "validUntil": "পর্যন্ত বৈধ",
+        "actions": "ক্রিয়া"
+      },
+      "actions": {
+        "sendToPatient": "রোগীর কাছে ফরওয়ার্ড করুন",
+        "downloadPdf": "PDF ডাউনলোড করুন"
+      },
+      "dialog": {
+        "quotationNumber": "উদ্ধৃতি",
+        "case": "কেস",
+        "patient": "রোগী",
+        "hospital": "হাসপাতাল",
+        "validUntil": "পর্যন্ত বৈধ",
+        "itemDetails": "উদ্ধৃতি বিবরণ",
+        "item": "আইটেম",
+        "quantity": "পরিমাণ",
+        "unitPrice": "ইউনিট মূল্য",
+        "subtotal": "উপমোট",
+        "items": {
+          "heartBypassSurgery": "হার্ট বাইপাস সার্জারি",
+          "icuCare": "আইসিইউ যত্ন (৩ দিন)",
+          "generalWard": "সাধারণ ওয়ার্ড (৭ দিন)",
+          "postOpRehab": "পোস্ট-অপারেটিভ পুনর্বাসন",
+          "medicinesConsumables": "ওষুধ এবং ভোগ্যপণ্য",
+          "mastectomy": "ম্যাস্টেক্টমি",
+          "chemotherapy": "কেমোথেরাপি (৬ চক্র)",
+          "hospitalizationCosts": "হাসপাতালে ভর্তির খরচ"
+        },
+        "total": "মোট",
+        "notes": "নোট"
+      }
+    },
+    "payouts": {
+      "title": "পেআউট ট্র্যাকিং",
+      "description": "আপনার কমিশন পেআউট অগ্রগতি দেখুন",
+      "status": {
+        "pending": "পর্যালোচনা মুলতুবি",
+        "inReview": "পর্যালোচনাধীন",
+        "approved": "অনুমোদিত",
+        "paid": "প্রদান করা হয়েছে"
+      },
+      "summary": {
+        "total": "মোট পেআউট",
+        "count": "{count} লেনদেন"
+      },
+      "progressOverview": "পেআউট অগ্রগতি সংক্ষিপ্ত বিবরণ",
+      "pendingAmount": "মুলতুবি পেআউট",
+      "paidAmount": "প্রদান করা হয়েছে",
+      "monthlyPaid": "এই মাসে প্রদান করা হয়েছে",
+      "totalPending": "মোট মুলতুবি",
+      "searchPlaceholder": "কেস আইডি, রোগীর কোড অনুসন্ধান করুন...",
+      "table": {
+        "case": "কেস",
+        "patient": "রোগী",
+        "hospital": "হাসপাতাল",
+        "amount": "পরিমাণ",
+        "status": "স্ট্যাটাস",
+        "date": "তারিখ",
+        "expected": "প্রত্যাশিত",
+        "details": "বিবরণ",
+        "actions": "ক্রিয়া"
+      },
+      "dialog": {
+        "title": "পেআউট বিবরণ",
+        "case": "কেস",
+        "patientCode": "রোগীর কোড",
+        "hospital": "হাসপাতাল",
+        "condition": "অবস্থা",
+        "payoutAmount": "পেআউট পরিমাণ",
+        "channel": "পেআউট চ্যানেল",
+        "currentStatus": "বর্তমান স্ট্যাটাস",
+        "expectedDate": "প্রত্যাশিত পেআউট তারিখ",
+        "actualDate": "প্রকৃত প্রাপ্তি তারিখ",
+        "notes": "নোট"
+      }
+    },
+    "profile": {
+      "jobTitle": "সিনিয়র বিক্রয় পরামর্শদাতা",
+      "editProfile": "প্রোফাইল সম্পাদনা করুন",
+      "saveChanges": "পরিবর্তন সংরক্ষণ করুন",
+      "email": "ইমেল",
+      "phone": "ফোন",
+      "location": "অবস্থান",
+      "performanceStats": "পারফরম্যান্স পরিসংখ্যান",
+      "closedPatients": "বন্ধ রোগী",
+      "totalRevenue": "মোট আয়",
+      "conversionRate": "রূপান্তর হার",
+      "certifications": "সার্টিফিকেশন",
+      "languageSkills": "ভাষা দক্ষতা",
+      "languages": {
+        "chinese": "চীনা",
+        "english": "ইংরেজি",
+        "arabic": "আরবি"
+      },
+      "proficiency": {
+        "native": "মাতৃভাষা",
+        "fluent": "সাবলীল",
+        "good": "ভাল"
+      },
+      "workExperience": "পেশাদার অভিজ্ঞতা",
+      "specialtyAreas": "বিশেষত্ব ক্ষেত্র",
+      "targetMarkets": "লক্ষ্য বাজার",
+      "personalIntro": "ব্যক্তিগত পরিচিতি"
+    },
+    "agentLeads": {
+      "title": "এজেন্ট লিড তৈরি করুন",
+      "description": "এজেন্ট রেফারেল থেকে নতুন রোগী লিড জমা দিন",
+      "formTitle": "এজেন্ট লিড তথ্য",
+      "formDescription": "এই ফর্মের মাধ্যমে তৈরি সমস্ত লিড 'এজেন্ট' উৎস হিসাবে চিহ্নিত করা হবে",
+      "source": "লিড উৎস",
+      "sourceHint": "এই লিড স্বয়ংক্রিয়ভাবে এজেন্ট উৎস হিসাবে চিহ্নিত করা হবে",
+      "namePlaceholder": "রোগীর নাম লিখুন",
+      "phonePlaceholder": "যোগাযোগ ফোন লিখুন",
+      "emailPlaceholder": "ইমেল ঠিকানা লিখুন (ঐচ্ছিক)",
+      "cityPlaceholder": "শহর লিখুন",
+      "agePlaceholder": "বয়স লিখুন",
+      "condition": "চিকিৎসা অবস্থা",
+      "conditionPlaceholder": "যেমন হার্ট ডিজিজ, ক্যান্সার, অর্থোপেডিক সার্জারি",
+      "urgency": "জরুরি স্তর",
+      "notesPlaceholder": "অতিরিক্ত তথ্য, রোগীর প্রয়োজনীয়তা ইত্যাদি লিখুন",
+      "submitLead": "লিড জমা দিন",
+      "submitSuccess": "এজেন্ট লিড সফলভাবে তৈরি হয়েছে!"
+    },
+    "leads": {
+      "title": "লিড ম্যানেজমেন্ট",
+      "description": "আপনার সম্ভাব্য গ্রাহকদের পরিচালনা করুন এবং রূপান্তরের জন্য ফলো-আপ করুন",
+      "createLead": "নতুন লিড তৈরি",
+      "searchPlaceholder": "লিডের নাম, অবস্থা অনুসন্ধান করুন...",
+      "allStatus": "সমস্ত স্ট্যাটাস",
+      "allSources": "সমস্ত উৎস",
+      "status": {
+        "new": "নতুন লিড",
+        "assigned": "বরাদ্দকৃত",
+        "contacted": "যোগাযোগ করা হয়েছে",
+        "qualifying": "যোগ্যতা নির্ধারণ",
+        "collecting_records": "রেকর্ড সংগ্রহ",
+        "submitted_to_hospital": "হাসপাতালে জমা দেওয়া",
+        "plan_ready": "পরিকল্পনা প্রস্তুত",
+        "negotiation": "আলোচনা",
+        "ready_for_invitation": "আমন্ত্রণের জন্য প্রস্তুত",
+        "converted": "রূপান্তরিত",
+        "lost": "হারিয়ে গেছে",
+        "disqualified": "অযোগ্য",
+        "qualified": "যোগ্য"
+      },
+      "sources": {
+        "website": "ওয়েবসাইট",
+        "whatsapp": "WhatsApp",
+        "facebook": "Facebook",
+        "agency": "এজেন্সি",
+        "referral": "রেফারেল",
+        "manual": "ম্যানুয়াল এন্ট্রি",
+        "agent": "এজেন্ট",
+        "advertisement": "বিজ্ঞাপন"
+      },
+      "table": {
+        "leadId": "লিড আইডি",
+        "name": "নাম",
+        "condition": "অবস্থা",
+        "city": "শহর",
+        "source": "উৎস",
+        "status": "স্ট্যাটাস",
+        "createdTime": "তৈরির সময়",
+        "lastContact": "শেষ যোগাযোগ",
+        "actions": "ক্রিয়া"
+      },
+      "actions": {
+        "markAsContacted": "যোগাযোগ করা হয়েছে হিসাবে চিহ্নিত করুন",
+        "markAsQualified": "যোগ্য হিসাবে চিহ্নিত করুন",
+        "convertToCase": "কেসে রূপান্তর করুন",
+        "addNote": "নোট যোগ করুন",
+        "markAsLost": "হারিয়ে গেছে হিসাবে চিহ্নিত করুন"
+      },
+      "lostReason": "পর্যাপ্ত বাজেট নেই"
+    }
+  },
+  "messaging": {
+    "title": "বার্তা কেন্দ্র",
+    "searchPlaceholder": "কথোপকথন অনুসন্ধান করুন...",
+    "inputPlaceholder": "একটি বার্তা লিখুন...",
+    "autoTranslate": "এআই স্বয়ংক্রিয় অনুবাদ",
+    "roles": {
+      "doctor": "ডাক্তার",
+      "patient": "রোগী"
+    },
+    "conversations": {
+      "drLiMin": "ডাঃ লি মিন",
+      "liMin": "লি মিন",
+      "drZhangHua": "ডাঃ ঝাং হুয়া",
+      "wangFang": "ওয়াং ফ্যাং"
+    },
+    "hospitals": {
+      "medoraInternational": "মেডোরা ইন্টারন্যাশনাল হাসপাতাল"
+    },
+    "times": {
+      "10MinutesAgo": "১০ মিনিট আগে",
+      "1HourAgo": "১ ঘণ্টা আগে",
+      "2HoursAgo": "২ ঘণ্টা আগে",
+      "3HoursAgo": "৩ ঘণ্টা আগে"
+    },
+    "lastMessages": {
+      "recordsReceived": "রোগীর রেকর্ড প্রাপ্ত হয়েছে, আমরা শীঘ্রই প্রাথমিক রোগ নির্ণয়ের ব্যবস্থা করব",
+      "thankYou": "ঠিক আছে, আপনার সাহায্যের জন্য ধন্যবাদ",
+      "provideXray": "অনুগ্রহ করে রোগীর সর্বশেষ এক্স-রে প্রদান করুন",
+      "costDetails": "আমি খরচের বিবরণ জানতে চাই"
+    },
+    "senders": {
+      "salesConsultant": "বিক্রয় পরামর্শদাতা"
+    },
+    "messages": {
+      "thanksForReferral": "হ্যালো, এই রোগীকে সুপারিশ করার জন্য ধন্যবাদ। আমি মেডিকেল রেকর্ড পর্যালোচনা করেছি।",
+      "complexCase": "হ্যালো ডাঃ লি, এই রোগীর অবস্থা বেশ জটিল, অনুগ্রহ করে চিকিৎসা পরিকল্পনার বিস্তারিত মূল্যায়ন প্রদান করুন।",
+      "furtherExamination": "প্রাথমিক রোগ নির্ণয়ের ভিত্তিতে, আরও পরীক্ষার সুপারিশ করা হচ্ছে। আনুমানিক চিকিৎসা সময়কাল: ২-৩ সপ্তাহ।",
+      "costRange": "ঠিক আছে, আমি রোগীকে এই তথ্য জানাব। উদ্ধৃতির আনুমানিক পরিসীমা কত?",
+      "recordsReceivedLong": "রোগীর রেকর্ড প্রাপ্ত হয়েছে, আমরা শীঘ্রই প্রাথমিক রোগ নির্ণয়ের ব্যবস্থা করব"
+    }
+  },
+  "appointments": {
+    "title": "অ্যাপয়েন্টমেন্ট ক্যালেন্ডার",
+    "subtitle": "আপনার রোগীর অ্যাপয়েন্টমেন্ট দেখুন এবং পরিচালনা করুন",
+    "today": "আজ",
+    "dayView": "দিনের দৃশ্য",
+    "weekView": "সপ্তাহের দৃশ্য",
+    "filterStatus": "স্ট্যাটাস ফিল্টার করুন",
+    "allStatuses": "সমস্ত স্ট্যাটাস",
+    "newAppointment": "নতুন অ্যাপয়েন্টমেন্ট",
+    "statusLegend": "স্ট্যাটাস লেজেন্ড",
+    "noAppointments": "কোনো অ্যাপয়েন্টমেন্ট নেই",
+    "language": "ভাষা",
+    "firstTimeVisit": "প্রথম পরিদর্শন",
+    "needsTranslator": "অনুবাদক প্রয়োজন",
+    "weekViewComingSoon": "সপ্তাহের দৃশ্য শীঘ্রই আসছে...",
+    "weekViewDescription": "সম্পূর্ণ সপ্তাহের দৃশ্য কার্যকারিতা শীঘ্রই উপলব্ধ হবে",
+    "status": {
+      "requested": "অনুরোধকৃত",
+      "confirmed": "নিশ্চিত",
+      "rescheduleRequested": "পুনঃতালিকা অনুরোধ",
+      "checkedIn": "চেক-ইন করা হয়েছে",
+      "completed": "সম্পন্ন",
+      "noShow": "উপস্থিত হয়নি",
+      "cancelled": "বাতিল"
+    },
+    "type": {
+      "firstVisit": "প্রথম পরিদর্শন",
+      "followUp": "ফলো-আপ",
+      "remoteConsultation": "দূরবর্তী পরামর্শ",
+      "preSurgery": "প্রাক-অস্ত্রোপচার আলোচনা"
+    },
+    "changeStatus": "অ্যাপয়েন্টমেন্ট স্ট্যাটাস পরিবর্তন করুন",
+    "time": "সময়",
+    "caseId": "কেস আইডি",
+    "currentStatus": "বর্তমান স্ট্যাটাস",
+    "selectNewStatus": "নতুন স্ট্যাটাস নির্বাচন করুন",
+    "cancelReason": "বাতিলের কারণ",
+    "optional": "ঐচ্ছিক",
+    "cancelReasonPlaceholder": "অনুগ্রহ করে বাতিলের কারণ প্রদান করুন...",
+    "confirmCancel": "বাতিল নিশ্চিত করুন",
+    "statusDesc": {
+      "requested": "রোগী বা বিক্রয় একটি সময় স্লট নির্বাচন করেছে, হাসপাতালের নিশ্চিতকরণের অপেক্ষায়",
+      "confirmed": "হাসপাতাল/ডাক্তার এই সময় স্লট নিশ্চিত করেছে - অফিসিয়াল সময়সূচী",
+      "rescheduleRequested": "রোগী/বিক্রয় পুনঃতালিকা অনুরোধ করেছে, নতুন সময় এখনও নির্ধারিত হয়নি",
+      "checkedIn": "রোগী হাসপাতালে চেক-ইন করেছে বা ভিডিও অপেক্ষা কক্ষে প্রবেশ করেছে",
+      "completed": "অ্যাপয়েন্টমেন্ট পরামর্শ সম্পন্ন হয়েছে, মেডিকেল রেকর্ড লেখা হয়েছে",
+      "noShow": "রোগী নির্ধারিত সময়ে উপস্থিত হয়নি - ফলো-আপ প্রয়োজন",
+      "cancelled": "রোগী, ডাক্তার বা অন্যান্য কারণে অ্যাপয়েন্টমেন্ট বাতিল"
+    }
+  },
+  "hospital": {
+    "title": "হাসপাতাল পোর্টাল",
+    "dashboard": {
+      "pendingCases": {
+        "title": "মুলতুবি কেস",
+        "description": "আপনার মনোযোগ প্রয়োজন এমন সর্বশেষ কেস",
+        "tabs": {
+          "all": "সব",
+          "pendingQuote": "মুলতুবি উদ্ধৃতি",
+          "pending": "মুলতুবি"
+        }
+      },
+      "messages": {
+        "title": "অপঠিত বার্তা ({count})",
+        "description": "আপনার নতুন বার্তা বিজ্ঞপ্তি আছে...",
+        "departments": {
+          "nurseStation": "নার্স স্টেশন",
+          "pharmacy": "ফার্মেসি",
+          "laboratory": "পরীক্ষাগার",
+          "administration": "প্রশাসন"
+        }
+      },
+      "appointments": {
+        "title": "Appointment Management",
+        "description": "View your appointment schedule",
+        "caseLabel": "Case"
+      },
+      "quickActions": {
+        "newCase": {
+          "title": "New Case",
+          "description": "Create a new patient case record"
+        },
+        "appointments": {
+          "title": "Appointments",
+          "description": "View and manage appointments"
+        },
+        "messages": {
+          "title": "Send Messages",
+          "description": "Communicate with patients"
+        },
+        "reports": {
+          "title": "View Reports",
+          "description": "Check lab and imaging reports"
+        }
+      },
+      "welcome": "স্বাগতম, আজকের কাজের সংক্ষিপ্ত বিবরণ পর্যালোচনা করুন"
+    },
+    "profile": {
+      "shareProfile": "প্রোফাইল শেয়ার করুন",
+      "editProfile": "প্রোফাইল সম্পাদনা করুন",
+      "tabs": {
+        "hospitalInfo": "হাসপাতালের তথ্য",
+        "doctorProfile": "ডাক্তারের প্রোফাইল"
+      }
+    }
+  },
+  "caseDetail": {
+    "tabs": {
+      "medicalInfo": "চিকিৎসা তথ্য",
+      "diagnosisReport": "রোগ নির্ণয় রিপোর্ট",
+      "messages": "বার্তা",
+      "tasks": "কাজ",
+      "invitation": "চিকিৎসা আমন্ত্রণ",
+      "journey": "ভ্রমণ তথ্য"
+    },
+    "metrics": {
+      "assignedTime": "বরাদ্দের সময়",
+      "assignedTimeValue": "2025-10-15 14:30",
+      "lastUpdated": "সর্বশেষ আপডেট",
+      "lastUpdatedValue": "২ ঘণ্টা আগে",
+      "invitationStatus": "আমন্ত্রণপত্রের অবস্থা",
+      "invitationStatusValue": "জারি বাকি",
+      "riskLevel": "ঝুঁকি স্তর",
+      "riskHigh": "উচ্চ"
+    },
+    "medicalInfo": {
+      "labFiles": {
+        "title": "ল্যাব ও ইমেজিং ফাইল",
+        "original": "মূল ফাইল",
+        "aiTranslate": "AI অনুবাদ"
+      },
+      "doctorEvaluation": {
+        "title": "চিকিৎসকের মূল্যায়ন",
+        "description": "প্রদত্ত তথ্যের ভিত্তিতে অনুগ্রহ করে একটি পেশাদার চিকিৎসা মূল্যায়ন পূরণ করুন",
+        "add": "মূল্যায়ন যোগ করুন"
+      },
+      "mockData": {
+        "labFiles": {
+          "ultrasound": "Ultrasound Exam.pdf",
+          "bloodTest": "Blood Test.pdf",
+          "imaging": "Imaging Archive.zip"
+        },
+        "step2": {
+          "primaryLocation": "Abdomen - Right lower quadrant",
+          "symptomNature": {
+            "intensePain": "Severe pain",
+            "persistent": "Persistent"
+          },
+          "onsetTime": "1-6 months",
+          "progressionTrend": "Gradually worsening",
+          "progressionDescription": "Pain progressed from mild to severe, especially at night",
+          "diagnosisStage": "Not yet diagnosed",
+          "mainCategory": "Surgical"
+        },
+        "step3": {
+          "detailedDescription": "Persistent right lower quadrant pain for 3 days with mild fever (37.5°C) and loss of appetite. Pain is dull and persistent, occasionally becoming severe. Worsens with activity, slightly relieved by lying down.",
+          "progression": "Day 1: mild and tolerable; Day 2: worsened and affected work; Day 3: severe pain, unable to carry out normal activities.",
+          "aggravatingFactors": {
+            "activity": "During activity",
+            "afterMeals": "After meals",
+            "night": "At night"
+          },
+          "relievingFactors": {
+            "rest": "After rest",
+            "afterMedication": "After medication"
+          },
+          "dailyLifeImpact": {
+            "workStudy": "Work/Study",
+            "sleepQuality": "Sleep quality",
+            "appetite": "Appetite"
+          },
+          "dailyLifeImpactDetails": "Unable to work normally, sleep quality severely reduced, appetite markedly decreased.",
+          "previousTreatments": "Took painkiller (Ibuprofen 400mg), moderate effect; pain returns 2-3 hours later."
+        },
+        "step4": {
+          "chronicConditionsDescription": "Hypertension for 5 years, well controlled with medication, blood pressure stable at 130/85 mmHg."
+        },
+        "step5": {
+          "medicationTypeAntihypertensive": "Antihypertensive",
+          "medications": {
+            "amlodipine": {
+              "name": "Amlodipine",
+              "dosage": "5mg",
+              "frequency": "Once daily",
+              "duration": "5 years",
+              "purpose": "Control blood pressure"
+            }
+          },
+          "allergy": {
+            "substance": "Penicillin",
+            "reaction": "Rash, itching"
+          }
+        },
+        "step6": {
+          "examTypes": {
+            "ultrasound": "Ultrasound",
+            "bloodTest": "Blood test"
+          },
+          "examDetails": "Ultrasound on 2024-01-12 at Peking Union Medical College Hospital showed swelling of right lower abdominal soft tissue and abnormal echo in the appendix region.",
+          "labResults": "CBC: elevated WBC 15.2×10⁹/L (normal 4-10), neutrophils 85% (normal 50-70%). CRP 45 mg/L (normal <10).",
+          "imagingDescription": "Ultrasound imaging taken 2024-01-12 shows appendix enlarged to 12mm.",
+          "filesProvisionNotes": "Can provide electronic exam reports and imaging files."
+        },
+        "step7": {
+          "expectations": {
+            "diagnosisConfirmation": "Diagnostic confirmation",
+            "treatmentPlan": "Treatment plan",
+            "costEstimation": "Cost estimation"
+          },
+          "budgetRange": "5-10k USD",
+          "budgetNotes": "Can adjust slightly; prioritize treatment efficacy",
+          "preferredTiming": "Within 1 month",
+          "timingConstraints": "Work schedule is tight, hopes to proceed soon",
+          "preferredContactChannel": "WeChat",
+          "bestContactTime": "Weekdays 19:00-21:00",
+          "additionalNotes": "Hopes to arrange soon; worsening pain severely impacts work and life. If surgery is needed, would like to understand recovery and precautions."
+        }
+      }
+    },
+    "diagnosisReport": {
+      "create": {
+        "title": "রোগ নির্ণয় রিপোর্ট তৈরি করুন",
+        "description": "রোগ নির্ণয় বিষয়বস্তু পূরণ করুন এবং সংশ্লিষ্ট সংযুক্তি আপলোড করুন",
+        "content": "রোগ নির্ণয় বিষয়বস্তু *",
+        "contentPlaceholder": "অনুগ্রহ করে বিস্তারিত রোগ নির্ণয় বিষয়বস্তু লিখুন, যার মধ্যে লক্ষণ বিশ্লেষণ, পরীক্ষার ফলাফল, রোগ নির্ণয় সিদ্ধান্ত এবং চিকিৎসা সুপারিশ অন্তর্ভুক্ত...",
+        "charCount": "{count} অক্ষর প্রবেশ করা হয়েছে",
+        "attachmentUpload": "সংযুক্তি আপলোড",
+        "uploadHint": "ফাইল নির্বাচন করতে ক্লিক করুন বা এখানে টেনে আনুন",
+        "fileSize": "ফাইলের আকার",
+        "supportedFormats": "সমর্থিত ফরম্যাট: PDF, Word, JPG, PNG (সর্বোচ্চ 10MB)",
+        "clear": "মুছুন",
+        "submit": "রোগ নির্ণয় রিপোর্ট জমা দিন"
+      },
+      "history": {
+        "title": "রোগ নির্ণয় রিপোর্ট ইতিহাস",
+        "count": "মোট {count} রিপোর্ট",
+        "status": {
+          "draft": "খসড়া",
+          "submitted": "জমা দেওয়া",
+          "approved": "অনুমোদিত"
+        },
+        "attachments": "সংযুক্তি",
+        "viewDetails": "বিবরণ দেখুন",
+        "download": "ডাউনলোড",
+        "emptyTitle": "এখনও কোনো রোগ নির্ণয় রিপোর্ট নেই",
+        "emptyDescription": "উপরে প্রথম রোগ নির্ণয় রিপোর্ট পূরণ করে জমা দিন"
+      }
+    },
+    "tasks": {
+      "assignee": "দায়িত্বপ্রাপ্ত",
+      "deadline": "সময়সীমা",
+      "status": {
+        "pending": "মুলতুবি",
+        "completed": "সম্পন্ন",
+        "inProgress": "চলমান"
+      }
+    },
+    "journey": {
+      "title": "ভ্রমণসূচি ব্যবস্থা",
+      "description": "রোগীর আগমন এবং অভ্যর্থনা সম্পূর্ণ প্রক্রিয়া সংক্ষিপ্ত বিবরণ",
+      "itineraryNumber": "ভ্রমণসূচি নম্বর",
+      "nodes": {
+        "arrival": "আগমন",
+        "pickup": "ব্যক্তিগত গাড়ি পিকআপ সেবা",
+        "hotelCheckin": "হোটেল চেক-ইন",
+        "hospitalAdmission": "হাসপাতালে ভর্তি"
+      },
+      "medicalButler": {
+        "title": "নিবেদিত চিকিৎসা পরিচর্যাকারী",
+        "description": "চীনে রোগীর অবস্থানকালে ভ্রমণসূচি এবং জীবন সেবার সম্পূর্ণ দায়িত্ব"
+      },
+      "importantNotes": {
+        "title": "গুরুত্বপূর্ণ নোট",
+        "bringDicom": "অনুগ্রহ করে রোগীকে সমস্ত মূল ইমেজিং ডেটা (DICOM ফরম্যাট) আনার কথা মনে করিয়ে দিন",
+        "stopAnticoagulants": "অস্ত্রোপচারের কমপক্ষে ৫ দিন আগে অ্যাসপিরিনের মতো অ্যান্টিকোয়াগুল্যান্ট ওষুধ বন্ধ করতে হবে",
+        "driverArrival": "পিকআপ চালক ফ্লাইট অবতরণের ৩০ মিনিট আগে পৌঁছাবে"
+      }
+    },
+    "invitation": {
+      "config": {
+        "title": "আমন্ত্রণ কনফিগারেশন",
+        "description": "অফিসিয়াল চিকিৎসা আমন্ত্রণ পত্র তৈরি করতে তথ্য পূরণ করুন",
+        "admissionDate": "প্রস্তাবিত ভর্তির তারিখ",
+        "treatmentDuration": "আনুমানিক চিকিৎসা সময়কাল",
+        "treatmentPlan": "চিকিৎসা পরিকল্পনা সংক্ষিপ্ত বিবরণ",
+        "estimatedCost": "আনুমানিক খরচ (RMB)",
+        "sendToPatient": "রোগীকে পাঠান",
+        "downloadPdf": "PDF ডাউনলোড করুন"
+      },
+      "content": {
+        "title": "চিকিৎসা চিকিৎসা আমন্ত্রণ পত্র",
+        "invitationNumber": "আমন্ত্রণ নম্বর",
+        "date": "তারিখ",
+        "dearPatient": "প্রিয় জনাব/জনাবা {name}",
+        "arrangements": "ভ্রমণসূচি এবং চিকিৎসা ব্যবস্থা",
+        "proposedAdmission": "প্রস্তাবিত ভর্তির তারিখ",
+        "expectedDuration": "প্রত্যাশিত থাকার সময়কাল",
+        "proposedTreatment": "প্রস্তাবিত চিকিৎসা পরিকল্পনা",
+        "visaNote": "এই আমন্ত্রণ পত্র চিকিৎসা ভিসা আবেদনের জন্য ব্যবহার করা যেতে পারে",
+        "attendingPhysician": "চিকিৎসক চিকিৎসকের স্বাক্ষর",
+        "department": "কার্ডিওলজি বিভাগ"
+      }
+    }
+  },
+  "patient": {
+    "title": "রোগী পোর্টাল",
+    "nav": {
+      "dashboard": "ড্যাশবোর্ড",
+      "application": "আবেদন",
+      "messages": "বার্তা",
+      "appointments": "অ্যাপয়েন্টমেন্ট",
+      "journey": "যাত্রা",
+      "materials": "মেডিকেল তথ্য",
+      "consent": "সম্মতি ফর্ম",
+      "profile": "প্রোফাইল",
+      "myCase": "আমার কেস"
+    },
+    "dashboard": {
+      "welcome": "স্বাগতম, লি মিন",
+      "subtitle": "আমরা আপনার দ্রুত সুস্থতা কামনা করি এবং আপনার চিকিৎসা যাত্রায় আপনার সাথে থাকব"
+    },
+    "myCase": {
+      "title": "আমার কেস",
+      "caseIdLabel": "কেস আইডি",
+      "patientCodeLabel": "রোগীর কোড",
+      "status": {
+        "pendingQuote": "কোটেশন মুলতুবি"
+      },
+      "dispatchedAt": "বরাদ্দ সময়",
+      "lastUpdate": "সর্বশেষ আপডেট",
+      "risk": "ঝুঁকির মাত্রা",
+      "riskHigh": "উচ্চ",
+      "complaint": "প্রধান উপসর্গ",
+      "complaintDesc": "বুক ব্যথা, শ্বাসকষ্ট ৩ মাস",
+      "history": "পূর্ববর্তী রোগ ইতিহাস",
+      "historyDesc": "৫ বছর উচ্চ রক্তচাপ, ২ বছর ডায়াবেটিস",
+      "medications": "বর্তমান ওষুধ",
+      "medicationsDesc": "অ্যাসপিরিন, মেটোপ্রোলল, মেটফর্মিন",
+      "allergies": "অ্যালার্জি",
+      "allergiesDesc": "পেনিসিলিন অ্যালার্জি",
+      "reportsTitle": "পরীক্ষার রিপোর্ট",
+      "actions": {
+        "viewDetails": "বিস্তারিত দেখুন",
+        "chatWithDoctor": "ডাক্তারের সাথে কথা বলুন"
+      }
+    },
+    "travelTimeline": {
+      "title": "ভ্রমণসূচি",
+      "flight": "ফ্লাইট তথ্য",
+      "flightRoute": "{flight} · {from} → {to}",
+      "pickup": "পিকআপ সেবা",
+      "hotelCheckin": "হোটেলে চেক-ইন",
+      "hotelName": "{city} হিলটন হোটেল",
+      "hospitalAdmission": "হাসপাতালে ভর্তি",
+      "confirmed": "নিশ্চিত",
+      "pending": "মুলতুবি",
+      "medicalButler": {
+        "title": "মেডিকেল বাটলার",
+        "name": "মেডিকেল বাটলার ঝাং",
+        "description": "২৪/৭ আপনার সহায়তায়",
+        "contact": "যোগাযোগ"
+      }
+    },
+    "profile": {
+      "title": "প্রোফাইল",
+      "basicInfo": {
+        "title": "মৌলিক তথ্য",
+        "patientId": "রোগী আইডি",
+        "genderAge": "লিঙ্গ / বয়স",
+        "email": "ইমেইল",
+        "phone": "ফোন",
+        "city": "শহর"
+      },
+      "medical": {
+        "title": "মেডিকেল তথ্য",
+        "complaint": "প্রধান উপসর্গ",
+        "complaintDesc": "বুক ব্যথা, শ্বাসকষ্ট ৩ মাস",
+        "history": "পূর্ববর্তী রোগ ইতিহাস",
+        "historyDesc": "৫ বছর উচ্চ রক্তচাপ, ২ বছর ডায়াবেটিস",
+        "medications": "বর্তমান ওষুধ",
+        "medicationsDesc": "অ্যাসপিরিন, মেটোপ্রোলল, মেটফর্মিন",
+        "allergies": "অ্যালার্জি",
+        "allergiesDesc": "পেনিসিলিন অ্যালার্জি"
+      }
+    },
+    "quickActions": {
+      "invitation": {
+        "label": "মেডিকেল আমন্ত্রণ পত্র দেখুন",
+        "description": "ভিসা আবেদনের জন্য"
+      },
+      "appointment": {
+        "label": "অ্যাপয়েন্টমেন্ট সময়",
+        "description": "2025-10-15 14:30"
+      },
+      "journey": {
+        "label": "ভ্রমণ ব্যবস্থা",
+        "description": "ভ্রমণসূচির বিবরণ দেখুন"
+      },
+      "quotation": {
+        "label": "খরচ উদ্ধৃতি",
+        "description": "বিস্তারিত খরচ দেখুন"
+      }
+    },
+    "medicalInfoForm": {
+      "progress": {
+        "label": "Progress",
+        "step": "Step {current} / {total}",
+        "completion": "Completion"
+      },
+      "buttons": {
+        "prev": "Previous",
+        "saveDraft": "Save Draft",
+        "next": "Next",
+        "submit": "Submit Medical Info"
+      },
+      "steps": {
+        "symptomLocation": {
+          "title": "Symptom Location",
+          "description": "Symptom location and nature"
+        },
+        "detailedSymptoms": {
+          "title": "Detailed Symptoms",
+          "description": "Detailed symptom description"
+        },
+        "medicalHistory": {
+          "title": "Medical History",
+          "description": "Past medical history"
+        },
+        "medicationsAllergies": {
+          "title": "Medications & Allergies",
+          "description": "Medications and allergies information"
+        },
+        "examinations": {
+          "title": "Exams & Expectations",
+          "description": "Examinations and expectations"
+        }
+      },
+      "step1": {
+        "title": "Symptom Location & Nature",
+        "subtitle": "Please describe your main symptoms",
+        "primaryLocation": {
+          "label": "Primary symptom location",
+          "options": {
+            "head": "Head and face",
+            "neck": "Neck",
+            "chest": "Chest",
+            "abdomen": "Abdomen",
+            "back": "Back and waist",
+            "joints": "Joints and limbs",
+            "other": "Other"
+          }
+        },
+        "symptomNature": {
+          "label": "Symptom nature (multi-select)",
+          "options": {
+            "dullPain": "Dull pain",
+            "severePain": "Severe pain",
+            "sharpPain": "Sharp pain",
+            "distendingPain": "Distending pain",
+            "numbness": "Numbness",
+            "weakness": "Weakness",
+            "tightness": "Tightness",
+            "difficultyBreathing": "Difficulty breathing",
+            "nauseaVomiting": "Nausea and vomiting",
+            "dizziness": "Dizziness"
+          }
+        },
+        "onsetTime": {
+          "label": "Onset time",
+          "options": {
+            "lt1Month": "Less than 1 month",
+            "oneToSixMonths": "1-6 months",
+            "sixToTwelveMonths": "6-12 months",
+            "gt1Year": "More than 1 year"
+          }
+        },
+        "progressionTrend": {
+          "label": "Progression trend",
+          "options": {
+            "worsening": "Getting worse",
+            "fluctuating": "Fluctuating",
+            "stable": "Stable",
+            "improving": "Improving"
+          }
+        },
+        "diagnosisStage": {
+          "label": "Current diagnosis stage",
+          "options": {
+            "undiagnosed": "Not diagnosed yet",
+            "preliminary": "Preliminary diagnosis",
+            "confirmed": "Confirmed",
+            "postTreatment": "Post-treatment follow-up"
+          }
+        },
+        "mainCategory": {
+          "label": "Main condition category",
+          "options": {
+            "surgery": "Surgical",
+            "tumor": "Tumor/Oncology",
+            "cardiovascular": "Cardiovascular",
+            "fertility": "Fertility/Reproductive",
+            "cosmetic": "Cosmetic/Plastic",
+            "general": "General internal medicine",
+            "other": "Other"
+          }
+        }
+      },
+      "step2": {
+        "title": "Detailed Symptom Description",
+        "subtitle": "Please describe your symptoms in detail",
+        "detailedSymptoms": {
+          "label": "Detailed symptom description",
+          "placeholder": "Please describe your symptoms in detail, including manifestations, frequency, intensity, etc.",
+          "counter": "Characters entered: {count}"
+        },
+        "aggravatingFactors": {
+          "label": "Aggravating factors (multi-select)",
+          "options": {
+            "activity": "During activity",
+            "afterMeals": "After meals",
+            "night": "At night",
+            "stress": "Stress",
+            "weather": "Weather changes",
+            "posture": "Posture changes"
+          }
+        },
+        "relievingFactors": {
+          "label": "Relieving factors (multi-select)",
+          "options": {
+            "rest": "After rest",
+            "medication": "After medication",
+            "heat": "Heat therapy",
+            "cold": "Cold therapy",
+            "massage": "Massage",
+            "postureChange": "Posture adjustment"
+          }
+        },
+        "dailyLifeImpact": {
+          "label": "Impact on daily life (multi-select)",
+          "options": {
+            "workStudy": "Work/Study",
+            "sleep": "Sleep quality",
+            "mobility": "Mobility",
+            "appetite": "Appetite",
+            "emotion": "Mood",
+            "social": "Social activities"
+          }
+        },
+        "previousTreatments": {
+          "label": "Previous treatments tried",
+          "placeholder": "Describe treatments or medications you have tried and their effectiveness."
+        }
+      },
+      "step3": {
+        "title": "Medical History",
+        "subtitle": "Please fill in your medical history",
+        "pastMedicalHistory": {
+          "label": "Past medical history (multi-select)",
+          "options": {
+            "hypertension": "Hypertension",
+            "diabetes": "Diabetes",
+            "heartDisease": "Heart disease",
+            "stroke": "Stroke",
+            "hepatitis": "Hepatitis",
+            "kidneyDisease": "Kidney disease",
+            "tumor": "Tumor",
+            "tuberculosis": "Tuberculosis",
+            "none": "No past medical history"
+          }
+        },
+        "chronicConditions": {
+          "label": "Chronic conditions",
+          "placeholder": "Describe your chronic conditions."
+        },
+        "familyHistory": {
+          "label": "Family history",
+          "placeholder": "Describe relatives with conditions and details."
+        }
+      },
+      "step4": {
+        "title": "Medications & Allergies",
+        "subtitle": "Please provide your medications and allergies",
+        "allergyNotice": "Allergy information is very important, please fill it truthfully.",
+        "currentMedications": {
+          "label": "Current medications",
+          "placeholder": "List medications you are taking, including name, dosage, and frequency."
+        },
+        "allergyHistory": "Allergy history",
+        "drugAllergies": {
+          "label": "Drug allergies",
+          "placeholder": "List drug names and reactions."
+        },
+        "foodAllergies": {
+          "label": "Food allergies",
+          "placeholder": "List foods and allergic reactions."
+        }
+      },
+      "step5": {
+        "title": "Exams & Treatment Expectations",
+        "subtitle": "Please provide exam information and expectations",
+        "examTypes": {
+          "label": "Recent exam types (multi-select)",
+          "options": {
+            "ct": "CT Scan",
+            "mri": "MRI",
+            "xray": "X-ray",
+            "ultrasound": "Ultrasound",
+            "bloodTest": "Blood test",
+            "ecg": "ECG",
+            "endoscopy": "Endoscopy"
+          }
+        },
+        "examDetails": {
+          "label": "Exam details",
+          "placeholder": "Describe exam dates, hospitals, and main findings."
+        },
+        "labResults": {
+          "label": "Lab results summary",
+          "placeholder": "Describe abnormal indicators and reference values."
+        },
+        "expectations": {
+          "label": "Treatment expectations (multi-select)",
+          "options": {
+            "diagnosis": "Diagnosis confirmation",
+            "treatmentPlan": "Treatment plan",
+            "secondOpinion": "Second opinion",
+            "costEstimation": "Cost estimation",
+            "followUp": "Post-operative follow-up"
+          }
+        },
+        "budgetRange": {
+          "label": "Budget range",
+          "options": {
+            "0-5k": "0-5k USD",
+            "5-10k": "5-10k USD",
+            "10-20k": "10-20k USD",
+            "20-50k": "20-50k USD",
+            ">50k": "Above 50k USD",
+            "uncertain": "Not sure yet"
+          }
+        },
+        "preferredTiming": {
+          "label": "Preferred treatment time",
+          "options": {
+            "within_1month": "Within 1 month",
+            "1-3months": "1-3 months",
+            "3-6months": "3-6 months",
+            ">6months": "After 6 months",
+            "flexible": "Flexible"
+          }
+        },
+        "almostDone": "Almost done! Please check required fields before clicking \"Submit\"."
+      }
+    },
+    "intakeDisplay": {
+      "submission": {
+        "title": "Patient intake submitted",
+        "submittedAt": "Submitted at"
+      },
+      "sections": {
+        "symptomLocation": {
+          "title": "Symptom location & nature"
+        },
+        "detailedSymptoms": {
+          "title": "Detailed symptoms"
+        },
+        "medicalHistory": {
+          "title": "Medical history"
+        },
+        "medicationsAllergies": {
+          "title": "Medications & allergies"
+        },
+        "examinations": {
+          "title": "Examinations"
+        },
+        "expectations": {
+          "title": "Treatment expectations & contact"
+        }
+      },
+      "fields": {
+        "otherSymptoms": "Other symptoms",
+        "progressionDescription": "Progression description",
+        "surgerySuggested": "Surgery suggested",
+        "pathologyDiagnosis": "Pathology diagnosis available",
+        "progression": "Condition progression",
+        "dailyLifeImpactDetails": "Impact details",
+        "surgeryHistory": "Surgical history",
+        "surgeryDate": "Date",
+        "surgeryHospital": "Hospital",
+        "surgeryComplications": "Complications",
+        "medicationTypes": "Medication types",
+        "currentMedicationDetails": "Current medications",
+        "dosage": "Dosage",
+        "frequency": "Frequency",
+        "duration": "Duration",
+        "purpose": "Purpose",
+        "allergyImportant": "Allergy information (important)",
+        "drugAllergies": "Drug allergies",
+        "foodAllergies": "Food allergies",
+        "otherAllergies": "Other allergies",
+        "reaction": "Reaction",
+        "imagingData": "Imaging data",
+        "pathologyReport": "Pathology report",
+        "canProvideFiles": "Can provide files",
+        "fileNotes": "Notes",
+        "otherExpectations": "Other expectations",
+        "budgetNotes": "Notes",
+        "timingConstraints": "Constraints",
+        "preferredContactChannel": "Preferred contact channel",
+        "bestContactTime": "Best contact time",
+        "additionalNotes": "Additional notes"
+      }
+    },
+    "appointmentPage": {
+      "back": "Back to Home",
+      "title": "Appointment Time",
+      "subtitle": "Your appointment details",
+      "upcoming": {
+        "title": "Upcoming Appointment",
+        "statusConfirmed": "Confirmed",
+        "edit": "Reschedule",
+        "dateLabel": "Appointment Date",
+        "dateValue": "Wednesday, Oct 15, 2025",
+        "timeLabel": "Appointment Time",
+        "timeValue": "14:30 - 15:30",
+        "timeNote": "Please arrive 15 minutes early",
+        "locationLabel": "Location",
+        "locationName": "Outpatient Building 3F · Cardiology",
+        "room": "Room 301",
+        "doctorTitle": "Attending Physician",
+        "doctorName": "Dr. Oven",
+        "doctorRole": "Cardiology Director",
+        "doctorExperience": "20 years experience · Chief Physician",
+        "phone": "+86 10 1234 5678",
+        "email": "doctor@medora.com"
+      },
+      "visitItems": {
+        "title": "Visit Items",
+        "list": {
+          "initialAssessment": "Initial assessment and medical history",
+          "vitals": "Blood pressure and glucose monitoring",
+          "ecg": "Electrocardiogram",
+          "treatmentPlan": "Initial treatment plan"
+        }
+      },
+      "preparation": {
+        "title": "Preparation",
+        "steps": {
+          "documents": {
+            "title": "Bring documents",
+            "description": "Please bring passport, visa, medical invitation letter, and past records"
+          },
+          "fasting": {
+            "title": "Fasting",
+            "description": "Blood tests are scheduled. Please fast for at least 8 hours."
+          },
+          "medication": {
+            "title": "Medication guidance",
+            "description": "Inform the doctor about current medications. Some may need to be paused."
+          },
+          "translation": {
+            "title": "Translation service",
+            "description": "Chinese-English translation available; book in advance for other languages."
+          }
+        }
+      },
+      "contact": {
+        "title": "Need help?",
+        "description": "For questions or to reschedule, contact our international department:",
+        "or": " or email ",
+        "phone": "+86 10 1234 5678",
+        "email": "international@medora.com"
+      }
+    }
+  },
+  "conditions": {
+    "heartBypassSurgery": "Heart Bypass Surgery",
+    "scoliosisCorrection": "Scoliosis Correction",
+    "kneeReplacement": "Knee Replacement",
+    "cataractSurgery": "Cataract Surgery",
+    "coronaryHeartDisease": "Coronary Heart Disease",
+    "breastCancer": "Breast Cancer",
+    "lungCancer": "Lung Cancer",
+    "thyroidCancer": "Thyroid Cancer",
+    "stomachCancer": "Stomach Cancer",
+    "boneCancer": "Bone Cancer",
+    "kidneyCancer": "Kidney Cancer",
+    "liverCancer": "Liver Cancer",
+    "gallbladderCancer": "Gallbladder Cancer",
+    "earlyStageLiverCancer": "Early-stage Liver Cancer",
+    "uterineFibroids": "Uterine Fibroids",
+    "lumbarDiscHerniation": "Lumbar Disc Herniation"
+  },
+  "status": {
+    "all": "সব",
+    "active": "সক্রিয়",
+    "inactive": "নিষ্ক্রিয়",
+    "pending": "মুলতুবি",
+    "inProgress": "চলমান",
+    "completed": "সম্পন্ন",
+    "canceled": "বাতিল",
+    "draft": "খসড়া",
+    "sent": "পাঠানো",
+    "received": "প্রাপ্ত",
+    "approved": "অনুমোদিত",
+    "rejected": "প্রত্যাখ্যাত"
+  },
+  "timeDate": {
+    "today": "আজ",
+    "yesterday": "গতকাল",
+    "tomorrow": "আগামীকাল",
+    "thisWeek": "এই সপ্তাহ",
+    "lastWeek": "গত সপ্তাহ",
+    "thisMonth": "এই মাস",
+    "lastMonth": "গত মাস",
+    "minutesAgo": "{count} মিনিট আগে",
+    "hoursAgo": "{count} ঘণ্টা আগে",
+    "daysAgo": "{count} দিন আগে",
+    "weeksAgo": "{count} সপ্তাহ আগে",
+    "monthsAgo": "{count} মাস আগে"
+  }
+}

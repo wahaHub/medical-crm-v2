@@ -21,7 +21,7 @@ describe('authMiddleware', () => {
   beforeEach(async () => {
     vi.resetModules();
     const { jwtVerify } = await import('jose');
-    (jwtVerify as any).mockResolvedValue({
+    (jwtVerify as ReturnType<typeof vi.fn>).mockResolvedValue({
       payload: {
         sub: 'user-123',
         email: 'test@example.com',
@@ -67,7 +67,7 @@ describe('authMiddleware', () => {
 
   it('returns 401 for invalid JWT', async () => {
     const { jwtVerify } = await import('jose');
-    (jwtVerify as any).mockRejectedValue(new Error('invalid'));
+    (jwtVerify as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('invalid'));
 
     const res = await app.request('/test', {
       headers: { Authorization: 'Bearer bad-token' },
@@ -83,7 +83,7 @@ describe('requireRole', () => {
 
   it('allows matching role', async () => {
     const { jwtVerify } = await import('jose');
-    (jwtVerify as any).mockResolvedValue({
+    (jwtVerify as ReturnType<typeof vi.fn>).mockResolvedValue({
       payload: {
         sub: 'u1',
         email: 'a@b.com',
@@ -105,7 +105,7 @@ describe('requireRole', () => {
 
   it('rejects non-matching role', async () => {
     const { jwtVerify } = await import('jose');
-    (jwtVerify as any).mockResolvedValue({
+    (jwtVerify as ReturnType<typeof vi.fn>).mockResolvedValue({
       payload: {
         sub: 'u1',
         email: 'a@b.com',
@@ -133,7 +133,7 @@ describe('requireHospital', () => {
 
   it('rejects user without hospitalId', async () => {
     const { jwtVerify } = await import('jose');
-    (jwtVerify as any).mockResolvedValue({
+    (jwtVerify as ReturnType<typeof vi.fn>).mockResolvedValue({
       payload: {
         sub: 'u1',
         email: 'a@b.com',

@@ -41,8 +41,8 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
       c.set('session', {
         userId: payload.sub!,
         email: payload.email as string,
-        roles: (payload.realm_access as any)?.roles ?? [],
-        hospitalId: (payload as any).hospital_id ?? null,
+        roles: (payload.realm_access as { roles?: string[] })?.roles ?? [],
+        hospitalId: (payload as Record<string, unknown>).hospital_id as string ?? null,
       });
     } catch {
       throw new HTTPException(401, { message: 'Invalid or expired token' });

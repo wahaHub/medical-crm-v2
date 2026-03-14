@@ -11,7 +11,7 @@ function createTestApp() {
     }
     if (err instanceof DomainError) {
       const status = mapErrorToStatus(err.code);
-      return c.json({ error: err.message, code: err.code }, status as any);
+      return c.json({ error: err.message, code: err.code }, status as 200 | 400 | 401 | 403 | 404 | 500);
     }
     return c.json({ error: 'Internal server error' }, 500);
   });

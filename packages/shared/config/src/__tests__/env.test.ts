@@ -26,7 +26,7 @@ describe('serverEnvSchema', () => {
   });
 
   it('fails on missing DATABASE_URL', () => {
-    const { DATABASE_URL, ...rest } = VALID_ENV;
+    const { DATABASE_URL: _DATABASE_URL, ...rest } = VALID_ENV;
     expect(() => serverEnvSchema.parse(rest)).toThrow();
   });
 

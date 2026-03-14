@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { caseListQuerySchema, caseStatusSchema, caseStageSchema } from '../case.schema';
+import { caseListQuerySchema, caseStatusSchema } from '../case.schema';
 
 describe('caseStatusSchema', () => {
   it('accepts valid statuses', () => {

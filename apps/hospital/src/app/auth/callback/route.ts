@@ -35,7 +35,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login', request.url));
   }
 
-  const data = await tokenRes.json();
+  const data = await tokenRes.json() as {
+    access_token: string;
+    refresh_token: string;
+    id_token: string;
+    expires_in: number;
+  };
   session.access_token = data.access_token;
   session.refresh_token = data.refresh_token;
   session.id_token = data.id_token;

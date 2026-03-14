@@ -27,8 +27,8 @@ describe('Global error handler', () => {
 
     const res = await app.request('/throw-http');
     expect(res.status).toBe(422);
-    const body = await res.json();
-    expect(body.error).toBe('Invalid data');
+    const body = await res.json() as Record<string, unknown>;
+    expect(body['error']).toBe('Invalid data');
   });
 
   it('maps NotFoundError to 404', async () => {
@@ -39,9 +39,9 @@ describe('Global error handler', () => {
 
     const res = await app.request('/throw-notfound');
     expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body.error).toBe('Hospital not found');
-    expect(body.code).toBe('NOT_FOUND');
+    const body = await res.json() as Record<string, unknown>;
+    expect(body['error']).toBe('Hospital not found');
+    expect(body['code']).toBe('NOT_FOUND');
   });
 
   it('maps ForbiddenError to 403', async () => {
@@ -52,8 +52,8 @@ describe('Global error handler', () => {
 
     const res = await app.request('/throw-forbidden');
     expect(res.status).toBe(403);
-    const body = await res.json();
-    expect(body.code).toBe('FORBIDDEN');
+    const body = await res.json() as Record<string, unknown>;
+    expect(body['code']).toBe('FORBIDDEN');
   });
 
   it('maps unhandled error to 500', async () => {
@@ -64,8 +64,8 @@ describe('Global error handler', () => {
 
     const res = await app.request('/throw-generic');
     expect(res.status).toBe(500);
-    const body = await res.json();
-    expect(body.error).toBe('Internal server error');
+    const body = await res.json() as Record<string, unknown>;
+    expect(body['error']).toBe('Internal server error');
   });
 
   it('mapErrorToStatus utility works end-to-end', () => {

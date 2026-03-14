@@ -49,11 +49,15 @@ async function refreshToken(refreshToken: string) {
       },
     );
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = await res.json() as {
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+    };
     return {
-      access_token: data.access_token as string,
-      refresh_token: data.refresh_token as string,
-      expires_at: Math.floor(Date.now() / 1000) + (data.expires_in as number),
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
     };
   } catch {
     return null;

@@ -6,10 +6,18 @@ import { bodyLimit } from 'hono/body-limit';
 import { requestId } from 'hono/request-id';
 import { logger } from 'hono/logger';
 
+// Extend Hono's ContextVariableMap to register the 'session' variable
+declare module 'hono' {
+  interface ContextVariableMap {
+    session: { userId?: string } | undefined;
+  }
+}
+
 function getClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
   const xff = c.req.header('x-forwarded-for');
   if (xff) {
-    return xff.split(',')[0].trim();
+    const first = xff.split(',')[0];
+    return first != null ? first.trim() : 'unknown';
   }
   return c.req.header('x-real-ip') ?? 'unknown';
 }
@@ -50,7 +58,7 @@ export const perUserRateLimiter = rateLimiter({
   windowMs: 60_000,
   limit: 200,
   keyGenerator: (c) => {
-    const session = c.get('session') as { userId?: string } | undefined;
+    const session = c.get('session');
     return session?.userId ?? 'anonymous';
   },
 });

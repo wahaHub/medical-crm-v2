@@ -1,0 +1,377 @@
+import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreignKey, uuid, jsonb, boolean, bigint, unique, pgPolicy, pgEnum } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
+
+export const aiSummaryStatus = pgEnum("AISummaryStatus", ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'])
+export const auditEvent = pgEnum("AuditEvent", ['DOC_UPLOAD', 'DOC_VIEW', 'DOC_DOWNLOAD', 'DOC_DELETE', 'DOC_SHARE_LINK_CREATED', 'DOC_SHARE_LINK_USED', 'CASE_CREATED', 'CASE_ASSIGNED', 'CASE_REVOKED', 'CASE_STATUS_CHANGED', 'USER_LOGIN', 'USER_LOGOUT'])
+export const caseStage = pgEnum("CaseStage", ['PENDING_ASSIGNMENT', 'TRANSFERRED_TO_HOSPITAL', 'HOSPITAL_CONTACTED', 'CONSULTATION_SCHEDULED', 'IN_TREATMENT', 'TREATMENT_COMPLETED'])
+export const caseStatus = pgEnum("CaseStatus", ['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'ARCHIVED'])
+export const consultationStatus = pgEnum("ConsultationStatus", ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW'])
+export const conversationCategory = pgEnum("ConversationCategory", ['HOSPITAL', 'PATIENT', 'ADMIN_HOSPITAL', 'ADMIN_PATIENT', 'HOSPITAL_PATIENT'])
+export const documentStatus = pgEnum("DocumentStatus", ['PENDING', 'ACTIVE', 'DELETED'])
+export const documentType = pgEnum("DocumentType", ['LAB', 'IMAGING', 'DISCHARGE', 'PRESCRIPTION', 'ID', 'DIAGNOSIS', 'QUOTE', 'INVITATION', 'OTHER'])
+export const hospitalStatus = pgEnum("HospitalStatus", ['ACTIVE', 'PENDING', 'INACTIVE'])
+export const hospitalType = pgEnum("HospitalType", ['COSMETIC', 'REGULAR'])
+export const messageType = pgEnum("MessageType", ['TEXT', 'IMAGE', 'FILE', 'SYSTEM'])
+export const moderationStatus = pgEnum("ModerationStatus", ['ALLOWED', 'BLOCKED', 'REVIEW'])
+export const progressType = pgEnum("ProgressType", ['STATUS_CHANGE', 'DOCUMENT_UPLOAD', 'VIDEO_CONSULTATION', 'MESSAGE', 'APPOINTMENT'])
+export const riskLevel = pgEnum("RiskLevel", ['LOW', 'MEDIUM', 'HIGH'])
+export const sensitivity = pgEnum("Sensitivity", ['PHI_HIGH', 'PHI_MED', 'PHI_LOW'])
+export const userRole = pgEnum("UserRole", ['ADMIN', 'HOSPITAL', 'PATIENT'])
+
+
+export const prismaMigrations = pgTable("_prisma_migrations", {
+	id: varchar({ length: 36 }).primaryKey().notNull(),
+	checksum: varchar({ length: 64 }).notNull(),
+	finishedAt: timestamp("finished_at", { withTimezone: true, mode: 'string' }),
+	migrationName: varchar("migration_name", { length: 255 }).notNull(),
+	logs: text(),
+	rolledBackAt: timestamp("rolled_back_at", { withTimezone: true, mode: 'string' }),
+	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	appliedStepsCount: integer("applied_steps_count").default(0).notNull(),
+});
+
+export const hospitals = pgTable("hospitals", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	name: varchar({ length: 200 }).notNull(),
+	nameEn: varchar("name_en", { length: 200 }),
+	address: text(),
+	phone: varchar({ length: 50 }),
+	email: varchar({ length: 255 }),
+	description: text(),
+	logoUrl: varchar("logo_url", { length: 500 }),
+	specialties: jsonb(),
+	status: hospitalStatus().default('PENDING').notNull(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	type: hospitalType().default('COSMETIC').notNull(),
+}, (table) => [
+	index("hospitals_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	index("hospitals_type_idx").using("btree", table.type.asc().nullsLast().op("enum_ops")),
+]);
+
+export const users = pgTable("users", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	email: varchar({ length: 255 }).notNull(),
+	name: varchar({ length: 100 }).notNull(),
+	role: userRole().default('PATIENT').notNull(),
+	hospitalId: uuid("hospital_id"),
+	avatarUrl: varchar("avatar_url", { length: 500 }),
+	status: varchar({ length: 20 }).default('active').notNull(),
+	lastLoginAt: timestamp("last_login_at", { precision: 6, mode: 'string' }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	patientCode: varchar("patient_code", { length: 20 }),
+	country: varchar({ length: 100 }),
+	preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh').notNull(),
+}, (table) => [
+	index("users_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
+	uniqueIndex("users_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")),
+	index("users_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
+	uniqueIndex("users_patient_code_key").using("btree", table.patientCode.asc().nullsLast().op("text_ops")),
+	index("users_role_idx").using("btree", table.role.asc().nullsLast().op("enum_ops")),
+	foreignKey({
+			columns: [table.hospitalId],
+			foreignColumns: [hospitals.id],
+			name: "users_hospital_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+]);
+
+export const cases = pgTable("cases", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseNumber: varchar("case_number", { length: 50 }).notNull(),
+	patientId: uuid("patient_id").notNull(),
+	assignedHospitalId: uuid("assigned_hospital_id"),
+	patientName: varchar("patient_name", { length: 100 }).notNull(),
+	patientCountry: varchar("patient_country", { length: 100 }),
+	patientLanguage: varchar("patient_language", { length: 10 }).default('en').notNull(),
+	primaryDiagnosis: text("primary_diagnosis"),
+	diagnosisCode: varchar("diagnosis_code", { length: 50 }),
+	symptoms: jsonb(),
+	medicalHistory: text("medical_history"),
+	aiSummaryZh: text("ai_summary_zh"),
+	aiSummaryEn: text("ai_summary_en"),
+	riskLevel: riskLevel("risk_level"),
+	status: caseStatus().default('ACTIVE').notNull(),
+	stage: caseStage().default('PENDING_ASSIGNMENT').notNull(),
+	assignedAt: timestamp("assigned_at", { precision: 6, mode: 'string' }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+}, (table) => [
+	index("cases_assigned_hospital_id_idx").using("btree", table.assignedHospitalId.asc().nullsLast().op("uuid_ops")),
+	index("cases_case_number_idx").using("btree", table.caseNumber.asc().nullsLast().op("text_ops")),
+	uniqueIndex("cases_case_number_key").using("btree", table.caseNumber.asc().nullsLast().op("text_ops")),
+	index("cases_patient_id_idx").using("btree", table.patientId.asc().nullsLast().op("uuid_ops")),
+	index("cases_stage_idx").using("btree", table.stage.asc().nullsLast().op("enum_ops")),
+	index("cases_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	foreignKey({
+			columns: [table.assignedHospitalId],
+			foreignColumns: [hospitals.id],
+			name: "cases_assigned_hospital_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+	foreignKey({
+			columns: [table.patientId],
+			foreignColumns: [users.id],
+			name: "cases_patient_id_fkey"
+		}).onUpdate("cascade").onDelete("restrict"),
+]);
+
+export const documents = pgTable("documents", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull(),
+	uploadedById: uuid("uploaded_by_id").notNull(),
+	fileName: varchar("file_name", { length: 255 }).notNull(),
+	fileSize: integer("file_size").notNull(),
+	mimeType: varchar("mime_type", { length: 100 }).notNull(),
+	storageKey: varchar("storage_key", { length: 500 }).notNull(),
+	sha256: varchar({ length: 64 }),
+	documentType: documentType("document_type").notNull(),
+	sensitivity: sensitivity().default('PHI_HIGH').notNull(),
+	language: varchar({ length: 10 }).default('en').notNull(),
+	isTranslated: boolean("is_translated").default(false).notNull(),
+	sourceDocId: uuid("source_doc_id"),
+	version: integer().default(1).notNull(),
+	status: documentStatus().default('ACTIVE').notNull(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+}, (table) => [
+	index("documents_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
+	index("documents_document_type_idx").using("btree", table.documentType.asc().nullsLast().op("enum_ops")),
+	index("documents_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	uniqueIndex("documents_storage_key_key").using("btree", table.storageKey.asc().nullsLast().op("text_ops")),
+	index("documents_uploaded_by_id_idx").using("btree", table.uploadedById.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.caseId],
+			foreignColumns: [cases.id],
+			name: "documents_case_id_fkey"
+		}).onUpdate("cascade").onDelete("cascade"),
+	foreignKey({
+			columns: [table.sourceDocId],
+			foreignColumns: [table.id],
+			name: "documents_source_doc_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+	foreignKey({
+			columns: [table.uploadedById],
+			foreignColumns: [users.id],
+			name: "documents_uploaded_by_id_fkey"
+		}).onUpdate("cascade").onDelete("restrict"),
+]);
+
+export const auditLogs = pgTable("audit_logs", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	userId: uuid("user_id").notNull(),
+	hospitalId: uuid("hospital_id"),
+	event: auditEvent().notNull(),
+	caseId: uuid("case_id"),
+	documentId: uuid("document_id"),
+	ipAddress: varchar("ip_address", { length: 50 }),
+	userAgent: text("user_agent"),
+	metadata: jsonb(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+	index("audit_logs_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
+	index("audit_logs_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamp_ops")),
+	index("audit_logs_document_id_idx").using("btree", table.documentId.asc().nullsLast().op("uuid_ops")),
+	index("audit_logs_event_idx").using("btree", table.event.asc().nullsLast().op("enum_ops")),
+	index("audit_logs_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
+	index("audit_logs_user_id_idx").using("btree", table.userId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: "audit_logs_user_id_fkey"
+		}).onUpdate("cascade").onDelete("restrict"),
+]);
+
+export const caseProgress = pgTable("case_progress", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull(),
+	title: varchar({ length: 200 }).notNull(),
+	description: text(),
+	progressType: progressType("progress_type").notNull(),
+	videoSummary: jsonb("video_summary"),
+	recordedAt: timestamp("recorded_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	recordedById: uuid("recorded_by_id"),
+}, (table) => [
+	index("case_progress_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
+	index("case_progress_progress_type_idx").using("btree", table.progressType.asc().nullsLast().op("enum_ops")),
+	foreignKey({
+			columns: [table.caseId],
+			foreignColumns: [cases.id],
+			name: "case_progress_case_id_fkey"
+		}).onUpdate("cascade").onDelete("cascade"),
+]);
+
+// NOTE: conversations and messages have a circular FK relationship in the DB
+// (messages.conversation_id → conversations.id AND conversations.last_message_id → messages.id).
+// We define conversations first and omit the last_message_id FK from the Drizzle schema definition.
+// The FK constraint still exists in PostgreSQL; the relation is defined in relations.ts for queries.
+export const conversations = pgTable("conversations", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id"),
+	category: conversationCategory().notNull(),
+	title: varchar({ length: 200 }),
+	hospitalId: uuid("hospital_id"),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	lastMessageId: uuid("last_message_id"),
+	lastMessageAt: timestamp("last_message_at", { withTimezone: true, mode: 'string' }),
+	lastMessagePreview: text("last_message_preview"),
+	lastSenderId: uuid("last_sender_id"),
+}, (table) => [
+	index("conversations_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
+	index("conversations_category_idx").using("btree", table.category.asc().nullsLast().op("enum_ops")),
+	index("idx_conversations_hospital_category_time").using("btree", table.hospitalId.asc().nullsLast().op("timestamptz_ops"), table.category.asc().nullsLast().op("timestamptz_ops"), table.lastMessageAt.desc().nullsLast().op("timestamptz_ops")),
+	foreignKey({
+			columns: [table.caseId],
+			foreignColumns: [cases.id],
+			name: "conversations_case_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+	foreignKey({
+			columns: [table.lastSenderId],
+			foreignColumns: [users.id],
+			name: "conversations_last_sender_id_fkey"
+		}).onDelete("set null"),
+]);
+
+export const messages = pgTable("messages", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	conversationId: uuid("conversation_id").notNull(),
+	senderId: uuid("sender_id").notNull(),
+	content: text().notNull(),
+	originalLanguage: varchar("original_language", { length: 10 }).default('en').notNull(),
+	translatedContent: text("translated_content"),
+	messageType: messageType("message_type").default('TEXT').notNull(),
+	moderationStatus: moderationStatus("moderation_status").default('ALLOWED').notNull(),
+	attachments: jsonb(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	aiSummary: text("ai_summary"),
+}, (table) => [
+	index("idx_messages_ai_summary").using("btree", table.id.asc().nullsLast().op("uuid_ops")).where(sql`(ai_summary IS NOT NULL)`),
+	index("idx_messages_conversation_time").using("btree", table.conversationId.asc().nullsLast().op("timestamp_ops"), table.createdAt.desc().nullsFirst().op("timestamp_ops")),
+	index("messages_conversation_id_idx").using("btree", table.conversationId.asc().nullsLast().op("uuid_ops")),
+	index("messages_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamp_ops")),
+	index("messages_sender_id_idx").using("btree", table.senderId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.conversationId],
+			foreignColumns: [conversations.id],
+			name: "messages_conversation_id_fkey"
+		}).onUpdate("cascade").onDelete("cascade"),
+	foreignKey({
+			columns: [table.senderId],
+			foreignColumns: [users.id],
+			name: "messages_sender_id_fkey"
+		}).onUpdate("cascade").onDelete("restrict"),
+]);
+
+export const consultations = pgTable("consultations", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull(),
+	hospitalId: uuid("hospital_id").notNull(),
+	patientId: uuid("patient_id").notNull(),
+	doctorId: uuid("doctor_id"),
+	status: consultationStatus().default('SCHEDULED').notNull(),
+	scheduledAt: timestamp("scheduled_at", { precision: 6, mode: 'string' }).notNull(),
+	startedAt: timestamp("started_at", { precision: 6, mode: 'string' }),
+	endedAt: timestamp("ended_at", { precision: 6, mode: 'string' }),
+	durationMinutes: integer("duration_minutes").default(30).notNull(),
+	actualDuration: integer("actual_duration"),
+	consultationLink: varchar("consultation_link", { length: 500 }),
+	aiTranslation: boolean("ai_translation").default(false).notNull(),
+	patientLanguage: varchar("patient_language", { length: 10 }).default('en').notNull(),
+	notes: text(),
+	videoStorageKey: varchar("video_storage_key", { length: 500 }),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	videoSize: bigint("video_size", { mode: "number" }),
+	videoDuration: integer("video_duration"),
+	videoThumbnail: varchar("video_thumbnail", { length: 500 }),
+	videoUploadedAt: timestamp("video_uploaded_at", { precision: 6, mode: 'string' }),
+	aiSummary: jsonb("ai_summary"),
+	aiSummaryCreatedAt: timestamp("ai_summary_created_at", { precision: 6, mode: 'string' }),
+	aiSummaryStatus: aiSummaryStatus("ai_summary_status").default('PENDING').notNull(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+	index("consultations_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
+	index("consultations_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
+	index("consultations_patient_id_idx").using("btree", table.patientId.asc().nullsLast().op("uuid_ops")),
+	index("consultations_scheduled_at_idx").using("btree", table.scheduledAt.asc().nullsLast().op("timestamp_ops")),
+	index("consultations_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	index("idx_consultations_translation_scheduled").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")).where(sql`((ai_translation = true) AND (status = 'SCHEDULED'::"ConsultationStatus"))`),
+	foreignKey({
+			columns: [table.caseId],
+			foreignColumns: [cases.id],
+			name: "consultations_case_id_fkey"
+		}).onUpdate("cascade").onDelete("restrict"),
+	foreignKey({
+			columns: [table.patientId],
+			foreignColumns: [users.id],
+			name: "consultations_patient_id_fkey"
+		}).onUpdate("cascade").onDelete("restrict"),
+]);
+
+export const consultationTranscripts = pgTable("consultation_transcripts", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	consultationId: uuid("consultation_id").notNull(),
+	originalLang: varchar("original_lang", { length: 10 }).default('en').notNull(),
+	translatedLang: varchar("translated_lang", { length: 10 }),
+	entries: jsonb().default([]).notNull(),
+	status: varchar({ length: 20 }).default('pending').notNull(),
+	generatedAt: timestamp("generated_at", { precision: 6, mode: 'string' }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_consultation_transcripts_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.consultationId],
+			foreignColumns: [consultations.id],
+			name: "consultation_transcripts_consultation_id_fkey"
+		}).onDelete("cascade"),
+	unique("consultation_transcripts_consultation_id_key").on(table.consultationId),
+	pgPolicy("Admins can manage all consultation transcripts", { as: "permissive", for: "all", to: ["public"], using: sql`(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'ADMIN'::"UserRole"))))` }),
+	pgPolicy("Hospital users can view their consultation transcripts", { as: "permissive", for: "select", to: ["public"] }),
+]);
+
+export const translationTasks = pgTable("translation_tasks", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	hospitalType: text("hospital_type").notNull(),
+	entityType: text("entity_type").notNull(),
+	entityId: uuid("entity_id").notNull(),
+	sourceLanguage: text("source_language").default('zh').notNull(),
+	targetLanguage: text("target_language").notNull(),
+	status: text().default('pending'),
+	errorMessage: text("error_message"),
+	retryCount: integer("retry_count").default(0),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }),
+	completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	index("idx_translation_tasks_created_at").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("idx_translation_tasks_entity").using("btree", table.entityType.asc().nullsLast().op("text_ops"), table.entityId.asc().nullsLast().op("uuid_ops")),
+	index("idx_translation_tasks_hospital_type").using("btree", table.hospitalType.asc().nullsLast().op("text_ops")),
+	index("idx_translation_tasks_pending").using("btree", table.status.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("text_ops")).where(sql`(status = 'pending'::text)`),
+	index("idx_translation_tasks_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	unique("translation_tasks_hospital_type_entity_type_entity_id_sourc_key").on(table.hospitalType, table.entityType, table.entityId, table.sourceLanguage, table.targetLanguage),
+]);
+
+export const hospitalRegistrationTokens = pgTable("hospital_registration_tokens", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	hospitalId: uuid("hospital_id").notNull(),
+	token: varchar({ length: 100 }).notNull(),
+	email: varchar({ length: 255 }).notNull(),
+	expiresAt: timestamp("expires_at", { precision: 6, mode: 'string' }).notNull(),
+	usedAt: timestamp("used_at", { precision: 6, mode: 'string' }),
+	keycloakUserId: varchar("keycloak_user_id", { length: 100 }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+}, (table) => [
+	index("hospital_registration_tokens_expires_at_idx").using("btree", table.expiresAt.asc().nullsLast().op("timestamp_ops")),
+	index("hospital_registration_tokens_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
+	index("hospital_registration_tokens_token_idx").using("btree", table.token.asc().nullsLast().op("text_ops")),
+	uniqueIndex("hospital_registration_tokens_token_key").using("btree", table.token.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.hospitalId],
+			foreignColumns: [hospitals.id],
+			name: "hospital_registration_tokens_hospital_id_fkey"
+		}).onUpdate("cascade").onDelete("cascade"),
+]);

@@ -7,3 +7,6 @@ export type {
 // State machine
 export { STATUS_TRANSITIONS } from './state-machine/case-status-transitions.js';
 export { STAGE_ORDER } from './state-machine/case-stage-order.js';
+
+// Value objects
+export { CaseNumber } from './value-objects/case-number.js';

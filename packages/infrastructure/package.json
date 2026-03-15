@@ -10,7 +10,9 @@
     "./supabase-main/types": "./supabase-main/types.ts",
     "./supabase-china": "./supabase-china/client.ts",
     "./supabase-china/types": "./supabase-china/types.ts",
-    "./auth": "./auth/index.ts"
+    "./auth": "./auth/index.ts",
+    "./repositories": "./database/repositories/index.ts",
+    "./storage": "./storage/supabase-storage.adapter.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -21,6 +23,8 @@
   },
   "dependencies": {
     "@medical-crm/config": "workspace:*",
+    "@medical-crm/domain": "workspace:*",
+    "@medical-crm/utils": "workspace:*",
     "@supabase/supabase-js": "^2.49.0",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.7.0",

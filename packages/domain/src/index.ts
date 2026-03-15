@@ -26,3 +26,6 @@ export type { ICaseProgressRepository } from './ports/case-progress-repository.p
 export type { IHospitalRepository, HospitalInfo } from './ports/hospital-repository.port.js';
 export type { IPatientRepository, PatientBasicInfo } from './ports/patient-repository.port.js';
 export type { IStorageService, PresignedUploadResult } from './ports/storage-service.port.js';
+
+// Services
+export { CaseAssignmentService } from './services/case-assignment.service.js';

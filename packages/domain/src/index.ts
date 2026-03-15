@@ -1,0 +1,9 @@
+// Enums
+export type {
+  CaseStatus, CaseStage, RiskLevel, DocumentType,
+  Sensitivity, DocumentStatus, ProgressType,
+} from './enums/index.js';
+
+// State machine
+export { STATUS_TRANSITIONS } from './state-machine/case-status-transitions.js';
+export { STAGE_ORDER } from './state-machine/case-stage-order.js';

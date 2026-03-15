@@ -380,3 +380,23 @@ export const hospitalRegistrationTokens = pgTable("hospital_registration_tokens"
 			name: "hospital_registration_tokens_hospital_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 ]);
+
+export const messageTasks = pgTable("message_tasks", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	messageId: uuid("message_id").notNull(),
+	taskKind: text("task_kind").notNull(),
+	targetLanguage: varchar("target_language", { length: 10 }),
+	status: text().default('PENDING').notNull(),
+	errorMessage: text("error_message"),
+	retryCount: integer("retry_count").default(0).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("message_tasks_pending_idx").using("btree", table.status.asc().nullsLast().op("text_ops")).where(sql`(status = 'PENDING'::text)`),
+	index("message_tasks_message_id_idx").using("btree", table.messageId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.messageId],
+			foreignColumns: [messages.id],
+			name: "message_tasks_message_id_fkey"
+		}).onDelete("cascade"),
+]);

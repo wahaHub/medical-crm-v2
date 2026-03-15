@@ -4,7 +4,7 @@
 
 Phase 2A delivered Case CRUD (13 endpoints, 268 tests). Phase 2B+2C adds the three remaining core CRM modules that complete the primary workflow: **assign hospital → communicate → consult**.
 
-**Scope:** 32 API endpoints, 31 use cases, 6 new entities, 8+ new repositories, 1 new DB table, 2 AI service adapters.
+**Scope:** 31 API endpoints, 31 use cases, 6 new entities, 8+ new repositories, 1 new DB table, 2 AI service adapters.
 
 **Out of scope (deferred):** Materials moderation, invitation letters, dashboard/analytics, audit log querying, user/patient self-service, translation task management for hospital content.
 
@@ -12,7 +12,7 @@ Phase 2A delivered Case CRUD (13 endpoints, 268 tests). Phase 2B+2C adds the thr
 
 - Same as Phase 2A: Hono + @hono/zod-openapi, Drizzle ORM, vitest, TypeScript strict
 - **New dependency:** `openai` npm package (GPT-4o / GPT-4o-mini for translation & summarization)
-- **New env var:** `OPENAI_API_KEY`
+- **New env vars:** `OPENAI_API_KEY`, `INTERNAL_API_SECRET` (guards internal worker endpoints)
 - Supabase Realtime for message push (existing infrastructure, no new setup)
 
 ---

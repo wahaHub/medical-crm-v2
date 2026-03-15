@@ -30,6 +30,13 @@ export const serverEnvSchema = z.object({
   HOSPITAL_ORIGIN: z.string().url(),
   // Internal API URL (server-side only, used by BFF proxy)
   API_URL: z.string().url(),
+  // Keycloak Admin API (hospital user registration)
+  KEYCLOAK_BASE_URL: z.string().url(),
+  KEYCLOAK_REALM: z.string().min(1),
+  KEYCLOAK_ADMIN_USERNAME: z.string().min(1),
+  KEYCLOAK_ADMIN_PASSWORD: z.string().min(1),
+  // Internal worker auth
+  INTERNAL_API_SECRET: z.string().min(32),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 

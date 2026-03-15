@@ -19,6 +19,11 @@ describe('serverEnvSchema', () => {
     ADMIN_ORIGIN: 'http://localhost:3002',
     HOSPITAL_ORIGIN: 'http://localhost:3003',
     API_URL: 'http://localhost:3001',
+    KEYCLOAK_BASE_URL: 'https://keycloak.example.com',
+    KEYCLOAK_REALM: 'medical-crm',
+    KEYCLOAK_ADMIN_USERNAME: 'admin',
+    KEYCLOAK_ADMIN_PASSWORD: 'admin-password',
+    INTERNAL_API_SECRET: 'must-be-at-least-32-characters-long-secret-key',
   };
 
   it('parses valid env without throwing', () => {

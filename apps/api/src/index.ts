@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { DomainError, mapErrorToStatus } from '@medical-crm/utils';
 import { applySecurityMiddleware, perUserRateLimiter } from './middleware/security.js';
 import { authMiddleware } from '@medical-crm/infrastructure/auth';
+import routes from './routes/index.js';
 
 const app = new Hono();
 
@@ -14,6 +15,9 @@ app.get('/health', (c) => c.json({ status: 'ok', version: '2.0.0' }));
 
 // All /api/v2/* routes require auth + per-user rate limiting
 app.use('/api/v2/*', authMiddleware, perUserRateLimiter);
+
+// Mount API routes (case, document, progress)
+app.route('/', routes);
 
 // Global error handler
 app.onError((err, c) => {

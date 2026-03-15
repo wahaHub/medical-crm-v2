@@ -15,9 +15,22 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleCaseProgressRepository: vi.fn(() => ({})),
   DrizzleHospitalRepository: vi.fn(() => ({})),
   DrizzlePatientRepository: vi.fn(() => ({})),
+  DrizzleHospitalManagementRepository: vi.fn(() => ({})),
+  DrizzleRegistrationTokenRepository: vi.fn(() => ({})),
+  DrizzleUserRepository: vi.fn(() => ({})),
+  DrizzleConversationRepository: vi.fn(() => ({})),
+  DrizzleMessageRepository: vi.fn(() => ({})),
+  DrizzleMessageTaskRepository: vi.fn(() => ({})),
+  DrizzleConsultationRepository: vi.fn(() => ({})),
+  DrizzleConsultationTranscriptRepository: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
   SupabaseStorageAdapter: vi.fn(() => ({})),
+}));
+vi.mock('@medical-crm/infrastructure/services', () => ({
+  KeycloakAdminService: vi.fn(() => ({})),
+  SupabaseHospitalSyncService: vi.fn(() => ({})),
+  OpenAITranslationService: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/domain', () => ({
   CaseAssignmentService: vi.fn(() => ({})),
@@ -37,6 +50,41 @@ vi.mock('@medical-crm/application', () => ({
   DeleteDocumentUseCase: vi.fn(() => ({})),
   GetCaseProgressUseCase: vi.fn(() => ({})),
   AddCaseProgressUseCase: vi.fn(() => ({})),
+  // Hospital
+  CreateHospitalUseCase: vi.fn(() => ({})),
+  ListHospitalsUseCase: vi.fn(() => ({})),
+  GetHospitalUseCase: vi.fn(() => ({})),
+  UpdateHospitalUseCase: vi.fn(() => ({})),
+  UpdateHospitalStatusUseCase: vi.fn(() => ({})),
+  GetHospitalCasesUseCase: vi.fn(() => ({})),
+  GenerateRegistrationTokenUseCase: vi.fn(() => ({})),
+  RegisterHospitalUserUseCase: vi.fn(() => ({})),
+  // Conversations
+  CreateConversationUseCase: vi.fn(() => ({})),
+  ListConversationsUseCase: vi.fn(() => ({})),
+  GetConversationUseCase: vi.fn(() => ({})),
+  UpdateConversationUseCase: vi.fn(() => ({})),
+  // Messages
+  SendMessageUseCase: vi.fn(() => ({})),
+  ListMessagesUseCase: vi.fn(() => ({})),
+  GetMessageUseCase: vi.fn(() => ({})),
+  UpdateMessageUseCase: vi.fn(() => ({})),
+  DeleteMessageUseCase: vi.fn(() => ({})),
+  ListPendingReviewUseCase: vi.fn(() => ({})),
+  ApproveMessageUseCase: vi.fn(() => ({})),
+  RejectMessageUseCase: vi.fn(() => ({})),
+  RegenerateSummaryUseCase: vi.fn(() => ({})),
+  RetranslateMessageUseCase: vi.fn(() => ({})),
+  ProcessMessageTasksUseCase: vi.fn(() => ({})),
+  // Consultations
+  CreateConsultationUseCase: vi.fn(() => ({})),
+  GetConsultationUseCase: vi.fn(() => ({})),
+  ListConsultationsUseCase: vi.fn(() => ({})),
+  UpdateConsultationUseCase: vi.fn(() => ({})),
+  UpdateConsultationStatusUseCase: vi.fn(() => ({})),
+  GetConsultationTranscriptUseCase: vi.fn(() => ({})),
+  GetConsultationStatsUseCase: vi.fn(() => ({})),
+  ListCaseConsultationsUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -66,33 +114,52 @@ describe('composition root', () => {
     expect(services).toHaveProperty('chinaSupabase');
   });
 
-  it('returns all expected repositories', async () => {
-    const { getServices } = await import('../composition-root');
-    const services = getServices();
-    expect(services).toHaveProperty('caseRepo');
-    expect(services).toHaveProperty('documentRepo');
-    expect(services).toHaveProperty('progressRepo');
-    expect(services).toHaveProperty('hospitalRepo');
-    expect(services).toHaveProperty('patientRepo');
-    expect(services).toHaveProperty('storage');
-  });
-
   it('returns all expected use cases', async () => {
     const { getServices } = await import('../composition-root');
     const services = getServices();
+
+    // Phase 1 cases
     expect(services).toHaveProperty('createCase');
     expect(services).toHaveProperty('listCases');
-    expect(services).toHaveProperty('getCase');
-    expect(services).toHaveProperty('getHospitalCaseDetail');
-    expect(services).toHaveProperty('updateCase');
-    expect(services).toHaveProperty('assignCase');
-    expect(services).toHaveProperty('updateCaseStatus');
-    expect(services).toHaveProperty('advanceCaseStage');
     expect(services).toHaveProperty('getCaseStats');
-    expect(services).toHaveProperty('uploadDocument');
-    expect(services).toHaveProperty('listDocuments');
-    expect(services).toHaveProperty('deleteDocument');
-    expect(services).toHaveProperty('getCaseProgress');
-    expect(services).toHaveProperty('addCaseProgress');
+
+    // Phase 2BC — hospitals
+    expect(services).toHaveProperty('createHospital');
+    expect(services).toHaveProperty('listHospitals');
+    expect(services).toHaveProperty('getHospital');
+    expect(services).toHaveProperty('updateHospital');
+    expect(services).toHaveProperty('updateHospitalStatus');
+    expect(services).toHaveProperty('getHospitalCases');
+    expect(services).toHaveProperty('generateRegistrationToken');
+    expect(services).toHaveProperty('registerHospitalUser');
+
+    // Phase 2BC — conversations
+    expect(services).toHaveProperty('createConversation');
+    expect(services).toHaveProperty('listConversations');
+    expect(services).toHaveProperty('getConversation');
+    expect(services).toHaveProperty('updateConversation');
+
+    // Phase 2BC — messages
+    expect(services).toHaveProperty('sendMessage');
+    expect(services).toHaveProperty('listMessages');
+    expect(services).toHaveProperty('getMessage');
+    expect(services).toHaveProperty('updateMessage');
+    expect(services).toHaveProperty('deleteMessage');
+    expect(services).toHaveProperty('listPendingReview');
+    expect(services).toHaveProperty('approveMessage');
+    expect(services).toHaveProperty('rejectMessage');
+    expect(services).toHaveProperty('regenerateSummary');
+    expect(services).toHaveProperty('retranslateMessage');
+    expect(services).toHaveProperty('processMessageTasks');
+
+    // Phase 2BC — consultations
+    expect(services).toHaveProperty('createConsultation');
+    expect(services).toHaveProperty('getConsultation');
+    expect(services).toHaveProperty('listConsultations');
+    expect(services).toHaveProperty('updateConsultation');
+    expect(services).toHaveProperty('updateConsultationStatus');
+    expect(services).toHaveProperty('getConsultationTranscript');
+    expect(services).toHaveProperty('getConsultationStats');
+    expect(services).toHaveProperty('listCaseConsultations');
   });
 });

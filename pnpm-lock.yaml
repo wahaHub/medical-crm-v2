@@ -138,11 +138,46 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)
 
+  packages/application:
+    dependencies:
+      '@medical-crm/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@medical-crm/utils':
+        specifier: workspace:*
+        version: link:../shared/utils
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)
+
+  packages/domain:
+    dependencies:
+      '@medical-crm/utils':
+        specifier: workspace:*
+        version: link:../shared/utils
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.31.1)(tsx@4.21.0)
+
   packages/infrastructure:
     dependencies:
       '@medical-crm/config':
         specifier: workspace:*
         version: link:../shared/config
+      '@medical-crm/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@medical-crm/utils':
+        specifier: workspace:*
+        version: link:../shared/utils
       '@supabase/supabase-js':
         specifier: ^2.49.0
         version: 2.99.1

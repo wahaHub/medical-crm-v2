@@ -21,3 +21,9 @@ export type { CreateCaseInput } from './use-cases/cases/create-case.use-case.js'
 export { ListCasesUseCase } from './use-cases/cases/list-cases.use-case.js';
 export { GetCaseUseCase } from './use-cases/cases/get-case.use-case.js';
 export { GetHospitalCaseDetailUseCase } from './use-cases/cases/get-hospital-case-detail.use-case.js';
+export { UpdateCaseUseCase } from './use-cases/cases/update-case.use-case.js';
+export type { UpdateCaseInput } from './use-cases/cases/update-case.use-case.js';
+export { AssignCaseUseCase } from './use-cases/cases/assign-case.use-case.js';
+export { UpdateCaseStatusUseCase } from './use-cases/cases/update-case-status.use-case.js';
+export { AdvanceCaseStageUseCase } from './use-cases/cases/advance-case-stage.use-case.js';
+export { GetCaseStatsUseCase } from './use-cases/cases/get-case-stats.use-case.js';

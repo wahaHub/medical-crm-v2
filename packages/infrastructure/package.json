@@ -12,7 +12,8 @@
     "./supabase-china/types": "./supabase-china/types.ts",
     "./auth": "./auth/index.ts",
     "./repositories": "./database/repositories/index.ts",
-    "./storage": "./storage/supabase-storage.adapter.ts"
+    "./storage": "./storage/supabase-storage.adapter.ts",
+    "./services": "./services/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -30,6 +31,7 @@
     "drizzle-orm": "^0.45.1",
     "hono": "^4.7.0",
     "jose": "^6.0.0",
+    "openai": "^6.29.0",
     "postgres": "^3.4.0"
   },
   "devDependencies": {

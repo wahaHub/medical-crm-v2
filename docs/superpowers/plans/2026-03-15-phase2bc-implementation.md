@@ -197,6 +197,7 @@ packages/shared/validation/src/index.ts                ← Add new schema export
 apps/api/src/composition-root.ts                       ← Wire new services
 apps/api/src/routes/index.ts                           ← Mount new route modules
 apps/api/src/index.ts                                  ← Add internal route (skip auth)
+packages/shared/config/src/env.ts                      ← Add INTERNAL_API_SECRET + KC Admin env vars to serverEnvSchema
 packages/infrastructure/package.json                   ← Add openai dependency
 ```
 
@@ -1380,11 +1381,13 @@ export class RegisterHospitalUserUseCase {
       await this.keycloakAdmin.assignRole(keycloakUserId, kcRole);
 
       // 6. Create CRM user in DB via IUserRepository
+      // NOTE: v1 uses hospital.name for the CRM user name field, NOT input.username.
+      // input.username is the Keycloak login; the CRM display name is the hospital name.
       const crmUserId = generateId();
       await this.userRepo.create({
         id: crmUserId,
         email: token.email,
-        name: input.username,
+        name: hospital.name, // matches v1: registrationToken.hospital.name
         role: 'HOSPITAL',
         hospitalId: token.hospitalId,
         preferredLanguage: 'zh',
@@ -1724,7 +1727,18 @@ export class SendMessageUseCase {
   }
 
   private detectLanguage(content: string): string {
-    return /[\u4e00-\u9fff]/.test(content) ? 'zh' : 'en';
+    // Supports all v1 languages: zh, en, kr, jp, ar, th, es, ru, fr, de
+    // Uses Unicode script detection — check most distinctive scripts first
+    if (/[\u4e00-\u9fff\u3400-\u4dbf]/.test(content)) return 'zh'; // CJK Unified (Chinese)
+    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(content)) return 'jp'; // Hiragana + Katakana
+    if (/[\uac00-\ud7af\u1100-\u11ff]/.test(content)) return 'kr'; // Hangul
+    if (/[\u0e01-\u0e5b]/.test(content)) return 'th';              // Thai
+    if (/[\u0600-\u06ff\u0750-\u077f]/.test(content)) return 'ar'; // Arabic
+    if (/[\u0400-\u04ff]/.test(content)) return 'ru';              // Cyrillic → Russian
+    // Latin-script languages: fall back to 'en' for now.
+    // Fine-grained Latin detection (es/fr/de) would need n-gram analysis
+    // or an API call — not worth the complexity for originalLanguage metadata.
+    return 'en';
   }
 
   private checkAccess(conversation: Conversation, actor: Actor): void {
@@ -2645,14 +2659,31 @@ git commit -m "feat(infra): update PatientRepository + export all Phase 2BC repo
 
 ## Chunk 6: API Layer
 
-### Task 45: Validation Schemas
+### Task 45: Validation Schemas + Env Config
 
 **Files:**
+- Modify: `packages/shared/config/src/env.ts` — add INTERNAL_API_SECRET + KC Admin env vars
 - Modify: `packages/shared/validation/src/hospital.schema.ts` — add update, status, registration schemas
 - Modify: `packages/shared/validation/src/message.schema.ts` — expand message schemas
 - Create: `packages/shared/validation/src/consultation.schema.ts`
 - Create: `packages/shared/validation/src/conversation.schema.ts`
 - Modify: `packages/shared/validation/src/index.ts` — add new exports
+
+- [ ] **Step 0: Update env.ts with Phase 2BC env vars**
+
+Add to `serverEnvSchema` in `packages/shared/config/src/env.ts`:
+
+```typescript
+  // Keycloak Admin API (hospital user registration)
+  KEYCLOAK_BASE_URL: z.string().url(),
+  KEYCLOAK_REALM: z.string().min(1),
+  KEYCLOAK_ADMIN_USERNAME: z.string().min(1),
+  KEYCLOAK_ADMIN_PASSWORD: z.string().min(1),
+  // Internal worker auth
+  INTERNAL_API_SECRET: z.string().min(32),
+```
+
+All code consuming these vars (KeycloakAdminService, internal route) MUST read from the validated `getEnv()` helper, never raw `process.env`.
 
 - [ ] **Step 1: Add hospital schemas**
 
@@ -2885,8 +2916,8 @@ const processTasksRoute = createRoute({
 
 app.openapi(processTasksRoute, async (c) => {
   const secret = c.req.header('X-Internal-Secret');
-  const expected = process.env.INTERNAL_API_SECRET;
-  if (!expected || secret !== expected) {
+  const { INTERNAL_API_SECRET } = getEnv(); // from @medical-crm/config validated env
+  if (!INTERNAL_API_SECRET || secret !== INTERNAL_API_SECRET) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 

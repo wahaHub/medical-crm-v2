@@ -10,3 +10,7 @@ export { STAGE_ORDER } from './state-machine/case-stage-order.js';
 
 // Value objects
 export { CaseNumber } from './value-objects/case-number.js';
+
+// Entities
+export { Case } from './entities/case.entity.js';
+export type { CaseProps } from './entities/case.entity.js';

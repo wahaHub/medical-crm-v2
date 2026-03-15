@@ -20,3 +20,4 @@ export { CreateCaseUseCase } from './use-cases/cases/create-case.use-case.js';
 export type { CreateCaseInput } from './use-cases/cases/create-case.use-case.js';
 export { ListCasesUseCase } from './use-cases/cases/list-cases.use-case.js';
 export { GetCaseUseCase } from './use-cases/cases/get-case.use-case.js';
+export { GetHospitalCaseDetailUseCase } from './use-cases/cases/get-hospital-case-detail.use-case.js';

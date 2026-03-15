@@ -74,12 +74,16 @@ class RegistrationToken {
 
 #### Ports
 
-```typescript
-interface IHospitalRepository {
-  // Preserved from Phase 2A (lightweight, used by CaseAssignmentService etc.)
-  findById(id: string): Promise<HospitalInfo | null>;
+The Phase 2A `IHospitalRepository` (with only `findById → HospitalInfo`) is **preserved unchanged**. A separate `IHospitalManagementRepository` port is introduced for hospital CRUD operations. This avoids forcing Phase 2A consumers (`CaseAssignmentService`, `GetHospitalCaseDetailUseCase`) to depend on management methods they don't use.
 
-  // New in Phase 2B
+```typescript
+// PRESERVED from Phase 2A — no changes
+interface IHospitalRepository {
+  findById(id: string): Promise<HospitalInfo | null>;
+}
+
+// NEW in Phase 2B — separate port for hospital management
+interface IHospitalManagementRepository {
   findFullById(id: string): Promise<Hospital | null>;
   findMany(query: HospitalListQuery): Promise<PaginatedResult<Hospital>>;
   save(entity: Hospital): Promise<Hospital>;
@@ -117,11 +121,11 @@ interface IHospitalSyncService {
 | 5 | UpdateHospitalStatusUseCase | ADMIN | Status transitions (ACTIVE/PENDING/INACTIVE) |
 | 6 | GetHospitalCasesUseCase | ADMIN | List cases for a hospital (delegates to existing ListCasesUseCase with hospitalId filter) |
 | 7 | GenerateRegistrationTokenUseCase | ADMIN | Generate 72-hour registration link for hospital |
-| 8 | RegisterHospitalUserUseCase | PUBLIC | Register hospital user with valid token (creates user record, validates token not expired/used) |
+| 8 | RegisterHospitalUserUseCase | PUBLIC | Register hospital user with valid token: validates token not expired/used, creates user in CRM DB `users` table, marks token as used. Note: Keycloak user creation is handled by Keycloak self-registration flow triggered by the frontend — this use case only creates the CRM-side user record and links the `keycloakUserId`. |
 
 ### 1.3 Infrastructure
 
-- **DrizzleHospitalRepository** — extends existing with `findFullById`, `findMany`, `save`, `updateStatus`
+- **DrizzleHospitalManagementRepository** — new class implementing `IHospitalManagementRepository` with `findFullById`, `findMany`, `save`, `updateStatus`. Existing `DrizzleHospitalRepository` (Phase 2A, implements `IHospitalRepository`) remains unchanged.
 - **DrizzleRegistrationTokenRepository** — new, reads/writes `hospital_registration_tokens` table
 - **SupabaseHospitalSyncService** — implements `IHospitalSyncService`, writes to Main Supabase `hospitals` table (COSMETIC) or China Supabase (REGULAR)
 
@@ -174,7 +178,7 @@ class Message {
   conversationId: string;
   senderId: string;
   content: string;
-  originalLanguage: string | null;
+  originalLanguage: string;             // NOT NULL in DB, default 'en'
   translatedContent: string | null;
   messageType: MessageType;
   moderationStatus: ModerationStatus;
@@ -324,26 +328,34 @@ Infrastructure: `DrizzleMessageTaskRepository` — reads/writes `message_tasks` 
 | 12 | RejectMessageUseCase | ADMIN | Set moderationStatus → BLOCKED |
 | 13 | RegenerateSummaryUseCase | ADMIN/HOSPITAL | Re-generate AI summary for a message |
 | 14 | RetranslateMessageUseCase | ADMIN/HOSPITAL | Re-translate a message |
-| 15 | ProcessMessageTasksUseCase | INTERNAL | Worker: pull pending tasks, process translation/summarization, update message |
+| 15 | ProcessMessageTasksUseCase | INTERNAL | Worker: pull pending tasks (batch size: 10), process translation/summarization, update message. Max 3 retries per task with exponential backoff (1s, 4s, 9s). Auth: guarded by `X-Internal-Secret` header checked against `INTERNAL_API_SECRET` env var. Trigger: called by external cron (e.g., Supabase Edge Function or Vercel Cron) every 10 seconds. |
 
 #### SendMessage Flow
 
+**Recipient language derivation:** `recipientLang` is determined from the conversation context:
+- For `ADMIN_HOSPITAL` conversations: if sender is ADMIN, recipientLang = hospital user's `preferredLanguage` (from `users` table). If sender is HOSPITAL, recipientLang = `'zh'` (admin default).
+- For `HOSPITAL_PATIENT` conversations: if sender is HOSPITAL, recipientLang = patient's `preferredLanguage`. If sender is PATIENT, recipientLang = hospital user's `preferredLanguage`.
+- For `ADMIN_PATIENT` conversations: if sender is ADMIN, recipientLang = patient's `preferredLanguage`. If sender is PATIENT, recipientLang = `'zh'`.
+
+The `SendMessageUseCase` constructor takes `IPatientRepository` (existing, has `findById → PatientBasicInfo`) to look up recipient language. `PatientBasicInfo` needs to be extended with `preferredLanguage: string` field.
+
 ```
 1. Validate actor has access to conversation
-2. Create Message entity
+2. Determine recipientLang from conversation category + participants
+3. Create Message entity
    - ADMIN sender → moderationStatus = ALLOWED
    - HOSPITAL sender to PATIENT → moderationStatus = REVIEW
    - HOSPITAL sender to ADMIN → moderationStatus = ALLOWED
-3. If messageType === TEXT:
+4. If messageType === TEXT:
    → Inline: call ITranslationService.translate(content, recipientLang)
    → Set translatedContent on entity
-4. If messageType === IMAGE or FILE:
+5. If messageType === IMAGE or FILE:
    → Enqueue IMessageTaskQueue.enqueueSummarization(messageId)
    → Enqueue IMessageTaskQueue.enqueueTranslation(messageId, recipientLang)
    → aiSummary and translatedContent remain null (async update)
-5. Save Message
-6. Update Conversation.lastMessage* denormalized fields
-7. Return MessageDTO
+6. Save Message
+7. Update Conversation.lastMessage* denormalized fields
+8. Return MessageDTO
 ```
 
 Client receives new messages via Supabase Realtime subscription on the `messages` table.
@@ -404,14 +416,14 @@ class Consultation {
   scheduledAt: Date;
   startedAt: Date | null;
   endedAt: Date | null;
-  durationMinutes: number | null;    // planned duration
+  durationMinutes: number;            // planned duration, NOT NULL in DB, default 30
   actualDuration: number | null;     // calculated on complete()
   consultationLink: string | null;
   aiTranslation: boolean;
   patientLanguage: string;
   notes: string | null;
   videoStorageKey: string | null;
-  videoSize: number | null;
+  videoSize: number | null;          // DB: bigint with mode: "number" (safe for video file sizes)
   videoDuration: number | null;
   videoThumbnail: string | null;
   videoUploadedAt: Date | null;
@@ -459,11 +471,15 @@ class ConsultationTranscript {
   originalLang: string;
   translatedLang: string | null;
   entries: TranscriptEntry[];  // JSONB
-  status: string;
+  status: TranscriptStatus;   // PENDING | PROCESSING | COMPLETED | FAILED
   generatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
+type TranscriptStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+// DB column is varchar with default 'pending'. v2 domain normalizes to uppercase
+// to match the AISummaryStatus enum convention. Row mapper uppercases on read.
 
 type TranscriptEntry = {
   timestamp: number;
@@ -559,6 +575,73 @@ GET    /api/v2/cases/:caseId/consultations        → ListCaseConsultations (ADM
 
 ---
 
+## DTOs & Mappers
+
+Each module follows the Phase 2A pattern: entities are never returned directly from use cases. Instead, mapper functions convert entities to DTOs with string dates and flattened fields.
+
+### Hospital DTOs
+
+```typescript
+type HospitalDTO = {
+  id: string; name: string; nameEn: string | null;
+  address: string | null; phone: string | null; email: string | null;
+  description: string | null; logoUrl: string | null;
+  specialties: string[] | null;
+  status: HospitalStatus; type: HospitalType;
+  createdAt: string; updatedAt: string;  // ISO strings
+};
+```
+
+### Messaging DTOs
+
+```typescript
+type ConversationDTO = {
+  id: string; caseId: string | null; category: ConversationCategory;
+  title: string | null; hospitalId: string | null;
+  lastMessageAt: string | null; lastMessagePreview: string | null;
+  lastSenderId: string | null;
+  createdAt: string; updatedAt: string;
+};
+
+type MessageDTO = {
+  id: string; conversationId: string; senderId: string;
+  content: string; originalLanguage: string;
+  translatedContent: string | null;
+  messageType: MessageType; moderationStatus: ModerationStatus;
+  attachments: Attachment[] | null; aiSummary: string | null;
+  createdAt: string;
+};
+```
+
+### Consultation DTOs
+
+```typescript
+type ConsultationDTO = {
+  id: string; caseId: string; hospitalId: string;
+  patientId: string; doctorId: string | null;
+  status: ConsultationStatus;
+  scheduledAt: string; startedAt: string | null; endedAt: string | null;
+  durationMinutes: number; actualDuration: number | null;
+  consultationLink: string | null;
+  aiTranslation: boolean; patientLanguage: string;
+  notes: string | null;
+  videoStorageKey: string | null; videoSize: number | null;
+  videoDuration: number | null; videoThumbnail: string | null;
+  aiSummaryStatus: AISummaryStatus;
+  createdAt: string; updatedAt: string;
+};
+
+type ConsultationTranscriptDTO = {
+  id: string; consultationId: string;
+  originalLang: string; translatedLang: string | null;
+  entries: TranscriptEntry[]; status: TranscriptStatus;
+  generatedAt: string | null;
+  createdAt: string; updatedAt: string;
+};
+```
+
+---
+
 ## Testing Strategy
 
 Follows Phase 2A patterns:
@@ -581,7 +664,7 @@ Follows Phase 2A patterns:
 
 | Module | Endpoints | Use Cases | New Entities | New Repos |
 |--------|-----------|-----------|-------------|-----------|
-| Hospital Management | 8 | 8 | Hospital, RegistrationToken | HospitalRepo (extended), RegistrationTokenRepo, HospitalSyncService |
+| Hospital Management | 8 | 8 | Hospital, RegistrationToken | HospitalManagementRepo (new port), RegistrationTokenRepo, HospitalSyncService |
 | Conversations/Messaging | 15 | 15 | Conversation, Message | ConversationRepo, MessageRepo, MessageTaskQueue, TranslationService |
 | Consultations/Video | 8 | 8 | Consultation, ConsultationTranscript | ConsultationRepo, TranscriptRepo |
 | **Total** | **31** | **31** | **6** | **8+** |

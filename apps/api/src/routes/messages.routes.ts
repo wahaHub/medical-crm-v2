@@ -1,0 +1,244 @@
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { toActor } from '@medical-crm/application';
+import type { Session } from '@medical-crm/infrastructure/auth';
+import {
+  sendMessageSchema,
+  updateMessageSchema,
+  messageListQuerySchema,
+} from '@medical-crm/validation';
+import { getServices } from '../composition-root.js';
+
+const app = new OpenAPIHono();
+
+// ---------------------------------------------------------------------------
+// Param schemas
+// ---------------------------------------------------------------------------
+const conversationIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const messageParamSchema = z.object({
+  id: z.string().uuid(),
+  msgId: z.string().uuid(),
+});
+
+const standaloneMessageParamSchema = z.object({
+  msgId: z.string().uuid(),
+});
+
+// ---------------------------------------------------------------------------
+// 5. GET /api/v2/conversations/:id/messages — ListMessages
+// ---------------------------------------------------------------------------
+const listMessagesRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/conversations/{id}/messages',
+  request: {
+    params: conversationIdParamSchema,
+    query: messageListQuerySchema,
+  },
+  responses: { 200: { description: 'Paginated list of messages' } },
+});
+
+app.openapi(listMessagesRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const query = c.req.valid('query');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.listMessages.execute(id, query, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 6. POST /api/v2/conversations/:id/messages — SendMessage
+// ---------------------------------------------------------------------------
+const sendMessageRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/conversations/{id}/messages',
+  request: {
+    params: conversationIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: sendMessageSchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Message sent' } },
+});
+
+app.openapi(sendMessageRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.sendMessage.execute(id, body, actor);
+  return c.json(result, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 7. GET /api/v2/conversations/:id/messages/:msgId — GetMessage
+// ---------------------------------------------------------------------------
+const getMessageRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/conversations/{id}/messages/{msgId}',
+  request: {
+    params: messageParamSchema,
+  },
+  responses: { 200: { description: 'Message details' } },
+});
+
+app.openapi(getMessageRoute, async (c) => {
+  const { id, msgId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.getMessage.execute(id, msgId, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 8. PUT /api/v2/conversations/:id/messages/:msgId — UpdateMessage
+// ---------------------------------------------------------------------------
+const updateMessageRoute = createRoute({
+  method: 'put',
+  path: '/api/v2/conversations/{id}/messages/{msgId}',
+  request: {
+    params: messageParamSchema,
+    body: {
+      content: { 'application/json': { schema: updateMessageSchema } },
+      required: true,
+    },
+  },
+  responses: { 200: { description: 'Message updated' } },
+});
+
+app.openapi(updateMessageRoute, async (c) => {
+  const { id, msgId } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.updateMessage.execute(id, msgId, body, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 9. DELETE /api/v2/conversations/:id/messages/:msgId — DeleteMessage
+// ---------------------------------------------------------------------------
+const deleteMessageRoute = createRoute({
+  method: 'delete',
+  path: '/api/v2/conversations/{id}/messages/{msgId}',
+  request: {
+    params: messageParamSchema,
+  },
+  responses: { 204: { description: 'Message deleted' } },
+});
+
+app.openapi(deleteMessageRoute, async (c) => {
+  const { id, msgId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  await svc.deleteMessage.execute(id, msgId, actor);
+  return c.body(null, 204);
+});
+
+// ---------------------------------------------------------------------------
+// 10. POST /api/v2/conversations/:id/messages/:msgId/regenerate-summary
+// ---------------------------------------------------------------------------
+const regenerateSummaryRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/conversations/{id}/messages/{msgId}/regenerate-summary',
+  request: {
+    params: messageParamSchema,
+  },
+  responses: { 200: { description: 'Summary regenerated' } },
+});
+
+app.openapi(regenerateSummaryRoute, async (c) => {
+  const { msgId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.regenerateSummary.execute(msgId, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 11. POST /api/v2/conversations/:id/messages/:msgId/retranslate
+// ---------------------------------------------------------------------------
+const retranslateBodySchema = z.object({ targetLang: z.string().min(1) });
+
+const retranslateMessageRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/conversations/{id}/messages/{msgId}/retranslate',
+  request: {
+    params: messageParamSchema,
+    body: {
+      content: { 'application/json': { schema: retranslateBodySchema } },
+      required: true,
+    },
+  },
+  responses: { 200: { description: 'Message retranslated' } },
+});
+
+app.openapi(retranslateMessageRoute, async (c) => {
+  const { msgId } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.retranslateMessage.execute(msgId, body.targetLang, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 12. GET /api/v2/messages/pending-review — ListPendingReview
+// ---------------------------------------------------------------------------
+const listPendingReviewRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/messages/pending-review',
+  responses: { 200: { description: 'Messages pending review' } },
+});
+
+app.openapi(listPendingReviewRoute, async (c) => {
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.listPendingReview.execute(actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 13. POST /api/v2/messages/:msgId/approve — ApproveMessage
+// ---------------------------------------------------------------------------
+const approveMessageRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/messages/{msgId}/approve',
+  request: {
+    params: standaloneMessageParamSchema,
+  },
+  responses: { 200: { description: 'Message approved' } },
+});
+
+app.openapi(approveMessageRoute, async (c) => {
+  const { msgId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.approveMessage.execute(msgId, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 14. POST /api/v2/messages/:msgId/reject — RejectMessage
+// ---------------------------------------------------------------------------
+const rejectMessageRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/messages/{msgId}/reject',
+  request: {
+    params: standaloneMessageParamSchema,
+  },
+  responses: { 200: { description: 'Message rejected' } },
+});
+
+app.openapi(rejectMessageRoute, async (c) => {
+  const { msgId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.rejectMessage.execute(msgId, actor);
+  return c.json(result, 200);
+});
+
+export default app;

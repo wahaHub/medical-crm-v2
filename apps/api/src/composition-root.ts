@@ -30,6 +30,21 @@ import {
   GetHospitalCasesUseCase,
   GenerateRegistrationTokenUseCase,
   RegisterHospitalUserUseCase,
+  CreateConversationUseCase,
+  ListConversationsUseCase,
+  GetConversationUseCase,
+  UpdateConversationUseCase,
+  SendMessageUseCase,
+  ListMessagesUseCase,
+  GetMessageUseCase,
+  UpdateMessageUseCase,
+  DeleteMessageUseCase,
+  ListPendingReviewUseCase,
+  ApproveMessageUseCase,
+  RejectMessageUseCase,
+  RegenerateSummaryUseCase,
+  RetranslateMessageUseCase,
+  ProcessMessageTasksUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -40,12 +55,15 @@ import {
   DrizzleHospitalManagementRepository,
   DrizzleRegistrationTokenRepository,
   DrizzleUserRepository,
+  DrizzleConversationRepository,
+  DrizzleMessageRepository,
+  DrizzleMessageTaskRepository,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService } from '@medical-crm/infrastructure/services';
 
 interface AppServices {
   // infrastructure
@@ -86,6 +104,25 @@ interface AppServices {
   getHospitalCases: GetHospitalCasesUseCase;
   generateRegistrationToken: GenerateRegistrationTokenUseCase;
   registerHospitalUser: RegisterHospitalUserUseCase;
+
+  // use cases — conversations
+  createConversation: CreateConversationUseCase;
+  listConversations: ListConversationsUseCase;
+  getConversation: GetConversationUseCase;
+  updateConversation: UpdateConversationUseCase;
+
+  // use cases — messages
+  sendMessage: SendMessageUseCase;
+  listMessages: ListMessagesUseCase;
+  getMessage: GetMessageUseCase;
+  updateMessage: UpdateMessageUseCase;
+  deleteMessage: DeleteMessageUseCase;
+  listPendingReview: ListPendingReviewUseCase;
+  approveMessage: ApproveMessageUseCase;
+  rejectMessage: RejectMessageUseCase;
+  regenerateSummary: RegenerateSummaryUseCase;
+  retranslateMessage: RetranslateMessageUseCase;
+  processMessageTasks: ProcessMessageTasksUseCase;
 }
 
 let _services: AppServices | null = null;
@@ -118,6 +155,11 @@ export function getServices(): AppServices {
       process.env['KEYCLOAK_ADMIN_PASSWORD'] ?? '',
     );
 
+    const conversationRepo = new DrizzleConversationRepository(crmDb);
+    const messageRepo = new DrizzleMessageRepository(crmDb);
+    const messageTaskRepo = new DrizzleMessageTaskRepository(crmDb);
+    const translationService = new OpenAITranslationService(process.env['OPENAI_API_KEY'] ?? '');
+
     const listCases = new ListCasesUseCase(caseRepo);
 
     _services = {
@@ -147,6 +189,22 @@ export function getServices(): AppServices {
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
       generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
+
+      createConversation: new CreateConversationUseCase(conversationRepo),
+      listConversations: new ListConversationsUseCase(conversationRepo),
+      getConversation: new GetConversationUseCase(conversationRepo),
+      updateConversation: new UpdateConversationUseCase(conversationRepo),
+      sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo),
+      listMessages: new ListMessagesUseCase(conversationRepo, messageRepo),
+      getMessage: new GetMessageUseCase(conversationRepo, messageRepo),
+      updateMessage: new UpdateMessageUseCase(conversationRepo, messageRepo),
+      deleteMessage: new DeleteMessageUseCase(conversationRepo, messageRepo),
+      listPendingReview: new ListPendingReviewUseCase(messageRepo),
+      approveMessage: new ApproveMessageUseCase(messageRepo),
+      rejectMessage: new RejectMessageUseCase(messageRepo),
+      regenerateSummary: new RegenerateSummaryUseCase(messageRepo, translationService),
+      retranslateMessage: new RetranslateMessageUseCase(messageRepo, translationService),
+      processMessageTasks: new ProcessMessageTasksUseCase(messageTaskRepo, messageRepo, translationService),
     };
   }
   return _services;

@@ -354,9 +354,11 @@ interface CreateCaseInput {
   symptoms?: string[];
   medicalHistory?: string;
 }
-// Note: patientId is a required FK to the users table. The admin selects an
-// existing patient when creating a case. Patient user creation is a separate
-// flow handled by Keycloak registration, outside Phase 2A scope.
+// **Intentional product change from v1:** In v1, CreateCase auto-creates a patient
+// user if one doesn't exist (lookup by email, create if missing). In v2, patientId
+// is required — the admin selects an existing patient from the patient list.
+// Patient user creation is a separate flow (Keycloak registration), outside Phase 2A.
+// This decouples case creation from user management, simplifying both flows.
 
 interface UploadDocumentInput {
   caseId: string;
@@ -424,7 +426,11 @@ interface HospitalCaseDetailDTO {
     code: string;                  // from users.patient_code column in DB
     country: string | null;
     language: string;
+    age: number | null;            // placeholder: null until user profile enhanced (v1 hardcoded 35)
+    gender: string | null;         // placeholder: null until user profile enhanced (v1 hardcoded 'male')
   };
+  // Intentional redesign: v1 uses `medicalIntake` (7-step questionnaire format with step1..step7).
+  // v2 flattens this into `medicalCondition` as part of the RESTful API redesign.
   medicalCondition: {
     primaryDiagnosis: string | null;
     diagnosisCode: string | null;

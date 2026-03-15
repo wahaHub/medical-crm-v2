@@ -1727,8 +1727,9 @@ export class SendMessageUseCase {
   }
 
   private detectLanguage(content: string): string {
-    // Supports all v1 languages: zh, en, kr, jp, ar, th, es, ru, fr, de
-    // Uses Unicode script detection — check most distinctive scripts first
+    // Unicode script detection for non-Latin scripts (zh/jp/kr/th/ar/ru).
+    // Latin-script languages (en/es/fr/de) all fall back to 'en' — fine-grained
+    // Latin detection would need n-gram analysis, not worth it for metadata.
     if (/[\u4e00-\u9fff\u3400-\u4dbf]/.test(content)) return 'zh'; // CJK Unified (Chinese)
     if (/[\u3040-\u309f\u30a0-\u30ff]/.test(content)) return 'jp'; // Hiragana + Katakana
     if (/[\uac00-\ud7af\u1100-\u11ff]/.test(content)) return 'kr'; // Hangul
@@ -2684,6 +2685,8 @@ Add to `serverEnvSchema` in `packages/shared/config/src/env.ts`:
 ```
 
 All code consuming these vars (KeycloakAdminService, internal route) MUST read from the validated `getEnv()` helper, never raw `process.env`.
+
+Also update `packages/shared/config/src/__tests__/env.test.ts` to include the new env vars in test fixtures so the existing env validation tests don't break.
 
 - [ ] **Step 1: Add hospital schemas**
 

@@ -13,12 +13,15 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
-    "hono": "^4.7.0",
-    "hono-rate-limiter": "^0.4.0",
+    "@hono/zod-openapi": "^0.19.10",
+    "@medical-crm/application": "workspace:*",
     "@medical-crm/config": "workspace:*",
+    "@medical-crm/domain": "workspace:*",
     "@medical-crm/infrastructure": "workspace:*",
     "@medical-crm/utils": "workspace:*",
-    "@medical-crm/validation": "workspace:*"
+    "@medical-crm/validation": "workspace:*",
+    "hono": "^4.7.0",
+    "hono-rate-limiter": "^0.4.0"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

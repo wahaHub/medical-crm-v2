@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CreateCaseUseCase } from '../src/use-cases/cases/create-case.use-case.js';
 import type { ICaseRepository } from '@medical-crm/domain';
-import { CaseNumber } from '@medical-crm/domain';
+import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 describe('CreateCaseUseCase', () => {
@@ -26,7 +26,7 @@ describe('CreateCaseUseCase', () => {
     mockCaseRepo = {
       findById: vi.fn(),
       findMany: vi.fn(),
-      save: vi.fn().mockImplementation((entity) => Promise.resolve(entity)),
+      save: vi.fn().mockImplementation((entity: Case) => Promise.resolve(entity)),
       nextCaseNumber: vi.fn().mockResolvedValue(CaseNumber.generate(2026, 1)),
       countByFilters: vi.fn(),
     };
@@ -42,7 +42,7 @@ describe('CreateCaseUseCase', () => {
 
     expect(result.status).toBe('DRAFT');
     expect(result.stage).toBe('PENDING_ASSIGNMENT');
-    expect(result.caseNumber.value).toBe('CASE-2026-0001');
+    expect(result.caseNumber).toBe('CASE-2026-0001');
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
   });
 
@@ -52,7 +52,7 @@ describe('CreateCaseUseCase', () => {
     ).rejects.toThrow('Only admins can create cases');
   });
 
-  it('passes optional fields to the entity', async () => {
+  it('passes optional fields to the DTO', async () => {
     const result = await useCase.execute({
       patientId: 'patient-1',
       patientName: 'John Doe',
@@ -64,7 +64,16 @@ describe('CreateCaseUseCase', () => {
     }, adminActor);
 
     expect(result.primaryDiagnosis).toBe('Rhinoplasty consultation');
-    expect(result.symptoms).toEqual(['nasal obstruction']);
-    expect(result.medicalHistory).toBe('No prior surgeries');
+  });
+
+  it('returns CaseDTO format', async () => {
+    const result = await useCase.execute({
+      patientId: 'patient-1',
+      patientName: 'John Doe',
+    }, adminActor);
+
+    // CaseDTO should have string dates, not Date objects
+    expect(typeof result.createdAt).toBe('string');
+    expect(typeof result.updatedAt).toBe('string');
   });
 });

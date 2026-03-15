@@ -149,48 +149,24 @@ export class DrizzleCaseRepository implements ICaseRepository {
 
     const baseCondition = hospitalId ? eq(cases.assignedHospitalId, hospitalId) : undefined;
 
-    const [totalRes, unassignedRes, activeRes, completedRes, cancelledRes] = await Promise.all([
-      this.db.select({ c: count() }).from(cases).where(baseCondition),
-      this.db
-        .select({ c: count() })
-        .from(cases)
-        .where(
-          baseCondition
-            ? and(baseCondition, eq(cases.stage, 'PENDING_ASSIGNMENT'))
-            : eq(cases.stage, 'PENDING_ASSIGNMENT'),
-        ),
-      this.db
-        .select({ c: count() })
-        .from(cases)
-        .where(
-          baseCondition
-            ? and(baseCondition, eq(cases.status, 'ACTIVE'))
-            : eq(cases.status, 'ACTIVE'),
-        ),
-      this.db
-        .select({ c: count() })
-        .from(cases)
-        .where(
-          baseCondition
-            ? and(baseCondition, eq(cases.status, 'COMPLETED'))
-            : eq(cases.status, 'COMPLETED'),
-        ),
-      this.db
-        .select({ c: count() })
-        .from(cases)
-        .where(
-          baseCondition
-            ? and(baseCondition, eq(cases.status, 'CANCELLED'))
-            : eq(cases.status, 'CANCELLED'),
-        ),
-    ]);
+    const result = await this.db
+      .select({
+        total: count(),
+        unassigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.stage} = 'PENDING_ASSIGNMENT')`,
+        active: sql<number>`COUNT(*) FILTER (WHERE ${cases.status} = 'ACTIVE')`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE ${cases.status} = 'COMPLETED')`,
+        cancelled: sql<number>`COUNT(*) FILTER (WHERE ${cases.status} = 'CANCELLED')`,
+      })
+      .from(cases)
+      .where(baseCondition);
 
+    const row = result[0];
     return {
-      total: Number(totalRes[0]?.c ?? 0),
-      unassigned: Number(unassignedRes[0]?.c ?? 0),
-      active: Number(activeRes[0]?.c ?? 0),
-      completed: Number(completedRes[0]?.c ?? 0),
-      cancelled: Number(cancelledRes[0]?.c ?? 0),
+      total: Number(row?.total ?? 0),
+      unassigned: Number(row?.unassigned ?? 0),
+      active: Number(row?.active ?? 0),
+      completed: Number(row?.completed ?? 0),
+      cancelled: Number(row?.cancelled ?? 0),
     };
   }
 

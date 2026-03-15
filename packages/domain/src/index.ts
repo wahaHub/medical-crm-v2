@@ -18,3 +18,11 @@ export { Document } from './entities/document.entity.js';
 export type { DocumentProps } from './entities/document.entity.js';
 export { CaseProgress } from './entities/case-progress.entity.js';
 export type { CaseProgressProps } from './entities/case-progress.entity.js';
+
+// Ports
+export type { ICaseRepository, CaseListQuery, CaseCountFilters, CaseStats } from './ports/case-repository.port.js';
+export type { IDocumentRepository } from './ports/document-repository.port.js';
+export type { ICaseProgressRepository } from './ports/case-progress-repository.port.js';
+export type { IHospitalRepository, HospitalInfo } from './ports/hospital-repository.port.js';
+export type { IPatientRepository, PatientBasicInfo } from './ports/patient-repository.port.js';
+export type { IStorageService, PresignedUploadResult } from './ports/storage-service.port.js';

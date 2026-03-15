@@ -45,6 +45,14 @@ import {
   RegenerateSummaryUseCase,
   RetranslateMessageUseCase,
   ProcessMessageTasksUseCase,
+  CreateConsultationUseCase,
+  GetConsultationUseCase,
+  ListConsultationsUseCase,
+  UpdateConsultationUseCase,
+  UpdateConsultationStatusUseCase,
+  GetConsultationTranscriptUseCase,
+  GetConsultationStatsUseCase,
+  ListCaseConsultationsUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -58,6 +66,8 @@ import {
   DrizzleConversationRepository,
   DrizzleMessageRepository,
   DrizzleMessageTaskRepository,
+  DrizzleConsultationRepository,
+  DrizzleConsultationTranscriptRepository,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
@@ -123,6 +133,16 @@ interface AppServices {
   regenerateSummary: RegenerateSummaryUseCase;
   retranslateMessage: RetranslateMessageUseCase;
   processMessageTasks: ProcessMessageTasksUseCase;
+
+  // use cases — consultations
+  createConsultation: CreateConsultationUseCase;
+  getConsultation: GetConsultationUseCase;
+  listConsultations: ListConsultationsUseCase;
+  updateConsultation: UpdateConsultationUseCase;
+  updateConsultationStatus: UpdateConsultationStatusUseCase;
+  getConsultationTranscript: GetConsultationTranscriptUseCase;
+  getConsultationStats: GetConsultationStatsUseCase;
+  listCaseConsultations: ListCaseConsultationsUseCase;
 }
 
 let _services: AppServices | null = null;
@@ -159,6 +179,8 @@ export function getServices(): AppServices {
     const messageRepo = new DrizzleMessageRepository(crmDb);
     const messageTaskRepo = new DrizzleMessageTaskRepository(crmDb);
     const translationService = new OpenAITranslationService(process.env['OPENAI_API_KEY'] ?? '');
+    const consultationRepo = new DrizzleConsultationRepository(crmDb);
+    const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
 
@@ -205,6 +227,15 @@ export function getServices(): AppServices {
       regenerateSummary: new RegenerateSummaryUseCase(messageRepo, translationService),
       retranslateMessage: new RetranslateMessageUseCase(messageRepo, translationService),
       processMessageTasks: new ProcessMessageTasksUseCase(messageTaskRepo, messageRepo, translationService),
+
+      createConsultation: new CreateConsultationUseCase(consultationRepo, caseRepo),
+      getConsultation: new GetConsultationUseCase(consultationRepo),
+      listConsultations: new ListConsultationsUseCase(consultationRepo),
+      updateConsultation: new UpdateConsultationUseCase(consultationRepo),
+      updateConsultationStatus: new UpdateConsultationStatusUseCase(consultationRepo),
+      getConsultationTranscript: new GetConsultationTranscriptUseCase(consultationRepo, transcriptRepo),
+      getConsultationStats: new GetConsultationStatsUseCase(consultationRepo),
+      listCaseConsultations: new ListCaseConsultationsUseCase(consultationRepo, caseRepo),
     };
   }
   return _services;

@@ -226,7 +226,7 @@ interface IStorageService {
 **Path authorization strategy:** The storage adapter is a dumb signer — it signs whatever key it receives. **Authorization is enforced in the use case layer**, not the adapter:
 
 - `UploadDocumentUseCase`: generates the storage key using `documents/{caseId}/{uuid}/{fileName}`. The caseId is validated against the actor's permissions (hospital can only upload to their own cases) *before* the key is generated. No user-supplied path ever reaches the adapter.
-- `GetHospitalCaseDetailUseCase` / `ListDocumentsUseCase`: loads documents from the repository (which already enforces hospital isolation via caseId), then signs only those keys. A hospital user can never request a signed URL for a document outside their cases because the query itself is scoped.
+- `GetHospitalCaseDetailUseCase` / `ListDocumentsUseCase` / `DeleteDocumentUseCase`: first verifies case ownership via `ICaseRepository.findById()` (hospital actor's `hospitalId` must match `case.assignedHospitalId`), then loads/deletes documents. A hospital user can never access documents outside their cases because ownership is verified before any document operation.
 - The adapter does NOT validate paths — it trusts the use case layer to pass correct keys. This keeps the adapter simple and testable.
 
 ### 2.7 Domain Services
@@ -330,8 +330,8 @@ The route handler calls `toActor(c.get('session'))` before passing to use cases.
 | Use Case | Constructor Dependencies | Description |
 |----------|------------------------|-------------|
 | `UploadDocumentUseCase` | `IDocumentRepository`, `ICaseRepository`, `ICaseProgressRepository`, `IStorageService` | Generate presigned upload URL, save document metadata, create DOCUMENT_UPLOAD progress entry |
-| `ListDocumentsUseCase` | `IDocumentRepository`, `IStorageService` | List documents for a case, include signed download URLs |
-| `DeleteDocumentUseCase` | `IDocumentRepository` | Soft delete (status → DELETED) |
+| `ListDocumentsUseCase` | `IDocumentRepository`, `ICaseRepository`, `IStorageService` | Verify case ownership (hospital), list documents, include signed download URLs |
+| `DeleteDocumentUseCase` | `IDocumentRepository`, `ICaseRepository` | Verify case ownership (hospital), soft delete (status → DELETED) |
 
 #### Progress Use Cases
 
@@ -444,6 +444,11 @@ interface HospitalCaseDetailDTO {
   consultationHistory: ConsultationHistoryDTO[];  // extracted from progress
   documents: DocumentWithUrlDTO[];
   totalMessages: number;           // hardcoded to 0 until Phase 2B (messages)
+  // **Deferred fields (present in v1, intentionally omitted in Phase 2A):**
+  // - unreadMessages: number — requires message/conversation system (Phase 2B)
+  // - invitationLetters: InvitationLetterDTO[] — independent sub-domain (deferred phase)
+  // These are breaking changes from v1's hospital case detail API.
+  // Frontend will be built in Phase 2E to match the new DTO shape.
   createdAt: string;
   updatedAt: string;
 }
@@ -731,7 +736,7 @@ interface AppServices {
 
 ### 6.2 Integration Test Critical Paths
 
-These tests connect to the real CRM database (dev environment):
+These tests connect to the dedicated test database (`medical_crm_test`, see 6.3):
 
 | Test | Validates |
 |------|-----------|

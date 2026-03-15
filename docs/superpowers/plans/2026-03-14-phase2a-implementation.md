@@ -274,7 +274,7 @@ export { STAGE_ORDER } from './state-machine/case-stage-order.js';
 - [ ] **Step 7: Install dependencies and verify**
 
 ```bash
-cd /path/to/medical-crm-v2
+# All commands run from repo root: medical-crm-v2/
 pnpm install
 pnpm --filter @medical-crm/domain typecheck
 ```
@@ -904,13 +904,14 @@ git commit -m "feat(domain): add Document and CaseProgress entities"
 
 ---
 
-### Task 7: Repository ports + Storage port
+### Task 7: Repository ports + Storage port + Patient port
 
 **Files:**
 - Create: `packages/domain/src/ports/case-repository.port.ts`
 - Create: `packages/domain/src/ports/document-repository.port.ts`
 - Create: `packages/domain/src/ports/case-progress-repository.port.ts`
 - Create: `packages/domain/src/ports/hospital-repository.port.ts`
+- Create: `packages/domain/src/ports/patient-repository.port.ts`
 - Create: `packages/domain/src/ports/storage-service.port.ts`
 - Modify: `packages/domain/src/index.ts`
 
@@ -998,7 +999,24 @@ export interface IHospitalRepository {
 }
 ```
 
-- [ ] **Step 5: Create IStorageService port**
+- [ ] **Step 5: Create IPatientRepository port**
+
+File: `packages/domain/src/ports/patient-repository.port.ts`
+
+> **Spec errata:** Not in the original spec. Needed for `HospitalCaseDetailDTO.patient.code` which comes from `users.patient_code`. This minimal port avoids a full IUserRepository.
+
+```typescript
+export interface PatientBasicInfo {
+  id: string;
+  patientCode: string | null;
+}
+
+export interface IPatientRepository {
+  findById(id: string): Promise<PatientBasicInfo | null>;
+}
+```
+
+- [ ] **Step 6: Create IStorageService port**
 
 File: `packages/domain/src/ports/storage-service.port.ts`
 
@@ -1018,7 +1036,7 @@ export interface IStorageService {
 }
 ```
 
-- [ ] **Step 6: Add all ports to barrel export**
+- [ ] **Step 7: Add all ports to barrel export**
 
 Add to `packages/domain/src/index.ts`:
 
@@ -1028,16 +1046,17 @@ export type { ICaseRepository, CaseListQuery, CaseCountFilters, CaseStats } from
 export type { IDocumentRepository } from './ports/document-repository.port.js';
 export type { ICaseProgressRepository } from './ports/case-progress-repository.port.js';
 export type { IHospitalRepository, HospitalInfo } from './ports/hospital-repository.port.js';
+export type { IPatientRepository, PatientBasicInfo } from './ports/patient-repository.port.js';
 export type { IStorageService, PresignedUploadResult } from './ports/storage-service.port.js';
 ```
 
-- [ ] **Step 7: Typecheck**
+- [ ] **Step 8: Typecheck**
 
 ```bash
 pnpm --filter @medical-crm/domain typecheck
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add packages/domain/
@@ -1420,7 +1439,7 @@ export type {
 - [ ] **Step 6: Install deps + typecheck**
 
 ```bash
-cd /path/to/medical-crm-v2
+# All commands run from repo root: medical-crm-v2/
 pnpm install
 pnpm --filter @medical-crm/application typecheck
 ```
@@ -1985,46 +2004,11 @@ Key test cases:
 - Admin actor: access any case
 - Throws `NotFoundError` for missing case
 
-Note: this use case depends on `ICaseRepository`, `ICaseProgressRepository`, `IDocumentRepository`, `IStorageService`, and `IPatientRepository`. All mocked in tests.
-
-**Spec errata:** The spec defines 4 repository ports but `HospitalCaseDetailDTO.patient.code` requires data from the `users` table (the `patient_code` column). An `IPatientRepository` port is added in this task (not in the original spec). This is the minimal interface needed: `findById(id) → { id, patientCode }`. The corresponding `DrizzlePatientRepository` is implemented in Chunk 3.
-
-```typescript
-// Add to packages/domain/src/ports/patient-repository.port.ts
-export interface PatientBasicInfo {
-  id: string;
-  patientCode: string | null;
-  // age and gender are null until user profile enhanced
-}
-
-export interface IPatientRepository {
-  findById(id: string): Promise<PatientBasicInfo | null>;
-}
-```
+Note: this use case depends on `ICaseRepository`, `ICaseProgressRepository`, `IDocumentRepository`, `IStorageService`, and `IPatientRepository`. All mocked in tests. `IPatientRepository` was created in Task 7 (Chunk 1).
 
 Test file should mock all 5 dependencies (caseRepo, progressRepo, documentRepo, storageService, patientRepo).
 
-- [ ] **Step 2: Create IPatientRepository port in domain**
-
-File: `packages/domain/src/ports/patient-repository.port.ts`
-
-```typescript
-export interface PatientBasicInfo {
-  id: string;
-  patientCode: string | null;
-}
-
-export interface IPatientRepository {
-  findById(id: string): Promise<PatientBasicInfo | null>;
-}
-```
-
-Add to domain barrel export:
-```typescript
-export type { IPatientRepository, PatientBasicInfo } from './ports/patient-repository.port.js';
-```
-
-- [ ] **Step 3: Implement GetHospitalCaseDetailUseCase**
+- [ ] **Step 2: Implement GetHospitalCaseDetailUseCase**
 
 ```typescript
 import type { ICaseRepository, ICaseProgressRepository, IDocumentRepository, IStorageService, IPatientRepository } from '@medical-crm/domain';
@@ -2071,11 +2055,11 @@ export class GetHospitalCaseDetailUseCase {
 }
 ```
 
-- [ ] **Step 4: Run tests, add to barrel, commit**
+- [ ] **Step 3: Run tests, add to barrel, commit**
 
 ```bash
 pnpm --filter @medical-crm/application test
-git add packages/domain/ packages/application/
+git add packages/application/
 git commit -m "feat(application): add GetHospitalCaseDetailUseCase with patient lookup"
 ```
 

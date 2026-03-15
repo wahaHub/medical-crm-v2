@@ -90,6 +90,8 @@ export const cases = pgTable("cases", {
 	medicalHistory: text("medical_history"),
 	aiSummaryZh: text("ai_summary_zh"),
 	aiSummaryEn: text("ai_summary_en"),
+	aiSummary: text("ai_summary"),
+	aiSummaryLanguage: varchar("ai_summary_language", { length: 10 }),
 	riskLevel: riskLevel("risk_level"),
 	status: caseStatus().default('ACTIVE').notNull(),
 	stage: caseStage().default('PENDING_ASSIGNMENT').notNull(),

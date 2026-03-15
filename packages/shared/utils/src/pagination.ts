@@ -14,3 +14,9 @@ export function paginate<T>(items: T[], page: number, limit: number): PaginatedR
   const data = items.slice(start, start + limit);
   return { data, total, page, limit, totalPages, hasMore: page < totalPages };
 }
+
+export interface CursorPaginatedResult<T> {
+  data: T[];
+  nextCursor: { scheduledAt: string; id: string } | null;
+  hasMore: boolean;
+}

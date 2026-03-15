@@ -11,6 +11,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
       .select({
         id: users.id,
         patientCode: users.patientCode,
+        preferredLanguage: users.preferredLanguage,
       })
       .from(users)
       .where(eq(users.id, id))
@@ -21,6 +22,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
     return {
       id: row.id,
       patientCode: row.patientCode ?? null,
+      preferredLanguage: row.preferredLanguage,
     };
   }
 }

@@ -22,6 +22,14 @@ import {
   DeleteDocumentUseCase,
   GetCaseProgressUseCase,
   AddCaseProgressUseCase,
+  CreateHospitalUseCase,
+  ListHospitalsUseCase,
+  GetHospitalUseCase,
+  UpdateHospitalUseCase,
+  UpdateHospitalStatusUseCase,
+  GetHospitalCasesUseCase,
+  GenerateRegistrationTokenUseCase,
+  RegisterHospitalUserUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -29,11 +37,15 @@ import {
   DrizzleCaseProgressRepository,
   DrizzleHospitalRepository,
   DrizzlePatientRepository,
+  DrizzleHospitalManagementRepository,
+  DrizzleRegistrationTokenRepository,
+  DrizzleUserRepository,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
+import { KeycloakAdminService, SupabaseHospitalSyncService } from '@medical-crm/infrastructure/services';
 
 interface AppServices {
   // infrastructure
@@ -49,7 +61,7 @@ interface AppServices {
   patientRepo: IPatientRepository;
   storage: IStorageService;
 
-  // use cases
+  // use cases — cases
   createCase: CreateCaseUseCase;
   listCases: ListCasesUseCase;
   getCase: GetCaseUseCase;
@@ -64,6 +76,16 @@ interface AppServices {
   deleteDocument: DeleteDocumentUseCase;
   getCaseProgress: GetCaseProgressUseCase;
   addCaseProgress: AddCaseProgressUseCase;
+
+  // use cases — hospitals
+  createHospital: CreateHospitalUseCase;
+  listHospitals: ListHospitalsUseCase;
+  getHospital: GetHospitalUseCase;
+  updateHospital: UpdateHospitalUseCase;
+  updateHospitalStatus: UpdateHospitalStatusUseCase;
+  getHospitalCases: GetHospitalCasesUseCase;
+  generateRegistrationToken: GenerateRegistrationTokenUseCase;
+  registerHospitalUser: RegisterHospitalUserUseCase;
 }
 
 let _services: AppServices | null = null;
@@ -81,17 +103,29 @@ export function getServices(): AppServices {
     const progressRepo = new DrizzleCaseProgressRepository(crmDb);
     const hospitalRepo = new DrizzleHospitalRepository(crmDb);
     const patientRepo = new DrizzlePatientRepository(crmDb);
+    const hospitalManagementRepo = new DrizzleHospitalManagementRepository(crmDb);
+    const registrationTokenRepo = new DrizzleRegistrationTokenRepository(crmDb);
+    const userRepo = new DrizzleUserRepository(crmDb);
     const storage = new SupabaseStorageAdapter(mainSupabase);
 
     // Domain services
     const assignmentService = new CaseAssignmentService();
+    const syncService = new SupabaseHospitalSyncService(mainSupabase, chinaSupabase);
+    const keycloakAdmin = new KeycloakAdminService(
+      process.env['KEYCLOAK_URL'] ?? '',
+      process.env['KEYCLOAK_REALM'] ?? '',
+      process.env['KEYCLOAK_ADMIN_USERNAME'] ?? '',
+      process.env['KEYCLOAK_ADMIN_PASSWORD'] ?? '',
+    );
+
+    const listCases = new ListCasesUseCase(caseRepo);
 
     _services = {
       crmDb, mainSupabase, chinaSupabase,
       caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, storage,
 
       createCase: new CreateCaseUseCase(caseRepo),
-      listCases: new ListCasesUseCase(caseRepo),
+      listCases,
       getCase: new GetCaseUseCase(caseRepo),
       getHospitalCaseDetail: new GetHospitalCaseDetailUseCase(caseRepo, progressRepo, documentRepo, storage, patientRepo),
       updateCase: new UpdateCaseUseCase(caseRepo),
@@ -104,6 +138,15 @@ export function getServices(): AppServices {
       deleteDocument: new DeleteDocumentUseCase(documentRepo, caseRepo),
       getCaseProgress: new GetCaseProgressUseCase(progressRepo, caseRepo),
       addCaseProgress: new AddCaseProgressUseCase(progressRepo, caseRepo),
+
+      createHospital: new CreateHospitalUseCase(hospitalManagementRepo, syncService),
+      listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
+      getHospital: new GetHospitalUseCase(hospitalManagementRepo),
+      updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
+      updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo),
+      getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
+      generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo),
+      registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
     };
   }
   return _services;

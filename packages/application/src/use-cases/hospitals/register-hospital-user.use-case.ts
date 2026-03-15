@@ -1,5 +1,4 @@
 import { generateId, ValidationError, NotFoundError, ConflictError } from '@medical-crm/utils';
-import { RegistrationToken } from '@medical-crm/domain';
 import type {
   IRegistrationTokenRepository,
   IKeycloakAdminService,

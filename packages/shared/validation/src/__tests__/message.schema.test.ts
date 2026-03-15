@@ -1,37 +1,55 @@
 import { describe, it, expect } from 'vitest';
-import { sendMessageSchema } from '../message.schema';
+import { sendMessageSchema, updateMessageSchema, messageListQuerySchema } from '../message.schema';
 
 describe('sendMessageSchema', () => {
   it('accepts valid message', () => {
     const result = sendMessageSchema.safeParse({
       content: 'Hello doctor',
-      conversationId: '550e8400-e29b-41d4-a716-446655440000',
     });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.messageType).toBe('TEXT');
+    }
   });
 
   it('rejects empty content', () => {
     const result = sendMessageSchema.safeParse({
       content: '',
-      conversationId: '550e8400-e29b-41d4-a716-446655440000',
     });
     expect(result.success).toBe(false);
   });
 
-  it('rejects invalid UUID for conversationId', () => {
+  it('accepts optional messageType and attachments', () => {
     const result = sendMessageSchema.safeParse({
-      content: 'Hello',
-      conversationId: 'not-a-uuid',
+      content: 'File attached',
+      messageType: 'IMAGE',
+      attachments: [{ fileName: 'photo.jpg', fileSize: 1024, mimeType: 'image/jpeg', storageKey: 'abc123' }],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('sanitizes HTML in content via transform', () => {
     const result = sendMessageSchema.parse({
       content: '<p>Safe</p><script>alert(1)</script>',
-      conversationId: '550e8400-e29b-41d4-a716-446655440000',
     });
     expect(result.content).toBe('<p>Safe</p>');
     expect(result.content).not.toContain('script');
+  });
+});
+
+describe('updateMessageSchema', () => {
+  it('accepts valid update', () => {
+    const result = updateMessageSchema.safeParse({
+      content: 'Updated content',
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('messageListQuerySchema', () => {
+  it('provides defaults', () => {
+    const result = messageListQuerySchema.parse({});
+    expect(result.page).toBe(1);
+    expect(result.limit).toBe(50);
   });
 });

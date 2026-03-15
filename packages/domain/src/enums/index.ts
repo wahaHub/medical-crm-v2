@@ -15,3 +15,21 @@ export type DocumentStatus = 'PENDING' | 'ACTIVE' | 'DELETED';
 export type ProgressType =
   | 'STATUS_CHANGE' | 'DOCUMENT_UPLOAD' | 'VIDEO_CONSULTATION'
   | 'MESSAGE' | 'APPOINTMENT';
+
+// Hospital
+export type HospitalStatus = 'ACTIVE' | 'PENDING' | 'INACTIVE';
+export type HospitalType = 'COSMETIC' | 'REGULAR';
+
+// Messaging
+export type ConversationCategory = 'HOSPITAL' | 'PATIENT' | 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT' | 'HOSPITAL_PATIENT';
+export type MessageType = 'TEXT' | 'IMAGE' | 'FILE' | 'SYSTEM';
+export type ModerationStatus = 'ALLOWED' | 'BLOCKED' | 'REVIEW';
+
+// Consultations
+export type ConsultationStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+export type AISummaryStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+export type TranscriptStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+// Message Tasks
+export type MessageTaskKind = 'TRANSLATE' | 'SUMMARIZE';
+export type MessageTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';

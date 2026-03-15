@@ -21,7 +21,8 @@ export class DrizzleCaseRepository implements ICaseRepository {
 
   async findMany(query: CaseListQuery, hospitalId?: string): Promise<PaginatedResult<Case>> {
     const { page, limit, status, stage, search } = query;
-    const effectiveHospitalId = query.hospitalId ?? hospitalId;
+    // Auth-derived hospitalId (forced filter) takes priority over query param
+    const effectiveHospitalId = hospitalId ?? query.hospitalId;
 
     const conditions = [];
     if (status) conditions.push(eq(cases.status, status));
@@ -122,25 +123,15 @@ export class DrizzleCaseRepository implements ICaseRepository {
     const year = new Date().getFullYear();
     const prefix = `CASE-${year}-%`;
 
+    // Extract numeric suffix and MAX on integer to avoid lexicographic string comparison issues
     const result = await this.db
-      .select({ maxNum: sql<string>`MAX(${cases.caseNumber})` })
+      .select({
+        maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(${cases.caseNumber}, '-', 3) AS INTEGER)), 0)`,
+      })
       .from(cases)
       .where(ilike(cases.caseNumber, prefix));
 
-    const maxVal = result[0]?.maxNum;
-    let nextSeq = 1;
-
-    if (maxVal) {
-      const parts = maxVal.split('-');
-      const lastPart = parts[parts.length - 1];
-      if (lastPart) {
-        const parsed = parseInt(lastPart, 10);
-        if (!isNaN(parsed)) {
-          nextSeq = parsed + 1;
-        }
-      }
-    }
-
+    const nextSeq = (result[0]?.maxSeq ?? 0) + 1;
     return CaseNumber.generate(year, nextSeq);
   }
 

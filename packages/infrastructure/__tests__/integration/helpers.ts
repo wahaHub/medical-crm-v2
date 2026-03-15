@@ -17,3 +17,8 @@ export async function cleanupTestCases() {
     DELETE FROM cases WHERE case_number LIKE 'CASE-9999-%';
   `);
 }
+
+/** Close the test database connection. Call in afterAll of the last test suite. */
+export async function teardownDb() {
+  await testClient.end();
+}

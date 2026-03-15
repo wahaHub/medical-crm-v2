@@ -12,7 +12,7 @@ Phase 2A delivered Case CRUD (13 endpoints, 268 tests). Phase 2B+2C adds the thr
 
 - Same as Phase 2A: Hono + @hono/zod-openapi, Drizzle ORM, vitest, TypeScript strict
 - **New dependency:** `openai` npm package (GPT-4o / GPT-4o-mini for translation & summarization)
-- **New env vars:** `OPENAI_API_KEY`, `INTERNAL_API_SECRET` (guards internal worker endpoints)
+- **New env vars:** `OPENAI_API_KEY`, `INTERNAL_API_SECRET` (guards internal worker endpoints), `KEYCLOAK_ADMIN_USERNAME`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_BASE_URL`, `KEYCLOAK_REALM` (Keycloak Admin API for hospital user registration)
 - Supabase Realtime for message push (existing infrastructure, no new setup)
 
 ---
@@ -121,7 +121,7 @@ interface IHospitalSyncService {
 | 5 | UpdateHospitalStatusUseCase | ADMIN | Status transitions (ACTIVE/PENDING/INACTIVE) |
 | 6 | GetHospitalCasesUseCase | ADMIN | List cases for a hospital (delegates to existing ListCasesUseCase with hospitalId filter) |
 | 7 | GenerateRegistrationTokenUseCase | ADMIN | Generate 72-hour registration link for hospital |
-| 8 | RegisterHospitalUserUseCase | PUBLIC | Register hospital user with valid token: validates token not expired/used, creates user in CRM DB `users` table, marks token as used. Note: Keycloak user creation is handled by Keycloak self-registration flow triggered by the frontend — this use case only creates the CRM-side user record and links the `keycloakUserId`. |
+| 8 | RegisterHospitalUserUseCase | PUBLIC | Register hospital user with valid token. Full backend-driven flow (matches v1 exactly): (1) Validate token exists, not expired, not used. (2) Check username/email uniqueness via Keycloak Admin API. (3) Create user in Keycloak via Admin API → receive `keycloakUserId` from response `Location` header. (4) Set password via Keycloak Admin API. (5) Assign realm role (`hospital` or `regular_hospital` based on hospital type) via Keycloak Admin API. (6) Create CRM DB `users` record (role=HOSPITAL, hospitalId from token). (7) Mark token as used (`usedAt` = now, `keycloakUserId` = KC response). Frontend submits `{ token, username, password }` — no `keycloakUserId` from client. New port: `IKeycloakAdminService` with methods `createUser`, `setPassword`, `assignRole`, `checkUsernameExists`, `checkEmailExists`. New env vars: `KEYCLOAK_ADMIN_USERNAME`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_BASE_URL`, `KEYCLOAK_REALM`. |
 
 ### 1.3 Infrastructure
 
@@ -342,18 +342,21 @@ The `SendMessageUseCase` constructor takes `IPatientRepository` (existing, has `
 ```
 1. Validate actor has access to conversation
 2. Determine recipientLang from conversation category + participants
-3. Create Message entity
+3. Create Message entity (Message.id = UUID generated at entity construction time, before persistence)
    - ADMIN sender → moderationStatus = ALLOWED
    - HOSPITAL sender to PATIENT → moderationStatus = REVIEW
    - HOSPITAL sender to ADMIN → moderationStatus = ALLOWED
 4. If messageType === TEXT:
    → Inline: call ITranslationService.translate(content, recipientLang)
    → Set translatedContent on entity
-5. If messageType === IMAGE or FILE:
-   → Enqueue IMessageTaskQueue.enqueueSummarization(messageId)
-   → Enqueue IMessageTaskQueue.enqueueTranslation(messageId, recipientLang)
-   → aiSummary and translatedContent remain null (async update)
-6. Save Message
+5. Save Message (persists entity with pre-generated id)
+6. If messageType === IMAGE or FILE:
+   → Enqueue IMessageTaskQueue.enqueueSummarization(message.id)
+   → Enqueue IMessageTaskQueue.enqueueTranslation(message.id, recipientLang)
+   → aiSummary and translatedContent remain null (async update by worker)
+   Note: save-before-enqueue ensures the worker always finds an existing message.
+   If enqueue fails after save, the message exists without async processing —
+   recoverable via manual re-enqueue or reconciliation.
 7. Update Conversation.lastMessage* denormalized fields
 8. Return MessageDTO
 ```
@@ -371,9 +374,10 @@ Client receives new messages via Supabase Realtime subscription on the `messages
 
 - **CRM DB** (connected via Drizzle) is the underlying PostgreSQL of the Supabase project (`postgres.zysulhfukqgnhfjufoip`)
 - The `messages` table is already added to the Supabase realtime publication (v1 migration `20260207_001_initial_schema.sql` line 302)
-- **v2 backend** writes to `messages` via Drizzle (service role, bypasses RLS) → Supabase Realtime automatically broadcasts changes → clients receive via Supabase client SDK
-- **RLS policies** are defined at the database layer (v1 migrations), not managed by v2 backend code
-- This matches v1 behavior exactly
+- **v2 backend** writes to `messages` via Drizzle using the service role connection string, which **bypasses RLS** → Supabase Realtime automatically broadcasts changes → clients receive via Supabase client SDK
+- **RLS status (current state):** RLS is **enabled** on `messages` and `conversations` tables (v1 initial migration), but **no RLS policies are defined** for these tables. Only `consultation_transcripts` has policies. This means the tables are deny-by-default for non-service-role connections.
+- **Impact on Realtime:** Client-side Realtime subscriptions use the anon/authenticated key. Without policies, Supabase Realtime will not deliver row changes to clients. **v1 works around this** because Realtime broadcast mode does not enforce RLS on the broadcast itself — it broadcasts all changes to the publication regardless of policies. However, proper RLS policies for client-side row filtering are NOT in scope for this spec and should be addressed in a future security hardening phase.
+- This matches v1's actual behavior (RLS enabled, no policies, Realtime still works via publication broadcast)
 
 ### 2.6 API Endpoints
 

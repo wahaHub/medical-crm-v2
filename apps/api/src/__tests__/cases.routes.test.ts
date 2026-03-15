@@ -1,0 +1,338 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Mock the composition root — this MUST be declared before importing routes
+// ---------------------------------------------------------------------------
+
+const mockServices = {
+  createCase: { execute: vi.fn() },
+  listCases: { execute: vi.fn() },
+  getCase: { execute: vi.fn() },
+  getHospitalCaseDetail: { execute: vi.fn() },
+  updateCase: { execute: vi.fn() },
+  assignCase: { execute: vi.fn() },
+  updateCaseStatus: { execute: vi.fn() },
+  advanceCaseStage: { execute: vi.fn() },
+  getCaseStats: { execute: vi.fn() },
+  uploadDocument: { execute: vi.fn() },
+  listDocuments: { execute: vi.fn() },
+  deleteDocument: { execute: vi.fn() },
+  getCaseProgress: { execute: vi.fn() },
+  addCaseProgress: { execute: vi.fn() },
+};
+
+vi.mock('../composition-root.js', () => ({
+  getServices: () => mockServices,
+}));
+
+// ---------------------------------------------------------------------------
+// Build a lightweight test app with session injection (no real auth)
+// ---------------------------------------------------------------------------
+import { OpenAPIHono } from '@hono/zod-openapi';
+import caseRoutes from '../routes/cases.routes.js';
+
+type SessionData = {
+  userId: string;
+  email: string;
+  roles: string[];
+  hospitalId: string | null;
+};
+
+let currentSession: SessionData = {
+  userId: 'u-1',
+  email: 'admin@test.com',
+  roles: ['ADMIN'],
+  hospitalId: null,
+};
+
+const app = new OpenAPIHono();
+
+// Fake auth middleware: injects `currentSession` into the context
+app.use('/api/v2/*', async (c, next) => {
+  c.set('session', currentSession);
+  await next();
+});
+
+// Mount the actual case routes
+app.route('/', caseRoutes);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const VALID_UUID = '00000000-0000-0000-0000-000000000001';
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('Cases routes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentSession = {
+      userId: 'u-1',
+      email: 'admin@test.com',
+      roles: ['ADMIN'],
+      hospitalId: null,
+    };
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /api/v2/cases — list
+  // -----------------------------------------------------------------------
+  describe('GET /api/v2/cases', () => {
+    it('returns 200 with paginated results', async () => {
+      const payload = {
+        data: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        totalPages: 0,
+        hasMore: false,
+      };
+      mockServices.listCases.execute.mockResolvedValue(payload);
+
+      const res = await app.request('/api/v2/cases');
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual(payload);
+      expect(mockServices.listCases.execute).toHaveBeenCalledOnce();
+    });
+
+    it('passes query params to use case', async () => {
+      const payload = { data: [], total: 0, page: 2, limit: 10, totalPages: 0, hasMore: false };
+      mockServices.listCases.execute.mockResolvedValue(payload);
+
+      const res = await app.request('/api/v2/cases?page=2&limit=10&status=ACTIVE');
+      expect(res.status).toBe(200);
+
+      const [query] = mockServices.listCases.execute.mock.calls[0]!;
+      expect(query).toMatchObject({ page: 2, limit: 10, status: 'ACTIVE' });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /api/v2/cases — create
+  // -----------------------------------------------------------------------
+  describe('POST /api/v2/cases', () => {
+    it('creates a case and returns 201', async () => {
+      const created = { id: VALID_UUID };
+      mockServices.createCase.execute.mockResolvedValue(created);
+
+      const body = {
+        patientId: VALID_UUID,
+        patientName: 'Test Patient',
+      };
+
+      const res = await app.request('/api/v2/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(201);
+      const json = await res.json();
+      expect(json).toEqual(created);
+      expect(mockServices.createCase.execute).toHaveBeenCalledOnce();
+    });
+
+    it('rejects invalid body (missing patientName)', async () => {
+      const res = await app.request('/api/v2/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientId: VALID_UUID }),
+      });
+
+      // zod-openapi returns 400 for validation errors
+      expect(res.status).toBe(400);
+      expect(mockServices.createCase.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /api/v2/cases/stats — stats
+  // -----------------------------------------------------------------------
+  describe('GET /api/v2/cases/stats', () => {
+    it('returns 200 with stats', async () => {
+      const stats = { total: 5, byStatus: {} };
+      mockServices.getCaseStats.execute.mockResolvedValue(stats);
+
+      const res = await app.request('/api/v2/cases/stats');
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual(stats);
+      expect(mockServices.getCaseStats.execute).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /api/v2/cases/:id — get by id
+  // -----------------------------------------------------------------------
+  describe('GET /api/v2/cases/:id', () => {
+    it('returns 200 with case detail for ADMIN', async () => {
+      const detail = { id: VALID_UUID, patientName: 'Test' };
+      mockServices.getCase.execute.mockResolvedValue(detail);
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}`);
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual(detail);
+      expect(mockServices.getCase.execute).toHaveBeenCalledWith(VALID_UUID, expect.anything());
+    });
+
+    it('uses getHospitalCaseDetail for HOSPITAL role', async () => {
+      currentSession = {
+        userId: 'u-2',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'h-1',
+      };
+
+      const detail = { id: VALID_UUID, hospitalView: true };
+      mockServices.getHospitalCaseDetail.execute.mockResolvedValue(detail);
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}`);
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual(detail);
+      expect(mockServices.getHospitalCaseDetail.execute).toHaveBeenCalledWith(VALID_UUID, expect.anything());
+      expect(mockServices.getCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for invalid UUID', async () => {
+      const res = await app.request('/api/v2/cases/not-a-uuid');
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // PATCH /api/v2/cases/:id — update
+  // -----------------------------------------------------------------------
+  describe('PATCH /api/v2/cases/:id', () => {
+    it('updates a case and returns 200', async () => {
+      const updated = { id: VALID_UUID, primaryDiagnosis: 'Updated' };
+      mockServices.updateCase.execute.mockResolvedValue(updated);
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryDiagnosis: 'Updated' }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual(updated);
+      expect(mockServices.updateCase.execute).toHaveBeenCalledWith(
+        VALID_UUID,
+        expect.objectContaining({ primaryDiagnosis: 'Updated' }),
+        expect.anything(),
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // PATCH /api/v2/cases/:id/status — update status
+  // -----------------------------------------------------------------------
+  describe('PATCH /api/v2/cases/:id/status', () => {
+    it('updates case status and returns 200', async () => {
+      const result = { id: VALID_UUID, status: 'ACTIVE' };
+      mockServices.updateCaseStatus.execute.mockResolvedValue(result);
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'ACTIVE' }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.updateCaseStatus.execute).toHaveBeenCalledWith(
+        VALID_UUID,
+        'ACTIVE',
+        expect.anything(),
+      );
+    });
+
+    it('rejects invalid status value', async () => {
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'INVALID_STATUS' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.updateCaseStatus.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // PATCH /api/v2/cases/:id/stage — advance stage
+  // -----------------------------------------------------------------------
+  describe('PATCH /api/v2/cases/:id/stage', () => {
+    it('advances case stage and returns 200', async () => {
+      const result = { id: VALID_UUID, stage: 'IN_TREATMENT' };
+      mockServices.advanceCaseStage.execute.mockResolvedValue(result);
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/stage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: 'IN_TREATMENT' }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.advanceCaseStage.execute).toHaveBeenCalledWith(
+        VALID_UUID,
+        'IN_TREATMENT',
+        expect.anything(),
+      );
+    });
+
+    it('rejects invalid stage value', async () => {
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/stage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: 'NONEXISTENT_STAGE' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.advanceCaseStage.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /api/v2/cases/:id/assign — assign case
+  // -----------------------------------------------------------------------
+  describe('POST /api/v2/cases/:id/assign', () => {
+    it('assigns a case and returns 200', async () => {
+      const result = { id: VALID_UUID, hospitalId: VALID_UUID };
+      mockServices.assignCase.execute.mockResolvedValue(result);
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: VALID_UUID }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.assignCase.execute).toHaveBeenCalledWith(
+        VALID_UUID,
+        VALID_UUID,
+        expect.anything(),
+      );
+    });
+
+    it('rejects non-UUID hospitalId', async () => {
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: 'not-a-uuid' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.assignCase.execute).not.toHaveBeenCalled();
+    });
+  });
+});

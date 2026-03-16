@@ -115,7 +115,7 @@ CREATE INDEX idx_cases_risk_flags_gin ON cases USING gin(risk_flags);
 |-------|--------|
 | `PATCH /api/v2/cases/{id}/status` | Rewrite to update `assignment_status` only (admin reset) |
 | `PATCH /api/v2/cases/{id}/stage` | Rewrite to advance `treatment_stage` with valid transitions |
-| `POST /api/v2/cases/{id}/assign` | **Deprecate** — mark as legacy, no-op or return 410 Gone. Assignment now happens via AcceptQuote |
+| `POST /api/v2/cases/{id}/assign` | **Keep functional until Module 1 lands.** Existing hospital case detail and consultation creation depend on `assignedHospitalId` via this route. After Module 1's AcceptQuote flow is deployed, mark as deprecated (log warning) but keep working for backward compat. Remove only after confirming zero callers in a future cleanup. |
 | `GET /api/v2/cases` | Update query to use `assignment_status`/`treatment_stage` filters |
 | `GET /api/v2/cases/stats` | Rewrite to count by new statuses |
 
@@ -396,7 +396,7 @@ CREATE INDEX idx_chc_quote_id ON case_hospital_contacts(quote_id) WHERE quote_id
 1. Check quote.status == PENDING (optimistic lock on version)
 2. quote.status → ACCEPTED
 3. CHC for this hospital: sub_status → ACCEPTED, patient_accepted_at = now()
-4. All other CHCs for same case with sub_status=QUOTED → REJECTED
+4. **All other CHCs** for same case with sub_status IN (DISTRIBUTED, NEED_INFO, QUOTED) → REJECTED
 5. All other quotes for same case with status=PENDING → REJECTED
 6. case.assignment_status → ASSIGNED, assigned_hospital_id = hospital_id, assigned_at = now()
 7. Record case_event (QUOTE_ACCEPTED) — no-op until Module 2 is built, then backfill
@@ -458,7 +458,19 @@ CREATE INDEX idx_case_events_type ON case_events(event_type, created_at DESC);
 
 **Repository Port:** `domain/src/ports/case-event-repository.port.ts`
 
-### 2.3 Use Cases
+### 2.3 Timeline Composition
+
+> **GetCaseTimeline is a merged view**, not just a filtered `case_events` query. The patient timeline combines:
+> 1. `case_events` where `is_visible_to_patient = true` — operational events (quote accepted, message received, etc.)
+> 2. `journey_milestones` where `is_visible_to_patient = true` — travel milestones (VISA_READY, TRAVEL_DEPARTURE, etc.)
+>
+> Both are sorted by timestamp into a single chronological feed. Each item has a `source` field (`'event'` or `'milestone'`) so the frontend can render them differently.
+>
+> **Implementation**: `GetCaseTimeline` use case queries both tables, maps to a common `TimelineItem` DTO, and merges by `created_at`/`event_date`. This is a read-only composition — no writes, no new tables.
+>
+> **Dependency**: GetCaseTimeline depends on Module 5 (Journey) for milestones. Before Module 5 is built, it returns events only.
+
+### 2.4 Use Cases
 
 | Use Case | Actor |
 |----------|-------|
@@ -466,7 +478,7 @@ CREATE INDEX idx_case_events_type ON case_events(event_type, created_at DESC);
 | `ListCaseEvents` | Admin/Hospital (all) / Patient (visible only) |
 | `GetCaseTimeline` | Patient — filtered view of events with `is_visible_to_patient=true` |
 
-### 2.4 Event Recording Integration
+### 2.5 Event Recording Integration
 
 Once Module 2 is built, inject `CaseEventRepository` into use cases from Module 1 and all subsequent modules:
 
@@ -483,7 +495,7 @@ Once Module 2 is built, inject `CaseEventRepository` into use cases from Module 
 | `UpdateCaseJourney` | JOURNEY_UPDATED |
 | `SubmitResponse` (QC) | QUESTIONNAIRE_SUBMITTED |
 
-### 2.5 API Routes
+### 2.6 API Routes
 
 ```
 GET    /api/v2/cases/{caseId}/events            — ListCaseEvents
@@ -729,14 +741,16 @@ CREATE INDEX idx_milestones_patient_visible ON journey_milestones(is_visible_to_
 
 ### 5.3 Use Cases
 
-| Use Case | Actor |
-|----------|-------|
-| `GetCaseJourney` | Patient/Admin/Hospital |
-| `UpdateCaseJourney` | Admin |
-| `ListMilestones` | Patient (visible only) / Admin/Hospital (all) |
-| `CreateMilestone` | Admin/Hospital |
-| `UpdateMilestone` | Admin |
-| `DeleteMilestone` | Admin |
+| Use Case | Actor | AuthZ |
+|----------|-------|-------|
+| `GetCaseJourney` | Patient (own case) / Admin / Hospital (**assigned only**) | Hospital must be `case.assigned_hospital_id` |
+| `UpdateCaseJourney` | Admin | — |
+| `ListMilestones` | Patient (visible only, own case) / Admin / Hospital (**assigned only**) | Hospital must be `case.assigned_hospital_id` |
+| `CreateMilestone` | Admin / Hospital (**assigned only**) | Hospital must be `case.assigned_hospital_id` |
+| `UpdateMilestone` | Admin | — |
+| `DeleteMilestone` | Admin | — |
+
+> **AuthZ rationale**: Journey contains sensitive logistics data (visa, insurance, accommodation). Non-assigned hospitals (those still quoting or already rejected) must not see this. Only the hospital that won the case (ASSIGNED) gets access. This matches the patientsflow permission matrix.
 
 ### 5.4 API Routes
 
@@ -1181,7 +1195,7 @@ Phase 2 use cases emit domain events (e.g., `QuoteAccepted`, `TicketAssigned`). 
 
 ---
 
-*Spec version: v2.1*
+*Spec version: v2.2*
 *Last updated: 2026-03-15*
 *Source docs: patientsflow/DATA_MODELS.md, QUERY_CATALOG.md, STATE_MACHINES.md, PATIENT_CONSOLE_FLOW.md, ADMIN_PORTAL_CRM_REDESIGN.md, HOSPITAL_PORTAL_CRM_REDESIGN.md*
 *Review: Codex review x2 + internal spec review + user feedback incorporated*

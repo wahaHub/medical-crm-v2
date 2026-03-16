@@ -148,10 +148,10 @@ const updateCaseStatusRoute = createRoute({
 
 app.openapi(updateCaseStatusRoute, async (c) => {
   const { id } = c.req.valid('param');
-  const { status } = c.req.valid('json');
+  const { assignmentStatus } = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
-  const result = await svc.updateCaseStatus.execute(id, status, actor);
+  const result = await svc.updateCaseStatus.execute(id, assignmentStatus, actor);
   return c.json(result, 200);
 });
 
@@ -173,10 +173,10 @@ const advanceCaseStageRoute = createRoute({
 
 app.openapi(advanceCaseStageRoute, async (c) => {
   const { id } = c.req.valid('param');
-  const { stage } = c.req.valid('json');
+  const { treatmentStage } = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
-  const result = await svc.advanceCaseStage.execute(id, stage, actor);
+  const result = await svc.advanceCaseStage.execute(id, treatmentStage, actor);
   return c.json(result, 200);
 });
 
@@ -197,6 +197,7 @@ const assignCaseRoute = createRoute({
 });
 
 app.openapi(assignCaseRoute, async (c) => {
+  console.warn('[DEPRECATED] POST /assign — will be replaced by AcceptQuote in Module 1');
   const { id } = c.req.valid('param');
   const { hospitalId } = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);

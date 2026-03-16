@@ -238,29 +238,29 @@ describe('Cases routes', () => {
   // PATCH /api/v2/cases/:id/status — update status
   // -----------------------------------------------------------------------
   describe('PATCH /api/v2/cases/:id/status', () => {
-    it('updates case status and returns 200', async () => {
-      const result = { id: VALID_UUID, status: 'ACTIVE' };
+    it('updates case assignment status and returns 200', async () => {
+      const result = { id: VALID_UUID, assignmentStatus: 'ASSIGNED' };
       mockServices.updateCaseStatus.execute.mockResolvedValue(result);
 
       const res = await app.request(`/api/v2/cases/${VALID_UUID}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'ACTIVE' }),
+        body: JSON.stringify({ assignmentStatus: 'ASSIGNED' }),
       });
 
       expect(res.status).toBe(200);
       expect(mockServices.updateCaseStatus.execute).toHaveBeenCalledWith(
         VALID_UUID,
-        'ACTIVE',
+        'ASSIGNED',
         expect.anything(),
       );
     });
 
-    it('rejects invalid status value', async () => {
+    it('rejects invalid assignmentStatus value', async () => {
       const res = await app.request(`/api/v2/cases/${VALID_UUID}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'INVALID_STATUS' }),
+        body: JSON.stringify({ assignmentStatus: 'INVALID_STATUS' }),
       });
 
       expect(res.status).toBe(400);
@@ -272,14 +272,14 @@ describe('Cases routes', () => {
   // PATCH /api/v2/cases/:id/stage — advance stage
   // -----------------------------------------------------------------------
   describe('PATCH /api/v2/cases/:id/stage', () => {
-    it('advances case stage and returns 200', async () => {
-      const result = { id: VALID_UUID, stage: 'IN_TREATMENT' };
+    it('advances case treatment stage and returns 200', async () => {
+      const result = { id: VALID_UUID, treatmentStage: 'IN_TREATMENT' };
       mockServices.advanceCaseStage.execute.mockResolvedValue(result);
 
       const res = await app.request(`/api/v2/cases/${VALID_UUID}/stage`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: 'IN_TREATMENT' }),
+        body: JSON.stringify({ treatmentStage: 'IN_TREATMENT' }),
       });
 
       expect(res.status).toBe(200);
@@ -290,11 +290,11 @@ describe('Cases routes', () => {
       );
     });
 
-    it('rejects invalid stage value', async () => {
+    it('rejects invalid treatmentStage value', async () => {
       const res = await app.request(`/api/v2/cases/${VALID_UUID}/stage`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: 'NONEXISTENT_STAGE' }),
+        body: JSON.stringify({ treatmentStage: 'NONEXISTENT_STAGE' }),
       });
 
       expect(res.status).toBe(400);

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UpdateCaseStatusUseCase } from '../src/use-cases/cases/update-case-status.use-case.js';
-import type { ICaseRepository, ICaseProgressRepository } from '@medical-crm/domain';
+import type { ICaseRepository, ICaseProgressRepository, CaseAssignmentStatus } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -30,7 +30,10 @@ describe('UpdateCaseStatusUseCase', () => {
     hospitalId: 'hosp-2',
   };
 
-  const makeMockCase = (status: string = 'DRAFT', assignedHospitalId: string | null = 'hosp-1') =>
+  const makeMockCase = (
+    assignmentStatus: CaseAssignmentStatus = 'UNASSIGNED',
+    assignedHospitalId: string | null = 'hosp-1',
+  ) =>
     new Case({
       id: 'case-id-1',
       caseNumber: new CaseNumber('CASE-2026-0001'),
@@ -46,17 +49,27 @@ describe('UpdateCaseStatusUseCase', () => {
       aiSummary: null,
       aiSummaryLanguage: null,
       riskLevel: null,
-      status: status as 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'ARCHIVED',
-      stage: 'TRANSFERRED_TO_HOSPITAL',
+      status: 'DRAFT',
+      stage: 'PENDING_ASSIGNMENT',
       assignedAt: null,
       createdAt: new Date('2026-01-10T08:00:00Z'),
       updatedAt: new Date('2026-01-10T08:00:00Z'),
+      assignmentStatus,
+      treatmentStage: null,
+      conditionSummary: null,
+      structuredData: null,
+      riskFlags: null,
+      priority: null,
+      lastEventAt: null,
+      aiSummaryStatus: 'PENDING',
+      questionCollectorTemplateId: null,
     });
 
   beforeEach(() => {
     mockCaseRepo = {
       findById: vi.fn().mockResolvedValue(makeMockCase()),
       findMany: vi.fn(),
+      findByPatientId: vi.fn(),
       save: vi.fn().mockImplementation((entity) => Promise.resolve(entity)),
       nextCaseNumber: vi.fn(),
       countByFilters: vi.fn(),
@@ -70,42 +83,43 @@ describe('UpdateCaseStatusUseCase', () => {
     useCase = new UpdateCaseStatusUseCase(mockCaseRepo, mockProgressRepo);
   });
 
-  it('calls case.transitionStatus() and saves the updated case', async () => {
-    const result = await useCase.execute('case-id-1', 'ACTIVE', adminActor);
+  it('calls entity.transitionAssignmentStatus() and saves the updated case', async () => {
+    const result = await useCase.execute('case-id-1', 'ASSIGNED', adminActor);
 
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
-    expect(result.status).toBe('ACTIVE');
+    expect(result.assignmentStatus).toBe('ASSIGNED');
     expect(result.id).toBe('case-id-1');
   });
 
-  it('creates a STATUS_CHANGE progress entry with old and new status', async () => {
-    await useCase.execute('case-id-1', 'ACTIVE', adminActor);
+  it('creates a STATUS_CHANGE progress entry with old and new assignment status', async () => {
+    await useCase.execute('case-id-1', 'ASSIGNED', adminActor);
 
     expect(mockProgressRepo.save).toHaveBeenCalledOnce();
     const savedProgress = (mockProgressRepo.save as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(savedProgress.progressType).toBe('STATUS_CHANGE');
     expect(savedProgress.caseId).toBe('case-id-1');
-    expect(savedProgress.title).toContain('DRAFT');
-    expect(savedProgress.title).toContain('ACTIVE');
-    expect(savedProgress.metadata).toMatchObject({ from: 'DRAFT', to: 'ACTIVE' });
+    expect(savedProgress.title).toContain('UNASSIGNED');
+    expect(savedProgress.title).toContain('ASSIGNED');
+    expect(savedProgress.title).toContain('Assignment status');
+    expect(savedProgress.metadata).toMatchObject({ from: 'UNASSIGNED', to: 'ASSIGNED' });
     expect(savedProgress.recordedById).toBe('admin-1');
   });
 
-  it('allows ADMIN to update status for any case', async () => {
-    const result = await useCase.execute('case-id-1', 'ACTIVE', adminActor);
+  it('allows ADMIN to update assignment status for any case', async () => {
+    const result = await useCase.execute('case-id-1', 'ASSIGNED', adminActor);
 
-    expect(result.status).toBe('ACTIVE');
+    expect(result.assignmentStatus).toBe('ASSIGNED');
   });
 
-  it('allows HOSPITAL actor to update status for their own case', async () => {
-    const result = await useCase.execute('case-id-1', 'ACTIVE', hospitalActor);
+  it('allows HOSPITAL actor to update assignment status for their own case', async () => {
+    const result = await useCase.execute('case-id-1', 'ASSIGNED', hospitalActor);
 
-    expect(result.status).toBe('ACTIVE');
+    expect(result.assignmentStatus).toBe('ASSIGNED');
   });
 
   it('throws ForbiddenError when HOSPITAL actor accesses a case of a different hospital', async () => {
     await expect(
-      useCase.execute('case-id-1', 'ACTIVE', otherHospitalActor),
+      useCase.execute('case-id-1', 'ASSIGNED', otherHospitalActor),
     ).rejects.toThrow('Access denied to this case');
   });
 
@@ -113,29 +127,23 @@ describe('UpdateCaseStatusUseCase', () => {
     mockCaseRepo.findById = vi.fn().mockResolvedValue(null);
 
     await expect(
-      useCase.execute('nonexistent-id', 'ACTIVE', adminActor),
+      useCase.execute('nonexistent-id', 'ASSIGNED', adminActor),
     ).rejects.toThrow('Case nonexistent-id not found');
   });
 
-  it('throws ValidationError on invalid status transition (DRAFT -> COMPLETED)', async () => {
-    await expect(
-      useCase.execute('case-id-1', 'COMPLETED', adminActor),
-    ).rejects.toThrow('Cannot transition case status from DRAFT to COMPLETED');
-  });
-
-  it('throws ValidationError on transition from ARCHIVED (no transitions allowed)', async () => {
-    mockCaseRepo.findById = vi.fn().mockResolvedValue(makeMockCase('ARCHIVED'));
+  it('throws ValidationError on invalid assignment status transition (ASSIGNED -> ASSIGNED)', async () => {
+    mockCaseRepo.findById = vi.fn().mockResolvedValue(makeMockCase('ASSIGNED'));
 
     await expect(
-      useCase.execute('case-id-1', 'ACTIVE', adminActor),
-    ).rejects.toThrow('Cannot transition case status from ARCHIVED to ACTIVE');
+      useCase.execute('case-id-1', 'ASSIGNED', adminActor),
+    ).rejects.toThrow('Cannot transition assignment status from ASSIGNED to ASSIGNED');
   });
 
   it('does not create progress entry if save throws', async () => {
     mockCaseRepo.save = vi.fn().mockRejectedValue(new Error('DB error'));
 
     await expect(
-      useCase.execute('case-id-1', 'ACTIVE', adminActor),
+      useCase.execute('case-id-1', 'ASSIGNED', adminActor),
     ).rejects.toThrow('DB error');
 
     expect(mockProgressRepo.save).not.toHaveBeenCalled();
@@ -144,9 +152,17 @@ describe('UpdateCaseStatusUseCase', () => {
   it('records progress with the actor userId', async () => {
     const actorWithId: Actor = { ...hospitalActor, userId: 'staff-99' };
 
-    await useCase.execute('case-id-1', 'ACTIVE', actorWithId);
+    await useCase.execute('case-id-1', 'ASSIGNED', actorWithId);
 
     const savedProgress = (mockProgressRepo.save as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(savedProgress.recordedById).toBe('staff-99');
+  });
+
+  it('allows transitioning back from ASSIGNED to UNASSIGNED', async () => {
+    mockCaseRepo.findById = vi.fn().mockResolvedValue(makeMockCase('ASSIGNED'));
+
+    const result = await useCase.execute('case-id-1', 'UNASSIGNED', adminActor);
+
+    expect(result.assignmentStatus).toBe('UNASSIGNED');
   });
 });

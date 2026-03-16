@@ -53,11 +53,11 @@ export const assignCaseSchema = z.object({
 });
 
 export const updateCaseStatusSchema = z.object({
-  status: caseStatusSchema,
+  assignmentStatus: caseAssignmentStatusSchema,
 });
 
 export const advanceCaseStageSchema = z.object({
-  stage: caseStageSchema,
+  treatmentStage: caseTreatmentStageSchema,
 });
 
 export type CreateCaseInput = z.infer<typeof createCaseSchema>;

@@ -48,6 +48,15 @@ export class CreateCaseUseCase {
         assignedAt: null,
         createdAt: now,
         updatedAt: now,
+        assignmentStatus: 'UNASSIGNED',
+        treatmentStage: null,
+        conditionSummary: null,
+        structuredData: null,
+        riskFlags: null,
+        priority: null,
+        lastEventAt: null,
+        aiSummaryStatus: 'PENDING',
+        questionCollectorTemplateId: null,
       });
 
       try {

@@ -65,6 +65,13 @@
 - Old columns will be dropped in a future Phase 3 cleanup migration, after confirming zero external readers.
 - The Drizzle schema retains the old columns with JSDoc `@deprecated` annotations.
 
+**DTO transition strategy (M0 scope):**
+- `CaseDTO` adds `assignmentStatus` and `treatmentStage` fields. Old `status` and `stage` fields remain temporarily with `@deprecated` JSDoc so existing frontend code does not break.
+- During M0, the API **populates both old and new fields** in responses: `status`/`stage` return their frozen DB values; `assignmentStatus`/`treatmentStage` return the new live values.
+- `CaseStatsDTO` is rewritten to count by `assignment_status` + `treatment_stage` (e.g., `unassigned`, `assigned`, `inTreatment`, `completed`). The old stat categories (`active`, `cancelled`) are dropped since they no longer map cleanly to the new model.
+- `CaseListQuerySchema` adds `assignmentStatus`/`treatmentStage` filter params. Old `status`/`stage` filter params remain as aliases that map to the new columns during a transition window, then are removed in Phase 3.
+- Frontend migration: once the frontend reads only `assignmentStatus`/`treatmentStage`, the deprecated fields and alias filters are removed in a Phase 3 cleanup PR.
+
 ### 0.3 DB Migration (M0)
 
 ```sql
@@ -989,7 +996,7 @@ Current v2 auth: Keycloak PKCE flow → iron-session BFF cookies. All `/api/v2/*
 This preserves the single auth mechanism (Keycloak PKCE) and avoids introducing backend-issued sessions.
 
 **Auth middleware changes:**
-- Add a `publicRoutes` allowlist in the Keycloak middleware for `/api/v2/public/*`
+- Mount `/api/v2/public/*` routes in `apps/api/src/index.ts` **before** the auth middleware, following the existing pattern (public registration route is already mounted before `authMiddleware` at line 19). No allowlist needed — routes before `app.use('/api/v2/*', authMiddleware, ...)` are unauthenticated by design.
 - Ensure existing session middleware correctly handles `role=PATIENT`
 - No new auth mechanism — reuse Keycloak PKCE for patients
 
@@ -1195,7 +1202,7 @@ Phase 2 use cases emit domain events (e.g., `QuoteAccepted`, `TicketAssigned`). 
 
 ---
 
-*Spec version: v2.2*
+*Spec version: v2.3*
 *Last updated: 2026-03-15*
 *Source docs: patientsflow/DATA_MODELS.md, QUERY_CATALOG.md, STATE_MACHINES.md, PATIENT_CONSOLE_FLOW.md, ADMIN_PORTAL_CRM_REDESIGN.md, HOSPITAL_PORTAL_CRM_REDESIGN.md*
 *Review: Codex review x2 + internal spec review + user feedback incorporated*

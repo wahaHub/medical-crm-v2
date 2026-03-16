@@ -7,3 +7,4 @@ export * from './conversation.schema';
 export * from './consultation.schema';
 export * from './case-hospital-contact.schema.js';
 export * from './quote.schema.js';
+export * from './support-ticket.schema.js';

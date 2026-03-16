@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents } from "./schema";
+import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies } from "./schema";
 
 export const casesRelations = relations(cases, ({one, many}) => ({
 	hospital: one(hospitals, {
@@ -164,5 +164,34 @@ export const caseEventsRelations = relations(caseEvents, ({one}) => ({
 	case: one(cases, {
 		fields: [caseEvents.caseId],
 		references: [cases.id]
+	}),
+}));
+
+export const supportTicketsRelations = relations(supportTickets, ({one, many}) => ({
+	patient: one(users, {
+		fields: [supportTickets.patientId],
+		references: [users.id],
+		relationName: "supportTickets_patientId_users_id"
+	}),
+	case: one(cases, {
+		fields: [supportTickets.caseId],
+		references: [cases.id]
+	}),
+	assignee: one(users, {
+		fields: [supportTickets.assignedTo],
+		references: [users.id],
+		relationName: "supportTickets_assignedTo_users_id"
+	}),
+	replies: many(supportTicketReplies),
+}));
+
+export const supportTicketRepliesRelations = relations(supportTicketReplies, ({one}) => ({
+	ticket: one(supportTickets, {
+		fields: [supportTicketReplies.ticketId],
+		references: [supportTickets.id]
+	}),
+	author: one(users, {
+		fields: [supportTicketReplies.authorId],
+		references: [users.id]
 	}),
 }));

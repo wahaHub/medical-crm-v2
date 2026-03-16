@@ -84,6 +84,13 @@ import {
   RecordCaseEventUseCase,
   ListCaseEventsUseCase,
   GetCaseTimelineUseCase,
+  CreateTicketUseCase,
+  ListTicketsUseCase,
+  GetTicketUseCase,
+  AssignTicketUseCase,
+  ReplyToTicketUseCase,
+  UpdateTicketStatusUseCase,
+  CloseTicketUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -102,6 +109,8 @@ import {
   DrizzleCHCRepository,
   DrizzleQuoteRepository,
   DrizzleCaseEventRepository,
+  DrizzleSupportTicketRepository,
+  DrizzleSupportTicketReplyRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -203,6 +212,15 @@ interface AppServices {
   listCaseEvents: ListCaseEventsUseCase;
   getCaseTimeline: GetCaseTimelineUseCase;
 
+  // use cases — support tickets
+  createTicket: CreateTicketUseCase;
+  listTickets: ListTicketsUseCase;
+  getTicket: GetTicketUseCase;
+  assignTicket: AssignTicketUseCase;
+  replyToTicket: ReplyToTicketUseCase;
+  updateTicketStatus: UpdateTicketStatusUseCase;
+  closeTicket: CloseTicketUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -260,6 +278,8 @@ export function getServices(): AppServices {
     const chcRepo = new DrizzleCHCRepository(crmDb);
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
     const eventRepo = new DrizzleCaseEventRepository(crmDb);
+    const ticketRepo = new DrizzleSupportTicketRepository(crmDb);
+    const ticketReplyRepo = new DrizzleSupportTicketReplyRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
@@ -336,6 +356,14 @@ export function getServices(): AppServices {
       acceptQuote: new AcceptQuoteUseCase(quoteRepo, chcRepo, caseRepo, txRunner),
       rejectQuote: new RejectQuoteUseCase(quoteRepo, chcRepo),
       adminResetAssignment: new AdminResetAssignmentUseCase(chcRepo, caseRepo, txRunner),
+
+      createTicket: new CreateTicketUseCase(ticketRepo),
+      listTickets: new ListTicketsUseCase(ticketRepo),
+      getTicket: new GetTicketUseCase(ticketRepo, ticketReplyRepo),
+      assignTicket: new AssignTicketUseCase(ticketRepo),
+      replyToTicket: new ReplyToTicketUseCase(ticketRepo, ticketReplyRepo),
+      updateTicketStatus: new UpdateTicketStatusUseCase(ticketRepo),
+      closeTicket: new CloseTicketUseCase(ticketRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

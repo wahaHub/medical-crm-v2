@@ -128,5 +128,26 @@ export type { CaseEventProps } from './entities/case-event.entity.js';
 // Phase 2 M2: Ports
 export type { ICaseEventRepository, CaseEventListOptions } from './ports/case-event-repository.port.js';
 
+// Phase 2 M3: Support Ticket Enums
+export type {
+  TicketType, TicketPriority, TicketStatus, TicketReplyRole,
+} from './enums/index.js';
+
+// Phase 2 M3: State machines
+export { TICKET_STATUS_TRANSITIONS } from './state-machine/ticket-status-transitions.js';
+
+// Phase 2 M3: Value objects
+export { TicketNumber } from './value-objects/ticket-number.js';
+
+// Phase 2 M3: Entities
+export { SupportTicket } from './entities/support-ticket.entity.js';
+export type { SupportTicketProps } from './entities/support-ticket.entity.js';
+export { SupportTicketReply } from './entities/support-ticket-reply.entity.js';
+export type { SupportTicketReplyProps } from './entities/support-ticket-reply.entity.js';
+
+// Phase 2 M3: Ports
+export type { ISupportTicketRepository, TicketListQuery } from './ports/support-ticket-repository.port.js';
+export type { ISupportTicketReplyRepository } from './ports/support-ticket-reply-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

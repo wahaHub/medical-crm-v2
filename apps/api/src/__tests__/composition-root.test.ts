@@ -26,6 +26,8 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleCHCRepository: vi.fn(() => ({})),
   DrizzleQuoteRepository: vi.fn(() => ({})),
   DrizzleCaseEventRepository: vi.fn(() => ({})),
+  DrizzleSupportTicketRepository: vi.fn(() => ({})),
+  DrizzleSupportTicketReplyRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
@@ -126,6 +128,14 @@ vi.mock('@medical-crm/application', () => ({
   RecordCaseEventUseCase: vi.fn(() => ({})),
   ListCaseEventsUseCase: vi.fn(() => ({})),
   GetCaseTimelineUseCase: vi.fn(() => ({})),
+  // Support Tickets
+  CreateTicketUseCase: vi.fn(() => ({})),
+  ListTicketsUseCase: vi.fn(() => ({})),
+  GetTicketUseCase: vi.fn(() => ({})),
+  AssignTicketUseCase: vi.fn(() => ({})),
+  ReplyToTicketUseCase: vi.fn(() => ({})),
+  UpdateTicketStatusUseCase: vi.fn(() => ({})),
+  CloseTicketUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -241,5 +251,14 @@ describe('composition root', () => {
     expect(services).toHaveProperty('recordCaseEvent');
     expect(services).toHaveProperty('listCaseEvents');
     expect(services).toHaveProperty('getCaseTimeline');
+
+    // Support Tickets
+    expect(services).toHaveProperty('createTicket');
+    expect(services).toHaveProperty('listTickets');
+    expect(services).toHaveProperty('getTicket');
+    expect(services).toHaveProperty('assignTicket');
+    expect(services).toHaveProperty('replyToTicket');
+    expect(services).toHaveProperty('updateTicketStatus');
+    expect(services).toHaveProperty('closeTicket');
   });
 });

@@ -57,3 +57,9 @@ export type CaseEventType =
   | 'AI_SUMMARY_GENERATED';
 
 export type ActorType = 'PATIENT' | 'HOSPITAL' | 'ADMIN' | 'SYSTEM';
+
+// Phase 2 M3: Support Tickets
+export type TicketType = 'ACCOUNT_ISSUES' | 'PAYMENT_PROBLEMS' | 'HOSPITAL_COMMUNICATION' | 'DOCUMENT_HELP' | 'VISA_TRAVEL' | 'GENERAL_QUESTIONS' | 'FEEDBACK';
+export type TicketPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+export type TicketStatus = 'OPEN' | 'ASSIGNED' | 'PENDING_INFO' | 'RESOLVED' | 'CLOSED';
+export type TicketReplyRole = 'ADMIN' | 'PATIENT';

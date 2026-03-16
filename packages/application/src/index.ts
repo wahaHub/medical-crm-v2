@@ -147,3 +147,20 @@ export { RecordCaseEventUseCase } from './use-cases/events/record-case-event.use
 export type { RecordCaseEventInput } from './use-cases/events/record-case-event.use-case.js';
 export { ListCaseEventsUseCase } from './use-cases/events/list-case-events.use-case.js';
 export { GetCaseTimelineUseCase } from './use-cases/events/get-case-timeline.use-case.js';
+
+// DTOs — Support Tickets
+export type { SupportTicketDTO, SupportTicketReplyDTO } from './dtos/support-ticket.dto.js';
+
+// Mappers — Support Tickets
+export { toSupportTicketDTO, toSupportTicketReplyDTO } from './mappers/support-ticket.mapper.js';
+
+// Use Cases — Support Tickets
+export { CreateTicketUseCase } from './use-cases/tickets/create-ticket.use-case.js';
+export type { CreateTicketInput } from './use-cases/tickets/create-ticket.use-case.js';
+export { ListTicketsUseCase } from './use-cases/tickets/list-tickets.use-case.js';
+export { GetTicketUseCase } from './use-cases/tickets/get-ticket.use-case.js';
+export { AssignTicketUseCase } from './use-cases/tickets/assign-ticket.use-case.js';
+export { ReplyToTicketUseCase } from './use-cases/tickets/reply-to-ticket.use-case.js';
+export type { ReplyToTicketInput } from './use-cases/tickets/reply-to-ticket.use-case.js';
+export { UpdateTicketStatusUseCase } from './use-cases/tickets/update-ticket-status.use-case.js';
+export { CloseTicketUseCase } from './use-cases/tickets/close-ticket.use-case.js';

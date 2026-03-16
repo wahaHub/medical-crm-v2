@@ -469,6 +469,48 @@ export const caseHospitalContacts = pgTable("case_hospital_contacts", {
 	unique("case_hospital_contacts_case_id_hospital_id_key").on(table.caseId, table.hospitalId),
 ]);
 
+// Phase 2 M3: Support Tickets
+export const ticketType = pgEnum("TicketType", ['ACCOUNT_ISSUES', 'PAYMENT_PROBLEMS', 'HOSPITAL_COMMUNICATION', 'DOCUMENT_HELP', 'VISA_TRAVEL', 'GENERAL_QUESTIONS', 'FEEDBACK'])
+export const ticketPriority = pgEnum("TicketPriority", ['HIGH', 'MEDIUM', 'LOW'])
+export const ticketStatus = pgEnum("TicketStatus", ['OPEN', 'ASSIGNED', 'PENDING_INFO', 'RESOLVED', 'CLOSED'])
+export const ticketReplyRole = pgEnum("TicketReplyRole", ['ADMIN', 'PATIENT'])
+
+export const supportTickets = pgTable("support_tickets", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	ticketNumber: varchar("ticket_number", { length: 50 }).notNull().unique(),
+	patientId: uuid("patient_id").notNull().references(() => users.id),
+	caseId: uuid("case_id").references(() => cases.id),
+	type: ticketType().notNull(),
+	priority: ticketPriority().default('MEDIUM').notNull(),
+	status: ticketStatus().default('OPEN').notNull(),
+	subject: varchar({ length: 500 }),
+	description: text().notNull(),
+	sourcePage: varchar("source_page", { length: 200 }),
+	assignedTo: uuid("assigned_to").references(() => users.id),
+	slaDeadline: timestamp("sla_deadline", { withTimezone: true, mode: 'string' }),
+	resolutionNote: text("resolution_note"),
+	resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: 'string' }),
+	version: integer().default(1).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	index("idx_tickets_patient_status").using("btree", table.patientId.asc().nullsLast(), table.status.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+	index("idx_tickets_queue").using("btree", table.status.asc().nullsLast(), table.priority.asc().nullsLast(), table.slaDeadline.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+]);
+
+export const supportTicketReplies = pgTable("support_ticket_replies", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	ticketId: uuid("ticket_id").notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
+	authorId: uuid("author_id").notNull().references(() => users.id),
+	authorRole: ticketReplyRole("author_role").notNull(),
+	content: text().notNull(),
+	isInternalNote: boolean("is_internal_note").default(false).notNull(),
+	attachments: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_ticket_replies_ticket").using("btree", table.ticketId.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+]);
+
 export const caseEvents = pgTable("case_events", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	caseId: uuid("case_id").notNull().references(() => cases.id),

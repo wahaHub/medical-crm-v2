@@ -67,6 +67,20 @@ import {
   CreateBeforeAfterCaseUseCase,
   UpdateBeforeAfterCaseUseCase,
   DeleteBeforeAfterCaseUseCase,
+  AddHospitalToCaseUseCase,
+  RemoveHospitalFromCaseUseCase,
+  SendReminderUseCase,
+  ListCaseHospitalContactsUseCase,
+  CreateQuoteUseCase,
+  UpdateQuoteUseCase,
+  SendQuoteUseCase,
+  ListQuotesUseCase,
+  GetQuoteUseCase,
+  CompareQuotesUseCase,
+  ResendQuoteUseCase,
+  AcceptQuoteUseCase,
+  RejectQuoteUseCase,
+  AdminResetAssignmentUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -82,6 +96,9 @@ import {
   DrizzleMessageTaskRepository,
   DrizzleConsultationRepository,
   DrizzleConsultationTranscriptRepository,
+  DrizzleCHCRepository,
+  DrizzleQuoteRepository,
+  DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
@@ -159,6 +176,24 @@ interface AppServices {
   getConsultationStats: GetConsultationStatsUseCase;
   listCaseConsultations: ListCaseConsultationsUseCase;
 
+  // use cases — CHC
+  addHospitalToCase: AddHospitalToCaseUseCase;
+  removeHospitalFromCase: RemoveHospitalFromCaseUseCase;
+  sendReminder: SendReminderUseCase;
+  listCaseHospitalContacts: ListCaseHospitalContactsUseCase;
+
+  // use cases — quotes
+  createQuote: CreateQuoteUseCase;
+  updateQuote: UpdateQuoteUseCase;
+  sendQuote: SendQuoteUseCase;
+  listQuotes: ListQuotesUseCase;
+  getQuote: GetQuoteUseCase;
+  compareQuotes: CompareQuotesUseCase;
+  resendQuote: ResendQuoteUseCase;
+  acceptQuote: AcceptQuoteUseCase;
+  rejectQuote: RejectQuoteUseCase;
+  adminResetAssignment: AdminResetAssignmentUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -213,6 +248,9 @@ export function getServices(): AppServices {
     const consultationRepo = new DrizzleConsultationRepository(crmDb);
     const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
     const materialsRepo = new SupabaseMaterialsRepository(mainSupabase);
+    const chcRepo = new DrizzleCHCRepository(crmDb);
+    const quoteRepo = new DrizzleQuoteRepository(crmDb);
+    const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
 
@@ -268,6 +306,22 @@ export function getServices(): AppServices {
       getConsultationTranscript: new GetConsultationTranscriptUseCase(consultationRepo, transcriptRepo),
       getConsultationStats: new GetConsultationStatsUseCase(consultationRepo),
       listCaseConsultations: new ListCaseConsultationsUseCase(consultationRepo, caseRepo),
+
+      addHospitalToCase: new AddHospitalToCaseUseCase(chcRepo),
+      removeHospitalFromCase: new RemoveHospitalFromCaseUseCase(chcRepo),
+      sendReminder: new SendReminderUseCase(chcRepo),
+      listCaseHospitalContacts: new ListCaseHospitalContactsUseCase(chcRepo),
+
+      createQuote: new CreateQuoteUseCase(quoteRepo),
+      updateQuote: new UpdateQuoteUseCase(quoteRepo),
+      sendQuote: new SendQuoteUseCase(quoteRepo, chcRepo),
+      listQuotes: new ListQuotesUseCase(quoteRepo),
+      getQuote: new GetQuoteUseCase(quoteRepo),
+      compareQuotes: new CompareQuotesUseCase(quoteRepo),
+      resendQuote: new ResendQuoteUseCase(quoteRepo, chcRepo),
+      acceptQuote: new AcceptQuoteUseCase(quoteRepo, chcRepo, caseRepo, txRunner),
+      rejectQuote: new RejectQuoteUseCase(quoteRepo, chcRepo),
+      adminResetAssignment: new AdminResetAssignmentUseCase(chcRepo, caseRepo, txRunner),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

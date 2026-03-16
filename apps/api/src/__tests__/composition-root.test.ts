@@ -23,6 +23,9 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleMessageTaskRepository: vi.fn(() => ({})),
   DrizzleConsultationRepository: vi.fn(() => ({})),
   DrizzleConsultationTranscriptRepository: vi.fn(() => ({})),
+  DrizzleCHCRepository: vi.fn(() => ({})),
+  DrizzleQuoteRepository: vi.fn(() => ({})),
+  DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
   SupabaseStorageAdapter: vi.fn(() => ({})),
@@ -103,6 +106,21 @@ vi.mock('@medical-crm/application', () => ({
   CreateBeforeAfterCaseUseCase: vi.fn(() => ({})),
   UpdateBeforeAfterCaseUseCase: vi.fn(() => ({})),
   DeleteBeforeAfterCaseUseCase: vi.fn(() => ({})),
+  // CHC + Quotes
+  AddHospitalToCaseUseCase: vi.fn(() => ({})),
+  RemoveHospitalFromCaseUseCase: vi.fn(() => ({})),
+  SendReminderUseCase: vi.fn(() => ({})),
+  ListCaseHospitalContactsUseCase: vi.fn(() => ({})),
+  CreateQuoteUseCase: vi.fn(() => ({})),
+  UpdateQuoteUseCase: vi.fn(() => ({})),
+  SendQuoteUseCase: vi.fn(() => ({})),
+  ListQuotesUseCase: vi.fn(() => ({})),
+  GetQuoteUseCase: vi.fn(() => ({})),
+  CompareQuotesUseCase: vi.fn(() => ({})),
+  ResendQuoteUseCase: vi.fn(() => ({})),
+  AcceptQuoteUseCase: vi.fn(() => ({})),
+  RejectQuoteUseCase: vi.fn(() => ({})),
+  AdminResetAssignmentUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -195,5 +213,23 @@ describe('composition root', () => {
     expect(services).toHaveProperty('createBeforeAfterCase');
     expect(services).toHaveProperty('updateBeforeAfterCase');
     expect(services).toHaveProperty('deleteBeforeAfterCase');
+
+    // CHC
+    expect(services).toHaveProperty('addHospitalToCase');
+    expect(services).toHaveProperty('removeHospitalFromCase');
+    expect(services).toHaveProperty('sendReminder');
+    expect(services).toHaveProperty('listCaseHospitalContacts');
+
+    // Quotes
+    expect(services).toHaveProperty('createQuote');
+    expect(services).toHaveProperty('updateQuote');
+    expect(services).toHaveProperty('sendQuote');
+    expect(services).toHaveProperty('listQuotes');
+    expect(services).toHaveProperty('getQuote');
+    expect(services).toHaveProperty('compareQuotes');
+    expect(services).toHaveProperty('resendQuote');
+    expect(services).toHaveProperty('acceptQuote');
+    expect(services).toHaveProperty('rejectQuote');
+    expect(services).toHaveProperty('adminResetAssignment');
   });
 });

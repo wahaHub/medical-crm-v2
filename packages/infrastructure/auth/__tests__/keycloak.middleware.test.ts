@@ -25,6 +25,7 @@ describe('authMiddleware', () => {
       payload: {
         sub: 'user-123',
         email: 'test@example.com',
+        azp: 'portal-web',
         realm_access: { roles: ['hospital'] },
         hospital_id: 'hospital-456',
       },
@@ -87,6 +88,7 @@ describe('requireRole', () => {
       payload: {
         sub: 'u1',
         email: 'a@b.com',
+        azp: 'portal-web',
         realm_access: { roles: ['admin'] },
       },
     });
@@ -109,6 +111,7 @@ describe('requireRole', () => {
       payload: {
         sub: 'u1',
         email: 'a@b.com',
+        azp: 'portal-web',
         realm_access: { roles: ['hospital'] },
       },
     });
@@ -137,6 +140,7 @@ describe('requireHospital', () => {
       payload: {
         sub: 'u1',
         email: 'a@b.com',
+        azp: 'portal-web',
         realm_access: { roles: ['admin'] },
       },
     });

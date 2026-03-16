@@ -2,29 +2,25 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { AuthProvider, type AuthUser } from '@/lib/auth-context';
 import { PortalShell } from '@/components/portal-shell';
-
-function decodeJwtPayload(token: string): Record<string, unknown> {
-  try {
-    const payload = token.split('.')[1] ?? '';
-    return JSON.parse(Buffer.from(payload, 'base64url').toString());
-  } catch {
-    return {};
-  }
-}
+import { extractUserFromToken } from '@/lib/keycloak-client';
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
 
-  if (!session.access_token) {
+  if (!session?.access_token) {
     redirect('/auth/login');
   }
 
-  const payload = decodeJwtPayload(session.access_token);
+  const keycloakUser = extractUserFromToken(session.access_token);
+  if (!keycloakUser) {
+    redirect('/auth/login');
+  }
+
   const user: AuthUser = {
-    id: (payload.sub as string) ?? '',
-    email: (payload.email as string) ?? '',
-    roles: (payload.realm_access as { roles?: string[] })?.roles ?? [],
-    hospitalId: (payload.hospital_id as string) ?? null,
+    id: keycloakUser.sub,
+    email: keycloakUser.email ?? '',
+    roles: keycloakUser.roles,
+    hospitalId: keycloakUser.hospital_id ?? null,
   };
 
   return (

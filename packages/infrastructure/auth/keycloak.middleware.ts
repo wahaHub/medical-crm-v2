@@ -33,10 +33,16 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
     const env = getServerEnv();
 
     try {
+      // NOTE: Keycloak access tokens use aud='account' by default, not the client ID.
+      // We verify the issuer and check azp (authorized party) instead of aud.
       const { payload } = await jose.jwtVerify(token, getJWKS(), {
         issuer: env.KEYCLOAK_ISSUER,
-        audience: env.KEYCLOAK_CLIENT_ID,
       });
+
+      // Verify the token was issued for our client
+      if (payload.azp !== env.KEYCLOAK_CLIENT_ID) {
+        throw new Error(`Token azp '${payload.azp}' does not match client '${env.KEYCLOAK_CLIENT_ID}'`);
+      }
 
       c.set('session', {
         userId: payload.sub!,
@@ -44,7 +50,8 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
         roles: (payload.realm_access as { roles?: string[] })?.roles ?? [],
         hospitalId: (payload as Record<string, unknown>).hospital_id as string ?? null,
       });
-    } catch {
+    } catch (err) {
+      console.error('[Auth] JWT verification failed:', err instanceof Error ? err.message : err);
       throw new HTTPException(401, { message: 'Invalid or expired token' });
     }
 

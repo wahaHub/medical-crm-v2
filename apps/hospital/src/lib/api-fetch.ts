@@ -1,5 +1,6 @@
 // apps/hospital/src/lib/api-fetch.ts
-import { getSession } from './session';
+import { getSession, saveSession, clearSession } from './session';
+import { refreshAccessToken } from './keycloak-client';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
@@ -9,26 +10,32 @@ export async function apiFetch(
 ): Promise<Response> {
   const session = await getSession();
 
-  if (!session.access_token) {
+  if (!session?.access_token) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
+  // Auto-refresh if expiring within 60 seconds
+  let accessToken = session.access_token;
   if (session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
-    const refreshed = await refreshToken(session.refresh_token);
-    if (!refreshed) {
-      await session.destroy();
+    try {
+      const newTokens = await refreshAccessToken(session.refresh_token);
+      accessToken = newTokens.access_token;
+      await saveSession({
+        access_token: newTokens.access_token,
+        refresh_token: newTokens.refresh_token || session.refresh_token,
+        id_token: newTokens.id_token,
+        expires_at: Math.floor(Date.now() / 1000) + newTokens.expires_in,
+      });
+    } catch {
+      await clearSession();
       return new Response(JSON.stringify({ error: 'Token refresh failed' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    session.access_token = refreshed.access_token;
-    session.refresh_token = refreshed.refresh_token;
-    session.expires_at = refreshed.expires_at;
-    await session.save();
   }
 
   return fetch(`${API_URL}${path}`, {
@@ -36,38 +43,7 @@ export async function apiFetch(
     headers: {
       'Content-Type': 'application/json',
       ...init?.headers,
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${accessToken}`,
     },
   });
-}
-
-async function refreshToken(token: string) {
-  try {
-    const res = await fetch(
-      `${process.env.KEYCLOAK_ISSUER}/protocol/openid-connect/token`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: process.env.KEYCLOAK_CLIENT_ID!,
-          client_secret: process.env.KEYCLOAK_CLIENT_SECRET!,
-          refresh_token: token,
-        }),
-      },
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      access_token: string;
-      refresh_token: string;
-      expires_in: number;
-    };
-    return {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
-    };
-  } catch {
-    return null;
-  }
 }

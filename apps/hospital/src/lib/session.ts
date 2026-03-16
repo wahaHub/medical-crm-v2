@@ -1,32 +1,46 @@
-import { getIronSession, type SessionOptions } from 'iron-session';
+/**
+ * Session management — plain JSON httpOnly cookie (matches v1 approach).
+ *
+ * iron-session encryption makes the cookie too large for Keycloak JWTs,
+ * so we use a plain JSON cookie with httpOnly + secure flags instead.
+ */
+
 import { cookies } from 'next/headers';
+
+const COOKIE_NAME = 'medical-crm-hospital-session';
+const MAX_AGE = 7 * 24 * 60 * 60; // 7 days
 
 export interface SessionData {
   access_token: string;
   refresh_token: string;
-  id_token: string;
+  id_token?: string;
   expires_at: number;
-  /** PKCE code_verifier — stored during login, consumed during callback */
-  code_verifier?: string;
 }
 
-const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET!,
-  cookieName: 'medical-crm-hospital-session',
-  cookieOptions: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    maxAge: 7 * 24 * 60 * 60, // 7 days
-  },
-};
-
-export async function getSession() {
+export async function getSession(): Promise<SessionData | null> {
   const cookieStore = await cookies();
-  return getIronSession<SessionData>(cookieStore, sessionOptions);
+  const raw = cookieStore.get(COOKIE_NAME)?.value;
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as SessionData;
+  } catch {
+    return null;
+  }
 }
 
-export async function clearSession() {
-  const session = await getSession();
-  session.destroy();
+export async function saveSession(data: SessionData): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE_NAME, JSON.stringify(data), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: MAX_AGE,
+    path: '/',
+  });
+}
+
+export async function clearSession(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.delete(COOKIE_NAME);
 }

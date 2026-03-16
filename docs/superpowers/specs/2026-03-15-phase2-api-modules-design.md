@@ -11,19 +11,20 @@
 ## Table of Contents
 
 - [Section 0: Case Model Realignment](#section-0-case-model-realignment)
-- [Section 0.5: Transaction + Idempotency Infrastructure](#section-05-transaction--idempotency-infrastructure)
+- [Section 0.5: Transaction / Idempotency / Migration Conventions](#section-05-transaction--idempotency--migration-conventions)
 - [Section 1: Schema Migration Strategy](#section-1-schema-migration-strategy)
-- [Section 2: Module 1 — Quotes + CaseHospitalContacts](#section-2-module-1--quotes--casehospitalcontacts)
-- [Section 3: Module 2 — Orders + Packages](#section-3-module-2--orders--packages)
-- [Section 4: Module 3 — Support Tickets](#section-4-module-3--support-tickets)
-- [Section 5: Module 4 — CaseJourney + Milestones + CaseEvents](#section-5-module-4--casejourney--milestones--caseevents)
-- [Section 6: Module 5 — BookingRequest + Patient Auth](#section-6-module-5--bookingrequest--patient-auth)
-- [Section 7: Module 6 — Dashboard Aggregation](#section-7-module-6--dashboard-aggregation)
-- [Section 8: Module 7 — QuestionCollector](#section-8-module-7--questioncollector)
-- [Section 9: Module 8 — ServiceCatalog + QuoteTemplates](#section-9-module-8--servicecatalog--quotetemplates)
-- [Section 10: Cross-Cutting Concerns](#section-10-cross-cutting-concerns)
-- [Section 11: Implementation Order Summary](#section-11-implementation-order-summary)
-- [Section 12: Deferred / Out-of-Scope](#section-12-deferred--out-of-scope)
+- [Module 1: Quotes + CaseHospitalContacts](#module-1-quotes--casehospitalcontacts)
+- [Module 2: Events / Timeline](#module-2-events--timeline)
+- [Module 3: Support Tickets](#module-3-support-tickets)
+- [Module 4: Orders + Packages](#module-4-orders--packages)
+- [Module 5: Journey](#module-5-journey)
+- [Module 6: QuestionCollector](#module-6-questioncollector)
+- [Module 7: ServiceCatalog + QuoteTemplates](#module-7-servicecatalog--quotetemplates)
+- [Module 8: Dashboard Aggregations](#module-8-dashboard-aggregations)
+- [Module 9: BookingRequest + Patient Auth / Public Flow](#module-9-bookingrequest--patient-auth--public-flow)
+- [Cross-Cutting Concerns](#cross-cutting-concerns)
+- [Implementation Order Summary](#implementation-order-summary)
+- [Deferred / Out-of-Scope](#deferred--out-of-scope)
 
 ---
 
@@ -36,15 +37,35 @@
 
 | Current (v1 model) | New (patientsflow model) | Action |
 |---------------------|-------------------------|--------|
-| `cases.status` (DRAFT/ACTIVE/COMPLETED/CANCELLED/ARCHIVED) | `cases.assignment_status` (UNASSIGNED/ASSIGNED) | Add new column, keep old for compat |
-| `cases.stage` (PENDING_ASSIGNMENT/TRANSFERRED_TO_HOSPITAL/...) | `cases.treatment_stage` (CONFIRMED/IN_TREATMENT/POST_TREATMENT/COMPLETED/FOLLOW_UP) | Add new column, keep old for compat |
+| `cases.status` (DRAFT/ACTIVE/COMPLETED/CANCELLED/ARCHIVED) | `cases.assignment_status` (UNASSIGNED/ASSIGNED) | Add new column, keep old as deprecated read-only |
+| `cases.stage` (PENDING_ASSIGNMENT/TRANSFERRED_TO_HOSPITAL/...) | `cases.treatment_stage` (CONFIRMED/IN_TREATMENT/POST_TREATMENT/COMPLETED/FOLLOW_UP) | Add new column, keep old as deprecated read-only |
 | `AssignCaseUseCase` (Admin manually assigns hospital) | Removed — assignment happens via `AcceptQuote` | Deprecate use case, mark route as legacy |
 | `UpdateCaseStatusUseCase` | Reworked — only updates `assignment_status` with guard | Rewrite |
 | `AdvanceCaseStageUseCase` | Reworked — advances `treatment_stage` with valid transitions | Rewrite |
 | `caseListQuerySchema` filters on `status`/`stage` | Filters on `assignment_status`/`treatment_stage` | Update schema + repository query |
 | `GetCaseStatsUseCase` counts by `status` | Counts by `assignment_status` + `treatment_stage` | Rewrite |
 
-### 0.2 DB Migration (M0)
+### 0.2 Naming & Compatibility Strategy
+
+> **Binding decisions — do not revisit during implementation.**
+
+**Table naming:**
+- `case_hospital_contacts` is the **sole canonical name**. Do not use `case_hospital_assignments` or any alias anywhere in code, comments, or docs.
+- All new tables follow snake_case plural (`quotes`, `support_tickets`, `journey_milestones`).
+
+**Field naming:**
+- `patient_id` (not `user_id`) — matches existing v2 convention (`cases.patient_id`, `consultations.patient_id`). DATA_MODELS.md recommends `user_id` but we stay consistent with the current schema. If we migrate to `user_id` later, it's a single rename.
+- **Exceptions**: `booking_requests.user_id` and `question_collector_responses.user_id` use `user_id` because these entities may reference non-patient users (booking pre-signup, admin-submitted responses). This is an intentional exception, not an oversight.
+
+**Old `status`/`stage` columns — deprecated read-only:**
+- Old columns (`status` CaseStatus, `stage` CaseStage) **remain in the DB and Drizzle schema** but are explicitly **deprecated read-only**.
+- v2 API code **never writes** to `status`/`stage` after M0 migration. All new code reads/writes `assignment_status`/`treatment_stage` exclusively.
+- Old columns are NOT dropped — they are frozen at their last-written values for any external consumer that might still read them.
+- No sync trigger, no background job. If a v1 consumer needs updated values, they must migrate to the new columns.
+- Old columns will be dropped in a future Phase 3 cleanup migration, after confirming zero external readers.
+- The Drizzle schema retains the old columns with JSDoc `@deprecated` annotations.
+
+### 0.3 DB Migration (M0)
 
 ```sql
 -- New enums
@@ -60,7 +81,9 @@ ALTER TABLE cases ADD COLUMN risk_flags TEXT[];
 ALTER TABLE cases ADD COLUMN priority VARCHAR(20);
 ALTER TABLE cases ADD COLUMN last_event_at TIMESTAMPTZ;
 ALTER TABLE cases ADD COLUMN ai_summary_status "AISummaryStatus" NOT NULL DEFAULT 'PENDING';
--- NOTE: Reuses existing pgEnum "AISummaryStatus" (PENDING/PROCESSING/COMPLETED/FAILED) from schema.ts
+-- NOTE: Reuses existing pgEnum "AISummaryStatus" (PENDING/PROCESSING/COMPLETED/FAILED) from schema.ts.
+-- DATA_MODELS.md lists PENDING/GENERATED/REVIEWED — we follow the existing schema values.
+-- If patientsflow values are needed later, add them to the enum (ALTER TYPE ... ADD VALUE).
 ALTER TABLE cases ADD COLUMN question_collector_template_id UUID;
 
 -- Backfill: map old status/stage → new assignment_status/treatment_stage
@@ -76,9 +99,9 @@ CREATE INDEX idx_cases_assigned_hospital_created ON cases(assigned_hospital_id, 
 CREATE INDEX idx_cases_risk_flags_gin ON cases USING gin(risk_flags);
 ```
 
-### 0.3 Domain Layer Changes
+### 0.4 Domain Layer Changes
 
-**case.entity.ts** — add fields: `assignmentStatus`, `treatmentStage`, `conditionSummary`, `structuredData`, `riskFlags`, `priority`, `lastEventAt`, `aiSummaryStatus`, `questionCollectorTemplateId`
+**case.entity.ts** — add fields: `assignmentStatus`, `treatmentStage`, `conditionSummary`, `structuredData`, `riskFlags`, `priority`, `lastEventAt`, `aiSummaryStatus`, `questionCollectorTemplateId`. Add `@deprecated` JSDoc on `status` and `stage` fields.
 
 **case-status-transitions.ts** — replace with:
 - `assignment-status-transitions.ts`: UNASSIGNED → ASSIGNED (via accept_quote), ASSIGNED → UNASSIGNED (admin reset)
@@ -86,7 +109,7 @@ CREATE INDEX idx_cases_risk_flags_gin ON cases USING gin(risk_flags);
 
 **case-repository.port.ts** — update `list()` to filter by `assignmentStatus`/`treatmentStage` instead of `status`/`stage`
 
-### 0.4 Route Changes
+### 0.5 Route Changes
 
 | Route | Action |
 |-------|--------|
@@ -96,22 +119,49 @@ CREATE INDEX idx_cases_risk_flags_gin ON cases USING gin(risk_flags);
 | `GET /api/v2/cases` | Update query to use `assignment_status`/`treatment_stage` filters |
 | `GET /api/v2/cases/stats` | Rewrite to count by new statuses |
 
-### 0.5 Compatibility
-
-- Old columns (`status`, `stage`) remain in DB and Drizzle schema
-- Old columns are NOT removed from the entity — they coexist
-- v2 API exclusively reads/writes the new columns
-- Old columns can be populated by a sync trigger or background job if v1 code still needs them
-- If no v1 consumers exist, old columns are frozen and eventually dropped
-
 ---
 
-## Section 0.5: Transaction + Idempotency Infrastructure
+## Section 0.5: Transaction / Idempotency / Migration Conventions
 
 > **Must be completed before Module 1.**
-> Current v2 use cases do sequential single-repo saves with no transaction boundary. AcceptQuote needs to atomically update 4+ tables. CompleteSignup needs 5+ tables.
 
-### 0.5.1 Transaction Runner
+### 0.5.1 Migration Conventions
+
+> **Current state**: The repo has no unified migration workflow. `db:generate` exists (Drizzle Kit) but there is no `db:migrate` command. Migration files are scattered across two locations: `<root>/migrations/` (e.g., `001-ai-summary-columns.sql`) and `packages/infrastructure/database/migrations/` (e.g., `002_create_message_tasks.sql`). This must be fixed before Phase 2 creates 7+ migration files.
+
+**Step 1 — Consolidate migration directory:**
+- All migration files live in **`packages/infrastructure/database/migrations/`** (single canonical location)
+- Move `<root>/migrations/001-ai-summary-columns.sql` into the canonical directory
+- Delete `<root>/migrations/` after move
+- Naming convention: `NNN_<description>.sql` (e.g., `003_m0_case_realignment.sql`, `004_m1_quotes_chc.sql`)
+
+**Step 2 — Add `db:migrate` command:**
+- Add a `db:migrate` script to `packages/infrastructure/package.json` that runs all pending `.sql` files in order
+- Options (pick during implementation):
+  - (a) Drizzle Kit `migrate` with `drizzle.config.ts` pointing to the migration directory
+  - (b) Simple Node.js script that reads `*.sql` files in order, tracks applied migrations in a `_migrations` table
+  - (c) Use `drizzle-kit push` for dev and hand-written SQL for production
+- The implementation plan will decide which option, but the spec requires that **one `pnpm db:migrate` command at root executes all pending migrations in order**.
+
+**Step 3 — Root-level convenience:**
+- `package.json` (root): add `"db:migrate": "pnpm --filter @medical-crm/infrastructure db:migrate"`
+- Matches existing `"db:generate"` pattern
+
+**Phase 2 migration files (in order):**
+
+| File | Scope |
+|------|-------|
+| `003_m0_case_realignment.sql` | Section 0 — case columns + enums + backfill + indexes |
+| `004_m1_quotes_chc.sql` | Module 1 — `case_hospital_contacts`, `quotes` + indexes |
+| `005_m2_events.sql` | Module 2 — `case_events` + indexes |
+| `006_m3_tickets.sql` | Module 3 — `support_tickets`, `support_ticket_replies` + indexes |
+| `007_m4_orders_packages.sql` | Module 4 — `packages`, `orders` + indexes |
+| `008_m5_journey.sql` | Module 5 — `case_journeys`, `journey_milestones` + indexes |
+| `009_m6_question_collector.sql` | Module 6 — 3 QC tables + FK + indexes |
+| `010_m7_service_catalog.sql` | Module 7 — `service_catalog_items`, `quote_templates` |
+| `011_m9_booking.sql` | Module 9 — `booking_requests`, `booking_request_hospitals` + FK + indexes |
+
+### 0.5.2 Transaction Runner
 
 Add a `TransactionRunner` port and Drizzle implementation:
 
@@ -142,7 +192,7 @@ export class DrizzleTransactionRunner implements TransactionRunner {
 }
 ```
 
-### 0.5.2 Idempotency
+### 0.5.3 Idempotency
 
 For critical write operations (AcceptQuote, CompleteSignup, CreateOrder):
 
@@ -153,7 +203,7 @@ For critical write operations (AcceptQuote, CompleteSignup, CreateOrder):
 
 For now, **use DB unique constraints as primary idempotency mechanism** and add explicit idempotency table only for payment-related flows (CreateOrder, CreatePaymentIntent).
 
-### 0.5.3 Optimistic Locking
+### 0.5.4 Optimistic Locking
 
 For entities with concurrent update risk (Quote, CaseHospitalContact):
 
@@ -162,6 +212,8 @@ For entities with concurrent update risk (Quote, CaseHospitalContact):
 - If 0 rows updated → throw `ConcurrentUpdateError`
 
 Apply to: `quotes`, `case_hospital_contacts`, `orders`, `support_tickets`
+
+> **Note on `quotes.version`**: This column serves dual purpose — it is both the **business revision number** (bumped when hospital resends a quote) and the **optimistic lock version**. This is acceptable because a resend always creates a new business revision, which naturally bumps the lock. If these concerns diverge in the future, split into `revision` (business) + `lock_version` (concurrency).
 
 ---
 
@@ -173,16 +225,18 @@ Apply to: `quotes`, `case_hospital_contacts`, `orders`, `support_tickets`
 |-----------|-------|------------|--------|
 | M0 | Case realignment | — | cases: add 8 columns + 2 enums |
 | M1 | Quotes + CHC | `case_hospital_contacts`, `quotes` | — |
-| M2 | Orders + Packages | `packages`, `orders` | — |
+| M2 | Events | `case_events` | — |
 | M3 | Support Tickets | `support_tickets`, `support_ticket_replies` | — |
-| M4 | Journey + Events | `case_journeys`, `journey_milestones`, `case_events` | — |
-| M5 | BookingRequest | `booking_requests`, `booking_request_hospitals` | cases: add `booking_request_id` FK |
-| M6 | QuestionCollector + ServiceCatalog | `question_collector_templates`, `question_collector_responses`, `question_collector_customizations`, `service_catalog_items`, `quote_templates` | — |
+| M4 | Orders + Packages | `packages`, `orders` | — |
+| M5 | Journey | `case_journeys`, `journey_milestones` | — |
+| M6 | QuestionCollector | `question_collector_templates`, `question_collector_responses`, `question_collector_customizations` | cases: add FK |
+| M7 | ServiceCatalog + QuoteTemplates | `service_catalog_items`, `quote_templates` | — |
+| M9 | BookingRequest | `booking_requests`, `booking_request_hospitals` | cases: add `booking_request_id` FK |
 
 ### 1.2 Execution
 
-- Drizzle Kit `generate` → human review SQL → `migrate`
-- Each migration is one file, executed in order
+- Drizzle Kit `generate` → human review SQL → `pnpm db:migrate`
+- Each migration is one file, executed in order via the new `db:migrate` command (Section 0.5.1)
 - All `CREATE INDEX CONCURRENTLY` for large tables
 - All new status fields use **pgEnum**, not varchar
 
@@ -212,9 +266,9 @@ CREATE TYPE "ServiceCatalogCategory" AS ENUM ('SURGERY', 'HEALTH_CHECKUP', 'CONS
 
 ---
 
-## Section 2: Module 1 — Quotes + CaseHospitalContacts
+## Module 1: Quotes + CaseHospitalContacts
 
-### 2.1 DB Schema
+### 1.1 DB Schema
 
 ```sql
 CREATE TABLE case_hospital_contacts (
@@ -273,7 +327,7 @@ CREATE INDEX idx_chc_sub_distributed ON case_hospital_contacts(sub_status, distr
 CREATE INDEX idx_chc_quote_id ON case_hospital_contacts(quote_id) WHERE quote_id IS NOT NULL;
 ```
 
-### 2.2 Domain Layer
+### 1.2 Domain Layer
 
 **Entities:**
 - `domain/src/entities/case-hospital-contact.entity.ts`
@@ -290,7 +344,7 @@ CREATE INDEX idx_chc_quote_id ON case_hospital_contacts(quote_id) WHERE quote_id
 - `domain/src/ports/case-hospital-contact-repository.port.ts`
 - `domain/src/ports/quote-repository.port.ts`
 
-### 2.3 Use Cases
+### 1.3 Use Cases
 
 | Use Case | Actor | Description |
 |----------|-------|-------------|
@@ -306,7 +360,7 @@ CREATE INDEX idx_chc_quote_id ON case_hospital_contacts(quote_id) WHERE quote_id
 | `AcceptQuote` | Patient | **Transactional** — see below |
 | `RejectQuote` | Patient | quote→REJECTED, CHC→REJECTED |
 | `CompareQuotes` | Patient/Admin | By case, return all quotes with hospital info |
-| `ResendQuote` | Hospital | Resend after REJECTED/EXPIRED → new version, quote→PENDING, CHC→QUOTED |
+| `ResendQuote` | Hospital | Resend after REJECTED/EXPIRED → bump `version` (business revision), quote→PENDING, CHC→QUOTED |
 | `AdminResetAssignment` | Admin | **Transactional** — reverse an ACCEPTED quote: quote→PENDING, CHC→QUOTED, other CHCs un-reject, case→UNASSIGNED |
 
 **AcceptQuote Transaction (within TransactionRunner):**
@@ -316,9 +370,9 @@ CREATE INDEX idx_chc_quote_id ON case_hospital_contacts(quote_id) WHERE quote_id
 4. All other CHCs for same case with sub_status=QUOTED → REJECTED
 5. All other quotes for same case with status=PENDING → REJECTED
 6. case.assignment_status → ASSIGNED, assigned_hospital_id = hospital_id, assigned_at = now()
-7. Record case_event (QUOTE_ACCEPTED) — no-op until Module 4 is built, then backfill
+7. Record case_event (QUOTE_ACCEPTED) — no-op until Module 2 is built, then backfill
 
-### 2.4 API Routes
+### 1.4 API Routes
 
 ```
 POST   /api/v2/cases/{caseId}/hospital-contacts              — AddHospitalToCase
@@ -339,126 +393,75 @@ POST   /api/v2/quotes/{id}/resend                            — ResendQuote
 POST   /api/v2/cases/{caseId}/reset-assignment               — AdminResetAssignment
 ```
 
-### 2.5 Validation Schemas
+### 1.5 Validation Schemas
 
 - `validation/src/quote.schema.ts`
 - `validation/src/case-hospital-contact.schema.ts`
 
 ---
 
-## Section 3: Module 2 — Orders + Packages
+## Module 2: Events / Timeline
 
-### 3.1 DB Schema
+> Moved early in the implementation order so that subsequent modules (3-7) can emit events as they are built, rather than retrofitting later.
+
+### 2.1 DB Schema
 
 ```sql
-CREATE TABLE packages (
+CREATE TABLE case_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name_en VARCHAR(200) NOT NULL,
-  name_zh VARCHAR(200),
-  type "PackageType" NOT NULL,
-  price DECIMAL(12,2) NOT NULL,
-  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-  description_en TEXT,
-  description_zh TEXT,
-  inclusions JSONB,
-  cover_image_url VARCHAR(500),
-  sort_weight INT DEFAULT 0,
-  status "PackageStatus" NOT NULL DEFAULT 'DRAFT',
-  publish_at TIMESTAMPTZ,
-  takedown_at TIMESTAMPTZ,
-  config JSONB,
-  created_by UUID REFERENCES users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- NOTE: Using `patient_id` (not `user_id`) to match existing v2 convention (cases.patient_id).
--- DATA_MODELS.md recommends `user_id` but we stay consistent with the current schema.
--- If we migrate to `user_id` later, it's a single rename.
-CREATE TABLE orders (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_number VARCHAR(50) NOT NULL UNIQUE,
-  patient_id UUID NOT NULL REFERENCES users(id),
-  case_id UUID REFERENCES cases(id),
-  package_id UUID REFERENCES packages(id),
-  type "OrderType" NOT NULL,
-  amount DECIMAL(12,2) NOT NULL,
-  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-  status "OrderStatus" NOT NULL DEFAULT 'PENDING_PAYMENT',
-  payment_method VARCHAR(50),
-  paid_at TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ,
-  refunded_amount DECIMAL(12,2),
-  refund_reason TEXT,
-  metadata JSONB,
-  version INT NOT NULL DEFAULT 1,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  case_id UUID NOT NULL REFERENCES cases(id),
+  event_type "CaseEventType" NOT NULL,
+  actor_type "ActorType" NOT NULL,
+  actor_id UUID,
+  event_data JSONB,
+  is_visible_to_patient BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Indexes
-CREATE INDEX idx_packages_status_type ON packages(status, type, publish_at DESC NULLS LAST);
-CREATE UNIQUE INDEX idx_orders_order_number ON orders(order_number);
-CREATE INDEX idx_orders_patient_status ON orders(patient_id, status, created_at DESC);
-CREATE INDEX idx_orders_status_type ON orders(status, type, created_at DESC);
-CREATE INDEX idx_orders_case_created ON orders(case_id, created_at DESC) WHERE case_id IS NOT NULL;
-CREATE INDEX idx_packages_created_by_status ON packages(created_by, status, created_at DESC);
+CREATE INDEX idx_case_events_case_created ON case_events(case_id, created_at DESC);
+CREATE INDEX idx_case_events_type ON case_events(event_type, created_at DESC);
 ```
 
-### 3.2 State Machines
+### 2.2 Domain Layer
 
-**Package:** DRAFT ↔ PUBLISHED (per STATE_MACHINES.md Section 5)
+**Entity:** `domain/src/entities/case-event.entity.ts`
 
-**Order (per STATE_MACHINES.md Section 4):**
-- PENDING_PAYMENT → PAID / CANCELLED
-- PAID → IN_PROGRESS / REFUNDED
-- IN_PROGRESS → COMPLETED / REFUNDED
-- COMPLETED → REFUNDED
+**Repository Port:** `domain/src/ports/case-event-repository.port.ts`
 
-### 3.3 Value Objects
-
-- `domain/src/value-objects/order-number.ts` — format `ORD-YYYYMMDD-XXXX`
-
-### 3.4 Use Cases
+### 2.3 Use Cases
 
 | Use Case | Actor |
 |----------|-------|
-| `CreatePackage` | Admin |
-| `UpdatePackage` | Admin |
-| `PublishPackage` | Admin |
-| `UnpublishPackage` | Admin |
-| `ListPackages` | All (Patient sees only PUBLISHED) |
-| `GetPackage` | All |
-| `CreateOrder` | Patient/Admin — **idempotent** (Idempotency-Key) |
-| `ListOrders` | Patient/Admin |
-| `GetOrder` | Patient/Admin |
-| `UpdateOrderStatus` | Admin/System |
-| `CreatePaymentIntent` | Patient — **idempotent** |
-| `RequestRefund` | Patient |
+| `RecordCaseEvent` | **Internal only** — called by other use cases within transactions |
+| `ListCaseEvents` | Admin/Hospital (all) / Patient (visible only) |
+| `GetCaseTimeline` | Patient — filtered view of events with `is_visible_to_patient=true` |
 
-### 3.5 API Routes
+### 2.4 Event Recording Integration
+
+Once Module 2 is built, inject `CaseEventRepository` into use cases from Module 1 and all subsequent modules:
+
+| Use Case | Event Type |
+|----------|------------|
+| `SendQuote` | QUOTE_SENT |
+| `AcceptQuote` | QUOTE_ACCEPTED |
+| `RejectQuote` | QUOTE_REJECTED |
+| `UpdateOrderStatus` | ORDER_STATUS_CHANGED |
+| `UpdateTicketStatus` | STATUS_CHANGED |
+| `UpdateCaseJourney` | JOURNEY_UPDATED |
+
+### 2.5 API Routes
 
 ```
-POST   /api/v2/packages                        — CreatePackage
-GET    /api/v2/packages                        — ListPackages
-GET    /api/v2/packages/{id}                   — GetPackage
-PUT    /api/v2/packages/{id}                   — UpdatePackage
-POST   /api/v2/packages/{id}/publish           — PublishPackage
-POST   /api/v2/packages/{id}/unpublish         — UnpublishPackage
-
-POST   /api/v2/orders                          — CreateOrder
-GET    /api/v2/orders                          — ListOrders
-GET    /api/v2/orders/{id}                     — GetOrder
-PATCH  /api/v2/orders/{id}/status              — UpdateOrderStatus
-POST   /api/v2/orders/{id}/payment-intents     — CreatePaymentIntent
-POST   /api/v2/orders/{id}/refunds             — RequestRefund
+GET    /api/v2/cases/{caseId}/events            — ListCaseEvents
+GET    /api/v2/cases/{caseId}/timeline           — GetCaseTimeline (patient-visible)
 ```
 
 ---
 
-## Section 4: Module 3 — Support Tickets
+## Module 3: Support Tickets
 
-### 4.1 DB Schema
+### 3.1 DB Schema
 
 ```sql
 CREATE TABLE support_tickets (
@@ -502,22 +505,22 @@ CREATE INDEX idx_tickets_assigned_status ON support_tickets(assigned_to, status)
 
 > **Note on IN_PROGRESS**: STATE_MACHINES.md explicitly removes `IN_PROGRESS` from SupportTicketStatus ("ASSIGNED 已隐含'有人在跟进'"). QUERY_CATALOG.md Q7/Q18 still reference it — those queries should be updated to remove `IN_PROGRESS` when implemented.
 
-### 4.2 State Machine (per STATE_MACHINES.md Section 7)
+### 3.2 State Machine (per STATE_MACHINES.md Section 7)
 
 - OPEN → ASSIGNED (assign)
 - ASSIGNED → PENDING_INFO (request_info) / RESOLVED (resolve)
 - PENDING_INFO → ASSIGNED (patient_reply)
 - RESOLVED → CLOSED (close) / ASSIGNED (reopen)
 
-### 4.3 Value Objects
+### 3.3 Value Objects
 
 - `domain/src/value-objects/ticket-number.ts` — format `TKT-YYYYMMDD-XXXX`
 
-### 4.4 AuthZ Decision
+### 3.4 AuthZ Decision
 
 > **Explicit decision**: Support ticket `assigned_to` references `users` with role=ADMIN. There is no separate SUPPORT role in v2. If/when a SUPPORT role is needed, we add it to `UserRole` enum and update authz checks. For now, ADMIN handles support.
 
-### 4.5 Use Cases
+### 3.5 Use Cases
 
 | Use Case | Actor |
 |----------|-------|
@@ -529,7 +532,7 @@ CREATE INDEX idx_tickets_assigned_status ON support_tickets(assigned_to, status)
 | `UpdateTicketStatus` | Admin |
 | `CloseTicket` | Patient / Admin |
 
-### 4.6 API Routes
+### 3.6 API Routes
 
 ```
 POST   /api/v2/tickets                          — CreateTicket
@@ -543,7 +546,116 @@ POST   /api/v2/tickets/{id}/close               — CloseTicket
 
 ---
 
-## Section 5: Module 4 — CaseJourney + Milestones + CaseEvents
+## Module 4: Orders + Packages
+
+### 4.1 DB Schema
+
+```sql
+CREATE TABLE packages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name_en VARCHAR(200) NOT NULL,
+  name_zh VARCHAR(200),
+  type "PackageType" NOT NULL,
+  price DECIMAL(12,2) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+  description_en TEXT,
+  description_zh TEXT,
+  inclusions JSONB,
+  cover_image_url VARCHAR(500),
+  sort_weight INT DEFAULT 0,
+  status "PackageStatus" NOT NULL DEFAULT 'DRAFT',
+  publish_at TIMESTAMPTZ,
+  takedown_at TIMESTAMPTZ,
+  config JSONB,
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_number VARCHAR(50) NOT NULL UNIQUE,
+  patient_id UUID NOT NULL REFERENCES users(id),
+  case_id UUID REFERENCES cases(id),
+  package_id UUID REFERENCES packages(id),
+  type "OrderType" NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+  status "OrderStatus" NOT NULL DEFAULT 'PENDING_PAYMENT',
+  payment_method VARCHAR(50),
+  paid_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  refunded_amount DECIMAL(12,2),
+  refund_reason TEXT,
+  metadata JSONB,
+  version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_packages_status_type ON packages(status, type, publish_at DESC NULLS LAST);
+CREATE UNIQUE INDEX idx_orders_order_number ON orders(order_number);
+CREATE INDEX idx_orders_patient_status ON orders(patient_id, status, created_at DESC);
+CREATE INDEX idx_orders_status_type ON orders(status, type, created_at DESC);
+CREATE INDEX idx_orders_case_created ON orders(case_id, created_at DESC) WHERE case_id IS NOT NULL;
+CREATE INDEX idx_packages_created_by_status ON packages(created_by, status, created_at DESC);
+```
+
+### 4.2 State Machines
+
+**Package:** DRAFT ↔ PUBLISHED (per STATE_MACHINES.md Section 5)
+
+**Order (per STATE_MACHINES.md Section 4):**
+- PENDING_PAYMENT → PAID / CANCELLED
+- PAID → IN_PROGRESS / REFUNDED
+- IN_PROGRESS → COMPLETED / REFUNDED
+- COMPLETED → REFUNDED
+
+### 4.3 Value Objects
+
+- `domain/src/value-objects/order-number.ts` — format `ORD-YYYYMMDD-XXXX`
+
+### 4.4 Use Cases
+
+| Use Case | Actor |
+|----------|-------|
+| `CreatePackage` | Admin |
+| `UpdatePackage` | Admin |
+| `PublishPackage` | Admin |
+| `UnpublishPackage` | Admin |
+| `ListPackages` | All (Patient sees only PUBLISHED) |
+| `GetPackage` | All |
+| `CreateOrder` | Patient/Admin — **idempotent** (Idempotency-Key) |
+| `ListOrders` | Patient/Admin |
+| `GetOrder` | Patient/Admin |
+| `UpdateOrderStatus` | Admin/System |
+| `CreatePaymentIntent` | Patient — **idempotent** |
+| `RequestRefund` | Patient |
+
+### 4.5 API Routes
+
+```
+POST   /api/v2/packages                        — CreatePackage
+GET    /api/v2/packages                        — ListPackages
+GET    /api/v2/packages/{id}                   — GetPackage
+PUT    /api/v2/packages/{id}                   — UpdatePackage
+POST   /api/v2/packages/{id}/publish           — PublishPackage
+POST   /api/v2/packages/{id}/unpublish         — UnpublishPackage
+
+POST   /api/v2/orders                          — CreateOrder
+GET    /api/v2/orders                          — ListOrders
+GET    /api/v2/orders/{id}                     — GetOrder
+PATCH  /api/v2/orders/{id}/status              — UpdateOrderStatus
+POST   /api/v2/orders/{id}/payment-intents     — CreatePaymentIntent
+POST   /api/v2/orders/{id}/refunds             — RequestRefund
+```
+
+---
+
+## Module 5: Journey
+
+> Separated from Events (Module 2). Journey is informational travel/logistics data with a different lifecycle — it's updated by Admin, not auto-recorded by use cases.
 
 ### 5.1 DB Schema
 
@@ -572,22 +684,9 @@ CREATE TABLE journey_milestones (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE case_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  case_id UUID NOT NULL REFERENCES cases(id),
-  event_type "CaseEventType" NOT NULL,
-  actor_type "ActorType" NOT NULL,
-  actor_id UUID,
-  event_data JSONB,
-  is_visible_to_patient BOOLEAN NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- Indexes
 CREATE UNIQUE INDEX idx_case_journeys_case ON case_journeys(case_id);
 CREATE INDEX idx_milestones_case_date ON journey_milestones(case_id, event_date ASC);
-CREATE INDEX idx_case_events_case_created ON case_events(case_id, created_at DESC);
-CREATE INDEX idx_case_events_type ON case_events(event_type, created_at DESC);
 CREATE INDEX idx_milestones_patient_visible ON journey_milestones(is_visible_to_patient, event_date ASC) WHERE is_visible_to_patient = true;
 ```
 
@@ -605,25 +704,8 @@ CREATE INDEX idx_milestones_patient_visible ON journey_milestones(is_visible_to_
 | `CreateMilestone` | Admin/Hospital |
 | `UpdateMilestone` | Admin |
 | `DeleteMilestone` | Admin |
-| `ListCaseEvents` | Admin/Hospital |
-| `RecordCaseEvent` | **Internal only** — called by other use cases within transactions |
 
-### 5.4 Event Recording Integration
-
-After Module 4 is implemented, retrofit event recording into Modules 1-3:
-
-| Use Case | Event Type |
-|----------|------------|
-| `SendQuote` | QUOTE_SENT |
-| `AcceptQuote` | QUOTE_ACCEPTED |
-| `RejectQuote` | QUOTE_REJECTED |
-| `UpdateOrderStatus` | ORDER_STATUS_CHANGED |
-| `UpdateTicketStatus` | STATUS_CHANGED |
-| `UpdateCaseJourney` | JOURNEY_UPDATED |
-
-Implementation: inject `CaseEventRepository` into existing use cases, add `recordCaseEvent()` call within existing transactions.
-
-### 5.5 API Routes
+### 5.4 API Routes
 
 ```
 GET    /api/v2/cases/{caseId}/journey            — GetCaseJourney
@@ -633,146 +715,13 @@ GET    /api/v2/cases/{caseId}/milestones         — ListMilestones
 POST   /api/v2/cases/{caseId}/milestones         — CreateMilestone
 PATCH  /api/v2/cases/{caseId}/milestones/{id}    — UpdateMilestone
 DELETE /api/v2/cases/{caseId}/milestones/{id}    — DeleteMilestone
-
-GET    /api/v2/cases/{caseId}/events             — ListCaseEvents
 ```
 
 ---
 
-## Section 6: Module 5 — BookingRequest + Patient Auth
+## Module 6: QuestionCollector
 
-> **This module is separated from the core business modules** because it introduces public (unauthenticated) routes and requires a patient auth/session design that doesn't exist in v2 yet.
-
-### 6.1 Patient Auth Design
-
-Current v2 auth: Keycloak PKCE flow → iron-session BFF cookies. All `/api/v2/*` routes require a valid Keycloak session.
-
-For BookingRequest, we need:
-1. **Public routes** (`/api/v2/public/*`) — no auth required, used during signup flow
-2. **Patient session creation** — `CompleteSignup` creates a Keycloak user and establishes a session
-3. **Patient-scoped routes** — existing `/api/v2/*` routes need to work for PATIENT role (currently only tested with ADMIN/HOSPITAL)
-
-**Auth middleware changes:**
-- Add a `publicRoutes` allowlist in the Keycloak middleware for `/api/v2/public/*`
-- Ensure existing session middleware correctly handles `role=PATIENT`
-- No new auth mechanism — reuse Keycloak PKCE for patients
-
-### 6.2 DB Schema
-
-```sql
-CREATE TABLE booking_requests (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id),
-  request_number VARCHAR(50) NOT NULL UNIQUE,
-  condition_type "BookingConditionType" NOT NULL,
-  condition_category VARCHAR(100) NOT NULL,
-  condition_description TEXT,
-  destination_preference JSONB,
-  preferred_language VARCHAR(10) NOT NULL DEFAULT 'en',
-  status "BookingRequestStatus" NOT NULL DEFAULT 'PENDING',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE booking_request_hospitals (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  booking_request_id UUID NOT NULL REFERENCES booking_requests(id) ON DELETE CASCADE,
-  hospital_id UUID NOT NULL REFERENCES hospitals(id),
-  is_recommended BOOLEAN NOT NULL DEFAULT false,
-  match_score INT,
-  recommendation_reason TEXT,
-  selected_by_patient BOOLEAN NOT NULL DEFAULT false,
-  selected_at TIMESTAMPTZ,
-  UNIQUE(booking_request_id, hospital_id)
-);
-
--- Indexes
-CREATE INDEX idx_booking_requests_user ON booking_requests(user_id, created_at DESC);
-CREATE INDEX idx_booking_requests_status ON booking_requests(status, created_at DESC);
-CREATE INDEX idx_booking_request_hospitals_br ON booking_request_hospitals(booking_request_id);
-
--- Add FK from cases
-ALTER TABLE cases ADD COLUMN booking_request_id UUID REFERENCES booking_requests(id);
-```
-
-### 6.3 Value Objects
-
-- `domain/src/value-objects/booking-request-number.ts` — format `BR-YYYYMMDD-XXXX`
-
-### 6.4 Use Cases
-
-| Use Case | Actor | Description |
-|----------|-------|-------------|
-| `CreateBookingRequest` | Public | Submit booking form (no auth) |
-| `GetHospitalRecommendations` | Public | Get matched + explore hospitals by booking_request_id |
-| `SaveHospitalSelections` | Public | Save patient's hospital selections |
-| `CompleteSignup` | Public | **Transactional** — see below |
-
-**CompleteSignup Transaction:**
-1. Create or find user by email
-2. Create Keycloak user (if new)
-3. Update booking_request.user_id, status → COMPLETED
-4. Create case (assignment_status=UNASSIGNED)
-5. For each selected hospital: create case_hospital_contact (sub_status=DISTRIBUTED)
-6. Create Keycloak session / issue tokens
-7. Trigger welcome email (async, outside transaction)
-
-### 6.5 API Routes
-
-```
-POST   /api/v2/public/booking-requests                           — CreateBookingRequest
-GET    /api/v2/public/hospital-recommendations/{bookingId}       — GetHospitalRecommendations
-POST   /api/v2/public/booking-requests/{id}/selections           — SaveHospitalSelections
-POST   /api/v2/public/booking-requests/{id}/complete-signup      — CompleteSignup
-```
-
----
-
-## Section 7: Module 6 — Dashboard Aggregation
-
-### 7.1 Design
-
-Pure read-only aggregation endpoints. No new tables. Each dashboard use case composes calls to existing repositories.
-
-### 7.2 Use Cases + API
-
-**Patient Dashboard** — `GET /api/v2/patient/dashboard`
-```json
-{
-  "profileCompletion": { "percentage": 75, "steps": [...] },
-  "cases": [{ "id": "...", "caseNumber": "...", "assignmentStatus": "...", "hospitals": [...] }],
-  "upcomingMilestones": [...],
-  "ordersSummary": { "pendingPayment": 1, "inProgress": 2, "completed": 3 },
-  "unreadMessageCount": 5,
-  "recommendedHospitals": [...]
-}
-```
-
-**Admin Dashboard** — `GET /api/v2/admin/dashboard`
-```json
-{
-  "stats": { "newInquiries": 12, "unassigned": 8, "assigned": 45, "newMessages": 7, "urgent": 3, "todayNew": 2 },
-  "recentUsers": [...],
-  "recentCases": [...],
-  "pendingActions": [...]
-}
-```
-
-**Hospital Dashboard** — `GET /api/v2/hospital/dashboard`
-```json
-{
-  "stats": { "assignedCases": 15, "newCases": 3, "todayConsultations": 2, "pendingMessages": 5 },
-  "todayConsultations": [...],
-  "newCases": [...],
-  "pendingMessages": [...]
-}
-```
-
----
-
-## Section 8: Module 7 — QuestionCollector
-
-### 8.1 DB Schema
+### 6.1 DB Schema
 
 ```sql
 CREATE TABLE question_collector_templates (
@@ -828,11 +777,11 @@ CREATE INDEX idx_qcc_case_hospital ON question_collector_customizations(case_id,
 CREATE INDEX idx_qcr_completion_submitted ON question_collector_responses(completion_status, submitted_at DESC);
 ```
 
-### 8.2 Design Decision: Customizations
+### 6.2 Design Decision: Customizations
 
 > Per DATA_MODELS.md Section 4.3, hospitals can customize the questionnaire per case. The `question_collector_customizations` table stores the hospital's override. When a patient fills out the questionnaire, the system checks if a customization exists for their case+hospital; if yes, use customized_questions; if no, use the template's default questions.
 
-### 8.3 Use Cases
+### 6.3 Use Cases
 
 | Use Case | Actor |
 |----------|-------|
@@ -847,7 +796,7 @@ CREATE INDEX idx_qcr_completion_submitted ON question_collector_responses(comple
 | `CustomizeQuestions` | Hospital |
 | `GetCustomization` | Hospital |
 
-### 8.4 API Routes
+### 6.4 API Routes
 
 ```
 POST   /api/v2/question-templates               — CreateTemplate
@@ -866,9 +815,9 @@ GET    /api/v2/cases/{caseId}/questionnaire-customization     — GetCustomizati
 
 ---
 
-## Section 9: Module 8 — ServiceCatalog + QuoteTemplates
+## Module 7: ServiceCatalog + QuoteTemplates
 
-### 9.1 DB Schema
+### 7.1 DB Schema
 
 ```sql
 CREATE TABLE service_catalog_items (
@@ -902,11 +851,11 @@ CREATE TABLE quote_templates (
 );
 ```
 
-### 9.2 Use Cases
+### 7.2 Use Cases
 
 Standard CRUD for both entities, scoped by `hospital_id`. Hospital users can only manage their own catalog/templates. Admin can view all.
 
-### 9.3 API Routes
+### 7.3 API Routes
 
 ```
 POST   /api/v2/hospitals/{hospitalId}/service-catalog    — Create
@@ -914,6 +863,7 @@ GET    /api/v2/hospitals/{hospitalId}/service-catalog    — List
 GET    /api/v2/service-catalog/{id}                     — Get
 PUT    /api/v2/service-catalog/{id}                     — Update
 DELETE /api/v2/service-catalog/{id}                     — Delete (soft: is_active=false)
+GET    /api/v2/service-catalog                          — List all (Admin)
 
 POST   /api/v2/hospitals/{hospitalId}/quote-templates    — Create
 GET    /api/v2/hospitals/{hospitalId}/quote-templates    — List
@@ -924,9 +874,142 @@ DELETE /api/v2/quote-templates/{id}                     — Delete (soft: is_act
 
 ---
 
-## Section 10: Cross-Cutting Concerns
+## Module 8: Dashboard Aggregations
 
-### 10.1 Authorization (AuthZ)
+> Moved to near-end because dashboards read from all other modules. No new tables.
+
+### 8.1 Design
+
+Pure read-only aggregation endpoints. No new tables. Each dashboard use case composes calls to existing repositories.
+
+### 8.2 Use Cases + API
+
+**Patient Dashboard** — `GET /api/v2/patient/dashboard`
+```json
+{
+  "profileCompletion": { "percentage": 75, "steps": ["..."] },
+  "cases": [{ "id": "...", "caseNumber": "...", "assignmentStatus": "...", "hospitals": ["..."] }],
+  "upcomingMilestones": ["..."],
+  "ordersSummary": { "pendingPayment": 1, "inProgress": 2, "completed": 3 },
+  "unreadMessageCount": 5,
+  "recommendedHospitals": ["..."]
+}
+```
+
+**Admin Dashboard** — `GET /api/v2/admin/dashboard`
+```json
+{
+  "stats": { "newInquiries": 12, "unassigned": 8, "assigned": 45, "newMessages": 7, "urgent": 3, "todayNew": 2 },
+  "recentUsers": ["..."],
+  "recentCases": ["..."],
+  "pendingActions": ["..."]
+}
+```
+
+**Hospital Dashboard** — `GET /api/v2/hospital/dashboard`
+```json
+{
+  "stats": { "assignedCases": 15, "newCases": 3, "todayConsultations": 2, "pendingMessages": 5 },
+  "todayConsultations": ["..."],
+  "newCases": ["..."],
+  "pendingMessages": ["..."]
+}
+```
+
+---
+
+## Module 9: BookingRequest + Patient Auth / Public Flow
+
+> **This module is last** because it introduces public (unauthenticated) routes and requires a patient auth/session design that doesn't exist in v2 yet. All other modules can be built and tested with existing ADMIN/HOSPITAL auth.
+
+### 9.1 Patient Auth Design
+
+Current v2 auth: Keycloak PKCE flow → iron-session BFF cookies. All `/api/v2/*` routes require a valid Keycloak session.
+
+For BookingRequest, we need:
+1. **Public routes** (`/api/v2/public/*`) — no auth required, used during signup flow
+2. **Patient session creation** — `CompleteSignup` creates a Keycloak user and establishes a session
+3. **Patient-scoped routes** — existing `/api/v2/*` routes need to work for PATIENT role (currently only tested with ADMIN/HOSPITAL)
+
+**Auth middleware changes:**
+- Add a `publicRoutes` allowlist in the Keycloak middleware for `/api/v2/public/*`
+- Ensure existing session middleware correctly handles `role=PATIENT`
+- No new auth mechanism — reuse Keycloak PKCE for patients
+
+### 9.2 DB Schema
+
+```sql
+CREATE TABLE booking_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  request_number VARCHAR(50) NOT NULL UNIQUE,
+  condition_type "BookingConditionType" NOT NULL,
+  condition_category VARCHAR(100) NOT NULL,
+  condition_description TEXT,
+  destination_preference JSONB,
+  preferred_language VARCHAR(10) NOT NULL DEFAULT 'en',
+  status "BookingRequestStatus" NOT NULL DEFAULT 'PENDING',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE booking_request_hospitals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_request_id UUID NOT NULL REFERENCES booking_requests(id) ON DELETE CASCADE,
+  hospital_id UUID NOT NULL REFERENCES hospitals(id),
+  is_recommended BOOLEAN NOT NULL DEFAULT false,
+  match_score INT,
+  recommendation_reason TEXT,
+  selected_by_patient BOOLEAN NOT NULL DEFAULT false,
+  selected_at TIMESTAMPTZ,
+  UNIQUE(booking_request_id, hospital_id)
+);
+
+-- Indexes
+CREATE INDEX idx_booking_requests_user ON booking_requests(user_id, created_at DESC);
+CREATE INDEX idx_booking_requests_status ON booking_requests(status, created_at DESC);
+CREATE INDEX idx_booking_request_hospitals_br ON booking_request_hospitals(booking_request_id);
+
+-- Add FK from cases
+ALTER TABLE cases ADD COLUMN booking_request_id UUID REFERENCES booking_requests(id);
+```
+
+### 9.3 Value Objects
+
+- `domain/src/value-objects/booking-request-number.ts` — format `BR-YYYYMMDD-XXXX`
+
+### 9.4 Use Cases
+
+| Use Case | Actor | Description |
+|----------|-------|-------------|
+| `CreateBookingRequest` | Public | Submit booking form (no auth) |
+| `GetHospitalRecommendations` | Public | Get matched + explore hospitals by booking_request_id |
+| `SaveHospitalSelections` | Public | Save patient's hospital selections |
+| `CompleteSignup` | Public | **Transactional** — see below |
+
+**CompleteSignup Transaction:**
+1. Create or find user by email
+2. Create Keycloak user (if new)
+3. Update booking_request.user_id, status → COMPLETED
+4. Create case (assignment_status=UNASSIGNED)
+5. For each selected hospital: create case_hospital_contact (sub_status=DISTRIBUTED)
+6. Create Keycloak session / issue tokens
+7. Trigger welcome email (async, outside transaction)
+
+### 9.5 API Routes
+
+```
+POST   /api/v2/public/booking-requests                           — CreateBookingRequest
+GET    /api/v2/public/hospital-recommendations/{bookingId}       — GetHospitalRecommendations
+POST   /api/v2/public/booking-requests/{id}/selections           — SaveHospitalSelections
+POST   /api/v2/public/booking-requests/{id}/complete-signup      — CompleteSignup
+```
+
+---
+
+## Cross-Cutting Concerns
+
+### Authorization (AuthZ)
 
 Use case layer checks `actor.role`:
 
@@ -945,7 +1028,7 @@ Use case layer checks `actor.role`:
 
 **Explicit decision**: For Phase 2, ADMIN = support staff. The `assigned_to` on support_tickets references users with role=ADMIN.
 
-### 10.2 Number Generation (Value Objects)
+### Number Generation (Value Objects)
 
 | Entity | Format | Example |
 |--------|--------|---------|
@@ -957,7 +1040,7 @@ Use case layer checks `actor.role`:
 
 All follow existing `CaseNumber` value object pattern.
 
-### 10.3 File Organization (per existing patterns)
+### File Organization (per existing patterns)
 
 Each new module creates:
 
@@ -982,7 +1065,7 @@ apps/api/src/routes/index.ts                               (modify)
 apps/api/src/composition-root.ts                           (modify)
 ```
 
-### 10.4 Testing Strategy
+### Testing Strategy
 
 - Each use case: unit test with mocked repositories (vitest)
 - Each validation schema: unit test
@@ -992,63 +1075,64 @@ apps/api/src/composition-root.ts                           (modify)
 
 ---
 
-## Section 11: Implementation Order Summary
+## Implementation Order Summary
 
 | Order | Module | New Tables | Alter | ~Use Cases | ~Routes | Dependencies |
 |-------|--------|------------|-------|-----------|---------|-------------|
-| **0** | Case Model Realignment | — | cases +8 cols, +2 enums | 5 rewrite | 3 rewrite | None |
-| **0.5** | Transaction + Idempotency | idempotency_keys (optional) | — | 0 (infra) | 0 | Section 0 |
+| **0** | Case Model Realignment | — | cases +8 cols, +2 enums | 3 rewrite + 1 deprecate + 1 schema | 5 rewrite/update | None |
+| **0.5** | Transaction / Idempotency / Migration Conventions | idempotency_keys (optional) | — | 0 (infra) | 0 | Section 0 |
 | **1** | Quotes + CHC | 2 | — | 14 | 15 | Section 0, 0.5 |
-| **2** | Orders + Packages | 2 | — | 12 | 12 | Section 0.5 |
+| **2** | Events / Timeline | 1 | — | 3 | 2 | Section 0 |
 | **3** | Support Tickets | 2 | — | 7 | 7 | — |
-| **4** | Journey + Milestones + Events | 3 | — | 8 | 7 | Retrofit events into 1-3 |
-| **5** | BookingRequest + Patient Auth | 2 | cases +1 FK | 4 | 4 | Section 1 (needs CHC) |
-| **6** | Dashboard Aggregation | 0 | — | 3 | 3 | Modules 1-5 |
-| **7** | QuestionCollector | 3 | cases FK | 10 | 10 | — |
-| **8** | ServiceCatalog + QuoteTemplates | 2 | — | 10 | 12 | — |
-| **Total** | | **16 + alter** | | **~71** | **~71** | |
+| **4** | Orders + Packages | 2 | — | 12 | 12 | Section 0.5 |
+| **5** | Journey | 2 | — | 6 | 6 | — |
+| **6** | QuestionCollector | 3 | cases FK | 10 | 10 | — |
+| **7** | ServiceCatalog + QuoteTemplates | 2 | — | 10 | 11 | — |
+| **8** | Dashboard Aggregations | 0 | — | 3 | 3 | Modules 1-7 |
+| **9** | BookingRequest + Patient Auth | 2 | cases +1 FK | 4 | 4 | Module 1 (needs CHC) |
+| **Total** | | **16 + alter** | | **~74** | **~75** | |
 
 ---
 
-## Section 12: Deferred / Out-of-Scope
+## Deferred / Out-of-Scope
 
 The following entities and features are defined in patientsflow docs but **explicitly excluded** from this Phase 2 spec. They can be added in future phases without breaking the modules designed here.
 
-### 12.1 ReplyTask (用户决定移除)
+### ReplyTask (用户决定移除)
 
 **Reason**: User decided ReplyTasks are not needed ("ReplyTasks 我想了下不定需要，可以去掉").
 
 ReplyTask was a hospital-side queue for pending conversation replies (DATA_MODELS.md §ReplyTask). The hospital inbox in Module 1 can filter conversations needing reply via `conversations.last_message_at` + `conversations.hospital_replied` flag instead.
 
-### 12.2 CaseSummary (AI-Generated)
+### CaseSummary (AI-Generated)
 
 **Reason**: Depends on AI pipeline integration not yet scoped.
 
 DATA_MODELS.md defines `CaseSummary` with `ai_provider`, `model_version`, `generated_at`. The `ai_summary_status` field on `cases` is added in Section 0 (M0 migration) as a placeholder. Actual generation logic, AI provider integration, and summary display are deferred.
 
-### 12.3 ChatbotFaq / ChatbotSetting
+### ChatbotFaq / ChatbotSetting
 
 **Reason**: Chatbot is a standalone subsystem with its own UI, not part of CRM core.
 
 These tables support a patient-facing FAQ chatbot. They have no FK dependencies on other Phase 2 entities and can be added independently.
 
-### 12.4 Email / Notification Templates
+### Email / Notification Templates
 
 **Reason**: Notification delivery is infrastructure, not business logic.
 
 Phase 2 use cases emit domain events (e.g., `QuoteAccepted`, `TicketAssigned`). The actual email/SMS/push delivery pipeline — templates, providers, retry queues — is a separate infrastructure concern.
 
-### 12.5 Admin Bulk Operations
+### Admin Bulk Operations
 
 **Reason**: Admin bulk actions (bulk assign, bulk close, bulk export) are convenience features that layer on top of the single-entity use cases designed here. Add after core CRUD is stable.
 
-### 12.6 Analytics / Reporting
+### Analytics / Reporting
 
 **Reason**: Read-only aggregation queries for business intelligence. Can be added as read-only endpoints or a separate analytics service without modifying existing modules.
 
 ---
 
-*Spec version: v1.1*
+*Spec version: v2.0*
 *Last updated: 2026-03-15*
 *Source docs: patientsflow/DATA_MODELS.md, QUERY_CATALOG.md, STATE_MACHINES.md, PATIENT_CONSOLE_FLOW.md, ADMIN_PORTAL_CRM_REDESIGN.md, HOSPITAL_PORTAL_CRM_REDESIGN.md*
-*Review: Codex review + internal spec review feedback incorporated*
+*Review: Codex review + internal spec review + user feedback incorporated*

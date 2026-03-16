@@ -10,3 +10,8 @@ export { StatCard, type StatCardProps } from './components/stat-card';
 export { StatusBadge, type StatusBadgeProps } from './components/status-badge';
 export { Card, CardHeader, CardTitle, type CardProps } from './components/card';
 export { Avatar, type AvatarProps } from './components/avatar';
+export { Modal, type ModalProps } from './components/modal';
+export { ConfirmDialog, type ConfirmDialogProps } from './components/confirm-dialog';
+export { EmptyState, type EmptyStateProps } from './components/empty-state';
+export { LoadingSpinner, type LoadingSpinnerProps } from './components/loading-spinner';
+export { SearchInput, type SearchInputProps } from './components/search-input';

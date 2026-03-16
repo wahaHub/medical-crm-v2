@@ -11,11 +11,18 @@ export const caseStageSchema = z.enum([
 ]);
 export const riskLevelSchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
 
+export const caseAssignmentStatusSchema = z.enum(['UNASSIGNED', 'ASSIGNED']);
+export const caseTreatmentStageSchema = z.enum(['CONFIRMED', 'IN_TREATMENT', 'POST_TREATMENT', 'COMPLETED', 'FOLLOW_UP']);
+
 export const caseListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+  /** @deprecated Use assignmentStatus */
   status: caseStatusSchema.optional(),
+  /** @deprecated Use treatmentStage */
   stage: caseStageSchema.optional(),
+  assignmentStatus: caseAssignmentStatusSchema.optional(),
+  treatmentStage: caseTreatmentStageSchema.optional(),
   hospitalId: z.string().uuid().optional(),
   search: z.string().optional(),
 });

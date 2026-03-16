@@ -10,8 +10,12 @@ export interface CaseDTO {
   assignedHospitalId: string | null;
   hospitalName: string | null;
   primaryDiagnosis: string | null;
+  /** @deprecated Use assignmentStatus instead */
   status: string;
+  /** @deprecated Use treatmentStage instead */
   stage: string;
+  assignmentStatus: string;
+  treatmentStage: string | null;
   riskLevel: string | null;
   aiSummary: string | null;
   assignedAt: string | null;
@@ -52,7 +56,9 @@ export interface HospitalCaseDetailDTO {
 export interface CaseStatsDTO {
   total: number;
   unassigned: number;
-  active: number;
+  assigned: number;
+  inTreatment: number;
+  postTreatment: number;
   completed: number;
-  cancelled: number;
+  followUp: number;
 }

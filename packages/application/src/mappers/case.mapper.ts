@@ -24,6 +24,8 @@ export function toCaseDTO(entity: Case, hospitalName?: string): CaseDTO {
     primaryDiagnosis: entity.primaryDiagnosis,
     status: entity.status,
     stage: entity.stage,
+    assignmentStatus: entity.assignmentStatus,
+    treatmentStage: entity.treatmentStage,
     riskLevel: entity.riskLevel,
     aiSummary: entity.aiSummary,
     assignedAt: entity.assignedAt?.toISOString() ?? null,

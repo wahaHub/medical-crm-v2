@@ -163,6 +163,8 @@ export { cn } from './lib/cn';
 
 Subpath exports (`@medical-crm/ui/components/*`) are NOT needed at this stage. Add them only if tree-shaking or bundle size becomes a measured problem.
 
+**Migration note:** The existing `package.json` has a wildcard export `"./*": "./src/*.tsx"` that must be **removed** during implementation to match the root-barrel-only decision. Verify no current consumers rely on subpath imports (e.g., `import { X } from '@medical-crm/ui/something'`) before removing.
+
 - Tailwind v4 content scanning: the hospital app's CSS must include a `@source` directive pointing to the shared UI package so Tailwind scans its classes:
 
 ```css
@@ -789,7 +791,7 @@ const [cases, consultations, caseStats, consultationStats] = await Promise.all([
 | Expand completed → AI Summary | `consultationDTO.aiSummary` | Already in list response |
 | View Transcript | `GET /api/consultations/{id}/transcript` | Lazy load on click |
 | "Enter Room" | Navigate to `/consultations/[id]/room` | — |
-| Create new | `POST /api/v2/consultations` (Server Action) | Modal form. Frontend provides only `caseId` + scheduling fields (`scheduledAt`, `durationMinutes`, etc.). Backend use case derives `hospitalId` from `case.assignedHospitalId` and `patientId` from `case.patientId`. **Note**: the backend validation schema (`createConsultationSchema`) currently requires `hospitalId` and `patientId` as mandatory fields, but the use case ignores them — this is a backend contract mismatch that should be fixed (remove `hospitalId`/`patientId` from the schema, or make them optional). Until fixed, frontend should still send only `caseId` + scheduling info; do NOT send fabricated `hospitalId`/`patientId`. |
+| Create new | `POST /api/v2/consultations` (Server Action) | Modal form. Frontend provides only `caseId` + scheduling fields (`scheduledAt`, `durationMinutes`, etc.). Backend use case derives `hospitalId` from `case.assignedHospitalId` and `patientId` from `case.patientId`. **PREREQUISITE**: the backend validation schema (`createConsultationSchema`) currently requires `hospitalId` and `patientId` as mandatory fields, but the use case ignores them — Zod will reject requests missing these fields with a 422 before the use case runs. This schema must be fixed (remove `hospitalId`/`patientId`, or make them optional) **before** the frontend consultation creation form can work. See Section 13 Prerequisites. Also note: `durationMinutes` defaults to 30 (via Zod schema), not 60 (use case fallback is dead code). Frontend form placeholder/default should use 30. |
 
 ### 8.5 Video Room (`/consultations/[id]/room`)
 
@@ -962,6 +964,11 @@ The following are explicitly **out of scope** for this spec:
 ---
 
 ## 13. Technical Constraints & Conventions
+
+### Prerequisites (Backend Fixes Required Before Frontend)
+
+1. **`createConsultationSchema` contract mismatch** — The Zod schema at `packages/shared/validation/src/consultation.schema.ts` requires `hospitalId` and `patientId` as mandatory UUIDs, but the `CreateConsultationUseCase` only needs `caseId` (it derives the other two from the case entity). Zod validation runs before the use case, so requests without `hospitalId`/`patientId` will be rejected with 422. **Fix**: remove `hospitalId` and `patientId` from `createConsultationSchema` (or make them optional). This must be done before the consultation creation modal can work.
+2. **`durationMinutes` default inconsistency** — Zod schema defaults to `30`, but the use case has `input.durationMinutes ?? 60`. Since Zod fires first, the runtime default is effectively 30. The use case fallback is dead code. **Fix**: change use case fallback from `60` to `30` for consistency. Frontend form should use 30 as default.
 
 ### Hard Constraints
 

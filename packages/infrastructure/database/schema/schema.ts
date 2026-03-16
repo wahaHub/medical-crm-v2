@@ -21,6 +21,19 @@ export const caseAssignmentStatus = pgEnum("CaseAssignmentStatus", ['UNASSIGNED'
 export const caseTreatmentStage = pgEnum("CaseTreatmentStage", ['CONFIRMED', 'IN_TREATMENT', 'POST_TREATMENT', 'COMPLETED', 'FOLLOW_UP'])
 export const chcSubStatus = pgEnum("CHCSubStatus", ['DISTRIBUTED', 'NEED_INFO', 'QUOTED', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'REMOVED'])
 export const quoteStatus = pgEnum("QuoteStatus", ['PENDING', 'ACCEPTED', 'REJECTED', 'EXPIRED'])
+export const caseEventType = pgEnum("CaseEventType", [
+  'CASE_CREATED', 'CASE_DISTRIBUTED', 'CASE_ASSIGNED', 'CASE_STATUS_CHANGED', 'CASE_STAGE_ADVANCED',
+  'HOSPITALS_SELECTED', 'HOSPITAL_REPLIED', 'HOSPITAL_NEED_INFO', 'HOSPITAL_REMOVED',
+  'QUOTE_SENT', 'QUOTE_ACCEPTED', 'QUOTE_REJECTED', 'QUOTE_EXPIRED', 'QUOTE_RESENT',
+  'MESSAGE_SENT', 'MESSAGE_RECEIVED',
+  'QUESTIONNAIRE_SUBMITTED', 'CONSULTATION_SCHEDULED', 'CONSULTATION_COMPLETED',
+  'DOCUMENT_UPLOADED',
+  'ORDER_PLACED', 'ORDER_STATUS_CHANGED',
+  'MILESTONE_ADDED', 'MILESTONE_UPDATED', 'JOURNEY_UPDATED',
+  'TICKET_CREATED', 'TICKET_RESOLVED',
+  'AI_SUMMARY_GENERATED',
+])
+export const actorType = pgEnum("ActorType", ['PATIENT', 'HOSPITAL', 'ADMIN', 'SYSTEM'])
 
 
 export const prismaMigrations = pgTable("_prisma_migrations", {
@@ -455,3 +468,14 @@ export const caseHospitalContacts = pgTable("case_hospital_contacts", {
 }, (table) => [
 	unique("case_hospital_contacts_case_id_hospital_id_key").on(table.caseId, table.hospitalId),
 ]);
+
+export const caseEvents = pgTable("case_events", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull().references(() => cases.id),
+	eventType: caseEventType("event_type").notNull(),
+	actorType: actorType("actor_type").notNull(),
+	actorId: uuid("actor_id"),
+	eventData: jsonb("event_data"),
+	isVisibleToPatient: boolean("is_visible_to_patient").default(false).notNull(),
+	createdAt: timestamp("created_at", { precision: 6, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});

@@ -101,6 +101,9 @@ export type { Transaction, TransactionRunner } from './ports/transaction-runner.
 // Phase 2 M1: CHC + Quote Enums
 export type { CHCSubStatus, QuoteStatus } from './enums/index.js';
 
+// Phase 2 M2: Events / Timeline Enums
+export type { CaseEventType, ActorType } from './enums/index.js';
+
 // Phase 2 M1: State machines
 export { CHC_SUB_STATUS_TRANSITIONS } from './state-machine/chc-sub-status-transitions.js';
 export { QUOTE_STATUS_TRANSITIONS } from './state-machine/quote-status-transitions.js';
@@ -117,6 +120,13 @@ export type { QuoteProps } from './entities/quote.entity.js';
 // Phase 2 M1: Ports
 export type { ICHCRepository, CHCListQuery } from './ports/case-hospital-contact-repository.port.js';
 export type { IQuoteRepository, QuoteListQuery } from './ports/quote-repository.port.js';
+
+// Phase 2 M2: Entities
+export { CaseEvent } from './entities/case-event.entity.js';
+export type { CaseEventProps } from './entities/case-event.entity.js';
+
+// Phase 2 M2: Ports
+export type { ICaseEventRepository, CaseEventListOptions } from './ports/case-event-repository.port.js';
 
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

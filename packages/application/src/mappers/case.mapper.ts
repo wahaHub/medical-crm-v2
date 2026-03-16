@@ -41,6 +41,22 @@ export interface PatientInfo {
   gender: string | null;
 }
 
+function deriveDisplayStatus(entity: Case): string {
+  // Prefer new treatment stage if set
+  if (entity.treatmentStage) {
+    const NEW_STAGE_MAP: Record<string, string> = {
+      CONFIRMED: 'contacted',
+      IN_TREATMENT: 'in_treatment',
+      POST_TREATMENT: 'post_treatment',
+      COMPLETED: 'completed',
+      FOLLOW_UP: 'follow_up',
+    };
+    return NEW_STAGE_MAP[entity.treatmentStage] ?? 'unknown';
+  }
+  // Fall back to old stage
+  return STAGE_DISPLAY_MAP[entity.stage];
+}
+
 export function toHospitalCaseDetailDTO(
   entity: Case,
   progress: CaseProgress[],
@@ -52,7 +68,7 @@ export function toHospitalCaseDetailDTO(
   return {
     id: entity.id,
     caseNumber: entity.caseNumber.value,
-    displayStatus: STAGE_DISPLAY_MAP[entity.stage],
+    displayStatus: deriveDisplayStatus(entity),
     patient: {
       id: patient.id,
       name: entity.patientName,

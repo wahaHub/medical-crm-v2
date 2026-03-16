@@ -134,9 +134,12 @@ export class Case {
   assign(hospitalId: string): void {
     this.assignedHospitalId = hospitalId;
     this.assignedAt = new Date();
+    // Keep old field in sync for compat
     if (this.stage === 'PENDING_ASSIGNMENT') {
       this.stage = 'TRANSFERRED_TO_HOSPITAL';
     }
+    // New field
+    this.assignmentStatus = 'ASSIGNED';
     this.updatedAt = new Date();
   }
 

@@ -165,6 +165,12 @@ describe('Case entity', () => {
       expect(c.stage).toBe('HOSPITAL_CONTACTED');
       expect(c.assignedHospitalId).toBe('hospital-2');
     });
+
+    it('also sets assignmentStatus to ASSIGNED', () => {
+      const c = createTestCase({ assignmentStatus: 'UNASSIGNED' });
+      c.assign('hospital-1');
+      expect(c.assignmentStatus).toBe('ASSIGNED');
+    });
   });
 
   describe('transitionAssignmentStatus', () => {

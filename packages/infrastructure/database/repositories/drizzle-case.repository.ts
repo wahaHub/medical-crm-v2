@@ -20,6 +20,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
   }
 
   async findMany(query: CaseListQuery, hospitalId?: string): Promise<PaginatedResult<Case>> {
+    // TODO(Task 6): Add compat filter alias mapping for old status/stage → new assignmentStatus/treatmentStage
     const { page, limit, status, stage, search } = query;
     // Auth-derived hospitalId (forced filter) takes priority over query param
     const effectiveHospitalId = hospitalId ?? query.hospitalId;

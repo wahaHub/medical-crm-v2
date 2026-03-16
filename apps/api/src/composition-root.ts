@@ -53,6 +53,20 @@ import {
   GetConsultationTranscriptUseCase,
   GetConsultationStatsUseCase,
   ListCaseConsultationsUseCase,
+  GetHospitalInfoUseCase,
+  GetProceduresUseCase,
+  GetSurgeonsUseCase,
+  GetBeforeAfterCasesUseCase,
+  UpdateHospitalInfoUseCase,
+  CreateProcedureUseCase,
+  UpdateProcedureUseCase,
+  DeleteProcedureUseCase,
+  CreateSurgeonUseCase,
+  UpdateSurgeonUseCase,
+  DeleteSurgeonUseCase,
+  CreateBeforeAfterCaseUseCase,
+  UpdateBeforeAfterCaseUseCase,
+  DeleteBeforeAfterCaseUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -74,6 +88,7 @@ import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
 import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService } from '@medical-crm/infrastructure/services';
+import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
 
 interface AppServices {
   // infrastructure
@@ -143,6 +158,22 @@ interface AppServices {
   getConsultationTranscript: GetConsultationTranscriptUseCase;
   getConsultationStats: GetConsultationStatsUseCase;
   listCaseConsultations: ListCaseConsultationsUseCase;
+
+  // use cases — materials
+  getHospitalInfo: GetHospitalInfoUseCase;
+  getProcedures: GetProceduresUseCase;
+  getSurgeons: GetSurgeonsUseCase;
+  getBeforeAfterCases: GetBeforeAfterCasesUseCase;
+  updateHospitalInfo: UpdateHospitalInfoUseCase;
+  createProcedure: CreateProcedureUseCase;
+  updateProcedure: UpdateProcedureUseCase;
+  deleteProcedure: DeleteProcedureUseCase;
+  createSurgeon: CreateSurgeonUseCase;
+  updateSurgeon: UpdateSurgeonUseCase;
+  deleteSurgeon: DeleteSurgeonUseCase;
+  createBeforeAfterCase: CreateBeforeAfterCaseUseCase;
+  updateBeforeAfterCase: UpdateBeforeAfterCaseUseCase;
+  deleteBeforeAfterCase: DeleteBeforeAfterCaseUseCase;
 }
 
 let _services: AppServices | null = null;
@@ -181,6 +212,7 @@ export function getServices(): AppServices {
     const translationService = new OpenAITranslationService(process.env['OPENAI_API_KEY'] ?? '');
     const consultationRepo = new DrizzleConsultationRepository(crmDb);
     const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
+    const materialsRepo = new SupabaseMaterialsRepository(mainSupabase);
 
     const listCases = new ListCasesUseCase(caseRepo);
 
@@ -236,6 +268,21 @@ export function getServices(): AppServices {
       getConsultationTranscript: new GetConsultationTranscriptUseCase(consultationRepo, transcriptRepo),
       getConsultationStats: new GetConsultationStatsUseCase(consultationRepo),
       listCaseConsultations: new ListCaseConsultationsUseCase(consultationRepo, caseRepo),
+
+      getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
+      getProcedures: new GetProceduresUseCase(materialsRepo),
+      getSurgeons: new GetSurgeonsUseCase(materialsRepo),
+      getBeforeAfterCases: new GetBeforeAfterCasesUseCase(materialsRepo),
+      updateHospitalInfo: new UpdateHospitalInfoUseCase(materialsRepo),
+      createProcedure: new CreateProcedureUseCase(materialsRepo),
+      updateProcedure: new UpdateProcedureUseCase(materialsRepo),
+      deleteProcedure: new DeleteProcedureUseCase(materialsRepo),
+      createSurgeon: new CreateSurgeonUseCase(materialsRepo),
+      updateSurgeon: new UpdateSurgeonUseCase(materialsRepo),
+      deleteSurgeon: new DeleteSurgeonUseCase(materialsRepo),
+      createBeforeAfterCase: new CreateBeforeAfterCaseUseCase(materialsRepo),
+      updateBeforeAfterCase: new UpdateBeforeAfterCaseUseCase(materialsRepo),
+      deleteBeforeAfterCase: new DeleteBeforeAfterCaseUseCase(materialsRepo),
     };
   }
   return _services;

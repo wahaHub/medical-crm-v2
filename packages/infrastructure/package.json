@@ -8,6 +8,7 @@
     "./database/schema": "./database/schema/index.ts",
     "./supabase-main": "./supabase-main/client.ts",
     "./supabase-main/types": "./supabase-main/types.ts",
+    "./supabase-main/materials": "./supabase-main/supabase-materials.repository.ts",
     "./supabase-china": "./supabase-china/client.ts",
     "./supabase-china/types": "./supabase-china/types.ts",
     "./auth": "./auth/index.ts",

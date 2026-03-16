@@ -186,6 +186,10 @@ vi.mock('@medical-crm/application', () => ({
   GetQuoteTemplateUseCase: vi.fn(() => ({})),
   UpdateQuoteTemplateUseCase: vi.fn(() => ({})),
   DeleteQuoteTemplateUseCase: vi.fn(() => ({})),
+  // Dashboard
+  PatientDashboardUseCase: vi.fn(() => ({})),
+  AdminDashboardUseCase: vi.fn(() => ({})),
+  HospitalDashboardUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -361,5 +365,10 @@ describe('composition root', () => {
     expect(services).toHaveProperty('getQuoteTemplate');
     expect(services).toHaveProperty('updateQuoteTemplate');
     expect(services).toHaveProperty('deleteQuoteTemplate');
+
+    // Dashboard
+    expect(services).toHaveProperty('patientDashboard');
+    expect(services).toHaveProperty('adminDashboard');
+    expect(services).toHaveProperty('hospitalDashboard');
   });
 });

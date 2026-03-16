@@ -130,6 +130,9 @@ import {
   GetQuoteTemplateUseCase,
   UpdateQuoteTemplateUseCase,
   DeleteQuoteTemplateUseCase,
+  PatientDashboardUseCase,
+  AdminDashboardUseCase,
+  HospitalDashboardUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -315,6 +318,11 @@ interface AppServices {
   getQuoteTemplate: GetQuoteTemplateUseCase;
   updateQuoteTemplate: UpdateQuoteTemplateUseCase;
   deleteQuoteTemplate: DeleteQuoteTemplateUseCase;
+
+  // use cases — dashboard
+  patientDashboard: PatientDashboardUseCase;
+  adminDashboard: AdminDashboardUseCase;
+  hospitalDashboard: HospitalDashboardUseCase;
 
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
@@ -509,6 +517,10 @@ export function getServices(): AppServices {
       getQuoteTemplate: new GetQuoteTemplateUseCase(serviceCatalogRepo),
       updateQuoteTemplate: new UpdateQuoteTemplateUseCase(serviceCatalogRepo),
       deleteQuoteTemplate: new DeleteQuoteTemplateUseCase(serviceCatalogRepo),
+
+      patientDashboard: new PatientDashboardUseCase(caseRepo, orderRepo, journeyRepo),
+      adminDashboard: new AdminDashboardUseCase(caseRepo, ticketRepo, orderRepo),
+      hospitalDashboard: new HospitalDashboardUseCase(caseRepo, quoteRepo, consultationRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

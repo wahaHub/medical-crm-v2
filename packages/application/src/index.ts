@@ -259,3 +259,11 @@ export { GetQuoteTemplateUseCase } from './use-cases/service-catalog/get-quote-t
 export { UpdateQuoteTemplateUseCase } from './use-cases/service-catalog/update-quote-template.use-case.js';
 export type { UpdateQuoteTemplateInput } from './use-cases/service-catalog/update-quote-template.use-case.js';
 export { DeleteQuoteTemplateUseCase } from './use-cases/service-catalog/delete-quote-template.use-case.js';
+
+// DTOs — Dashboard
+export type { PatientDashboardDTO, AdminDashboardDTO, HospitalDashboardDTO } from './dtos/dashboard.dto.js';
+
+// Use Cases — Dashboard
+export { PatientDashboardUseCase } from './use-cases/dashboard/patient-dashboard.use-case.js';
+export { AdminDashboardUseCase } from './use-cases/dashboard/admin-dashboard.use-case.js';
+export { HospitalDashboardUseCase } from './use-cases/dashboard/hospital-dashboard.use-case.js';

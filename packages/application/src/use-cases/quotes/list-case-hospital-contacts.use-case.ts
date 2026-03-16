@@ -18,9 +18,13 @@ export class ListCaseHospitalContactsUseCase {
       effectiveQuery.hospitalId = actor.hospitalId;
     }
 
-    // Use findByCaseId for case-scoped queries
+    // Use findByCaseId for case-scoped queries, scoped by hospital when applicable
     if (effectiveQuery.caseId) {
-      const data = await this.chcRepo.findByCaseId(effectiveQuery.caseId);
+      let data = await this.chcRepo.findByCaseId(effectiveQuery.caseId);
+      // Hospital actors should only see their own contacts for this case
+      if (effectiveQuery.hospitalId) {
+        data = data.filter((e) => e.hospitalId === effectiveQuery.hospitalId);
+      }
       return {
         data: data.map((e) => toCaseHospitalContactDTO(e)),
         total: data.length,

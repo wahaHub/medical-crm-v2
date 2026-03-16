@@ -91,7 +91,7 @@ export class Quote {
   resend(): void {
     // Can resend from REJECTED or EXPIRED
     this.transitionStatus('PENDING');
-    this.version += 1;
+    // Note: version increment is handled by the repository's optimistic lock (SQL version + 1)
     this.updatedAt = new Date();
   }
 }

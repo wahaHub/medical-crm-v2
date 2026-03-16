@@ -37,6 +37,9 @@ export class DrizzleQuoteRepository implements IQuoteRepository {
     const { page, limit, status } = query;
 
     const conditions = [eq(quotes.hospitalId, hospitalId)];
+    if (query.caseId) {
+      conditions.push(eq(quotes.caseId, query.caseId));
+    }
     if (status) {
       conditions.push(
         eq(quotes.status, status as typeof quotes.status.enumValues[number]),

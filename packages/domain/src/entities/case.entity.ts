@@ -151,6 +151,11 @@ export class Case {
       );
     }
     this.assignmentStatus = to;
+    // When unassigning, clear the hospital reference so the case can be reassigned
+    if (to === 'UNASSIGNED') {
+      this.assignedHospitalId = null;
+      this.assignedAt = null;
+    }
     this.updatedAt = new Date();
   }
 

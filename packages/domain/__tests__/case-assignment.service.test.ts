@@ -27,6 +27,15 @@ describe('CaseAssignmentService', () => {
       assignedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
+      assignmentStatus: 'UNASSIGNED',
+      treatmentStage: null,
+      conditionSummary: null,
+      structuredData: null,
+      riskFlags: null,
+      priority: null,
+      lastEventAt: null,
+      aiSummaryStatus: 'NONE',
+      questionCollectorTemplateId: null,
       ...overrides,
     });
   }
@@ -50,13 +59,13 @@ describe('CaseAssignmentService', () => {
     );
   });
 
-  it('passes if case already assigned but stage is PENDING_ASSIGNMENT', () => {
-    const c = createTestCase({ assignedHospitalId: 'old-hospital', stage: 'PENDING_ASSIGNMENT' });
+  it('passes if case already assigned but status is UNASSIGNED', () => {
+    const c = createTestCase({ assignedHospitalId: 'old-hospital', assignmentStatus: 'UNASSIGNED' });
     expect(() => service.validateAssignment(c, 'h-2', 'ACTIVE')).not.toThrow();
   });
 
-  it('throws if case is assigned and stage is past PENDING_ASSIGNMENT', () => {
-    const c = createTestCase({ assignedHospitalId: 'old-hospital', stage: 'HOSPITAL_CONTACTED' });
+  it('throws if case is assigned and status is not UNASSIGNED', () => {
+    const c = createTestCase({ assignedHospitalId: 'old-hospital', assignmentStatus: 'ASSIGNED' });
     expect(() => service.validateAssignment(c, 'h-2', 'ACTIVE')).toThrow(
       'Case is already assigned',
     );

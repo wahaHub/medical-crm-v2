@@ -146,18 +146,18 @@ describe('Quote entity', () => {
   });
 
   describe('resend', () => {
-    it('transitions REJECTED -> PENDING and increments version', () => {
+    it('transitions REJECTED -> PENDING (version unchanged, repo handles increment)', () => {
       const q = createTestQuote({ status: 'REJECTED', version: 1 });
       q.resend();
       expect(q.status).toBe('PENDING');
-      expect(q.version).toBe(2);
+      expect(q.version).toBe(1);
     });
 
-    it('transitions EXPIRED -> PENDING and increments version', () => {
+    it('transitions EXPIRED -> PENDING (version unchanged, repo handles increment)', () => {
       const q = createTestQuote({ status: 'EXPIRED', version: 3 });
       q.resend();
       expect(q.status).toBe('PENDING');
-      expect(q.version).toBe(4);
+      expect(q.version).toBe(3);
     });
 
     it('throws from ACCEPTED (terminal)', () => {

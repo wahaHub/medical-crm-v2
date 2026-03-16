@@ -6,9 +6,9 @@ export class CaseAssignmentService {
     if (hospitalStatus !== 'ACTIVE') {
       throw new ValidationError('Hospital must be ACTIVE to receive case assignments');
     }
-    if (caze.assignedHospitalId && caze.stage !== 'PENDING_ASSIGNMENT') {
+    if (caze.assignedHospitalId && caze.assignmentStatus !== 'UNASSIGNED') {
       throw new ValidationError(
-        'Case is already assigned and past PENDING_ASSIGNMENT stage',
+        'Case is already assigned and not available for reassignment',
       );
     }
   }

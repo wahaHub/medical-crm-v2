@@ -103,7 +103,7 @@ describe('Quotes routes', () => {
     });
 
     it('rejects invalid body (missing totalAmount)', async () => {
-      const { totalAmount, ...incomplete } = validCreateBody;
+      const { totalAmount: _totalAmount, ...incomplete } = validCreateBody;
       const res = await app.request('/api/v2/quotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

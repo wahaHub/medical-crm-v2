@@ -1,5 +1,5 @@
 import { eq, and, sql } from 'drizzle-orm';
-import type { ICaseEventRepository, CaseEventListOptions } from '@medical-crm/domain';
+import type { ICaseEventRepository, CaseEventListOptions, CaseEventType, ActorType } from '@medical-crm/domain';
 import { CaseEvent } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { caseEvents } from '../schema/index.js';
@@ -11,8 +11,8 @@ export class DrizzleCaseEventRepository implements ICaseEventRepository {
     return new CaseEvent({
       id: row.id,
       caseId: row.caseId,
-      eventType: row.eventType as any,
-      actorType: row.actorType as any,
+      eventType: row.eventType as CaseEventType,
+      actorType: row.actorType as ActorType,
       actorId: row.actorId,
       eventData: row.eventData as Record<string, unknown> | null,
       isVisibleToPatient: row.isVisibleToPatient,
@@ -37,7 +37,7 @@ export class DrizzleCaseEventRepository implements ICaseEventRepository {
   async findByCaseId(caseId: string, opts?: CaseEventListOptions): Promise<CaseEvent[]> {
     const conditions = [eq(caseEvents.caseId, caseId)];
     if (opts?.eventType) {
-      conditions.push(eq(caseEvents.eventType, opts.eventType as any));
+      conditions.push(eq(caseEvents.eventType, opts.eventType as CaseEventType));
     }
     const query = this.db
       .select()

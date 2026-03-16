@@ -98,11 +98,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, 'migrations');
 
 // Migrations that were applied to the live DB before _migrations tracking existed.
-// They must be recorded but NOT re-executed.
-const PRE_EXISTING = [
-  '001_ai_summary_columns.sql',
-  '002_create_message_tasks.sql',
-];
+// Each entry maps a migration file to a SQL probe that returns TRUE if
+// the migration's effects already exist in the database.
+const PRE_EXISTING: Record<string, string> = {
+  '001_ai_summary_columns.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'cases' AND column_name = 'ai_summary'
+     ) AS applied`,
+  '002_create_message_tasks.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_name = 'message_tasks'
+     ) AS applied`,
+};
 
 async function migrate() {
   const databaseUrl = process.env['DATABASE_URL'];
@@ -119,13 +128,20 @@ async function migrate() {
     )
   `;
 
-  // Bootstrap: if tracking table is empty, mark pre-existing migrations as applied
+  // Bootstrap: for each pre-existing migration not yet tracked,
+  // probe the real schema to decide whether to record or execute it.
+  // - Old DB (schema exists, tracking empty): records without executing
+  // - Fresh DB (schema missing, tracking empty): leaves it pending so it runs normally
   const [{ count }] = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM _migrations`;
-  if (count === '0' && PRE_EXISTING.length > 0) {
-    console.log('Bootstrapping: marking pre-existing migrations as applied...');
-    for (const name of PRE_EXISTING) {
-      await sql`INSERT INTO _migrations (name) VALUES (${name})`;
-      console.log(`  Recorded: ${name}`);
+  if (count === '0') {
+    for (const [name, probe] of Object.entries(PRE_EXISTING)) {
+      const [{ applied }] = await sql.unsafe<{ applied: boolean }[]>(probe);
+      if (applied) {
+        await sql`INSERT INTO _migrations (name) VALUES (${name})`;
+        console.log(`Bootstrap: ${name} — already applied, recorded.`);
+      } else {
+        console.log(`Bootstrap: ${name} — not found in schema, will execute normally.`);
+      }
     }
   }
 
@@ -145,6 +161,9 @@ async function migrate() {
 
     // CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
     // Detect and run those files outside a transaction.
+    // IMPORTANT: files containing CONCURRENTLY should ONLY contain
+    // CONCURRENTLY statements — never mix with transactional DDL.
+    // See the 003/003c split pattern below.
     const needsConcurrently = content.includes('CONCURRENTLY');
 
     if (needsConcurrently) {
@@ -199,13 +218,20 @@ git add -A && git commit -m "infra: consolidate migrations + add db:migrate comm
 ### Task 2: M0 migration — Case Model Realignment
 
 **Files:**
-- Create: `packages/infrastructure/database/migrations/003_m0_case_realignment.sql`
+- Create: `packages/infrastructure/database/migrations/003_m0_case_realignment.sql` (transactional DDL + backfill)
+- Create: `packages/infrastructure/database/migrations/003c_m0_indexes.sql` (CONCURRENTLY indexes, no tx)
 
-- [ ] **Step 1: Write migration SQL**
+- [ ] **Step 1: Write migration SQL (two files)**
+
+**003 is split into two files** to avoid mixing transactional DDL with CONCURRENTLY indexes:
+
+- `003_m0_case_realignment.sql` — enums, columns, backfill (runs inside transaction)
+- `003c_m0_indexes.sql` — CONCURRENTLY indexes (runs outside transaction)
 
 ```sql
 -- 003_m0_case_realignment.sql
 -- Section 0: Add new case assignment/treatment model
+-- This file runs INSIDE a transaction (safe rollback on failure)
 
 -- New enums
 CREATE TYPE "CaseAssignmentStatus" AS ENUM ('UNASSIGNED', 'ASSIGNED');
@@ -227,8 +253,13 @@ UPDATE cases SET assignment_status = 'ASSIGNED' WHERE assigned_hospital_id IS NO
 UPDATE cases SET treatment_stage = 'CONFIRMED' WHERE stage = 'HOSPITAL_CONTACTED' AND assigned_hospital_id IS NOT NULL;
 UPDATE cases SET treatment_stage = 'IN_TREATMENT' WHERE stage = 'IN_TREATMENT';
 UPDATE cases SET treatment_stage = 'COMPLETED' WHERE stage = 'TREATMENT_COMPLETED';
+```
 
--- Indexes (CONCURRENTLY — migration runner will skip tx wrapper for this file)
+```sql
+-- 003c_m0_indexes.sql
+-- Runs OUTSIDE a transaction (migration runner detects CONCURRENTLY keyword).
+-- IF NOT EXISTS makes each statement individually idempotent — safe partial re-run.
+
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_user_updated ON cases(patient_id, updated_at DESC);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_assignment_stage_created ON cases(assignment_status, treatment_stage, created_at DESC);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_assigned_hospital_created ON cases(assigned_hospital_id, created_at DESC) WHERE assigned_hospital_id IS NOT NULL;
@@ -240,7 +271,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_risk_flags_gin ON cases USING 
 ```bash
 pnpm db:migrate
 ```
-Expected: "Applying: 003_m0_case_realignment.sql" → "Applied"
+Expected: "Applying: 003_m0_case_realignment.sql" → "Applied", then "Applying: 003c_m0_indexes.sql" → "Applied"
 
 - [ ] **Step 3: Regenerate Drizzle schema**
 

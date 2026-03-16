@@ -8,3 +8,5 @@ export * from './consultation.schema';
 export * from './case-hospital-contact.schema.js';
 export * from './quote.schema.js';
 export * from './support-ticket.schema.js';
+export * from './package.schema.js';
+export * from './order.schema.js';

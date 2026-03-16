@@ -63,3 +63,9 @@ export type TicketType = 'ACCOUNT_ISSUES' | 'PAYMENT_PROBLEMS' | 'HOSPITAL_COMMU
 export type TicketPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 export type TicketStatus = 'OPEN' | 'ASSIGNED' | 'PENDING_INFO' | 'RESOLVED' | 'CLOSED';
 export type TicketReplyRole = 'ADMIN' | 'PATIENT';
+
+// Phase 2 M4: Orders + Packages
+export type PackageType = 'TREATMENT' | 'CONSULTATION' | 'BUNDLE' | 'ADD_ON';
+export type PackageStatus = 'DRAFT' | 'PUBLISHED';
+export type OrderType = 'PACKAGE' | 'CONSULTATION' | 'CUSTOM';
+export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED';

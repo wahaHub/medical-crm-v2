@@ -149,5 +149,25 @@ export type { SupportTicketReplyProps } from './entities/support-ticket-reply.en
 export type { ISupportTicketRepository, TicketListQuery } from './ports/support-ticket-repository.port.js';
 export type { ISupportTicketReplyRepository } from './ports/support-ticket-reply-repository.port.js';
 
+// Phase 2 M4: Orders + Packages Enums
+export type { PackageType, PackageStatus, OrderType, OrderStatus } from './enums/index.js';
+
+// Phase 2 M4: State machines
+export { PACKAGE_STATUS_TRANSITIONS } from './state-machine/package-status-transitions.js';
+export { ORDER_STATUS_TRANSITIONS } from './state-machine/order-status-transitions.js';
+
+// Phase 2 M4: Value objects
+export { OrderNumber } from './value-objects/order-number.js';
+
+// Phase 2 M4: Entities
+export { Package } from './entities/package.entity.js';
+export type { PackageProps } from './entities/package.entity.js';
+export { Order } from './entities/order.entity.js';
+export type { OrderProps } from './entities/order.entity.js';
+
+// Phase 2 M4: Ports
+export type { IPackageRepository, PackageListQuery } from './ports/package-repository.port.js';
+export type { IOrderRepository, OrderListQuery } from './ports/order-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

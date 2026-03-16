@@ -91,6 +91,18 @@ import {
   ReplyToTicketUseCase,
   UpdateTicketStatusUseCase,
   CloseTicketUseCase,
+  CreatePackageUseCase,
+  UpdatePackageUseCase,
+  PublishPackageUseCase,
+  UnpublishPackageUseCase,
+  ListPackagesUseCase,
+  GetPackageUseCase,
+  CreateOrderUseCase,
+  ListOrdersUseCase,
+  GetOrderUseCase,
+  UpdateOrderStatusUseCase,
+  CreatePaymentIntentUseCase,
+  RequestRefundUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -111,6 +123,8 @@ import {
   DrizzleCaseEventRepository,
   DrizzleSupportTicketRepository,
   DrizzleSupportTicketReplyRepository,
+  DrizzlePackageRepository,
+  DrizzleOrderRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -221,6 +235,22 @@ interface AppServices {
   updateTicketStatus: UpdateTicketStatusUseCase;
   closeTicket: CloseTicketUseCase;
 
+  // use cases — packages
+  createPackage: CreatePackageUseCase;
+  updatePackage: UpdatePackageUseCase;
+  publishPackage: PublishPackageUseCase;
+  unpublishPackage: UnpublishPackageUseCase;
+  listPackages: ListPackagesUseCase;
+  getPackage: GetPackageUseCase;
+
+  // use cases — orders
+  createOrder: CreateOrderUseCase;
+  listOrders: ListOrdersUseCase;
+  getOrder: GetOrderUseCase;
+  updateOrderStatus: UpdateOrderStatusUseCase;
+  createPaymentIntent: CreatePaymentIntentUseCase;
+  requestRefund: RequestRefundUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -280,6 +310,8 @@ export function getServices(): AppServices {
     const eventRepo = new DrizzleCaseEventRepository(crmDb);
     const ticketRepo = new DrizzleSupportTicketRepository(crmDb);
     const ticketReplyRepo = new DrizzleSupportTicketReplyRepository(crmDb);
+    const packageRepo = new DrizzlePackageRepository(crmDb);
+    const orderRepo = new DrizzleOrderRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
@@ -364,6 +396,20 @@ export function getServices(): AppServices {
       replyToTicket: new ReplyToTicketUseCase(ticketRepo, ticketReplyRepo),
       updateTicketStatus: new UpdateTicketStatusUseCase(ticketRepo),
       closeTicket: new CloseTicketUseCase(ticketRepo),
+
+      createPackage: new CreatePackageUseCase(packageRepo),
+      updatePackage: new UpdatePackageUseCase(packageRepo),
+      publishPackage: new PublishPackageUseCase(packageRepo),
+      unpublishPackage: new UnpublishPackageUseCase(packageRepo),
+      listPackages: new ListPackagesUseCase(packageRepo),
+      getPackage: new GetPackageUseCase(packageRepo),
+
+      createOrder: new CreateOrderUseCase(orderRepo),
+      listOrders: new ListOrdersUseCase(orderRepo),
+      getOrder: new GetOrderUseCase(orderRepo),
+      updateOrderStatus: new UpdateOrderStatusUseCase(orderRepo),
+      createPaymentIntent: new CreatePaymentIntentUseCase(orderRepo),
+      requestRefund: new RequestRefundUseCase(orderRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

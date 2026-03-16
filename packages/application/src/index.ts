@@ -164,3 +164,32 @@ export { ReplyToTicketUseCase } from './use-cases/tickets/reply-to-ticket.use-ca
 export type { ReplyToTicketInput } from './use-cases/tickets/reply-to-ticket.use-case.js';
 export { UpdateTicketStatusUseCase } from './use-cases/tickets/update-ticket-status.use-case.js';
 export { CloseTicketUseCase } from './use-cases/tickets/close-ticket.use-case.js';
+
+// DTOs — Packages + Orders
+export type { PackageDTO } from './dtos/package.dto.js';
+export type { OrderDTO } from './dtos/order.dto.js';
+
+// Mappers — Packages + Orders
+export { toPackageDTO } from './mappers/package.mapper.js';
+export { toOrderDTO } from './mappers/order.mapper.js';
+
+// Use Cases — Packages
+export { CreatePackageUseCase } from './use-cases/packages/create-package.use-case.js';
+export type { CreatePackageInput } from './use-cases/packages/create-package.use-case.js';
+export { UpdatePackageUseCase } from './use-cases/packages/update-package.use-case.js';
+export type { UpdatePackageInput } from './use-cases/packages/update-package.use-case.js';
+export { PublishPackageUseCase } from './use-cases/packages/publish-package.use-case.js';
+export { UnpublishPackageUseCase } from './use-cases/packages/unpublish-package.use-case.js';
+export { ListPackagesUseCase } from './use-cases/packages/list-packages.use-case.js';
+export { GetPackageUseCase } from './use-cases/packages/get-package.use-case.js';
+
+// Use Cases — Orders
+export { CreateOrderUseCase } from './use-cases/orders/create-order.use-case.js';
+export type { CreateOrderInput } from './use-cases/orders/create-order.use-case.js';
+export { ListOrdersUseCase } from './use-cases/orders/list-orders.use-case.js';
+export { GetOrderUseCase } from './use-cases/orders/get-order.use-case.js';
+export { UpdateOrderStatusUseCase } from './use-cases/orders/update-order-status.use-case.js';
+export { CreatePaymentIntentUseCase } from './use-cases/orders/create-payment-intent.use-case.js';
+export type { PaymentIntentResult } from './use-cases/orders/create-payment-intent.use-case.js';
+export { RequestRefundUseCase } from './use-cases/orders/request-refund.use-case.js';
+export type { RequestRefundInput } from './use-cases/orders/request-refund.use-case.js';

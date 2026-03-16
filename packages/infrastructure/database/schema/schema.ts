@@ -521,3 +521,58 @@ export const caseEvents = pgTable("case_events", {
 	isVisibleToPatient: boolean("is_visible_to_patient").default(false).notNull(),
 	createdAt: timestamp("created_at", { precision: 6, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 });
+
+// Phase 2 M4: Orders + Packages
+export const packageType = pgEnum("PackageType", ['TREATMENT', 'CONSULTATION', 'BUNDLE', 'ADD_ON'])
+export const packageStatus = pgEnum("PackageStatus", ['DRAFT', 'PUBLISHED'])
+export const orderType = pgEnum("OrderType", ['PACKAGE', 'CONSULTATION', 'CUSTOM'])
+export const orderStatus = pgEnum("OrderStatus", ['PENDING_PAYMENT', 'PAID', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'REFUNDED'])
+
+export const packages = pgTable("packages", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	nameEn: varchar("name_en", { length: 200 }).notNull(),
+	nameZh: varchar("name_zh", { length: 200 }),
+	type: packageType().notNull(),
+	price: numeric({ precision: 12, scale: 2 }).notNull(),
+	currency: varchar({ length: 10 }).default('USD').notNull(),
+	descriptionEn: text("description_en"),
+	descriptionZh: text("description_zh"),
+	inclusions: jsonb(),
+	coverImageUrl: varchar("cover_image_url", { length: 500 }),
+	sortWeight: integer("sort_weight").default(0),
+	status: packageStatus().default('DRAFT').notNull(),
+	publishAt: timestamp("publish_at", { withTimezone: true, mode: 'string' }),
+	takedownAt: timestamp("takedown_at", { withTimezone: true, mode: 'string' }),
+	config: jsonb(),
+	createdBy: uuid("created_by").references(() => users.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	index("idx_packages_status_type").using("btree", table.status.asc().nullsLast(), table.type.asc().nullsLast(), table.publishAt.desc().nullsLast()),
+	index("idx_packages_created_by_status").using("btree", table.createdBy.asc().nullsLast(), table.status.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+]);
+
+export const orders = pgTable("orders", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	orderNumber: varchar("order_number", { length: 50 }).notNull().unique(),
+	patientId: uuid("patient_id").notNull().references(() => users.id),
+	caseId: uuid("case_id").references(() => cases.id),
+	packageId: uuid("package_id").references(() => packages.id),
+	type: orderType().notNull(),
+	amount: numeric({ precision: 12, scale: 2 }).notNull(),
+	currency: varchar({ length: 10 }).default('USD').notNull(),
+	status: orderStatus().default('PENDING_PAYMENT').notNull(),
+	paymentMethod: varchar("payment_method", { length: 50 }),
+	paidAt: timestamp("paid_at", { withTimezone: true, mode: 'string' }),
+	completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
+	refundedAmount: numeric("refunded_amount", { precision: 12, scale: 2 }),
+	refundReason: text("refund_reason"),
+	metadata: jsonb(),
+	version: integer().default(1).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	index("idx_orders_patient_status").using("btree", table.patientId.asc().nullsLast(), table.status.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+	index("idx_orders_status_type").using("btree", table.status.asc().nullsLast(), table.type.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+	index("idx_orders_case_created").using("btree", table.caseId.asc().nullsLast(), table.createdAt.desc().nullsFirst()).where(sql`case_id IS NOT NULL`),
+]);

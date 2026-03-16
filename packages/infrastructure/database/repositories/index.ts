@@ -16,4 +16,6 @@ export { DrizzleQuoteRepository } from './drizzle-quote.repository.js';
 export { DrizzleCaseEventRepository } from './drizzle-case-event.repository.js';
 export { DrizzleSupportTicketRepository } from './drizzle-support-ticket.repository.js';
 export { DrizzleSupportTicketReplyRepository } from './drizzle-support-ticket-reply.repository.js';
+export { DrizzlePackageRepository } from './drizzle-package.repository.js';
+export { DrizzleOrderRepository } from './drizzle-order.repository.js';
 export { DrizzleTransactionRunner } from '../transaction-runner.js';

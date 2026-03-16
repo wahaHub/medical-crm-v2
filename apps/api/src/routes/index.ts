@@ -11,6 +11,8 @@ import hospitalContactRoutes from './hospital-contacts.routes.js';
 import quoteRoutes from './quotes.routes.js';
 import eventRoutes from './events.routes.js';
 import ticketRoutes from './tickets.routes.js';
+import packageRoutes from './packages.routes.js';
+import orderRoutes from './orders.routes.js';
 
 const router = new OpenAPIHono();
 router.route('/', caseRoutes);
@@ -25,5 +27,7 @@ router.route('/', hospitalContactRoutes);
 router.route('/', quoteRoutes);
 router.route('/', eventRoutes);
 router.route('/', ticketRoutes);
+router.route('/', packageRoutes);
+router.route('/', orderRoutes);
 
 export default router;

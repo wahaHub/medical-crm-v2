@@ -28,6 +28,8 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleCaseEventRepository: vi.fn(() => ({})),
   DrizzleSupportTicketRepository: vi.fn(() => ({})),
   DrizzleSupportTicketReplyRepository: vi.fn(() => ({})),
+  DrizzlePackageRepository: vi.fn(() => ({})),
+  DrizzleOrderRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
@@ -136,6 +138,20 @@ vi.mock('@medical-crm/application', () => ({
   ReplyToTicketUseCase: vi.fn(() => ({})),
   UpdateTicketStatusUseCase: vi.fn(() => ({})),
   CloseTicketUseCase: vi.fn(() => ({})),
+  // Packages
+  CreatePackageUseCase: vi.fn(() => ({})),
+  UpdatePackageUseCase: vi.fn(() => ({})),
+  PublishPackageUseCase: vi.fn(() => ({})),
+  UnpublishPackageUseCase: vi.fn(() => ({})),
+  ListPackagesUseCase: vi.fn(() => ({})),
+  GetPackageUseCase: vi.fn(() => ({})),
+  // Orders
+  CreateOrderUseCase: vi.fn(() => ({})),
+  ListOrdersUseCase: vi.fn(() => ({})),
+  GetOrderUseCase: vi.fn(() => ({})),
+  UpdateOrderStatusUseCase: vi.fn(() => ({})),
+  CreatePaymentIntentUseCase: vi.fn(() => ({})),
+  RequestRefundUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -260,5 +276,21 @@ describe('composition root', () => {
     expect(services).toHaveProperty('replyToTicket');
     expect(services).toHaveProperty('updateTicketStatus');
     expect(services).toHaveProperty('closeTicket');
+
+    // Packages
+    expect(services).toHaveProperty('createPackage');
+    expect(services).toHaveProperty('updatePackage');
+    expect(services).toHaveProperty('publishPackage');
+    expect(services).toHaveProperty('unpublishPackage');
+    expect(services).toHaveProperty('listPackages');
+    expect(services).toHaveProperty('getPackage');
+
+    // Orders
+    expect(services).toHaveProperty('createOrder');
+    expect(services).toHaveProperty('listOrders');
+    expect(services).toHaveProperty('getOrder');
+    expect(services).toHaveProperty('updateOrderStatus');
+    expect(services).toHaveProperty('createPaymentIntent');
+    expect(services).toHaveProperty('requestRefund');
   });
 });

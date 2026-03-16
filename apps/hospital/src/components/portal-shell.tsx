@@ -18,7 +18,12 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { logout } = useAuth();
 
+  const isFullscreen = pathname.includes('/room');
   const activeKey = navItems.find((item) => pathname.startsWith(item.href))?.key ?? 'dashboard';
+
+  if (isFullscreen) {
+    return <main className="min-h-screen">{children}</main>;
+  }
 
   return (
     <div className="flex min-h-screen">

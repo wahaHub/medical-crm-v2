@@ -9,6 +9,7 @@ import consultationRoutes from './consultations.routes.js';
 import materialsRoutes from './materials.routes.js';
 import hospitalContactRoutes from './hospital-contacts.routes.js';
 import quoteRoutes from './quotes.routes.js';
+import eventRoutes from './events.routes.js';
 
 const router = new OpenAPIHono();
 router.route('/', caseRoutes);
@@ -21,5 +22,6 @@ router.route('/', consultationRoutes);
 router.route('/', materialsRoutes);
 router.route('/', hospitalContactRoutes);
 router.route('/', quoteRoutes);
+router.route('/', eventRoutes);
 
 export default router;

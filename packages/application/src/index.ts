@@ -13,6 +13,7 @@ export type { ConversationDTO, MessageDTO } from './dtos/conversation.dto.js';
 export type { ConsultationDTO, ConsultationTranscriptDTO } from './dtos/consultation.dto.js';
 export type { CaseHospitalContactDTO } from './dtos/case-hospital-contact.dto.js';
 export type { QuoteDTO } from './dtos/quote.dto.js';
+export type { CaseEventDTO, TimelineItemDTO } from './dtos/case-event.dto.js';
 
 // Mappers
 export { toCaseDTO, toHospitalCaseDetailDTO } from './mappers/case.mapper.js';
@@ -24,6 +25,7 @@ export { toConversationDTO, toMessageDTO } from './mappers/conversation.mapper.j
 export { toConsultationDTO, toConsultationTranscriptDTO } from './mappers/consultation.mapper.js';
 export { toCaseHospitalContactDTO } from './mappers/case-hospital-contact.mapper.js';
 export { toQuoteDTO } from './mappers/quote.mapper.js';
+export { toCaseEventDTO, eventToTimelineItem } from './mappers/case-event.mapper.js';
 
 // Use Cases — Cases
 export { CreateCaseUseCase } from './use-cases/cases/create-case.use-case.js';
@@ -139,3 +141,9 @@ export { ResendQuoteUseCase } from './use-cases/quotes/resend-quote.use-case.js'
 export { AcceptQuoteUseCase } from './use-cases/quotes/accept-quote.use-case.js';
 export { RejectQuoteUseCase } from './use-cases/quotes/reject-quote.use-case.js';
 export { AdminResetAssignmentUseCase } from './use-cases/quotes/admin-reset-assignment.use-case.js';
+
+// Use Cases — Events / Timeline
+export { RecordCaseEventUseCase } from './use-cases/events/record-case-event.use-case.js';
+export type { RecordCaseEventInput } from './use-cases/events/record-case-event.use-case.js';
+export { ListCaseEventsUseCase } from './use-cases/events/list-case-events.use-case.js';
+export { GetCaseTimelineUseCase } from './use-cases/events/get-case-timeline.use-case.js';

@@ -81,6 +81,9 @@ import {
   AcceptQuoteUseCase,
   RejectQuoteUseCase,
   AdminResetAssignmentUseCase,
+  RecordCaseEventUseCase,
+  ListCaseEventsUseCase,
+  GetCaseTimelineUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -98,6 +101,7 @@ import {
   DrizzleConsultationTranscriptRepository,
   DrizzleCHCRepository,
   DrizzleQuoteRepository,
+  DrizzleCaseEventRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -194,6 +198,11 @@ interface AppServices {
   rejectQuote: RejectQuoteUseCase;
   adminResetAssignment: AdminResetAssignmentUseCase;
 
+  // use cases — events / timeline
+  recordCaseEvent: RecordCaseEventUseCase;
+  listCaseEvents: ListCaseEventsUseCase;
+  getCaseTimeline: GetCaseTimelineUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -250,6 +259,7 @@ export function getServices(): AppServices {
     const materialsRepo = new SupabaseMaterialsRepository(mainSupabase);
     const chcRepo = new DrizzleCHCRepository(crmDb);
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
+    const eventRepo = new DrizzleCaseEventRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
@@ -306,6 +316,10 @@ export function getServices(): AppServices {
       getConsultationTranscript: new GetConsultationTranscriptUseCase(consultationRepo, transcriptRepo),
       getConsultationStats: new GetConsultationStatsUseCase(consultationRepo),
       listCaseConsultations: new ListCaseConsultationsUseCase(consultationRepo, caseRepo),
+
+      recordCaseEvent: new RecordCaseEventUseCase(eventRepo),
+      listCaseEvents: new ListCaseEventsUseCase(eventRepo),
+      getCaseTimeline: new GetCaseTimelineUseCase(eventRepo),
 
       addHospitalToCase: new AddHospitalToCaseUseCase(chcRepo),
       removeHospitalFromCase: new RemoveHospitalFromCaseUseCase(chcRepo),

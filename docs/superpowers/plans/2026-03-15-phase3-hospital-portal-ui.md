@@ -352,15 +352,13 @@ git commit -m "feat(hospital): add api-fetch.ts — low-level fetch with JWT and
 
 **Context:** Rewrite to use `apiFetch`, return `Promise<T>`, redirect on 401. Breaking change but safe — no page code uses apiClient yet, only auth routes (which don't import it).
 
-- [ ] **Step 1: Install server-only**
+- [ ] **Step 1: Rewrite api-client.ts**
 
-Run: `pnpm --filter hospital add server-only`
-
-- [ ] **Step 2: Rewrite api-client.ts**
+Note: The `import 'server-only'` below is **recommended** (prevents accidental client-side import), not required. If typecheck/build fails because `server-only` is missing, install it: `pnpm --filter @medical-crm/hospital add server-only`. Otherwise skip the install — the code works without it.
 
 ```typescript
 // apps/hospital/src/lib/api-client.ts
-import 'server-only';
+// import 'server-only'; // uncomment after installing: pnpm --filter @medical-crm/hospital add server-only
 import { redirect } from 'next/navigation';
 import { apiFetch } from './api-fetch';
 import { ApiError } from './errors';
@@ -384,15 +382,15 @@ export async function apiClient<T>(
 }
 ```
 
-- [ ] **Step 3: Run typecheck**
+- [ ] **Step 2: Run typecheck**
 
-Run: `pnpm --filter hospital typecheck`
+Run: `pnpm --filter @medical-crm/hospital typecheck`
 Expected: Pass
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add apps/hospital/src/lib/api-client.ts apps/hospital/package.json pnpm-lock.yaml
+git add apps/hospital/src/lib/api-client.ts
 git commit -m "refactor(hospital): api-client returns Promise<T>, delegates to api-fetch"
 ```
 
@@ -485,7 +483,7 @@ git commit -m "feat(hospital): add route-handler-helpers — query handler facto
 
 - [ ] **Step 1: Install React Query**
 
-Run: `pnpm --filter hospital add @tanstack/react-query`
+Run: `pnpm --filter @medical-crm/hospital add @tanstack/react-query`
 
 - [ ] **Step 2: Create query-client.ts**
 
@@ -623,7 +621,7 @@ to:
 
 - [ ] **Step 2: Run typecheck**
 
-Run: `pnpm --filter hospital typecheck`
+Run: `pnpm --filter @medical-crm/hospital typecheck`
 Expected: Pass
 
 - [ ] **Step 3: Commit**
@@ -648,7 +646,7 @@ Read `apps/hospital/src/__tests__/session.test.ts` in full.
 
 - [ ] **Step 2: Run tests FIRST to see what breaks**
 
-Run: `pnpm --filter hospital test -- --run`
+Run: `pnpm --filter @medical-crm/hospital test -- --run`
 
 This tells you exactly which tests need updating. Tests that only exercise `getSession()` / cookie logic will likely still pass.
 
@@ -671,7 +669,7 @@ Example fix pattern:
 
 - [ ] **Step 4: Run tests again**
 
-Run: `pnpm --filter hospital test -- --run`
+Run: `pnpm --filter @medical-crm/hospital test -- --run`
 Expected: All 28 tests pass
 
 - [ ] **Step 5: Commit**
@@ -1805,13 +1803,14 @@ git commit -m "feat(ui): add ChatLayout component with showRetranslate prop"
 - Modify: `apps/hospital/src/app/layout.tsx`
 - Create: `apps/hospital/src/app/globals.css`
 - Create: `apps/hospital/postcss.config.mjs`
-- Modify: `apps/hospital/package.json` (add tailwind + motion + lucide-react)
+- Modify: `apps/hospital/package.json` (add motion + lucide-react)
 
 - [ ] **Step 1: Install frontend dependencies**
 
+Note: `tailwindcss` and `@tailwindcss/postcss` are already in `apps/hospital/package.json` — do NOT re-add them.
+
 ```bash
-pnpm --filter hospital add motion lucide-react
-pnpm --filter hospital add -D tailwindcss @tailwindcss/postcss
+pnpm --filter @medical-crm/hospital add motion lucide-react
 ```
 
 - [ ] **Step 2: Create postcss.config.mjs**
@@ -1864,7 +1863,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 - [ ] **Step 5: Run dev to verify CSS + font loads**
 
-Run: `pnpm --filter hospital dev`
+Run: `pnpm --filter @medical-crm/hospital dev`
 Expected: No build errors. Page loads with Poppins font and Tailwind working.
 
 - [ ] **Step 6: Commit**
@@ -2025,7 +2024,7 @@ export default function GlobalLoading() {
 
 - [ ] **Step 5: Run typecheck + dev**
 
-Run: `pnpm --filter hospital typecheck && pnpm --filter hospital dev`
+Run: `pnpm --filter @medical-crm/hospital typecheck && pnpm --filter @medical-crm/hospital dev`
 Expected: Compiles without errors. Visiting `/` redirects to `/dashboard`. Sidebar renders.
 
 - [ ] **Step 6: Commit**
@@ -2303,7 +2302,7 @@ export default async function DashboardPage() {
 
 - [ ] **Step 7: Run typecheck**
 
-Run: `pnpm --filter hospital typecheck`
+Run: `pnpm --filter @medical-crm/hospital typecheck`
 Expected: Pass
 
 - [ ] **Step 8: Commit**
@@ -3257,7 +3256,7 @@ Reference `nexus-crm/src/components/MarketingMaterialsView.tsx` for all 4 tab la
 
 - [ ] **Step 4: Run typecheck + visual test**
 
-Run: `pnpm --filter hospital typecheck && pnpm --filter hospital dev`
+Run: `pnpm --filter @medical-crm/hospital typecheck && pnpm --filter @medical-crm/hospital dev`
 Expected: Compiles, all 4 tabs render
 
 - [ ] **Step 5: Commit**
@@ -3285,7 +3284,7 @@ Expected: All tests pass
 
 - [ ] **Step 3: Build hospital app**
 
-Run: `pnpm --filter hospital build`
+Run: `pnpm --filter @medical-crm/hospital build`
 Expected: Next.js build completes without errors
 
 - [ ] **Step 4: Commit any fixes**

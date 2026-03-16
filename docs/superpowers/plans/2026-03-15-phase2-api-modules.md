@@ -97,6 +97,13 @@ import postgres from 'postgres';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, 'migrations');
 
+// Migrations that were applied to the live DB before _migrations tracking existed.
+// They must be recorded but NOT re-executed.
+const PRE_EXISTING = [
+  '001_ai_summary_columns.sql',
+  '002_create_message_tasks.sql',
+];
+
 async function migrate() {
   const databaseUrl = process.env['DATABASE_URL'];
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
@@ -112,6 +119,16 @@ async function migrate() {
     )
   `;
 
+  // Bootstrap: if tracking table is empty, mark pre-existing migrations as applied
+  const [{ count }] = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM _migrations`;
+  if (count === '0' && PRE_EXISTING.length > 0) {
+    console.log('Bootstrapping: marking pre-existing migrations as applied...');
+    for (const name of PRE_EXISTING) {
+      await sql`INSERT INTO _migrations (name) VALUES (${name})`;
+      console.log(`  Recorded: ${name}`);
+    }
+  }
+
   // Get applied migrations
   const applied = await sql<{ name: string }[]>`SELECT name FROM _migrations ORDER BY name`;
   const appliedSet = new Set(applied.map((r) => r.name));
@@ -125,10 +142,20 @@ async function migrate() {
     if (appliedSet.has(file)) continue;
     console.log(`Applying: ${file}`);
     const content = await readFile(join(MIGRATIONS_DIR, file), 'utf-8');
-    await sql.begin(async (tx) => {
-      await tx.unsafe(content);
-      await tx`INSERT INTO _migrations (name) VALUES (${file})`;
-    });
+
+    // CREATE INDEX CONCURRENTLY cannot run inside a transaction block.
+    // Detect and run those files outside a transaction.
+    const needsConcurrently = content.includes('CONCURRENTLY');
+
+    if (needsConcurrently) {
+      await sql.unsafe(content);
+      await sql`INSERT INTO _migrations (name) VALUES (${file})`;
+    } else {
+      await sql.begin(async (tx) => {
+        await tx.unsafe(content);
+        await tx`INSERT INTO _migrations (name) VALUES (${file})`;
+      });
+    }
     console.log(`Applied: ${file}`);
   }
 
@@ -201,11 +228,11 @@ UPDATE cases SET treatment_stage = 'CONFIRMED' WHERE stage = 'HOSPITAL_CONTACTED
 UPDATE cases SET treatment_stage = 'IN_TREATMENT' WHERE stage = 'IN_TREATMENT';
 UPDATE cases SET treatment_stage = 'COMPLETED' WHERE stage = 'TREATMENT_COMPLETED';
 
--- Indexes
-CREATE INDEX idx_cases_user_updated ON cases(patient_id, updated_at DESC);
-CREATE INDEX idx_cases_assignment_stage_created ON cases(assignment_status, treatment_stage, created_at DESC);
-CREATE INDEX idx_cases_assigned_hospital_created ON cases(assigned_hospital_id, created_at DESC) WHERE assigned_hospital_id IS NOT NULL;
-CREATE INDEX idx_cases_risk_flags_gin ON cases USING gin(risk_flags);
+-- Indexes (CONCURRENTLY — migration runner will skip tx wrapper for this file)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_user_updated ON cases(patient_id, updated_at DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_assignment_stage_created ON cases(assignment_status, treatment_stage, created_at DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_assigned_hospital_created ON cases(assigned_hospital_id, created_at DESC) WHERE assigned_hospital_id IS NOT NULL;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cases_risk_flags_gin ON cases USING gin(risk_flags);
 ```
 
 - [ ] **Step 2: Run migration**
@@ -221,6 +248,13 @@ Expected: "Applying: 003_m0_case_realignment.sql" → "Applied"
 pnpm db:pull
 ```
 Verify `schema.ts` now has the new columns and enums.
+
+> **⚠ DRIFT PROTECTION:** After `db:pull`, check that the intentional schema drift is preserved.
+> Lines ~205-211 of `schema.ts` contain a comment about the circular FK between
+> `conversations.last_message_id → messages.id` being intentionally omitted from the Drizzle schema.
+> If `db:pull` overwrites this and adds a `references` clause for `lastMessageId`, **revert that
+> specific change** and keep the comment. The circular FK exists in the live DB but must stay out
+> of the Drizzle schema to avoid circular dependency issues at code-generation time.
 
 - [ ] **Step 4: Commit**
 

@@ -21,7 +21,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "lint": "eslint .",
     "db:pull": "drizzle-kit pull",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx database/migrate.ts"
   },
   "dependencies": {
     "@medical-crm/config": "workspace:*",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.9",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

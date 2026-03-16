@@ -13,6 +13,7 @@
     "test:integration": "turbo test:integration",
     "db:pull": "pnpm --filter @medical-crm/infrastructure drizzle-kit pull",
     "db:generate": "pnpm --filter @medical-crm/infrastructure drizzle-kit generate",
+    "db:migrate": "pnpm --filter @medical-crm/infrastructure db:migrate",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

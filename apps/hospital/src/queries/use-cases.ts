@@ -22,3 +22,27 @@ export function useCase(id: string) {
     enabled: !!id,
   });
 }
+
+export function useCaseDocuments(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'documents'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/documents`),
+    enabled: !!caseId,
+  });
+}
+
+export function useCaseProgress(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'progress'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/progress`),
+    enabled: !!caseId,
+  });
+}
+
+export function useCaseConsultations(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'consultations'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/consultations`),
+    enabled: !!caseId,
+  });
+}

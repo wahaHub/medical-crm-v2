@@ -79,7 +79,14 @@ async function migrate() {
     const needsConcurrently = content.includes('CONCURRENTLY');
 
     if (needsConcurrently) {
-      await sql.unsafe(content);
+      // Run each statement individually — postgres.js may wrap multi-statement calls
+      const statements = content
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && !s.startsWith('--'));
+      for (const stmt of statements) {
+        await sql.unsafe(stmt);
+      }
       await sql`INSERT INTO _migrations (name) VALUES (${file})`;
     } else {
       await sql.begin(async (tx) => {

@@ -69,3 +69,13 @@ export type PackageType = 'TREATMENT' | 'CONSULTATION' | 'BUNDLE' | 'ADD_ON';
 export type PackageStatus = 'DRAFT' | 'PUBLISHED';
 export type OrderType = 'PACKAGE' | 'CONSULTATION' | 'CUSTOM';
 export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED';
+
+// Phase 2 M5: Journey + Milestones
+export type MilestoneEventType =
+  | 'FLIGHT_ARRIVAL' | 'FLIGHT_DEPARTURE'
+  | 'HOTEL_CHECKIN' | 'HOTEL_CHECKOUT'
+  | 'HOSPITAL_APPOINTMENT' | 'PRE_OP_EXAM' | 'SURGERY_DATE' | 'POST_OP_CHECKUP'
+  | 'MEDICATION_SCHEDULE' | 'FOLLOW_UP_REMOTE'
+  | 'VISA_APPLICATION' | 'VISA_APPROVED'
+  | 'INSURANCE_CONFIRMED'
+  | 'CUSTOM';

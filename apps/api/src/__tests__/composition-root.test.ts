@@ -30,6 +30,7 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleSupportTicketReplyRepository: vi.fn(() => ({})),
   DrizzlePackageRepository: vi.fn(() => ({})),
   DrizzleOrderRepository: vi.fn(() => ({})),
+  DrizzleJourneyRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
@@ -152,6 +153,13 @@ vi.mock('@medical-crm/application', () => ({
   UpdateOrderStatusUseCase: vi.fn(() => ({})),
   CreatePaymentIntentUseCase: vi.fn(() => ({})),
   RequestRefundUseCase: vi.fn(() => ({})),
+  // Journey
+  GetCaseJourneyUseCase: vi.fn(() => ({})),
+  UpdateCaseJourneyUseCase: vi.fn(() => ({})),
+  ListMilestonesUseCase: vi.fn(() => ({})),
+  CreateMilestoneUseCase: vi.fn(() => ({})),
+  UpdateMilestoneUseCase: vi.fn(() => ({})),
+  DeleteMilestoneUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -292,5 +300,13 @@ describe('composition root', () => {
     expect(services).toHaveProperty('updateOrderStatus');
     expect(services).toHaveProperty('createPaymentIntent');
     expect(services).toHaveProperty('requestRefund');
+
+    // Journey
+    expect(services).toHaveProperty('getCaseJourney');
+    expect(services).toHaveProperty('updateCaseJourney');
+    expect(services).toHaveProperty('listMilestones');
+    expect(services).toHaveProperty('createMilestone');
+    expect(services).toHaveProperty('updateMilestone');
+    expect(services).toHaveProperty('deleteMilestone');
   });
 });

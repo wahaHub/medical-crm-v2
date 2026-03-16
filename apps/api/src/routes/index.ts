@@ -13,6 +13,7 @@ import eventRoutes from './events.routes.js';
 import ticketRoutes from './tickets.routes.js';
 import packageRoutes from './packages.routes.js';
 import orderRoutes from './orders.routes.js';
+import journeyRoutes from './journey.routes.js';
 
 const router = new OpenAPIHono();
 router.route('/', caseRoutes);
@@ -29,5 +30,6 @@ router.route('/', eventRoutes);
 router.route('/', ticketRoutes);
 router.route('/', packageRoutes);
 router.route('/', orderRoutes);
+router.route('/', journeyRoutes);
 
 export default router;

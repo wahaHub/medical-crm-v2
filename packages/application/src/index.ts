@@ -193,3 +193,20 @@ export { CreatePaymentIntentUseCase } from './use-cases/orders/create-payment-in
 export type { PaymentIntentResult } from './use-cases/orders/create-payment-intent.use-case.js';
 export { RequestRefundUseCase } from './use-cases/orders/request-refund.use-case.js';
 export type { RequestRefundInput } from './use-cases/orders/request-refund.use-case.js';
+
+// DTOs — Journey
+export type { CaseJourneyDTO, JourneyMilestoneDTO } from './dtos/journey.dto.js';
+
+// Mappers — Journey
+export { toCaseJourneyDTO, toJourneyMilestoneDTO, milestoneToTimelineItem } from './mappers/journey.mapper.js';
+
+// Use Cases — Journey
+export { GetCaseJourneyUseCase } from './use-cases/journey/get-case-journey.use-case.js';
+export { UpdateCaseJourneyUseCase } from './use-cases/journey/update-case-journey.use-case.js';
+export type { UpdateJourneyInput } from './use-cases/journey/update-case-journey.use-case.js';
+export { ListMilestonesUseCase } from './use-cases/journey/list-milestones.use-case.js';
+export { CreateMilestoneUseCase } from './use-cases/journey/create-milestone.use-case.js';
+export type { CreateMilestoneInput } from './use-cases/journey/create-milestone.use-case.js';
+export { UpdateMilestoneUseCase } from './use-cases/journey/update-milestone.use-case.js';
+export type { UpdateMilestoneInput } from './use-cases/journey/update-milestone.use-case.js';
+export { DeleteMilestoneUseCase } from './use-cases/journey/delete-milestone.use-case.js';

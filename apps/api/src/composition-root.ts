@@ -103,6 +103,12 @@ import {
   UpdateOrderStatusUseCase,
   CreatePaymentIntentUseCase,
   RequestRefundUseCase,
+  GetCaseJourneyUseCase,
+  UpdateCaseJourneyUseCase,
+  ListMilestonesUseCase,
+  CreateMilestoneUseCase,
+  UpdateMilestoneUseCase,
+  DeleteMilestoneUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -125,6 +131,7 @@ import {
   DrizzleSupportTicketReplyRepository,
   DrizzlePackageRepository,
   DrizzleOrderRepository,
+  DrizzleJourneyRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -251,6 +258,14 @@ interface AppServices {
   createPaymentIntent: CreatePaymentIntentUseCase;
   requestRefund: RequestRefundUseCase;
 
+  // use cases — journey
+  getCaseJourney: GetCaseJourneyUseCase;
+  updateCaseJourney: UpdateCaseJourneyUseCase;
+  listMilestones: ListMilestonesUseCase;
+  createMilestone: CreateMilestoneUseCase;
+  updateMilestone: UpdateMilestoneUseCase;
+  deleteMilestone: DeleteMilestoneUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -312,6 +327,7 @@ export function getServices(): AppServices {
     const ticketReplyRepo = new DrizzleSupportTicketReplyRepository(crmDb);
     const packageRepo = new DrizzlePackageRepository(crmDb);
     const orderRepo = new DrizzleOrderRepository(crmDb);
+    const journeyRepo = new DrizzleJourneyRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
@@ -371,7 +387,7 @@ export function getServices(): AppServices {
 
       recordCaseEvent: new RecordCaseEventUseCase(eventRepo),
       listCaseEvents: new ListCaseEventsUseCase(eventRepo),
-      getCaseTimeline: new GetCaseTimelineUseCase(eventRepo),
+      getCaseTimeline: new GetCaseTimelineUseCase(eventRepo, journeyRepo),
 
       addHospitalToCase: new AddHospitalToCaseUseCase(chcRepo),
       removeHospitalFromCase: new RemoveHospitalFromCaseUseCase(chcRepo),
@@ -403,6 +419,13 @@ export function getServices(): AppServices {
       unpublishPackage: new UnpublishPackageUseCase(packageRepo),
       listPackages: new ListPackagesUseCase(packageRepo),
       getPackage: new GetPackageUseCase(packageRepo),
+
+      getCaseJourney: new GetCaseJourneyUseCase(journeyRepo, caseRepo),
+      updateCaseJourney: new UpdateCaseJourneyUseCase(journeyRepo, caseRepo),
+      listMilestones: new ListMilestonesUseCase(journeyRepo, caseRepo),
+      createMilestone: new CreateMilestoneUseCase(journeyRepo, caseRepo),
+      updateMilestone: new UpdateMilestoneUseCase(journeyRepo),
+      deleteMilestone: new DeleteMilestoneUseCase(journeyRepo),
 
       createOrder: new CreateOrderUseCase(orderRepo),
       listOrders: new ListOrdersUseCase(orderRepo),

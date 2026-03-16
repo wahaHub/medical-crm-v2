@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders } from "./schema";
+import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones } from "./schema";
 
 export const casesRelations = relations(cases, ({one, many}) => ({
 	hospital: one(hospitals, {
@@ -204,4 +204,14 @@ export const ordersRelations = relations(orders, ({one}) => ({
 	patient: one(users, { fields: [orders.patientId], references: [users.id] }),
 	case_: one(cases, { fields: [orders.caseId], references: [cases.id] }),
 	package_: one(packages, { fields: [orders.packageId], references: [packages.id] }),
+}));
+
+// Phase 2 M5: Journey + Milestones
+export const caseJourneysRelations = relations(caseJourneys, ({one}) => ({
+	case: one(cases, { fields: [caseJourneys.caseId], references: [cases.id] }),
+}));
+
+export const journeyMilestonesRelations = relations(journeyMilestones, ({one}) => ({
+	case: one(cases, { fields: [journeyMilestones.caseId], references: [cases.id] }),
+	createdByUser: one(users, { fields: [journeyMilestones.createdBy], references: [users.id] }),
 }));

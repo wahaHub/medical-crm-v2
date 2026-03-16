@@ -552,6 +552,46 @@ export const packages = pgTable("packages", {
 	index("idx_packages_created_by_status").using("btree", table.createdBy.asc().nullsLast(), table.status.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
 ]);
 
+// Phase 2 M5: Journey + Milestones
+export const milestoneEventType = pgEnum("MilestoneEventType", [
+	'FLIGHT_ARRIVAL', 'FLIGHT_DEPARTURE',
+	'HOTEL_CHECKIN', 'HOTEL_CHECKOUT',
+	'HOSPITAL_APPOINTMENT', 'PRE_OP_EXAM', 'SURGERY_DATE', 'POST_OP_CHECKUP',
+	'MEDICATION_SCHEDULE', 'FOLLOW_UP_REMOTE',
+	'VISA_APPLICATION', 'VISA_APPROVED',
+	'INSURANCE_CONFIRMED',
+	'CUSTOM',
+])
+
+export const caseJourneys = pgTable("case_journeys", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull().references(() => cases.id),
+	visa: jsonb(),
+	insurance: jsonb(),
+	accommodation: jsonb(),
+	transportation: jsonb(),
+	postCare: jsonb("post_care"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	uniqueIndex("idx_case_journeys_case").using("btree", table.caseId.asc().nullsLast()),
+]);
+
+export const journeyMilestones = pgTable("journey_milestones", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull().references(() => cases.id),
+	eventType: milestoneEventType("event_type").notNull(),
+	eventDate: timestamp("event_date", { withTimezone: true, mode: 'string' }).notNull(),
+	note: text(),
+	isVisibleToPatient: boolean("is_visible_to_patient").default(true).notNull(),
+	createdBy: uuid("created_by").references(() => users.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	index("idx_milestones_case_date").using("btree", table.caseId.asc().nullsLast(), table.eventDate.asc().nullsLast()),
+	index("idx_milestones_patient_visible").using("btree", table.isVisibleToPatient.asc().nullsLast(), table.eventDate.asc().nullsLast()).where(sql`is_visible_to_patient = true`),
+]);
+
 export const orders = pgTable("orders", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	orderNumber: varchar("order_number", { length: 50 }).notNull().unique(),

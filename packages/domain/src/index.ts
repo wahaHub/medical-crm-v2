@@ -169,5 +169,17 @@ export type { OrderProps } from './entities/order.entity.js';
 export type { IPackageRepository, PackageListQuery } from './ports/package-repository.port.js';
 export type { IOrderRepository, OrderListQuery } from './ports/order-repository.port.js';
 
+// Phase 2 M5: Journey Enums
+export type { MilestoneEventType } from './enums/index.js';
+
+// Phase 2 M5: Entities
+export { CaseJourney } from './entities/case-journey.entity.js';
+export type { CaseJourneyProps } from './entities/case-journey.entity.js';
+export { JourneyMilestone } from './entities/journey-milestone.entity.js';
+export type { JourneyMilestoneProps } from './entities/journey-milestone.entity.js';
+
+// Phase 2 M5: Ports
+export type { IJourneyRepository } from './ports/journey-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

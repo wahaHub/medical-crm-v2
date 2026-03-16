@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RecordCaseEventUseCase } from '../src/use-cases/events/record-case-event.use-case.js';
 import { ListCaseEventsUseCase } from '../src/use-cases/events/list-case-events.use-case.js';
 import { GetCaseTimelineUseCase } from '../src/use-cases/events/get-case-timeline.use-case.js';
-import type { ICaseEventRepository } from '@medical-crm/domain';
+import type { ICaseEventRepository, IJourneyRepository } from '@medical-crm/domain';
 import { CaseEvent } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -135,13 +135,26 @@ describe('ListCaseEventsUseCase', () => {
 });
 
 // --------------- GetCaseTimelineUseCase ---------------
+function createMockJourneyRepo(): IJourneyRepository {
+  return {
+    findJourneyByCaseId: vi.fn().mockResolvedValue(null),
+    saveJourney: vi.fn(),
+    findMilestoneById: vi.fn().mockResolvedValue(null),
+    findMilestonesByCaseId: vi.fn().mockResolvedValue([]),
+    saveMilestone: vi.fn(),
+    deleteMilestone: vi.fn(),
+  };
+}
+
 describe('GetCaseTimelineUseCase', () => {
   let useCase: GetCaseTimelineUseCase;
   let mockRepo: ICaseEventRepository;
+  let mockJourneyRepo: IJourneyRepository;
 
   beforeEach(() => {
     mockRepo = createMockRepo();
-    useCase = new GetCaseTimelineUseCase(mockRepo);
+    mockJourneyRepo = createMockJourneyRepo();
+    useCase = new GetCaseTimelineUseCase(mockRepo, mockJourneyRepo);
   });
 
   it('returns timeline items sorted by timestamp desc', async () => {

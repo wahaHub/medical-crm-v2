@@ -10,3 +10,4 @@ export * from './quote.schema.js';
 export * from './support-ticket.schema.js';
 export * from './package.schema.js';
 export * from './order.schema.js';
+export * from './journey.schema.js';

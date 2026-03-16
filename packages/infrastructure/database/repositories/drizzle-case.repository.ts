@@ -29,26 +29,33 @@ export class DrizzleCaseRepository implements ICaseRepository {
     const effectiveHospitalId = hospitalId ?? query.hospitalId;
 
     const conditions = [];
-    if (status) conditions.push(eq(cases.status, status));
-    if (stage) conditions.push(eq(cases.stage, stage));
     if (effectiveHospitalId) conditions.push(eq(cases.assignedHospitalId, effectiveHospitalId));
 
-    // New model filters
-    if (query.assignmentStatus) conditions.push(eq(cases.assignmentStatus, query.assignmentStatus));
-    if (query.treatmentStage) conditions.push(eq(cases.treatmentStage, query.treatmentStage));
-
-    // Compat aliases: if caller uses old status/stage filters, map to new columns
-    if (query.status === 'ACTIVE' && !query.assignmentStatus) {
+    // New model filters take priority; compat aliases map old → new columns
+    if (query.assignmentStatus) {
+      conditions.push(eq(cases.assignmentStatus, query.assignmentStatus));
+    } else if (status === 'ACTIVE') {
+      // Compat: old status=ACTIVE → new assignmentStatus=ASSIGNED (skip old column)
       conditions.push(eq(cases.assignmentStatus, 'ASSIGNED'));
+    } else if (status) {
+      conditions.push(eq(cases.status, status));
     }
-    if (query.stage && !query.treatmentStage) {
+
+    if (query.treatmentStage) {
+      conditions.push(eq(cases.treatmentStage, query.treatmentStage));
+    } else if (stage) {
       const OLD_TO_NEW: Record<string, string> = {
         'IN_TREATMENT': 'IN_TREATMENT',
         'TREATMENT_COMPLETED': 'COMPLETED',
         'HOSPITAL_CONTACTED': 'CONFIRMED',
       };
-      const mapped = OLD_TO_NEW[query.stage];
-      if (mapped) conditions.push(eq(cases.treatmentStage, mapped as typeof query.treatmentStage & string));
+      const mapped = OLD_TO_NEW[stage];
+      if (mapped) {
+        // Compat: old stage → new treatmentStage (skip old column)
+        conditions.push(eq(cases.treatmentStage, mapped as typeof query.treatmentStage & string));
+      } else {
+        conditions.push(eq(cases.stage, stage));
+      }
     }
     if (search) {
       conditions.push(

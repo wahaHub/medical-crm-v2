@@ -136,3 +136,6 @@ export { ListQuotesUseCase } from './use-cases/quotes/list-quotes.use-case.js';
 export { GetQuoteUseCase } from './use-cases/quotes/get-quote.use-case.js';
 export { CompareQuotesUseCase } from './use-cases/quotes/compare-quotes.use-case.js';
 export { ResendQuoteUseCase } from './use-cases/quotes/resend-quote.use-case.js';
+export { AcceptQuoteUseCase } from './use-cases/quotes/accept-quote.use-case.js';
+export { RejectQuoteUseCase } from './use-cases/quotes/reject-quote.use-case.js';
+export { AdminResetAssignmentUseCase } from './use-cases/quotes/admin-reset-assignment.use-case.js';

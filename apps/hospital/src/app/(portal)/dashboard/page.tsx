@@ -26,9 +26,9 @@ export default async function DashboardPage() {
         data={{
           caseStats: {
             total: caseStats.total ?? 0,
-            new: caseStats.new ?? 0,
-            inProgress: caseStats.inProgress ?? 0,
-            completed: caseStats.completed ?? 0,
+            new: caseStats.unassigned ?? 0,
+            inProgress: (caseStats.assigned ?? 0) + (caseStats.inTreatment ?? 0),
+            completed: (caseStats.completed ?? 0) + (caseStats.postTreatment ?? 0) + (caseStats.followUp ?? 0),
           },
           consultationStats: {
             total: consultationStats.total ?? 0,

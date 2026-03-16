@@ -73,6 +73,15 @@ const makeCase = (overrides: Partial<ConstructorParameters<typeof Case>[0]> = {}
     assignedAt: new Date('2026-01-10T08:00:00Z'),
     createdAt: new Date('2026-01-10T08:00:00Z'),
     updatedAt: new Date('2026-01-10T08:00:00Z'),
+    assignmentStatus: 'ASSIGNED',
+    treatmentStage: null,
+    conditionSummary: null,
+    structuredData: null,
+    riskFlags: null,
+    priority: null,
+    lastEventAt: null,
+    aiSummaryStatus: 'NONE',
+    questionCollectorTemplateId: null,
     ...overrides,
   });
 
@@ -271,16 +280,24 @@ describe('ListCaseConsultationsUseCase', () => {
     ).rejects.toThrow('Case missing-case not found');
   });
 
-  it('throws ForbiddenError for HOSPITAL actor', async () => {
-    await expect(
-      useCase.execute('case-1', hospitalActor),
-    ).rejects.toThrow('Only admin users can list case consultations');
+  it('HOSPITAL actor can list consultations for cases assigned to their hospital', async () => {
+    const result = await useCase.execute('case-1', hospitalActor);
+
+    expect(result).toHaveLength(2);
+    expect(mockCaseRepo.findById).toHaveBeenCalledWith('case-1');
   });
 
-  it('throws ForbiddenError for any non-ADMIN actor', async () => {
+  it('throws ForbiddenError when HOSPITAL actor does not own the case', async () => {
     await expect(
       useCase.execute('case-1', otherHospitalActor),
-    ).rejects.toThrow('Only admin users can list case consultations');
+    ).rejects.toThrow('Case is not assigned to your hospital');
+  });
+
+  it('throws ForbiddenError for PATIENT actor', async () => {
+    const patientActor: Actor = { userId: 'p-1', email: 'p@test.com', role: 'PATIENT', hospitalId: null };
+    await expect(
+      useCase.execute('case-1', patientActor),
+    ).rejects.toThrow('Only admin and hospital users can list case consultations');
   });
 
   it('returns empty array when case has no consultations', async () => {

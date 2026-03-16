@@ -31,13 +31,25 @@ describe('CreateConversationUseCase', () => {
     useCase = new CreateConversationUseCase(mockConversationRepo);
   });
 
-  it('throws ForbiddenError for non-ADMIN actor', async () => {
+  it('throws ForbiddenError for PATIENT actor', async () => {
+    const patientActor: Actor = { userId: 'p-1', email: 'p@test.com', role: 'PATIENT', hospitalId: null };
     await expect(
       useCase.execute(
         { category: 'HOSPITAL' },
-        hospitalActor,
+        patientActor,
       ),
-    ).rejects.toThrow('Only admins can create conversations');
+    ).rejects.toThrow('Only admins and hospital staff can create conversations');
+  });
+
+  it('allows HOSPITAL actor to create conversation', async () => {
+    const result = await useCase.execute(
+      { category: 'HOSPITAL_PATIENT', caseId: 'case-1' },
+      hospitalActor,
+    );
+
+    expect(result.category).toBe('HOSPITAL_PATIENT');
+    expect(result.hospitalId).toBe('h-1'); // auto-filled from actor
+    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
   });
 
   it('creates a conversation with the provided category', async () => {

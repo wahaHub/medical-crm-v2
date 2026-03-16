@@ -11,13 +11,18 @@ export class ListCaseConsultationsUseCase {
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<ConsultationDTO[]> {
-    if (actor.role !== 'ADMIN') {
-      throw new ForbiddenError('Only admin users can list case consultations');
+    if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
+      throw new ForbiddenError('Only admin and hospital users can list case consultations');
     }
 
     const caseEntity = await this.caseRepo.findById(caseId);
     if (!caseEntity) {
       throw new NotFoundError(`Case ${caseId} not found`);
+    }
+
+    // Hospital users can only see consultations for cases assigned to their hospital
+    if (actor.role === 'HOSPITAL' && caseEntity.assignedHospitalId !== actor.hospitalId) {
+      throw new ForbiddenError('Case is not assigned to your hospital');
     }
 
     const consultations = await this.consultationRepo.findByCaseId(caseId);

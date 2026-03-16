@@ -40,9 +40,9 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={<FolderOpen size={24} />} value={stats.total ?? 0} label="Total Cases" />
-        <StatCard icon={<FolderOpen size={24} />} value={stats.new ?? 0} label="New" colorClass="text-blue-600 bg-blue-50" />
-        <StatCard icon={<FolderOpen size={24} />} value={stats.inProgress ?? 0} label="In Progress" colorClass="text-amber-600 bg-amber-50" />
-        <StatCard icon={<FolderOpen size={24} />} value={stats.completed ?? 0} label="Completed" colorClass="text-emerald-600 bg-emerald-50" />
+        <StatCard icon={<FolderOpen size={24} />} value={stats.unassigned ?? 0} label="Unassigned" colorClass="text-blue-600 bg-blue-50" />
+        <StatCard icon={<FolderOpen size={24} />} value={(stats.assigned ?? 0) + (stats.inTreatment ?? 0)} label="In Treatment" colorClass="text-amber-600 bg-amber-50" />
+        <StatCard icon={<FolderOpen size={24} />} value={(stats.completed ?? 0) + (stats.postTreatment ?? 0) + (stats.followUp ?? 0)} label="Completed" colorClass="text-emerald-600 bg-emerald-50" />
       </div>
 
       <div className="flex items-center justify-between gap-4">

@@ -59,11 +59,15 @@ export interface HospitalCaseDetail {
 }
 
 /** Stats shapes */
+/** Matches backend CaseStatsDTO */
 export interface CaseStats {
   total?: number;
-  new?: number;
-  inProgress?: number;
+  unassigned?: number;
+  assigned?: number;
+  inTreatment?: number;
+  postTreatment?: number;
   completed?: number;
+  followUp?: number;
 }
 
 export interface ConsultationStats {
@@ -90,7 +94,6 @@ export interface ConversationSummary {
   title?: string;
   patientName?: string;
   category?: string;
-  lastMessage?: string;
   lastMessagePreview?: string;
   unreadCount?: number;
   updatedAt?: string;

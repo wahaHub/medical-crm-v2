@@ -700,7 +700,13 @@ function BeforeAfterModal({
     e.preventDefault();
     setSubmitting(true);
     try {
-      const images: Array<{ url: string; type: 'before' | 'after' }> = [];
+      const images: Array<{ url: string; type: 'before' | 'after' | 'combined' }> = [];
+      // Preserve combined images from existing case (UI only edits before/after)
+      if (existing) {
+        for (const img of existing.images) {
+          if (img.type === 'combined') images.push(img);
+        }
+      }
       if (beforeImageUrl.trim()) images.push({ url: beforeImageUrl.trim(), type: 'before' });
       if (afterImageUrl.trim()) images.push({ url: afterImageUrl.trim(), type: 'after' });
 

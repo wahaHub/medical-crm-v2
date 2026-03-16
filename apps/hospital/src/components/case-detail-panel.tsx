@@ -6,7 +6,6 @@ import { Tabs, PageHeader, StatusBadge, Card } from '@medical-crm/ui';
 import { useCaseConsultations } from '@/queries/use-cases';
 import type {
   HospitalCaseDetail,
-  PaginatedResponse,
   ConsultationSummary,
 } from '@/lib/api-types';
 
@@ -25,7 +24,8 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
   const router = useRouter();
 
   const { data: consultations } = useCaseConsultations(caseDetail.id);
-  const consultationsResponse = consultations as PaginatedResponse<ConsultationSummary> | undefined;
+  // Backend returns ConsultationDTO[] (plain array, not paginated)
+  const consultationsList = (consultations as ConsultationSummary[] | undefined) ?? [];
 
   return (
     <div className="space-y-6">
@@ -131,9 +131,9 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
         {activeTab === 'consultation' && (
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Consultations</h3>
-            {(consultationsResponse?.data?.length ?? 0) > 0 ? (
+            {consultationsList.length > 0 ? (
               <div className="space-y-3">
-                {(consultationsResponse?.data ?? []).map((c) => (
+                {consultationsList.map((c) => (
                   <div
                     key={c.id}
                     onClick={() => router.push(`/consultations/${c.id}/room`)}

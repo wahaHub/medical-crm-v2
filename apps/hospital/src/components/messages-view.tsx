@@ -46,7 +46,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
     return (
       (c.title ?? '').toLowerCase().includes(q) ||
       (c.patientName ?? '').toLowerCase().includes(q) ||
-      (c.lastMessage ?? '').toLowerCase().includes(q)
+      (c.lastMessagePreview ?? '').toLowerCase().includes(q)
     );
   });
 
@@ -67,8 +67,8 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
       setIsSending(true);
       try {
         await sendMessage(selectedId, content);
-        // Invalidate messages query to refresh the chat
-        await queryClient.invalidateQueries({ queryKey: ['messages', selectedId] });
+        // Invalidate messages query to refresh the chat (key must match use-messages.ts)
+        await queryClient.invalidateQueries({ queryKey: ['conversations', selectedId, 'messages'] });
         // Also refresh conversations to update lastMessage preview
         await queryClient.invalidateQueries({ queryKey: ['conversations'] });
       } catch {
@@ -142,9 +142,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                         </span>
                       )}
                     </div>
-                    {c.lastMessage && (
+                    {c.lastMessagePreview && (
                       <p className="mt-1 truncate text-xs text-slate-500">
-                        {c.lastMessage}
+                        {c.lastMessagePreview}
                       </p>
                     )}
                   </button>

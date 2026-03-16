@@ -105,12 +105,14 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   }
 
   async createProcedure(data: Omit<MaterialsProcedure, 'id'>): Promise<MaterialsProcedure> {
-    // First, find or create the procedure in the procedures table
+    // Find or create the procedure in the global catalog.
+    // Use case-insensitive matching to prevent near-duplicate entries.
     let procedureId: string;
     const { data: existing } = await this.supabase
       .from('procedures')
       .select('id')
-      .eq('procedure_name', data.procedureName)
+      .ilike('procedure_name', data.procedureName)
+      .limit(1)
       .single();
 
     if (existing) {

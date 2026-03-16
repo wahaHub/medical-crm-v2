@@ -11,4 +11,6 @@ export { DrizzleMessageRepository } from './drizzle-message.repository.js';
 export { DrizzleMessageTaskRepository } from './drizzle-message-task.repository.js';
 export { DrizzleConsultationRepository } from './drizzle-consultation.repository.js';
 export { DrizzleConsultationTranscriptRepository } from './drizzle-consultation-transcript.repository.js';
+export { DrizzleCHCRepository } from './drizzle-chc.repository.js';
+export { DrizzleQuoteRepository } from './drizzle-quote.repository.js';
 export { DrizzleTransactionRunner } from '../transaction-runner.js';

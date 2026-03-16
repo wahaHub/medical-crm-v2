@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens } from "./schema";
+import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes } from "./schema";
 
 export const casesRelations = relations(cases, ({one, many}) => ({
 	hospital: one(hospitals, {
@@ -126,4 +126,35 @@ export const hospitalRegistrationTokensRelations = relations(hospitalRegistratio
 		fields: [hospitalRegistrationTokens.hospitalId],
 		references: [hospitals.id]
 	}),
+}));
+
+export const caseHospitalContactsRelations = relations(caseHospitalContacts, ({one}) => ({
+	case: one(cases, {
+		fields: [caseHospitalContacts.caseId],
+		references: [cases.id]
+	}),
+	hospital: one(hospitals, {
+		fields: [caseHospitalContacts.hospitalId],
+		references: [hospitals.id]
+	}),
+	quote: one(quotes, {
+		fields: [caseHospitalContacts.quoteId],
+		references: [quotes.id]
+	}),
+}));
+
+export const quotesRelations = relations(quotes, ({one, many}) => ({
+	case: one(cases, {
+		fields: [quotes.caseId],
+		references: [cases.id]
+	}),
+	hospital: one(hospitals, {
+		fields: [quotes.hospitalId],
+		references: [hospitals.id]
+	}),
+	createdByUser: one(users, {
+		fields: [quotes.createdBy],
+		references: [users.id]
+	}),
+	caseHospitalContacts: many(caseHospitalContacts),
 }));

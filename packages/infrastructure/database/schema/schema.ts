@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreignKey, uuid, jsonb, boolean, bigint, unique, pgPolicy, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreignKey, uuid, jsonb, boolean, bigint, unique, pgPolicy, pgEnum, numeric } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const aiSummaryStatus = pgEnum("AISummaryStatus", ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'])
@@ -19,6 +19,8 @@ export const sensitivity = pgEnum("Sensitivity", ['PHI_HIGH', 'PHI_MED', 'PHI_LO
 export const userRole = pgEnum("UserRole", ['ADMIN', 'HOSPITAL', 'PATIENT'])
 export const caseAssignmentStatus = pgEnum("CaseAssignmentStatus", ['UNASSIGNED', 'ASSIGNED'])
 export const caseTreatmentStage = pgEnum("CaseTreatmentStage", ['CONFIRMED', 'IN_TREATMENT', 'POST_TREATMENT', 'COMPLETED', 'FOLLOW_UP'])
+export const chcSubStatus = pgEnum("CHCSubStatus", ['DISTRIBUTED', 'NEED_INFO', 'QUOTED', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'REMOVED'])
+export const quoteStatus = pgEnum("QuoteStatus", ['PENDING', 'ACCEPTED', 'REJECTED', 'EXPIRED'])
 
 
 export const prismaMigrations = pgTable("_prisma_migrations", {
@@ -410,4 +412,46 @@ export const messageTasks = pgTable("message_tasks", {
 			foreignColumns: [messages.id],
 			name: "message_tasks_message_id_fkey"
 		}).onDelete("cascade"),
+]);
+
+export const quotes = pgTable("quotes", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull().references(() => cases.id),
+	hospitalId: uuid("hospital_id").notNull().references(() => hospitals.id),
+	quoteNumber: varchar("quote_number", { length: 50 }).notNull().unique(),
+	version: integer().default(1).notNull(),
+	status: quoteStatus().default('PENDING').notNull(),
+	isDraft: boolean("is_draft").default(true).notNull(),
+	totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
+	currency: varchar({ length: 10 }).default('USD').notNull(),
+	validUntil: timestamp("valid_until", { precision: 6, withTimezone: true, mode: 'string' }).notNull(),
+	treatmentPlan: text("treatment_plan"),
+	lineItems: jsonb("line_items"),
+	notes: text(),
+	sentAt: timestamp("sent_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	createdBy: uuid("created_by").references(() => users.id),
+	createdAt: timestamp("created_at", { precision: 6, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, withTimezone: true, mode: 'string' }).notNull(),
+});
+
+export const caseHospitalContacts = pgTable("case_hospital_contacts", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull().references(() => cases.id),
+	hospitalId: uuid("hospital_id").notNull().references(() => hospitals.id),
+	subStatus: chcSubStatus("sub_status").default('DISTRIBUTED').notNull(),
+	selectedByPatientAt: timestamp("selected_by_patient_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	distributedAt: timestamp("distributed_at", { precision: 6, withTimezone: true, mode: 'string' }).defaultNow(),
+	firstReplyAt: timestamp("first_reply_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	quoteId: uuid("quote_id").references(() => quotes.id),
+	patientViewedQuoteAt: timestamp("patient_viewed_quote_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	patientAcceptedAt: timestamp("patient_accepted_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	patientRejectedAt: timestamp("patient_rejected_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	reminderSentAt: timestamp("reminder_sent_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	removedAt: timestamp("removed_at", { precision: 6, withTimezone: true, mode: 'string' }),
+	removedReason: text("removed_reason"),
+	version: integer().default(1).notNull(),
+	createdAt: timestamp("created_at", { precision: 6, withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, withTimezone: true, mode: 'string' }).notNull(),
+}, (table) => [
+	unique("case_hospital_contacts_case_id_hospital_id_key").on(table.caseId, table.hospitalId),
 ]);

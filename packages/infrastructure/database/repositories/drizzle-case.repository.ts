@@ -8,7 +8,7 @@ import { cases } from '../schema/index.js';
 export class DrizzleCaseRepository implements ICaseRepository {
   constructor(private readonly db: CrmDb) {}
 
-  async findById(id: string): Promise<Case | null> {
+  async findById(id: string, _tx?: unknown): Promise<Case | null> {
     const rows = await this.db
       .select()
       .from(cases)
@@ -20,7 +20,6 @@ export class DrizzleCaseRepository implements ICaseRepository {
   }
 
   async findMany(query: CaseListQuery, hospitalId?: string): Promise<PaginatedResult<Case>> {
-    // TODO(Task 6): Add compat filter alias mapping for old status/stage → new assignmentStatus/treatmentStage
     const { page, limit, status, stage, search } = query;
     // Auth-derived hospitalId (forced filter) takes priority over query param
     const effectiveHospitalId = hospitalId ?? query.hospitalId;
@@ -29,6 +28,24 @@ export class DrizzleCaseRepository implements ICaseRepository {
     if (status) conditions.push(eq(cases.status, status));
     if (stage) conditions.push(eq(cases.stage, stage));
     if (effectiveHospitalId) conditions.push(eq(cases.assignedHospitalId, effectiveHospitalId));
+
+    // New model filters
+    if (query.assignmentStatus) conditions.push(eq(cases.assignmentStatus, query.assignmentStatus));
+    if (query.treatmentStage) conditions.push(eq(cases.treatmentStage, query.treatmentStage));
+
+    // Compat aliases: if caller uses old status/stage filters, map to new columns
+    if (query.status === 'ACTIVE' && !query.assignmentStatus) {
+      conditions.push(eq(cases.assignmentStatus, 'ASSIGNED'));
+    }
+    if (query.stage && !query.treatmentStage) {
+      const OLD_TO_NEW: Record<string, string> = {
+        'IN_TREATMENT': 'IN_TREATMENT',
+        'TREATMENT_COMPLETED': 'COMPLETED',
+        'HOSPITAL_CONTACTED': 'CONFIRMED',
+      };
+      const mapped = OLD_TO_NEW[query.stage];
+      if (mapped) conditions.push(eq(cases.treatmentStage, mapped as typeof query.treatmentStage & string));
+    }
     if (search) {
       conditions.push(
         or(
@@ -68,7 +85,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
     };
   }
 
-  async save(entity: Case): Promise<Case> {
+  async save(entity: Case, _tx?: unknown): Promise<Case> {
     const now = new Date().toISOString();
     const values = {
       id: entity.id,
@@ -90,6 +107,15 @@ export class DrizzleCaseRepository implements ICaseRepository {
       assignedAt: entity.assignedAt ? entity.assignedAt.toISOString() : null,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: now,
+      assignmentStatus: entity.assignmentStatus,
+      treatmentStage: entity.treatmentStage,
+      conditionSummary: entity.conditionSummary,
+      structuredData: entity.structuredData,
+      riskFlags: entity.riskFlags as unknown as typeof cases.$inferInsert['riskFlags'],
+      priority: entity.priority,
+      lastEventAt: entity.lastEventAt?.toISOString() ?? null,
+      aiSummaryStatus: entity.aiSummaryStatus,
+      questionCollectorTemplateId: entity.questionCollectorTemplateId,
     };
 
     const rows = await this.db
@@ -113,6 +139,15 @@ export class DrizzleCaseRepository implements ICaseRepository {
           stage: values.stage,
           assignedAt: values.assignedAt,
           updatedAt: now,
+          assignmentStatus: values.assignmentStatus,
+          treatmentStage: values.treatmentStage,
+          conditionSummary: values.conditionSummary,
+          structuredData: values.structuredData,
+          riskFlags: values.riskFlags,
+          priority: values.priority,
+          lastEventAt: values.lastEventAt,
+          aiSummaryStatus: values.aiSummaryStatus,
+          questionCollectorTemplateId: values.questionCollectorTemplateId,
         },
       })
       .returning();
@@ -137,29 +172,43 @@ export class DrizzleCaseRepository implements ICaseRepository {
   }
 
   async countByFilters(filters: CaseCountFilters): Promise<CaseStats> {
-    const { hospitalId } = filters;
-
-    const baseCondition = hospitalId ? eq(cases.assignedHospitalId, hospitalId) : undefined;
+    const conditions = [];
+    if (filters.hospitalId) conditions.push(eq(cases.assignedHospitalId, filters.hospitalId));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const result = await this.db
       .select({
         total: count(),
-        unassigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.stage} = 'PENDING_ASSIGNMENT')`,
-        active: sql<number>`COUNT(*) FILTER (WHERE ${cases.status} = 'ACTIVE')`,
-        completed: sql<number>`COUNT(*) FILTER (WHERE ${cases.status} = 'COMPLETED')`,
-        cancelled: sql<number>`COUNT(*) FILTER (WHERE ${cases.status} = 'CANCELLED')`,
+        unassigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.assignmentStatus} = 'UNASSIGNED')`,
+        assigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.assignmentStatus} = 'ASSIGNED')`,
+        inTreatment: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'IN_TREATMENT')`,
+        postTreatment: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'POST_TREATMENT')`,
+        completed: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'COMPLETED')`,
+        followUp: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'FOLLOW_UP')`,
       })
       .from(cases)
-      .where(baseCondition);
+      .where(where);
 
-    const row = result[0];
+    const r = result[0]!;
     return {
-      total: Number(row?.total ?? 0),
-      unassigned: Number(row?.unassigned ?? 0),
-      active: Number(row?.active ?? 0),
-      completed: Number(row?.completed ?? 0),
-      cancelled: Number(row?.cancelled ?? 0),
+      total: Number(r.total),
+      unassigned: Number(r.unassigned),
+      assigned: Number(r.assigned),
+      inTreatment: Number(r.inTreatment),
+      postTreatment: Number(r.postTreatment),
+      completed: Number(r.completed),
+      followUp: Number(r.followUp),
     };
+  }
+
+  async findByPatientId(patientId: string): Promise<Case[]> {
+    const rows = await this.db
+      .select()
+      .from(cases)
+      .where(eq(cases.patientId, patientId))
+      .orderBy(sql`${cases.createdAt} DESC`);
+
+    return rows.map((r) => this.rowToEntity(r));
   }
 
   private rowToEntity(row: typeof cases.$inferSelect): Case {
@@ -183,6 +232,15 @@ export class DrizzleCaseRepository implements ICaseRepository {
       assignedAt: row.assignedAt ? new Date(row.assignedAt) : null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
+      assignmentStatus: (row.assignmentStatus as import('@medical-crm/domain').CaseAssignmentStatus) ?? 'UNASSIGNED',
+      treatmentStage: (row.treatmentStage as import('@medical-crm/domain').CaseTreatmentStage | null) ?? null,
+      conditionSummary: (row.conditionSummary as string | null) ?? null,
+      structuredData: (row.structuredData as Record<string, unknown> | null) ?? null,
+      riskFlags: (row.riskFlags as string[] | null) ?? null,
+      priority: row.priority ?? null,
+      lastEventAt: row.lastEventAt ? new Date(row.lastEventAt) : null,
+      aiSummaryStatus: (row.aiSummaryStatus as import('@medical-crm/domain').AISummaryStatusType) ?? 'PENDING',
+      questionCollectorTemplateId: row.questionCollectorTemplateId ?? null,
     });
   }
 }

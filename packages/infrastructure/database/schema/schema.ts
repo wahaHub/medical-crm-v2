@@ -17,6 +17,8 @@ export const progressType = pgEnum("ProgressType", ['STATUS_CHANGE', 'DOCUMENT_U
 export const riskLevel = pgEnum("RiskLevel", ['LOW', 'MEDIUM', 'HIGH'])
 export const sensitivity = pgEnum("Sensitivity", ['PHI_HIGH', 'PHI_MED', 'PHI_LOW'])
 export const userRole = pgEnum("UserRole", ['ADMIN', 'HOSPITAL', 'PATIENT'])
+export const caseAssignmentStatus = pgEnum("CaseAssignmentStatus", ['UNASSIGNED', 'ASSIGNED'])
+export const caseTreatmentStage = pgEnum("CaseTreatmentStage", ['CONFIRMED', 'IN_TREATMENT', 'POST_TREATMENT', 'COMPLETED', 'FOLLOW_UP'])
 
 
 export const prismaMigrations = pgTable("_prisma_migrations", {
@@ -98,6 +100,15 @@ export const cases = pgTable("cases", {
 	assignedAt: timestamp("assigned_at", { precision: 6, mode: 'string' }),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	assignmentStatus: caseAssignmentStatus("assignment_status").default('UNASSIGNED').notNull(),
+	treatmentStage: caseTreatmentStage("treatment_stage"),
+	conditionSummary: text("condition_summary"),
+	structuredData: jsonb("structured_data"),
+	riskFlags: jsonb("risk_flags"),
+	priority: varchar({ length: 20 }),
+	lastEventAt: timestamp("last_event_at", { withTimezone: true, mode: 'string' }),
+	aiSummaryStatus: aiSummaryStatus("ai_summary_status").default('PENDING').notNull(),
+	questionCollectorTemplateId: uuid("question_collector_template_id"),
 }, (table) => [
 	index("cases_assigned_hospital_id_idx").using("btree", table.assignedHospitalId.asc().nullsLast().op("uuid_ops")),
 	index("cases_case_number_idx").using("btree", table.caseNumber.asc().nullsLast().op("text_ops")),

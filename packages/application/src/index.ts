@@ -121,3 +121,9 @@ export type { CreateBeforeAfterCaseInput } from './use-cases/materials/create-be
 export { UpdateBeforeAfterCaseUseCase } from './use-cases/materials/update-before-after-case.use-case.js';
 export type { UpdateBeforeAfterCaseInput } from './use-cases/materials/update-before-after-case.use-case.js';
 export { DeleteBeforeAfterCaseUseCase } from './use-cases/materials/delete-before-after-case.use-case.js';
+
+// Use Cases — Quotes / CHC
+export { AddHospitalToCaseUseCase } from './use-cases/quotes/add-hospital-to-case.use-case.js';
+export { RemoveHospitalFromCaseUseCase } from './use-cases/quotes/remove-hospital-from-case.use-case.js';
+export { SendReminderUseCase } from './use-cases/quotes/send-reminder.use-case.js';
+export { ListCaseHospitalContactsUseCase } from './use-cases/quotes/list-case-hospital-contacts.use-case.js';

@@ -98,5 +98,25 @@ export type {
 // Phase 2: TransactionRunner
 export type { Transaction, TransactionRunner } from './ports/transaction-runner.port.js';
 
+// Phase 2 M1: CHC + Quote Enums
+export type { CHCSubStatus, QuoteStatus } from './enums/index.js';
+
+// Phase 2 M1: State machines
+export { CHC_SUB_STATUS_TRANSITIONS } from './state-machine/chc-sub-status-transitions.js';
+export { QUOTE_STATUS_TRANSITIONS } from './state-machine/quote-status-transitions.js';
+
+// Phase 2 M1: Value objects
+export { QuoteNumber } from './value-objects/quote-number.js';
+
+// Phase 2 M1: Entities
+export { CaseHospitalContact } from './entities/case-hospital-contact.entity.js';
+export type { CaseHospitalContactProps } from './entities/case-hospital-contact.entity.js';
+export { Quote } from './entities/quote.entity.js';
+export type { QuoteProps } from './entities/quote.entity.js';
+
+// Phase 2 M1: Ports
+export type { ICHCRepository, CHCListQuery } from './ports/case-hospital-contact-repository.port.js';
+export type { IQuoteRepository, QuoteListQuery } from './ports/quote-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

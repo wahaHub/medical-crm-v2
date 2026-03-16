@@ -644,6 +644,96 @@ git add -A && git commit -m "app: update CaseDTO, mapper, validation, repo port 
 
 ---
 
+### Task 5b: Backward-compat layer — keep existing Case APIs working during M0 transition
+
+> **Why this task exists:** M0 adds `assignmentStatus` / `treatmentStage` but the existing Case APIs
+> still read/write the old `status` / `stage` fields. Without explicit patching, the old `/assign`
+> endpoint, the list filter aliases, and the hospital case-detail mapper will break or return
+> inconsistent data before Module 1 lands.
+
+**Files:**
+- Modify: `packages/domain/src/entities/case.entity.ts`
+- Modify: `packages/application/src/mappers/case.mapper.ts`
+- Modify: `packages/infrastructure/database/repositories/drizzle-case.repository.ts`
+
+- [ ] **Step 1: Patch `Case.assign()` to also set `assignmentStatus`**
+
+In `case.entity.ts`, update the existing `assign()` method:
+
+```typescript
+assign(hospitalId: string): void {
+  this.assignedHospitalId = hospitalId;
+  this.assignedAt = new Date();
+  // Keep old field in sync for compat
+  if (this.stage === 'PENDING_ASSIGNMENT') {
+    this.stage = 'TRANSFERRED_TO_HOSPITAL';
+  }
+  // New field
+  this.assignmentStatus = 'ASSIGNED';
+  this.updatedAt = new Date();
+}
+```
+
+- [ ] **Step 2: Extend `toHospitalCaseDetailDTO` mapper for dual-model display**
+
+`STAGE_DISPLAY_MAP` currently only knows old `CaseStage` values. Add a fallback that derives `displayStatus` from the new `treatmentStage` when present:
+
+```typescript
+function deriveDisplayStatus(entity: Case): string {
+  // Prefer new treatment stage if set
+  if (entity.treatmentStage) {
+    const NEW_STAGE_MAP: Record<string, string> = {
+      CONFIRMED: 'contacted',
+      IN_TREATMENT: 'in_treatment',
+      POST_TREATMENT: 'post_treatment',
+      COMPLETED: 'completed',
+      FOLLOW_UP: 'follow_up',
+    };
+    return NEW_STAGE_MAP[entity.treatmentStage] ?? 'unknown';
+  }
+  // Fall back to old stage
+  return STAGE_DISPLAY_MAP[entity.stage];
+}
+```
+
+Replace `displayStatus: STAGE_DISPLAY_MAP[entity.stage]` with `displayStatus: deriveDisplayStatus(entity)` in `toHospitalCaseDetailDTO`.
+
+- [ ] **Step 3: Add filter alias mapping in `findMany()`**
+
+When the deprecated `status` / `stage` filter params are passed to `findMany()`, map them to the new columns so queries return consistent results:
+
+```typescript
+// In DrizzleCaseRepository.findMany():
+// Compat aliases: if caller uses old status/stage filters, map to new columns
+if (query.status === 'ACTIVE' && !query.assignmentStatus) {
+  conditions.push(eq(cases.assignmentStatus, 'ASSIGNED'));
+}
+if (query.stage && !query.treatmentStage) {
+  const OLD_TO_NEW: Record<string, string> = {
+    'IN_TREATMENT': 'IN_TREATMENT',
+    'TREATMENT_COMPLETED': 'COMPLETED',
+    'HOSPITAL_CONTACTED': 'CONFIRMED',
+  };
+  const mapped = OLD_TO_NEW[query.stage];
+  if (mapped) conditions.push(eq(cases.treatmentStage, mapped));
+}
+```
+
+- [ ] **Step 4: Run full test suite**
+
+```bash
+pnpm test
+```
+All existing case tests must still pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "compat: bridge old status/stage APIs to new assignmentStatus/treatmentStage"
+```
+
+---
+
 ### Task 6: Update Drizzle schema + Case repository implementation
 
 **Files:**
@@ -853,59 +943,95 @@ git add -A && git commit -m "infra: add TransactionRunner port + Drizzle impleme
 ### Task 9: Idempotency table + helper
 
 **Files:**
-- Modify: `packages/infrastructure/database/migrations/003_m0_case_realignment.sql` (append idempotency DDL)
+- Create: `packages/infrastructure/database/migrations/003b_idempotency_keys.sql`
 - Create: `packages/infrastructure/database/idempotency.ts`
 
-- [ ] **Step 1: Append idempotency DDL to 003 migration**
+> **Why 003b, not appended to 003?** Task 2 runs and commits 003_m0_case_realignment.sql earlier.
+> Environments that already applied 003 would never see appended DDL.
+> 003b sorts after 003 and before 004, preserving order.
 
-Append to the end of `003_m0_case_realignment.sql`:
+- [ ] **Step 1: Create idempotency migration file**
+
+Create `packages/infrastructure/database/migrations/003b_idempotency_keys.sql`:
 
 ```sql
 -- Idempotency keys (Section 0.5.3)
-CREATE TABLE idempotency_keys (
+CREATE TABLE IF NOT EXISTS idempotency_keys (
   key VARCHAR(255) PRIMARY KEY,
   operation VARCHAR(100) NOT NULL,
-  result JSONB,
+  result JSONB,               -- NULL while processing, set on completion
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- TTL cleanup: add index for periodic purge
-CREATE INDEX idx_idempotency_keys_created ON idempotency_keys(created_at);
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created ON idempotency_keys(created_at);
 ```
 
 - [ ] **Step 2: Implement idempotency helper**
 
 ```typescript
 // packages/infrastructure/database/idempotency.ts
-import { eq } from 'drizzle-orm';
 import type { CrmDb } from './crm-client.js';
+import { ConflictError } from '@medical-crm/utils';
 
+/**
+ * Concurrency-safe idempotency guard using INSERT-first claim pattern.
+ *
+ * Flow:
+ * 1. INSERT ... ON CONFLICT DO NOTHING (atomic claim attempt)
+ * 2. If INSERT succeeded (we own the key) → execute fn(), UPDATE result
+ * 3. If INSERT failed (key exists) → return cached result, or throw ConflictError if still processing
+ * 4. If fn() throws → DELETE the claimed key so it can be retried
+ */
 export class IdempotencyGuard {
   constructor(private readonly db: CrmDb) {}
 
-  async check<T>(key: string, operation: string, fn: () => Promise<T>): Promise<T> {
-    // Check existing
-    const existing = await this.db
-      .execute<{ result: T }>(
+  async execute<T>(key: string, operation: string, fn: () => Promise<T>): Promise<T> {
+    // Step 1: Atomically try to claim the key (result starts as NULL = "processing")
+    const claimed = await this.db.execute<{ key: string }>(
+      `INSERT INTO idempotency_keys (key, operation, result, created_at)
+       VALUES ($1, $2, NULL, NOW())
+       ON CONFLICT (key) DO NOTHING
+       RETURNING key`,
+      [key, operation],
+    );
+
+    if (claimed.rows.length === 0) {
+      // Key already exists — another request owns it
+      const existing = await this.db.execute<{ result: T | null }>(
         `SELECT result FROM idempotency_keys WHERE key = $1`,
         [key],
       );
-
-    if (existing.rows.length > 0) {
-      return existing.rows[0]!.result;
+      if (existing.rows.length > 0 && existing.rows[0]!.result !== null) {
+        return existing.rows[0]!.result; // Completed — return cached result
+      }
+      // Still processing (result is NULL) — reject with 409
+      throw new ConflictError('Request is already being processed');
     }
 
-    // Execute and store
-    const result = await fn();
-    await this.db.execute(
-      `INSERT INTO idempotency_keys (key, operation, result) VALUES ($1, $2, $3) ON CONFLICT (key) DO NOTHING`,
-      [key, operation, JSON.stringify(result)],
-    );
-
-    return result;
+    // Step 2: We own the key — execute business logic
+    try {
+      const result = await fn();
+      await this.db.execute(
+        `UPDATE idempotency_keys SET result = $1 WHERE key = $2`,
+        [JSON.stringify(result), key],
+      );
+      return result;
+    } catch (err) {
+      // Step 3: Clean up on failure so the key can be retried
+      await this.db.execute(
+        `DELETE FROM idempotency_keys WHERE key = $1`,
+        [key],
+      );
+      throw err;
+    }
   }
 }
 ```
+
+> **Concurrency guarantee:** The `INSERT ... ON CONFLICT DO NOTHING` + `RETURNING` is atomic.
+> Two concurrent requests with the same key: exactly one wins the INSERT, the other gets
+> zero rows back and either returns the cached result or throws 409.
 
 - [ ] **Step 3: Run migration**
 
@@ -1311,7 +1437,7 @@ export class AcceptQuoteUseCase {
     };
 
     if (idempotencyKey) {
-      return this.idempotency.check(idempotencyKey, 'AcceptQuote', fn);
+      return this.idempotency.execute(idempotencyKey, 'AcceptQuote', fn);
     }
     return fn();
   }
@@ -1852,7 +1978,25 @@ git add -A && git commit -m "domain: add BookingRequest entity, value objects, p
 - Create: Drizzle repos, DTOs, mappers, validation
 - Create: 4 use cases per spec Section 9.4
 
-**Pre-requisite:** Verify `IKeycloakAdminService` (in `packages/domain/src/ports/keycloak-admin-service.port.ts`) has a `createUser(email, password)` method suitable for patient registration. If not, extend the port and `KeycloakAdminService` implementation. The existing port was written for hospital user registration — patient registration may need different Keycloak realm settings or role assignments.
+- [ ] **Step 0: Extend IKeycloakAdminService for patient registration**
+
+The existing port (`packages/domain/src/ports/keycloak-admin-service.port.ts`) only has
+`createUser(username, email, hospitalName, hospitalId)` — hospital-specific.
+`CompleteSignup` needs a patient-oriented method. **This is a blocking pre-requisite, not optional.**
+
+Add to the port interface:
+
+```typescript
+// In IKeycloakAdminService — add:
+createPatientUser(email: string, password: string): Promise<string>; // returns keycloakUserId
+```
+
+Implement in `packages/infrastructure/keycloak/keycloak-admin-service.ts`:
+- Same Keycloak admin client, but targets patient realm/group instead of hospital realm
+- Assigns `PATIENT` role instead of `HOSPITAL` role
+- Sets password directly (no temporary password flow)
+
+Update barrel exports and write a unit test verifying the new method is called by `CompleteSignupUseCase`.
 
 Key: `CompleteSignup` is transactional (two phases per spec):
 
@@ -1878,7 +2022,7 @@ export class CompleteSignupUseCase {
 
         // 2. Create Keycloak user (outside SQL tx, but before commit)
         // If this fails, the transaction callback throws → DB tx rolls back
-        await this.keycloakAdmin.createUser(input.email, input.password);
+        await this.keycloakAdmin.createPatientUser(input.email, input.password);
 
         // 3. Update booking_request.user_id, status → COMPLETED
         await this.bookingRepo.complete(bookingRequestId, user.id, tx);
@@ -1899,7 +2043,7 @@ export class CompleteSignupUseCase {
     };
 
     if (idempotencyKey) {
-      return this.idempotency.check(idempotencyKey, 'CompleteSignup', fn);
+      return this.idempotency.execute(idempotencyKey, 'CompleteSignup', fn);
     }
     return fn();
   }

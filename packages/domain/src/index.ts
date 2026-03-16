@@ -86,5 +86,14 @@ export type {
 } from './ports/consultation-repository.port.js';
 export type { IConsultationTranscriptRepository } from './ports/consultation-transcript-repository.port.js';
 
+// Phase 3 Ports — Materials
+export type {
+  IMaterialsRepository,
+  MaterialsHospitalInfo,
+  MaterialsProcedure,
+  MaterialsSurgeon,
+  MaterialsBeforeAfterCase,
+} from './ports/materials-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

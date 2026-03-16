@@ -82,3 +82,9 @@ export type MilestoneEventType =
 
 // Phase 2 M6: QuestionCollector
 export type QCCompletionStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+
+// Phase 2 M7: ServiceCatalog
+export type ServiceCatalogCategory =
+  | 'COSMETIC_SURGERY' | 'DENTAL' | 'DERMATOLOGY' | 'ORTHOPEDIC'
+  | 'CARDIAC' | 'OPHTHALMIC' | 'FERTILITY' | 'WEIGHT_LOSS'
+  | 'HAIR_RESTORATION' | 'WELLNESS' | 'OTHER';

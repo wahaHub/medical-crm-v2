@@ -32,6 +32,7 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleOrderRepository: vi.fn(() => ({})),
   DrizzleJourneyRepository: vi.fn(() => ({})),
   DrizzleQuestionCollectorRepository: vi.fn(() => ({})),
+  DrizzleServiceCatalogRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
@@ -172,6 +173,19 @@ vi.mock('@medical-crm/application', () => ({
   ListQCResponsesUseCase: vi.fn(() => ({})),
   CustomizeQuestionsUseCase: vi.fn(() => ({})),
   GetCustomizationUseCase: vi.fn(() => ({})),
+  // ServiceCatalog
+  CreateServiceCatalogItemUseCase: vi.fn(() => ({})),
+  ListServiceCatalogItemsUseCase: vi.fn(() => ({})),
+  GetServiceCatalogItemUseCase: vi.fn(() => ({})),
+  UpdateServiceCatalogItemUseCase: vi.fn(() => ({})),
+  DeleteServiceCatalogItemUseCase: vi.fn(() => ({})),
+  ListAllServiceCatalogItemsUseCase: vi.fn(() => ({})),
+  // QuoteTemplates
+  CreateQuoteTemplateUseCase: vi.fn(() => ({})),
+  ListQuoteTemplatesUseCase: vi.fn(() => ({})),
+  GetQuoteTemplateUseCase: vi.fn(() => ({})),
+  UpdateQuoteTemplateUseCase: vi.fn(() => ({})),
+  DeleteQuoteTemplateUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -332,5 +346,20 @@ describe('composition root', () => {
     expect(services).toHaveProperty('listQCResponses');
     expect(services).toHaveProperty('customizeQuestions');
     expect(services).toHaveProperty('getCustomization');
+
+    // ServiceCatalog
+    expect(services).toHaveProperty('createServiceCatalogItem');
+    expect(services).toHaveProperty('listServiceCatalogItems');
+    expect(services).toHaveProperty('getServiceCatalogItem');
+    expect(services).toHaveProperty('updateServiceCatalogItem');
+    expect(services).toHaveProperty('deleteServiceCatalogItem');
+    expect(services).toHaveProperty('listAllServiceCatalogItems');
+
+    // QuoteTemplates
+    expect(services).toHaveProperty('createQuoteTemplate');
+    expect(services).toHaveProperty('listQuoteTemplates');
+    expect(services).toHaveProperty('getQuoteTemplate');
+    expect(services).toHaveProperty('updateQuoteTemplate');
+    expect(services).toHaveProperty('deleteQuoteTemplate');
   });
 });

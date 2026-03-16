@@ -119,6 +119,17 @@ import {
   ListQCResponsesUseCase,
   CustomizeQuestionsUseCase,
   GetCustomizationUseCase,
+  CreateServiceCatalogItemUseCase,
+  ListServiceCatalogItemsUseCase,
+  GetServiceCatalogItemUseCase,
+  UpdateServiceCatalogItemUseCase,
+  DeleteServiceCatalogItemUseCase,
+  ListAllServiceCatalogItemsUseCase,
+  CreateQuoteTemplateUseCase,
+  ListQuoteTemplatesUseCase,
+  GetQuoteTemplateUseCase,
+  UpdateQuoteTemplateUseCase,
+  DeleteQuoteTemplateUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -143,6 +154,7 @@ import {
   DrizzleOrderRepository,
   DrizzleJourneyRepository,
   DrizzleQuestionCollectorRepository,
+  DrizzleServiceCatalogRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -289,6 +301,21 @@ interface AppServices {
   customizeQuestions: CustomizeQuestionsUseCase;
   getCustomization: GetCustomizationUseCase;
 
+  // use cases — service catalog
+  createServiceCatalogItem: CreateServiceCatalogItemUseCase;
+  listServiceCatalogItems: ListServiceCatalogItemsUseCase;
+  getServiceCatalogItem: GetServiceCatalogItemUseCase;
+  updateServiceCatalogItem: UpdateServiceCatalogItemUseCase;
+  deleteServiceCatalogItem: DeleteServiceCatalogItemUseCase;
+  listAllServiceCatalogItems: ListAllServiceCatalogItemsUseCase;
+
+  // use cases — quote templates
+  createQuoteTemplate: CreateQuoteTemplateUseCase;
+  listQuoteTemplates: ListQuoteTemplatesUseCase;
+  getQuoteTemplate: GetQuoteTemplateUseCase;
+  updateQuoteTemplate: UpdateQuoteTemplateUseCase;
+  deleteQuoteTemplate: DeleteQuoteTemplateUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -352,6 +379,7 @@ export function getServices(): AppServices {
     const orderRepo = new DrizzleOrderRepository(crmDb);
     const journeyRepo = new DrizzleJourneyRepository(crmDb);
     const qcRepo = new DrizzleQuestionCollectorRepository(crmDb);
+    const serviceCatalogRepo = new DrizzleServiceCatalogRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
@@ -468,6 +496,19 @@ export function getServices(): AppServices {
       listQCResponses: new ListQCResponsesUseCase(qcRepo),
       customizeQuestions: new CustomizeQuestionsUseCase(qcRepo),
       getCustomization: new GetCustomizationUseCase(qcRepo),
+
+      createServiceCatalogItem: new CreateServiceCatalogItemUseCase(serviceCatalogRepo),
+      listServiceCatalogItems: new ListServiceCatalogItemsUseCase(serviceCatalogRepo),
+      getServiceCatalogItem: new GetServiceCatalogItemUseCase(serviceCatalogRepo),
+      updateServiceCatalogItem: new UpdateServiceCatalogItemUseCase(serviceCatalogRepo),
+      deleteServiceCatalogItem: new DeleteServiceCatalogItemUseCase(serviceCatalogRepo),
+      listAllServiceCatalogItems: new ListAllServiceCatalogItemsUseCase(serviceCatalogRepo),
+
+      createQuoteTemplate: new CreateQuoteTemplateUseCase(serviceCatalogRepo),
+      listQuoteTemplates: new ListQuoteTemplatesUseCase(serviceCatalogRepo),
+      getQuoteTemplate: new GetQuoteTemplateUseCase(serviceCatalogRepo),
+      updateQuoteTemplate: new UpdateQuoteTemplateUseCase(serviceCatalogRepo),
+      deleteQuoteTemplate: new DeleteQuoteTemplateUseCase(serviceCatalogRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

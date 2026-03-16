@@ -199,5 +199,21 @@ export type {
   QCResponseListQuery,
 } from './ports/question-collector-repository.port.js';
 
+// Phase 2 M7: ServiceCatalog Enums
+export type { ServiceCatalogCategory } from './enums/index.js';
+
+// Phase 2 M7: ServiceCatalog Entities
+export { ServiceCatalogItem } from './entities/service-catalog-item.entity.js';
+export type { ServiceCatalogItemProps } from './entities/service-catalog-item.entity.js';
+export { QuoteTemplate } from './entities/quote-template.entity.js';
+export type { QuoteTemplateProps } from './entities/quote-template.entity.js';
+
+// Phase 2 M7: ServiceCatalog Ports
+export type {
+  IServiceCatalogRepository,
+  ServiceCatalogListQuery,
+  QuoteTemplateListQuery,
+} from './ports/service-catalog-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

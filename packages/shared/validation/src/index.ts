@@ -12,3 +12,4 @@ export * from './package.schema.js';
 export * from './order.schema.js';
 export * from './journey.schema.js';
 export * from './question-collector.schema.js';
+export * from './service-catalog.schema.js';

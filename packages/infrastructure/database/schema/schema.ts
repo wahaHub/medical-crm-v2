@@ -641,6 +641,48 @@ export const questionCollectorCustomizations = pgTable("question_collector_custo
 	index("idx_qcc_template_hospital").using("btree", table.templateId.asc().nullsLast(), table.hospitalId.asc().nullsLast()),
 ]);
 
+// Phase 2 M7: ServiceCatalog + QuoteTemplates
+export const serviceCatalogCategory = pgEnum("ServiceCatalogCategory", [
+	'COSMETIC_SURGERY', 'DENTAL', 'DERMATOLOGY', 'ORTHOPEDIC',
+	'CARDIAC', 'OPHTHALMIC', 'FERTILITY', 'WEIGHT_LOSS',
+	'HAIR_RESTORATION', 'WELLNESS', 'OTHER',
+])
+
+export const serviceCatalogItems = pgTable("service_catalog_items", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	hospitalId: uuid("hospital_id").notNull().references(() => hospitals.id),
+	nameEn: varchar("name_en", { length: 200 }).notNull(),
+	nameZh: varchar("name_zh", { length: 200 }),
+	category: serviceCatalogCategory().notNull(),
+	priceMin: numeric("price_min", { precision: 12, scale: 2 }).notNull(),
+	priceMax: numeric("price_max", { precision: 12, scale: 2 }).notNull(),
+	currency: varchar({ length: 10 }).default('USD').notNull(),
+	estimatedStayDays: integer("estimated_stay_days"),
+	estimatedRecoveryDays: integer("estimated_recovery_days"),
+	inclusions: jsonb(),
+	isPublic: boolean("is_public").default(false).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_sci_hospital_active").using("btree", table.hospitalId.asc().nullsLast(), table.isActive.asc().nullsLast(), table.category.asc().nullsLast()),
+	index("idx_sci_hospital_public").using("btree", table.hospitalId.asc().nullsLast(), table.isPublic.asc().nullsLast()).where(sql`is_public = true`),
+]);
+
+export const quoteTemplates = pgTable("quote_templates", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	hospitalId: uuid("hospital_id").notNull().references(() => hospitals.id),
+	name: varchar({ length: 200 }).notNull(),
+	conditionCategory: varchar("condition_category", { length: 100 }),
+	lineItemsTemplate: jsonb("line_items_template").notNull(),
+	defaultValidDays: integer("default_valid_days").default(30).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_qt_hospital_active").using("btree", table.hospitalId.asc().nullsLast(), table.isActive.asc().nullsLast()),
+]);
+
 export const orders = pgTable("orders", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	orderNumber: varchar("order_number", { length: 50 }).notNull().unique(),

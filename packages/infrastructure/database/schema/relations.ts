@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones, questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations } from "./schema";
+import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones, questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations, serviceCatalogItems, quoteTemplates } from "./schema";
 
 export const casesRelations = relations(cases, ({one, many}) => ({
 	hospital: one(hospitals, {
@@ -233,4 +233,13 @@ export const questionCollectorCustomizationsRelations = relations(questionCollec
 	template: one(questionCollectorTemplates, { fields: [questionCollectorCustomizations.templateId], references: [questionCollectorTemplates.id] }),
 	hospital: one(hospitals, { fields: [questionCollectorCustomizations.hospitalId], references: [hospitals.id] }),
 	customizer: one(users, { fields: [questionCollectorCustomizations.customizedBy], references: [users.id] }),
+}));
+
+// Phase 2 M7: ServiceCatalog + QuoteTemplates
+export const serviceCatalogItemsRelations = relations(serviceCatalogItems, ({one}) => ({
+	hospital: one(hospitals, { fields: [serviceCatalogItems.hospitalId], references: [hospitals.id] }),
+}));
+
+export const quoteTemplatesRelations = relations(quoteTemplates, ({one}) => ({
+	hospital: one(hospitals, { fields: [quoteTemplates.hospitalId], references: [hospitals.id] }),
 }));

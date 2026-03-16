@@ -234,3 +234,28 @@ export { ListResponsesUseCase as ListQCResponsesUseCase } from './use-cases/ques
 export { CustomizeQuestionsUseCase } from './use-cases/question-collector/customize-questions.use-case.js';
 export type { CustomizeQuestionsInput } from './use-cases/question-collector/customize-questions.use-case.js';
 export { GetCustomizationUseCase } from './use-cases/question-collector/get-customization.use-case.js';
+
+// DTOs — ServiceCatalog
+export type { ServiceCatalogItemDTO, QuoteTemplateDTO } from './dtos/service-catalog.dto.js';
+
+// Mappers — ServiceCatalog
+export { toServiceCatalogItemDTO, toQuoteTemplateDTO } from './mappers/service-catalog.mapper.js';
+
+// Use Cases — ServiceCatalog Items
+export { CreateServiceCatalogItemUseCase } from './use-cases/service-catalog/create-service-catalog-item.use-case.js';
+export type { CreateServiceCatalogItemInput } from './use-cases/service-catalog/create-service-catalog-item.use-case.js';
+export { ListServiceCatalogItemsUseCase } from './use-cases/service-catalog/list-service-catalog-items.use-case.js';
+export { GetServiceCatalogItemUseCase } from './use-cases/service-catalog/get-service-catalog-item.use-case.js';
+export { UpdateServiceCatalogItemUseCase } from './use-cases/service-catalog/update-service-catalog-item.use-case.js';
+export type { UpdateServiceCatalogItemInput } from './use-cases/service-catalog/update-service-catalog-item.use-case.js';
+export { DeleteServiceCatalogItemUseCase } from './use-cases/service-catalog/delete-service-catalog-item.use-case.js';
+export { ListAllServiceCatalogItemsUseCase } from './use-cases/service-catalog/list-all-service-catalog-items.use-case.js';
+
+// Use Cases — Quote Templates
+export { CreateQuoteTemplateUseCase } from './use-cases/service-catalog/create-quote-template.use-case.js';
+export type { CreateQuoteTemplateInput } from './use-cases/service-catalog/create-quote-template.use-case.js';
+export { ListQuoteTemplatesUseCase as ListQuoteTemplatesUseCase } from './use-cases/service-catalog/list-quote-templates.use-case.js';
+export { GetQuoteTemplateUseCase } from './use-cases/service-catalog/get-quote-template.use-case.js';
+export { UpdateQuoteTemplateUseCase } from './use-cases/service-catalog/update-quote-template.use-case.js';
+export type { UpdateQuoteTemplateInput } from './use-cases/service-catalog/update-quote-template.use-case.js';
+export { DeleteQuoteTemplateUseCase } from './use-cases/service-catalog/delete-quote-template.use-case.js';

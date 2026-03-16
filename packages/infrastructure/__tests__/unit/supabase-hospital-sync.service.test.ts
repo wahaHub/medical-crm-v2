@@ -11,7 +11,6 @@ function makeMockSupabase(upsertResult: { error: { message: string } | null } = 
   }));
   return {
     from: fromMock,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as unknown as SupabaseClient;
 }
 

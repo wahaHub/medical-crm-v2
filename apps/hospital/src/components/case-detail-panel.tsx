@@ -4,6 +4,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tabs, PageHeader, StatusBadge, Card } from '@medical-crm/ui';
 import { useCaseDocuments, useCaseProgress, useCaseConsultations } from '@/queries/use-cases';
+import type {
+  CaseSummary,
+  PaginatedResponse,
+  DocumentItem,
+  CaseProgressResponse,
+  ConsultationSummary,
+} from '@/lib/api-types';
 // Server actions available for future use:
 // import { updateCaseStatus, updateCaseStage } from '@/actions/case-actions';
 
@@ -17,13 +24,17 @@ const tabItems = [
   { key: 'consultation', label: 'Consultation' },
 ];
 
-export function CaseDetailPanel({ caseDetail }: { caseDetail: any }) {
+export function CaseDetailPanel({ caseDetail }: { caseDetail: CaseSummary }) {
   const [activeTab, setActiveTab] = useState('intake');
   const router = useRouter();
 
   const { data: documents } = useCaseDocuments(caseDetail.id);
   const { data: progress } = useCaseProgress(caseDetail.id);
   const { data: consultations } = useCaseConsultations(caseDetail.id);
+
+  const docsResponse = documents as PaginatedResponse<DocumentItem> | undefined;
+  const progressResponse = progress as CaseProgressResponse | undefined;
+  const consultationsResponse = consultations as PaginatedResponse<ConsultationSummary> | undefined;
 
   return (
     <div className="space-y-6">
@@ -55,9 +66,9 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: any }) {
         {activeTab === 'documents' && (
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Documents</h3>
-            {(documents as any)?.data?.length > 0 ? (
+            {(docsResponse?.data?.length ?? 0) > 0 ? (
               <div className="space-y-3">
-                {((documents as any)?.data ?? []).map((doc: any) => (
+                {(docsResponse?.data ?? []).map((doc) => (
                   <div key={doc.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
                     <div>
                       <div className="font-medium text-slate-900">{doc.fileName}</div>
@@ -82,9 +93,9 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: any }) {
         {activeTab === 'diagnosis' && (
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Diagnosis</h3>
-            {(progress as any)?.diagnoses?.length > 0 ? (
+            {(progressResponse?.diagnoses?.length ?? 0) > 0 ? (
               <div className="space-y-3">
-                {((progress as any)?.diagnoses ?? []).map((d: any, i: number) => (
+                {(progressResponse?.diagnoses ?? []).map((d, i) => (
                   <div key={i} className="rounded-xl border border-slate-100 p-3">
                     <div className="font-medium text-slate-900">{d.condition}</div>
                     <div className="text-sm text-slate-500">{d.notes}</div>
@@ -114,19 +125,19 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: any }) {
         {activeTab === 'consultation' && (
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Consultations</h3>
-            {(consultations as any)?.data?.length > 0 ? (
+            {(consultationsResponse?.data?.length ?? 0) > 0 ? (
               <div className="space-y-3">
-                {((consultations as any)?.data ?? []).map((c: any) => (
+                {(consultationsResponse?.data ?? []).map((c) => (
                   <div
                     key={c.id}
                     onClick={() => router.push(`/consultations/${c.id}/room`)}
                     className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-100 p-3 hover:bg-slate-50"
                   >
                     <div>
-                      <div className="font-medium text-slate-900">{new Date(c.scheduledAt).toLocaleDateString()}</div>
+                      <div className="font-medium text-slate-900">{c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString() : 'N/A'}</div>
                       <div className="text-xs text-slate-500">{c.durationMinutes ?? 30} min</div>
                     </div>
-                    <StatusBadge status={c.status} />
+                    <StatusBadge status={c.status ?? 'UNKNOWN'} />
                   </div>
                 ))}
               </div>

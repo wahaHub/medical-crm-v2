@@ -10,7 +10,7 @@ export function useConsultations(params: Record<string, string>) {
       return queryFetch(`/api/consultations?${p}`);
     },
     initialPageParam: null as string | null,
-    getNextPageParam: (lastPage: any) => lastPage.nextCursor ?? null,
+    getNextPageParam: (lastPage: Record<string, unknown>) => (lastPage.nextCursor as string | null) ?? null,
   });
 }
 

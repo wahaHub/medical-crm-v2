@@ -12,9 +12,10 @@ import {
 import { useConversations } from '@/queries/use-conversations';
 import { useMessages } from '@/queries/use-messages';
 import { sendMessage, createConversation } from '@/actions/message-actions';
+import type { PaginatedResponse, ConversationSummary } from '@/lib/api-types';
 
 interface MessagesViewProps {
-  initialConversations: any;
+  initialConversations: PaginatedResponse<ConversationSummary>;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -29,12 +30,14 @@ export function MessagesView({ initialConversations }: MessagesViewProps) {
   const [showNewModal, setShowNewModal] = useState(false);
 
   const { data: liveConversations } = useConversations();
-  const conversations = (liveConversations as any)?.data ?? initialConversations?.data ?? [];
+  const liveResponse = liveConversations as PaginatedResponse<ConversationSummary> | undefined;
+  const conversations: ConversationSummary[] = liveResponse?.data ?? initialConversations?.data ?? [];
 
   const { data: messagesData } = useMessages(selectedId ?? '');
-  const messages: ChatMessage[] = (messagesData as any)?.data ?? [];
+  const messagesResponse = messagesData as PaginatedResponse<ChatMessage> | undefined;
+  const messages: ChatMessage[] = messagesResponse?.data ?? [];
 
-  const filteredConversations = conversations.filter((c: any) => {
+  const filteredConversations = conversations.filter((c) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -46,13 +49,13 @@ export function MessagesView({ initialConversations }: MessagesViewProps) {
 
   // Group conversations by category
   const grouped = filteredConversations.reduce(
-    (acc: Record<string, any[]>, c: any) => {
+    (acc: Record<string, ConversationSummary[]>, c) => {
       const cat = c.category ?? 'OTHER';
       if (!acc[cat]) acc[cat] = [];
       acc[cat].push(c);
       return acc;
     },
-    {} as Record<string, any[]>,
+    {} as Record<string, ConversationSummary[]>,
   );
 
   const handleSend = useCallback(
@@ -114,7 +117,7 @@ export function MessagesView({ initialConversations }: MessagesViewProps) {
                 <div className="px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-400">
                   {CATEGORY_LABELS[category] ?? category}
                 </div>
-                {(convos as any[]).map((c: any) => (
+                {convos.map((c) => (
                   <button
                     key={c.id}
                     onClick={() => setSelectedId(c.id)}
@@ -126,7 +129,7 @@ export function MessagesView({ initialConversations }: MessagesViewProps) {
                       <span className="font-medium text-slate-900 text-sm truncate">
                         {c.title ?? c.patientName ?? 'Conversation'}
                       </span>
-                      {c.unreadCount > 0 && (
+                      {(c.unreadCount ?? 0) > 0 && (
                         <span className="ml-2 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-indigo-500 px-1.5 text-xs font-medium text-white">
                           {c.unreadCount}
                         </span>

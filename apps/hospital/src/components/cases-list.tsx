@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { FolderOpen } from 'lucide-react';
 import { StatCard, Tabs, SearchInput, StatusBadge, useDebounce } from '@medical-crm/ui';
 import { useCases } from '@/queries/use-cases';
+import type { PaginatedResponse, CaseSummary, CaseStats } from '@/lib/api-types';
 
 interface CasesListProps {
-  initialCases: any;
-  initialStats: any;
+  initialCases: PaginatedResponse<CaseSummary>;
+  initialStats: CaseStats;
 }
 
 const statusTabs = [
@@ -30,7 +31,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
   if (debouncedSearch) filters.search = debouncedSearch;
 
   const { data } = useCases(filters);
-  const cases = data ?? initialCases;
+  const cases = (data ?? initialCases) as PaginatedResponse<CaseSummary>;
   const stats = initialStats;
 
   return (
@@ -48,7 +49,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {(cases.data ?? []).map((c: any) => (
+        {(cases.data ?? []).map((c) => (
           <div
             key={c.id}
             onClick={() => router.push(`/cases/${c.id}`)}
@@ -56,7 +57,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
           >
             <div className="flex items-center justify-between">
               <span className="font-mono text-sm text-slate-500">{c.caseNumber}</span>
-              <StatusBadge status={c.status} />
+              <StatusBadge status={c.status ?? 'UNKNOWN'} />
             </div>
             <div className="mt-3">
               <div className="font-medium text-slate-900">{c.patientName ?? 'Unknown Patient'}</div>

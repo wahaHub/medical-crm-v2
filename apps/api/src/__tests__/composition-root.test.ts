@@ -27,6 +27,9 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
 vi.mock('@medical-crm/infrastructure/storage', () => ({
   SupabaseStorageAdapter: vi.fn(() => ({})),
 }));
+vi.mock('@medical-crm/infrastructure/supabase-main/materials', () => ({
+  SupabaseMaterialsRepository: vi.fn(() => ({})),
+}));
 vi.mock('@medical-crm/infrastructure/services', () => ({
   KeycloakAdminService: vi.fn(() => ({})),
   SupabaseHospitalSyncService: vi.fn(() => ({})),
@@ -85,6 +88,21 @@ vi.mock('@medical-crm/application', () => ({
   GetConsultationTranscriptUseCase: vi.fn(() => ({})),
   GetConsultationStatsUseCase: vi.fn(() => ({})),
   ListCaseConsultationsUseCase: vi.fn(() => ({})),
+  // Hospital Materials
+  GetHospitalInfoUseCase: vi.fn(() => ({})),
+  GetProceduresUseCase: vi.fn(() => ({})),
+  GetSurgeonsUseCase: vi.fn(() => ({})),
+  GetBeforeAfterCasesUseCase: vi.fn(() => ({})),
+  UpdateHospitalInfoUseCase: vi.fn(() => ({})),
+  CreateProcedureUseCase: vi.fn(() => ({})),
+  UpdateProcedureUseCase: vi.fn(() => ({})),
+  DeleteProcedureUseCase: vi.fn(() => ({})),
+  CreateSurgeonUseCase: vi.fn(() => ({})),
+  UpdateSurgeonUseCase: vi.fn(() => ({})),
+  DeleteSurgeonUseCase: vi.fn(() => ({})),
+  CreateBeforeAfterCaseUseCase: vi.fn(() => ({})),
+  UpdateBeforeAfterCaseUseCase: vi.fn(() => ({})),
+  DeleteBeforeAfterCaseUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -161,5 +179,21 @@ describe('composition root', () => {
     expect(services).toHaveProperty('getConsultationTranscript');
     expect(services).toHaveProperty('getConsultationStats');
     expect(services).toHaveProperty('listCaseConsultations');
+
+    // Phase 3 — hospital materials
+    expect(services).toHaveProperty('getHospitalInfo');
+    expect(services).toHaveProperty('getProcedures');
+    expect(services).toHaveProperty('getSurgeons');
+    expect(services).toHaveProperty('getBeforeAfterCases');
+    expect(services).toHaveProperty('updateHospitalInfo');
+    expect(services).toHaveProperty('createProcedure');
+    expect(services).toHaveProperty('updateProcedure');
+    expect(services).toHaveProperty('deleteProcedure');
+    expect(services).toHaveProperty('createSurgeon');
+    expect(services).toHaveProperty('updateSurgeon');
+    expect(services).toHaveProperty('deleteSurgeon');
+    expect(services).toHaveProperty('createBeforeAfterCase');
+    expect(services).toHaveProperty('updateBeforeAfterCase');
+    expect(services).toHaveProperty('deleteBeforeAfterCase');
   });
 });

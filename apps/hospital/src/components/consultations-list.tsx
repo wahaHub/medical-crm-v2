@@ -15,10 +15,11 @@ import {
 } from '@medical-crm/ui';
 import { useConsultations, useConsultationStats } from '@/queries/use-consultations';
 import { createConsultation, updateConsultationStatus } from '@/actions/consultation-actions';
+import type { PaginatedResponse, ConsultationSummary, ConsultationStats } from '@/lib/api-types';
 
 interface ConsultationsListProps {
-  initialData: any;
-  initialStats: any;
+  initialData: PaginatedResponse<ConsultationSummary>;
+  initialStats: ConsultationStats;
 }
 
 const statusTabs = [
@@ -40,9 +41,12 @@ export function ConsultationsList({ initialData, initialStats }: ConsultationsLi
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useConsultations(params);
   const { data: liveStats } = useConsultationStats();
 
-  const stats = liveStats ?? initialStats;
+  const stats = (liveStats ?? initialStats) as ConsultationStats;
   const allPages = data?.pages ?? [initialData];
-  const consultations = allPages.flatMap((page: any) => page.data ?? []);
+  const consultations = allPages.flatMap((page) => {
+    const p = page as PaginatedResponse<ConsultationSummary>;
+    return p.data ?? [];
+  });
 
   return (
     <div className="space-y-6">
@@ -89,7 +93,7 @@ export function ConsultationsList({ initialData, initialStats }: ConsultationsLi
         />
       ) : (
         <div className="space-y-3">
-          {consultations.map((c: any) => (
+          {consultations.map((c) => (
             <div
               key={c.id}
               className="rounded-2xl bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
@@ -123,7 +127,7 @@ export function ConsultationsList({ initialData, initialStats }: ConsultationsLi
                     </div>
                   </div>
                 </div>
-                <StatusBadge status={c.status} />
+                <StatusBadge status={c.status ?? 'UNKNOWN'} />
               </div>
 
               {/* Expanded details */}

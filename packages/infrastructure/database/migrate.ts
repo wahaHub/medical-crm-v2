@@ -42,10 +42,12 @@ async function migrate() {
   // probe the real schema to decide whether to record or execute it.
   // - Old DB (schema exists, tracking empty): records without executing
   // - Fresh DB (schema missing, tracking empty): leaves it pending so it runs normally
-  const [{ count }] = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM _migrations`;
+  const rows = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM _migrations`;
+  const count = rows[0]?.count ?? '0';
   if (count === '0') {
     for (const [name, probe] of Object.entries(PRE_EXISTING)) {
-      const [{ applied }] = await sql.unsafe<{ applied: boolean }[]>(probe);
+      const probeRows = await sql.unsafe<{ applied: boolean }[]>(probe);
+      const applied = probeRows[0]?.applied ?? false;
       if (applied) {
         await sql`INSERT INTO _migrations (name) VALUES (${name})`;
         console.log(`Bootstrap: ${name} — already applied, recorded.`);
@@ -82,7 +84,7 @@ async function migrate() {
     } else {
       await sql.begin(async (tx) => {
         await tx.unsafe(content);
-        await tx`INSERT INTO _migrations (name) VALUES (${file})`;
+        await tx.unsafe('INSERT INTO _migrations (name) VALUES ($1)', [file]);
       });
     }
     console.log(`Applied: ${file}`);

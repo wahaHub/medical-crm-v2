@@ -70,10 +70,10 @@ export function MaterialsTabs() {
 /* -------------------------------------------------------------------------- */
 
 function HospitalInfoTab() {
-  const { data, isLoading } = useMaterialsInfo() as { data: any; isLoading: boolean };
+  const { data, isLoading } = useMaterialsInfo() as { data: Record<string, unknown> | undefined; isLoading: boolean };
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<Record<string, any>>({});
+  const [form, setForm] = useState<Record<string, string>>({});
 
   if (isLoading) {
     return (
@@ -83,15 +83,22 @@ function HospitalInfoTab() {
     );
   }
 
-  const info = data?.data ?? data ?? {};
+  const raw = (data?.data ?? data ?? {}) as Record<string, unknown>;
+  const info = {
+    name: (raw.name as string) ?? '',
+    slug: (raw.slug as string) ?? '',
+    heroImageUrl: (raw.heroImageUrl as string) ?? '',
+    description: (raw.description as string) ?? '',
+    highlights: (raw.highlights as string[]) ?? [],
+  };
 
   const startEdit = () => {
     setForm({
-      name: info.name ?? '',
-      slug: info.slug ?? '',
-      heroImageUrl: info.heroImageUrl ?? '',
-      description: info.description ?? '',
-      highlights: (info.highlights ?? []).join(', '),
+      name: info.name,
+      slug: info.slug,
+      heroImageUrl: info.heroImageUrl,
+      description: info.description,
+      highlights: info.highlights.join(', '),
     });
     setEditing(true);
   };
@@ -135,11 +142,11 @@ function HospitalInfoTab() {
 
       {editing ? (
         <div className="space-y-4">
-          <FormField label="Hospital Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-          <FormField label="Slug" value={form.slug} onChange={(v) => setForm({ ...form, slug: v })} />
-          <FormField label="Hero Image URL" value={form.heroImageUrl} onChange={(v) => setForm({ ...form, heroImageUrl: v })} />
-          <FormField label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} multiline />
-          <FormField label="Highlights (comma-separated)" value={form.highlights} onChange={(v) => setForm({ ...form, highlights: v })} />
+          <FormField label="Hospital Name" value={form.name ?? ''} onChange={(v) => setForm({ ...form, name: v })} />
+          <FormField label="Slug" value={form.slug ?? ''} onChange={(v) => setForm({ ...form, slug: v })} />
+          <FormField label="Hero Image URL" value={form.heroImageUrl ?? ''} onChange={(v) => setForm({ ...form, heroImageUrl: v })} />
+          <FormField label="Description" value={form.description ?? ''} onChange={(v) => setForm({ ...form, description: v })} multiline />
+          <FormField label="Highlights (comma-separated)" value={form.highlights ?? ''} onChange={(v) => setForm({ ...form, highlights: v })} />
         </div>
       ) : (
         <div className="space-y-4">
@@ -156,11 +163,11 @@ function HospitalInfoTab() {
             </div>
           )}
           <InfoRow label="Description" value={info.description} />
-          {(info.highlights ?? []).length > 0 && (
+          {info.highlights.length > 0 && (
             <div>
               <span className="text-sm font-medium text-slate-500">Highlights</span>
               <div className="mt-1 flex flex-wrap gap-2">
-                {(info.highlights as string[]).map((h: string, i: number) => (
+                {info.highlights.map((h: string, i: number) => (
                   <span key={i} className="rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
                     {h}
                   </span>
@@ -195,7 +202,7 @@ interface ProcedureRow {
 }
 
 function ProceduresTab() {
-  const { data, isLoading } = useProcedures() as { data: any; isLoading: boolean };
+  const { data, isLoading } = useProcedures() as { data: Record<string, unknown> | undefined; isLoading: boolean };
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<ProcedureRow | null>(null);
 
@@ -207,7 +214,7 @@ function ProceduresTab() {
     );
   }
 
-  const procedures: ProcedureRow[] = data?.data ?? data ?? [];
+  const procedures: ProcedureRow[] = (data?.data ?? data ?? []) as ProcedureRow[];
 
   const columns: Column<ProcedureRow>[] = [
     { key: 'name', header: 'Procedure Name', render: (row) => <span className="font-medium">{row.name}</span> },
@@ -378,7 +385,7 @@ interface SurgeonRow {
 }
 
 function SurgeonsTab() {
-  const { data, isLoading } = useSurgeons() as { data: any; isLoading: boolean };
+  const { data, isLoading } = useSurgeons() as { data: Record<string, unknown> | undefined; isLoading: boolean };
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<SurgeonRow | null>(null);
 
@@ -390,7 +397,7 @@ function SurgeonsTab() {
     );
   }
 
-  const surgeons: SurgeonRow[] = data?.data ?? data ?? [];
+  const surgeons: SurgeonRow[] = (data?.data ?? data ?? []) as SurgeonRow[];
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this surgeon?')) return;
@@ -548,7 +555,7 @@ interface BACase {
 }
 
 function BeforeAfterTab() {
-  const { data, isLoading } = useBeforeAfterCases() as { data: any; isLoading: boolean };
+  const { data, isLoading } = useBeforeAfterCases() as { data: Record<string, unknown> | undefined; isLoading: boolean };
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<BACase | null>(null);
 
@@ -560,7 +567,7 @@ function BeforeAfterTab() {
     );
   }
 
-  const cases: BACase[] = data?.data ?? data ?? [];
+  const cases: BACase[] = (data?.data ?? data ?? []) as BACase[];
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this before & after case?')) return;

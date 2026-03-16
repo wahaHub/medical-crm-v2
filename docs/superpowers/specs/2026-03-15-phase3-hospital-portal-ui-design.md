@@ -142,18 +142,26 @@ medical-crm-v2/
 - Hospital-specific composite components (CaseDetailPanel, VideoRoom, etc.) live in `apps/hospital/src/components/`
 - All shared components must be designed for admin portal reuse (deferred scope)
 - New components use `class-variance-authority` (CVA) for variant management, following the existing `Button` pattern
-- The existing flat structure (`button.tsx`, `cn.ts` at `src/` root) will be reorganized into subdirectories (`components/`, `hooks/`, `lib/`). The `package.json` exports must be updated:
+- The existing flat structure (`button.tsx`, `cn.ts` at `src/` root) will be reorganized into subdirectories (`components/`, `hooks/`, `lib/`) for internal organization. The public API remains a **single root barrel export** — consumers always import from `@medical-crm/ui`:
 
 ```json
 {
   "exports": {
-    ".": "./src/index.ts",
-    "./components/*": "./src/components/*.tsx",
-    "./hooks/*": "./src/hooks/*.ts",
-    "./lib/*": "./src/lib/*.ts"
+    ".": "./src/index.ts"
   }
 }
 ```
+
+```typescript
+// src/index.ts — root barrel export, all public API
+export { Button } from './components/button';
+export { StatCard } from './components/stat-card';
+export { Modal } from './components/modal';
+export { cn } from './lib/cn';
+// ... etc.
+```
+
+Subpath exports (`@medical-crm/ui/components/*`) are NOT needed at this stage. Add them only if tree-shaking or bundle size becomes a measured problem.
 
 - Tailwind v4 content scanning: the hospital app's CSS must include a `@source` directive pointing to the shared UI package so Tailwind scans its classes:
 
@@ -362,7 +370,7 @@ Sources:
 
 ### Breaking Change: api-client.ts Refactor
 
-The existing `api-client.ts` returns a raw `Response` object. The new `apiClient` returns parsed JSON (`Promise<T>`). This is a **breaking change** — any existing code calling `apiClient()` and then manually calling `.json()` will break. Existing tests in `apps/hospital/src/__tests__/session.test.ts` must be updated accordingly. The `server-only` npm package must be added to `apps/hospital/package.json`.
+The existing `api-client.ts` returns a raw `Response` object. The new `apiClient` returns parsed JSON (`Promise<T>`). This is a **breaking change** — any existing code calling `apiClient()` and then manually calling `.json()` will break. Existing tests in `apps/hospital/src/__tests__/session.test.ts` must be updated accordingly. The `server-only` npm package is recommended (add to `apps/hospital/package.json`) but not strictly required — `getSession()` → `cookies()` naturally prevents client-side usage.
 
 ### 6.1 api-fetch.ts — Low-Level Fetch (No Redirect)
 
@@ -445,7 +453,7 @@ export class ApiError extends Error {
 
 ```typescript
 // apps/hospital/src/lib/api-client.ts
-import 'server-only';  // HARD CONSTRAINT: prevents client-side import
+import 'server-only';  // RECOMMENDED: prevents accidental client-side import
 import { redirect } from 'next/navigation';
 import { apiFetch } from './api-fetch';
 import { ApiError } from './errors';
@@ -781,7 +789,7 @@ const [cases, consultations, caseStats, consultationStats] = await Promise.all([
 | Expand completed → AI Summary | `consultationDTO.aiSummary` | Already in list response |
 | View Transcript | `GET /api/consultations/{id}/transcript` | Lazy load on click |
 | "Enter Room" | Navigate to `/consultations/[id]/room` | — |
-| Create new | `POST /api/v2/consultations` (Server Action) | Modal form. Backend requires `hospitalId` (from auth context) + `patientId` + `caseId` (from case selection in modal). Consultations can only be created from a Case context. |
+| Create new | `POST /api/v2/consultations` (Server Action) | Modal form. Frontend provides only `caseId` + scheduling fields (`scheduledAt`, `durationMinutes`, etc.). Backend use case derives `hospitalId` from `case.assignedHospitalId` and `patientId` from `case.patientId`. **Note**: the backend validation schema (`createConsultationSchema`) currently requires `hospitalId` and `patientId` as mandatory fields, but the use case ignores them — this is a backend contract mismatch that should be fixed (remove `hospitalId`/`patientId` from the schema, or make them optional). Until fixed, frontend should still send only `caseId` + scheduling info; do NOT send fabricated `hospitalId`/`patientId`. |
 
 ### 8.5 Video Room (`/consultations/[id]/room`)
 
@@ -957,7 +965,7 @@ The following are explicitly **out of scope** for this spec:
 
 ### Hard Constraints
 
-1. **`api-client.ts` must have `import 'server-only'`** — prevents accidental client-side import that would leak credentials
+1. **`api-client.ts` should have `import 'server-only'`** (recommended, not hard requirement) — prevents accidental client-side import that would leak credentials. If this causes build issues (e.g., Route Handler imports), remove and rely on `getSession()` → `cookies()` as the natural server-only guard
 2. **Page components NEVER touch database directly** — all data flows through Hono API or BFF Route Handlers
 3. **Route Handlers are always dynamic** — no `export const dynamic = 'force-static'`, no `export const revalidate` on any `app/api/*` file
 4. **No catch-all proxy** — each Route Handler is domain-specific, created via `createQueryHandler` / `createParamQueryHandler` factory
@@ -988,7 +996,7 @@ Packages that must be added to `apps/hospital/package.json`:
 | `@tanstack/react-query` | Server state management |
 | `motion` | Animations (Framer Motion alternative) |
 | `lucide-react` | Icon library |
-| `server-only` | Prevent accidental client-side import of server modules |
+| `server-only` | Recommended: prevent accidental client-side import of server modules (can be removed if it causes build issues) |
 
 Poppins font is loaded via `next/font/google` — no additional package needed.
 

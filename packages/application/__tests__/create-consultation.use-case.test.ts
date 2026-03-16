@@ -127,10 +127,10 @@ describe('CreateConsultationUseCase', () => {
     expect(result.durationMinutes).toBe(30);
   });
 
-  it('uses default durationMinutes of 60 when not provided', async () => {
+  it('uses default durationMinutes of 30 when not provided', async () => {
     const result = await useCase.execute({ caseId: 'case-1', scheduledAt }, adminActor);
 
-    expect(result.durationMinutes).toBe(60);
+    expect(result.durationMinutes).toBe(30);
   });
 
   it('sets consultationLink from input', async () => {

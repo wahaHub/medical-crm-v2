@@ -44,7 +44,7 @@ export class CreateConsultationUseCase {
       scheduledAt: input.scheduledAt,
       startedAt: null,
       endedAt: null,
-      durationMinutes: input.durationMinutes ?? 60,
+      durationMinutes: input.durationMinutes ?? 30,
       actualDuration: null,
       consultationLink: input.consultationLink ?? null,
       aiTranslation: input.aiTranslation ?? false,

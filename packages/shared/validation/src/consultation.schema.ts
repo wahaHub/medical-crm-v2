@@ -2,9 +2,7 @@ import { z } from 'zod';
 
 export const createConsultationSchema = z.object({
   caseId: z.string().uuid(),
-  hospitalId: z.string().uuid(),
-  patientId: z.string().uuid(),
-  doctorId: z.string().uuid().optional(),
+  // hospitalId, patientId, doctorId REMOVED — derived/ignored by use case
   scheduledAt: z.string().datetime(),
   durationMinutes: z.number().int().positive().default(30),
   consultationLink: z.string().url().optional(),

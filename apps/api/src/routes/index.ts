@@ -14,6 +14,7 @@ import ticketRoutes from './tickets.routes.js';
 import packageRoutes from './packages.routes.js';
 import orderRoutes from './orders.routes.js';
 import journeyRoutes from './journey.routes.js';
+import questionCollectorRoutes from './question-collector.routes.js';
 
 const router = new OpenAPIHono();
 router.route('/', caseRoutes);
@@ -31,5 +32,6 @@ router.route('/', ticketRoutes);
 router.route('/', packageRoutes);
 router.route('/', orderRoutes);
 router.route('/', journeyRoutes);
+router.route('/', questionCollectorRoutes);
 
 export default router;

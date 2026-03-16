@@ -11,3 +11,4 @@ export * from './support-ticket.schema.js';
 export * from './package.schema.js';
 export * from './order.schema.js';
 export * from './journey.schema.js';
+export * from './question-collector.schema.js';

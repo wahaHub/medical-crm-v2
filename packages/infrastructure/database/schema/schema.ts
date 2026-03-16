@@ -592,6 +592,55 @@ export const journeyMilestones = pgTable("journey_milestones", {
 	index("idx_milestones_patient_visible").using("btree", table.isVisibleToPatient.asc().nullsLast(), table.eventDate.asc().nullsLast()).where(sql`is_visible_to_patient = true`),
 ]);
 
+// Phase 2 M6: QuestionCollector
+export const qcCompletionStatus = pgEnum("QCCompletionStatus", ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'])
+
+export const questionCollectorTemplates = pgTable("question_collector_templates", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	templateName: varchar("template_name", { length: 200 }).notNull(),
+	category: varchar({ length: 100 }).notNull(),
+	procedureTypes: text("procedure_types").array(),
+	questions: jsonb().notNull(),
+	version: integer().default(1).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdBy: uuid("created_by").references(() => users.id),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_qct_active").using("btree", table.isActive.asc().nullsLast(), table.category.asc().nullsLast()),
+]);
+
+export const questionCollectorResponses = pgTable("question_collector_responses", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	caseId: uuid("case_id").notNull().references(() => cases.id),
+	templateId: uuid("template_id").notNull().references(() => questionCollectorTemplates.id),
+	userId: uuid("user_id").notNull().references(() => users.id),
+	responses: jsonb().notNull(),
+	extractedData: jsonb("extracted_data"),
+	riskFlags: text("risk_flags").array(),
+	completionStatus: qcCompletionStatus("completion_status").default('NOT_STARTED').notNull(),
+	submittedAt: timestamp("submitted_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_qcr_case").using("btree", table.caseId.asc().nullsLast(), table.submittedAt.desc().nullsFirst()),
+	index("idx_qcr_completion_submitted").using("btree", table.completionStatus.asc().nullsLast(), table.submittedAt.desc().nullsFirst()),
+]);
+
+export const questionCollectorCustomizations = pgTable("question_collector_customizations", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	templateId: uuid("template_id").notNull().references(() => questionCollectorTemplates.id),
+	hospitalId: uuid("hospital_id").notNull().references(() => hospitals.id),
+	customizedQuestions: jsonb("customized_questions").notNull(),
+	customizedBy: uuid("customized_by").references(() => users.id),
+	customizedAt: timestamp("customized_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	unique("question_collector_customizations_template_id_hospital_id_key").on(table.templateId, table.hospitalId),
+	index("idx_qcc_template_hospital").using("btree", table.templateId.asc().nullsLast(), table.hospitalId.asc().nullsLast()),
+]);
+
 export const orders = pgTable("orders", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	orderNumber: varchar("order_number", { length: 50 }).notNull().unique(),

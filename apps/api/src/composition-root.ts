@@ -109,6 +109,16 @@ import {
   CreateMilestoneUseCase,
   UpdateMilestoneUseCase,
   DeleteMilestoneUseCase,
+  CreateTemplateUseCase,
+  UpdateTemplateUseCase,
+  ListTemplatesUseCase,
+  GetTemplateUseCase,
+  SubmitResponseUseCase,
+  SaveResponseDraftUseCase,
+  GetQCResponseUseCase,
+  ListQCResponsesUseCase,
+  CustomizeQuestionsUseCase,
+  GetCustomizationUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -132,6 +142,7 @@ import {
   DrizzlePackageRepository,
   DrizzleOrderRepository,
   DrizzleJourneyRepository,
+  DrizzleQuestionCollectorRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -266,6 +277,18 @@ interface AppServices {
   updateMilestone: UpdateMilestoneUseCase;
   deleteMilestone: DeleteMilestoneUseCase;
 
+  // use cases — question collector
+  createTemplate: CreateTemplateUseCase;
+  updateTemplate: UpdateTemplateUseCase;
+  listTemplates: ListTemplatesUseCase;
+  getTemplate: GetTemplateUseCase;
+  submitQCResponse: SubmitResponseUseCase;
+  saveQCResponseDraft: SaveResponseDraftUseCase;
+  getQCResponse: GetQCResponseUseCase;
+  listQCResponses: ListQCResponsesUseCase;
+  customizeQuestions: CustomizeQuestionsUseCase;
+  getCustomization: GetCustomizationUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -328,6 +351,7 @@ export function getServices(): AppServices {
     const packageRepo = new DrizzlePackageRepository(crmDb);
     const orderRepo = new DrizzleOrderRepository(crmDb);
     const journeyRepo = new DrizzleJourneyRepository(crmDb);
+    const qcRepo = new DrizzleQuestionCollectorRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
@@ -433,6 +457,17 @@ export function getServices(): AppServices {
       updateOrderStatus: new UpdateOrderStatusUseCase(orderRepo),
       createPaymentIntent: new CreatePaymentIntentUseCase(orderRepo),
       requestRefund: new RequestRefundUseCase(orderRepo),
+
+      createTemplate: new CreateTemplateUseCase(qcRepo),
+      updateTemplate: new UpdateTemplateUseCase(qcRepo),
+      listTemplates: new ListTemplatesUseCase(qcRepo),
+      getTemplate: new GetTemplateUseCase(qcRepo, caseRepo),
+      submitQCResponse: new SubmitResponseUseCase(qcRepo, caseRepo),
+      saveQCResponseDraft: new SaveResponseDraftUseCase(qcRepo, caseRepo),
+      getQCResponse: new GetQCResponseUseCase(qcRepo, caseRepo),
+      listQCResponses: new ListQCResponsesUseCase(qcRepo),
+      customizeQuestions: new CustomizeQuestionsUseCase(qcRepo),
+      getCustomization: new GetCustomizationUseCase(qcRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

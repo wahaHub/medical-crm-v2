@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones } from "./schema";
+import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones, questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations } from "./schema";
 
 export const casesRelations = relations(cases, ({one, many}) => ({
 	hospital: one(hospitals, {
@@ -214,4 +214,23 @@ export const caseJourneysRelations = relations(caseJourneys, ({one}) => ({
 export const journeyMilestonesRelations = relations(journeyMilestones, ({one}) => ({
 	case: one(cases, { fields: [journeyMilestones.caseId], references: [cases.id] }),
 	createdByUser: one(users, { fields: [journeyMilestones.createdBy], references: [users.id] }),
+}));
+
+// Phase 2 M6: QuestionCollector
+export const questionCollectorTemplatesRelations = relations(questionCollectorTemplates, ({one, many}) => ({
+	creator: one(users, { fields: [questionCollectorTemplates.createdBy], references: [users.id] }),
+	responses: many(questionCollectorResponses),
+	customizations: many(questionCollectorCustomizations),
+}));
+
+export const questionCollectorResponsesRelations = relations(questionCollectorResponses, ({one}) => ({
+	case: one(cases, { fields: [questionCollectorResponses.caseId], references: [cases.id] }),
+	template: one(questionCollectorTemplates, { fields: [questionCollectorResponses.templateId], references: [questionCollectorTemplates.id] }),
+	user: one(users, { fields: [questionCollectorResponses.userId], references: [users.id] }),
+}));
+
+export const questionCollectorCustomizationsRelations = relations(questionCollectorCustomizations, ({one}) => ({
+	template: one(questionCollectorTemplates, { fields: [questionCollectorCustomizations.templateId], references: [questionCollectorTemplates.id] }),
+	hospital: one(hospitals, { fields: [questionCollectorCustomizations.hospitalId], references: [hospitals.id] }),
+	customizer: one(users, { fields: [questionCollectorCustomizations.customizedBy], references: [users.id] }),
 }));

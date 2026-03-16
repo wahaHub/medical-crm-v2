@@ -210,3 +210,27 @@ export type { CreateMilestoneInput } from './use-cases/journey/create-milestone.
 export { UpdateMilestoneUseCase } from './use-cases/journey/update-milestone.use-case.js';
 export type { UpdateMilestoneInput } from './use-cases/journey/update-milestone.use-case.js';
 export { DeleteMilestoneUseCase } from './use-cases/journey/delete-milestone.use-case.js';
+
+// DTOs — QuestionCollector
+export type { QCTemplateDTO, QCResponseDTO, QCCustomizationDTO } from './dtos/question-collector.dto.js';
+
+// Mappers — QuestionCollector
+export { toQCTemplateDTO, toQCResponseDTO, toQCCustomizationDTO } from './mappers/question-collector.mapper.js';
+
+// Use Cases — QuestionCollector
+export { CreateTemplateUseCase } from './use-cases/question-collector/create-template.use-case.js';
+export type { CreateTemplateInput } from './use-cases/question-collector/create-template.use-case.js';
+export { UpdateTemplateUseCase } from './use-cases/question-collector/update-template.use-case.js';
+export type { UpdateTemplateInput } from './use-cases/question-collector/update-template.use-case.js';
+export { ListTemplatesUseCase } from './use-cases/question-collector/list-templates.use-case.js';
+export { GetTemplateUseCase } from './use-cases/question-collector/get-template.use-case.js';
+export type { GetTemplateResult } from './use-cases/question-collector/get-template.use-case.js';
+export { SubmitResponseUseCase } from './use-cases/question-collector/submit-response.use-case.js';
+export type { SubmitResponseInput } from './use-cases/question-collector/submit-response.use-case.js';
+export { SaveResponseDraftUseCase } from './use-cases/question-collector/save-response-draft.use-case.js';
+export type { SaveResponseDraftInput } from './use-cases/question-collector/save-response-draft.use-case.js';
+export { GetResponseUseCase as GetQCResponseUseCase } from './use-cases/question-collector/get-response.use-case.js';
+export { ListResponsesUseCase as ListQCResponsesUseCase } from './use-cases/question-collector/list-responses.use-case.js';
+export { CustomizeQuestionsUseCase } from './use-cases/question-collector/customize-questions.use-case.js';
+export type { CustomizeQuestionsInput } from './use-cases/question-collector/customize-questions.use-case.js';
+export { GetCustomizationUseCase } from './use-cases/question-collector/get-customization.use-case.js';

@@ -181,5 +181,23 @@ export type { JourneyMilestoneProps } from './entities/journey-milestone.entity.
 // Phase 2 M5: Ports
 export type { IJourneyRepository } from './ports/journey-repository.port.js';
 
+// Phase 2 M6: QuestionCollector Enums
+export type { QCCompletionStatus } from './enums/index.js';
+
+// Phase 2 M6: QuestionCollector Entities
+export { QCTemplate } from './entities/qc-template.entity.js';
+export type { QCTemplateProps } from './entities/qc-template.entity.js';
+export { QCResponse } from './entities/qc-response.entity.js';
+export type { QCResponseProps } from './entities/qc-response.entity.js';
+export { QCCustomization } from './entities/qc-customization.entity.js';
+export type { QCCustomizationProps } from './entities/qc-customization.entity.js';
+
+// Phase 2 M6: QuestionCollector Ports
+export type {
+  IQuestionCollectorRepository,
+  QCTemplateListQuery,
+  QCResponseListQuery,
+} from './ports/question-collector-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

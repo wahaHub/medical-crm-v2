@@ -31,6 +31,7 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzlePackageRepository: vi.fn(() => ({})),
   DrizzleOrderRepository: vi.fn(() => ({})),
   DrizzleJourneyRepository: vi.fn(() => ({})),
+  DrizzleQuestionCollectorRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
@@ -160,6 +161,17 @@ vi.mock('@medical-crm/application', () => ({
   CreateMilestoneUseCase: vi.fn(() => ({})),
   UpdateMilestoneUseCase: vi.fn(() => ({})),
   DeleteMilestoneUseCase: vi.fn(() => ({})),
+  // QuestionCollector
+  CreateTemplateUseCase: vi.fn(() => ({})),
+  UpdateTemplateUseCase: vi.fn(() => ({})),
+  ListTemplatesUseCase: vi.fn(() => ({})),
+  GetTemplateUseCase: vi.fn(() => ({})),
+  SubmitResponseUseCase: vi.fn(() => ({})),
+  SaveResponseDraftUseCase: vi.fn(() => ({})),
+  GetQCResponseUseCase: vi.fn(() => ({})),
+  ListQCResponsesUseCase: vi.fn(() => ({})),
+  CustomizeQuestionsUseCase: vi.fn(() => ({})),
+  GetCustomizationUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -308,5 +320,17 @@ describe('composition root', () => {
     expect(services).toHaveProperty('createMilestone');
     expect(services).toHaveProperty('updateMilestone');
     expect(services).toHaveProperty('deleteMilestone');
+
+    // QuestionCollector
+    expect(services).toHaveProperty('createTemplate');
+    expect(services).toHaveProperty('updateTemplate');
+    expect(services).toHaveProperty('listTemplates');
+    expect(services).toHaveProperty('getTemplate');
+    expect(services).toHaveProperty('submitQCResponse');
+    expect(services).toHaveProperty('saveQCResponseDraft');
+    expect(services).toHaveProperty('getQCResponse');
+    expect(services).toHaveProperty('listQCResponses');
+    expect(services).toHaveProperty('customizeQuestions');
+    expect(services).toHaveProperty('getCustomization');
   });
 });

@@ -19,4 +19,5 @@ export { DrizzleSupportTicketReplyRepository } from './drizzle-support-ticket-re
 export { DrizzlePackageRepository } from './drizzle-package.repository.js';
 export { DrizzleOrderRepository } from './drizzle-order.repository.js';
 export { DrizzleJourneyRepository } from './drizzle-journey.repository.js';
+export { DrizzleQuestionCollectorRepository } from './drizzle-question-collector.repository.js';
 export { DrizzleTransactionRunner } from '../transaction-runner.js';

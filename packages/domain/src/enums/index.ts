@@ -79,3 +79,6 @@ export type MilestoneEventType =
   | 'VISA_APPLICATION' | 'VISA_APPROVED'
   | 'INSURANCE_CONFIRMED'
   | 'CUSTOM';
+
+// Phase 2 M6: QuestionCollector
+export type QCCompletionStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';

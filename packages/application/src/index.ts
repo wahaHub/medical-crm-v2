@@ -127,3 +127,12 @@ export { AddHospitalToCaseUseCase } from './use-cases/quotes/add-hospital-to-cas
 export { RemoveHospitalFromCaseUseCase } from './use-cases/quotes/remove-hospital-from-case.use-case.js';
 export { SendReminderUseCase } from './use-cases/quotes/send-reminder.use-case.js';
 export { ListCaseHospitalContactsUseCase } from './use-cases/quotes/list-case-hospital-contacts.use-case.js';
+export { CreateQuoteUseCase } from './use-cases/quotes/create-quote.use-case.js';
+export type { CreateQuoteInput } from './use-cases/quotes/create-quote.use-case.js';
+export { UpdateQuoteUseCase } from './use-cases/quotes/update-quote.use-case.js';
+export type { UpdateQuoteInput } from './use-cases/quotes/update-quote.use-case.js';
+export { SendQuoteUseCase } from './use-cases/quotes/send-quote.use-case.js';
+export { ListQuotesUseCase } from './use-cases/quotes/list-quotes.use-case.js';
+export { GetQuoteUseCase } from './use-cases/quotes/get-quote.use-case.js';
+export { CompareQuotesUseCase } from './use-cases/quotes/compare-quotes.use-case.js';
+export { ResendQuoteUseCase } from './use-cases/quotes/resend-quote.use-case.js';

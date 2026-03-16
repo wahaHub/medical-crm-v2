@@ -94,3 +94,26 @@ export { UpdateConsultationStatusUseCase } from './use-cases/consultations/updat
 export { GetConsultationTranscriptUseCase } from './use-cases/consultations/get-consultation-transcript.use-case.js';
 export { GetConsultationStatsUseCase } from './use-cases/consultations/get-consultation-stats.use-case.js';
 export { ListCaseConsultationsUseCase } from './use-cases/consultations/list-case-consultations.use-case.js';
+
+// Use Cases — Materials
+export { GetHospitalInfoUseCase } from './use-cases/materials/get-hospital-info.use-case.js';
+export { GetProceduresUseCase } from './use-cases/materials/get-procedures.use-case.js';
+export { GetSurgeonsUseCase } from './use-cases/materials/get-surgeons.use-case.js';
+export { GetBeforeAfterCasesUseCase } from './use-cases/materials/get-before-after-cases.use-case.js';
+export { UpdateHospitalInfoUseCase } from './use-cases/materials/update-hospital-info.use-case.js';
+export type { UpdateHospitalInfoInput } from './use-cases/materials/update-hospital-info.use-case.js';
+export { CreateProcedureUseCase } from './use-cases/materials/create-procedure.use-case.js';
+export type { CreateProcedureInput } from './use-cases/materials/create-procedure.use-case.js';
+export { UpdateProcedureUseCase } from './use-cases/materials/update-procedure.use-case.js';
+export type { UpdateProcedureInput } from './use-cases/materials/update-procedure.use-case.js';
+export { DeleteProcedureUseCase } from './use-cases/materials/delete-procedure.use-case.js';
+export { CreateSurgeonUseCase } from './use-cases/materials/create-surgeon.use-case.js';
+export type { CreateSurgeonInput } from './use-cases/materials/create-surgeon.use-case.js';
+export { UpdateSurgeonUseCase } from './use-cases/materials/update-surgeon.use-case.js';
+export type { UpdateSurgeonInput } from './use-cases/materials/update-surgeon.use-case.js';
+export { DeleteSurgeonUseCase } from './use-cases/materials/delete-surgeon.use-case.js';
+export { CreateBeforeAfterCaseUseCase } from './use-cases/materials/create-before-after-case.use-case.js';
+export type { CreateBeforeAfterCaseInput } from './use-cases/materials/create-before-after-case.use-case.js';
+export { UpdateBeforeAfterCaseUseCase } from './use-cases/materials/update-before-after-case.use-case.js';
+export type { UpdateBeforeAfterCaseInput } from './use-cases/materials/update-before-after-case.use-case.js';
+export { DeleteBeforeAfterCaseUseCase } from './use-cases/materials/delete-before-after-case.use-case.js';

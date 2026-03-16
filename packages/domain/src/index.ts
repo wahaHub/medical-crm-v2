@@ -95,5 +95,8 @@ export type {
   MaterialsBeforeAfterCase,
 } from './ports/materials-repository.port.js';
 
+// Phase 2: TransactionRunner
+export type { Transaction, TransactionRunner } from './ports/transaction-runner.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

@@ -2925,10 +2925,27 @@ export interface IMaterialsRepository {
 3. Handle join tables (hospital_procedures → procedures) in the repository adapter
 4. Handle one-to-many images (procedure_cases → case_images) in the repository adapter
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Update domain barrel export**
+
+In `packages/domain/src/index.ts`, add at the end (after the existing "Phase 2BC Ports — Consultations" section):
+
+```typescript
+// Phase 3 Ports — Materials
+export type {
+  IMaterialsRepository,
+  MaterialsHospitalInfo,
+  MaterialsProcedure,
+  MaterialsSurgeon,
+  MaterialsBeforeAfterCase,
+} from './ports/materials-repository.port.js';
+```
+
+**Why this matters:** `composition-root.ts` and use cases import from `@medical-crm/domain` (the package root), not from deep file paths. Without this export, `import type { IMaterialsRepository } from '@medical-crm/domain'` will fail at typecheck.
+
+- [ ] **Step 3: Commit**
 
 ```bash
-git add packages/domain/src/ports/materials-repository.port.ts
+git add packages/domain/src/ports/materials-repository.port.ts packages/domain/src/index.ts
 git commit -m "feat(domain): add IMaterialsRepository port for materials module"
 ```
 
@@ -2986,10 +3003,34 @@ Test that HOSPITAL users can only access their own hospital, ADMIN can access an
 Run: `pnpm --filter @medical-crm/application test -- --run materials`
 Expected: All pass
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Update application barrel export**
+
+In `packages/application/src/index.ts`, add at the end (after the "Use Cases — Consultations" section):
+
+```typescript
+// Use Cases — Materials
+export { GetHospitalInfoUseCase } from './use-cases/materials/get-hospital-info.use-case.js';
+export { GetProceduresUseCase } from './use-cases/materials/get-procedures.use-case.js';
+export { GetSurgeonsUseCase } from './use-cases/materials/get-surgeons.use-case.js';
+export { GetBeforeAfterCasesUseCase } from './use-cases/materials/get-before-after-cases.use-case.js';
+export { UpdateHospitalInfoUseCase } from './use-cases/materials/update-hospital-info.use-case.js';
+export { CreateProcedureUseCase } from './use-cases/materials/create-procedure.use-case.js';
+export { UpdateProcedureUseCase } from './use-cases/materials/update-procedure.use-case.js';
+export { DeleteProcedureUseCase } from './use-cases/materials/delete-procedure.use-case.js';
+export { CreateSurgeonUseCase } from './use-cases/materials/create-surgeon.use-case.js';
+export { UpdateSurgeonUseCase } from './use-cases/materials/update-surgeon.use-case.js';
+export { DeleteSurgeonUseCase } from './use-cases/materials/delete-surgeon.use-case.js';
+export { CreateBeforeAfterCaseUseCase } from './use-cases/materials/create-before-after-case.use-case.js';
+export { UpdateBeforeAfterCaseUseCase } from './use-cases/materials/update-before-after-case.use-case.js';
+export { DeleteBeforeAfterCaseUseCase } from './use-cases/materials/delete-before-after-case.use-case.js';
+```
+
+**Why this matters:** `composition-root.ts` imports use cases from `@medical-crm/application` (the package root). Without this, the DI wiring in Task 31 Step 3 will fail.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/application/src/use-cases/materials/ packages/application/__tests__/materials/
+git add packages/application/src/use-cases/materials/ packages/application/src/index.ts packages/application/__tests__/materials/
 git commit -m "feat(application): materials use cases with authorization"
 ```
 
@@ -2999,8 +3040,16 @@ git commit -m "feat(application): materials use cases with authorization"
 
 **Files:**
 - Create: `packages/infrastructure/supabase-main/supabase-materials.repository.ts`
+- Modify: `packages/infrastructure/package.json` (add subpath export)
+- Modify: `apps/api/src/composition-root.ts` (DI wiring)
 
 **Context:** Implements `IMaterialsRepository` using the existing Main Supabase client. Read the actual table structure from `packages/infrastructure/supabase-main/types.ts` to map fields correctly.
+
+The `@medical-crm/infrastructure` package uses **subpath exports** (not a root barrel). Existing pattern:
+```
+"./supabase-main": "./supabase-main/client.ts"
+```
+The new repository needs its own export so `composition-root.ts` can import it.
 
 - [ ] **Step 1: Read Supabase types to understand table structure**
 
@@ -3030,15 +3079,34 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 }
 ```
 
-- [ ] **Step 3: Wire into composition-root.ts**
+- [ ] **Step 3: Add subpath export in infrastructure package.json**
 
-Add `IMaterialsRepository` instantiation in `apps/api/src/composition-root.ts`, using the Main Supabase client.
+In `packages/infrastructure/package.json`, add to the `"exports"` object:
+```json
+"./supabase-main/materials": "./supabase-main/supabase-materials.repository.ts"
+```
 
-- [ ] **Step 4: Commit**
+This allows `composition-root.ts` to import via:
+```typescript
+import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
+```
+
+- [ ] **Step 4: Wire into composition-root.ts**
+
+In `apps/api/src/composition-root.ts`, add:
+```typescript
+import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
+// ... in the services setup:
+const materialsRepo = new SupabaseMaterialsRepository(mainSupabase);
+```
+
+Then wire all 14 materials use cases from `@medical-crm/application` using `materialsRepo`.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add packages/infrastructure/supabase-main/supabase-materials.repository.ts apps/api/src/composition-root.ts
-git commit -m "feat(infrastructure): Supabase materials repository + DI wiring"
+git add packages/infrastructure/supabase-main/supabase-materials.repository.ts packages/infrastructure/package.json apps/api/src/composition-root.ts
+git commit -m "feat(infrastructure): Supabase materials repository + DI wiring + package export"
 ```
 
 ---
@@ -3047,9 +3115,9 @@ git commit -m "feat(infrastructure): Supabase materials repository + DI wiring"
 
 **Files:**
 - Create: `apps/api/src/routes/materials.routes.ts`
-- Modify: `apps/api/src/index.ts` (register routes)
+- Modify: `apps/api/src/routes/index.ts` (register routes — this is where all route modules are mounted, NOT `apps/api/src/index.ts`)
 
-**Context:** Hono routes for all materials endpoints. Follow the existing route pattern in `consultations.routes.ts`.
+**Context:** Hono routes for all materials endpoints. Follow the existing route pattern in `consultations.routes.ts`. All route modules are imported and mounted in `apps/api/src/routes/index.ts` (the route aggregator). `apps/api/src/index.ts` only mounts the aggregated router once via `app.route('/', routes)`.
 
 - [ ] **Step 1: Create materials.routes.ts**
 
@@ -3062,9 +3130,16 @@ git commit -m "feat(infrastructure): Supabase materials repository + DI wiring"
 
 Each route: validate input with Zod, extract actor from session, call use case, return JSON.
 
-- [ ] **Step 2: Register routes in index.ts**
+- [ ] **Step 2: Register routes in routes/index.ts**
 
-Add `app.route('/', materialsRoutes)` in `apps/api/src/index.ts`.
+In `apps/api/src/routes/index.ts`, add:
+```typescript
+import materialsRoutes from './materials.routes.js';
+// ... after existing router.route() calls:
+router.route('/', materialsRoutes);
+```
+
+**Important:** Do NOT modify `apps/api/src/index.ts` — it only mounts the aggregated `routes` once.
 
 - [ ] **Step 3: Run typecheck**
 
@@ -3074,7 +3149,7 @@ Expected: All pass
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/api/src/routes/materials.routes.ts apps/api/src/index.ts
+git add apps/api/src/routes/materials.routes.ts apps/api/src/routes/index.ts
 git commit -m "feat(api): materials routes — 14 endpoints for hospital materials CRUD"
 ```
 

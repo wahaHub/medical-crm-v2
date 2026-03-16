@@ -33,3 +33,8 @@ export type TranscriptStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
 // Message Tasks
 export type MessageTaskKind = 'TRANSLATE' | 'SUMMARIZE';
 export type MessageTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+// Phase 2: Case Model Realignment
+export type CaseAssignmentStatus = 'UNASSIGNED' | 'ASSIGNED';
+export type CaseTreatmentStage = 'CONFIRMED' | 'IN_TREATMENT' | 'POST_TREATMENT' | 'COMPLETED' | 'FOLLOW_UP';
+export type AISummaryStatusType = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';

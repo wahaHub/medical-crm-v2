@@ -12,6 +12,11 @@ export type {
   MessageTaskKind, MessageTaskStatus,
 } from './enums/index.js';
 
+// Phase 2: Case Model Realignment Enums
+export type {
+  CaseAssignmentStatus, CaseTreatmentStage, AISummaryStatusType,
+} from './enums/index.js';
+
 // Phase 1 State machines
 export { STATUS_TRANSITIONS } from './state-machine/case-status-transitions.js';
 export { STAGE_ORDER } from './state-machine/case-stage-order.js';
@@ -19,6 +24,10 @@ export { STAGE_ORDER } from './state-machine/case-stage-order.js';
 // Phase 2BC State machines
 export { HOSPITAL_STATUS_TRANSITIONS } from './state-machine/hospital-status-transitions.js';
 export { CONSULTATION_STATUS_TRANSITIONS } from './state-machine/consultation-status-transitions.js';
+
+// Phase 2: Case Model Realignment State machines
+export { ASSIGNMENT_STATUS_TRANSITIONS } from './state-machine/assignment-status-transitions.js';
+export { TREATMENT_STAGE_TRANSITIONS } from './state-machine/treatment-stage-transitions.js';
 
 // Phase 1 Value objects
 export { CaseNumber } from './value-objects/case-number.js';

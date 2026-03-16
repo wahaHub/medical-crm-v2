@@ -6,3 +6,7 @@ export { useDebounce } from './hooks/use-debounce';
 export { SidebarNav, type NavItem, type SidebarNavProps } from './components/sidebar-nav';
 export { PageHeader, type PageHeaderProps } from './components/page-header';
 export { Tabs, type TabItem, type TabsProps } from './components/tabs';
+export { StatCard, type StatCardProps } from './components/stat-card';
+export { StatusBadge, type StatusBadgeProps } from './components/status-badge';
+export { Card, CardHeader, CardTitle, type CardProps } from './components/card';
+export { Avatar, type AvatarProps } from './components/avatar';

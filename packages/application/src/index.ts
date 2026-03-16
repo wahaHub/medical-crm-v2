@@ -260,6 +260,22 @@ export { UpdateQuoteTemplateUseCase } from './use-cases/service-catalog/update-q
 export type { UpdateQuoteTemplateInput } from './use-cases/service-catalog/update-quote-template.use-case.js';
 export { DeleteQuoteTemplateUseCase } from './use-cases/service-catalog/delete-quote-template.use-case.js';
 
+// DTOs — BookingRequest
+export type { BookingRequestDTO, BookingRequestHospitalDTO } from './dtos/booking-request.dto.js';
+
+// Mappers — BookingRequest
+export { toBookingRequestDTO, toBookingRequestHospitalDTO } from './mappers/booking-request.mapper.js';
+
+// Use Cases — BookingRequest
+export { CreateBookingRequestUseCase } from './use-cases/booking/create-booking-request.use-case.js';
+export type { CreateBookingRequestInput } from './use-cases/booking/create-booking-request.use-case.js';
+export { GetHospitalRecommendationsUseCase } from './use-cases/booking/get-hospital-recommendations.use-case.js';
+export type { GetHospitalRecommendationsResult } from './use-cases/booking/get-hospital-recommendations.use-case.js';
+export { SaveHospitalSelectionsUseCase } from './use-cases/booking/save-hospital-selections.use-case.js';
+export type { SaveHospitalSelectionsInput } from './use-cases/booking/save-hospital-selections.use-case.js';
+export { CompleteSignupUseCase } from './use-cases/booking/complete-signup.use-case.js';
+export type { CompleteSignupInput, CompleteSignupResult } from './use-cases/booking/complete-signup.use-case.js';
+
 // DTOs — Dashboard
 export type { PatientDashboardDTO, AdminDashboardDTO, HospitalDashboardDTO } from './dtos/dashboard.dto.js';
 

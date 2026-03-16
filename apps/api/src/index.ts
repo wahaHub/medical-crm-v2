@@ -27,6 +27,10 @@ app.post('/api/v2/auth/hospital/register', async (c) => {
   return c.json(result, 201);
 });
 
+// Public: booking request routes (no auth required)
+import publicBookingRoutes from './routes/public-booking.routes.js';
+app.route('/', publicBookingRoutes);
+
 // Internal: worker endpoint (X-Internal-Secret header auth, not Keycloak)
 app.route('/', internalRoutes);
 

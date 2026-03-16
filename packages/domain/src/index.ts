@@ -215,5 +215,21 @@ export type {
   QuoteTemplateListQuery,
 } from './ports/service-catalog-repository.port.js';
 
+// Phase 2 M9: BookingRequest Enums
+export type { BookingRequestStatus, BookingConditionType } from './enums/index.js';
+
+// Phase 2 M9: BookingRequest Value objects
+export { BookingRequestNumber } from './value-objects/booking-request-number.js';
+
+// Phase 2 M9: BookingRequest Entities
+export { BookingRequest } from './entities/booking-request.entity.js';
+export type { BookingRequestProps } from './entities/booking-request.entity.js';
+export { BOOKING_STATUS_TRANSITIONS } from './entities/booking-request.entity.js';
+export { BookingRequestHospital } from './entities/booking-request-hospital.entity.js';
+export type { BookingRequestHospitalProps } from './entities/booking-request-hospital.entity.js';
+
+// Phase 2 M9: BookingRequest Ports
+export type { IBookingRequestRepository } from './ports/booking-request-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';

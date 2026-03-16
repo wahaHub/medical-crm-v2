@@ -88,3 +88,7 @@ export type ServiceCatalogCategory =
   | 'COSMETIC_SURGERY' | 'DENTAL' | 'DERMATOLOGY' | 'ORTHOPEDIC'
   | 'CARDIAC' | 'OPHTHALMIC' | 'FERTILITY' | 'WEIGHT_LOSS'
   | 'HAIR_RESTORATION' | 'WELLNESS' | 'OTHER';
+
+// Phase 2 M9: BookingRequest
+export type BookingRequestStatus = 'PENDING' | 'HOSPITALS_MATCHED' | 'SELECTIONS_SAVED' | 'COMPLETED' | 'EXPIRED';
+export type BookingConditionType = 'COSMETIC' | 'MEDICAL' | 'DENTAL' | 'WELLNESS' | 'OTHER';

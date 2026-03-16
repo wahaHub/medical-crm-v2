@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones, questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations, serviceCatalogItems, quoteTemplates } from "./schema";
+import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones, questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations, serviceCatalogItems, quoteTemplates, bookingRequests, bookingRequestHospitals } from "./schema";
 
 export const casesRelations = relations(cases, ({one, many}) => ({
 	hospital: one(hospitals, {
@@ -242,4 +242,15 @@ export const serviceCatalogItemsRelations = relations(serviceCatalogItems, ({one
 
 export const quoteTemplatesRelations = relations(quoteTemplates, ({one}) => ({
 	hospital: one(hospitals, { fields: [quoteTemplates.hospitalId], references: [hospitals.id] }),
+}));
+
+// Phase 2 M9: BookingRequest
+export const bookingRequestsRelations = relations(bookingRequests, ({one, many}) => ({
+	user: one(users, { fields: [bookingRequests.userId], references: [users.id] }),
+	bookingRequestHospitals: many(bookingRequestHospitals),
+}));
+
+export const bookingRequestHospitalsRelations = relations(bookingRequestHospitals, ({one}) => ({
+	bookingRequest: one(bookingRequests, { fields: [bookingRequestHospitals.bookingRequestId], references: [bookingRequests.id] }),
+	hospital: one(hospitals, { fields: [bookingRequestHospitals.hospitalId], references: [hospitals.id] }),
 }));

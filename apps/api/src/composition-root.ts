@@ -133,6 +133,10 @@ import {
   PatientDashboardUseCase,
   AdminDashboardUseCase,
   HospitalDashboardUseCase,
+  CreateBookingRequestUseCase,
+  GetHospitalRecommendationsUseCase,
+  SaveHospitalSelectionsUseCase,
+  CompleteSignupUseCase,
 } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
@@ -158,6 +162,7 @@ import {
   DrizzleJourneyRepository,
   DrizzleQuestionCollectorRepository,
   DrizzleServiceCatalogRepository,
+  DrizzleBookingRequestRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -324,6 +329,12 @@ interface AppServices {
   adminDashboard: AdminDashboardUseCase;
   hospitalDashboard: HospitalDashboardUseCase;
 
+  // use cases — booking
+  createBookingRequest: CreateBookingRequestUseCase;
+  getHospitalRecommendations: GetHospitalRecommendationsUseCase;
+  saveHospitalSelections: SaveHospitalSelectionsUseCase;
+  completeSignup: CompleteSignupUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -388,6 +399,7 @@ export function getServices(): AppServices {
     const journeyRepo = new DrizzleJourneyRepository(crmDb);
     const qcRepo = new DrizzleQuestionCollectorRepository(crmDb);
     const serviceCatalogRepo = new DrizzleServiceCatalogRepository(crmDb);
+    const bookingRequestRepo = new DrizzleBookingRequestRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
@@ -521,6 +533,11 @@ export function getServices(): AppServices {
       patientDashboard: new PatientDashboardUseCase(caseRepo, orderRepo, journeyRepo),
       adminDashboard: new AdminDashboardUseCase(caseRepo, ticketRepo, orderRepo),
       hospitalDashboard: new HospitalDashboardUseCase(caseRepo, quoteRepo, consultationRepo),
+
+      createBookingRequest: new CreateBookingRequestUseCase(bookingRequestRepo),
+      getHospitalRecommendations: new GetHospitalRecommendationsUseCase(bookingRequestRepo),
+      saveHospitalSelections: new SaveHospitalSelectionsUseCase(bookingRequestRepo),
+      completeSignup: new CompleteSignupUseCase(bookingRequestRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

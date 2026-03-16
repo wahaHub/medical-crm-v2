@@ -707,3 +707,38 @@ export const orders = pgTable("orders", {
 	index("idx_orders_status_type").using("btree", table.status.asc().nullsLast(), table.type.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
 	index("idx_orders_case_created").using("btree", table.caseId.asc().nullsLast(), table.createdAt.desc().nullsFirst()).where(sql`case_id IS NOT NULL`),
 ]);
+
+// Phase 2 M9: BookingRequest
+export const bookingRequestStatus = pgEnum("BookingRequestStatus", ['PENDING', 'HOSPITALS_MATCHED', 'SELECTIONS_SAVED', 'COMPLETED', 'EXPIRED'])
+export const bookingConditionType = pgEnum("BookingConditionType", ['COSMETIC', 'MEDICAL', 'DENTAL', 'WELLNESS', 'OTHER'])
+
+export const bookingRequests = pgTable("booking_requests", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	userId: uuid("user_id").references(() => users.id),
+	requestNumber: varchar("request_number", { length: 50 }).notNull().unique(),
+	conditionType: bookingConditionType("condition_type").notNull(),
+	conditionCategory: varchar("condition_category", { length: 100 }).notNull(),
+	conditionDescription: text("condition_description"),
+	destinationPreference: jsonb("destination_preference"),
+	preferredLanguage: varchar("preferred_language", { length: 10 }).default('en').notNull(),
+	status: bookingRequestStatus().default('PENDING').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_booking_requests_user").using("btree", table.userId.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+	index("idx_booking_requests_status").using("btree", table.status.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+]);
+
+export const bookingRequestHospitals = pgTable("booking_request_hospitals", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	bookingRequestId: uuid("booking_request_id").notNull().references(() => bookingRequests.id, { onDelete: 'cascade' }),
+	hospitalId: uuid("hospital_id").notNull().references(() => hospitals.id),
+	isRecommended: boolean("is_recommended").default(false).notNull(),
+	matchScore: integer("match_score"),
+	recommendationReason: text("recommendation_reason"),
+	selectedByPatient: boolean("selected_by_patient").default(false).notNull(),
+	selectedAt: timestamp("selected_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	unique("booking_request_hospitals_br_hospital_key").on(table.bookingRequestId, table.hospitalId),
+	index("idx_booking_request_hospitals_br").using("btree", table.bookingRequestId.asc().nullsLast()),
+]);

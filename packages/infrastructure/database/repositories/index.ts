@@ -21,4 +21,5 @@ export { DrizzleOrderRepository } from './drizzle-order.repository.js';
 export { DrizzleJourneyRepository } from './drizzle-journey.repository.js';
 export { DrizzleQuestionCollectorRepository } from './drizzle-question-collector.repository.js';
 export { DrizzleServiceCatalogRepository } from './drizzle-service-catalog.repository.js';
+export { DrizzleBookingRequestRepository } from './drizzle-booking-request.repository.js';
 export { DrizzleTransactionRunner } from '../transaction-runner.js';

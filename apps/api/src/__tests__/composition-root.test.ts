@@ -33,6 +33,7 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleJourneyRepository: vi.fn(() => ({})),
   DrizzleQuestionCollectorRepository: vi.fn(() => ({})),
   DrizzleServiceCatalogRepository: vi.fn(() => ({})),
+  DrizzleBookingRequestRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
@@ -190,6 +191,11 @@ vi.mock('@medical-crm/application', () => ({
   PatientDashboardUseCase: vi.fn(() => ({})),
   AdminDashboardUseCase: vi.fn(() => ({})),
   HospitalDashboardUseCase: vi.fn(() => ({})),
+  // Booking
+  CreateBookingRequestUseCase: vi.fn(() => ({})),
+  GetHospitalRecommendationsUseCase: vi.fn(() => ({})),
+  SaveHospitalSelectionsUseCase: vi.fn(() => ({})),
+  CompleteSignupUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -370,5 +376,11 @@ describe('composition root', () => {
     expect(services).toHaveProperty('patientDashboard');
     expect(services).toHaveProperty('adminDashboard');
     expect(services).toHaveProperty('hospitalDashboard');
+
+    // Booking
+    expect(services).toHaveProperty('createBookingRequest');
+    expect(services).toHaveProperty('getHospitalRecommendations');
+    expect(services).toHaveProperty('saveHospitalSelections');
+    expect(services).toHaveProperty('completeSignup');
   });
 });

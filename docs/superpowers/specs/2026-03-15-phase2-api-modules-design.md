@@ -201,7 +201,15 @@ For critical write operations (AcceptQuote, CompleteSignup, CreateOrder):
 - Implementation: simple `idempotency_keys` table with `key`, `result`, `created_at`, TTL 24h
 - Alternatively, rely on DB unique constraints as natural idempotency (e.g., `case_hospital_contacts(case_id, hospital_id)` unique)
 
-For now, **use DB unique constraints as primary idempotency mechanism** and add explicit idempotency table only for payment-related flows (CreateOrder, CreatePaymentIntent).
+**Explicit idempotency table required for these operations** (multi-table transactions that cannot be naturally protected by a single unique constraint):
+- `AcceptQuote` — updates 4+ tables; a retry after partial failure could corrupt state
+- `CompleteSignup` — creates user + case + CHCs; retry must return same result
+- `CreateOrder` — payment-related, must not double-charge
+- `CreatePaymentIntent` — payment-related
+
+**DB unique constraints as supplementary protection** for simpler operations:
+- `AddHospitalToCase` — `case_hospital_contacts(case_id, hospital_id)` unique
+- `CreateBookingRequest` — `booking_requests(request_number)` unique
 
 ### 0.5.4 Optimistic Locking
 
@@ -223,7 +231,7 @@ Apply to: `quotes`, `case_hospital_contacts`, `orders`, `support_tickets`
 
 | Migration | Scope | New Tables | Alters |
 |-----------|-------|------------|--------|
-| M0 | Case realignment | — | cases: add 8 columns + 2 enums |
+| M0 | Case realignment | — | cases: add 9 columns + 2 enums |
 | M1 | Quotes + CHC | `case_hospital_contacts`, `quotes` | — |
 | M2 | Events | `case_events` | — |
 | M3 | Support Tickets | `support_tickets`, `support_ticket_replies` | — |
@@ -256,7 +264,28 @@ CREATE TYPE "TicketPriority" AS ENUM ('HIGH', 'MEDIUM', 'LOW');
 CREATE TYPE "TicketStatus" AS ENUM ('OPEN', 'ASSIGNED', 'PENDING_INFO', 'RESOLVED', 'CLOSED');
 CREATE TYPE "TicketReplyRole" AS ENUM ('ADMIN', 'PATIENT');
 CREATE TYPE "MilestoneEventType" AS ENUM ('VISA_READY', 'TRAVEL_DEPARTURE', 'HOSPITAL_VISIT', 'TREATMENT', 'FOLLOW_UP', 'TRAVEL_RETURN');
-CREATE TYPE "CaseEventType" AS ENUM ('MESSAGE', 'QUESTIONNAIRE', 'CONSULTATION', 'DOCUMENT', 'STATUS_CHANGED', 'AI_SUMMARY', 'QUOTE_SENT', 'QUOTE_ACCEPTED', 'QUOTE_REJECTED', 'ORDER_STATUS_CHANGED', 'JOURNEY_UPDATED');
+CREATE TYPE "CaseEventType" AS ENUM (
+  -- Case lifecycle
+  'CASE_CREATED', 'CASE_DISTRIBUTED', 'CASE_ASSIGNED', 'CASE_STATUS_CHANGED', 'CASE_STAGE_ADVANCED',
+  -- Hospital contact flow
+  'HOSPITALS_SELECTED', 'HOSPITAL_REPLIED', 'HOSPITAL_NEED_INFO', 'HOSPITAL_REMOVED',
+  -- Quotes
+  'QUOTE_SENT', 'QUOTE_ACCEPTED', 'QUOTE_REJECTED', 'QUOTE_EXPIRED', 'QUOTE_RESENT',
+  -- Communication
+  'MESSAGE_SENT', 'MESSAGE_RECEIVED',
+  -- Clinical
+  'QUESTIONNAIRE_SUBMITTED', 'CONSULTATION_SCHEDULED', 'CONSULTATION_COMPLETED',
+  -- Documents
+  'DOCUMENT_UPLOADED',
+  -- Orders
+  'ORDER_PLACED', 'ORDER_STATUS_CHANGED',
+  -- Journey
+  'MILESTONE_ADDED', 'MILESTONE_UPDATED', 'JOURNEY_UPDATED',
+  -- Support
+  'TICKET_CREATED', 'TICKET_RESOLVED',
+  -- AI
+  'AI_SUMMARY_GENERATED'
+);
 CREATE TYPE "ActorType" AS ENUM ('PATIENT', 'HOSPITAL', 'ADMIN', 'SYSTEM');
 CREATE TYPE "BookingRequestStatus" AS ENUM ('PENDING', 'HOSPITALS_SELECTED', 'COMPLETED', 'CANCELLED');
 CREATE TYPE "BookingConditionType" AS ENUM ('TREATMENT', 'PROCEDURE');
@@ -316,10 +345,10 @@ ALTER TABLE case_hospital_contacts
   ADD CONSTRAINT chc_quote_id_fkey FOREIGN KEY (quote_id) REFERENCES quotes(id);
 
 -- Indexes (per INDEX_PLAN.md)
-CREATE UNIQUE INDEX idx_chc_case_hospital ON case_hospital_contacts(case_id, hospital_id);
+-- NOTE: UNIQUE(case_id, hospital_id) on CHC and UNIQUE on quotes.quote_number already create implicit unique indexes.
+-- The explicit indexes below are for query patterns that need different column ordering.
 CREATE INDEX idx_chc_hospital_sub_distributed ON case_hospital_contacts(hospital_id, sub_status, distributed_at DESC);
 CREATE INDEX idx_chc_case_sub ON case_hospital_contacts(case_id, sub_status);
-CREATE UNIQUE INDEX idx_quotes_quote_number ON quotes(quote_number);
 CREATE INDEX idx_quotes_case_status_created ON quotes(case_id, status, created_at DESC);
 CREATE INDEX idx_quotes_hospital_status_created ON quotes(hospital_id, status, created_at DESC);
 CREATE INDEX idx_quotes_valid_until_active ON quotes(valid_until) WHERE status IN ('PENDING');
@@ -443,12 +472,16 @@ Once Module 2 is built, inject `CaseEventRepository` into use cases from Module 
 
 | Use Case | Event Type |
 |----------|------------|
+| `AddHospitalToCase` | CASE_DISTRIBUTED |
 | `SendQuote` | QUOTE_SENT |
-| `AcceptQuote` | QUOTE_ACCEPTED |
+| `AcceptQuote` | QUOTE_ACCEPTED, CASE_ASSIGNED |
 | `RejectQuote` | QUOTE_REJECTED |
+| `CreateOrder` | ORDER_PLACED |
 | `UpdateOrderStatus` | ORDER_STATUS_CHANGED |
-| `UpdateTicketStatus` | STATUS_CHANGED |
+| `UpdateTicketStatus` | CASE_STATUS_CHANGED |
+| `CreateMilestone` | MILESTONE_ADDED |
 | `UpdateCaseJourney` | JOURNEY_UPDATED |
+| `SubmitResponse` (QC) | QUESTIONNAIRE_SUBMITTED |
 
 ### 2.5 API Routes
 
@@ -753,16 +786,14 @@ CREATE TABLE question_collector_responses (
 
 CREATE TABLE question_collector_customizations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  case_id UUID NOT NULL REFERENCES cases(id),
+  template_id UUID NOT NULL REFERENCES question_collector_templates(id),
   hospital_id UUID NOT NULL REFERENCES hospitals(id),
-  original_questions JSONB NOT NULL,
   customized_questions JSONB NOT NULL,
   customized_by UUID REFERENCES users(id),
   customized_at TIMESTAMPTZ,
-  sent_to_patient BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(case_id, hospital_id)
+  UNIQUE(template_id, hospital_id)
 );
 
 -- FK: cases.question_collector_template_id → question_collector_templates(id)
@@ -773,13 +804,20 @@ ALTER TABLE cases ADD CONSTRAINT cases_qc_template_fkey
 -- Indexes
 CREATE INDEX idx_qcr_case ON question_collector_responses(case_id, submitted_at DESC);
 CREATE INDEX idx_qcr_risk_flags ON question_collector_responses USING gin(risk_flags);
-CREATE INDEX idx_qcc_case_hospital ON question_collector_customizations(case_id, hospital_id);
+CREATE INDEX idx_qcc_template_hospital ON question_collector_customizations(template_id, hospital_id);
 CREATE INDEX idx_qcr_completion_submitted ON question_collector_responses(completion_status, submitted_at DESC);
 ```
 
 ### 6.2 Design Decision: Customizations
 
-> Per DATA_MODELS.md Section 4.3, hospitals can customize the questionnaire per case. The `question_collector_customizations` table stores the hospital's override. When a patient fills out the questionnaire, the system checks if a customization exists for their case+hospital; if yes, use customized_questions; if no, use the template's default questions.
+> **Model: Platform template + optional hospital overrides at template level.**
+>
+> Each case has **one** questionnaire response (patient fills out once). The questions shown are resolved as follows:
+> 1. Case has `question_collector_template_id` → look up template
+> 2. If case is ASSIGNED (one hospital): check `customizations` for `(template_id, assigned_hospital_id)`. If found, use `customized_questions`. Otherwise, use template defaults.
+> 3. If case is UNASSIGNED (multi-hospital phase): always use template defaults (no hospital-specific customization applies yet).
+>
+> Customizations are **template-level, not case-level** — a hospital configures their preferred questions once per template, and it applies to all cases using that template. This avoids the problem of patient seeing different questions depending on which hospital they look at, and eliminates the need for `hospital_id` on the response.
 
 ### 6.3 Use Cases
 
@@ -809,8 +847,8 @@ PATCH  /api/v2/cases/{caseId}/questionnaire     — SaveResponseDraft
 GET    /api/v2/cases/{caseId}/questionnaire     — GetResponse
 GET    /api/v2/questionnaire-responses          — ListResponses (Admin)
 
-POST   /api/v2/cases/{caseId}/questionnaire-customization     — CustomizeQuestions (Hospital)
-GET    /api/v2/cases/{caseId}/questionnaire-customization     — GetCustomization (Hospital)
+POST   /api/v2/question-templates/{templateId}/customizations    — CustomizeQuestions (Hospital, scoped by hospital_id from session)
+GET    /api/v2/question-templates/{templateId}/customizations  — GetCustomization (Hospital)
 ```
 
 ---
@@ -924,12 +962,17 @@ Pure read-only aggregation endpoints. No new tables. Each dashboard use case com
 
 ### 9.1 Patient Auth Design
 
-Current v2 auth: Keycloak PKCE flow → iron-session BFF cookies. All `/api/v2/*` routes require a valid Keycloak session.
+Current v2 auth: Keycloak PKCE flow → iron-session BFF cookies. All `/api/v2/*` routes require a valid Keycloak session. The login flow is **frontend-initiated**: the app redirects to Keycloak's login page, Keycloak redirects back with an auth code, the BFF exchanges it for tokens and writes them into an iron-session cookie. The API never directly issues sessions.
 
-For BookingRequest, we need:
-1. **Public routes** (`/api/v2/public/*`) — no auth required, used during signup flow
-2. **Patient session creation** — `CompleteSignup` creates a Keycloak user and establishes a session
-3. **Patient-scoped routes** — existing `/api/v2/*` routes need to work for PATIENT role (currently only tested with ADMIN/HOSPITAL)
+**CompleteSignup does NOT create a session.** The flow is:
+
+1. Public API creates the user + Keycloak account (DB transaction)
+2. API returns `{ keycloakLoginUrl }` with the user's email pre-filled
+3. Frontend redirects to Keycloak login page (standard PKCE flow)
+4. Patient logs in → Keycloak callback → iron-session cookie established
+5. Patient is now authenticated and can access `/api/v2/*` routes
+
+This preserves the single auth mechanism (Keycloak PKCE) and avoids introducing backend-issued sessions.
 
 **Auth middleware changes:**
 - Add a `publicRoutes` allowlist in the Keycloak middleware for `/api/v2/public/*`
@@ -987,14 +1030,20 @@ ALTER TABLE cases ADD COLUMN booking_request_id UUID REFERENCES booking_requests
 | `SaveHospitalSelections` | Public | Save patient's hospital selections |
 | `CompleteSignup` | Public | **Transactional** — see below |
 
-**CompleteSignup Transaction:**
-1. Create or find user by email
-2. Create Keycloak user (if new)
+**CompleteSignup — two phases:**
+
+*Phase A: DB Transaction (atomic, within TransactionRunner):*
+1. Create or find user by email in DB
+2. Create Keycloak user via admin API (if new) — **outside** DB tx but before committing, so we can rollback if Keycloak fails
 3. Update booking_request.user_id, status → COMPLETED
 4. Create case (assignment_status=UNASSIGNED)
 5. For each selected hospital: create case_hospital_contact (sub_status=DISTRIBUTED)
-6. Create Keycloak session / issue tokens
-7. Trigger welcome email (async, outside transaction)
+
+*Phase B: Post-transaction (non-atomic):*
+6. Return `{ keycloakLoginUrl, userId }` — frontend redirects to Keycloak PKCE login
+7. Trigger welcome email (async)
+
+> **Note**: Step 2 (Keycloak user creation) is a side effect that cannot be rolled back by a DB transaction. If the DB tx fails after Keycloak user creation, we have an orphaned Keycloak user. This is acceptable: the user can still log in, and a retry of CompleteSignup will find them via email lookup. Alternatively, wrap Keycloak creation in a compensating action (delete on rollback) during implementation.
 
 ### 9.5 API Routes
 
@@ -1079,7 +1128,7 @@ apps/api/src/composition-root.ts                           (modify)
 
 | Order | Module | New Tables | Alter | ~Use Cases | ~Routes | Dependencies |
 |-------|--------|------------|-------|-----------|---------|-------------|
-| **0** | Case Model Realignment | — | cases +8 cols, +2 enums | 3 rewrite + 1 deprecate + 1 schema | 5 rewrite/update | None |
+| **0** | Case Model Realignment | — | cases +9 cols, +2 enums | 3 rewrite + 1 deprecate + 1 schema | 5 rewrite/update | None |
 | **0.5** | Transaction / Idempotency / Migration Conventions | idempotency_keys (optional) | — | 0 (infra) | 0 | Section 0 |
 | **1** | Quotes + CHC | 2 | — | 14 | 15 | Section 0, 0.5 |
 | **2** | Events / Timeline | 1 | — | 3 | 2 | Section 0 |
@@ -1102,7 +1151,7 @@ The following entities and features are defined in patientsflow docs but **expli
 
 **Reason**: User decided ReplyTasks are not needed ("ReplyTasks 我想了下不定需要，可以去掉").
 
-ReplyTask was a hospital-side queue for pending conversation replies (DATA_MODELS.md §ReplyTask). The hospital inbox in Module 1 can filter conversations needing reply via `conversations.last_message_at` + `conversations.hospital_replied` flag instead.
+ReplyTask was a hospital-side queue for pending conversation replies (DATA_MODELS.md §ReplyTask). The hospital inbox can filter conversations needing reply by checking `conversations.last_sender_id` — if the last sender is not the hospital user, the conversation needs a reply. This uses existing schema fields (`last_sender_id`, `last_message_at`) and does not require new columns.
 
 ### CaseSummary (AI-Generated)
 
@@ -1132,7 +1181,7 @@ Phase 2 use cases emit domain events (e.g., `QuoteAccepted`, `TicketAssigned`). 
 
 ---
 
-*Spec version: v2.0*
+*Spec version: v2.1*
 *Last updated: 2026-03-15*
 *Source docs: patientsflow/DATA_MODELS.md, QUERY_CATALOG.md, STATE_MACHINES.md, PATIENT_CONSOLE_FLOW.md, ADMIN_PORTAL_CRM_REDESIGN.md, HOSPITAL_PORTAL_CRM_REDESIGN.md*
-*Review: Codex review + internal spec review + user feedback incorporated*
+*Review: Codex review x2 + internal spec review + user feedback incorporated*

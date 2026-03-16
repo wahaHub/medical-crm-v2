@@ -3343,7 +3343,7 @@ git commit -m "feat(hospital): materials page with 4-tab layout and CRUD"
 
 ---
 
-## Final: Typecheck + Build Verification
+## Final: Typecheck + Lint + Build Verification
 
 ### Task 35: Full Build Verification
 
@@ -3352,21 +3352,26 @@ git commit -m "feat(hospital): materials page with 4-tab layout and CRUD"
 Run: `pnpm turbo typecheck`
 Expected: All packages pass
 
-- [ ] **Step 2: Run full test suite**
+- [ ] **Step 2: Run full lint**
+
+Run: `pnpm turbo lint`
+Expected: All packages pass. Fix any lint errors before proceeding.
+
+- [ ] **Step 3: Run full test suite**
 
 Run: `pnpm turbo test`
 Expected: All tests pass
 
-- [ ] **Step 3: Build hospital app**
+- [ ] **Step 4: Build hospital app**
 
 Run: `pnpm --filter @medical-crm/hospital build`
 Expected: Next.js build completes without errors
 
-- [ ] **Step 4: Commit any fixes**
+- [ ] **Step 5: Commit any fixes**
 
-If typecheck/build reveals issues, fix them and commit.
+If typecheck/lint/build reveals issues, fix them and commit.
 
-- [ ] **Step 5: Final commit summary**
+- [ ] **Step 6: Final commit summary**
 
 ```bash
 git log --oneline -20

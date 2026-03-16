@@ -5,3 +5,5 @@ export * from './document.schema';
 export * from './progress.schema';
 export * from './conversation.schema';
 export * from './consultation.schema';
+export * from './case-hospital-contact.schema.js';
+export * from './quote.schema.js';

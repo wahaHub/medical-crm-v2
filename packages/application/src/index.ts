@@ -11,6 +11,8 @@ export type {
 export type { HospitalDTO } from './dtos/hospital.dto.js';
 export type { ConversationDTO, MessageDTO } from './dtos/conversation.dto.js';
 export type { ConsultationDTO, ConsultationTranscriptDTO } from './dtos/consultation.dto.js';
+export type { CaseHospitalContactDTO } from './dtos/case-hospital-contact.dto.js';
+export type { QuoteDTO } from './dtos/quote.dto.js';
 
 // Mappers
 export { toCaseDTO, toHospitalCaseDetailDTO } from './mappers/case.mapper.js';
@@ -20,6 +22,8 @@ export { toProgressDTO, splitProgressByType } from './mappers/progress.mapper.js
 export { toHospitalDTO } from './mappers/hospital.mapper.js';
 export { toConversationDTO, toMessageDTO } from './mappers/conversation.mapper.js';
 export { toConsultationDTO, toConsultationTranscriptDTO } from './mappers/consultation.mapper.js';
+export { toCaseHospitalContactDTO } from './mappers/case-hospital-contact.mapper.js';
+export { toQuoteDTO } from './mappers/quote.mapper.js';
 
 // Use Cases — Cases
 export { CreateCaseUseCase } from './use-cases/cases/create-case.use-case.js';

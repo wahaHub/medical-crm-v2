@@ -24,6 +24,16 @@ describe('Case entity', () => {
       assignedAt: null,
       createdAt: new Date('2026-01-01'),
       updatedAt: new Date('2026-01-01'),
+      // New Phase 2 fields
+      assignmentStatus: 'UNASSIGNED',
+      treatmentStage: null,
+      conditionSummary: null,
+      structuredData: null,
+      riskFlags: null,
+      priority: null,
+      lastEventAt: null,
+      aiSummaryStatus: 'PENDING',
+      questionCollectorTemplateId: null,
       ...overrides,
     });
   }
@@ -154,6 +164,38 @@ describe('Case entity', () => {
       c.assign('hospital-2');
       expect(c.stage).toBe('HOSPITAL_CONTACTED');
       expect(c.assignedHospitalId).toBe('hospital-2');
+    });
+  });
+
+  describe('transitionAssignmentStatus', () => {
+    it('allows UNASSIGNED → ASSIGNED', () => {
+      const c = createTestCase({ assignmentStatus: 'UNASSIGNED' });
+      c.transitionAssignmentStatus('ASSIGNED');
+      expect(c.assignmentStatus).toBe('ASSIGNED');
+    });
+
+    it('throws on invalid transition', () => {
+      const c = createTestCase({ assignmentStatus: 'UNASSIGNED' });
+      expect(() => c.transitionAssignmentStatus('UNASSIGNED')).toThrow();
+    });
+  });
+
+  describe('advanceTreatmentStage', () => {
+    it('allows CONFIRMED → IN_TREATMENT', () => {
+      const c = createTestCase({ treatmentStage: 'CONFIRMED' });
+      c.advanceTreatmentStage('IN_TREATMENT');
+      expect(c.treatmentStage).toBe('IN_TREATMENT');
+    });
+
+    it('allows FOLLOW_UP → IN_TREATMENT (restart loop)', () => {
+      const c = createTestCase({ treatmentStage: 'FOLLOW_UP' });
+      c.advanceTreatmentStage('IN_TREATMENT');
+      expect(c.treatmentStage).toBe('IN_TREATMENT');
+    });
+
+    it('throws on invalid transition', () => {
+      const c = createTestCase({ treatmentStage: 'CONFIRMED' });
+      expect(() => c.advanceTreatmentStage('COMPLETED')).toThrow();
     });
   });
 });

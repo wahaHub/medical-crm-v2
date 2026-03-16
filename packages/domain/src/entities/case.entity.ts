@@ -1,8 +1,11 @@
 import type { CaseStatus, CaseStage, RiskLevel } from '../enums/index.js';
+import type { CaseAssignmentStatus, CaseTreatmentStage, AISummaryStatusType } from '../enums/index.js';
 import type { CaseNumber } from '../value-objects/case-number.js';
 import { ValidationError } from '@medical-crm/utils';
 import { STATUS_TRANSITIONS } from '../state-machine/case-status-transitions.js';
 import { STAGE_ORDER } from '../state-machine/case-stage-order.js';
+import { ASSIGNMENT_STATUS_TRANSITIONS } from '../state-machine/assignment-status-transitions.js';
+import { TREATMENT_STAGE_TRANSITIONS } from '../state-machine/treatment-stage-transitions.js';
 
 export interface CaseProps {
   id: string;
@@ -24,6 +27,15 @@ export interface CaseProps {
   assignedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  assignmentStatus: CaseAssignmentStatus;
+  treatmentStage: CaseTreatmentStage | null;
+  conditionSummary: string | null;
+  structuredData: Record<string, unknown> | null;
+  riskFlags: string[] | null;
+  priority: string | null;
+  lastEventAt: Date | null;
+  aiSummaryStatus: AISummaryStatusType;
+  questionCollectorTemplateId: string | null;
 }
 
 export class Case {
@@ -41,11 +53,22 @@ export class Case {
   aiSummary: string | null;
   aiSummaryLanguage: string | null;
   riskLevel: RiskLevel | null;
+  /** @deprecated Use assignmentStatus instead */
   status: CaseStatus;
+  /** @deprecated Use treatmentStage instead */
   stage: CaseStage;
   assignedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  assignmentStatus: CaseAssignmentStatus;
+  treatmentStage: CaseTreatmentStage | null;
+  conditionSummary: string | null;
+  structuredData: Record<string, unknown> | null;
+  riskFlags: string[] | null;
+  priority: string | null;
+  lastEventAt: Date | null;
+  aiSummaryStatus: AISummaryStatusType;
+  questionCollectorTemplateId: string | null;
 
   constructor(props: CaseProps) {
     this.id = props.id;
@@ -67,6 +90,15 @@ export class Case {
     this.assignedAt = props.assignedAt;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
+    this.assignmentStatus = props.assignmentStatus;
+    this.treatmentStage = props.treatmentStage;
+    this.conditionSummary = props.conditionSummary;
+    this.structuredData = props.structuredData;
+    this.riskFlags = props.riskFlags;
+    this.priority = props.priority;
+    this.lastEventAt = props.lastEventAt;
+    this.aiSummaryStatus = props.aiSummaryStatus;
+    this.questionCollectorTemplateId = props.questionCollectorTemplateId;
   }
 
   setAiAnalysis(summary: string, language: string, risk: RiskLevel): void {
@@ -105,6 +137,36 @@ export class Case {
     if (this.stage === 'PENDING_ASSIGNMENT') {
       this.stage = 'TRANSFERRED_TO_HOSPITAL';
     }
+    this.updatedAt = new Date();
+  }
+
+  transitionAssignmentStatus(to: CaseAssignmentStatus): void {
+    const allowed = ASSIGNMENT_STATUS_TRANSITIONS[this.assignmentStatus];
+    if (!allowed.includes(to)) {
+      throw new ValidationError(
+        `Cannot transition assignment status from ${this.assignmentStatus} to ${to}`,
+      );
+    }
+    this.assignmentStatus = to;
+    this.updatedAt = new Date();
+  }
+
+  advanceTreatmentStage(to: CaseTreatmentStage): void {
+    if (!this.treatmentStage) {
+      if (to !== 'CONFIRMED') {
+        throw new ValidationError('Treatment stage must start at CONFIRMED');
+      }
+      this.treatmentStage = to;
+      this.updatedAt = new Date();
+      return;
+    }
+    const allowed = TREATMENT_STAGE_TRANSITIONS[this.treatmentStage];
+    if (!allowed.includes(to)) {
+      throw new ValidationError(
+        `Cannot transition treatment stage from ${this.treatmentStage} to ${to}`,
+      );
+    }
+    this.treatmentStage = to;
     this.updatedAt = new Date();
   }
 }

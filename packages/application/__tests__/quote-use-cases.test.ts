@@ -6,8 +6,9 @@ import { ListQuotesUseCase } from '../src/use-cases/quotes/list-quotes.use-case.
 import { GetQuoteUseCase } from '../src/use-cases/quotes/get-quote.use-case.js';
 import { CompareQuotesUseCase } from '../src/use-cases/quotes/compare-quotes.use-case.js';
 import { ResendQuoteUseCase } from '../src/use-cases/quotes/resend-quote.use-case.js';
-import type { IQuoteRepository, ICHCRepository } from '@medical-crm/domain';
-import { Quote, QuoteNumber, CaseHospitalContact } from '@medical-crm/domain';
+import { ListCaseHospitalContactsUseCase } from '../src/use-cases/quotes/list-case-hospital-contacts.use-case.js';
+import type { IQuoteRepository, ICHCRepository, ICaseRepository } from '@medical-crm/domain';
+import { Quote, QuoteNumber, CaseHospitalContact, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 // ——— Actors ———
@@ -30,6 +31,20 @@ const otherHospitalActor: Actor = {
   email: 'other@test.com',
   role: 'HOSPITAL',
   hospitalId: 'hosp-2',
+};
+
+const patientActor: Actor = {
+  userId: 'patient-1',
+  email: 'patient@test.com',
+  role: 'PATIENT',
+  hospitalId: null,
+};
+
+const otherPatientActor: Actor = {
+  userId: 'patient-2',
+  email: 'other-patient@test.com',
+  role: 'PATIENT',
+  hospitalId: null,
 };
 
 // ——— Factories ———
@@ -98,6 +113,51 @@ function createMockCHCRepo(): ICHCRepository {
     findByHospitalId: vi.fn(),
     save: vi.fn().mockImplementation((e) => Promise.resolve(e)),
     rejectOthersByCaseExcept: vi.fn(),
+  };
+}
+
+function makeCase(overrides: Partial<ConstructorParameters<typeof Case>[0]> = {}): Case {
+  return new Case({
+    id: 'case-1',
+    caseNumber: new CaseNumber('CASE-2026-0001'),
+    patientId: 'patient-1',
+    assignedHospitalId: 'hosp-1',
+    patientName: 'Test Patient',
+    patientCountry: 'US',
+    patientLanguage: 'en',
+    primaryDiagnosis: null,
+    diagnosisCode: null,
+    symptoms: null,
+    medicalHistory: null,
+    aiSummary: null,
+    aiSummaryLanguage: null,
+    riskLevel: null,
+    status: 'ACTIVE',
+    stage: 'IN_TREATMENT',
+    assignedAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    assignmentStatus: 'ASSIGNED',
+    treatmentStage: 'IN_TREATMENT',
+    conditionSummary: null,
+    structuredData: null,
+    riskFlags: null,
+    priority: null,
+    lastEventAt: null,
+    aiSummaryStatus: 'PENDING',
+    questionCollectorTemplateId: null,
+    ...overrides,
+  });
+}
+
+function createMockCaseRepo(): ICaseRepository {
+  return {
+    findById: vi.fn().mockResolvedValue(makeCase()),
+    findMany: vi.fn(),
+    findByPatientId: vi.fn(),
+    save: vi.fn(),
+    nextCaseNumber: vi.fn(),
+    countByFilters: vi.fn(),
   };
 }
 
@@ -354,10 +414,12 @@ describe('SendQuoteUseCase', () => {
 describe('ListQuotesUseCase', () => {
   let useCase: ListQuotesUseCase;
   let mockQuoteRepo: IQuoteRepository;
+  let mockCaseRepo: ICaseRepository;
 
   beforeEach(() => {
     mockQuoteRepo = createMockQuoteRepo();
-    useCase = new ListQuotesUseCase(mockQuoteRepo);
+    mockCaseRepo = createMockCaseRepo();
+    useCase = new ListQuotesUseCase(mockQuoteRepo, mockCaseRepo);
   });
 
   it('returns paginated quotes by hospitalId for HOSPITAL actor', async () => {
@@ -415,16 +477,41 @@ describe('ListQuotesUseCase', () => {
       useCase.execute({ page: 1, limit: 20 }, badActor),
     ).rejects.toThrow('Hospital actor missing hospitalId');
   });
+
+  it('PATIENT can list quotes for own case', async () => {
+    const quotes = [makeMockQuote()];
+    (mockQuoteRepo.findByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue(quotes);
+
+    const result = await useCase.execute({ caseId: 'case-1', page: 1, limit: 20 }, patientActor);
+
+    expect(mockCaseRepo.findById).toHaveBeenCalledWith('case-1');
+    expect(result.data).toHaveLength(1);
+  });
+
+  it('throws ForbiddenError for PATIENT accessing other patient case', async () => {
+    await expect(
+      useCase.execute({ caseId: 'case-1', page: 1, limit: 20 }, otherPatientActor),
+    ).rejects.toThrow('Access denied to this case');
+  });
+
+  it('returns empty for PATIENT without caseId', async () => {
+    const result = await useCase.execute({ page: 1, limit: 20 }, patientActor);
+
+    expect(result.data).toHaveLength(0);
+    expect(result.total).toBe(0);
+  });
 });
 
 // =============== GetQuoteUseCase ===============
 describe('GetQuoteUseCase', () => {
   let useCase: GetQuoteUseCase;
   let mockQuoteRepo: IQuoteRepository;
+  let mockCaseRepo: ICaseRepository;
 
   beforeEach(() => {
     mockQuoteRepo = createMockQuoteRepo();
-    useCase = new GetQuoteUseCase(mockQuoteRepo);
+    mockCaseRepo = createMockCaseRepo();
+    useCase = new GetQuoteUseCase(mockQuoteRepo, mockCaseRepo);
   });
 
   it('returns a single quote for ADMIN', async () => {
@@ -458,6 +545,23 @@ describe('GetQuoteUseCase', () => {
     await expect(
       useCase.execute('quote-999', adminActor),
     ).rejects.toThrow('Quote quote-999 not found');
+  });
+
+  it('returns a quote for PATIENT who owns the case', async () => {
+    (mockQuoteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeMockQuote());
+
+    const result = await useCase.execute('quote-1', patientActor);
+
+    expect(result.id).toBe('quote-1');
+    expect(mockCaseRepo.findById).toHaveBeenCalledWith('case-1');
+  });
+
+  it('throws ForbiddenError for PATIENT who does not own the case', async () => {
+    (mockQuoteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeMockQuote());
+
+    await expect(
+      useCase.execute('quote-1', otherPatientActor),
+    ).rejects.toThrow('Access denied to this quote');
   });
 });
 
@@ -619,5 +723,41 @@ describe('ResendQuoteUseCase', () => {
     await expect(
       useCase.execute('quote-999', hospitalActor),
     ).rejects.toThrow('Quote quote-999 not found');
+  });
+});
+
+// =============== ListCaseHospitalContactsUseCase — PATIENT AuthZ ===============
+describe('ListCaseHospitalContactsUseCase', () => {
+  let useCase: ListCaseHospitalContactsUseCase;
+  let mockCHCRepo: ICHCRepository;
+  let mockCaseRepo: ICaseRepository;
+
+  beforeEach(() => {
+    mockCHCRepo = createMockCHCRepo();
+    mockCaseRepo = createMockCaseRepo();
+    useCase = new ListCaseHospitalContactsUseCase(mockCHCRepo, mockCaseRepo);
+  });
+
+  it('PATIENT can list contacts for own case', async () => {
+    const contacts = [makeMockCHC()];
+    (mockCHCRepo.findByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue(contacts);
+
+    const result = await useCase.execute({ caseId: 'case-1', page: 1, limit: 20 }, patientActor);
+
+    expect(mockCaseRepo.findById).toHaveBeenCalledWith('case-1');
+    expect(result.data).toHaveLength(1);
+  });
+
+  it('throws ForbiddenError for PATIENT accessing other patient case', async () => {
+    await expect(
+      useCase.execute({ caseId: 'case-1', page: 1, limit: 20 }, otherPatientActor),
+    ).rejects.toThrow('Access denied to this case');
+  });
+
+  it('returns empty for PATIENT without caseId', async () => {
+    const result = await useCase.execute({ page: 1, limit: 20 }, patientActor);
+
+    expect(result.data).toHaveLength(0);
+    expect(result.total).toBe(0);
   });
 });

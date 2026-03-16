@@ -6,6 +6,7 @@ export const orderStatusSchema = z.enum(['PENDING_PAYMENT', 'PAID', 'IN_PROGRESS
 export const createOrderSchema = z.object({
   caseId: z.string().uuid().optional(),
   packageId: z.string().uuid().optional(),
+  patientId: z.string().uuid().optional(),
   type: orderTypeSchema,
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Invalid amount format'),
   currency: z.string().max(10).default('USD'),

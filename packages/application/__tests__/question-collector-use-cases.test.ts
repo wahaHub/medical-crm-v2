@@ -291,6 +291,14 @@ describe('GetTemplateUseCase', () => {
     expect(result.customization!.hospitalId).toBe('hosp-1');
   });
 
+  it('throws ForbiddenError when patient accesses other patient case', async () => {
+    (qcRepo.findTemplateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeTemplate());
+    (caseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCase({ patientId: 'other-patient' }));
+
+    await expect(uc.execute('tpl-1', patientActor, 'case-1'))
+      .rejects.toThrow('Access denied to this case');
+  });
+
   it('no customization when case is unassigned', async () => {
     (qcRepo.findTemplateById as ReturnType<typeof vi.fn>).mockResolvedValue(makeTemplate());
     (caseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCase({ assignmentStatus: 'UNASSIGNED', assignedHospitalId: null }));

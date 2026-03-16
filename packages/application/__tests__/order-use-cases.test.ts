@@ -31,6 +31,13 @@ const otherPatientActor: Actor = {
   hospitalId: null,
 };
 
+const hospitalActor: Actor = {
+  userId: 'hospital-user-1',
+  email: 'hospital@test.com',
+  role: 'HOSPITAL',
+  hospitalId: 'hosp-1',
+};
+
 // ——— Factories ———
 function makeMockOrder(overrides: Partial<ConstructorParameters<typeof Order>[0]> = {}): Order {
   return new Order({
@@ -91,15 +98,61 @@ describe('CreateOrderUseCase', () => {
     expect(repo.save).toHaveBeenCalledOnce();
   });
 
-  it('admin can create orders too', async () => {
+  it('admin can create orders with explicit patientId', async () => {
     const uc = new CreateOrderUseCase(repo);
     const result = await uc.execute({
       type: 'CUSTOM',
       amount: '500.00',
+      patientId: 'patient-1',
     }, adminActor);
 
-    expect(result.patientId).toBe('admin-1');
+    expect(result.patientId).toBe('patient-1');
     expect(result.status).toBe('PENDING_PAYMENT');
+  });
+
+  it('throws ValidationError when admin omits patientId', async () => {
+    const uc = new CreateOrderUseCase(repo);
+    await expect(uc.execute({
+      type: 'CUSTOM',
+      amount: '500.00',
+    }, adminActor)).rejects.toThrow('Admin must specify patientId');
+  });
+
+  it('throws ForbiddenError for hospital role', async () => {
+    const uc = new CreateOrderUseCase(repo);
+    await expect(uc.execute({
+      type: 'PACKAGE',
+      amount: '1000.00',
+    }, hospitalActor)).rejects.toThrow('Only patients and admins can create orders');
+  });
+
+  it('uses idempotency guard when key provided', async () => {
+    const mockGuard = {
+      execute: vi.fn().mockImplementation((_key: string, _op: string, fn: () => Promise<unknown>) => fn()),
+    };
+    const uc = new CreateOrderUseCase(repo, mockGuard);
+    await uc.execute({
+      type: 'PACKAGE',
+      amount: '1000.00',
+      idempotencyKey: 'idem-key-1',
+    }, patientActor);
+
+    expect(mockGuard.execute).toHaveBeenCalledWith('idem-key-1', 'CREATE_ORDER', expect.any(Function));
+    expect(repo.save).toHaveBeenCalledOnce();
+  });
+
+  it('skips idempotency guard when no key provided', async () => {
+    const mockGuard = {
+      execute: vi.fn(),
+    };
+    const uc = new CreateOrderUseCase(repo, mockGuard);
+    await uc.execute({
+      type: 'PACKAGE',
+      amount: '1000.00',
+    }, patientActor);
+
+    expect(mockGuard.execute).not.toHaveBeenCalled();
+    expect(repo.save).toHaveBeenCalledOnce();
   });
 });
 

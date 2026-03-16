@@ -1,11 +1,14 @@
-import type { IQuoteRepository } from '@medical-crm/domain';
+import type { IQuoteRepository, ICaseRepository } from '@medical-crm/domain';
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { QuoteDTO } from '../../dtos/quote.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQuoteDTO } from '../../mappers/quote.mapper.js';
 
 export class GetQuoteUseCase {
-  constructor(private readonly quoteRepo: IQuoteRepository) {}
+  constructor(
+    private readonly quoteRepo: IQuoteRepository,
+    private readonly caseRepo: ICaseRepository,
+  ) {}
 
   async execute(quoteId: string, actor: Actor): Promise<QuoteDTO> {
     const entity = await this.quoteRepo.findById(quoteId);
@@ -13,6 +16,13 @@ export class GetQuoteUseCase {
 
     if (actor.role === 'HOSPITAL' && entity.hospitalId !== actor.hospitalId) {
       throw new ForbiddenError('Access denied to this quote');
+    }
+
+    if (actor.role === 'PATIENT') {
+      const caseEntity = await this.caseRepo.findById(entity.caseId);
+      if (!caseEntity || caseEntity.patientId !== actor.userId) {
+        throw new ForbiddenError('Access denied to this quote');
+      }
     }
 
     return toQuoteDTO(entity);

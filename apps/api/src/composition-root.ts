@@ -171,6 +171,7 @@ import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
 import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
+import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
 
 interface AppServices {
   // infrastructure
@@ -401,6 +402,7 @@ export function getServices(): AppServices {
     const serviceCatalogRepo = new DrizzleServiceCatalogRepository(crmDb);
     const bookingRequestRepo = new DrizzleBookingRequestRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
+    const idempotencyGuard = new IdempotencyGuard(crmDb);
 
     const listCases = new ListCasesUseCase(caseRepo);
 
@@ -458,19 +460,19 @@ export function getServices(): AppServices {
       listCaseConsultations: new ListCaseConsultationsUseCase(consultationRepo, caseRepo),
 
       recordCaseEvent: new RecordCaseEventUseCase(eventRepo),
-      listCaseEvents: new ListCaseEventsUseCase(eventRepo),
-      getCaseTimeline: new GetCaseTimelineUseCase(eventRepo, journeyRepo),
+      listCaseEvents: new ListCaseEventsUseCase(eventRepo, caseRepo),
+      getCaseTimeline: new GetCaseTimelineUseCase(eventRepo, journeyRepo, caseRepo),
 
       addHospitalToCase: new AddHospitalToCaseUseCase(chcRepo),
       removeHospitalFromCase: new RemoveHospitalFromCaseUseCase(chcRepo),
       sendReminder: new SendReminderUseCase(chcRepo),
-      listCaseHospitalContacts: new ListCaseHospitalContactsUseCase(chcRepo),
+      listCaseHospitalContacts: new ListCaseHospitalContactsUseCase(chcRepo, caseRepo),
 
       createQuote: new CreateQuoteUseCase(quoteRepo),
       updateQuote: new UpdateQuoteUseCase(quoteRepo),
       sendQuote: new SendQuoteUseCase(quoteRepo, chcRepo),
-      listQuotes: new ListQuotesUseCase(quoteRepo),
-      getQuote: new GetQuoteUseCase(quoteRepo),
+      listQuotes: new ListQuotesUseCase(quoteRepo, caseRepo),
+      getQuote: new GetQuoteUseCase(quoteRepo, caseRepo),
       compareQuotes: new CompareQuotesUseCase(quoteRepo),
       resendQuote: new ResendQuoteUseCase(quoteRepo, chcRepo),
       acceptQuote: new AcceptQuoteUseCase(quoteRepo, chcRepo, caseRepo, txRunner),
@@ -499,7 +501,7 @@ export function getServices(): AppServices {
       updateMilestone: new UpdateMilestoneUseCase(journeyRepo),
       deleteMilestone: new DeleteMilestoneUseCase(journeyRepo),
 
-      createOrder: new CreateOrderUseCase(orderRepo),
+      createOrder: new CreateOrderUseCase(orderRepo, idempotencyGuard),
       listOrders: new ListOrdersUseCase(orderRepo),
       getOrder: new GetOrderUseCase(orderRepo),
       updateOrderStatus: new UpdateOrderStatusUseCase(orderRepo),

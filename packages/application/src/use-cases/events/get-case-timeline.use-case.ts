@@ -1,4 +1,5 @@
-import type { ICaseEventRepository, IJourneyRepository } from '@medical-crm/domain';
+import type { ICaseEventRepository, ICaseRepository, IJourneyRepository } from '@medical-crm/domain';
+import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { TimelineItemDTO } from '../../dtos/case-event.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { eventToTimelineItem } from '../../mappers/case-event.mapper.js';
@@ -8,13 +9,27 @@ export class GetCaseTimelineUseCase {
   constructor(
     private readonly eventRepo: ICaseEventRepository,
     private readonly journeyRepo: IJourneyRepository,
+    private readonly caseRepo: ICaseRepository,
   ) {}
 
-  async execute(caseId: string, _actor: Actor): Promise<TimelineItemDTO[]> {
+  async execute(caseId: string, actor: Actor): Promise<TimelineItemDTO[]> {
+    const caseEntity = await this.caseRepo.findById(caseId);
+    if (!caseEntity) {
+      throw new NotFoundError(`Case ${caseId} not found`);
+    }
+    if (actor.role === 'HOSPITAL' && caseEntity.assignedHospitalId !== actor.hospitalId) {
+      throw new ForbiddenError('Access denied to this case');
+    }
+    if (actor.role === 'PATIENT' && caseEntity.patientId !== actor.userId) {
+      throw new ForbiddenError('Access denied to this case');
+    }
+
+    const isPatient = actor.role === 'PATIENT';
+
     // Fetch both events and milestones in parallel
     const [events, milestones] = await Promise.all([
       this.eventRepo.findVisibleByCaseId(caseId),
-      this.journeyRepo.findMilestonesByCaseId(caseId),
+      this.journeyRepo.findMilestonesByCaseId(caseId, isPatient ? { visibleOnly: true } : undefined),
     ]);
 
     const items: TimelineItemDTO[] = [

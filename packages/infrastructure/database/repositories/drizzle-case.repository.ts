@@ -8,8 +8,12 @@ import { cases } from '../schema/index.js';
 export class DrizzleCaseRepository implements ICaseRepository {
   constructor(private readonly db: CrmDb) {}
 
-  async findById(id: string, _tx?: unknown): Promise<Case | null> {
-    const rows = await this.db
+  private conn(tx?: unknown): CrmDb {
+    return tx ? (tx as CrmDb) : this.db;
+  }
+
+  async findById(id: string, tx?: unknown): Promise<Case | null> {
+    const rows = await this.conn(tx)
       .select()
       .from(cases)
       .where(eq(cases.id, id))
@@ -85,7 +89,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
     };
   }
 
-  async save(entity: Case, _tx?: unknown): Promise<Case> {
+  async save(entity: Case, tx?: unknown): Promise<Case> {
     const now = new Date().toISOString();
     const values = {
       id: entity.id,
@@ -118,7 +122,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
       questionCollectorTemplateId: entity.questionCollectorTemplateId,
     };
 
-    const rows = await this.db
+    const rows = await this.conn(tx)
       .insert(cases)
       .values(values)
       .onConflictDoUpdate({

@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RecordCaseEventUseCase } from '../src/use-cases/events/record-case-event.use-case.js';
 import { ListCaseEventsUseCase } from '../src/use-cases/events/list-case-events.use-case.js';
 import { GetCaseTimelineUseCase } from '../src/use-cases/events/get-case-timeline.use-case.js';
-import type { ICaseEventRepository, IJourneyRepository } from '@medical-crm/domain';
-import { CaseEvent } from '@medical-crm/domain';
+import type { ICaseEventRepository, ICaseRepository, IJourneyRepository } from '@medical-crm/domain';
+import { CaseEvent, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 const adminActor: Actor = {
@@ -12,6 +12,68 @@ const adminActor: Actor = {
   role: 'ADMIN',
   hospitalId: null,
 };
+
+const hospitalActor: Actor = {
+  userId: 'hospital-user-1',
+  email: 'hospital@test.com',
+  role: 'HOSPITAL',
+  hospitalId: 'hosp-1',
+};
+
+const otherHospitalActor: Actor = {
+  userId: 'hospital-user-2',
+  email: 'other-hospital@test.com',
+  role: 'HOSPITAL',
+  hospitalId: 'hosp-2',
+};
+
+const patientActor: Actor = {
+  userId: 'patient-1',
+  email: 'patient@test.com',
+  role: 'PATIENT',
+  hospitalId: null,
+};
+
+const otherPatientActor: Actor = {
+  userId: 'patient-2',
+  email: 'other-patient@test.com',
+  role: 'PATIENT',
+  hospitalId: null,
+};
+
+function makeCase(overrides: Partial<ConstructorParameters<typeof Case>[0]> = {}): Case {
+  return new Case({
+    id: 'case-1',
+    caseNumber: new CaseNumber('CASE-2026-0001'),
+    patientId: 'patient-1',
+    assignedHospitalId: 'hosp-1',
+    patientName: 'Test Patient',
+    patientCountry: 'US',
+    patientLanguage: 'en',
+    primaryDiagnosis: null,
+    diagnosisCode: null,
+    symptoms: null,
+    medicalHistory: null,
+    aiSummary: null,
+    aiSummaryLanguage: null,
+    riskLevel: null,
+    status: 'ACTIVE',
+    stage: 'IN_TREATMENT',
+    assignedAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    assignmentStatus: 'ASSIGNED',
+    treatmentStage: 'IN_TREATMENT',
+    conditionSummary: null,
+    structuredData: null,
+    riskFlags: null,
+    priority: null,
+    lastEventAt: null,
+    aiSummaryStatus: 'PENDING',
+    questionCollectorTemplateId: null,
+    ...overrides,
+  });
+}
 
 function makeMockEvent(overrides: Partial<ConstructorParameters<typeof CaseEvent>[0]> = {}) {
   return new CaseEvent({
@@ -32,6 +94,17 @@ function createMockRepo(): ICaseEventRepository {
     save: vi.fn().mockImplementation((e) => Promise.resolve(e)),
     findByCaseId: vi.fn().mockResolvedValue([]),
     findVisibleByCaseId: vi.fn().mockResolvedValue([]),
+  };
+}
+
+function createMockCaseRepo(): ICaseRepository {
+  return {
+    findById: vi.fn().mockResolvedValue(makeCase()),
+    findMany: vi.fn(),
+    findByPatientId: vi.fn(),
+    save: vi.fn(),
+    nextCaseNumber: vi.fn(),
+    countByFilters: vi.fn(),
   };
 }
 
@@ -102,13 +175,15 @@ describe('RecordCaseEventUseCase', () => {
 describe('ListCaseEventsUseCase', () => {
   let useCase: ListCaseEventsUseCase;
   let mockRepo: ICaseEventRepository;
+  let mockCaseRepo: ICaseRepository;
 
   beforeEach(() => {
     mockRepo = createMockRepo();
-    useCase = new ListCaseEventsUseCase(mockRepo);
+    mockCaseRepo = createMockCaseRepo();
+    useCase = new ListCaseEventsUseCase(mockRepo, mockCaseRepo);
   });
 
-  it('returns events mapped to DTOs', async () => {
+  it('returns events mapped to DTOs for admin', async () => {
     const events = [
       makeMockEvent(),
       makeMockEvent({ id: 'evt-2', eventType: 'CASE_DISTRIBUTED' }),
@@ -127,10 +202,42 @@ describe('ListCaseEventsUseCase', () => {
   });
 
   it('returns empty array when no events exist', async () => {
-    const result = await useCase.execute('case-999', adminActor);
+    const result = await useCase.execute('case-1', adminActor);
 
-    expect(mockRepo.findByCaseId).toHaveBeenCalledWith('case-999');
+    expect(mockRepo.findByCaseId).toHaveBeenCalledWith('case-1');
     expect(result).toEqual([]);
+  });
+
+  it('throws NotFoundError for non-existent case', async () => {
+    (mockCaseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    await expect(useCase.execute('case-999', adminActor)).rejects.toThrow('Case case-999 not found');
+  });
+
+  it('allows hospital actor for assigned case', async () => {
+    const events = [makeMockEvent()];
+    (mockRepo.findByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue(events);
+
+    const result = await useCase.execute('case-1', hospitalActor);
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('throws ForbiddenError for hospital not assigned to case', async () => {
+    await expect(useCase.execute('case-1', otherHospitalActor)).rejects.toThrow('Access denied');
+  });
+
+  it('allows patient actor for own case', async () => {
+    const events = [makeMockEvent()];
+    (mockRepo.findByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue(events);
+
+    const result = await useCase.execute('case-1', patientActor);
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('throws ForbiddenError for patient not owning case', async () => {
+    await expect(useCase.execute('case-1', otherPatientActor)).rejects.toThrow('Access denied');
   });
 });
 
@@ -150,11 +257,13 @@ describe('GetCaseTimelineUseCase', () => {
   let useCase: GetCaseTimelineUseCase;
   let mockRepo: ICaseEventRepository;
   let mockJourneyRepo: IJourneyRepository;
+  let mockCaseRepo: ICaseRepository;
 
   beforeEach(() => {
     mockRepo = createMockRepo();
     mockJourneyRepo = createMockJourneyRepo();
-    useCase = new GetCaseTimelineUseCase(mockRepo, mockJourneyRepo);
+    mockCaseRepo = createMockCaseRepo();
+    useCase = new GetCaseTimelineUseCase(mockRepo, mockJourneyRepo, mockCaseRepo);
   });
 
   it('returns timeline items sorted by timestamp desc', async () => {
@@ -202,9 +311,42 @@ describe('GetCaseTimelineUseCase', () => {
   });
 
   it('returns empty array when no visible events exist', async () => {
-    const result = await useCase.execute('case-999', adminActor);
+    const result = await useCase.execute('case-1', adminActor);
 
-    expect(mockRepo.findVisibleByCaseId).toHaveBeenCalledWith('case-999');
+    expect(mockRepo.findVisibleByCaseId).toHaveBeenCalledWith('case-1');
     expect(result).toEqual([]);
+  });
+
+  it('throws NotFoundError for non-existent case', async () => {
+    (mockCaseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    await expect(useCase.execute('case-999', adminActor)).rejects.toThrow('Case case-999 not found');
+  });
+
+  it('throws ForbiddenError for hospital not assigned to case', async () => {
+    await expect(useCase.execute('case-1', otherHospitalActor)).rejects.toThrow('Access denied');
+  });
+
+  it('throws ForbiddenError for patient not owning case', async () => {
+    await expect(useCase.execute('case-1', otherPatientActor)).rejects.toThrow('Access denied');
+  });
+
+  it('passes visibleOnly for patient milestones', async () => {
+    const result = await useCase.execute('case-1', patientActor);
+
+    expect(mockJourneyRepo.findMilestonesByCaseId).toHaveBeenCalledWith('case-1', { visibleOnly: true });
+    expect(result).toEqual([]);
+  });
+
+  it('does not filter milestones for admin', async () => {
+    await useCase.execute('case-1', adminActor);
+
+    expect(mockJourneyRepo.findMilestonesByCaseId).toHaveBeenCalledWith('case-1', undefined);
+  });
+
+  it('does not filter milestones for hospital', async () => {
+    await useCase.execute('case-1', hospitalActor);
+
+    expect(mockJourneyRepo.findMilestonesByCaseId).toHaveBeenCalledWith('case-1', undefined);
   });
 });

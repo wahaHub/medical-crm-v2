@@ -97,15 +97,14 @@ const completeSignupRoute = createRoute({
       required: true,
     },
   },
-  responses: { 200: { description: 'Signup completed (stubbed)' } },
+  responses: { 501: { description: 'Not implemented — patient signup is deferred to a future phase' } },
 });
 
 app.openapi(completeSignupRoute, async (c) => {
-  const { id } = c.req.valid('param');
-  const body = c.req.valid('json');
-  const svc = getServices();
-  const result = await svc.completeSignup.execute(id, body);
-  return c.json(result, 200);
+  return c.json(
+    { error: 'Patient signup is not yet implemented', code: 'NOT_IMPLEMENTED' },
+    501,
+  );
 });
 
 export default app;

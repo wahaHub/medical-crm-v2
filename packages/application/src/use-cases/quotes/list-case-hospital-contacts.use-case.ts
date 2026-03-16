@@ -1,11 +1,14 @@
-import type { ICHCRepository, CHCListQuery } from '@medical-crm/domain';
+import type { ICHCRepository, ICaseRepository, CHCListQuery } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { CaseHospitalContactDTO } from '../../dtos/case-hospital-contact.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseHospitalContactDTO } from '../../mappers/case-hospital-contact.mapper.js';
 
 export class ListCaseHospitalContactsUseCase {
-  constructor(private readonly chcRepo: ICHCRepository) {}
+  constructor(
+    private readonly chcRepo: ICHCRepository,
+    private readonly caseRepo: ICaseRepository,
+  ) {}
 
   async execute(
     query: CHCListQuery,
@@ -16,6 +19,17 @@ export class ListCaseHospitalContactsUseCase {
     if (actor.role === 'HOSPITAL') {
       if (!actor.hospitalId) throw new ForbiddenError('Hospital actor missing hospitalId');
       effectiveQuery.hospitalId = actor.hospitalId;
+    }
+
+    // PATIENT must provide caseId and can only see contacts for own cases
+    if (actor.role === 'PATIENT') {
+      if (!effectiveQuery.caseId) {
+        return { data: [], total: 0, page: query.page, limit: query.limit };
+      }
+      const caseEntity = await this.caseRepo.findById(effectiveQuery.caseId);
+      if (!caseEntity || caseEntity.patientId !== actor.userId) {
+        throw new ForbiddenError('Access denied to this case');
+      }
     }
 
     // Use findByCaseId for case-scoped queries, scoped by hospital when applicable

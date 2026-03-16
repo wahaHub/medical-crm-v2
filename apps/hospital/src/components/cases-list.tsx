@@ -30,8 +30,10 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
   if (status !== 'all') filters.status = status;
   if (debouncedSearch) filters.search = debouncedSearch;
 
-  const { data } = useCases(filters);
-  const cases = (data ?? initialCases) as PaginatedResponse<CaseSummary>;
+  const hasActiveFilters = status !== 'all' || !!debouncedSearch || page !== 1;
+  const { data, isPending } = useCases(filters);
+  // Only fall back to SSR data when no filters are active; otherwise show loading
+  const cases = (data ?? (hasActiveFilters ? { data: [], total: 0 } : initialCases)) as PaginatedResponse<CaseSummary>;
   const stats = initialStats;
 
   return (
@@ -48,6 +50,9 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
         <SearchInput value={search} onChange={setSearch} placeholder="Search cases..." debounceMs={300} className="w-64" />
       </div>
 
+      {hasActiveFilters && isPending ? (
+        <div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>
+      ) : (
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {(cases.data ?? []).map((c) => (
           <div
@@ -66,6 +71,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

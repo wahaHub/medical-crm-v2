@@ -10,6 +10,6 @@ export class DeleteBeforeAfterCaseUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    await this.materialsRepo.deleteBeforeAfterCase(caseId);
+    await this.materialsRepo.deleteBeforeAfterCase(caseId, hospitalId);
   }
 }

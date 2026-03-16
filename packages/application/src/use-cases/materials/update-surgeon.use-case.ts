@@ -19,6 +19,6 @@ export class UpdateSurgeonUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    return this.materialsRepo.updateSurgeon(surgeonId, input);
+    return this.materialsRepo.updateSurgeon(surgeonId, hospitalId, input);
   }
 }

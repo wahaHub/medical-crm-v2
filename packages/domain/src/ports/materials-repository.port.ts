@@ -55,16 +55,16 @@ export interface IMaterialsRepository {
 
   listProcedures(hospitalId: string): Promise<MaterialsProcedure[]>;
   createProcedure(data: Omit<MaterialsProcedure, 'id'>): Promise<MaterialsProcedure>;
-  updateProcedure(id: string, data: Partial<MaterialsProcedure>): Promise<MaterialsProcedure>;
-  deleteProcedure(id: string): Promise<void>;
+  updateProcedure(id: string, hospitalId: string, data: Partial<MaterialsProcedure>): Promise<MaterialsProcedure>;
+  deleteProcedure(id: string, hospitalId: string): Promise<void>;
 
   listSurgeons(hospitalId: string): Promise<MaterialsSurgeon[]>;
   createSurgeon(data: Omit<MaterialsSurgeon, 'id'>): Promise<MaterialsSurgeon>;
-  updateSurgeon(id: string, data: Partial<MaterialsSurgeon>): Promise<MaterialsSurgeon>;
-  deleteSurgeon(id: string): Promise<void>;
+  updateSurgeon(id: string, hospitalId: string, data: Partial<MaterialsSurgeon>): Promise<MaterialsSurgeon>;
+  deleteSurgeon(id: string, hospitalId: string): Promise<void>;
 
   listBeforeAfterCases(hospitalId: string): Promise<MaterialsBeforeAfterCase[]>;
   createBeforeAfterCase(data: Omit<MaterialsBeforeAfterCase, 'id'>): Promise<MaterialsBeforeAfterCase>;
-  updateBeforeAfterCase(id: string, data: Partial<MaterialsBeforeAfterCase>): Promise<MaterialsBeforeAfterCase>;
-  deleteBeforeAfterCase(id: string): Promise<void>;
+  updateBeforeAfterCase(id: string, hospitalId: string, data: Partial<MaterialsBeforeAfterCase>): Promise<MaterialsBeforeAfterCase>;
+  deleteBeforeAfterCase(id: string, hospitalId: string): Promise<void>;
 }

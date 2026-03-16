@@ -3,20 +3,20 @@
 import { revalidatePath } from 'next/cache';
 import { apiClient } from '@/lib/api-client';
 
-export async function updateCaseStatus(id: string, status: string) {
+export async function updateCaseStatus(id: string, assignmentStatus: string) {
   const result = await apiClient(`/api/v2/cases/${id}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ assignmentStatus }),
   });
   revalidatePath('/cases');
   revalidatePath('/dashboard');
   return result;
 }
 
-export async function updateCaseStage(id: string, stage: string) {
+export async function updateCaseStage(id: string, treatmentStage: string) {
   const result = await apiClient(`/api/v2/cases/${id}/stage`, {
     method: 'PATCH',
-    body: JSON.stringify({ stage }),
+    body: JSON.stringify({ treatmentStage }),
   });
   revalidatePath(`/cases/${id}`);
   return result;

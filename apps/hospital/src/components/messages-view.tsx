@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Plus, Search } from 'lucide-react';
 import {
   ChatLayout,
@@ -16,6 +17,7 @@ import type { PaginatedResponse, ConversationSummary } from '@/lib/api-types';
 
 interface MessagesViewProps {
   initialConversations: PaginatedResponse<ConversationSummary>;
+  initialConversationId?: string | null;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -23,11 +25,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   HOSPITAL_PATIENT: 'Patient',
 };
 
-export function MessagesView({ initialConversations }: MessagesViewProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function MessagesView({ initialConversations, initialConversationId }: MessagesViewProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: liveConversations } = useConversations();
   const liveResponse = liveConversations as PaginatedResponse<ConversationSummary> | undefined;
@@ -64,13 +67,17 @@ export function MessagesView({ initialConversations }: MessagesViewProps) {
       setIsSending(true);
       try {
         await sendMessage(selectedId, content);
+        // Invalidate messages query to refresh the chat
+        await queryClient.invalidateQueries({ queryKey: ['messages', selectedId] });
+        // Also refresh conversations to update lastMessage preview
+        await queryClient.invalidateQueries({ queryKey: ['conversations'] });
       } catch {
         // Error handled by apiClient
       } finally {
         setIsSending(false);
       }
     },
-    [selectedId],
+    [selectedId, queryClient],
   );
 
   return (

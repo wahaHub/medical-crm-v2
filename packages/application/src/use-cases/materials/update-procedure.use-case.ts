@@ -20,6 +20,6 @@ export class UpdateProcedureUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    return this.materialsRepo.updateProcedure(procedureId, input);
+    return this.materialsRepo.updateProcedure(procedureId, hospitalId, input);
   }
 }

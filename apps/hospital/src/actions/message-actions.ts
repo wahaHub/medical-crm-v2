@@ -8,6 +8,7 @@ export async function sendMessage(conversationId: string, content: string) {
     method: 'POST',
     body: JSON.stringify({ content }),
   });
+  revalidatePath('/messages');
   return result;
 }
 

@@ -10,6 +10,6 @@ export class DeleteProcedureUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    await this.materialsRepo.deleteProcedure(procedureId);
+    await this.materialsRepo.deleteProcedure(procedureId, hospitalId);
   }
 }

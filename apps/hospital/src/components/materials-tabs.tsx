@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Tabs,
   Card,
@@ -43,6 +43,12 @@ import {
   updateBeforeAfterCase,
   deleteBeforeAfterCase,
 } from '@/actions/materials-actions';
+import type {
+  MaterialsHospitalInfoDTO,
+  MaterialsProcedureDTO,
+  MaterialsSurgeonDTO,
+  MaterialsBeforeAfterCaseDTO,
+} from '@/lib/api-types';
 
 const tabItems = [
   { key: 'info', label: 'Hospital Info' },
@@ -70,7 +76,7 @@ export function MaterialsTabs() {
 /* -------------------------------------------------------------------------- */
 
 function HospitalInfoTab() {
-  const { data, isLoading } = useMaterialsInfo() as { data: Record<string, unknown> | undefined; isLoading: boolean };
+  const { data, isLoading } = useMaterialsInfo();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -83,22 +89,19 @@ function HospitalInfoTab() {
     );
   }
 
-  const raw = (data?.data ?? data ?? {}) as Record<string, unknown>;
+  const raw = (data as MaterialsHospitalInfoDTO | undefined) ?? null;
   const info = {
-    name: (raw.name as string) ?? '',
-    slug: (raw.slug as string) ?? '',
-    heroImageUrl: (raw.heroImageUrl as string) ?? '',
-    description: (raw.description as string) ?? '',
-    highlights: (raw.highlights as string[]) ?? [],
+    name: raw?.name ?? '',
+    slug: raw?.slug ?? '',
+    heroImage: raw?.heroImage ?? '',
+    photos: raw?.photos ?? [],
+    highlights: raw?.highlights ?? [],
   };
 
   const startEdit = () => {
     setForm({
-      name: info.name,
-      slug: info.slug,
-      heroImageUrl: info.heroImageUrl,
-      description: info.description,
-      highlights: info.highlights.join(', '),
+      heroImage: info.heroImage,
+      highlights: info.highlights.map((h) => `${h.icon}:${h.text}`).join(', '),
     });
     setEditing(true);
   };
@@ -106,11 +109,21 @@ function HospitalInfoTab() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Parse highlights in "icon:text" format
+      const highlights = form.highlights
+        ? form.highlights.split(',').map((s) => {
+            const trimmed = s.trim();
+            const colonIdx = trimmed.indexOf(':');
+            if (colonIdx > 0) {
+              return { icon: trimmed.slice(0, colonIdx).trim(), text: trimmed.slice(colonIdx + 1).trim() };
+            }
+            return { icon: '✦', text: trimmed };
+          }).filter((h) => h.text)
+        : [];
+
       await updateHospitalInfo({
-        ...form,
-        highlights: form.highlights
-          ? form.highlights.split(',').map((s: string) => s.trim()).filter(Boolean)
-          : [],
+        heroImage: form.heroImage || null,
+        highlights,
       });
       setEditing(false);
     } catch {
@@ -142,34 +155,32 @@ function HospitalInfoTab() {
 
       {editing ? (
         <div className="space-y-4">
-          <FormField label="Hospital Name" value={form.name ?? ''} onChange={(v) => setForm({ ...form, name: v })} />
-          <FormField label="Slug" value={form.slug ?? ''} onChange={(v) => setForm({ ...form, slug: v })} />
-          <FormField label="Hero Image URL" value={form.heroImageUrl ?? ''} onChange={(v) => setForm({ ...form, heroImageUrl: v })} />
-          <FormField label="Description" value={form.description ?? ''} onChange={(v) => setForm({ ...form, description: v })} multiline />
-          <FormField label="Highlights (comma-separated)" value={form.highlights ?? ''} onChange={(v) => setForm({ ...form, highlights: v })} />
+          <InfoRow label="Name (read-only)" value={info.name} />
+          <InfoRow label="Slug (read-only)" value={info.slug} />
+          <FormField label="Hero Image URL" value={form.heroImage ?? ''} onChange={(v) => setForm({ ...form, heroImage: v })} />
+          <FormField label="Highlights (icon:text, comma-separated)" value={form.highlights ?? ''} onChange={(v) => setForm({ ...form, highlights: v })} multiline />
         </div>
       ) : (
         <div className="space-y-4">
           <InfoRow label="Name" value={info.name} />
           <InfoRow label="Slug" value={info.slug} />
-          {info.heroImageUrl && (
+          {info.heroImage && (
             <div>
               <span className="text-sm font-medium text-slate-500">Hero Image</span>
               <img
-                src={info.heroImageUrl}
+                src={info.heroImage}
                 alt="Hero"
                 className="mt-1 h-40 w-full rounded-lg object-cover"
               />
             </div>
           )}
-          <InfoRow label="Description" value={info.description} />
           {info.highlights.length > 0 && (
             <div>
               <span className="text-sm font-medium text-slate-500">Highlights</span>
               <div className="mt-1 flex flex-wrap gap-2">
-                {info.highlights.map((h: string, i: number) => (
+                {info.highlights.map((h, i) => (
                   <span key={i} className="rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">
-                    {h}
+                    {h.icon} {h.text}
                   </span>
                 ))}
               </div>
@@ -192,19 +203,10 @@ function HospitalInfoTab() {
 /*  Tab 2: Procedures                                                          */
 /* -------------------------------------------------------------------------- */
 
-interface ProcedureRow {
-  id: string;
-  name: string;
-  priceRangeMin?: number;
-  priceRangeMax?: number;
-  isPopular?: boolean;
-  sortOrder?: number;
-}
-
 function ProceduresTab() {
-  const { data, isLoading } = useProcedures() as { data: Record<string, unknown> | undefined; isLoading: boolean };
+  const { data, isLoading } = useProcedures();
   const [showModal, setShowModal] = useState(false);
-  const [editingItem, setEditingItem] = useState<ProcedureRow | null>(null);
+  const [editingItem, setEditingItem] = useState<MaterialsProcedureDTO | null>(null);
 
   if (isLoading) {
     return (
@@ -214,17 +216,17 @@ function ProceduresTab() {
     );
   }
 
-  const procedures: ProcedureRow[] = (data?.data ?? data ?? []) as ProcedureRow[];
+  const procedures: MaterialsProcedureDTO[] = ((data as MaterialsProcedureDTO[] | undefined) ?? []);
 
-  const columns: Column<ProcedureRow>[] = [
-    { key: 'name', header: 'Procedure Name', render: (row) => <span className="font-medium">{row.name}</span> },
+  const columns: Column<MaterialsProcedureDTO>[] = [
+    { key: 'procedureName', header: 'Procedure Name', render: (row) => <span className="font-medium">{row.procedureName}</span> },
     {
       key: 'price',
       header: 'Price Range',
       render: (row) =>
-        row.priceRangeMin != null || row.priceRangeMax != null
-          ? `$${row.priceRangeMin ?? '?'} - $${row.priceRangeMax ?? '?'}`
-          : '-',
+        row.priceMin != null || row.priceMax != null
+          ? `$${row.priceMin ?? '?'} - $${row.priceMax ?? '?'}`
+          : row.priceRange ?? '-',
     },
     {
       key: 'popular',
@@ -288,11 +290,13 @@ function ProceduresTab() {
           />
         }
       />
-      <ProcedureModal
-        open={showModal}
-        onClose={() => { setShowModal(false); setEditingItem(null); }}
-        existing={editingItem}
-      />
+      {showModal && (
+        <ProcedureModal
+          open={showModal}
+          onClose={() => { setShowModal(false); setEditingItem(null); }}
+          existing={editingItem}
+        />
+      )}
     </div>
   );
 }
@@ -304,29 +308,35 @@ function ProcedureModal({
 }: {
   open: boolean;
   onClose: () => void;
-  existing: ProcedureRow | null;
+  existing: MaterialsProcedureDTO | null;
 }) {
-  const [name, setName] = useState(existing?.name ?? '');
-  const [priceMin, setPriceMin] = useState(String(existing?.priceRangeMin ?? ''));
-  const [priceMax, setPriceMax] = useState(String(existing?.priceRangeMax ?? ''));
-  const [isPopular, setIsPopular] = useState(existing?.isPopular ?? false);
-  const [sortOrder, setSortOrder] = useState(String(existing?.sortOrder ?? ''));
+  const [procedureName, setProcedureName] = useState('');
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [isPopular, setIsPopular] = useState(false);
+  const [sortOrder, setSortOrder] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Reset form when modal opens with new data
-  const resetKey = existing?.id ?? 'new';
+  // Reset form state when existing changes
+  useEffect(() => {
+    setProcedureName(existing?.procedureName ?? '');
+    setPriceMin(existing?.priceMin != null ? String(existing.priceMin) : '');
+    setPriceMax(existing?.priceMax != null ? String(existing.priceMax) : '');
+    setIsPopular(existing?.isPopular ?? false);
+    setSortOrder(existing?.sortOrder != null ? String(existing.sortOrder) : '');
+  }, [existing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!procedureName.trim()) return;
     setSubmitting(true);
     try {
       const payload: Record<string, unknown> = {
-        name: name.trim(),
-        priceRangeMin: priceMin ? Number(priceMin) : undefined,
-        priceRangeMax: priceMax ? Number(priceMax) : undefined,
+        procedureName: procedureName.trim(),
+        priceMin: priceMin ? Number(priceMin) : null,
+        priceMax: priceMax ? Number(priceMax) : null,
         isPopular,
-        sortOrder: sortOrder ? Number(sortOrder) : undefined,
+        sortOrder: sortOrder ? Number(sortOrder) : 0,
       };
       if (existing) {
         await updateProcedure(existing.id, payload);
@@ -342,9 +352,9 @@ function ProcedureModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={existing ? 'Edit Procedure' : 'Add Procedure'} key={resetKey}>
+    <Modal open={open} onClose={onClose} title={existing ? 'Edit Procedure' : 'Add Procedure'}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField label="Procedure Name" value={name} onChange={setName} required />
+        <FormField label="Procedure Name" value={procedureName} onChange={setProcedureName} required />
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Min Price ($)" value={priceMin} onChange={setPriceMin} type="number" />
           <FormField label="Max Price ($)" value={priceMax} onChange={setPriceMax} type="number" />
@@ -362,7 +372,7 @@ function ProcedureModal({
         <FormField label="Sort Order" value={sortOrder} onChange={setSortOrder} type="number" />
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={submitting || !name.trim()}>
+          <Button type="submit" disabled={submitting || !procedureName.trim()}>
             {submitting ? 'Saving...' : existing ? 'Update' : 'Create'}
           </Button>
         </div>
@@ -375,19 +385,10 @@ function ProcedureModal({
 /*  Tab 3: Surgeons                                                            */
 /* -------------------------------------------------------------------------- */
 
-interface SurgeonRow {
-  id: string;
-  name: string;
-  title?: string;
-  imageUrl?: string;
-  experience?: string;
-  specialties?: string[];
-}
-
 function SurgeonsTab() {
-  const { data, isLoading } = useSurgeons() as { data: Record<string, unknown> | undefined; isLoading: boolean };
+  const { data, isLoading } = useSurgeons();
   const [showModal, setShowModal] = useState(false);
-  const [editingItem, setEditingItem] = useState<SurgeonRow | null>(null);
+  const [editingItem, setEditingItem] = useState<MaterialsSurgeonDTO | null>(null);
 
   if (isLoading) {
     return (
@@ -397,7 +398,7 @@ function SurgeonsTab() {
     );
   }
 
-  const surgeons: SurgeonRow[] = (data?.data ?? data ?? []) as SurgeonRow[];
+  const surgeons: MaterialsSurgeonDTO[] = ((data as MaterialsSurgeonDTO[] | undefined) ?? []);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this surgeon?')) return;
@@ -428,14 +429,14 @@ function SurgeonsTab() {
           {surgeons.map((surgeon) => (
             <Card key={surgeon.id}>
               <div className="flex items-start gap-4">
-                <Avatar src={surgeon.imageUrl} name={surgeon.name} size="lg" />
+                <Avatar src={surgeon.imageUrl ?? undefined} name={surgeon.name} size="lg" />
                 <div className="flex-1 min-w-0">
                   <h4 className="font-semibold text-slate-900">{surgeon.name}</h4>
                   {surgeon.title && (
                     <p className="text-sm text-slate-500">{surgeon.title}</p>
                   )}
-                  {surgeon.experience && (
-                    <p className="mt-1 text-sm text-slate-600">{surgeon.experience}</p>
+                  {surgeon.experienceYears != null && (
+                    <p className="mt-1 text-sm text-slate-600">{surgeon.experienceYears} years experience</p>
                   )}
                 </div>
                 <div className="flex gap-1">
@@ -453,9 +454,9 @@ function SurgeonsTab() {
                   </button>
                 </div>
               </div>
-              {(surgeon.specialties ?? []).length > 0 && (
+              {surgeon.specialties.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {(surgeon.specialties as string[]).map((s, i) => (
+                  {surgeon.specialties.map((s, i) => (
                     <span key={i} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
                       {s}
                     </span>
@@ -467,11 +468,13 @@ function SurgeonsTab() {
         </div>
       )}
 
-      <SurgeonModal
-        open={showModal}
-        onClose={() => { setShowModal(false); setEditingItem(null); }}
-        existing={editingItem}
-      />
+      {showModal && (
+        <SurgeonModal
+          open={showModal}
+          onClose={() => { setShowModal(false); setEditingItem(null); }}
+          existing={editingItem}
+        />
+      )}
     </div>
   );
 }
@@ -483,16 +486,25 @@ function SurgeonModal({
 }: {
   open: boolean;
   onClose: () => void;
-  existing: SurgeonRow | null;
+  existing: MaterialsSurgeonDTO | null;
 }) {
-  const [name, setName] = useState(existing?.name ?? '');
-  const [title, setTitle] = useState(existing?.title ?? '');
-  const [imageUrl, setImageUrl] = useState(existing?.imageUrl ?? '');
-  const [experience, setExperience] = useState(existing?.experience ?? '');
-  const [specialties, setSpecialties] = useState((existing?.specialties ?? []).join(', '));
+  const [name, setName] = useState('');
+  const [title, setTitle] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [experienceYears, setExperienceYears] = useState('');
+  const [specialties, setSpecialties] = useState('');
+  const [languages, setLanguages] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const resetKey = existing?.id ?? 'new';
+  // Reset form state when existing changes
+  useEffect(() => {
+    setName(existing?.name ?? '');
+    setTitle(existing?.title ?? '');
+    setImageUrl(existing?.imageUrl ?? '');
+    setExperienceYears(existing?.experienceYears != null ? String(existing.experienceYears) : '');
+    setSpecialties((existing?.specialties ?? []).join(', '));
+    setLanguages((existing?.languages ?? []).join(', '));
+  }, [existing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -501,11 +513,14 @@ function SurgeonModal({
     try {
       const payload: Record<string, unknown> = {
         name: name.trim(),
-        title: title.trim() || undefined,
-        imageUrl: imageUrl.trim() || undefined,
-        experience: experience.trim() || undefined,
+        title: title.trim() || null,
+        imageUrl: imageUrl.trim() || null,
+        experienceYears: experienceYears ? Number(experienceYears) : null,
         specialties: specialties
           ? specialties.split(',').map((s) => s.trim()).filter(Boolean)
+          : [],
+        languages: languages
+          ? languages.split(',').map((s) => s.trim()).filter(Boolean)
           : [],
       };
       if (existing) {
@@ -522,13 +537,14 @@ function SurgeonModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={existing ? 'Edit Surgeon' : 'Add Surgeon'} key={resetKey}>
+    <Modal open={open} onClose={onClose} title={existing ? 'Edit Surgeon' : 'Add Surgeon'}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Surgeon Name" value={name} onChange={setName} required />
         <FormField label="Title" value={title} onChange={setTitle} placeholder="e.g. Chief Plastic Surgeon" />
         <FormField label="Image URL" value={imageUrl} onChange={setImageUrl} />
-        <FormField label="Experience" value={experience} onChange={setExperience} placeholder="e.g. 15 years" />
+        <FormField label="Experience (years)" value={experienceYears} onChange={setExperienceYears} type="number" />
         <FormField label="Specialties (comma-separated)" value={specialties} onChange={setSpecialties} />
+        <FormField label="Languages (comma-separated)" value={languages} onChange={setLanguages} />
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={submitting || !name.trim()}>
@@ -544,20 +560,10 @@ function SurgeonModal({
 /*  Tab 4: Before & After Cases                                                */
 /* -------------------------------------------------------------------------- */
 
-interface BACase {
-  id: string;
-  procedureName?: string;
-  beforeImageUrl?: string;
-  afterImageUrl?: string;
-  description?: string;
-  patientAge?: number;
-  patientGender?: string;
-}
-
 function BeforeAfterTab() {
-  const { data, isLoading } = useBeforeAfterCases() as { data: Record<string, unknown> | undefined; isLoading: boolean };
+  const { data, isLoading } = useBeforeAfterCases();
   const [showModal, setShowModal] = useState(false);
-  const [editingItem, setEditingItem] = useState<BACase | null>(null);
+  const [editingItem, setEditingItem] = useState<MaterialsBeforeAfterCaseDTO | null>(null);
 
   if (isLoading) {
     return (
@@ -567,7 +573,7 @@ function BeforeAfterTab() {
     );
   }
 
-  const cases: BACase[] = (data?.data ?? data ?? []) as BACase[];
+  const cases: MaterialsBeforeAfterCaseDTO[] = ((data as MaterialsBeforeAfterCaseDTO[] | undefined) ?? []);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this before & after case?')) return;
@@ -595,74 +601,70 @@ function BeforeAfterTab() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {cases.map((c) => (
-            <Card key={c.id}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-indigo-600">{c.procedureName ?? 'Procedure'}</span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => { setEditingItem(c); setShowModal(true); }}
-                    className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(c.id)}
-                    className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+          {cases.map((c) => {
+            const beforeImg = c.images.find((img) => img.type === 'before');
+            const afterImg = c.images.find((img) => img.type === 'after');
+
+            return (
+              <Card key={c.id}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-indigo-600">{c.procedureName || 'Procedure'}</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => { setEditingItem(c); setShowModal(true); }}
+                      className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(c.id)}
+                      className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-400 uppercase">Before</span>
-                  {c.beforeImageUrl ? (
-                    <img
-                      src={c.beforeImageUrl}
-                      alt="Before"
-                      className="h-40 w-full rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
-                      <ImageIcon size={32} />
-                    </div>
-                  )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-slate-400 uppercase">Before</span>
+                    {beforeImg ? (
+                      <img src={beforeImg.url} alt="Before" className="h-40 w-full rounded-lg object-cover" />
+                    ) : (
+                      <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                        <ImageIcon size={32} />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-slate-400 uppercase">After</span>
+                    {afterImg ? (
+                      <img src={afterImg.url} alt="After" className="h-40 w-full rounded-lg object-cover" />
+                    ) : (
+                      <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                        <ImageIcon size={32} />
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-400 uppercase">After</span>
-                  {c.afterImageUrl ? (
-                    <img
-                      src={c.afterImageUrl}
-                      alt="After"
-                      className="h-40 w-full rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
-                      <ImageIcon size={32} />
-                    </div>
-                  )}
-                </div>
-              </div>
-              {c.description && (
-                <p className="mt-3 text-sm text-slate-600">{c.description}</p>
-              )}
-              {(c.patientAge || c.patientGender) && (
-                <div className="mt-2 flex gap-3 text-xs text-slate-400">
-                  {c.patientAge && <span>Age: {c.patientAge}</span>}
-                  {c.patientGender && <span>Gender: {c.patientGender}</span>}
-                </div>
-              )}
-            </Card>
-          ))}
+                {c.surgeonName && (
+                  <p className="mt-2 text-sm text-slate-500">Surgeon: {c.surgeonName}</p>
+                )}
+                {c.description && (
+                  <p className="mt-1 text-sm text-slate-600">{c.description}</p>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      <BeforeAfterModal
-        open={showModal}
-        onClose={() => { setShowModal(false); setEditingItem(null); }}
-        existing={editingItem}
-      />
+      {showModal && (
+        <BeforeAfterModal
+          open={showModal}
+          onClose={() => { setShowModal(false); setEditingItem(null); }}
+          existing={editingItem}
+        />
+      )}
     </div>
   );
 }
@@ -674,29 +676,39 @@ function BeforeAfterModal({
 }: {
   open: boolean;
   onClose: () => void;
-  existing: BACase | null;
+  existing: MaterialsBeforeAfterCaseDTO | null;
 }) {
-  const [procedureName, setProcedureName] = useState(existing?.procedureName ?? '');
-  const [beforeImageUrl, setBeforeImageUrl] = useState(existing?.beforeImageUrl ?? '');
-  const [afterImageUrl, setAfterImageUrl] = useState(existing?.afterImageUrl ?? '');
-  const [description, setDescription] = useState(existing?.description ?? '');
-  const [patientAge, setPatientAge] = useState(String(existing?.patientAge ?? ''));
-  const [patientGender, setPatientGender] = useState(existing?.patientGender ?? '');
+  const [procedureName, setProcedureName] = useState('');
+  const [surgeonName, setSurgeonName] = useState('');
+  const [beforeImageUrl, setBeforeImageUrl] = useState('');
+  const [afterImageUrl, setAfterImageUrl] = useState('');
+  const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const resetKey = existing?.id ?? 'new';
+  // Reset form state when existing changes
+  useEffect(() => {
+    setProcedureName(existing?.procedureName ?? '');
+    setSurgeonName(existing?.surgeonName ?? '');
+    const beforeImg = existing?.images.find((img) => img.type === 'before');
+    const afterImg = existing?.images.find((img) => img.type === 'after');
+    setBeforeImageUrl(beforeImg?.url ?? '');
+    setAfterImageUrl(afterImg?.url ?? '');
+    setDescription(existing?.description ?? '');
+  }, [existing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const images: Array<{ url: string; type: 'before' | 'after' }> = [];
+      if (beforeImageUrl.trim()) images.push({ url: beforeImageUrl.trim(), type: 'before' });
+      if (afterImageUrl.trim()) images.push({ url: afterImageUrl.trim(), type: 'after' });
+
       const payload: Record<string, unknown> = {
         procedureName: procedureName.trim() || undefined,
-        beforeImageUrl: beforeImageUrl.trim() || undefined,
-        afterImageUrl: afterImageUrl.trim() || undefined,
-        description: description.trim() || undefined,
-        patientAge: patientAge ? Number(patientAge) : undefined,
-        patientGender: patientGender.trim() || undefined,
+        surgeonName: surgeonName.trim() || null,
+        description: description.trim() || null,
+        images,
       };
       if (existing) {
         await updateBeforeAfterCase(existing.id, payload);
@@ -712,16 +724,13 @@ function BeforeAfterModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={existing ? 'Edit Case' : 'Add Before & After Case'} key={resetKey}>
+    <Modal open={open} onClose={onClose} title={existing ? 'Edit Case' : 'Add Before & After Case'}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Procedure Name" value={procedureName} onChange={setProcedureName} />
+        <FormField label="Surgeon Name" value={surgeonName} onChange={setSurgeonName} />
         <FormField label="Before Image URL" value={beforeImageUrl} onChange={setBeforeImageUrl} />
         <FormField label="After Image URL" value={afterImageUrl} onChange={setAfterImageUrl} />
         <FormField label="Description" value={description} onChange={setDescription} multiline />
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="Patient Age" value={patientAge} onChange={setPatientAge} type="number" />
-          <FormField label="Patient Gender" value={patientGender} onChange={setPatientGender} placeholder="e.g. Female" />
-        </div>
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={submitting}>

@@ -10,6 +10,6 @@ export class DeleteSurgeonUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    await this.materialsRepo.deleteSurgeon(surgeonId);
+    await this.materialsRepo.deleteSurgeon(surgeonId, hospitalId);
   }
 }

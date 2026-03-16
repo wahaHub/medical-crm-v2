@@ -38,11 +38,13 @@ export function ConsultationsList({ initialData, initialStats }: ConsultationsLi
   const params: Record<string, string> = { limit: '20' };
   if (status !== 'all') params.status = status;
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useConsultations(params);
+  // SSR data was fetched with status=SCHEDULED; only use it as fallback when filters match
+  const filtersMatchSSR = status === 'SCHEDULED';
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending } = useConsultations(params);
   const { data: liveStats } = useConsultationStats();
 
   const stats = (liveStats ?? initialStats) as ConsultationStats;
-  const allPages = data?.pages ?? [initialData];
+  const allPages = data?.pages ?? (filtersMatchSSR ? [initialData] : []);
   const consultations = allPages.flatMap((page) => {
     const p = page as PaginatedResponse<ConsultationSummary>;
     return p.data ?? [];
@@ -85,7 +87,9 @@ export function ConsultationsList({ initialData, initialStats }: ConsultationsLi
       </div>
 
       {/* Consultation Cards */}
-      {consultations.length === 0 ? (
+      {!filtersMatchSSR && isPending ? (
+        <div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>
+      ) : consultations.length === 0 ? (
         <EmptyState
           icon={<Video size={48} />}
           title="No consultations found"

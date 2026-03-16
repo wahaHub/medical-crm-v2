@@ -16,6 +16,8 @@ import { NotFoundError } from '@medical-crm/utils';
  * - hospital_procedures + procedures (join) -> MaterialsProcedure
  * - surgeons -> MaterialsSurgeon
  * - procedure_cases + case_images -> MaterialsBeforeAfterCase
+ *
+ * All mutation queries are scoped by hospital_id for tenant isolation.
  */
 export class SupabaseMaterialsRepository implements IMaterialsRepository {
   constructor(private readonly supabase: SupabaseClient) {}
@@ -159,7 +161,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     };
   }
 
-  async updateProcedure(id: string, updates: Partial<MaterialsProcedure>): Promise<MaterialsProcedure> {
+  async updateProcedure(id: string, hospitalId: string, updates: Partial<MaterialsProcedure>): Promise<MaterialsProcedure> {
     const updateData: Record<string, unknown> = {};
     if (updates.priceRange !== undefined) updateData['price_range'] = updates.priceRange;
     if (updates.priceMin !== undefined) updateData['price_min'] = updates.priceMin;
@@ -171,32 +173,25 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       .from('hospital_procedures')
       .update(updateData)
       .eq('id', id)
+      .eq('hospital_id', hospitalId)
       .select('id, hospital_id, procedure_id, price_range, price_min, price_max, is_popular, sort_order, procedures(procedure_name, description)')
       .single();
 
-    if (error) throw error;
-    if (!row) throw new NotFoundError(`Procedure ${id} not found`);
+    if (error) {
+      if (error.code === 'PGRST116') throw new NotFoundError(`Procedure ${id} not found for hospital ${hospitalId}`);
+      throw error;
+    }
+    if (!row) throw new NotFoundError(`Procedure ${id} not found for hospital ${hospitalId}`);
 
     const proc = (row as Record<string, unknown>).procedures as { procedure_name: string; description: string | null } | null;
 
-    // If procedure name or description changed, update the procedures table too
-    if (updates.procedureName !== undefined || updates.description !== undefined) {
-      const procUpdates: Record<string, unknown> = {};
-      if (updates.procedureName !== undefined) procUpdates['procedure_name'] = updates.procedureName;
-      if (updates.description !== undefined) procUpdates['description'] = updates.description;
-      procUpdates['updated_at'] = new Date().toISOString();
-
-      await this.supabase
-        .from('procedures')
-        .update(procUpdates)
-        .eq('id', row.procedure_id);
-    }
+    // NOTE: Do NOT update the shared procedures table — it is a global catalog.
 
     return {
       id: row.id,
       hospitalId: row.hospital_id,
-      procedureName: updates.procedureName ?? proc?.procedure_name ?? '',
-      description: updates.description !== undefined ? updates.description ?? null : proc?.description ?? null,
+      procedureName: proc?.procedure_name ?? '',
+      description: proc?.description ?? null,
       priceMin: row.price_min,
       priceMax: row.price_max,
       priceRange: row.price_range,
@@ -205,11 +200,12 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     };
   }
 
-  async deleteProcedure(id: string): Promise<void> {
+  async deleteProcedure(id: string, hospitalId: string): Promise<void> {
     const { error } = await this.supabase
       .from('hospital_procedures')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('hospital_id', hospitalId);
 
     if (error) throw error;
   }
@@ -274,7 +270,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     };
   }
 
-  async updateSurgeon(id: string, updates: Partial<MaterialsSurgeon>): Promise<MaterialsSurgeon> {
+  async updateSurgeon(id: string, hospitalId: string, updates: Partial<MaterialsSurgeon>): Promise<MaterialsSurgeon> {
     const updateData: Record<string, unknown> = {};
     if (updates.name !== undefined) updateData['name'] = updates.name;
     if (updates.title !== undefined) updateData['title'] = updates.title;
@@ -288,15 +284,19 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       .from('surgeons')
       .update(updateData)
       .eq('id', id)
+      .eq('hospital_id', hospitalId)
       .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages')
       .single();
 
-    if (error) throw error;
-    if (!row) throw new NotFoundError(`Surgeon ${id} not found`);
+    if (error) {
+      if (error.code === 'PGRST116') throw new NotFoundError(`Surgeon ${id} not found for hospital ${hospitalId}`);
+      throw error;
+    }
+    if (!row) throw new NotFoundError(`Surgeon ${id} not found for hospital ${hospitalId}`);
 
     return {
       id: row.id,
-      hospitalId: row.hospital_id ?? '',
+      hospitalId: row.hospital_id ?? hospitalId,
       name: row.name,
       title: row.title,
       imageUrl: row.image_url,
@@ -306,11 +306,12 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     };
   }
 
-  async deleteSurgeon(id: string): Promise<void> {
+  async deleteSurgeon(id: string, hospitalId: string): Promise<void> {
     const { error } = await this.supabase
       .from('surgeons')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('hospital_id', hospitalId);
 
     if (error) throw error;
   }
@@ -390,7 +391,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     };
   }
 
-  async updateBeforeAfterCase(id: string, updates: Partial<MaterialsBeforeAfterCase>): Promise<MaterialsBeforeAfterCase> {
+  async updateBeforeAfterCase(id: string, hospitalId: string, updates: Partial<MaterialsBeforeAfterCase>): Promise<MaterialsBeforeAfterCase> {
     const updateData: Record<string, unknown> = {};
     if (updates.procedureName !== undefined) updateData['procedure_name'] = updates.procedureName;
     if (updates.surgeonName !== undefined) updateData['provider_name'] = updates.surgeonName;
@@ -401,11 +402,15 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       .from('procedure_cases')
       .update(updateData)
       .eq('id', id)
+      .eq('hospital_id', hospitalId)
       .select('id, hospital_id, procedure_name, provider_name, description')
       .single();
 
-    if (error) throw error;
-    if (!row) throw new NotFoundError(`Before/After case ${id} not found`);
+    if (error) {
+      if (error.code === 'PGRST116') throw new NotFoundError(`Before/After case ${id} not found for hospital ${hospitalId}`);
+      throw error;
+    }
+    if (!row) throw new NotFoundError(`Before/After case ${id} not found for hospital ${hospitalId}`);
 
     // If images are provided, replace all existing images
     if (updates.images !== undefined) {
@@ -435,7 +440,8 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       await this.supabase
         .from('procedure_cases')
         .update({ image_count: updates.images.length })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('hospital_id', hospitalId);
     }
 
     // Fetch current images if not replaced
@@ -457,7 +463,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 
     return {
       id: row.id,
-      hospitalId: row.hospital_id ?? '',
+      hospitalId: row.hospital_id ?? hospitalId,
       procedureName: row.procedure_name ?? '',
       surgeonName: row.provider_name,
       description: row.description,
@@ -465,7 +471,17 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     };
   }
 
-  async deleteBeforeAfterCase(id: string): Promise<void> {
+  async deleteBeforeAfterCase(id: string, hospitalId: string): Promise<void> {
+    // Verify record belongs to hospital before deleting images
+    const { data: existing } = await this.supabase
+      .from('procedure_cases')
+      .select('id')
+      .eq('id', id)
+      .eq('hospital_id', hospitalId)
+      .single();
+
+    if (!existing) throw new NotFoundError(`Before/After case ${id} not found for hospital ${hospitalId}`);
+
     // Delete case images first (foreign key)
     await this.supabase
       .from('case_images')
@@ -475,7 +491,8 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     const { error } = await this.supabase
       .from('procedure_cases')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('hospital_id', hospitalId);
 
     if (error) throw error;
   }

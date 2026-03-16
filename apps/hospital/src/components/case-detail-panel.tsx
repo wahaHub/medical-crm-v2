@@ -3,16 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tabs, PageHeader, StatusBadge, Card } from '@medical-crm/ui';
-import { useCaseDocuments, useCaseProgress, useCaseConsultations } from '@/queries/use-cases';
+import { useCaseConsultations } from '@/queries/use-cases';
 import type {
-  CaseSummary,
+  HospitalCaseDetail,
   PaginatedResponse,
-  DocumentItem,
-  CaseProgressResponse,
   ConsultationSummary,
 } from '@/lib/api-types';
-// Server actions available for future use:
-// import { updateCaseStatus, updateCaseStage } from '@/actions/case-actions';
 
 const tabItems = [
   { key: 'intake', label: 'Intake' },
@@ -24,26 +20,21 @@ const tabItems = [
   { key: 'consultation', label: 'Consultation' },
 ];
 
-export function CaseDetailPanel({ caseDetail }: { caseDetail: CaseSummary }) {
+export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [activeTab, setActiveTab] = useState('intake');
   const router = useRouter();
 
-  const { data: documents } = useCaseDocuments(caseDetail.id);
-  const { data: progress } = useCaseProgress(caseDetail.id);
   const { data: consultations } = useCaseConsultations(caseDetail.id);
-
-  const docsResponse = documents as PaginatedResponse<DocumentItem> | undefined;
-  const progressResponse = progress as CaseProgressResponse | undefined;
   const consultationsResponse = consultations as PaginatedResponse<ConsultationSummary> | undefined;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <PageHeader
-          title={`Case ${caseDetail.caseNumber ?? ''}`}
-          subtitle={caseDetail.patientName ?? 'Unknown Patient'}
+          title={`Case ${caseDetail.caseNumber}`}
+          subtitle={caseDetail.patient.name}
         />
-        <StatusBadge status={caseDetail.status ?? 'UNKNOWN'} />
+        <StatusBadge status={caseDetail.displayStatus} />
       </div>
 
       <Tabs items={tabItems} activeKey={activeTab} onChange={setActiveTab} />
@@ -53,12 +44,23 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: CaseSummary }) {
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Patient Information</h3>
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><span className="text-slate-500">Name:</span> <span className="ml-2">{caseDetail.patientName ?? 'N/A'}</span></div>
-              <div><span className="text-slate-500">Status:</span> <span className="ml-2">{caseDetail.status ?? 'N/A'}</span></div>
-              <div><span className="text-slate-500">Stage:</span> <span className="ml-2">{caseDetail.stage ?? 'N/A'}</span></div>
+              <div><span className="text-slate-500">Name:</span> <span className="ml-2">{caseDetail.patient.name}</span></div>
+              <div><span className="text-slate-500">Status:</span> <span className="ml-2">{caseDetail.displayStatus}</span></div>
+              <div><span className="text-slate-500">Country:</span> <span className="ml-2">{caseDetail.patient.country ?? 'N/A'}</span></div>
               <div><span className="text-slate-500">Risk Level:</span> <span className="ml-2">{caseDetail.riskLevel ?? 'N/A'}</span></div>
-              <div className="col-span-2"><span className="text-slate-500">Medical Condition:</span> <span className="ml-2">{caseDetail.medicalCondition ?? 'N/A'}</span></div>
-              <div className="col-span-2"><span className="text-slate-500">Notes:</span> <span className="ml-2">{caseDetail.notes ?? 'N/A'}</span></div>
+              {caseDetail.patient.age != null && (
+                <div><span className="text-slate-500">Age:</span> <span className="ml-2">{caseDetail.patient.age}</span></div>
+              )}
+              {caseDetail.patient.gender && (
+                <div><span className="text-slate-500">Gender:</span> <span className="ml-2">{caseDetail.patient.gender}</span></div>
+              )}
+              <div className="col-span-2"><span className="text-slate-500">Primary Diagnosis:</span> <span className="ml-2">{caseDetail.medicalCondition.primaryDiagnosis ?? 'N/A'}</span></div>
+              {caseDetail.medicalCondition.medicalHistory && (
+                <div className="col-span-2"><span className="text-slate-500">Medical History:</span> <span className="ml-2">{caseDetail.medicalCondition.medicalHistory}</span></div>
+              )}
+              {caseDetail.aiSummary && (
+                <div className="col-span-2"><span className="text-slate-500">AI Summary:</span> <span className="ml-2">{caseDetail.aiSummary}</span></div>
+              )}
             </div>
           </Card>
         )}
@@ -66,9 +68,9 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: CaseSummary }) {
         {activeTab === 'documents' && (
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Documents</h3>
-            {(docsResponse?.data?.length ?? 0) > 0 ? (
+            {caseDetail.documents.length > 0 ? (
               <div className="space-y-3">
-                {(docsResponse?.data ?? []).map((doc) => (
+                {caseDetail.documents.map((doc) => (
                   <div key={doc.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3">
                     <div>
                       <div className="font-medium text-slate-900">{doc.fileName}</div>
@@ -86,16 +88,20 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: CaseSummary }) {
         {activeTab === 'messages' && (
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Messages</h3>
-            <p className="text-sm text-slate-500">Message history will be displayed here</p>
+            <p className="text-sm text-slate-500">
+              {caseDetail.totalMessages > 0
+                ? `${caseDetail.totalMessages} message(s) — view in Messages tab`
+                : 'No messages yet'}
+            </p>
           </Card>
         )}
 
         {activeTab === 'diagnosis' && (
           <Card>
             <h3 className="mb-4 text-lg font-semibold">Diagnosis</h3>
-            {(progressResponse?.diagnoses?.length ?? 0) > 0 ? (
+            {caseDetail.diagnoses.length > 0 ? (
               <div className="space-y-3">
-                {(progressResponse?.diagnoses ?? []).map((d, i) => (
+                {caseDetail.diagnoses.map((d, i) => (
                   <div key={i} className="rounded-xl border border-slate-100 p-3">
                     <div className="font-medium text-slate-900">{d.condition}</div>
                     <div className="text-sm text-slate-500">{d.notes}</div>

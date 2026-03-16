@@ -17,6 +17,6 @@ export class UpdateBeforeAfterCaseUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    return this.materialsRepo.updateBeforeAfterCase(caseId, input);
+    return this.materialsRepo.updateBeforeAfterCase(caseId, hospitalId, input);
   }
 }

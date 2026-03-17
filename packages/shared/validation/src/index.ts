@@ -14,3 +14,4 @@ export * from './journey.schema.js';
 export * from './question-collector.schema.js';
 export * from './service-catalog.schema.js';
 export * from './booking-request.schema.js';
+export * from './patient.schema.js';

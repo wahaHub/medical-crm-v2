@@ -24,3 +24,19 @@ export function useCase(id: string) {
     enabled: !!id,
   });
 }
+
+export function useCaseDocuments(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'documents'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/documents`),
+    enabled: !!caseId,
+  });
+}
+
+export function useCaseQuestionnaire(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'questionnaire'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/questionnaire`),
+    enabled: !!caseId,
+  });
+}

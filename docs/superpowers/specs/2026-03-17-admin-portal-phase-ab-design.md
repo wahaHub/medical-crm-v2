@@ -14,7 +14,7 @@
 | 组件策略 | 基础共享 + 业务独立 | shared/ui 的 DataTable/Card/Modal 复用，业务组件 Admin 独立编写 |
 | Case Detail Tab | 10 个 | 覆盖完整业务流程 |
 | 认证方案 | 复用同一 Keycloak client | apps/admin 已有 PKCE 骨架，API 层 toActor() 已识别 admin role |
-| 缺失 API | 前端先行，API 后补 | 核心 API 全就绪，缺失的为辅助统计类 |
+| 缺失 API | 前端先行，API 后补 | 大部分核心 API 就绪，3 个 P0 阻塞项需先修复（见 §4.2 + §7 前置任务） |
 | Dashboard | 精简版 | 统计卡片 + 最近案例 + 待办事项 |
 
 ---
@@ -158,7 +158,7 @@ apps/admin/src/
 
 | 模块 | 内容 |
 |------|------|
-| 统计卡片 | 总数 / 未分配 / 已分配 / 治疗中 / 已完成（对应 `CaseStatsDTO`: `total` / `unassigned` / `assigned` / `inTreatment` / `completed`） |
+| 统计卡片 | 对应 `CaseStatsDTO` 全部 7 个字段：总数（`total`）/ 未分配（`unassigned`）/ 已分配（`assigned`）/ 治疗中（`inTreatment`）/ 术后（`postTreatment`）/ 已完成（`completed`）/ 随访（`followUp`）。展示为 7 个 StatCard，不遗漏任何状态 |
 | 筛选栏 | 搜索框（`search`）+ 状态下拉（`assignmentStatus`）+ 阶段下拉（`treatmentStage`）— 仅使用 `caseListQuerySchema` 已支持的参数。注：无日期范围过滤（schema 不支持） |
 | 案例表格 | 案例编号（`caseNumber`）、患者名（`patientName`）、状态 Badge（`status`）、阶段（`stage`）、分配状态（`assignmentStatus`）、创建日期（`createdAt`）— 均为 `CaseDTO` 已有字段。注：`CaseDTO` 不含医院数/报价数，不显示这两列 |
 
@@ -185,6 +185,95 @@ apps/admin/src/
 
 **Tab 实现策略**：使用 `@medical-crm/ui` 的 `Tabs` 组件，每个 Tab 内容为独立 Client Component，各自管理 React Query 数据获取（lazy load，切换到该 Tab 时才请求）。
 
+#### Tab 1: Overview
+
+- **基本信息卡片**：患者名、国籍（`patientCountry`）、语言（`patientLanguage`）、主诊断（`primaryDiagnosis`）、风险等级（`riskLevel`）、分配状态（`assignmentStatus`）、治疗阶段（`treatmentStage`）
+- **状态操作**：阶段推进按钮（`PATCH /cases/{id}/stage`）、状态更新下拉（`PATCH /cases/{id}/status`）
+- **文档区域**：文档列表（`GET /cases/{caseId}/documents`）+ 上传按钮（`POST /cases/{caseId}/documents`，FormData）+ 删除操作（`DELETE /cases/{caseId}/documents/{docId}`）
+- **组件**：`Card` + `StatusBadge` + `Button` + `DataTable`（文档列表）
+
+#### Tab 2: Multi-Hospital Quotes
+
+- **已邀医院列表**：来自 `GET /cases/{caseId}/hospital-contacts`，显示医院名、邀请状态、邀请时间
+  - 每行操作：发送提醒（`POST /hospital-contacts/{id}/remind`）、移除（`PATCH /hospital-contacts/{id}/remove`）
+- **添加医院**：按钮打开 Modal → 搜索医院 → `POST /cases/{caseId}/hospital-contacts` body: `{ hospitalId }`
+- **报价对比表**：来自 `GET /cases/{caseId}/quotes/compare`，表格对比各医院报价明细（项目、金额、总价）
+- **报价操作**：查看详情（`GET /quotes/{id}`）、接受（`POST /quotes/{id}/accept`）、拒绝（`POST /quotes/{id}/reject`）
+- **重置分配**：`POST /cases/{caseId}/reset-assignment`（需确认弹窗）
+- **组件**：`DataTable` + `Modal` + `ConfirmDialog` + `StatusBadge`
+
+#### Tab 3: Timeline
+
+- **垂直时间轴**：来自 `GET /cases/{caseId}/timeline`，按时间倒序展示事件
+- 每个事件节点显示：事件类型图标、事件描述、时间戳、操作人
+- 事件类型包括：案例创建、状态变更、医院邀请、报价发送/接受/拒绝、消息发送、文档上传等
+- **组件**：自定义 `TimelineView`（垂直时间轴，使用 Lucide 图标区分事件类型）
+
+#### Tab 4: Messages
+
+- **左侧对话列表**：来自 `GET /conversations?caseId={id}`，显示对话类型（Admin↔Patient / Admin↔Hospital / Hospital↔Patient）+ 最后消息预览 + 未读数
+- **右侧聊天窗口**：选中对话后，`GET /conversations/{convId}/messages` 加载消息列表
+  - 消息气泡：发送者头像 + 内容 + 时间 + 翻译结果（如有）
+  - 发送消息：输入框 + `POST /conversations/{convId}/messages`
+  - 消息操作：重新翻译（`POST /messages/{msgId}/retranslate`）、重新生成摘要（`POST /messages/{msgId}/regenerate-summary`）
+- **消息审核**：待审核消息高亮显示，提供审核/拒绝操作（`POST /messages/{msgId}/approve` / `reject`）
+- **组件**：`ChatLayout`（shared/ui）+ `Avatar` + `Button`
+
+#### Tab 5: Medical Intake
+
+- **只读展示**：来自 `GET /cases/{caseId}/questionnaire`
+- 按问卷模板结构展示：问题标题 + 患者回答（文本/单选/多选/文件）
+- 如无回答，显示 `EmptyState`："患者尚未填写问卷"
+- **组件**：`Card` + `EmptyState`
+
+#### Tab 6: Journey
+
+- **行程信息卡片**：来自 `GET /cases/{caseId}/journey`
+  - 签证信息：状态、签证类型、申请日期、获批日期
+  - 保险信息：保险商、保单号、覆盖范围
+  - 住宿信息：酒店名、入住/退房日期、地址
+  - 交通信息：航班号、出发/到达时间
+  - 术后安排：随访日期、注意事项
+- **里程碑列表**：来自 `GET /cases/{caseId}/milestones`
+  - 每个里程碑：标题、类别、状态（completed/pending/overdue）、日期
+  - 操作：新增（`POST /milestones`）、更新状态（`PATCH /milestones/{id}`）、删除（`DELETE /milestones/{id}`）
+- **编辑行程**：`PUT /cases/{caseId}/journey` 更新各项信息
+- **组件**：`Card` + `StatusBadge` + `DataTable` + `Modal`（编辑表单）
+
+#### Tab 7: Consultations
+
+- **问诊列表**：来自 `GET /cases/{caseId}/consultations`
+  - 每行显示：医院名、日期时间、时长、状态（SCHEDULED/IN_PROGRESS/COMPLETED/CANCELLED）
+  - 已完成的问诊：显示录像/录音链接
+- **问诊详情**：点击展开或打开 Modal → `GET /consultations/{id}` + `GET /consultations/{id}/transcript`（问诊记录文字版）
+- **统计**：`GET /consultations/stats`（总数、已完成、待进行）
+- **组件**：`DataTable` + `StatusBadge` + `Modal`
+
+#### Tab 8: Orders（只读）
+
+- **订单列表**：来自 `GET /orders?caseId={id}`（注：需确认 orderListQuerySchema 是否支持 caseId 过滤）
+  - 每行显示：订单号、套餐名、金额、状态（PENDING/PAID/REFUNDED/CANCELLED）、创建时间
+- **订单详情**：点击展开 → `GET /orders/{id}`，显示支付详情、退款记录
+- **注意**：Admin 只读查看，无退款按钮（`RequestRefundUseCase` 仅允许 PATIENT）
+- **组件**：`DataTable` + `StatusBadge` + `Card`
+
+#### Tab 9: Support
+
+- **工单列表**：来自 `GET /tickets?caseId={id}`（⚠️ 依赖 B0a schema 扩展）
+  - 每行显示：工单号、类型、优先级 Badge、状态、创建时间、分配给
+- **工单详情**：点击展开 → `GET /tickets/{id}`
+  - 工单信息 + 回复历史
+  - 回复操作：`POST /tickets/{id}/reply`
+  - 状态管理：分配（`POST /tickets/{id}/assign`）、更新状态（`PATCH /tickets/{id}/status`）、关闭（`POST /tickets/{id}/close`）
+- **组件**：`DataTable` + `StatusBadge` + `Modal` + 回复文本框
+
+#### Tab 10: AI Summary
+
+- **摘要展示**：来自 `CaseDTO.aiSummary` 字段（在 Overview 数据中已获取，无需额外 API）
+- 以 Markdown 渲染展示 AI 生成的案例摘要
+- 如 `aiSummary` 为 `null`，显示 `EmptyState`："暂无 AI 摘要"
+- **组件**：`Card` + Markdown 渲染器 + `EmptyState`
+
 ### 3.4 Hospitals 列表 (`/hospitals`)
 
 **数据源**：`GET /api/v2/hospitals`
@@ -208,7 +297,7 @@ apps/admin/src/
 **⚠️ 以下模块暂不实现（API 缺口）：**
 - ~~统计卡片（关联案例数 / 活跃 / 已完成）~~ — `/hospitals/{id}/cases` 是分页接口，前端聚合不可行（会产生不正确的总数）。**Phase A 不显示统计卡片**，后续通过 `GET /hospitals/{id}/stats` 新 API 支持。
 - ~~医院账号列表~~ — `HospitalDTO` 无 user/account 字段，需新增 `GET /hospitals/{id}/users` API。**Phase A 不显示该模块。**
-| **邀请链接管理** | "生成邀请链接" 按钮 → 弹出邮箱确认框 → `POST /hospitals/{id}/registration-token` body: `{ email }` |
+| **邀请链接管理** | "重新发送邀请链接" 按钮（用于令牌过期后重发）→ 弹出邮箱确认框 → `POST /hospitals/{id}/registration-token` body: `{ email }` |
 | **宣传材料审核**（底部） | 见下方详细设计 |
 
 #### 宣传材料审核区域（参照 v1）
@@ -262,27 +351,25 @@ apps/admin/src/
 
 切换类型时重置已选专科。
 
-**⚠️ API 缺口：** 当前无 Admin BFF 路由获取专科选项列表。需新增：
-- `GET /api/admin/specialties?type=COSMETIC` — BFF 路由，从 Main Supabase 查询 `procedures` 表
-- `GET /api/admin/specialties?type=REGULAR` — BFF 路由，返回 REGULAR 科室硬编码列表（或从 China Medical Supabase 查询）
+**⚠️ API 缺口：** 当前无 BFF 路由获取专科选项列表。需新增：
+- `GET /api/specialties?type=COSMETIC` — 从 Main Supabase 查询 `procedures` 表
+- `GET /api/specialties?type=REGULAR` — 返回 REGULAR 科室列表
 
-这些是 Admin Portal 的 BFF 路由（`apps/admin/src/app/api/specialties/route.ts`），不是后端 API。
+实现路径：`apps/admin/src/app/api/specialties/route.ts`（Next.js App Router 对应 URL `/api/specialties`）。
 
-#### Step 3: 生成邀请链接（手动触发）
+#### 创建后自动流程（参照 v1）
 
-创建完成后，在 Hospital Detail 页面手动点击 **"生成邀请链接"** 按钮：
-- 弹出输入框让用户确认/输入医院邮箱（默认填充创建时的 `contactEmail`）
-- 调用 `POST /api/v2/hospitals/{id}/registration-token` body: `{ email: "hospital@example.com" }`（`generateRegistrationTokenSchema` 要求 `email` 字段）
-- 生成 72 小时有效的注册令牌
-- 系统发送邀请邮件到指定邮箱
+v1 的创建医院流程是：创建 → 自动生成 registration token → 自动发送邀请邮件。v2 需复现此行为：
 
-**注意：邀请邮件不是创建时自动发送的，是独立的手动步骤。**
+1. `POST /api/v2/hospitals` → 创建基础信息，得到 `hospitalId`
+2. `PUT /api/v2/hospitals/{id}` → 补充专科（REGULAR 还需补 city，待 schema 扩展）
+3. `POST /api/v2/hospitals/{id}/registration-token` body: `{ email: "<创建时填的contactEmail>" }` → 自动生成 72 小时注册令牌 + 发送邀请邮件
+4. 成功提示："医院创建成功！系统已向医院邮箱发送邀请链接。"
+5. 自动跳转到医院详情页 `/hospitals/{newId}`
 
-**创建后逻辑：**
-1. `POST /api/v2/hospitals` → 创建基础信息
-2. `PUT /api/v2/hospitals/{id}` → 补充城市/专科
-3. 成功提示："医院创建成功！请在详情页生成邀请链接。"
-4. 自动跳转到医院详情页 `/hospitals/{newId}`
+**步骤 1~3 在前端连续调用**，用户只需点一次"提交"。如果步骤 3 邮件发送失败，不阻塞创建（v1 也是这样处理的）。
+
+Hospital Detail 页面仍保留 **"重新发送邀请链接"** 按钮，用于令牌过期后重新生成（弹出邮箱确认框 → `POST /registration-token` body: `{ email }`）。
 
 ---
 
@@ -313,7 +400,7 @@ apps/admin/src/
 | `GET /hospitals/{id}/users` | 新 API | 医院用户账号列表（角色、最后登录） | Hospital Detail 账号列表 | P1（暂不显示该模块） |
 | `GET /hospitals/{id}/stats` | 新 API | 医院统计（案例数、活跃、已完成） | Hospital Detail 统计卡片 | P1（暂不显示） |
 | `update-hospital-status` 增加 Supabase 同步 | 逻辑修复 | 状态变更同步到消费者网站 | Hospital Detail 审核操作 | P1（当前仅更新 CRM DB） |
-| Admin BFF `GET /api/admin/specialties` 路由 | 新 BFF 路由 | 获取专科选项列表（按类型） | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
+| Admin BFF `GET /api/specialties` 路由 | 新 BFF 路由 | 获取专科选项列表（按类型） | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
 | `ticketListQuerySchema` 增加 `caseId` 过滤 | Schema 扩展 | 按案例过滤工单 | Case Detail → Support Tab | **P0（阻塞 Support Tab）** |
 | `RequestRefundUseCase` 支持 ADMIN 角色 | 权限扩展 | Admin 代操作退款 | Case Detail → Orders Tab | P1（当前 Admin 只读） |
 | ~~`GET /cases/{id}/ai-summary`~~ | ~~不需要~~ | `CaseDTO.aiSummary` 已包含摘要数据 | — | — |
@@ -386,29 +473,46 @@ auth 路由均为 Route Handler（`route.ts`），无独立登录 UI 页面。
 
 ### Phase A — 核心骨架
 
-| # | 任务 | 依赖 |
+**前置 API 任务（阻塞 A8）：**
+
+| # | 任务 | 说明 |
 |---|------|------|
-| A1 | Admin Shell（layout + 侧边栏 + 顶栏 + 认证集成） | 已有 auth 骨架 |
-| A2 | Dashboard 页面 | `GET /api/v2/admin/dashboard` |
-| A3 | Cases 列表页 | `GET /cases` + `GET /cases/stats` |
-| A4 | New Case 表单页（临时入口） | `POST /api/v2/cases` |
-| A5 | Case Detail（Overview + Medical Intake Tab） | `GET /cases/{id}` + `/documents` + `/questionnaire` |
-| A6 | Hospitals 列表页 | `GET /hospitals` |
-| A7 | Hospital Detail（基本信息 + 案例 + 邀请链接 + 宣传材料审核，无统计/无账号列表） | `GET /hospitals/{id}` + `/cases` + `PATCH /status` + `POST /registration-token` |
-| A8 | New Hospital 表单页（两步流程） | `POST /hospitals` + `PUT /hospitals/{id}` |
+| A0a | 扩展 `updateHospitalSchema` 增加 `city` 字段 | 阻塞 New Hospital REGULAR 类型 |
+| A0b | 新增 BFF 路由 `GET /api/specialties` | 阻塞 New Hospital 专科选择 |
+
+**页面任务：**
+
+| # | 任务 | 依赖 | API 就绪？ |
+|---|------|------|-----------|
+| A1 | Admin Shell（layout + 侧边栏 + 顶栏 + 认证集成） | 已有 auth 骨架 | ✅ |
+| A2 | Dashboard 页面 | `GET /api/v2/admin/dashboard` | ✅ |
+| A3 | Cases 列表页 | `GET /cases` + `GET /cases/stats` | ✅ |
+| A4 | New Case 表单页（临时入口） | `POST /api/v2/cases` | ✅ |
+| A5 | Case Detail（Overview + Medical Intake Tab） | `GET /cases/{id}` + `/documents` + `/questionnaire` | ✅ |
+| A6 | Hospitals 列表页 | `GET /hospitals` | ✅ |
+| A7 | Hospital Detail（基本信息 + 案例 + 宣传材料审核，无统计/无账号列表） | `GET /hospitals/{id}` + `/cases` + `PATCH /status` + `POST /registration-token` | ✅ |
+| A8 | New Hospital 表单页（两步流程） | `POST /hospitals` + `PUT /hospitals/{id}` | ⚠️ 依赖 A0a + A0b |
 
 ### Phase B — 多医院工作流 + 扩展 Tab
 
-| # | 任务 | 依赖 |
+**前置 API 任务（阻塞 B7）：**
+
+| # | 任务 | 说明 |
 |---|------|------|
-| B1 | Case Detail: Multi-Hospital Quotes Tab | `/hospital-contacts` + `/quotes/compare` |
-| B2 | Case Detail: Timeline Tab | `/cases/{id}/timeline` |
-| B3 | Case Detail: Messages Tab | `/conversations` + `/messages` |
-| B4 | Case Detail: Journey Tab | `/journey` + `/milestones` |
-| B5 | Case Detail: Consultations Tab | `/consultations` |
-| B6 | Case Detail: Orders Tab | `/orders?caseId=` |
-| B7 | Case Detail: Support Tab | `/tickets`（⚠️ 需先扩展 schema 增加 `caseId` 过滤） |
-| B8 | Case Detail: AI Summary Tab | `CaseDTO.aiSummary`（已有字段，无需新 API） |
+| B0a | 扩展 `ticketListQuerySchema` 增加 `caseId` 过滤 | 阻塞 Support Tab |
+
+**页面任务：**
+
+| # | 任务 | 依赖 | API 就绪？ |
+|---|------|------|-----------|
+| B1 | Case Detail: Multi-Hospital Quotes Tab | `/hospital-contacts` + `/quotes/compare` | ✅ |
+| B2 | Case Detail: Timeline Tab | `/cases/{id}/timeline` | ✅ |
+| B3 | Case Detail: Messages Tab | `/conversations` + `/messages` | ✅ |
+| B4 | Case Detail: Journey Tab | `/journey` + `/milestones` | ✅ |
+| B5 | Case Detail: Consultations Tab | `/consultations` | ✅ |
+| B6 | Case Detail: Orders Tab（只读） | `/orders?caseId=` | ✅ |
+| B7 | Case Detail: Support Tab | `/tickets?caseId=` | ⚠️ 依赖 B0a |
+| B8 | Case Detail: AI Summary Tab | `CaseDTO.aiSummary`（已有字段） | ✅ |
 
 ---
 

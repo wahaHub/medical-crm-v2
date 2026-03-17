@@ -26,7 +26,7 @@ Currently `createHospitalSchema` only accepts 6 basic fields. The Hospital entit
 - Modify: `packages/application/src/use-cases/hospitals/create-hospital.use-case.ts`
 - Modify: `packages/infrastructure/database/schema/schema.ts`
 - Modify: `packages/infrastructure/database/repositories/drizzle-hospital-management.repository.ts`
-- Create: `packages/infrastructure/database/migrations/009_add_city_to_hospitals.sql`
+- Create: `packages/infrastructure/database/migrations/012_add_city_to_hospitals.sql`
 
 - [ ] **Step 1: Add `city` column to DB**
 
@@ -36,10 +36,10 @@ Create SQL migration following the existing numbering convention (`001_`, `002_`
 ls packages/infrastructure/database/migrations/ | tail -1
 ```
 
-Create the next numbered migration (e.g., `009`):
+Check the latest number and create the next one (currently `011_m9_booking.sql`, so next is `012`):
 
 ```sql
--- packages/infrastructure/database/migrations/009_add_city_to_hospitals.sql
+-- packages/infrastructure/database/migrations/012_add_city_to_hospitals.sql
 ALTER TABLE hospitals ADD COLUMN city VARCHAR(200);
 ```
 
@@ -189,7 +189,7 @@ git add packages/shared/validation/src/hospital.schema.ts \
   packages/application/src/use-cases/hospitals/create-hospital.use-case.ts \
   packages/infrastructure/database/schema/schema.ts \
   packages/infrastructure/database/repositories/drizzle-hospital-management.repository.ts \
-  packages/infrastructure/database/migrations/009_add_city_to_hospitals.sql
+  packages/infrastructure/database/migrations/012_add_city_to_hospitals.sql
 git add -u  # catch any other files modified for city fix
 git commit -m "feat(hospital): extend createHospitalSchema with specialties + city for one-step creation"
 ```
@@ -345,19 +345,27 @@ If missing, add to the port interface and the Drizzle repository implementation.
 
 - [ ] **Step 3: Register use case in composition-root.ts**
 
-In `apps/api/src/composition-root.ts`, the pattern is a `getServices()` function that returns a lazy-initialized singleton object. Add `validateRegistrationToken` to the returned object:
+In `apps/api/src/composition-root.ts`, the pattern is a `getServices()` function returning a lazy-initialized singleton typed as `AppServices`. Two changes needed:
+
+**3a: Add to `AppServices` interface** (around line 177, alongside other hospital use cases):
+
+```typescript
+validateRegistrationToken: ValidateRegistrationTokenUseCase;
+```
+
+**3b: Add to `getServices()` factory** (inside the `_services = { ... }` object):
 
 ```typescript
 import { ValidateRegistrationTokenUseCase } from '@medical-crm/application';
 
-// Inside the getServices() factory, alongside other hospital use cases:
+// Inside the _services object, alongside other hospital use cases:
 validateRegistrationToken: new ValidateRegistrationTokenUseCase(
   registrationTokenRepo,
   hospitalManagementRepo,
 ),
 ```
 
-This makes it accessible as `svc.validateRegistrationToken` in route handlers.
+Without adding the field to `AppServices`, `svc.validateRegistrationToken` in `index.ts` will fail TypeScript compilation.
 
 - [ ] **Step 4: Add GET route as a PUBLIC route in `apps/api/src/index.ts`**
 
@@ -504,10 +512,10 @@ Without this export, `composition-root.ts` cannot import the class.
 
 - [ ] **Step 4b: Wire up in composition-root.ts**
 
-Import `StubEmailService` from `@medical-crm/infrastructure` and pass it when constructing `GenerateRegistrationTokenUseCase` inside the `getServices()` factory:
+Import `StubEmailService` from `@medical-crm/infrastructure/services` (the package uses subpath exports, not a root barrel — see existing imports in `composition-root.ts`):
 
 ```typescript
-import { StubEmailService } from '@medical-crm/infrastructure';
+import { StubEmailService } from '@medical-crm/infrastructure/services';
 
 // Inside getServices():
 const emailService = new StubEmailService();

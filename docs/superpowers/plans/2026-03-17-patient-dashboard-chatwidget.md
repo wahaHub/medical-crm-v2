@@ -20,10 +20,7 @@
 
 | File | Responsibility |
 |------|---------------|
-| `packages/domain/src/entities/patient-session.entity.ts` | Patient session value object (JWT payload, expiry) |
-| `packages/domain/src/ports/patient-session-repository.port.ts` | Port for session persistence |
 | `packages/domain/src/services/patient-auth.service.ts` | Domain service: JWT sign/verify, magic link token generation |
-| `packages/infrastructure/database/repositories/drizzle-patient-session.repository.ts` | Session repo implementation |
 | `packages/shared/validation/src/patient.schema.ts` | Zod schemas for all patient endpoints |
 | `packages/application/src/use-cases/patient-onboarding/init-onboarding.use-case.ts` | Create temp patient + case + session |
 | `packages/application/src/use-cases/patient-onboarding/match-hospitals.use-case.ts` | Match hospitals by procedure + destination |
@@ -54,13 +51,14 @@
 
 | File | Change |
 |------|--------|
-| `packages/infrastructure/database/schema/schema.ts` | Add `patient_sessions` table, add `password_hash` + `phone` columns to `users` table |
+| `packages/infrastructure/database/schema/schema.ts` | Add `password_hash` + `phone` columns to `users` table |
 | `packages/domain/src/ports/patient-repository.port.ts` | Extend with `findByEmail()`, `createTempPatient()`, `updatePassword()` |
 | `packages/infrastructure/database/repositories/drizzle-patient.repository.ts` | Implement new port methods |
 | `apps/api/src/composition-root.ts` | Wire new repos, services, and use cases |
 | `apps/api/src/index.ts` | Mount patient routes, add WebSocket upgrade |
 | `apps/api/src/server.ts` | Inject WebSocket into Node server |
-| `apps/api/package.json` | Add `@hono/node-ws`, `jsonwebtoken`, `bcryptjs` deps |
+| `apps/api/package.json` | Add `@hono/node-ws`, `bcryptjs` deps |
+| `packages/domain/package.json` | Add `jose` dependency for ESM-safe JWT |
 
 ### Frontend (medora-health-beauty root)
 
@@ -109,7 +107,7 @@
 | `vite.config.ts` | Add proxy config for `/api/patient/*` → CRM v2 server |
 | `components/ChatWidget.tsx` | Complete rewrite → new onboarding chat widget |
 | `types.ts` | Add patient-related type interfaces |
-| `package.json` | Add `@anthropic-ai/turnstile-react` (or similar CAPTCHA) |
+| `package.json` | Add `@marsidev/react-turnstile` for Cloudflare Turnstile CAPTCHA |
 
 ---
 
@@ -129,23 +127,7 @@ phone: varchar({ length: 20 }),
 passwordHash: varchar("password_hash", { length: 255 }),
 ```
 
-- [ ] **Step 2: Add `patient_sessions` table**
-
-```typescript
-export const patientSessions = pgTable("patient_sessions", {
-  id: uuid().defaultRandom().primaryKey().notNull(),
-  userId: uuid("user_id").notNull().references(() => users.id),
-  tokenHash: varchar("token_hash", { length: 255 }).notNull(),
-  expiresAt: timestamp("expires_at", { precision: 6, withTimezone: true, mode: 'string' }).notNull(),
-  createdAt: timestamp("created_at", { precision: 6, withTimezone: true, mode: 'string' })
-    .default(sql`CURRENT_TIMESTAMP`).notNull(),
-}, (table) => [
-  index("patient_sessions_user_id_idx").using("btree", table.userId),
-  index("patient_sessions_token_hash_idx").using("btree", table.tokenHash),
-]);
-```
-
-- [ ] **Step 3: Generate and apply migration**
+- [ ] **Step 2: Generate and apply migration**
 
 Run:
 ```bash
@@ -154,23 +136,21 @@ pnpm db:generate
 pnpm db:migrate
 ```
 
-- [ ] **Step 4: Verify typecheck passes**
+- [ ] **Step 3: Verify typecheck passes**
 
 Run: `pnpm typecheck`
 Expected: All packages pass
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add packages/infrastructure/database/
-git commit -m "feat: add patient_sessions table, phone + password_hash to users"
+git commit -m "feat: add phone and password_hash fields for patient auth"
 ```
 
 ### Task 2: Patient Auth Domain Service
 
 **Files:**
-- Create: `packages/domain/src/entities/patient-session.entity.ts`
-- Create: `packages/domain/src/ports/patient-session-repository.port.ts`
 - Create: `packages/domain/src/services/patient-auth.service.ts`
 - Modify: `packages/domain/src/ports/patient-repository.port.ts`
 
@@ -183,24 +163,24 @@ import { describe, it, expect, vi } from 'vitest';
 import { PatientAuthService } from '@medical-crm/domain';
 
 describe('PatientAuthService', () => {
-  it('generates a JWT with userId and role PATIENT', () => {
+  it('generates a JWT with userId and role PATIENT', async () => {
     const service = new PatientAuthService('test-secret');
-    const token = service.createSessionToken('user-123');
-    const payload = service.verifySessionToken(token);
+    const token = await service.createSessionToken('user-123');
+    const payload = await service.verifySessionToken(token);
     expect(payload.userId).toBe('user-123');
     expect(payload.role).toBe('PATIENT');
   });
 
-  it('throws on expired token', () => {
+  it('throws on expired token', async () => {
     const service = new PatientAuthService('test-secret');
-    const token = service.createSessionToken('user-123', -1); // expired
-    expect(() => service.verifySessionToken(token)).toThrow();
+    const token = await service.createSessionToken('user-123', -1); // expired
+    await expect(service.verifySessionToken(token)).rejects.toThrow();
   });
 
-  it('generates a magic link token', () => {
+  it('generates a magic link token', async () => {
     const service = new PatientAuthService('test-secret');
-    const token = service.createMagicLinkToken('test@email.com');
-    const payload = service.verifyMagicLinkToken(token);
+    const token = await service.createMagicLinkToken('test@email.com');
+    const payload = await service.verifyMagicLinkToken(token);
     expect(payload.email).toBe('test@email.com');
   });
 });
@@ -211,37 +191,7 @@ describe('PatientAuthService', () => {
 Run: `pnpm --filter @medical-crm/application test -- --run patient-auth.service`
 Expected: FAIL — module not found
 
-- [ ] **Step 3: Implement PatientSession entity**
-
-Create `packages/domain/src/entities/patient-session.entity.ts`:
-
-```typescript
-export interface PatientSessionPayload {
-  userId: string;
-  role: 'PATIENT';
-  exp: number;
-}
-
-export interface MagicLinkPayload {
-  email: string;
-  purpose: 'magic-link';
-  exp: number;
-}
-```
-
-- [ ] **Step 4: Implement IPatientSessionRepository port**
-
-Create `packages/domain/src/ports/patient-session-repository.port.ts`:
-
-```typescript
-export interface IPatientSessionRepository {
-  save(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
-  findByTokenHash(tokenHash: string): Promise<{ userId: string; expiresAt: Date } | null>;
-  deleteByUserId(userId: string): Promise<void>;
-}
-```
-
-- [ ] **Step 5: Extend IPatientRepository**
+- [ ] **Step 3: Extend IPatientRepository**
 
 Add to `packages/domain/src/ports/patient-repository.port.ts`:
 
@@ -259,60 +209,73 @@ export interface IPatientRepository {
 }
 ```
 
-- [ ] **Step 6: Implement PatientAuthService**
+- [ ] **Step 4: Implement PatientAuthService using `jose` (ESM-safe)**
 
 Create `packages/domain/src/services/patient-auth.service.ts`:
 
 ```typescript
-import jwt from 'jsonwebtoken';
-import type { PatientSessionPayload, MagicLinkPayload } from '../entities/patient-session.entity.js';
+import * as jose from 'jose';
+
+export interface PatientSessionPayload {
+  userId: string;
+  role: 'PATIENT';
+  exp: number;
+}
+
+export interface MagicLinkPayload {
+  email: string;
+  purpose: 'magic-link';
+  exp: number;
+}
 
 export class PatientAuthService {
-  constructor(private readonly secret: string) {}
+  private readonly secret: Uint8Array;
 
-  createSessionToken(userId: string, expiresInHours = 24): string {
-    return jwt.sign(
-      { userId, role: 'PATIENT' } satisfies Omit<PatientSessionPayload, 'exp'>,
-      this.secret,
-      { expiresIn: `${expiresInHours}h` },
-    );
+  constructor(secret: string) {
+    this.secret = new TextEncoder().encode(secret);
   }
 
-  verifySessionToken(token: string): PatientSessionPayload {
-    return jwt.verify(token, this.secret) as PatientSessionPayload;
+  async createSessionToken(userId: string, expiresInHours = 24): Promise<string> {
+    return await new jose.SignJWT({ userId, role: 'PATIENT' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setExpirationTime(`${expiresInHours}h`)
+      .sign(this.secret);
   }
 
-  createMagicLinkToken(email: string): string {
-    return jwt.sign(
-      { email, purpose: 'magic-link' } satisfies Omit<MagicLinkPayload, 'exp'>,
-      this.secret,
-      { expiresIn: '1h' },
-    );
+  async verifySessionToken(token: string): Promise<PatientSessionPayload> {
+    const { payload } = await jose.jwtVerify(token, this.secret);
+    return payload as unknown as PatientSessionPayload;
   }
 
-  verifyMagicLinkToken(token: string): MagicLinkPayload {
-    const payload = jwt.verify(token, this.secret) as MagicLinkPayload;
-    if (payload.purpose !== 'magic-link') throw new Error('Invalid token purpose');
-    return payload;
+  async createMagicLinkToken(email: string): Promise<string> {
+    return await new jose.SignJWT({ email, purpose: 'magic-link' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setExpirationTime('1h')
+      .sign(this.secret);
+  }
+
+  async verifyMagicLinkToken(token: string): Promise<MagicLinkPayload> {
+    const { payload } = await jose.jwtVerify(token, this.secret);
+    const parsed = payload as unknown as MagicLinkPayload;
+    if (parsed.purpose !== 'magic-link') throw new Error('Invalid token purpose');
+    return parsed;
   }
 }
 ```
 
-- [ ] **Step 7: Export from domain package index**
+- [ ] **Step 5: Export from domain package index**
 
 Add exports to `packages/domain/src/index.ts`:
 ```typescript
-export * from './entities/patient-session.entity.js';
-export * from './ports/patient-session-repository.port.js';
 export * from './services/patient-auth.service.js';
 ```
 
-- [ ] **Step 8: Run tests**
+- [ ] **Step 6: Run tests**
 
 Run: `pnpm --filter @medical-crm/application test -- --run patient-auth.service`
 Expected: PASS (3 tests)
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add packages/domain/ packages/application/__tests__/
@@ -356,7 +319,7 @@ describe('patientAuthMiddleware', () => {
 
   it('returns 200 with valid session cookie', async () => {
     const app = createApp();
-    const token = authService.createSessionToken('user-1');
+    const token = await authService.createSessionToken('user-1');
     const res = await app.request('/test', {
       headers: { Cookie: `patient_session=${token}` },
     });
@@ -367,7 +330,7 @@ describe('patientAuthMiddleware', () => {
 
   it('returns 401 with expired cookie', async () => {
     const app = createApp();
-    const token = authService.createSessionToken('user-1', -1);
+    const token = await authService.createSessionToken('user-1', -1);
     const res = await app.request('/test', {
       headers: { Cookie: `patient_session=${token}` },
     });
@@ -405,7 +368,7 @@ export function patientAuthMiddleware(
       return c.json({ error: 'Unauthorized' }, 401);
     }
     try {
-      const payload = authService.verifySessionToken(token);
+      const payload = await authService.verifySessionToken(token);
       c.set('patientSession', payload);
       await next();
     } catch {
@@ -521,7 +484,6 @@ git commit -m "feat: add in-memory IP rate limiting middleware"
 
 **Files:**
 - Modify: `packages/infrastructure/database/repositories/drizzle-patient.repository.ts`
-- Create: `packages/infrastructure/database/repositories/drizzle-patient-session.repository.ts`
 
 - [ ] **Step 1: Write tests for extended patient repo**
 
@@ -599,53 +561,16 @@ async updatePasswordHash(userId: string, hash: string): Promise<void> {
 }
 ```
 
-- [ ] **Step 4: Implement DrizzlePatientSessionRepository**
-
-Create `packages/infrastructure/database/repositories/drizzle-patient-session.repository.ts`:
-
-```typescript
-import { eq } from 'drizzle-orm';
-import type { IPatientSessionRepository } from '@medical-crm/domain';
-import { patientSessions } from '../schema/schema.js';
-import type { CrmDb } from '../get-crm-db.js';
-
-export class DrizzlePatientSessionRepository implements IPatientSessionRepository {
-  constructor(private readonly db: CrmDb) {}
-
-  async save(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
-    await this.db.insert(patientSessions).values({
-      userId,
-      tokenHash,
-      expiresAt: expiresAt.toISOString(),
-    });
-  }
-
-  async findByTokenHash(tokenHash: string) {
-    const [row] = await this.db
-      .select({ userId: patientSessions.userId, expiresAt: patientSessions.expiresAt })
-      .from(patientSessions)
-      .where(eq(patientSessions.tokenHash, tokenHash))
-      .limit(1);
-    if (!row) return null;
-    return { userId: row.userId, expiresAt: new Date(row.expiresAt) };
-  }
-
-  async deleteByUserId(userId: string): Promise<void> {
-    await this.db.delete(patientSessions).where(eq(patientSessions.userId, userId));
-  }
-}
-```
-
-- [ ] **Step 5: Typecheck**
+- [ ] **Step 4: Typecheck**
 
 Run: `pnpm typecheck`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add packages/infrastructure/ packages/domain/ packages/application/__tests__/
-git commit -m "feat: extend patient repo with findByEmail, createTempPatient, session repo"
+git commit -m "feat: extend patient repo with findByEmail and createTempPatient"
 ```
 
 ### Task 6: Validation Schemas
@@ -699,12 +624,12 @@ export const setPasswordSchema = z.object({
   password: z.string().min(8).max(100),
 });
 
-// POST /api/patient/cases/:id/messages
+// POST /api/patient/conversations/:convId/messages
 export const sendPatientMessageSchema = z.object({
   content: z.string().min(1).max(10000),
 });
 
-// GET /api/patient/cases/:id/messages
+// GET /api/patient/conversations/:convId/messages
 export const listMessagesQuerySchema = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -815,7 +740,7 @@ Expected: FAIL
 
 ```typescript
 import { randomUUID } from 'node:crypto';
-import type { IPatientRepository, IPatientSessionRepository } from '@medical-crm/domain';
+import type { IPatientRepository } from '@medical-crm/domain';
 import type { ICaseRepository } from '@medical-crm/domain';
 import type { PatientAuthService } from '@medical-crm/domain';
 
@@ -873,7 +798,7 @@ export class InitOnboardingUseCase {
     } as any);
 
     // 3. Create session token
-    const token = this.authService.createSessionToken(patient.id);
+    const token = await this.authService.createSessionToken(patient.id);
 
     return { patientId: patient.id, caseId, token, isExistingPatient: isExisting };
   }
@@ -1100,9 +1025,6 @@ const patientAuthService = new PatientAuthService(
   process.env.PATIENT_JWT_SECRET ?? 'dev-patient-secret',
 );
 
-// Patient repos
-const patientSessionRepo = new DrizzlePatientSessionRepository(crmDb);
-
 // Patient onboarding use cases
 const initOnboarding = new InitOnboardingUseCase(patientRepo, caseRepo, patientAuthService);
 const matchHospitals = new MatchHospitalsUseCase(hospitalRepo);
@@ -1130,7 +1052,7 @@ app.post('/onboarding/init', rateLimitByIp({ maxRequests: 5, windowMs: 3600_000 
   const result = await initOnboarding.execute(body);
   setCookie(c, 'patient_session', result.token, {
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'Lax',
     path: '/',
     maxAge: 86400, // 24h
@@ -1250,7 +1172,7 @@ export class SendMagicLinkUseCase {
     const patient = await this.patientRepo.findByEmail(input.email);
     if (!patient) return; // Silent — no email leak
 
-    const token = this.authService.createMagicLinkToken(input.email);
+    const token = await this.authService.createMagicLinkToken(input.email);
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/dashboard?token=${token}`;
     await this.emailService.sendMagicLink(input.email, link);
   }
@@ -1269,10 +1191,10 @@ export class VerifyMagicLinkUseCase {
   ) {}
 
   async execute(input: { token: string }): Promise<{ sessionToken: string; patientId: string }> {
-    const payload = this.authService.verifyMagicLinkToken(input.token);
+    const payload = await this.authService.verifyMagicLinkToken(input.token);
     const patient = await this.patientRepo.findByEmail(payload.email);
     if (!patient) throw new Error('Patient not found');
-    const sessionToken = this.authService.createSessionToken(patient.id);
+    const sessionToken = await this.authService.createSessionToken(patient.id);
     return { sessionToken, patientId: patient.id };
   }
 }
@@ -1318,12 +1240,15 @@ app.post('/verify-token', async (c) => {
   const { verifyMagicLink } = getServices();
   const result = await verifyMagicLink.execute({ token });
   setCookie(c, 'patient_session', result.sessionToken, {
-    httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: 86400,
+    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Lax', path: '/', maxAge: 86400,
   });
   return c.json({ patientId: result.patientId });
 });
 
-app.post('/set-password', patientAuthMiddleware(getServices().patientAuthService), async (c) => {
+app.post('/set-password', async (c, next) => {
+  const { patientAuthService } = getServices();
+  return patientAuthMiddleware(patientAuthService)(c, next);
+}, async (c) => {
   const { password } = setPasswordSchema.parse(await c.req.json());
   const session = c.get('patientSession');
   const { setPassword } = getServices();
@@ -1480,7 +1405,10 @@ import {
 const app = new OpenAPIHono();
 
 // Apply patient auth to all routes
-app.use('/*', patientAuthMiddleware(getServices().patientAuthService));
+app.use('/*', async (c, next) => {
+  const { patientAuthService } = getServices();
+  return patientAuthMiddleware(patientAuthService)(c, next);
+});
 
 // POST /select-hospitals
 app.post('/select-hospitals', async (c) => {
@@ -1515,25 +1443,25 @@ app.get('/cases/:id', async (c) => {
   return c.json(result);
 });
 
-// GET /cases/:id/messages
-app.get('/cases/:id/messages', async (c) => {
+// GET /conversations/:convId/messages
+app.get('/conversations/:convId/messages', async (c) => {
   const query = listMessagesQuerySchema.parse(c.req.query());
   const session = c.get('patientSession');
   const { listMessages } = getServices();
   const result = await listMessages.execute({
-    conversationId: c.req.param('id'), // Will need case→conversation lookup
+    conversationId: c.req.param('convId'),
     ...query,
   }, { userId: session.userId, role: 'PATIENT', email: '', hospitalId: null });
   return c.json(result);
 });
 
-// POST /cases/:id/messages
-app.post('/cases/:id/messages', async (c) => {
+// POST /conversations/:convId/messages
+app.post('/conversations/:convId/messages', async (c) => {
   const body = sendPatientMessageSchema.parse(await c.req.json());
   const session = c.get('patientSession');
   const { sendMessage } = getServices();
   const result = await sendMessage.execute({
-    conversationId: c.req.param('id'),
+    conversationId: c.req.param('convId'),
     content: body.content,
     messageType: 'TEXT',
   }, { userId: session.userId, role: 'PATIENT', email: '', hospitalId: null });
@@ -1731,11 +1659,11 @@ export function registerPatientWs(
   authService: PatientAuthService,
 ) {
   // Per-conversation channel
-  app.get('/ws/conversations/:id', upgradeWebSocket((c) => {
+  app.get('/ws/conversations/:id', upgradeWebSocket(async (c) => {
     const token = getCookie(c, 'patient_session');
     let userId: string | null = null;
     try {
-      const payload = authService.verifySessionToken(token!);
+      const payload = await authService.verifySessionToken(token!);
       userId = payload.userId;
     } catch {
       // Will close in onOpen
@@ -1755,11 +1683,11 @@ export function registerPatientWs(
   }));
 
   // Per-patient notification channel
-  app.get('/ws/patient/notifications', upgradeWebSocket((c) => {
+  app.get('/ws/patient/notifications', upgradeWebSocket(async (c) => {
     const token = getCookie(c, 'patient_session');
     let userId: string | null = null;
     try {
-      const payload = authService.verifySessionToken(token!);
+      const payload = await authService.verifySessionToken(token!);
       userId = payload.userId;
     } catch {
       // Will close in onOpen
@@ -1903,15 +1831,15 @@ export const crmApi = {
   getConversations: () => request<any>('/conversations'),
   getCases: () => request<any>('/cases'),
   getCaseDetail: (id: string) => request<any>(`/cases/${id}`),
-  getMessages: (caseId: string, params?: { cursor?: string; limit?: number; after?: string }) => {
+  getMessages: (conversationId: string, params?: { cursor?: string; limit?: number; after?: string }) => {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set('cursor', params.cursor);
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.after) qs.set('after', params.after);
-    return request<any>(`/cases/${caseId}/messages?${qs}`);
+    return request<any>(`/conversations/${conversationId}/messages?${qs}`);
   },
-  sendMessage: (caseId: string, content: string) =>
-    request<any>(`/cases/${caseId}/messages`, { method: 'POST', body: JSON.stringify({ content }) }),
+  sendMessage: (conversationId: string, content: string) =>
+    request<any>(`/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ content }) }),
   getQuote: (caseId: string) => request<any>(`/cases/${caseId}/quote`),
   acceptQuote: (caseId: string, quoteId: string) =>
     request<any>(`/cases/${caseId}/quote/accept`, { method: 'POST', body: JSON.stringify({ quoteId }) }),
@@ -2199,14 +2127,14 @@ import { useEffect } from 'react';
 import { crmApi } from '../services/crmApiClient';
 import { useWebSocket } from './useWebSocket';
 
-export function useMessages(caseId: string, conversationId: string) {
+export function useMessages(conversationId: string) {
   const queryClient = useQueryClient();
-  const queryKey = ['patient', 'messages', caseId];
+  const queryKey = ['patient', 'messages', conversationId];
 
   const query = useQuery({
     queryKey,
-    queryFn: () => crmApi.getMessages(caseId),
-    enabled: !!caseId,
+    queryFn: () => crmApi.getMessages(conversationId),
+    enabled: !!conversationId,
     refetchInterval: 5000, // Polling fallback
   });
 
@@ -2221,7 +2149,7 @@ export function useMessages(caseId: string, conversationId: string) {
       });
     });
     return unsub;
-  }, [subscribe, queryClient, caseId]);
+  }, [subscribe, queryClient, conversationId]);
 
   return query;
 }
@@ -2663,15 +2591,11 @@ Or create a lazy middleware factory.
 **B8. Rename patient quote use cases to avoid conflicts (Task 12)**
 Existing composition-root already has `AcceptQuoteUseCase` and `RejectQuoteUseCase`. Name the patient versions `PatientAcceptQuoteUseCase` and `PatientRejectQuoteUseCase`, or reuse the existing use cases by adding patient-role authorization.
 
-**B9. Case ID → Conversation ID mapping in message routes (Task 12)**
-The route uses `caseId` from URL params but `listMessages.execute()` expects `conversationId`. Add a lookup step:
-```typescript
-// In the route handler:
-const conversations = await conversationRepo.findByCaseId(caseId);
-const conversation = conversations.find(c => c.hospitalId === hospitalId);
-// Pass conversation.id to listMessages
-```
-Or change the message routes to use conversation ID directly: `GET /api/patient/conversations/:convId/messages`.
+**B9. Use conversation-level message routes end-to-end (Task 12)**
+Do not route message APIs by case ID. Keep them conversation-first:
+`GET /api/patient/conversations/:convId/messages` and
+`POST /api/patient/conversations/:convId/messages`.
+This avoids mixed message streams when one case has multiple hospitals.
 
 **B10. Add missing TDD for use cases (Task 12)**
 These use cases need tests written before implementation:
@@ -2719,13 +2643,13 @@ const [wsConnected, setWsConnected] = useState(false);
 refetchInterval: wsConnected ? false : 5000,
 ```
 
-**F3. ChatView needs both caseId and conversationId (Task 20)**
-`useMessages(caseId, conversationId)` requires both. Pass both via conversation data:
+**F3. ChatView should use conversation-level message APIs (Task 20)**
+Use conversation-level hooks and APIs to avoid mixing multiple hospital chats under one case:
 ```typescript
 <ChatView conversation={activeConversation} />
 // Inside ChatView:
-const { caseId, id: conversationId } = conversation;
-useMessages(caseId, conversationId);
+const { id: conversationId } = conversation;
+useMessages(conversationId);
 ```
 
 **F4. App.tsx — use MarketingLayout wrapper (Task 21)**

@@ -60,6 +60,7 @@ describe('AssignCaseUseCase', () => {
 
     mockHospitalRepo = {
       findById: vi.fn().mockResolvedValue(mockHospital),
+      findMatchingHospitals: vi.fn().mockResolvedValue([]),
     };
 
     mockAssignmentService = new CaseAssignmentService();

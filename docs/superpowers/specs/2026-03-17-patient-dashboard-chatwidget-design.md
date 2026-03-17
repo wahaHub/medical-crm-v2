@@ -91,14 +91,16 @@ The Medora Beauty frontend proxies all CRM v2 API calls through a local BFF laye
 
 - Message list with timestamps and read indicators
 - Text input with send button
-- Polling: 5s interval when chat window is open, stopped when closed
-- Unread badge on bubble: polled every 30s via `GET /api/patient/cases` (only when authenticated; skipped for unauthenticated visitors)
+- **Real-time via WebSocket**: connects to `ws://.../ws/conversations/:id` for live message push
+- Fallback: if WebSocket disconnects, auto-fallback to 5s polling until reconnection
+- Unread badge on bubble: pushed via a separate WebSocket channel `ws://.../ws/patient/notifications` (only when authenticated; no connection for unauthenticated visitors)
 
 ### Technical Implementation
 
 - State machine via `useReducer` to manage onboarding steps
 - Component: `ChatWidget.tsx` (always rendered in `App.tsx`)
 - Shares React Query cache with Dashboard for message data
+- Chat UI: custom Tailwind components (MessageBubble, MessageInput, MessageList) — no external chat UI library
 
 ## Error States & Edge Cases
 
@@ -236,20 +238,51 @@ App.tsx
 │   └── PatientAuthContext.tsx   — token, patient, login(), logout()
 │
 ├── services/
-│   └── crmApiClient.ts         — fetch wrapper with CRM v2 base URL + auth header
+│   ├── crmApiClient.ts         — fetch wrapper with CRM v2 base URL + auth header
+│   └── wsClient.ts             — WebSocket connection manager (connect, reconnect, subscribe)
 │
 └── hooks/
     ├── usePatientCases.ts       — React Query: GET /patient/cases
     ├── useCaseDetail.ts         — React Query: GET /patient/cases/:id
-    ├── useMessages.ts           — React Query: GET /patient/cases/:id/messages (5s polling)
-    └── useQuote.ts              — React Query: GET /patient/cases/:id/quote
+    ├── useMessages.ts           — React Query + WebSocket: live messages with polling fallback
+    ├── useQuote.ts              — React Query: GET /patient/cases/:id/quote
+    └── useWebSocket.ts          — WebSocket lifecycle hook (connect/disconnect/reconnect)
 ```
 
-## Data Synchronization
+## Real-time Messaging (WebSocket)
 
-- **ChatWidget ↔ Dashboard**: Share the same React Query cache keys for messages. Data automatically in sync.
-- **Message polling**: 5s interval when chat window or Messages tab is open; stopped when closed.
-- **Unread badge**: ChatBubble polls `GET /patient/cases` every 30s for total unread count.
+### Backend (`@hono/node-ws`)
+
+Add WebSocket support to the CRM v2 Hono API server:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `ws://.../ws/conversations/:id` | Per-conversation channel. Receives new messages, typing indicators, read receipts. |
+| `ws://.../ws/patient/notifications` | Per-patient channel. Receives unread count updates, new quote alerts, system notifications. |
+
+**Message flow**:
+1. Patient sends message → `POST /api/patient/cases/:id/messages` → DB insert
+2. Server broadcasts the new message to all WebSocket clients connected to that conversation
+3. Server pushes unread count update to the patient's notification channel
+
+**Authentication**: WebSocket upgrade request carries the session cookie (same `httpOnly` cookie as REST). `patientAuthMiddleware` validates before upgrade.
+
+**Reconnection**: If WebSocket disconnects, frontend auto-reconnects with exponential backoff (1s, 2s, 4s, max 30s). During disconnect, falls back to REST polling (5s) until WebSocket is re-established.
+
+### Frontend (`wsClient.ts`)
+
+Lightweight WebSocket manager (~150 lines):
+- `connect(url)` — establish connection with auth cookie
+- `subscribe(event, callback)` — listen for message types
+- `disconnect()` — clean close
+- Auto-reconnect with exponential backoff
+- `useWebSocket` hook manages lifecycle (connect on mount, disconnect on unmount)
+
+### Data Synchronization
+
+- **ChatWidget ↔ Dashboard**: Share the same React Query cache keys for messages. WebSocket events invalidate/update the cache, keeping both in sync automatically.
+- **New message received via WS**: Appended to React Query cache → UI updates instantly.
+- **Unread badge**: Updated via `ws://.../ws/patient/notifications` push — no polling needed when WebSocket is connected.
 
 ## Styling & i18n
 
@@ -271,5 +304,5 @@ App.tsx
 - Document upload (medical records, photos)
 - Online consultation booking (video calls)
 - Order / payment management
-- WebSocket real-time messaging (start with polling)
-- Push notifications
+- Browser push notifications (Web Push API)
+- Typing indicators and presence (online/offline status)

@@ -61,7 +61,7 @@ describe('GenerateRegistrationTokenUseCase', () => {
       save: vi.fn().mockImplementation((token) => Promise.resolve(token)),
     };
 
-    useCase = new GenerateRegistrationTokenUseCase(mockHospitalRepo, mockTokenRepo);
+    useCase = new GenerateRegistrationTokenUseCase(mockHospitalRepo, mockTokenRepo, null);
   });
 
   it('throws ForbiddenError for HOSPITAL actor', async () => {

@@ -170,7 +170,7 @@ import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
 import { ChinaMedicalMaterialsRepository } from '@medical-crm/infrastructure/supabase-china/materials';
 import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
@@ -409,6 +409,7 @@ export function getServices(): AppServices {
     };
 
     const materialsRepo = new RoutingMaterialsRepository(cosmeticMaterialsRepo, regularMaterialsRepo, resolveHospitalType);
+    const emailService = new StubEmailService();
     const chcRepo = new DrizzleCHCRepository(crmDb);
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
     const eventRepo = new DrizzleCaseEventRepository(crmDb);
@@ -450,7 +451,7 @@ export function getServices(): AppServices {
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
       updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo),
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
-      generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo),
+      generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo, emailService),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
       validateRegistrationToken: new ValidateRegistrationTokenUseCase(registrationTokenRepo, hospitalManagementRepo),
 

@@ -30,7 +30,7 @@
 - **TanStack React Query v5** — 数据获取与缓存
 - **Lucide React** — 图标
 - **Framer Motion** — 动画
-- **Keycloak PKCE + iron-session** — 认证
+- **Keycloak confidential client with PKCE + iron-session** — 认证（与 Hospital Portal 一致）
 - **@medical-crm/ui** — 共享 UI 组件
 - **@medical-crm/validation** — Zod schema 校验
 
@@ -48,12 +48,20 @@ apps/admin/src/app/
 │       ├── page.tsx            # Hospitals 列表
 │       ├── new/page.tsx        # 创建 Hospital
 │       └── [id]/page.tsx       # Hospital Detail
-├── auth/                        # 已有骨架
-│   ├── login/page.tsx
-│   ├── callback/page.tsx
+├── auth/                        # 已有骨架（Route Handlers）
+│   ├── login/route.ts          # Keycloak PKCE 重定向
+│   ├── callback/route.ts       # OAuth callback 处理
 │   └── logout/route.ts
-└── api/                         # BFF 代理路由
-    └── [...proxy]/route.ts
+├── middleware.ts                # Auth 中间件：检查 session cookie，未认证重定向 /auth/login
+└── api/                         # BFF API 路由（按资源分组，参照 Hospital Portal）
+    ├── cases/route.ts
+    ├── cases/[id]/route.ts
+    ├── hospitals/route.ts
+    ├── hospitals/[id]/route.ts
+    ├── conversations/route.ts
+    ├── conversations/[id]/messages/route.ts
+    ├── dashboard/route.ts
+    └── ...                     # 其余按需添加
 ```
 
 **注意：无 `/cases/new` 路由。** Admin 不能创建 Case，Case 由 Patient booking 流程产生。
@@ -73,23 +81,33 @@ apps/admin/src/
 │   ├── hospital-detail.tsx
 │   ├── hospital-review.tsx
 │   └── new-hospital-form.tsx
-├── queries/                # React Query hooks
-│   ├── use-cases.ts
-│   ├── use-hospitals.ts
-│   ├── use-conversations.ts
-│   ├── use-consultations.ts
-│   ├── use-orders.ts
-│   ├── use-tickets.ts
-│   └── use-dashboard.ts
-├── actions/                # Server Actions
-│   ├── hospital-actions.ts
-│   └── case-actions.ts
-└── lib/
+├── queries/                # React Query hooks（按 Phase 逐步添加）
+│   ├── use-cases.ts            # Phase A
+│   ├── use-hospitals.ts        # Phase A
+│   ├── use-dashboard.ts        # Phase A
+│   ├── use-conversations.ts    # Phase B
+│   ├── use-consultations.ts    # Phase B
+│   ├── use-orders.ts           # Phase B
+│   └── use-tickets.ts          # Phase B
+├── actions/                # Server Actions（按 Phase 逐步添加）
+│   ├── hospital-actions.ts     # Phase A
+│   ├── case-actions.ts         # Phase A
+│   ├── message-actions.ts      # Phase B
+│   ├── consultation-actions.ts # Phase B
+│   └── order-actions.ts        # Phase B
+└── lib/                    # 基础设施（从 Hospital Portal 复制/适配）
     ├── api-client.ts       # 已有，复用 fetch + token refresh
+    ├── api-fetch.ts        # 底层 fetch 封装（从 hospital 复制）
     ├── api-types.ts        # Admin 专用 API 类型
-    ├── auth-context.tsx
-    ├── session.ts          # 已有
-    └── query-provider.tsx
+    ├── auth-context.tsx    # Auth React Context
+    ├── keycloak-client.ts  # Keycloak JWT 处理（已有）
+    ├── session.ts          # 已有，iron-session 管理
+    ├── session-helpers.ts  # Session 辅助函数（从 hospital 复制）
+    ├── query-provider.tsx  # QueryClientProvider 包裹（在 (portal)/layout.tsx 中注入）
+    ├── query-client.ts     # QueryClient 实例配置
+    ├── query-fetch.ts      # React Query 专用 fetch 封装
+    ├── route-handler-helpers.ts  # BFF route handler 辅助函数
+    └── errors.ts           # 错误类型定义
 ```
 
 - **Server Components** — 页面级数据获取（`apiClient()`）
@@ -297,15 +315,17 @@ apps/admin/src/
 
 ## 六、认证流程
 
-复用已有 `apps/admin/` 的 Keycloak PKCE 骨架：
+复用已有 `apps/admin/` 的 Keycloak 骨架（confidential client with PKCE，与 Hospital Portal 一致）：
 
-1. 用户访问 Admin Portal → middleware 检查 `medical-crm-admin-session` cookie
-2. 无 session → 重定向 `/auth/login` → Keycloak PKCE 授权
-3. Callback 回来 → iron-session 存储 JWT → 设置 cookie
-4. 后续请求 → `apiClient()` 自动附带 Bearer token → API 层 `toActor()` 识别 `admin` role
-5. Token 过期前 60s 自动刷新
+1. 用户访问 Admin Portal → `middleware.ts` 检查 `medical-crm-admin-session` cookie
+2. 无 session → 重定向 `/auth/login`（Route Handler）→ 构造 Keycloak PKCE 授权 URL → 302 重定向
+3. Keycloak 回调 → `/auth/callback`（Route Handler）→ 用 code + code_verifier + client_secret 换 token
+4. iron-session 存储 JWT（access_token + refresh_token）→ 设置 HTTP-only cookie
+5. 后续请求 → `apiClient()` 自动从 session 读取 Bearer token → API 层 `toActor()` 识别 `admin` role
+6. Token 过期前 60s 自动刷新（`api-fetch.ts` 中处理）
 
 Admin Portal 和 Hospital Portal 使用同一 Keycloak realm，通过 realm role（`admin` vs `hospital`）区分权限。
+auth 路由均为 Route Handler（`route.ts`），无独立登录 UI 页面。
 
 ---
 
@@ -316,7 +336,7 @@ Admin Portal 和 Hospital Portal 使用同一 Keycloak realm，通过 realm role
 | # | 任务 | 依赖 |
 |---|------|------|
 | A1 | Admin Shell（layout + 侧边栏 + 顶栏 + 认证集成） | 已有 auth 骨架 |
-| A2 | Dashboard 页面 | `GET /admin/dashboard` |
+| A2 | Dashboard 页面 | `GET /api/v2/admin/dashboard` |
 | A3 | Cases 列表页 | `GET /cases` + `GET /cases/stats` |
 | A4 | Case Detail（Overview + Medical Intake Tab） | `GET /cases/{id}` + `/documents` + `/questionnaire` |
 | A5 | Hospitals 列表页 | `GET /hospitals` |
@@ -335,3 +355,31 @@ Admin Portal 和 Hospital Portal 使用同一 Keycloak realm，通过 realm role
 | B6 | Case Detail: Orders Tab | `/orders?caseId=` |
 | B7 | Case Detail: Support Tab | `/tickets?caseId=` |
 | B8 | Case Detail: AI Summary Tab（空状态占位） | API 缺失，占位 |
+
+---
+
+## 八、错误、加载与空状态处理
+
+| 场景 | 处理方式 |
+|------|----------|
+| **API 请求失败** | Toast 通知显示错误信息 + 重试按钮（React Query `retry: 1`） |
+| **页面级错误** | `app/error.tsx` 全局错误边界，显示友好提示 + 返回按钮 |
+| **加载中** | `app/loading.tsx` 全局 loading + 各组件使用 Skeleton Loader（非 Spinner） |
+| **列表为空** | 使用 `EmptyState` 组件，每个列表有专属文案（如"暂无案例"、"暂无医院"） |
+| **Tab 内容加载** | 每个 Tab 独立 loading skeleton，切换 Tab 时 lazy load |
+
+### 响应式设计
+
+Admin Portal **以桌面端为主**（1280px+），侧边栏固定宽度。不做移动端适配，但确保 1024px 宽度下不出现布局错误（侧边栏可折叠）。
+
+---
+
+## 九、未来阶段（Phase C~E，本次不实现）
+
+| Phase | 页面 | 说明 |
+|-------|------|------|
+| **C** | Messages 消息中心（独立页面） | 双栏聊天布局，Admin↔Patient / Admin↔Hospital / Hospital↔Patient（只读监控） |
+| **D** | Orders 订单管理（独立列表页）、Packages 套餐管理、Support Tickets（独立列表页） | 独立页面 vs Case Detail 内的 Tab 子集 |
+| **E** | Patient Detail、Settings、Create User、Admin Profile、Chatbot & FAQ、Question Collectors | 管理类 & 低优先级功能 |
+
+这些页面的 API 大部分已就绪，待 Phase A+B 完成后按优先级推进。

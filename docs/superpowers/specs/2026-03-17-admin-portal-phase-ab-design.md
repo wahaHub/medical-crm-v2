@@ -14,7 +14,7 @@
 | 组件策略 | 基础共享 + 业务独立 | shared/ui 的 DataTable/Card/Modal 复用，业务组件 Admin 独立编写 |
 | Case Detail Tab | 10 个 | 覆盖完整业务流程 |
 | 认证方案 | 复用同一 Keycloak client | apps/admin 已有 PKCE 骨架，API 层 toActor() 已识别 admin role |
-| 缺失 API | 前端先行，API 后补 | 大部分核心 API 就绪，3 个 P0 阻塞项需先修复（见 §4.2 + §7 前置任务） |
+| 缺失 API | 前端先行，API 后补 | 大部分核心 API 就绪，6 个 P0 阻塞项需先修复（见 §4.2 + §7 前置任务） |
 | Dashboard | 精简版 | 统计卡片 + 最近案例 + 待办事项 |
 
 ---
@@ -197,10 +197,9 @@ apps/admin/src/
 - **已邀医院列表**：来自 `GET /cases/{caseId}/hospital-contacts`，显示医院名、邀请状态、邀请时间
   - 每行操作：发送提醒（`POST /hospital-contacts/{id}/remind`）、移除（`PATCH /hospital-contacts/{id}/remove`）
 - **添加医院**：按钮打开 Modal → 搜索医院 → `POST /cases/{caseId}/hospital-contacts` body: `{ hospitalId }`
-- **报价对比表**：来自 `GET /cases/{caseId}/quotes/compare`，表格对比各医院报价明细（项目、金额、总价）
-- **报价操作**：查看详情（`GET /quotes/{id}`）、接受（`POST /quotes/{id}/accept`）、拒绝（`POST /quotes/{id}/reject`）
-- **重置分配**：`POST /cases/{caseId}/reset-assignment`（需确认弹窗）
-- **组件**：`DataTable` + `Modal` + `ConfirmDialog` + `StatusBadge`
+- **报价对比表**：来自 `GET /cases/{caseId}/quotes/compare`，表格对比各医院报价明细（项目、金额、总价），**Admin 仅查看对比表，不操作个别报价**
+- **注意**：接受/拒绝报价（`POST /quotes/{id}/accept` / `reject`）是 **Patient 端操作**，Admin Portal 不提供此功能，也不提供单个报价详情页
+- **组件**：`DataTable` + `Modal` + `StatusBadge`
 
 #### Tab 3: Timeline
 
@@ -209,22 +208,28 @@ apps/admin/src/
 - 事件类型包括：案例创建、状态变更、医院邀请、报价发送/接受/拒绝、消息发送、文档上传等
 - **组件**：自定义 `TimelineView`（垂直时间轴，使用 Lucide 图标区分事件类型）
 
-#### Tab 4: Messages
+#### Tab 4: Messages（复用 Hospital Portal 组件）
+
+**与 Hospital Portal 的 Messages 页面结构基本一致**，核心 UI 组件可复用。
 
 - **左侧对话列表**：来自 `GET /conversations?caseId={id}`，显示对话类型（Admin↔Patient / Admin↔Hospital / Hospital↔Patient）+ 最后消息预览 + 未读数
 - **右侧聊天窗口**：选中对话后，`GET /conversations/{convId}/messages` 加载消息列表
   - 消息气泡：发送者头像 + 内容 + 时间 + 翻译结果（如有）
   - 发送消息：输入框 + `POST /conversations/{convId}/messages`
   - 消息操作：重新翻译（`POST /messages/{msgId}/retranslate`）、重新生成摘要（`POST /messages/{msgId}/regenerate-summary`）
-- **消息审核**：待审核消息高亮显示，提供审核/拒绝操作（`POST /messages/{msgId}/approve` / `reject`）
-- **组件**：`ChatLayout`（shared/ui）+ `Avatar` + `Button`
+- **消息审核**（Admin 独有）：待审核消息高亮显示，提供审核/拒绝操作（`POST /messages/{msgId}/approve` / `reject`）
+- **复用组件**：`ChatLayout`（`@medical-crm/ui`，已支持翻译切换、附件预览、多消息类型）+ `Avatar` + `Button`
+- **Admin 差异点**：仅增加消息审核高亮 + approve/reject 按钮，其余 UI 与 Hospital Portal 完全一致
 
-#### Tab 5: Medical Intake
+#### Tab 5: Medical Intake（复用 Hospital Portal 组件）
+
+**与 Hospital Portal 的 Medical Intake Tab 结构一致**，同为只读展示，可直接复用。
 
 - **只读展示**：来自 `GET /cases/{caseId}/questionnaire`
 - 按问卷模板结构展示：问题标题 + 患者回答（文本/单选/多选/文件）
 - 如无回答，显示 `EmptyState`："患者尚未填写问卷"
-- **组件**：`Card` + `EmptyState`
+- **复用策略**：将问卷展示组件提取到 `@medical-crm/ui` 或 `packages/shared/` 中作为 `QuestionnaireReadonlyView`，Admin 和 Hospital 共用
+- **组件**：`Card` + `EmptyState` + `QuestionnaireReadonlyView`（待提取到 shared）
 
 #### Tab 6: Journey
 
@@ -240,18 +245,21 @@ apps/admin/src/
 - **编辑行程**：`PUT /cases/{caseId}/journey` 更新各项信息
 - **组件**：`Card` + `StatusBadge` + `DataTable` + `Modal`（编辑表单）
 
-#### Tab 7: Consultations
+#### Tab 7: Consultations（复用 Hospital Portal 组件）
+
+**与 Hospital Portal 的 Consultations 页面（已完成问诊列表部分）结构一致**，核心列表和详情组件可复用。
 
 - **问诊列表**：来自 `GET /cases/{caseId}/consultations`
   - 每行显示：医院 ID（`hospitalId`，⚠️ `ConsultationDTO` 无 `hospitalName`，需 BFF 层关联查询或前端缓存医院名映射）、预约时间（`scheduledAt`）、时长（`durationMinutes`）、状态
   - 已完成的问诊：`videoStorageKey` 非空时显示"查看录像"链接（⚠️ `videoStorageKey` 是存储键而非直接可用 URL，需 BFF 层生成签名 URL 或前端通过存储服务转换）
 - **问诊详情**：点击展开或打开 Modal → `GET /consultations/{id}` + `GET /consultations/{id}/transcript`（问诊记录文字版）
 - ~~统计~~：`GET /consultations/stats` **仅限 HOSPITAL 角色**（`GetConsultationStatsUseCase` 拒绝非 HOSPITAL actor），Admin 不显示此模块
-- **组件**：`DataTable` + `StatusBadge` + `Modal`
+- **复用策略**：将问诊列表卡片 + 详情 Modal + Transcript Modal 提取到 `@medical-crm/ui` 或 `packages/shared/` 中作为 `ConsultationListView` + `TranscriptModal`，Admin 和 Hospital 共用。Hospital 额外有统计卡片和创建问诊功能，Admin 只读
+- **组件**：`DataTable` + `StatusBadge` + `Modal` + `ConsultationListView`（待提取到 shared）+ `TranscriptModal`（待提取到 shared）
 
 #### Tab 8: Orders（只读）
 
-- **订单列表**：来自 `GET /orders?caseId={id}`（注：需确认 orderListQuerySchema 是否支持 caseId 过滤）
+- **订单列表**：来自 `GET /orders?caseId={id}`（已确认 `orderListQuerySchema` 支持 `caseId` 过滤）
   - 每行显示：订单号（`orderNumber`）、套餐 ID（`packageId`，⚠️ `OrderDTO` 无 `packageName`，需额外查询或显示 ID）、金额（`amount` + `currency`）、状态、创建时间
   - 状态枚举（6 个，全部需处理 Badge 样式）：`PENDING_PAYMENT` / `PAID` / `IN_PROGRESS` / `COMPLETED` / `CANCELLED` / `REFUNDED`
 - **订单详情**：点击展开 → `GET /orders/{id}`，显示支付方式、支付时间、退款金额/原因
@@ -294,12 +302,12 @@ apps/admin/src/
 | **基本信息卡片** | 名称、类型 Badge、地址、电话、邮箱、描述 |
 | **专科标签** | 医院擅长专科，Badge 展示 |
 | **关联案例表格** | 来自 `GET /hospitals/{id}/cases`，显示案例编号、状态、创建时间（复用 DataTable） |
+| **邀请链接管理** | "重新发送邀请链接" 按钮（用于令牌过期后重发）→ 弹出邮箱确认框 → `POST /hospitals/{id}/registration-token` body: `{ email }` |
+| **宣传材料审核**（底部） | 见下方详细设计 |
 
 **⚠️ 以下模块暂不实现（API 缺口）：**
 - ~~统计卡片（关联案例数 / 活跃 / 已完成）~~ — `/hospitals/{id}/cases` 是分页接口，前端聚合不可行（会产生不正确的总数）。**Phase A 不显示统计卡片**，后续通过 `GET /hospitals/{id}/stats` 新 API 支持。
 - ~~医院账号列表~~ — `HospitalDTO` 无 user/account 字段，需新增 `GET /hospitals/{id}/users` API。**Phase A 不显示该模块。**
-| **邀请链接管理** | "重新发送邀请链接" 按钮（用于令牌过期后重发）→ 弹出邮箱确认框 → `POST /hospitals/{id}/registration-token` body: `{ email }` |
-| **宣传材料审核**（底部） | 见下方详细设计 |
 
 #### 宣传材料审核区域（参照 v1）
 
@@ -314,34 +322,44 @@ apps/admin/src/
 
 ### 3.6 New Hospital (`/hospitals/new`)
 
-**数据源**：`POST /api/v2/hospitals`
+**数据源**：`POST /api/v2/hospitals`（需扩展 schema）
 
-**两步流程：** 创建医院是一个两步操作，因为 `POST /api/v2/hospitals` 的 schema 只接受基础字段（`name`, `type`, `contactEmail`, `contactPhone`, `address`, `description`），城市和专科需要在创建后通过 `PUT /api/v2/hospitals/{id}` 补充。
+**一步流程：** 扩展 `createHospitalSchema`，将 `specialties` 纳入创建请求。用户在一个表单中填写所有信息，一次提交完成创建。
 
-#### Step 1: 基础信息表单
+#### 前置 API 修改
+
+当前 `createHospitalSchema` 仅接受 6 个基础字段（`name`, `type`, `contactEmail`, `contactPhone`, `address`, `description`），需扩展为：
+
+```typescript
+// 扩展后的 createHospitalSchema
+export const createHospitalSchema = z.object({
+  name: z.string().min(1).max(200),
+  type: hospitalTypeSchema,
+  contactEmail: z.string().email(),
+  contactPhone: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),              // 新增：城市（REGULAR 类型推荐填写）
+  description: z.string().optional(),
+  specialties: z.array(z.string()).min(1),  // 新增：至少选 1 个专科
+});
+```
+
+同步修改 `CreateHospitalUseCase`，将 `specialties` 写入 Hospital 实体。
+
+#### 表单字段
 
 | 字段 | 必填 | 条件 | API 字段名 |
 |------|------|------|-----------|
 | 医院名称 | ✅ | — | `name` |
 | 医院类型 | ✅ | — | `type`: `COSMETIC` / `REGULAR` |
 | 地址 | ❌ | — | `address` |
+| 城市 | ❌ | REGULAR 类型推荐填写 | `city` |
 | 电话 | ❌ | — | `contactPhone` |
 | 邮箱 | ✅ | — | `contactEmail`（schema 要求 `z.string().email()`） |
 | 描述 | ❌ | — | `description` |
+| 专科选择 | ✅ | 至少 1 个 | `specialties` (string[])，多选 Badge，列表根据类型动态切换（见下方） |
 
-提交 → `POST /api/v2/hospitals` → 得到 `hospitalId`
-
-#### Step 2: 补充信息（自动接续）
-
-创建成功后，表单继续展示以下字段（或自动跳转到编辑页面）：
-
-| 字段 | 必填 | 条件 | API 字段名 | 说明 |
-|------|------|------|-----------|------|
-| 专科选择 | ✅ | 至少 1 个 | `specialties` (string[]) | 多选 Badge，列表根据类型动态切换（见下方） |
-
-提交 → `PUT /api/v2/hospitals/{id}` → 更新专科
-
-**⚠️ 城市字段缺口：** `updateHospitalSchema` 当前不包含 `city` 字段（仅接受 `name`, `nameEn`, `address`, `phone`, `email`, `description`, `logoUrl`, `specialties`）。REGULAR 医院的城市信息需要通过 Supabase 同步层处理，或需扩展 `updateHospitalSchema` 增加 `city` 字段。**此为 API 缺口，Phase A 实现时需先补充。**
+提交 → `POST /api/v2/hospitals`（扩展后，含 specialties）→ 一步创建完成
 
 **专科列表（根据医院类型动态切换）：**
 
@@ -352,7 +370,7 @@ apps/admin/src/
 
 切换类型时重置已选专科。
 
-**⚠️ API 缺口：** 当前无 BFF 路由获取专科选项列表。需新增：
+**⚠️ BFF 缺口：** 当前无 BFF 路由获取专科选项列表。需新增：
 - `GET /api/specialties?type=COSMETIC` — 从 Main Supabase 查询 `procedures` 表
 - `GET /api/specialties?type=REGULAR` — 返回 REGULAR 科室列表
 
@@ -362,22 +380,64 @@ apps/admin/src/
 
 v1 的创建医院流程是：创建 → 自动生成 registration token → 自动发送邀请邮件。v2 需复现此行为：
 
-1. `POST /api/v2/hospitals` → 创建基础信息，得到 `hospitalId`
-2. `PUT /api/v2/hospitals/{id}` → 补充专科（REGULAR 还需补 city，待 schema 扩展）
-3. `POST /api/v2/hospitals/{id}/registration-token` body: `{ email: "<创建时填的contactEmail>" }` → 生成 72 小时注册令牌，返回 `{ token, expiresAt }`
-4. **⚠️ 邮件发送缺口：** 当前 `GenerateRegistrationTokenUseCase` 仅持久化 token 到数据库，**不发送邮件**。v1 在创建医院时调用 `sendHospitalInvitationEmail()` 发送邀请。v2 需要补充邮件发送逻辑（在 use case 中注入邮件服务，或在 BFF 层调用 token API 后额外触发邮件）。
-5. 成功提示："医院创建成功！注册令牌已生成。"（邮件功能补充后改为"已发送邀请链接"）
-6. 自动跳转到医院详情页 `/hospitals/{newId}`
+1. `POST /api/v2/hospitals`（扩展后，含 specialties）→ 一步创建完整医院，得到 `hospitalId`
+2. `POST /api/v2/hospitals/{id}/registration-token` body: `{ email: "<创建时填的contactEmail>" }` → 生成 72 小时注册令牌，返回 `{ token, expiresAt }`
+3. **⚠️ 邮件发送缺口：** 当前 `GenerateRegistrationTokenUseCase` 仅持久化 token 到数据库，**不发送邮件**。v1 在创建医院时调用 `sendHospitalInvitationEmail()` 发送邀请。v2 需要补充邮件发送逻辑（在 use case 中注入邮件服务，或在 BFF 层调用 token API 后额外触发邮件）。
+4. 成功提示："医院创建成功！注册令牌已生成。"（邮件功能补充后改为"已发送邀请链接"）
+5. 自动跳转到医院详情页 `/hospitals/{newId}`
 
-**步骤 1~3 在前端连续调用**，用户只需点一次"提交"。
+**步骤 1~2 在前端连续调用**，用户只需点一次"提交"。
 
 **错误恢复策略：**
 - **Step 1 失败**（创建）：直接报错，无需回滚
-- **Step 2 失败**（更新专科）：医院已创建但缺少专科。提示用户"医院已创建，但专科更新失败"，跳转到 Hospital Detail 页面，用户可手动编辑补充
-- **Step 3 失败**（生成 token）：医院已完整创建。提示用户"医院创建成功，但令牌生成失败"，跳转到 Hospital Detail，用户可通过"重新生成令牌"按钮重试
+- **Step 2 失败**（生成 token）：医院已完整创建。提示用户"医院创建成功，但令牌生成失败"，跳转到 Hospital Detail，用户可通过"重新生成令牌"按钮重试
 - 任何步骤失败都不阻塞已完成的步骤（与 v1 行为一致：邮件发送失败不影响医院创建）
 
 Hospital Detail 页面保留 **"重新生成令牌"** 按钮（弹出邮箱确认框 → `POST /registration-token` body: `{ email }`）。
+
+### 3.7 Hospital Registration (`/auth/hospital/register`)
+
+**数据源**：无需认证（公开页面），通过 URL query `?token=xxx` 验证身份
+
+**参照 v1**：v1 有完整的医院注册页面 `/auth/hospital/register`，医院用户通过邀请邮件中的链接访问，设置账号完成注册。v2 需复现此页面。
+
+**⚠️ 此页面不在 Admin Portal 的认证保护内**，是独立的公开页面。可放在 `apps/admin/src/app/auth/hospital/register/page.tsx`（复用 Admin 的 auth 路由组），或放在单独的路由组中。
+
+#### 页面流程
+
+1. **Token 验证**：页面加载时，`GET /api/v2/auth/hospital/register?token=xxx` 验证 token 有效性（未过期、未使用）
+   - **有效**：显示注册表单，同时展示医院名称和邮箱（只读）
+   - **无效**：显示错误卡片，提示可能原因（已过期/已使用/无效链接）
+
+2. **注册表单字段**：
+
+| 字段 | 必填 | 验证规则 |
+|------|------|----------|
+| 医院信息（只读） | — | 显示医院名称 + 邀请邮箱（从 token 数据获取） |
+| 用户名 | ✅ | 3-20 字符，仅允许字母/数字/下划线/连字符 `^[a-zA-Z0-9_-]+$` |
+| 密码 | ✅ | 最少 8 字符 |
+| 确认密码 | ✅ | 必须与密码一致 |
+
+3. **提交**：`POST /api/v2/auth/hospital/register` body: `{ token, username, password }`
+   - 在 Keycloak 中创建用户（角色根据医院类型：`hospital` for COSMETIC, `regular_hospital` for REGULAR）
+   - 在 CRM 数据库创建用户记录
+   - 标记 registration token 为已使用
+   - 成功后显示"注册成功！"，3 秒后自动跳转到 Hospital Portal 登录页
+
+#### 前置 API 需求
+
+当前 v2 缺少注册相关的 API 端点，需新增：
+- `GET /api/v2/auth/hospital/register?token=xxx` — 验证 token，返回医院名、邮箱、过期时间
+- `POST /api/v2/auth/hospital/register` — 接受 token + username + password，创建 Keycloak 用户 + CRM 用户记录
+
+v1 实现参考：`medical-crm/app/auth/hospital/register/page.tsx` + `medical-crm/app/api/auth/hospital/register/route.ts`
+
+#### UI 设计
+
+- 独立页面，不使用 Admin Shell（无侧边栏/顶栏）
+- 居中卡片布局，顶部 Medora Health Logo
+- 渐变背景（teal/emerald，与 v1 一致）
+- 状态切换：加载中（验证链接）→ 表单 → 成功/错误
 
 ---
 
@@ -404,14 +464,16 @@ Hospital Detail 页面保留 **"重新生成令牌"** 按钮（弹出邮箱确�
 
 | API | 类型 | 用途 | 影响页面 | 优先级 |
 |-----|------|------|----------|--------|
-| `updateHospitalSchema` 增加 `city` 字段 | Schema 扩展 | REGULAR 医院创建时设置城市 | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
+| 扩展 `createHospitalSchema` 增加 `specialties` + `city` 字段 | Schema 扩展 | 一步创建医院（含专科 + 城市） | New Hospital | **P0（阻塞 New Hospital）** |
+| Admin BFF `GET /api/specialties` 路由 | 新 BFF 路由 | 获取专科选项列表（按类型） | New Hospital | **P0（阻塞 New Hospital）** |
+| `GET /api/v2/auth/hospital/register` (验证 token) | 新 API | 医院注册页 token 验证 | Hospital Registration | **P0（阻塞注册流程）** |
+| `POST /api/v2/auth/hospital/register` (创建用户) | 新 API | 医院注册页提交（Keycloak + CRM 用户） | Hospital Registration | **P0（阻塞注册流程）** |
+| `GenerateRegistrationTokenUseCase` 增加邮件发送 | 逻辑补充 | 生成 token 后自动发邀请邮件 | New Hospital 创建流程 | **P0（阻塞完整创建流程）** |
+| `ticketListQuerySchema` 增加 `caseId` 过滤 | Schema 扩展 | 按案例过滤工单 | Case Detail → Support Tab | **P0（阻塞 Support Tab）** |
 | `GET /hospitals/{id}/users` | 新 API | 医院用户账号列表（角色、最后登录） | Hospital Detail 账号列表 | P1（暂不显示该模块） |
 | `GET /hospitals/{id}/stats` | 新 API | 医院统计（案例数、活跃、已完成） | Hospital Detail 统计卡片 | P1（暂不显示） |
 | `update-hospital-status` 增加 Supabase 同步 | 逻辑修复 | 状态变更同步到消费者网站 | Hospital Detail 审核操作 | P1（当前仅更新 CRM DB） |
-| Admin BFF `GET /api/specialties` 路由 | 新 BFF 路由 | 获取专科选项列表（按类型） | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
-| `ticketListQuerySchema` 增加 `caseId` 过滤 | Schema 扩展 | 按案例过滤工单 | Case Detail → Support Tab | **P0（阻塞 Support Tab）** |
 | `RequestRefundUseCase` 支持 ADMIN 角色 | 权限扩展 | Admin 代操作退款 | Case Detail → Orders Tab | P1（当前 Admin 只读） |
-| `GenerateRegistrationTokenUseCase` 增加邮件发送 | 逻辑补充 | 生成 token 后自动发邀请邮件 | New Hospital 创建流程 | **P0（阻塞完整创建流程）** |
 | Consultation hospitalName 关联 | BFF 增强 | 问诊列表显示医院名而非 ID | Consultations Tab | P1（可先显示 ID） |
 | Video 签名 URL 生成 | BFF 增强 | 将 videoStorageKey 转为可访问 URL | Consultations Tab 录像链接 | P1（可先隐藏录像链接） |
 | ~~`GET /cases/{id}/ai-summary`~~ | ~~不需要~~ | `CaseDTO.aiSummary` 已包含摘要数据 | — | — |
@@ -452,7 +514,7 @@ Hospital Detail 页面保留 **"重新生成令牌"** 按钮（弹出邮箱确�
 | 组件 | 理由 |
 |------|------|
 | `admin-shell.tsx` | 菜单项不同于 Hospital |
-| `cases-list.tsx` | 多了 multi-hospital 状态列、无新建按钮 |
+| `cases-list.tsx` | 多了 multi-hospital 状态列 + "新建案例"临时入口按钮 |
 | `case-detail-tabs.tsx` | 10 Tab vs Hospital 的简单视图 |
 | `hospitals-list.tsx` | 有审核状态筛选 |
 | `hospital-detail.tsx` | 有宣传材料审核区域 |
@@ -461,6 +523,24 @@ Hospital Detail 页面保留 **"重新生成令牌"** 按钮（弹出邮箱确�
 | `dashboard-widgets.tsx` | Admin 特有统计 |
 | `quote-comparison.tsx` | 多医院报价对比表 |
 | `timeline-view.tsx` | 垂直时间轴 |
+
+### 5.3 从 Hospital Portal 提取到 shared 的复用组件
+
+Admin Portal 的 Messages Tab、Medical Intake Tab、Consultations Tab 与 Hospital Portal 对应部分 UI 结构基本一致，应从 Hospital Portal 提取核心渲染逻辑到 `packages/shared/` 或 `@medical-crm/ui`，双端复用。
+
+| 提取组件 | 来源文件（Hospital Portal） | 提取位置 | 复用方式 |
+|----------|---------------------------|----------|----------|
+| `ConversationList` | `messages-view.tsx` 左侧对话列表 | `@medical-crm/ui` | Admin 和 Hospital 共用，Admin 额外传入 `showModeration` prop 显示审核操作 |
+| `ChatWindow` | `messages-view.tsx` 右侧聊天窗口 | `@medical-crm/ui`（已有 `ChatLayout`） | 已有 `ChatLayout` 组件，直接复用。Admin 在消息气泡上叠加审核按钮 |
+| `QuestionnaireReadonlyView` | `case-detail-panel.tsx` Intake Tab（6 步问卷展示） | `packages/shared/ui` | Admin 和 Hospital 完全相同，只读展示，无差异 |
+| `ConsultationListView` | `consultations-list.tsx` 问诊列表 + 状态 Tab | `packages/shared/ui` | Admin 和 Hospital 共用列表渲染。Hospital 额外有统计卡片 + 创建问诊功能，Admin 只读 |
+| `TranscriptModal` | `consultations-list.tsx` 问诊记录弹窗 | `packages/shared/ui` | Admin 和 Hospital 完全相同 |
+
+**提取原则：**
+- 提取的是**纯展示 + 数据接口**的组件，不含 server action 或 API 调用逻辑
+- 各端通过 props/callbacks 注入数据获取和操作行为（如 `onSendMessage`、`onApprove`）
+- Hospital 端现有组件改为 import shared 组件 + 包装业务逻辑
+- Admin 差异点（消息审核、只读限制）通过 props 控制，不 fork 组件
 
 ---
 
@@ -488,8 +568,11 @@ auth 路由均为 Route Handler（`route.ts`），无独立登录 UI 页面。
 
 | # | 任务 | 说明 |
 |---|------|------|
-| A0a | 扩展 `updateHospitalSchema` 增加 `city` 字段 | 阻塞 New Hospital REGULAR 类型 |
+| A0a | 扩展 `createHospitalSchema` 增加 `specialties` + `city` 字段 | 阻塞 New Hospital 一步创建 |
 | A0b | 新增 BFF 路由 `GET /api/specialties` | 阻塞 New Hospital 专科选择 |
+| A0c | 新增 `GET /api/v2/auth/hospital/register` (验证 token) | 阻塞 Hospital Registration 页面 |
+| A0d | 新增 `POST /api/v2/auth/hospital/register` (创建用户) | 阻塞 Hospital Registration 页面 |
+| A0e | `GenerateRegistrationTokenUseCase` 增加邮件发送逻辑 | 阻塞完整创建医院流程 |
 
 **页面任务：**
 
@@ -502,7 +585,8 @@ auth 路由均为 Route Handler（`route.ts`），无独立登录 UI 页面。
 | A5 | Case Detail（Overview + Medical Intake Tab） | `GET /cases/{id}` + `/documents` + `/questionnaire` | ✅ |
 | A6 | Hospitals 列表页 | `GET /hospitals` | ✅ |
 | A7 | Hospital Detail（基本信息 + 案例 + 宣传材料审核，无统计/无账号列表） | `GET /hospitals/{id}` + `/cases` + `PATCH /status` + `POST /registration-token` | ✅ |
-| A8 | New Hospital 表单页（两步流程） | `POST /hospitals` + `PUT /hospitals/{id}` | ⚠️ 依赖 A0a + A0b |
+| A8 | New Hospital 表单页（一步流程） | `POST /hospitals`（扩展后含 specialties + city） | ⚠️ 依赖 A0a + A0b |
+| A9 | Hospital Registration 页面（公开页面，token 验证 + 注册表单） | `GET` + `POST /api/v2/auth/hospital/register` | ⚠️ 依赖 A0c + A0d + A0e |
 
 ### Phase B — 多医院工作流 + 扩展 Tab
 

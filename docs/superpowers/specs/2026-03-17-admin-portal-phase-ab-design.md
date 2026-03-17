@@ -243,8 +243,8 @@ apps/admin/src/
 #### Tab 7: Consultations
 
 - **问诊列表**：来自 `GET /cases/{caseId}/consultations`
-  - 每行显示：医院名、日期时间、时长、状态（SCHEDULED/IN_PROGRESS/COMPLETED/CANCELLED）
-  - 已完成的问诊：显示录像/录音链接
+  - 每行显示：医院 ID（`hospitalId`，⚠️ `ConsultationDTO` 无 `hospitalName`，需 BFF 层关联查询或前端缓存医院名映射）、预约时间（`scheduledAt`）、时长（`durationMinutes`）、状态
+  - 已完成的问诊：`videoStorageKey` 非空时显示"查看录像"链接（⚠️ `videoStorageKey` 是存储键而非直接可用 URL，需 BFF 层生成签名 URL 或前端通过存储服务转换）
 - **问诊详情**：点击展开或打开 Modal → `GET /consultations/{id}` + `GET /consultations/{id}/transcript`（问诊记录文字版）
 - **统计**：`GET /consultations/stats`（总数、已完成、待进行）
 - **组件**：`DataTable` + `StatusBadge` + `Modal`
@@ -252,8 +252,9 @@ apps/admin/src/
 #### Tab 8: Orders（只读）
 
 - **订单列表**：来自 `GET /orders?caseId={id}`（注：需确认 orderListQuerySchema 是否支持 caseId 过滤）
-  - 每行显示：订单号、套餐名、金额、状态（PENDING/PAID/REFUNDED/CANCELLED）、创建时间
-- **订单详情**：点击展开 → `GET /orders/{id}`，显示支付详情、退款记录
+  - 每行显示：订单号（`orderNumber`）、套餐 ID（`packageId`，⚠️ `OrderDTO` 无 `packageName`，需额外查询或显示 ID）、金额（`amount` + `currency`）、状态、创建时间
+  - 状态枚举（6 个，全部需处理 Badge 样式）：`PENDING_PAYMENT` / `PAID` / `IN_PROGRESS` / `COMPLETED` / `CANCELLED` / `REFUNDED`
+- **订单详情**：点击展开 → `GET /orders/{id}`，显示支付方式、支付时间、退款金额/原因
 - **注意**：Admin 只读查看，无退款按钮（`RequestRefundUseCase` 仅允许 PATIENT）
 - **组件**：`DataTable` + `StatusBadge` + `Card`
 
@@ -363,13 +364,14 @@ v1 的创建医院流程是：创建 → 自动生成 registration token → 自
 
 1. `POST /api/v2/hospitals` → 创建基础信息，得到 `hospitalId`
 2. `PUT /api/v2/hospitals/{id}` → 补充专科（REGULAR 还需补 city，待 schema 扩展）
-3. `POST /api/v2/hospitals/{id}/registration-token` body: `{ email: "<创建时填的contactEmail>" }` → 自动生成 72 小时注册令牌 + 发送邀请邮件
-4. 成功提示："医院创建成功！系统已向医院邮箱发送邀请链接。"
-5. 自动跳转到医院详情页 `/hospitals/{newId}`
+3. `POST /api/v2/hospitals/{id}/registration-token` body: `{ email: "<创建时填的contactEmail>" }` → 生成 72 小时注册令牌，返回 `{ token, expiresAt }`
+4. **⚠️ 邮件发送缺口：** 当前 `GenerateRegistrationTokenUseCase` 仅持久化 token 到数据库，**不发送邮件**。v1 在创建医院时调用 `sendHospitalInvitationEmail()` 发送邀请。v2 需要补充邮件发送逻辑（在 use case 中注入邮件服务，或在 BFF 层调用 token API 后额外触发邮件）。
+5. 成功提示："医院创建成功！注册令牌已生成。"（邮件功能补充后改为"已发送邀请链接"）
+6. 自动跳转到医院详情页 `/hospitals/{newId}`
 
-**步骤 1~3 在前端连续调用**，用户只需点一次"提交"。如果步骤 3 邮件发送失败，不阻塞创建（v1 也是这样处理的）。
+**步骤 1~3 在前端连续调用**，用户只需点一次"提交"。
 
-Hospital Detail 页面仍保留 **"重新发送邀请链接"** 按钮，用于令牌过期后重新生成（弹出邮箱确认框 → `POST /registration-token` body: `{ email }`）。
+Hospital Detail 页面保留 **"重新生成令牌"** 按钮（弹出邮箱确认框 → `POST /registration-token` body: `{ email }`）。
 
 ---
 
@@ -403,6 +405,9 @@ Hospital Detail 页面仍保留 **"重新发送邀请链接"** 按钮，用于�
 | Admin BFF `GET /api/specialties` 路由 | 新 BFF 路由 | 获取专科选项列表（按类型） | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
 | `ticketListQuerySchema` 增加 `caseId` 过滤 | Schema 扩展 | 按案例过滤工单 | Case Detail → Support Tab | **P0（阻塞 Support Tab）** |
 | `RequestRefundUseCase` 支持 ADMIN 角色 | 权限扩展 | Admin 代操作退款 | Case Detail → Orders Tab | P1（当前 Admin 只读） |
+| `GenerateRegistrationTokenUseCase` 增加邮件发送 | 逻辑补充 | 生成 token 后自动发邀请邮件 | New Hospital 创建流程 | **P0（阻塞完整创建流程）** |
+| Consultation hospitalName 关联 | BFF 增强 | 问诊列表显示医院名而非 ID | Consultations Tab | P1（可先显示 ID） |
+| Video 签名 URL 生成 | BFF 增强 | 将 videoStorageKey 转为可访问 URL | Consultations Tab 录像链接 | P1（可先隐藏录像链接） |
 | ~~`GET /cases/{id}/ai-summary`~~ | ~~不需要~~ | `CaseDTO.aiSummary` 已包含摘要数据 | — | — |
 
 ### 4.3 可选增强 API（不阻塞，后续优化）

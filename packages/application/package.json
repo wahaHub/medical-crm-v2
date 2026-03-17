@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@medical-crm/domain": "workspace:*",
-    "@medical-crm/utils": "workspace:*"
+    "@medical-crm/utils": "workspace:*",
+    "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

@@ -36,6 +36,12 @@ app.get('/api/v2/auth/hospital/register', async (c) => {
   return c.json(result);
 });
 
+// Public: patient onboarding + auth routes (no Keycloak auth)
+import patientPublicRoutes from './routes/patient-public.routes.js';
+import patientAuthRoutes from './routes/patient-auth.routes.js';
+app.route('/api/patient', patientPublicRoutes);
+app.route('/api/patient', patientAuthRoutes);
+
 // Public: booking request routes (no auth required)
 import publicBookingRoutes from './routes/public-booking.routes.js';
 app.route('/', publicBookingRoutes);

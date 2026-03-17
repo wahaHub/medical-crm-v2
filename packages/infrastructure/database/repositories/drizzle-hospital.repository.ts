@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { IHospitalRepository, HospitalInfo } from '@medical-crm/domain';
+import type { IHospitalRepository, HospitalInfo, MatchedHospital, FindMatchingHospitalsInput } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { hospitals } from '../schema/index.js';
 
@@ -24,5 +24,10 @@ export class DrizzleHospitalRepository implements IHospitalRepository {
       name: row.name,
       status: row.status,
     };
+  }
+
+  async findMatchingHospitals(_input: FindMatchingHospitalsInput): Promise<MatchedHospital[]> {
+    // TODO: implement hospital matching query with filters (procedure, destination, category)
+    return [];
   }
 }

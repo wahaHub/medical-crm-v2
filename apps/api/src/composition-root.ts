@@ -6,7 +6,7 @@ import type {
   IPatientRepository,
   IStorageService,
 } from '@medical-crm/domain';
-import { CaseAssignmentService } from '@medical-crm/domain';
+import { CaseAssignmentService, PatientAuthService } from '@medical-crm/domain';
 import {
   CreateCaseUseCase,
   ListCasesUseCase,
@@ -138,7 +138,13 @@ import {
   GetHospitalRecommendationsUseCase,
   SaveHospitalSelectionsUseCase,
   CompleteSignupUseCase,
+  InitOnboardingUseCase,
+  MatchHospitalsUseCase,
+  SendMagicLinkUseCase,
+  VerifyMagicLinkUseCase,
+  SetPasswordUseCase,
 } from '@medical-crm/application';
+import type { IMagicLinkEmailService } from '@medical-crm/application';
 import {
   DrizzleCaseRepository,
   DrizzleDocumentRepository,
@@ -339,6 +345,16 @@ interface AppServices {
   saveHospitalSelections: SaveHospitalSelectionsUseCase;
   completeSignup: CompleteSignupUseCase;
 
+  // use cases — patient onboarding
+  initOnboarding: InitOnboardingUseCase;
+  matchHospitals: MatchHospitalsUseCase;
+
+  // use cases — patient auth
+  patientAuthService: PatientAuthService;
+  sendMagicLink: SendMagicLinkUseCase;
+  verifyMagicLink: VerifyMagicLinkUseCase;
+  setPassword: SetPasswordUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -410,6 +426,15 @@ export function getServices(): AppServices {
 
     const materialsRepo = new RoutingMaterialsRepository(cosmeticMaterialsRepo, regularMaterialsRepo, resolveHospitalType);
     const emailService = new StubEmailService();
+
+    // Patient auth
+    const patientAuthService = new PatientAuthService(process.env['PATIENT_JWT_SECRET'] ?? 'dev-patient-secret');
+    const magicLinkEmailService: IMagicLinkEmailService = {
+      sendMagicLink: async (email, link) => {
+        console.log(`[STUB] Magic link for ${email}: ${link}`);
+      },
+    };
+
     const chcRepo = new DrizzleCHCRepository(crmDb);
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
     const eventRepo = new DrizzleCaseEventRepository(crmDb);
@@ -561,6 +586,14 @@ export function getServices(): AppServices {
       getHospitalRecommendations: new GetHospitalRecommendationsUseCase(bookingRequestRepo),
       saveHospitalSelections: new SaveHospitalSelectionsUseCase(bookingRequestRepo),
       completeSignup: new CompleteSignupUseCase(bookingRequestRepo),
+
+      initOnboarding: new InitOnboardingUseCase(patientRepo, caseRepo, patientAuthService),
+      matchHospitals: new MatchHospitalsUseCase(hospitalRepo),
+
+      patientAuthService,
+      sendMagicLink: new SendMagicLinkUseCase(patientRepo, patientAuthService, magicLinkEmailService),
+      verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
+      setPassword: new SetPasswordUseCase(patientRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

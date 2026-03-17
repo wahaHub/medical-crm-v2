@@ -278,6 +278,18 @@ export type { SaveHospitalSelectionsInput } from './use-cases/booking/save-hospi
 export { CompleteSignupUseCase } from './use-cases/booking/complete-signup.use-case.js';
 export type { CompleteSignupInput, CompleteSignupResult } from './use-cases/booking/complete-signup.use-case.js';
 
+// Use Cases — Patient Onboarding
+export { InitOnboardingUseCase } from './use-cases/patient-onboarding/init-onboarding.use-case.js';
+export type { InitOnboardingInput, InitOnboardingOutput } from './use-cases/patient-onboarding/init-onboarding.use-case.js';
+export { MatchHospitalsUseCase } from './use-cases/patient-onboarding/match-hospitals.use-case.js';
+export type { MatchHospitalsInput as MatchHospitalsUseCaseInput } from './use-cases/patient-onboarding/match-hospitals.use-case.js';
+
+// Use Cases — Patient Auth
+export { SendMagicLinkUseCase } from './use-cases/patient-auth/send-magic-link.use-case.js';
+export type { IMagicLinkEmailService } from './use-cases/patient-auth/send-magic-link.use-case.js';
+export { VerifyMagicLinkUseCase } from './use-cases/patient-auth/verify-magic-link.use-case.js';
+export { SetPasswordUseCase } from './use-cases/patient-auth/set-password.use-case.js';
+
 // DTOs — Dashboard
 export type { PatientDashboardDTO, AdminDashboardDTO, HospitalDashboardDTO } from './dtos/dashboard.dto.js';
 

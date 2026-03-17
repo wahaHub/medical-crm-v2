@@ -114,6 +114,44 @@ describe('Message routes', () => {
       expect(res.status).toBe(400);
       expect(mockServices.sendMessage.execute).not.toHaveBeenCalled();
     });
+
+    it('accepts attachment-only payloads', async () => {
+      const created = { id: VALID_MSG_ID };
+      mockServices.sendMessage.execute.mockResolvedValue(created);
+
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: '',
+          messageType: 'FILE',
+          attachments: [
+            {
+              fileName: 'report.pdf',
+              fileSize: 1024,
+              mimeType: 'application/pdf',
+              storageKey: 'messages/conv-1/report.pdf',
+            },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.sendMessage.execute).toHaveBeenCalledWith(
+        VALID_UUID,
+        expect.objectContaining({
+          content: '',
+          messageType: 'FILE',
+          attachments: [
+            expect.objectContaining({
+              fileName: 'report.pdf',
+              storageKey: 'messages/conv-1/report.pdf',
+            }),
+          ],
+        }),
+        expect.anything(),
+      );
+    });
   });
 
   // -----------------------------------------------------------------------

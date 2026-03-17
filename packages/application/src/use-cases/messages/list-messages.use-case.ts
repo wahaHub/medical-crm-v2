@@ -1,4 +1,4 @@
-import type { IConversationRepository, IMessageRepository, MessageListQuery } from '@medical-crm/domain';
+import type { IConversationRepository, IMessageRepository, IStorageService, MessageListQuery } from '@medical-crm/domain';
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
@@ -9,6 +9,7 @@ export class ListMessagesUseCase {
   constructor(
     private readonly conversationRepo: IConversationRepository,
     private readonly messageRepo: IMessageRepository,
+    private readonly storageService: IStorageService,
   ) {}
 
   async execute(
@@ -30,8 +31,21 @@ export class ListMessagesUseCase {
     }
 
     const result = await this.messageRepo.findByConversationId(conversationId, query);
+    const attachmentKeys = result.data
+      .flatMap((message) => message.attachments)
+      .map((attachment) => attachment.storageKey)
+      .filter((storageKey) =>
+        storageKey &&
+        !storageKey.startsWith('http://') &&
+        !storageKey.startsWith('https://') &&
+        !storageKey.startsWith('data:'),
+      );
+    const signedUrls = attachmentKeys.length > 0
+      ? await this.storageService.getSignedUrls(Array.from(new Set(attachmentKeys)))
+      : {};
+
     return {
-      data: result.data.map(toMessageDTO),
+      data: result.data.map((message) => toMessageDTO(message, signedUrls)),
       total: result.total,
       page: result.page,
       limit: result.limit,

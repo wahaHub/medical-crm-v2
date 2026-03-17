@@ -1,4 +1,4 @@
-import type { IConversationRepository, IMessageRepository } from '@medical-crm/domain';
+import type { IConversationRepository, IMessageRepository, IStorageService } from '@medical-crm/domain';
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { MessageDTO } from '../../dtos/conversation.dto.js';
@@ -8,6 +8,7 @@ export class GetMessageUseCase {
   constructor(
     private readonly conversationRepo: IConversationRepository,
     private readonly messageRepo: IMessageRepository,
+    private readonly storageService: IStorageService,
   ) {}
 
   async execute(
@@ -33,6 +34,18 @@ export class GetMessageUseCase {
       throw new NotFoundError(`Message ${messageId} not found`);
     }
 
-    return toMessageDTO(message);
+    const attachmentKeys = message.attachments
+      .map((attachment) => attachment.storageKey)
+      .filter((storageKey) =>
+        storageKey &&
+        !storageKey.startsWith('http://') &&
+        !storageKey.startsWith('https://') &&
+        !storageKey.startsWith('data:'),
+      );
+    const signedUrls = attachmentKeys.length > 0
+      ? await this.storageService.getSignedUrls(Array.from(new Set(attachmentKeys)))
+      : {};
+
+    return toMessageDTO(message, signedUrls);
   }
 }

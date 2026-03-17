@@ -5,6 +5,13 @@ import type {
   Attachment,
 } from '@medical-crm/domain';
 
+export interface MessageAttachmentDTO extends Attachment {
+  name: string;
+  type: string;
+  size: number;
+  url: string;
+}
+
 export interface ConversationDTO {
   id: string;
   caseId: string | null;
@@ -27,7 +34,7 @@ export interface MessageDTO {
   translatedContent: string | null;
   messageType: MessageType;
   moderationStatus: ModerationStatus;
-  attachments: Attachment[];
+  attachments: MessageAttachmentDTO[];
   aiSummary: string | null;
   createdAt: string;
 }

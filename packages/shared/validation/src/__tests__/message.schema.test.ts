@@ -28,6 +28,15 @@ describe('sendMessageSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts attachment-only messages', () => {
+    const result = sendMessageSchema.safeParse({
+      content: '',
+      messageType: 'FILE',
+      attachments: [{ fileName: 'report.pdf', fileSize: 2048, mimeType: 'application/pdf', storageKey: 'files/report.pdf' }],
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('sanitizes HTML in content via transform', () => {
     const result = sendMessageSchema.parse({
       content: '<p>Safe</p><script>alert(1)</script>',

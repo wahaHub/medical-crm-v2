@@ -6,6 +6,8 @@ import type {
   IDocumentRepository,
   IStorageService,
   IPatientRepository,
+  IConversationRepository,
+  IMessageRepository,
 } from '@medical-crm/domain';
 import { Case, CaseNumber, CaseProgress, Document } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
@@ -17,6 +19,8 @@ describe('GetHospitalCaseDetailUseCase', () => {
   let mockDocumentRepo: IDocumentRepository;
   let mockStorageService: IStorageService;
   let mockPatientRepo: IPatientRepository;
+  let mockConversationRepo: IConversationRepository;
+  let mockMessageRepo: IMessageRepository;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -148,12 +152,28 @@ describe('GetHospitalCaseDetailUseCase', () => {
       findById: vi.fn().mockResolvedValue({ id: 'patient-1', patientCode: 'PAT-0042' }),
     };
 
+    mockConversationRepo = {
+      findById: vi.fn(),
+      findMany: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+      save: vi.fn(),
+    };
+
+    mockMessageRepo = {
+      findById: vi.fn(),
+      findByConversationId: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+      findPendingReview: vi.fn(),
+      save: vi.fn(),
+      delete: vi.fn(),
+    };
+
     useCase = new GetHospitalCaseDetailUseCase(
       mockCaseRepo,
       mockProgressRepo,
       mockDocumentRepo,
       mockStorageService,
       mockPatientRepo,
+      mockConversationRepo,
+      mockMessageRepo,
     );
   });
 
@@ -270,5 +290,122 @@ describe('GetHospitalCaseDetailUseCase', () => {
     const result = await useCase.execute('case-id-1', adminActor);
 
     expect(result.displayStatus).toBe('transferred');
+  });
+
+  it('maps legacy intake questionnaire payloads from structuredData', async () => {
+    mockCaseRepo.findById = vi.fn().mockResolvedValue(new Case({
+      ...mockCase,
+      structuredData: {
+        step2_symptom_location: {
+          primary_location: 'Face',
+          symptom_nature: ['Pain', 'Swelling'],
+          onset_time: '2 weeks',
+          progression_trend: 'Worsening',
+          diagnosis_stage: 'Diagnosed',
+          main_category: 'Maxillofacial',
+        },
+        step3_detailed_symptoms: {
+          detailed_description: 'Facial swelling and pain after surgery',
+          aggravating_factors: ['Cold weather'],
+          relieving_factors: ['Pain medication'],
+          previous_treatments: 'Antibiotics',
+        },
+        step4_medical_history: {
+          past_medical_history: {
+            diabetes: true,
+            other: 'Asthma',
+          },
+          chronic_conditions_description: 'Type 2 diabetes',
+          family_history_description: 'Family history of asthma',
+        },
+        step5_medications_allergies: {
+          current_medications: [
+            { name: 'Ibuprofen', dosage: '200mg' },
+          ],
+          allergies: {
+            drug_allergies: [{ substance: 'Penicillin', reaction: 'Rash' }],
+            food_allergies: [{ substance: 'Shrimp', reaction: 'Hives' }],
+          },
+        },
+        step6_examinations: {
+          exam_types_selected: ['CT', 'MRI'],
+          exam_details_summary: 'CT completed in local hospital',
+          lab_results_summary: 'CBC normal',
+        },
+        step7_expectations: {
+          treatment_expectations: ['Pain relief', 'Functional recovery'],
+          budget_range: '$5k-$10k',
+          preferred_timing: 'Within 1 month',
+        },
+      },
+    }));
+
+    const result = await useCase.execute('case-id-1', adminActor);
+
+    expect(result.medicalIntake.step1).toEqual({
+      symptomLocation: 'Face',
+      symptomNature: ['Pain', 'Swelling'],
+      onsetTime: '2 weeks',
+      progressTrend: 'Worsening',
+      diagnosisStage: 'Diagnosed',
+      diseaseCategory: 'Maxillofacial',
+    });
+    expect(result.medicalIntake.step2).toEqual({
+      detailedDescription: 'Facial swelling and pain after surgery',
+      aggravatingFactors: ['Cold weather'],
+      relievingFactors: ['Pain medication'],
+      previousTreatment: 'Antibiotics',
+    });
+    expect(result.medicalIntake.step3).toEqual({
+      medicalHistory: ['Diabetes', 'Asthma'],
+      chronicConditions: 'Type 2 diabetes',
+      familyHistory: 'Family history of asthma',
+    });
+    expect(result.medicalIntake.step4).toEqual({
+      currentMedications: 'Ibuprofen (200mg)',
+      drugAllergies: 'Penicillin (Rash)',
+      foodAllergies: 'Shrimp (Hives)',
+    });
+    expect(result.medicalIntake.step5).toEqual({
+      examTypes: ['CT', 'MRI'],
+      examDetails: 'CT completed in local hospital',
+      labResults: 'CBC normal',
+      treatmentExpectations: ['Pain relief', 'Functional recovery'],
+      budgetRange: '$5k-$10k',
+      expectedTimeline: 'Within 1 month',
+    });
+  });
+
+  it('keeps legacy diagnosis progress rows visible when metadata.kind is missing', async () => {
+    mockProgressRepo.findByCaseId = vi.fn().mockResolvedValue([
+      new CaseProgress({
+        id: 'legacy-diagnosis',
+        caseId: 'case-id-1',
+        title: 'Orbital fracture',
+        description: 'Confirmed by CT',
+        progressType: 'STATUS_CHANGE',
+        metadata: {
+          type: 'confirmed',
+          icdCode: 'S02.8',
+          severity: 'severe',
+          treatmentRecommendation: 'Surgical fixation',
+          suggestedTests: 'Repeat CT',
+        },
+        recordedAt: new Date('2026-01-19T10:00:00Z'),
+        recordedById: 'doctor-2',
+      }),
+    ]);
+
+    const result = await useCase.execute('case-id-1', adminActor);
+
+    expect(result.diagnoses).toHaveLength(1);
+    expect(result.diagnoses[0]).toEqual(expect.objectContaining({
+      id: 'legacy-diagnosis',
+      title: 'Orbital fracture',
+      icdCode: 'S02.8',
+      severity: 'severe',
+      treatmentRecommendation: 'Surgical fixation',
+      suggestedTests: 'Repeat CT',
+    }));
   });
 });

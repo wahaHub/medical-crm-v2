@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
+import { generateId } from '@medical-crm/utils';
 import {
   sendMessageSchema,
   updateMessageSchema,
@@ -26,6 +27,12 @@ const standaloneMessageParamSchema = z.object({
   msgId: z.string().uuid(),
 });
 
+const messageUploadInitSchema = z.object({
+  fileName: z.string().min(1),
+  fileSize: z.number().positive(),
+  mimeType: z.string().min(1),
+});
+
 // ---------------------------------------------------------------------------
 // 5. GET /api/v2/conversations/:id/messages — ListMessages
 // ---------------------------------------------------------------------------
@@ -46,6 +53,45 @@ app.openapi(listMessagesRoute, async (c) => {
   const svc = getServices();
   const result = await svc.listMessages.execute(id, query, actor);
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 6. POST /api/v2/conversations/:id/messages — SendMessage
+// ---------------------------------------------------------------------------
+const initMessageUploadRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/conversations/{id}/attachments/upload',
+  request: {
+    params: conversationIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: messageUploadInitSchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Attachment upload initialized' } },
+});
+
+app.openapi(initMessageUploadRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+
+  await svc.getConversation.execute(id, actor);
+
+  const safeFileName = body.fileName.replace(/[^a-zA-Z0-9._-]+/g, '-');
+  const storageKey = `messages/${id}/${generateId()}-${safeFileName}`;
+  const upload = await svc.storage.createPresignedUpload(storageKey, body.mimeType);
+
+  return c.json({
+    upload,
+    attachment: {
+      fileName: body.fileName,
+      fileSize: body.fileSize,
+      mimeType: body.mimeType,
+      storageKey,
+    },
+  }, 201);
 });
 
 // ---------------------------------------------------------------------------

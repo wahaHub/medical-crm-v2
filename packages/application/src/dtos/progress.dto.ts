@@ -11,12 +11,19 @@ export interface CaseProgressDTO {
 export interface DiagnosisDTO {
   id: string;
   title: string;
+  type?: string | null;
   icdCode: string | null;
   severity: string | null;
   treatmentRecommendation: string | null;
   suggestedTests: string | null;
   costEstimate: string | null;
   treatmentDuration: string | null;
+  condition?: string;
+  notes?: string | null;
+  documentKey?: string | null;
+  documentId?: string | null;
+  documentName?: string | null;
+  doctorName?: string | null;
   recordedAt: string;
 }
 

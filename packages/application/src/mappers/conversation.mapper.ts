@@ -1,5 +1,5 @@
-import type { Conversation, Message } from '@medical-crm/domain';
-import type { ConversationDTO, MessageDTO } from '../dtos/conversation.dto.js';
+import type { Attachment, Conversation, Message } from '@medical-crm/domain';
+import type { ConversationDTO, MessageAttachmentDTO, MessageDTO } from '../dtos/conversation.dto.js';
 
 export function toConversationDTO(entity: Conversation): ConversationDTO {
   return {
@@ -16,7 +16,33 @@ export function toConversationDTO(entity: Conversation): ConversationDTO {
   };
 }
 
-export function toMessageDTO(entity: Message): MessageDTO {
+function resolveAttachmentUrl(
+  storageKey: string,
+  signedUrls: Record<string, string>,
+): string {
+  if (storageKey.startsWith('http://') || storageKey.startsWith('https://') || storageKey.startsWith('data:')) {
+    return storageKey;
+  }
+  return signedUrls[storageKey] ?? '';
+}
+
+export function toMessageAttachmentDTO(
+  attachment: Attachment,
+  signedUrls: Record<string, string> = {},
+): MessageAttachmentDTO {
+  return {
+    ...attachment,
+    name: attachment.fileName,
+    type: attachment.mimeType,
+    size: attachment.fileSize,
+    url: resolveAttachmentUrl(attachment.storageKey, signedUrls),
+  };
+}
+
+export function toMessageDTO(
+  entity: Message,
+  signedUrls: Record<string, string> = {},
+): MessageDTO {
   return {
     id: entity.id,
     conversationId: entity.conversationId,
@@ -26,7 +52,9 @@ export function toMessageDTO(entity: Message): MessageDTO {
     translatedContent: entity.translatedContent,
     messageType: entity.messageType,
     moderationStatus: entity.moderationStatus,
-    attachments: entity.attachments,
+    attachments: entity.attachments.map((attachment) =>
+      toMessageAttachmentDTO(attachment, signedUrls),
+    ),
     aiSummary: entity.aiSummary,
     createdAt: entity.createdAt.toISOString(),
   };

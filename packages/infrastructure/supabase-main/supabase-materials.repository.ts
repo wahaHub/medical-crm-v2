@@ -29,7 +29,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   async getHospitalInfo(hospitalId: string): Promise<MaterialsHospitalInfo | null> {
     const { data, error } = await this.supabase
       .from('hospitals')
-      .select('id, name, slug, hero_image, photos, highlights')
+      .select('*')
       .eq('id', hospitalId)
       .single();
 
@@ -38,41 +38,247 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       throw error;
     }
 
+    // Fetch translation, location, and nearby attractions in parallel (graceful degradation)
+    const [translationResult, locationResult, nearbyAttractionsResult] = await Promise.allSettled([
+      this.supabase
+        .from('hospital_translations')
+        .select('*')
+        .eq('hospital_id', data.id)
+        .eq('language_code', 'en')
+        .single(),
+      this.supabase
+        .from('hospital_location')
+        .select('*')
+        .eq('hospital_id', data.id)
+        .single(),
+      this.supabase
+        .from('hospital_nearby_attractions')
+        .select('*')
+        .eq('hospital_id', data.id)
+        .order('sort_order', { ascending: true }),
+    ]);
+
+    const translation = translationResult.status === 'fulfilled' && !translationResult.value.error
+      ? translationResult.value.data
+      : null;
+    const location = locationResult.status === 'fulfilled' && !locationResult.value.error
+      ? locationResult.value.data
+      : null;
+    const nearbyAttractions = nearbyAttractionsResult.status === 'fulfilled' && !nearbyAttractionsResult.value.error
+      ? nearbyAttractionsResult.value.data ?? []
+      : [];
+
+    // Extract crm_metadata (JSONB) for CRM-specific fields
+    const crmMeta: Record<string, unknown> = (data.crm_metadata as Record<string, unknown>) ?? {};
+
+    // Extract certifications: prefer crm_metadata, fallback to highlights
+    const certifications = Array.isArray(crmMeta.certifications)
+      ? (crmMeta.certifications as Array<{ id: string; name: string; nameEn?: string; year?: number; isActive: boolean }>)
+      : this.extractCertificationsFromHighlights(data.highlights);
+
+    // Extract multilingual staff from crm_metadata or highlights
+    const multilingualStaffFromHighlights = this.extractLanguagesFromHighlights(data.highlights);
+
     return {
       id: data.id,
       name: data.name,
+      nameEn: data.name,
       slug: data.slug,
-      heroImage: data.hero_image,
+      heroImage: data.hero_image ?? null,
       photos: data.photos ?? [],
       highlights: data.highlights ?? [],
+      yearEstablished: data.year_established ?? undefined,
+      totalPatients: data.total_patients ?? undefined,
+      tagline: translation?.tagline ?? undefined,
+      taglineEn: translation?.tagline ?? undefined,
+      description: translation?.description ?? undefined,
+      descriptionEn: translation?.description ?? undefined,
+      status: data.is_active ? 'published' : 'draft',
+      isActive: data.is_active ?? false,
+      paymentMethods: data.payment_methods ?? [],
+      address: location?.address ?? undefined,
+      phone: location?.phone ?? undefined,
+      email: location?.email ?? undefined,
+      website: location?.website ?? undefined,
+      hours: location?.hours ?? undefined,
+      operatingHours: location?.hours ?? undefined,
+      latitude: location?.latitude ?? undefined,
+      longitude: location?.longitude ?? undefined,
+      mapEmbed: location?.map_embed ?? undefined,
+      certifications,
+      bedCount: crmMeta.bedCount as number | undefined,
+      patientCapacity: crmMeta.patientCapacity as number | undefined,
+      recommendRate: data.recommend_rate ?? undefined,
+      multilingualStaff: Array.isArray(crmMeta.multilingualStaff)
+        ? crmMeta.multilingualStaff as string[]
+        : (multilingualStaffFromHighlights.length > 0 ? multilingualStaffFromHighlights : []),
+      airportServices: Array.isArray(crmMeta.airportServices)
+        ? crmMeta.airportServices as string[]
+        : [],
+      followUpCare: Array.isArray(crmMeta.followUpCare)
+        ? crmMeta.followUpCare as string[]
+        : [],
+      amenities: (crmMeta.amenities as string[] | undefined) ?? [],
+      nearbyAttractions: (nearbyAttractions ?? []).map((a: Record<string, unknown>) => ({
+        id: a.id as string,
+        name: (a.name_zh as string) || (a.name as string),
+        nameEn: a.name as string,
+        distance: a.distance as string,
+      })),
+      promotionalVideos: (crmMeta.promotionalVideos as string[] | undefined) ?? [],
+      videoTestimonials: (crmMeta.videoTestimonials as MaterialsHospitalInfo['videoTestimonials']) ?? [],
     };
   }
 
+  // --- Helper: extract certifications from highlights ---
+  private extractCertificationsFromHighlights(
+    highlights: Array<{ icon: string; text: string }> | null | undefined,
+  ): Array<{ id: string; name: string; nameEn?: string; year?: number; isActive: boolean }> {
+    if (!highlights) return [];
+    const certs: Array<{ id: string; name: string; nameEn: string; year?: number; isActive: boolean }> = [];
+    for (const h of highlights) {
+      if (h.icon === 'award' || h.icon === 'shield') {
+        const yearMatch = h.text.match(/(\d{4})/);
+        const year = yearMatch ? parseInt(yearMatch[1]!) : undefined;
+        let certName = h.text;
+        if (h.text.toLowerCase().includes('jci')) certName = 'JCI Accreditation';
+        certs.push({ id: `cert-${certs.length + 1}`, name: certName, nameEn: certName, year, isActive: true });
+      }
+    }
+    return certs;
+  }
+
+  // --- Helper: extract languages from highlights ---
+  private extractLanguagesFromHighlights(
+    highlights: Array<{ icon: string; text: string }> | null | undefined,
+  ): string[] {
+    if (!highlights) return [];
+    for (const h of highlights) {
+      if (h.icon === 'globe' || h.text.toLowerCase().includes('multilingual')) {
+        const match = h.text.match(/\(([^)]+)\)/);
+        if (match) return match[1]!.split(',').map((lang) => lang.trim().toLowerCase());
+      }
+    }
+    return [];
+  }
+
   async updateHospitalInfo(hospitalId: string, updates: Partial<MaterialsHospitalInfo>): Promise<MaterialsHospitalInfo> {
-    const updateData: Record<string, unknown> = {};
-    if (updates.heroImage !== undefined) updateData['hero_image'] = updates.heroImage;
-    if (updates.photos !== undefined) updateData['photos'] = updates.photos;
-    if (updates.highlights !== undefined) updateData['highlights'] = updates.highlights;
-    updateData['updated_at'] = new Date().toISOString();
+    // 1. Build hospital table updates
+    const hospitalUpdates: Record<string, unknown> = {};
+    if (updates.name !== undefined) hospitalUpdates['name'] = updates.name;
+    if (updates.heroImage !== undefined) hospitalUpdates['hero_image'] = updates.heroImage;
+    if (updates.photos !== undefined) hospitalUpdates['photos'] = updates.photos;
+    if (updates.highlights !== undefined) hospitalUpdates['highlights'] = updates.highlights;
+    if (updates.nameEn !== undefined) hospitalUpdates['name'] = updates.nameEn;
+    if (updates.yearEstablished !== undefined) hospitalUpdates['year_established'] = updates.yearEstablished;
+    if (updates.totalPatients !== undefined) hospitalUpdates['total_patients'] = updates.totalPatients;
+    if (updates.paymentMethods !== undefined) hospitalUpdates['payment_methods'] = updates.paymentMethods;
+    if (updates.recommendRate !== undefined) hospitalUpdates['recommend_rate'] = updates.recommendRate;
+    if (updates.isActive !== undefined) hospitalUpdates['is_active'] = updates.isActive;
 
-    const { data, error } = await this.supabase
-      .from('hospitals')
-      .update(updateData)
-      .eq('id', hospitalId)
-      .select('id, name, slug, hero_image, photos, highlights')
-      .single();
+    // CRM metadata fields -> crm_metadata JSONB
+    const crmMetadataFields = [
+      'bedCount', 'patientCapacity', 'multilingualStaff', 'airportServices',
+      'followUpCare', 'amenities', 'certifications', 'promotionalVideos', 'videoTestimonials',
+    ] as const;
+    const crmMetadataUpdates: Record<string, unknown> = {};
+    for (const field of crmMetadataFields) {
+      if (updates[field] !== undefined) {
+        crmMetadataUpdates[field] = updates[field];
+      }
+    }
 
-    if (error) throw error;
-    if (!data) throw new NotFoundError(`Hospital ${hospitalId} not found`);
+    if (Object.keys(crmMetadataUpdates).length > 0) {
+      const { data: currentHospital } = await this.supabase
+        .from('hospitals')
+        .select('crm_metadata')
+        .eq('id', hospitalId)
+        .single();
+      const existingMeta = (currentHospital?.crm_metadata as Record<string, unknown>) ?? {};
+      hospitalUpdates['crm_metadata'] = { ...existingMeta, ...crmMetadataUpdates };
+    }
 
-    return {
-      id: data.id,
-      name: data.name,
-      slug: data.slug,
-      heroImage: data.hero_image,
-      photos: data.photos ?? [],
-      highlights: data.highlights ?? [],
-    };
+    if (Object.keys(hospitalUpdates).length > 0) {
+      hospitalUpdates['updated_at'] = new Date().toISOString();
+      const { error } = await this.supabase
+        .from('hospitals')
+        .update(hospitalUpdates)
+        .eq('id', hospitalId);
+      if (error) throw error;
+    }
+
+    // 2. Update location table
+    const locationUpdates: Record<string, unknown> = {};
+    if (updates.address !== undefined) locationUpdates['address'] = updates.address;
+    if (updates.phone !== undefined) locationUpdates['phone'] = updates.phone;
+    if (updates.email !== undefined) locationUpdates['email'] = updates.email;
+    if (updates.website !== undefined) locationUpdates['website'] = updates.website;
+    if (updates.hours !== undefined) locationUpdates['hours'] = updates.hours;
+    if (updates.operatingHours !== undefined) locationUpdates['hours'] = updates.operatingHours;
+    if (updates.latitude !== undefined) locationUpdates['latitude'] = updates.latitude;
+    if (updates.longitude !== undefined) locationUpdates['longitude'] = updates.longitude;
+    if (updates.mapEmbed !== undefined) locationUpdates['map_embed'] = updates.mapEmbed;
+
+    if (Object.keys(locationUpdates).length > 0) {
+      locationUpdates['updated_at'] = new Date().toISOString();
+      const { data: locData, error: locError } = await this.supabase
+        .from('hospital_location')
+        .update(locationUpdates)
+        .eq('hospital_id', hospitalId)
+        .select('id');
+
+      if (locError) {
+        // ignore error — location row may not exist
+      } else if (!locData || locData.length === 0) {
+        // Create location row if it doesn't exist
+        await this.supabase
+          .from('hospital_location')
+          .insert({ hospital_id: hospitalId, ...locationUpdates });
+      }
+    }
+
+    // 3. Update translations table
+    const translationUpdates: Record<string, unknown> = {};
+    if (updates.tagline !== undefined) translationUpdates['tagline'] = updates.tagline;
+    else if (updates.taglineEn !== undefined) translationUpdates['tagline'] = updates.taglineEn;
+    if (updates.description !== undefined) translationUpdates['description'] = updates.description;
+    else if (updates.descriptionEn !== undefined) translationUpdates['description'] = updates.descriptionEn;
+
+    if (Object.keys(translationUpdates).length > 0) {
+      translationUpdates['updated_at'] = new Date().toISOString();
+      const { data: transData, error: transError } = await this.supabase
+        .from('hospital_translations')
+        .update(translationUpdates)
+        .eq('hospital_id', hospitalId)
+        .eq('language_code', 'en')
+        .select('id');
+
+      if (!transError && (!transData || transData.length === 0)) {
+        await this.supabase
+          .from('hospital_translations')
+          .insert({ hospital_id: hospitalId, language_code: 'en', ...translationUpdates });
+      }
+    }
+
+    // 4. Update nearby attractions
+    if (updates.nearbyAttractions !== undefined) {
+      await this.supabase.from('hospital_nearby_attractions').delete().eq('hospital_id', hospitalId);
+      if (updates.nearbyAttractions.length > 0) {
+        const rows = updates.nearbyAttractions.map((a, idx) => ({
+          hospital_id: hospitalId,
+          name: a.nameEn || a.name || '',
+          name_zh: a.name || null,
+          distance: a.distance || '',
+          sort_order: idx + 1,
+        }));
+        await this.supabase.from('hospital_nearby_attractions').insert(rows);
+      }
+    }
+
+    // 5. Return refreshed data
+    const result = await this.getHospitalInfo(hospitalId);
+    if (!result) throw new NotFoundError(`Hospital ${hospitalId} not found`);
+    return result;
   }
 
   // ---------------------------------------------------------------------------
@@ -323,9 +529,12 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   // ---------------------------------------------------------------------------
 
   async listBeforeAfterCases(hospitalId: string): Promise<MaterialsBeforeAfterCase[]> {
+    // Beauty hospitals: procedure_cases doesn't have procedure_name column.
+    // Procedure name comes from procedures table via procedure_id FK.
+    // Also join case_images for before/after photos.
     const { data, error } = await this.supabase
       .from('procedure_cases')
-      .select('id, hospital_id, procedure_name, provider_name, description, case_images(id, image_url, image_type, sort_order)')
+      .select('id, hospital_id, procedure_id, provider_name, description, procedures(procedure_name), case_images(id, image_url, image_type, sort_order)')
       .eq('hospital_id', hospitalId)
       .order('sort_order', { ascending: true });
 
@@ -335,10 +544,14 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       const images = (row.case_images as Array<{ image_url: string; image_type: 'before' | 'after' | 'combined'; sort_order: number }>) ?? [];
       images.sort((a, b) => a.sort_order - b.sort_order);
 
+      // Procedure name from procedures join (beauty hospital pattern)
+      const proc = row.procedures as { procedure_name: string } | null;
+      const procedureName = proc?.procedure_name ?? '';
+
       return {
         id: row.id as string,
         hospitalId: (row.hospital_id as string) ?? hospitalId,
-        procedureName: (row.procedure_name as string) ?? '',
+        procedureName,
         surgeonName: row.provider_name as string | null,
         description: row.description as string | null,
         images: images.map((img) => ({
@@ -350,19 +563,43 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   }
 
   async createBeforeAfterCase(data: Omit<MaterialsBeforeAfterCase, 'id'>): Promise<MaterialsBeforeAfterCase> {
+    // Beauty hospitals: procedure_name only exists in China Medical Supabase.
+    // Use procedure_id FK to the procedures table instead.
+    let procedureId: string | null = null;
+    if (data.procedureName) {
+      const { data: existing } = await this.supabase
+        .from('procedures')
+        .select('id')
+        .ilike('procedure_name', data.procedureName)
+        .limit(1)
+        .single();
+
+      if (existing) {
+        procedureId = existing.id;
+      } else {
+        const slug = data.procedureName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        const { data: created } = await this.supabase
+          .from('procedures')
+          .insert({ procedure_name: data.procedureName, slug })
+          .select('id')
+          .single();
+        procedureId = created?.id ?? null;
+      }
+    }
+
     const caseNumber = `CASE-${Date.now()}`;
     const { data: row, error } = await this.supabase
       .from('procedure_cases')
       .insert({
         hospital_id: data.hospitalId,
-        procedure_name: data.procedureName,
+        procedure_id: procedureId,
         provider_name: data.surgeonName,
         description: data.description,
         case_number: caseNumber,
         image_count: data.images.length,
         sort_order: 0,
       })
-      .select('id, hospital_id, procedure_name, provider_name, description')
+      .select('id, hospital_id, provider_name, description')
       .single();
 
     if (error) throw error;
@@ -386,7 +623,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     return {
       id: row!.id,
       hospitalId: row!.hospital_id ?? data.hospitalId,
-      procedureName: row!.procedure_name ?? data.procedureName,
+      procedureName: data.procedureName,
       surgeonName: row!.provider_name,
       description: row!.description,
       images: data.images,
@@ -395,7 +632,27 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 
   async updateBeforeAfterCase(id: string, hospitalId: string, updates: Partial<MaterialsBeforeAfterCase>): Promise<MaterialsBeforeAfterCase> {
     const updateData: Record<string, unknown> = {};
-    if (updates.procedureName !== undefined) updateData['procedure_name'] = updates.procedureName;
+    // Beauty hospitals: use procedure_id FK, not procedure_name column
+    if (updates.procedureName !== undefined) {
+      const { data: existing } = await this.supabase
+        .from('procedures')
+        .select('id')
+        .ilike('procedure_name', updates.procedureName)
+        .limit(1)
+        .single();
+
+      if (existing) {
+        updateData['procedure_id'] = existing.id;
+      } else {
+        const slug = updates.procedureName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        const { data: created } = await this.supabase
+          .from('procedures')
+          .insert({ procedure_name: updates.procedureName, slug })
+          .select('id')
+          .single();
+        if (created) updateData['procedure_id'] = created.id;
+      }
+    }
     if (updates.surgeonName !== undefined) updateData['provider_name'] = updates.surgeonName;
     if (updates.description !== undefined) updateData['description'] = updates.description;
     updateData['updated_at'] = new Date().toISOString();
@@ -405,7 +662,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       .update(updateData)
       .eq('id', id)
       .eq('hospital_id', hospitalId)
-      .select('id, hospital_id, procedure_name, provider_name, description')
+      .select('id, hospital_id, procedure_id, provider_name, description, procedures(procedure_name)')
       .single();
 
     if (error) {
@@ -463,10 +720,11 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       }));
     }
 
+    const proc = (row as Record<string, unknown>).procedures as { procedure_name: string } | null;
     return {
       id: row.id,
       hospitalId: row.hospital_id ?? hospitalId,
-      procedureName: row.procedure_name ?? '',
+      procedureName: proc?.procedure_name ?? updates.procedureName ?? '',
       surgeonName: row.provider_name,
       description: row.description,
       images,

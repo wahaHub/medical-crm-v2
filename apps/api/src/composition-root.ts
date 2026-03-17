@@ -169,8 +169,9 @@ import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
+import { ChinaMedicalMaterialsRepository } from '@medical-crm/infrastructure/supabase-china/materials';
 import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
 
 interface AppServices {
@@ -389,7 +390,23 @@ export function getServices(): AppServices {
     const translationService = new OpenAITranslationService(process.env['OPENAI_API_KEY'] ?? '');
     const consultationRepo = new DrizzleConsultationRepository(crmDb);
     const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
-    const materialsRepo = new SupabaseMaterialsRepository(mainSupabase);
+    // Materials: route to correct Supabase based on hospital type (COSMETIC → Main, REGULAR → China)
+    const cosmeticMaterialsRepo = new SupabaseMaterialsRepository(mainSupabase);
+    const regularMaterialsRepo = new ChinaMedicalMaterialsRepository(chinaSupabase);
+
+    // Hospital type resolver — uses DrizzleHospitalManagementRepository to look up type
+    const hospitalTypeCache = new Map<string, 'COSMETIC' | 'REGULAR'>();
+    const resolveHospitalType = async (hospitalId: string): Promise<'COSMETIC' | 'REGULAR'> => {
+      const cached = hospitalTypeCache.get(hospitalId);
+      if (cached) return cached;
+
+      const hospital = await hospitalManagementRepo.findFullById(hospitalId);
+      const type = hospital?.type === 'REGULAR' ? 'REGULAR' as const : 'COSMETIC' as const;
+      hospitalTypeCache.set(hospitalId, type);
+      return type;
+    };
+
+    const materialsRepo = new RoutingMaterialsRepository(cosmeticMaterialsRepo, regularMaterialsRepo, resolveHospitalType);
     const chcRepo = new DrizzleCHCRepository(crmDb);
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
     const eventRepo = new DrizzleCaseEventRepository(crmDb);
@@ -413,7 +430,7 @@ export function getServices(): AppServices {
       createCase: new CreateCaseUseCase(caseRepo),
       listCases,
       getCase: new GetCaseUseCase(caseRepo),
-      getHospitalCaseDetail: new GetHospitalCaseDetailUseCase(caseRepo, progressRepo, documentRepo, storage, patientRepo),
+      getHospitalCaseDetail: new GetHospitalCaseDetailUseCase(caseRepo, progressRepo, documentRepo, storage, patientRepo, conversationRepo, messageRepo),
       updateCase: new UpdateCaseUseCase(caseRepo),
       assignCase: new AssignCaseUseCase(caseRepo, hospitalRepo, assignmentService, progressRepo),
       updateCaseStatus: new UpdateCaseStatusUseCase(caseRepo, progressRepo),
@@ -439,8 +456,8 @@ export function getServices(): AppServices {
       getConversation: new GetConversationUseCase(conversationRepo),
       updateConversation: new UpdateConversationUseCase(conversationRepo),
       sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo),
-      listMessages: new ListMessagesUseCase(conversationRepo, messageRepo),
-      getMessage: new GetMessageUseCase(conversationRepo, messageRepo),
+      listMessages: new ListMessagesUseCase(conversationRepo, messageRepo, storage),
+      getMessage: new GetMessageUseCase(conversationRepo, messageRepo, storage),
       updateMessage: new UpdateMessageUseCase(conversationRepo, messageRepo),
       deleteMessage: new DeleteMessageUseCase(conversationRepo, messageRepo),
       listPendingReview: new ListPendingReviewUseCase(messageRepo),

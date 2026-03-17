@@ -4,7 +4,7 @@ import { GetMessageUseCase } from '../src/use-cases/messages/get-message.use-cas
 import { UpdateMessageUseCase } from '../src/use-cases/messages/update-message.use-case.js';
 import { DeleteMessageUseCase } from '../src/use-cases/messages/delete-message.use-case.js';
 import { Conversation, Message } from '@medical-crm/domain';
-import type { IConversationRepository, IMessageRepository } from '@medical-crm/domain';
+import type { IConversationRepository, IMessageRepository, IStorageService } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -98,13 +98,21 @@ function makeRepos(
   return { mockConversationRepo, mockMessageRepo };
 }
 
+function makeStorage(): IStorageService {
+  return {
+    createPresignedUpload: vi.fn(),
+    getSignedUrl: vi.fn(),
+    getSignedUrls: vi.fn().mockResolvedValue({}),
+  };
+}
+
 // ─── ListMessagesUseCase ───────────────────────────────────────────────────────
 
 describe('ListMessagesUseCase', () => {
   it('ADMIN: returns paginated MessageDTOs', async () => {
     const msg = makeMessage();
     const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation(), msg);
-    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     const result = await useCase.execute('conv-1', { page: 1, limit: 20 }, adminActor);
 
@@ -122,7 +130,7 @@ describe('ListMessagesUseCase', () => {
 
   it('HOSPITAL: can list messages in own conversation', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
-    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     const result = await useCase.execute('conv-1', { page: 1, limit: 20 }, hospitalActor);
 
@@ -132,7 +140,7 @@ describe('ListMessagesUseCase', () => {
   it('throws NotFoundError if conversation does not exist', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     mockConversationRepo.findById = vi.fn().mockResolvedValue(null);
-    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     await expect(
       useCase.execute('missing-conv', { page: 1, limit: 20 }, adminActor),
@@ -141,7 +149,7 @@ describe('ListMessagesUseCase', () => {
 
   it('throws ForbiddenError if HOSPITAL hospitalId does not match', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
-    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     await expect(
       useCase.execute('conv-1', { page: 1, limit: 20 }, otherHospitalActor),
@@ -151,7 +159,7 @@ describe('ListMessagesUseCase', () => {
   it('throws ForbiddenError if HOSPITAL tries to list ADMIN_PATIENT conversation', async () => {
     const conv = makeConversation({ category: 'ADMIN_PATIENT', hospitalId: 'hosp-1' });
     const { mockConversationRepo, mockMessageRepo } = makeRepos(conv);
-    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     await expect(
       useCase.execute('conv-1', { page: 1, limit: 20 }, hospitalActor),
@@ -164,7 +172,7 @@ describe('ListMessagesUseCase', () => {
 describe('GetMessageUseCase', () => {
   it('ADMIN: returns a single MessageDTO', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
-    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     const result = await useCase.execute('conv-1', 'msg-1', adminActor);
 
@@ -179,7 +187,7 @@ describe('GetMessageUseCase', () => {
 
   it('HOSPITAL: can get a message from own conversation', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
-    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     const result = await useCase.execute('conv-1', 'msg-1', hospitalActor);
 
@@ -189,7 +197,7 @@ describe('GetMessageUseCase', () => {
   it('throws NotFoundError if conversation does not exist', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     mockConversationRepo.findById = vi.fn().mockResolvedValue(null);
-    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     await expect(
       useCase.execute('no-conv', 'msg-1', adminActor),
@@ -199,7 +207,7 @@ describe('GetMessageUseCase', () => {
   it('throws NotFoundError if message does not exist', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     mockMessageRepo.findById = vi.fn().mockResolvedValue(null);
-    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     await expect(
       useCase.execute('conv-1', 'no-msg', adminActor),
@@ -208,7 +216,7 @@ describe('GetMessageUseCase', () => {
 
   it('throws ForbiddenError if HOSPITAL hospitalId does not match', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
-    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     await expect(
       useCase.execute('conv-1', 'msg-1', otherHospitalActor),
@@ -218,7 +226,7 @@ describe('GetMessageUseCase', () => {
   it('throws ForbiddenError if HOSPITAL tries to get message in ADMIN_PATIENT conversation', async () => {
     const conv = makeConversation({ category: 'ADMIN_PATIENT', hospitalId: 'hosp-1' });
     const { mockConversationRepo, mockMessageRepo } = makeRepos(conv);
-    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo);
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
 
     await expect(
       useCase.execute('conv-1', 'msg-1', hospitalActor),

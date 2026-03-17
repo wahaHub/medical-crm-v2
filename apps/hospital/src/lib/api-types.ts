@@ -16,17 +16,78 @@ export interface CaseSummary {
   id: string;
   caseNumber?: string;
   patientName?: string;
+  patientCode?: string;
   patientCountry?: string | null;
+  patientAge?: number | null;
+  patientGender?: string | null;
   status?: string;
   assignmentStatus?: string;
   stage?: string;
   treatmentStage?: string | null;
   riskLevel?: string | null;
   medicalCondition?: string | null;
+  primaryDiagnosis?: string | null;
   notes?: string | null;
   assignedHospitalId?: string | null;
+  totalDocuments?: number;
+  totalMessages?: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** Step-based medical intake from patient questionnaire */
+export interface MedicalIntake {
+  step1?: {
+    symptomLocation?: string;
+    symptomNature?: string[];
+    onsetTime?: string;
+    progressTrend?: string;
+    diagnosisStage?: string;
+    diseaseCategory?: string;
+  };
+  step2?: {
+    detailedDescription?: string;
+    aggravatingFactors?: string[];
+    relievingFactors?: string[];
+    previousTreatment?: string;
+  };
+  step3?: {
+    medicalHistory?: string[];
+    chronicConditions?: string;
+    familyHistory?: string;
+  };
+  step4?: {
+    currentMedications?: string;
+    drugAllergies?: string;
+    foodAllergies?: string;
+  };
+  step5?: {
+    examTypes?: string[];
+    examDetails?: string;
+    labResults?: string;
+    treatmentExpectations?: string[];
+    budgetRange?: string;
+    expectedTimeline?: string;
+  };
+}
+
+/** Phone call record */
+export interface PhoneCallItem {
+  id: string;
+  title?: string;
+  callResult?: string | null;
+  summary?: string | null;
+  duration?: number | null;
+  nextFollowUp?: string | null;
+  recordedAt?: string;
+}
+
+/** Consultation history record */
+export interface ConsultationHistoryItem {
+  id: string;
+  title?: string;
+  description?: string | null;
+  recordedAt?: string;
 }
 
 /** Case detail DTO returned by GET /cases/:id for HOSPITAL role */
@@ -49,9 +110,12 @@ export interface HospitalCaseDetail {
     symptoms: string[] | null;
     medicalHistory: string | null;
   };
+  medicalIntake?: MedicalIntake;
   aiSummary: string | null;
   riskLevel: string | null;
   diagnoses: DiagnosisItem[];
+  phoneCalls?: PhoneCallItem[];
+  consultationHistory?: ConsultationHistoryItem[];
   documents: DocumentItem[];
   totalMessages: number;
   createdAt: string;
@@ -91,6 +155,7 @@ export interface ConsultationSummary {
 /** Conversation summary */
 export interface ConversationSummary {
   id: string;
+  caseId?: string | null;
   title?: string;
   patientName?: string;
   category?: string;
@@ -99,18 +164,66 @@ export interface ConversationSummary {
   updatedAt?: string;
 }
 
-/** Document item */
+/** Message item returned by conversations/:id/messages */
+export interface MessageItem {
+  id: string;
+  conversationId: string;
+  senderId?: string;
+  senderRole?: string;
+  senderName?: string;
+  content: string;
+  translatedContent?: string | null;
+  contentTranslated?: string | null;
+  messageType?: string;
+  aiSummary?: string | null;
+  moderationStatus?: string;
+  attachments?: Array<{
+    url?: string;
+    name?: string;
+    type?: string;
+    size?: number;
+    fileName?: string;
+    fileSize?: number;
+    mimeType?: string;
+    storageKey?: string;
+  }> | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** Document item — matches backend DocumentWithUrlDTO */
 export interface DocumentItem {
   id: string;
   fileName?: string;
-  fileUrl?: string;
+  fileSize?: number;
+  mimeType?: string;
+  documentType?: string;
+  sensitivity?: string;
+  language?: string;
+  isTranslated?: boolean;
+  downloadUrl?: string;
+  createdAt?: string;
+  /** @deprecated use documentType */
   type?: string;
+  /** @deprecated use downloadUrl */
+  fileUrl?: string;
   status?: string;
 }
 
-/** Diagnosis item */
+/** Diagnosis item — matches backend DiagnosisDTO */
 export interface DiagnosisItem {
+  id?: string;
+  title?: string;
+  icdCode?: string | null;
+  severity?: string | null;
+  treatmentRecommendation?: string | null;
+  suggestedTests?: string | null;
+  costEstimate?: string | null;
+  treatmentDuration?: string | null;
+  recordedAt?: string;
+  /** @deprecated kept for backward compat */
   condition?: string;
+  /** @deprecated kept for backward compat */
   notes?: string;
 }
 
@@ -127,6 +240,68 @@ export interface MaterialsHospitalInfoDTO {
   heroImage: string | null;
   photos: string[];
   highlights: Array<{ icon: string; text: string }>;
+  // Extended fields
+  nameEn?: string;
+  yearEstablished?: number;
+  totalPatients?: number;
+  tagline?: string;
+  taglineEn?: string;
+  description?: string;
+  descriptionEn?: string;
+  status?: string;
+  isActive?: boolean;
+  paymentMethods?: string[];
+  // Contact & Location
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  hours?: string;
+  latitude?: number;
+  longitude?: number;
+  mapEmbed?: string;
+  operatingHours?: string;
+  // CRM metadata fields
+  certifications?: Array<{ id: string; name: string; nameEn?: string; year?: number; isActive: boolean }>;
+  bedCount?: number;
+  patientCapacity?: number;
+  recommendRate?: number;
+  multilingualStaff?: string[];
+  airportServices?: string[];
+  followUpCare?: string[];
+  amenities?: string[];
+  nearbyAttractions?: Array<{ id: string; name: string; nameEn?: string; distance: string }>;
+  videoTestimonials?: Array<{
+    id: string;
+    patientName: string;
+    patientCountry?: string;
+    procedureName?: string;
+    videoUrl: string;
+    thumbnailUrl?: string;
+    duration?: string;
+    uploadedAt?: string;
+  }>;
+  // Regular hospital specific fields
+  city?: string;
+  district?: string;
+  province?: string;
+  hospitalType?: string;
+  tier?: string;
+  ownershipType?: string;
+  clinicalCapabilities?: string[];
+  equipment?: Array<{ name: string; image_url?: string; description?: string }>;
+  gallery?: Array<{ url: string; alt: string; type: string }>;
+  coreSpecialties?: Array<{ name: string; slug: string; image_url?: string; description: string; technologies: string[] }>;
+  overview?: string;
+  overviewEn?: string;
+  fullDescription?: string;
+  fullDescriptionEn?: string;
+  departments?: string[];
+  departmentDescriptions?: Record<string, string>;
+  departmentImages?: Record<string, string>;
+  departmentKeyServices?: Record<string, string[]>;
+  departmentStats?: Record<string, { specialists?: number; annualPatients?: number }>;
+  promotionalVideos?: string[];
 }
 
 /** Materials procedure — matches MaterialsProcedure domain type */

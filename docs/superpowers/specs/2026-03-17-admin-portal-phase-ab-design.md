@@ -43,6 +43,7 @@ apps/admin/src/app/
 │   ├── page.tsx                # Dashboard
 │   ├── cases/
 │   │   ├── page.tsx            # Cases 列表
+│   │   ├── new/page.tsx        # 创建 Case（临时入口，待 CompleteSignup 实现后评估移除）
 │   │   └── [id]/page.tsx       # Case Detail（10 Tab）
 │   └── hospitals/
 │       ├── page.tsx            # Hospitals 列表
@@ -64,7 +65,7 @@ apps/admin/src/app/
     └── ...                     # 其余按需添加
 ```
 
-**注意：无 `/cases/new` 路由。** Admin 不能创建 Case，Case 由 Patient booking 流程产生。
+**注意：保留 `/cases/new` 路由作为临时入口。** 虽然正式流程中 Case 由 Patient booking 产生，但 `CompleteSignup` 端点目前返回 501 Not Implemented，Patient 无法自助完成注册。在该 API 实现之前，Admin 需要能手动创建 Case（`POST /api/v2/cases` 已支持 ADMIN 角色）。待 `CompleteSignup` 上线后可评估是否移除此入口。
 
 ### 2.3 数据层架构
 
@@ -151,7 +152,7 @@ apps/admin/src/
 | 筛选栏 | 搜索框 + 状态下拉 + 阶段下拉 + 日期范围 |
 | 案例表格 | 患者名、状态 Badge、阶段、分配医院数、报价数、创建日期 |
 
-**无 "新建案例" 按钮。**
+**"新建案例" 按钮** → `/cases/new`（临时入口，因 `CompleteSignup` 尚未实现）。
 
 ### 3.3 Case Detail (`/cases/[id]`) — 10 Tab
 
@@ -195,14 +196,17 @@ apps/admin/src/
 | **统计卡片** | 关联案例数 / 活跃案例 / 已完成案例 |
 | **医院账号列表** | 该医院的用户账号、角色、最后登录时间 |
 | **关联案例表格** | 最近 10 条案例（复用 DataTable） |
+| **邀请链接管理** | "生成邀请链接" 按钮 → `POST /hospitals/{id}/registration-token`，显示当前令牌状态 |
 | **宣传材料审核**（底部） | 见下方详细设计 |
 
 #### 宣传材料审核区域（参照 v1）
 
 - 医院状态 Badge：已审核（绿）/ 待审核（黄）/ 已停用（红）
-- 审核操作按钮：
-  - 状态为"待审核"时：显示 **"审核通过"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "active" }`
-  - 状态为"已审核"时：显示 **"撤回审核"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "pending" }`
+- 审核操作按钮（枚举值为大写，与 `hospitalStatusSchema` 一致）：
+  - 状态为 `PENDING` 时：显示 **"审核通过"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "ACTIVE" }`
+  - 状态为 `ACTIVE` 时：显示 **"撤回审核"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "PENDING" }`
+  - 额外：显示 **"停用医院"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "INACTIVE" }`（需二次确认弹窗）
+  - 状态为 `INACTIVE` 时：显示 **"重新启用"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "PENDING" }`
 - 消费者网站链接预览（可点击打开）
 - 状态变更会同步到对应 Supabase（COSMETIC → main Supabase `is_active`；REGULAR → china-medical `status`）
 
@@ -210,18 +214,31 @@ apps/admin/src/
 
 **数据源**：`POST /api/v2/hospitals`
 
-**表单字段：**
+**两步流程：** 创建医院是一个两步操作，因为 `POST /api/v2/hospitals` 的 schema 只接受基础字段（`name`, `type`, `contactEmail`, `contactPhone`, `address`, `description`），城市和专科需要在创建后通过 `PUT /api/v2/hospitals/{id}` 补充。
+
+#### Step 1: 基础信息表单
+
+| 字段 | 必填 | 条件 | API 字段名 |
+|------|------|------|-----------|
+| 医院名称 | ✅ | — | `name` |
+| 医院类型 | ✅ | — | `type`: `COSMETIC` / `REGULAR` |
+| 地址 | ❌ | — | `address` |
+| 电话 | ❌ | — | `contactPhone` |
+| 邮箱 | ❌ | — | `contactEmail` |
+| 描述 | ❌ | — | `description` |
+
+提交 → `POST /api/v2/hospitals` → 得到 `hospitalId`
+
+#### Step 2: 补充信息（自动接续）
+
+创建成功后，表单继续展示以下字段（或自动跳转到编辑页面）：
 
 | 字段 | 必填 | 条件 | 说明 |
 |------|------|------|------|
-| 医院名称 | ✅ | — | text input |
-| 医院类型 | ✅ | — | Radio: COSMETIC（整容医院）/ REGULAR（一般医院），切换影响颜色主题和后续字段 |
-| 地址 | ✅ | — | text input |
-| 城市 | ✅ | 仅 REGULAR | text input，COSMETIC 时隐藏 |
-| 电话 | ❌ | — | text input，可选 |
-| 邮箱 | ✅ | — | email input |
+| 城市 | ✅ | 仅 REGULAR | text input |
 | 专科选择 | ✅ | 至少 1 个 | 多选 Badge，列表根据类型动态切换（见下方） |
-| 描述 | ❌ | — | textarea |
+
+提交 → `PUT /api/v2/hospitals/{id}` → 更新城市和专科
 
 **专科列表（根据医院类型动态切换）：**
 
@@ -232,10 +249,20 @@ apps/admin/src/
 
 切换类型时重置已选专科。
 
+#### Step 3: 生成邀请链接（手动触发）
+
+创建完成后，在 Hospital Detail 页面手动点击 **"生成邀请链接"** 按钮：
+- 调用 `POST /api/v2/hospitals/{id}/registration-token`
+- 生成 72 小时有效的注册令牌
+- 系统发送邀请邮件到医院邮箱
+
+**注意：邀请邮件不是创建时自动发送的，是独立的手动步骤。**
+
 **创建后逻辑：**
-1. 调用 `POST /api/v2/hospitals`
-2. 成功提示："医院创建成功！系统已向医院邮箱发送邀请链接"
-3. 自动跳转到医院详情页 `/hospitals/{newId}`
+1. `POST /api/v2/hospitals` → 创建基础信息
+2. `PUT /api/v2/hospitals/{id}` → 补充城市/专科
+3. 成功提示："医院创建成功！请在详情页生成邀请链接。"
+4. 自动跳转到医院详情页 `/hospitals/{newId}`
 
 ---
 
@@ -338,10 +365,11 @@ auth 路由均为 Route Handler（`route.ts`），无独立登录 UI 页面。
 | A1 | Admin Shell（layout + 侧边栏 + 顶栏 + 认证集成） | 已有 auth 骨架 |
 | A2 | Dashboard 页面 | `GET /api/v2/admin/dashboard` |
 | A3 | Cases 列表页 | `GET /cases` + `GET /cases/stats` |
-| A4 | Case Detail（Overview + Medical Intake Tab） | `GET /cases/{id}` + `/documents` + `/questionnaire` |
-| A5 | Hospitals 列表页 | `GET /hospitals` |
-| A6 | Hospital Detail（基本信息 + 统计 + 案例 + 宣传材料审核） | `GET /hospitals/{id}` + `/cases` + `PATCH /status` |
-| A7 | New Hospital 表单页 | `POST /hospitals` |
+| A4 | New Case 表单页（临时入口） | `POST /api/v2/cases` |
+| A5 | Case Detail（Overview + Medical Intake Tab） | `GET /cases/{id}` + `/documents` + `/questionnaire` |
+| A6 | Hospitals 列表页 | `GET /hospitals` |
+| A7 | Hospital Detail（基本信息 + 统计 + 案例 + 邀请链接 + 宣传材料审核） | `GET /hospitals/{id}` + `/cases` + `PATCH /status` + `POST /registration-token` |
+| A8 | New Hospital 表单页（两步流程） | `POST /hospitals` + `PUT /hospitals/{id}` |
 
 ### Phase B — 多医院工作流 + 扩展 Tab
 

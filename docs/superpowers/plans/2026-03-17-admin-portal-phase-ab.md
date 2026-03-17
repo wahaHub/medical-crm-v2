@@ -376,7 +376,7 @@ Add the GET route right next to the existing POST route in `apps/api/src/index.t
 ```typescript
 // Public: validate hospital registration token (no auth required)
 app.get('/api/v2/auth/hospital/register', async (c) => {
-  const token = c.url ? new URL(c.req.url).searchParams.get('token') : null;
+  const token = c.req.query('token');
   if (!token) return c.json({ error: 'Token is required' }, 400);
   const svc = getServices();
   const result = await svc.validateRegistrationToken.execute(token);

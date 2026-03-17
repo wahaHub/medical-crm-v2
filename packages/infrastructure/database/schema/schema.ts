@@ -81,6 +81,8 @@ export const users = pgTable("users", {
 	patientCode: varchar("patient_code", { length: 20 }),
 	country: varchar({ length: 100 }),
 	preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh').notNull(),
+	phone: varchar({ length: 20 }),
+	passwordHash: varchar("password_hash", { length: 255 }),
 }, (table) => [
 	index("users_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
 	uniqueIndex("users_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")),

@@ -158,7 +158,7 @@ apps/admin/src/
 
 | 模块 | 内容 |
 |------|------|
-| 统计卡片 | 总数 / 活跃 / 已完成 / 待报价 |
+| 统计卡片 | 总数 / 未分配 / 已分配 / 治疗中 / 已完成（对应 `CaseStatsDTO`: `total` / `unassigned` / `assigned` / `inTreatment` / `completed`） |
 | 筛选栏 | 搜索框 + 状态下拉 + 阶段下拉 + 日期范围 |
 | 案例表格 | 患者名、状态 Badge、阶段、分配医院数、报价数、创建日期 |
 
@@ -192,7 +192,7 @@ apps/admin/src/
 | 模块 | 内容 |
 |------|------|
 | 筛选栏 | 搜索框 + 类型筛选（COSMETIC / REGULAR）+ 状态筛选（已审核/待审核/已停用） |
-| 医院表格 | 名称、类型 Badge、状态 Badge、关联案例数、创建日期 |
+| 医院表格 | 名称、类型 Badge、状态 Badge、专科标签、创建日期（注：`HospitalDTO` 不含案例数字段，不显示关联案例数） |
 | 操作 | "新建医院" 按钮 → `/hospitals/new` |
 
 ### 3.5 Hospital Detail (`/hospitals/[id]`)
@@ -203,9 +203,11 @@ apps/admin/src/
 |------|------|
 | **基本信息卡片** | 名称、类型 Badge、地址、电话、邮箱、描述 |
 | **专科标签** | 医院擅长专科，Badge 展示 |
-| **统计卡片** | 关联案例数 / 活跃案例 / 已完成案例 |
-| **医院账号列表** | 该医院的用户账号、角色、最后登录时间 |
-| **关联案例表格** | 最近 10 条案例（复用 DataTable） |
+| **关联案例表格** | 来自 `GET /hospitals/{id}/cases`，显示案例编号、状态、创建时间（复用 DataTable） |
+
+**⚠️ 以下模块的数据 `HospitalDTO` 不提供，标记为 API 缺口：**
+- ~~统计卡片（关联案例数 / 活跃 / 已完成）~~ — 需从 `/hospitals/{id}/cases` 分页结果前端聚合，或后续增加统计 API
+- ~~医院账号列表~~ — `HospitalDTO` 无 user/account 字段，需新增 `GET /hospitals/{id}/users` API 或暂不显示
 | **邀请链接管理** | "生成邀请链接" 按钮 → 弹出邮箱确认框 → `POST /hospitals/{id}/registration-token` body: `{ email }` |
 | **宣传材料审核**（底部） | 见下方详细设计 |
 
@@ -302,6 +304,7 @@ apps/admin/src/
 | API | 类型 | 用途 | 影响页面 | 优先级 |
 |-----|------|------|----------|--------|
 | `updateHospitalSchema` 增加 `city` 字段 | Schema 扩展 | REGULAR 医院创建时设置城市 | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
+| `GET /hospitals/{id}/users` | 新 API | 医院用户账号列表（角色、最后登录） | Hospital Detail 账号列表 | P1（暂不显示该模块） |
 | `GET /cases/{id}/ai-summary` | 新 API | AI 案例摘要 | Case Detail → AI Summary Tab | P1（空状态占位） |
 | `POST /cases/{id}/ai-summary/rebuild` | 新 API | 重建 AI 摘要 | 同上 | P1 |
 

@@ -160,7 +160,7 @@ apps/admin/src/
 |------|------|
 | 统计卡片 | 总数 / 未分配 / 已分配 / 治疗中 / 已完成（对应 `CaseStatsDTO`: `total` / `unassigned` / `assigned` / `inTreatment` / `completed`） |
 | 筛选栏 | 搜索框 + 状态下拉 + 阶段下拉 + 日期范围 |
-| 案例表格 | 患者名、状态 Badge、阶段、分配医院数、报价数、创建日期 |
+| 案例表格 | 案例编号（`caseNumber`）、患者名（`patientName`）、状态 Badge（`status`）、阶段（`stage`）、分配状态（`assignmentStatus`）、创建日期（`createdAt`）— 均为 `CaseDTO` 已有字段。注：`CaseDTO` 不含医院数/报价数，不显示这两列 |
 
 **"新建案例" 按钮** → `/cases/new`（临时入口，因 `CompleteSignup` 尚未实现）。
 
@@ -205,9 +205,9 @@ apps/admin/src/
 | **专科标签** | 医院擅长专科，Badge 展示 |
 | **关联案例表格** | 来自 `GET /hospitals/{id}/cases`，显示案例编号、状态、创建时间（复用 DataTable） |
 
-**⚠️ 以下模块的数据 `HospitalDTO` 不提供，标记为 API 缺口：**
-- ~~统计卡片（关联案例数 / 活跃 / 已完成）~~ — 需从 `/hospitals/{id}/cases` 分页结果前端聚合，或后续增加统计 API
-- ~~医院账号列表~~ — `HospitalDTO` 无 user/account 字段，需新增 `GET /hospitals/{id}/users` API 或暂不显示
+**⚠️ 以下模块暂不实现（API 缺口）：**
+- ~~统计卡片（关联案例数 / 活跃 / 已完成）~~ — `/hospitals/{id}/cases` 是分页接口，前端聚合不可行（会产生不正确的总数）。**Phase A 不显示统计卡片**，后续通过 `GET /hospitals/{id}/stats` 新 API 支持。
+- ~~医院账号列表~~ — `HospitalDTO` 无 user/account 字段，需新增 `GET /hospitals/{id}/users` API。**Phase A 不显示该模块。**
 | **邀请链接管理** | "生成邀请链接" 按钮 → 弹出邮箱确认框 → `POST /hospitals/{id}/registration-token` body: `{ email }` |
 | **宣传材料审核**（底部） | 见下方详细设计 |
 
@@ -220,7 +220,7 @@ apps/admin/src/
   - 额外：显示 **"停用医院"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "INACTIVE" }`（需二次确认弹窗）
   - 状态为 `INACTIVE` 时：显示 **"重新启用"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "PENDING" }`
 - 消费者网站链接预览（可点击打开）
-- 状态变更会同步到对应 Supabase（COSMETIC → main Supabase `is_active`；REGULAR → china-medical `status`）
+- **⚠️ Supabase 同步缺口：** 当前 `update-hospital-status.use-case.ts` 未调用 Supabase 同步服务。且 China 同步逻辑只映射 `ACTIVE→approved`，其余映射为 `pending`（无 `INACTIVE` 对应）。状态变更目前仅更新 CRM 数据库。如需同步到消费者网站，需在 Phase A 实现时补充同步逻辑。
 
 ### 3.6 New Hospital (`/hospitals/new`)
 
@@ -305,6 +305,8 @@ apps/admin/src/
 |-----|------|------|----------|--------|
 | `updateHospitalSchema` 增加 `city` 字段 | Schema 扩展 | REGULAR 医院创建时设置城市 | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
 | `GET /hospitals/{id}/users` | 新 API | 医院用户账号列表（角色、最后登录） | Hospital Detail 账号列表 | P1（暂不显示该模块） |
+| `GET /hospitals/{id}/stats` | 新 API | 医院统计（案例数、活跃、已完成） | Hospital Detail 统计卡片 | P1（暂不显示） |
+| `update-hospital-status` 增加 Supabase 同步 | 逻辑修复 | 状态变更同步到消费者网站 | Hospital Detail 审核操作 | P1（当前仅更新 CRM DB） |
 | `GET /cases/{id}/ai-summary` | 新 API | AI 案例摘要 | Case Detail → AI Summary Tab | P1（空状态占位） |
 | `POST /cases/{id}/ai-summary/rebuild` | 新 API | 重建 AI 摘要 | 同上 | P1 |
 
@@ -384,7 +386,7 @@ auth 路由均为 Route Handler（`route.ts`），无独立登录 UI 页面。
 | A4 | New Case 表单页（临时入口） | `POST /api/v2/cases` |
 | A5 | Case Detail（Overview + Medical Intake Tab） | `GET /cases/{id}` + `/documents` + `/questionnaire` |
 | A6 | Hospitals 列表页 | `GET /hospitals` |
-| A7 | Hospital Detail（基本信息 + 统计 + 案例 + 邀请链接 + 宣传材料审核） | `GET /hospitals/{id}` + `/cases` + `PATCH /status` + `POST /registration-token` |
+| A7 | Hospital Detail（基本信息 + 案例 + 邀请链接 + 宣传材料审核，无统计/无账号列表） | `GET /hospitals/{id}` + `/cases` + `PATCH /status` + `POST /registration-token` |
 | A8 | New Hospital 表单页（两步流程） | `POST /hospitals` + `PUT /hospitals/{id}` |
 
 ### Phase B — 多医院工作流 + 扩展 Tab

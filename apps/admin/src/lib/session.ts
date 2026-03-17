@@ -26,6 +26,15 @@ export async function getSession() {
   return getIronSession<SessionData>(cookieStore, sessionOptions);
 }
 
+export async function saveSession(data: Partial<SessionData>): Promise<void> {
+  const session = await getSession();
+  if (data.access_token !== undefined) session.access_token = data.access_token;
+  if (data.refresh_token !== undefined) session.refresh_token = data.refresh_token;
+  if (data.id_token !== undefined) session.id_token = data.id_token;
+  if (data.expires_at !== undefined) session.expires_at = data.expires_at;
+  await session.save();
+}
+
 export async function clearSession() {
   const session = await getSession();
   session.destroy();

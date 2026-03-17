@@ -246,7 +246,7 @@ apps/admin/src/
   - 每行显示：医院 ID（`hospitalId`，⚠️ `ConsultationDTO` 无 `hospitalName`，需 BFF 层关联查询或前端缓存医院名映射）、预约时间（`scheduledAt`）、时长（`durationMinutes`）、状态
   - 已完成的问诊：`videoStorageKey` 非空时显示"查看录像"链接（⚠️ `videoStorageKey` 是存储键而非直接可用 URL，需 BFF 层生成签名 URL 或前端通过存储服务转换）
 - **问诊详情**：点击展开或打开 Modal → `GET /consultations/{id}` + `GET /consultations/{id}/transcript`（问诊记录文字版）
-- **统计**：`GET /consultations/stats`（总数、已完成、待进行）
+- ~~统计~~：`GET /consultations/stats` **仅限 HOSPITAL 角色**（`GetConsultationStatsUseCase` 拒绝非 HOSPITAL actor），Admin 不显示此模块
 - **组件**：`DataTable` + `StatusBadge` + `Modal`
 
 #### Tab 8: Orders（只读）
@@ -304,11 +304,11 @@ apps/admin/src/
 #### 宣传材料审核区域（参照 v1）
 
 - 医院状态 Badge：已审核（绿）/ 待审核（黄）/ 已停用（红）
-- 审核操作按钮（枚举值为大写，与 `hospitalStatusSchema` 一致）：
-  - 状态为 `PENDING` 时：显示 **"审核通过"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "ACTIVE" }`
-  - 状态为 `ACTIVE` 时：显示 **"撤回审核"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "PENDING" }`
-  - 额外：显示 **"停用医院"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "INACTIVE" }`（需二次确认弹窗）
-  - 状态为 `INACTIVE` 时：显示 **"重新启用"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "PENDING" }`
+- 审核操作按钮（严格遵循 domain 状态机 `HOSPITAL_STATUS_TRANSITIONS`）：
+  - `PENDING` → 显示 **"审核通过"** 按钮 → `{ status: "ACTIVE" }`（唯一合法转换）
+  - `ACTIVE` → 显示 **"停用医院"** 按钮 → `{ status: "INACTIVE" }`（唯一合法转换，需二次确认弹窗）
+  - `INACTIVE` → 显示 **"重新激活"** 按钮 → `{ status: "ACTIVE" }`（唯一合法转换）
+  - **注意：不存在 ACTIVE→PENDING 或 INACTIVE→PENDING 的转换。** 无"撤回审核"操作。
 - ~~消费者网站链接预览~~ — **`HospitalDTO` 无 website/public URL 字段，Phase A 不显示此项。** 后续可通过 Supabase 查询获取公开页面 URL，或扩展 `HospitalDTO` 增加 `publicUrl` 字段。
 - **⚠️ Supabase 同步缺口：** 当前 `update-hospital-status.use-case.ts` 未调用 Supabase 同步服务。且 China 同步逻辑只映射 `ACTIVE→approved`，其余映射为 `pending`（无 `INACTIVE` 对应）。状态变更目前仅更新 CRM 数据库。如需同步到消费者网站，需在 Phase A 实现时补充同步逻辑。
 
@@ -370,6 +370,12 @@ v1 的创建医院流程是：创建 → 自动生成 registration token → 自
 6. 自动跳转到医院详情页 `/hospitals/{newId}`
 
 **步骤 1~3 在前端连续调用**，用户只需点一次"提交"。
+
+**错误恢复策略：**
+- **Step 1 失败**（创建）：直接报错，无需回滚
+- **Step 2 失败**（更新专科）：医院已创建但缺少专科。提示用户"医院已创建，但专科更新失败"，跳转到 Hospital Detail 页面，用户可手动编辑补充
+- **Step 3 失败**（生成 token）：医院已完整创建。提示用户"医院创建成功，但令牌生成失败"，跳转到 Hospital Detail，用户可通过"重新生成令牌"按钮重试
+- 任何步骤失败都不阻塞已完成的步骤（与 v1 行为一致：邮件发送失败不影响医院创建）
 
 Hospital Detail 页面保留 **"重新生成令牌"** 按钮（弹出邮箱确认框 → `POST /registration-token` body: `{ email }`）。
 

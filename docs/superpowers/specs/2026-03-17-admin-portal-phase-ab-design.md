@@ -179,9 +179,9 @@ apps/admin/src/
 | 5 | **Medical Intake** | `GET /cases/{caseId}/questionnaire` | 问卷回答只读展示 |
 | 6 | **Journey** | `GET /cases/{caseId}/journey` + `GET /cases/{caseId}/milestones` | 签证/住宿/交通信息卡片 + 里程碑列表 |
 | 7 | **Consultations** | `GET /cases/{caseId}/consultations` | 问诊记录列表（时间、医院、状态、录像链接） |
-| 8 | **Orders** | `GET /orders?caseId={id}` | 关联订单列表 + 状态 + 退款操作按钮 |
-| 9 | **Support** | `GET /tickets?caseId={id}` | 关联工单列表 + 回复 + 状态管理 |
-| 10 | **AI Summary** | `GET /cases/{caseId}/ai-summary` ⚠️ | AI 案例摘要（API 缺失，前端空状态占位） |
+| 8 | **Orders** | `GET /orders?caseId={id}` | 关联订单列表 + 状态（只读查看，**无退款按钮** — `RequestRefundUseCase` 仅允许 PATIENT 角色） |
+| 9 | **Support** | `GET /tickets`（全局列表，⚠️ 无 `caseId` 过滤） | 关联工单列表 + 回复 + 状态管理。**API 缺口：`ticketListQuerySchema` 不支持 `caseId` 过滤，需扩展 schema 或前端仅显示全局链接** |
+| 10 | **AI Summary** | `GET /cases/{id}` → `CaseDTO.aiSummary` | AI 案例摘要（`aiSummary` 字段已在 `CaseDTO` 中，直接从 Overview 数据读取，无需独立 API） |
 
 **Tab 实现策略**：使用 `@medical-crm/ui` 的 `Tabs` 组件，每个 Tab 内容为独立 Client Component，各自管理 React Query 数据获取（lazy load，切换到该 Tab 时才请求）。
 
@@ -307,8 +307,9 @@ apps/admin/src/
 | `GET /hospitals/{id}/users` | 新 API | 医院用户账号列表（角色、最后登录） | Hospital Detail 账号列表 | P1（暂不显示该模块） |
 | `GET /hospitals/{id}/stats` | 新 API | 医院统计（案例数、活跃、已完成） | Hospital Detail 统计卡片 | P1（暂不显示） |
 | `update-hospital-status` 增加 Supabase 同步 | 逻辑修复 | 状态变更同步到消费者网站 | Hospital Detail 审核操作 | P1（当前仅更新 CRM DB） |
-| `GET /cases/{id}/ai-summary` | 新 API | AI 案例摘要 | Case Detail → AI Summary Tab | P1（空状态占位） |
-| `POST /cases/{id}/ai-summary/rebuild` | 新 API | 重建 AI 摘要 | 同上 | P1 |
+| `ticketListQuerySchema` 增加 `caseId` 过滤 | Schema 扩展 | 按案例过滤工单 | Case Detail → Support Tab | **P0（阻塞 Support Tab）** |
+| `RequestRefundUseCase` 支持 ADMIN 角色 | 权限扩展 | Admin 代操作退款 | Case Detail → Orders Tab | P1（当前 Admin 只读） |
+| ~~`GET /cases/{id}/ai-summary`~~ | ~~不需要~~ | `CaseDTO.aiSummary` 已包含摘要数据 | — | — |
 
 ### 4.3 可选增强 API（不阻塞，后续优化）
 
@@ -399,8 +400,8 @@ auth 路由均为 Route Handler（`route.ts`），无独立登录 UI 页面。
 | B4 | Case Detail: Journey Tab | `/journey` + `/milestones` |
 | B5 | Case Detail: Consultations Tab | `/consultations` |
 | B6 | Case Detail: Orders Tab | `/orders?caseId=` |
-| B7 | Case Detail: Support Tab | `/tickets?caseId=` |
-| B8 | Case Detail: AI Summary Tab（空状态占位） | API 缺失，占位 |
+| B7 | Case Detail: Support Tab | `/tickets`（⚠️ 需先扩展 schema 增加 `caseId` 过滤） |
+| B8 | Case Detail: AI Summary Tab | `CaseDTO.aiSummary`（已有字段，无需新 API） |
 
 ---
 

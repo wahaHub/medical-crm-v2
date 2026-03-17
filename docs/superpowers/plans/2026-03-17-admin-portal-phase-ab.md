@@ -26,23 +26,31 @@ Currently `createHospitalSchema` only accepts 6 basic fields. The Hospital entit
 - Modify: `packages/application/src/use-cases/hospitals/create-hospital.use-case.ts`
 - Modify: `packages/infrastructure/database/schema/schema.ts`
 - Modify: `packages/infrastructure/database/repositories/drizzle-hospital-management.repository.ts`
-- Create: `packages/infrastructure/database/migrations/add_city_to_hospitals.sql`
+- Create: `packages/infrastructure/database/migrations/009_add_city_to_hospitals.sql`
 
 - [ ] **Step 1: Add `city` column to DB**
 
-Create SQL migration:
+Create SQL migration following the existing numbering convention (`001_`, `002_`, ..., `008_`). Check the latest number first:
+
+```bash
+ls packages/infrastructure/database/migrations/ | tail -1
+```
+
+Create the next numbered migration (e.g., `009`):
 
 ```sql
--- packages/infrastructure/database/migrations/add_city_to_hospitals.sql
+-- packages/infrastructure/database/migrations/009_add_city_to_hospitals.sql
 ALTER TABLE hospitals ADD COLUMN city VARCHAR(200);
 ```
 
-Run against the dev database:
+Run via the project's migration system (NOT raw `psql`):
 
 ```bash
 cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
-psql "$DATABASE_URL" -f packages/infrastructure/database/migrations/add_city_to_hospitals.sql
+pnpm db:migrate
 ```
+
+> **Note:** The migration runner at `packages/infrastructure/database/migrate.ts` scans the `migrations/` directory by filename order and records executed migrations in the `_migrations` table. Using `psql -f` directly would bypass this tracking and cause environment sync issues.
 
 - [ ] **Step 2: Update Drizzle schema**
 
@@ -181,7 +189,7 @@ git add packages/shared/validation/src/hospital.schema.ts \
   packages/application/src/use-cases/hospitals/create-hospital.use-case.ts \
   packages/infrastructure/database/schema/schema.ts \
   packages/infrastructure/database/repositories/drizzle-hospital-management.repository.ts \
-  packages/infrastructure/database/migrations/add_city_to_hospitals.sql
+  packages/infrastructure/database/migrations/009_add_city_to_hospitals.sql
 git add -u  # catch any other files modified for city fix
 git commit -m "feat(hospital): extend createHospitalSchema with specialties + city for one-step creation"
 ```
@@ -282,8 +290,8 @@ The POST `/api/v2/auth/hospital/register` endpoint (RegisterHospitalUserUseCase)
 
 **Files:**
 - Create: `packages/application/src/use-cases/hospitals/validate-registration-token.use-case.ts`
-- Modify: `apps/api/src/routes/hospitals.routes.ts` (add GET route)
-- Modify: `apps/api/src/composition-root.ts` (register use case)
+- Modify: `apps/api/src/index.ts` (add GET public route before authMiddleware)
+- Modify: `apps/api/src/composition-root.ts` (register use case in `getServices()` return object)
 
 - [ ] **Step 1: Create ValidateRegistrationTokenUseCase**
 
@@ -337,36 +345,38 @@ If missing, add to the port interface and the Drizzle repository implementation.
 
 - [ ] **Step 3: Register use case in composition-root.ts**
 
-In `apps/api/src/composition-root.ts`, find where other hospital use cases are registered and add:
+In `apps/api/src/composition-root.ts`, the pattern is a `getServices()` function that returns a lazy-initialized singleton object. Add `validateRegistrationToken` to the returned object:
 
 ```typescript
 import { ValidateRegistrationTokenUseCase } from '@medical-crm/application';
 
-// In the factory/container setup:
-const validateRegistrationToken = new ValidateRegistrationTokenUseCase(
+// Inside the getServices() factory, alongside other hospital use cases:
+validateRegistrationToken: new ValidateRegistrationTokenUseCase(
   registrationTokenRepo,
   hospitalManagementRepo,
-);
+),
 ```
 
-Export it so routes can access it.
+This makes it accessible as `svc.validateRegistrationToken` in route handlers.
 
-- [ ] **Step 4: Add GET route**
+- [ ] **Step 4: Add GET route as a PUBLIC route in `apps/api/src/index.ts`**
 
-In `apps/api/src/routes/hospitals.routes.ts`, add before the existing POST register route:
+**CRITICAL:** This route must be public (no auth). In the current architecture, public routes are mounted in `apps/api/src/index.ts` **before** the `app.use('/api/v2/*', authMiddleware, ...)` line. The existing `POST /api/v2/auth/hospital/register` is already there as a reference.
+
+Add the GET route right next to the existing POST route in `apps/api/src/index.ts`:
 
 ```typescript
-// GET /api/v2/auth/hospital/register?token=xxx — public, no auth
+// Public: validate hospital registration token (no auth required)
 app.get('/api/v2/auth/hospital/register', async (c) => {
-  const token = c.req.query('token');
+  const token = c.url ? new URL(c.req.url).searchParams.get('token') : null;
   if (!token) return c.json({ error: 'Token is required' }, 400);
-
-  const result = await container.validateRegistrationToken.execute(token);
+  const svc = getServices();
+  const result = await svc.validateRegistrationToken.execute(token);
   return c.json(result);
 });
 ```
 
-Ensure this route does NOT go through auth middleware (it's public).
+Do **NOT** add this to `hospitals.routes.ts` — that file is mounted after auth middleware and would block unauthenticated requests.
 
 - [ ] **Step 5: Export from application index**
 
@@ -380,7 +390,7 @@ export type { TokenValidationResult } from './use-cases/hospitals/validate-regis
 - [ ] **Step 6: Typecheck**
 
 ```bash
-pnpm turbo typecheck --filter=@medical-crm/application --filter=api
+pnpm turbo typecheck --filter=@medical-crm/application --filter=@medical-crm/api
 ```
 
 - [ ] **Step 7: Commit**
@@ -388,7 +398,7 @@ pnpm turbo typecheck --filter=@medical-crm/application --filter=api
 ```bash
 git add packages/application/src/use-cases/hospitals/validate-registration-token.use-case.ts \
   packages/application/src/index.ts \
-  apps/api/src/routes/hospitals.routes.ts \
+  apps/api/src/index.ts \
   apps/api/src/composition-root.ts
 git commit -m "feat(auth): add GET /api/v2/auth/hospital/register for token validation"
 ```
@@ -482,17 +492,31 @@ export class StubEmailService implements IEmailService {
 }
 ```
 
-- [ ] **Step 4: Wire up in composition-root.ts**
+- [ ] **Step 4: Export StubEmailService from infrastructure barrel**
 
-Pass the stub email service (or null) when constructing `GenerateRegistrationTokenUseCase`:
+Add to `packages/infrastructure/services/index.ts`:
 
 ```typescript
+export { StubEmailService } from './stub-email.service.js';
+```
+
+Without this export, `composition-root.ts` cannot import the class.
+
+- [ ] **Step 4b: Wire up in composition-root.ts**
+
+Import `StubEmailService` from `@medical-crm/infrastructure` and pass it when constructing `GenerateRegistrationTokenUseCase` inside the `getServices()` factory:
+
+```typescript
+import { StubEmailService } from '@medical-crm/infrastructure';
+
+// Inside getServices():
 const emailService = new StubEmailService();
-const generateRegistrationToken = new GenerateRegistrationTokenUseCase(
+// Update the existing GenerateRegistrationTokenUseCase construction to add third arg:
+generateRegistrationToken: new GenerateRegistrationTokenUseCase(
   hospitalManagementRepo,
   registrationTokenRepo,
   emailService,
-);
+),
 ```
 
 - [ ] **Step 5: Fix tests that construct GenerateRegistrationTokenUseCase**

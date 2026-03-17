@@ -134,6 +134,9 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
         eq(supportTickets.priority, query.priority as typeof supportTickets.priority.enumValues[number]),
       );
     }
+    if (query.caseId) {
+      conditions.push(eq(supportTickets.caseId, query.caseId));
+    }
   }
 
   private async queryWithPagination(

@@ -6,6 +6,7 @@ export interface TicketListQuery {
   status?: string;
   type?: string;
   priority?: string;
+  caseId?: string;
   page: number;
   limit: number;
 }

@@ -24,6 +24,7 @@ export const ticketListQuerySchema = z.object({
   status: ticketStatusSchema.optional(),
   type: ticketTypeSchema.optional(),
   priority: ticketPrioritySchema.optional(),
+  caseId: z.string().uuid().optional(),
 });
 
 export const assignTicketSchema = z.object({

@@ -16,4 +16,5 @@ export { EmptyState, type EmptyStateProps } from './components/empty-state';
 export { LoadingSpinner, type LoadingSpinnerProps } from './components/loading-spinner';
 export { SearchInput, type SearchInputProps } from './components/search-input';
 export { DataTable, type Column, type DataTableProps, type PaginationState } from './components/data-table';
-export { ChatLayout, type ChatMessage, type ChatLayoutProps } from './components/chat-layout';
+export { ChatLayout, type ChatMessage, type ChatAttachment, type ChatLayoutProps, type ChatHeaderConfig } from './components/chat-layout';
+export { QuestionnaireReadonlyView, type QuestionnaireReadonlyViewProps } from './components/questionnaire-readonly-view';

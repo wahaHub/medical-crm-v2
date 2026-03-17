@@ -6,7 +6,7 @@
 
 ## Overview
 
-Add a Patient Dashboard and a conversational Chat Widget to the Medora Beauty marketing website. The Chat Widget guides visitors through a step-by-step flow to match them with hospitals, then seamlessly transitions into a messaging interface. The Dashboard gives patients a logged-in area to manage their cases, view quotes, and complete medical intake forms.
+Add a Patient Dashboard and a conversational Chat Widget to the Medora Beauty marketing website. The Chat Widget guides visitors through a step-by-step onboarding flow, creates a Case early (Case-first), and lets users select multiple hospitals. After onboarding, users enter a larger multi-hospital messaging panel (modal/side panel) instead of chatting inside the small bubble window. The Dashboard gives patients a logged-in area to manage their cases, view quotes, and complete medical intake forms.
 
 ## Architecture Decision
 
@@ -20,13 +20,13 @@ Visitor lands on site
   → Step 1: Select category (Face / Body / Non-Surgical)
   → Step 2: Select procedure (dynamic list from CRM v2 API)
   → Step 3: Select destination (country/city)
-  → Step 4: Enter name, email, phone → "Find My Hospitals"
-  → [Backend: create temp patient + Case + match hospitals]
-  → Step 5: View 2-3 hospital recommendation cards → select one
-  → [Backend: distribute Case to hospital + generate session token + send email]
-  → Step 6: Chat widget switches to messaging interface with selected hospital
+  → Step 4: Enter name, email, phone, language → "Find My Hospitals"
+  → [Backend: create temp patient + create Case + set session cookie]
+  → Step 5: View recommendation cards (matched + explore more) → select multiple hospitals
+  → [Backend: attach selected hospitals to case + create conversations]
+  → Step 6: Open Patient Message Panel (large modal/side panel) with multi-hospital chat
   → Email sent with:
-    - Magic link to create account (optional)
+    - Magic link / set-password link (optional)
     - Link to complete medical intake form
 ```
 
@@ -36,8 +36,8 @@ Visitor lands on site
 
 ### "Try First, Register Later" Model
 
-1. **Temp session**: When visitor submits name + email + phone, backend creates a temporary patient record and returns a session token (JWT, 24h) via an `httpOnly` cookie set through a BFF proxy endpoint.
-2. **Zero-friction entry**: After selecting a hospital, the chat widget uses this cookie-based session to enter messaging immediately — no email verification required.
+1. **Temp session + Case-first init**: When visitor submits name + email + phone + language (Step 4), backend creates a temporary patient, creates a Case immediately, and sets a session token (JWT, 24h) via an `httpOnly` cookie through the BFF proxy endpoint.
+2. **Zero-friction entry**: After selecting hospitals (Step 5), frontend opens the Patient Message Panel using this cookie-based session immediately — no email verification required.
 3. **Email with magic link**: Sent after hospital selection. Contains link to:
    - Set password (optional) to create a full account
    - Complete medical intake form
@@ -45,7 +45,7 @@ Visitor lands on site
 
 ### Auth Middleware
 
-All `/api/patient/*` endpoints use a dedicated `patientAuthMiddleware` (not Keycloak). Validates the session token from `httpOnly` cookie.
+Authenticated patient endpoints use a dedicated `patientAuthMiddleware` (not Keycloak), which validates the session token from `httpOnly` cookie. Public onboarding init endpoints are excluded from this middleware.
 
 ### BFF Proxy & CORS
 
@@ -56,7 +56,7 @@ The Medora Beauty frontend proxies all CRM v2 API calls through a local BFF laye
 
 ### Abuse Protection
 
-- `POST /api/patient/register` is rate-limited: max 5 requests per IP per hour
+- `POST /api/patient/onboarding/init` is rate-limited: max 5 requests per IP per hour
 - `POST /api/patient/magic-link` is rate-limited: max 3 requests per email per hour
 - Cloudflare Turnstile CAPTCHA on the contact info step (Step 4) to prevent bot submissions
 
@@ -67,14 +67,14 @@ The Medora Beauty frontend proxies all CRM v2 API calls through a local BFF laye
 - **Position**: Fixed bottom-right corner, all pages
 - **Bubble**: ~56px circle with icon + unread badge
 - **Window**: ~380×520px, expandable/collapsible
-- **Replaces**: Both the existing `ChatWidget.tsx` (Gemini AI chat) and `ConsultationModal`. The Gemini AI ChatWidget is removed; its component file is replaced by the new onboarding chat widget. `ConsultationContext` is deprecated. Existing `/get-quote` page retained as fallback.
+- **Replaces**: Existing `ChatWidget.tsx` (Gemini AI chat). The bubble now handles onboarding only. Existing `ConsultationModal` is replaced by `PatientMessagePanel` (large modal/side panel for multi-hospital chat). `ConsultationContext` is deprecated. Existing `/get-quote` page retained as fallback.
 
 ### Dual Mode
 
 | State | Behavior |
 |-------|----------|
-| **Not authenticated** | Shows onboarding flow (Steps 1-6 above) |
-| **Authenticated** | Shows conversation list / active chat with hospital(s) |
+| **Not authenticated** | Bubble shows onboarding flow (Steps 1-5) |
+| **Authenticated** | Bubble shows compact entry point (unread + "Open Messages"), opens `PatientMessagePanel` |
 
 ### Onboarding Steps
 
@@ -83,24 +83,27 @@ The Medora Beauty frontend proxies all CRM v2 API calls through a local BFF laye
 | 1. Category | Card grid: Face, Body, Non-Surgical | Static |
 | 2. Procedure | Scrollable list filtered by category | `GET /api/patient/procedures?category=X` |
 | 3. Destination | Country/city selector | `GET /api/patient/destinations` |
-| 4. Contact Info | Form: name, email, phone + submit button | `POST /api/patient/register` |
-| 5. Hospital Recommendations | 2-3 hospital cards (avatar, name, rating, tags) | `POST /api/patient/match-hospitals` |
-| 6. Chat | Message list + input | `POST /api/patient/select-hospital` → messaging API |
+| 4. Contact Info | Form: name, email, phone, preferred language + CAPTCHA | `POST /api/patient/onboarding/init` |
+| 5. Hospital Recommendations | Recommendation cards (matched + explore more), multi-select | `POST /api/patient/match-hospitals` + `POST /api/patient/select-hospitals` |
+| 6. Messages | Open large `PatientMessagePanel` (modal/side panel), multi-hospital conversation list + active chat | `GET /api/patient/conversations` + messaging APIs |
 
-### Chat Mode
+### Message Panel Mode (`PatientMessagePanel`)
 
-- Message list with timestamps and read indicators
-- Text input with send button
+- Large modal/side panel optimized for multi-hospital messaging (not constrained to bubble size)
+- Left pane: conversation list (hospital name, latest message, unread badge, quote alert)
+- Right pane: active conversation (message list with timestamps/read indicators + message input)
 - **Real-time via WebSocket**: connects to `ws://.../ws/conversations/:id` for live message push
 - Fallback: if WebSocket disconnects, auto-fallback to 5s polling until reconnection
-- Unread badge on bubble: pushed via a separate WebSocket channel `ws://.../ws/patient/notifications` (only when authenticated; no connection for unauthenticated visitors)
+- Bubble unread badge: pushed via `ws://.../ws/patient/notifications` (authenticated only)
 
 ### Technical Implementation
 
-- State machine via `useReducer` to manage onboarding steps
-- Component: `ChatWidget.tsx` (always rendered in `App.tsx`)
-- Shares React Query cache with Dashboard for message data
-- Chat UI: custom Tailwind components (MessageBubble, MessageInput, MessageList) — no external chat UI library
+- State machine via `useReducer` to manage onboarding steps in bubble
+- Components:
+  - `ChatWidget.tsx` (always rendered in `App.tsx`, onboarding + open-panel trigger)
+  - `PatientMessagePanel.tsx` (large modal/side panel for multi-hospital messaging)
+- Shared React Query cache with Dashboard for message/conversation data
+- Chat UI: custom Tailwind components (ConversationList, MessageList, MessageInput) — no external chat UI library
 
 ## Error States & Edge Cases
 
@@ -109,7 +112,8 @@ The Medora Beauty frontend proxies all CRM v2 API calls through a local BFF laye
 | `match-hospitals` returns 0 results | Show "No matching hospitals found. Contact us directly at [email]" with a contact link |
 | Network error during any onboarding step | Show inline error with "Retry" button; preserve user's previous answers |
 | Session token expires mid-chat | Show "Session expired" banner with "Sign in again" link (triggers magic link flow) |
-| Patient already exists (same email) | `POST /register` returns existing patient's token; merges into existing account |
+| Patient already exists (same email) | `POST /onboarding/init` reuses existing patient, creates/continues active case, and returns session |
+| User clicks continue without selecting hospitals | Disable CTA and show "Please select at least one hospital" |
 | Quote expired | Quote tab shows "This quote has expired" with option to message hospital for a new one |
 
 ## Dashboard Layout
@@ -171,25 +175,31 @@ Three tabs:
 
 ## CRM v2 API — New Endpoints
 
-All endpoints prefixed with `/api/patient/` and protected by `patientAuthMiddleware`.
+All patient endpoints are prefixed with `/api/patient/`. Public onboarding init endpoints do not require auth; all others are protected by `patientAuthMiddleware`.
 
-### Authentication
+### Public Onboarding (No Auth)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/patient/register` | Create temp patient with email + name + phone, return session token |
+| POST | `/api/patient/onboarding/init` | Create/reuse temp patient, create Case (Case-first), set session cookie |
+| GET | `/api/patient/procedures` | List procedures by category |
+| GET | `/api/patient/destinations` | List available destinations |
+| POST | `/api/patient/match-hospitals` | Match hospitals by procedure + destination |
+
+### Authentication (Post-Session)
+
+| Method | Path | Description |
+|--------|------|-------------|
 | POST | `/api/patient/magic-link` | Send magic link email to given address |
 | POST | `/api/patient/verify-token` | Verify magic link token, return session token |
 | POST | `/api/patient/set-password` | Set password for account (optional) |
 
-### Chat Widget Flow
+### Onboarding Finalization & Messaging (Auth Required)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/patient/procedures` | List procedures by category |
-| GET | `/api/patient/destinations` | List available destinations |
-| POST | `/api/patient/match-hospitals` | Match hospitals based on procedure + destination, return 2-3 recommendations |
-| POST | `/api/patient/select-hospital` | Select hospital → create Case, distribute, generate token, trigger email |
+| POST | `/api/patient/select-hospitals` | Attach selected hospitals to existing Case, create conversations, trigger welcome email |
+| GET | `/api/patient/conversations` | List patient conversations (multi-hospital) |
 
 ### Dashboard Data
 
@@ -223,9 +233,14 @@ App.tsx
 │   │   │   ├── DestinationStep.tsx
 │   │   │   ├── ContactInfoStep.tsx
 │   │   │   └── HospitalCards.tsx
-│   │   └── ChatView.tsx        — messaging UI (Step 6+)
-│   │       ├── MessageList.tsx
-│   │       └── MessageInput.tsx
+│   │   └── OnboardingSummary.tsx — completion state + open messages CTA
+│
+│   ├── PatientMessagePanel.tsx — large modal/side panel for multi-hospital chat
+│   │   ├── ConversationList.tsx
+│   │   ├── ChatView.tsx
+│   │   │   ├── MessageList.tsx
+│   │   │   └── MessageInput.tsx
+│   │   └── PanelHeader.tsx
 │
 ├── pages/dashboard/
 │   ├── DashboardLayout.tsx     — top bar + content area + Outlet
@@ -235,14 +250,15 @@ App.tsx
 │   └── AccountPage.tsx         — account settings
 │
 ├── contexts/
-│   └── PatientAuthContext.tsx   — token, patient, login(), logout()
+│   └── PatientAuthContext.tsx   — auth state + patient profile + login()/logout() (cookie session; no JS token storage)
 │
 ├── services/
-│   ├── crmApiClient.ts         — fetch wrapper with CRM v2 base URL + auth header
+│   ├── crmApiClient.ts         — fetch wrapper through BFF, cookie-based auth
 │   └── wsClient.ts             — WebSocket connection manager (connect, reconnect, subscribe)
 │
 └── hooks/
     ├── usePatientCases.ts       — React Query: GET /patient/cases
+    ├── usePatientConversations.ts — React Query: GET /patient/conversations
     ├── useCaseDetail.ts         — React Query: GET /patient/cases/:id
     ├── useMessages.ts           — React Query + WebSocket: live messages with polling fallback
     ├── useQuote.ts              — React Query: GET /patient/cases/:id/quote

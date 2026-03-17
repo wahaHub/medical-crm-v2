@@ -156,7 +156,7 @@ export interface SupabaseProcedureCase {
 export interface SupabaseCaseImage {
   id: string;
   case_id: string;
-  image_type: 'before' | 'after' | 'combined';
+  image_type: 'before' | 'after' | 'combined' | null;
   image_url: string;
   sort_order: number;
   created_at: string;

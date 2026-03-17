@@ -12,6 +12,7 @@ import {
   mapCaseAssetsToImages,
   mapSurgeonRowToMaterialsSurgeon,
   slugifyProcedureName,
+  shouldIgnoreCaseMediaError,
 } from '../services/materials-compat.js';
 
 /**
@@ -364,20 +365,25 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         ? this.supabase.from('case_images').select('case_id, image_url, image_type, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
         : Promise.resolve({ data: [], error: null }),
       caseIds.length > 0
-        ? this.supabase.from('case_media').select('case_id, media_url, media_type, image_url, image_type, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
+        ? this.supabase.from('case_media').select('case_id, media_url, media_type, thumbnail_url, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-    if (caseImagesResult.error) throw caseImagesResult.error;
+    if (caseImagesResult.error && !shouldIgnoreCaseMediaError(caseImagesResult.error)) {
+      throw caseImagesResult.error;
+    }
+    if (caseMediaResult.error && !shouldIgnoreCaseMediaError(caseMediaResult.error)) {
+      throw caseMediaResult.error;
+    }
 
-    const caseImagesById = new Map<string, Array<{ image_url: string; image_type: 'before' | 'after' | 'combined'; sort_order?: number | null }>>();
+    const caseImagesById = new Map<string, Array<{ image_url: string; image_type?: 'before' | 'after' | 'combined' | null; sort_order?: number | null }>>();
     for (const imageRow of (caseImagesResult.data ?? [])) {
       const images = caseImagesById.get(imageRow.case_id) ?? [];
       images.push(imageRow);
       caseImagesById.set(imageRow.case_id, images);
     }
-    const caseMediaById = new Map<string, Array<{ media_url?: string | null; media_type?: string | null; image_url?: string | null; image_type?: 'before' | 'after' | 'combined' | null; sort_order?: number | null }>>();
-    for (const mediaRow of (caseMediaResult.error ? [] : (caseMediaResult.data ?? []))) {
+    const caseMediaById = new Map<string, Array<{ media_url?: string | null; media_type?: string | null; thumbnail_url?: string | null; sort_order?: number | null }>>();
+    for (const mediaRow of (caseMediaResult.data ?? [])) {
       const media = caseMediaById.get(mediaRow.case_id) ?? [];
       media.push(mediaRow);
       caseMediaById.set(mediaRow.case_id, media);
@@ -427,7 +433,6 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       const imageRows = data.images.map((img, idx) => ({
         case_id: row!.id,
         image_url: img.url,
-        image_type: img.type,
         sort_order: idx,
       }));
 
@@ -477,7 +482,6 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         const imageRows = updates.images.map((img, idx) => ({
           case_id: id,
           image_url: img.url,
-          image_type: img.type,
           sort_order: idx,
         }));
         const { error: imgError } = await this.supabase.from('case_images').insert(imageRows);
@@ -492,19 +496,18 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     }
 
     // Fetch current images
-    let images: Array<{ url: string; type: 'before' | 'after' | 'combined' }>;
+    let images: Array<{ url: string }>;
     if (updates.images !== undefined) {
       images = updates.images;
     } else {
       const { data: imgData } = await this.supabase
         .from('case_images')
-        .select('image_url, image_type, sort_order')
+        .select('image_url, sort_order')
         .eq('case_id', id)
         .order('sort_order', { ascending: true });
 
       images = (imgData ?? []).map((img) => ({
         url: img.image_url,
-        type: img.image_type as 'before' | 'after' | 'combined',
       }));
     }
 

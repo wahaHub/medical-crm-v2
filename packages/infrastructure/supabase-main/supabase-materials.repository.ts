@@ -12,6 +12,7 @@ import {
   mapCaseAssetsToImages,
   mapSurgeonRowToMaterialsSurgeon,
   slugifyProcedureName,
+  shouldIgnoreCaseMediaError,
 } from '../services/materials-compat.js';
 
 /**
@@ -294,19 +295,19 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   async listProcedures(hospitalId: string): Promise<MaterialsProcedure[]> {
     const { data, error } = await this.supabase
       .from('hospital_procedures')
-      .select('id, hospital_id, procedure_id, price_range, price_min, price_max, is_popular, sort_order, procedures(procedure_name, description)')
+      .select('id, hospital_id, procedure_id, price_range, price_min, price_max, is_popular, sort_order, procedures(procedure_name)')
       .eq('hospital_id', hospitalId)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
 
     return (data ?? []).map((row: Record<string, unknown>) => {
-      const proc = row.procedures as { procedure_name: string; description: string | null } | null;
+      const proc = row.procedures as { procedure_name: string } | null;
       return {
         id: row.id as string,
         hospitalId: row.hospital_id as string,
         procedureName: proc?.procedure_name ?? '',
-        description: proc?.description ?? null,
+        description: null,
         priceMin: row.price_min as number | null,
         priceMax: row.price_max as number | null,
         priceRange: row.price_range as string | null,
@@ -388,7 +389,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       .update(updateData)
       .eq('id', id)
       .eq('hospital_id', hospitalId)
-      .select('id, hospital_id, procedure_id, price_range, price_min, price_max, is_popular, sort_order, procedures(procedure_name, description)')
+      .select('id, hospital_id, procedure_id, price_range, price_min, price_max, is_popular, sort_order, procedures(procedure_name)')
       .single();
 
     if (error) {
@@ -397,7 +398,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     }
     if (!row) throw new NotFoundError(`Procedure ${id} not found for hospital ${hospitalId}`);
 
-    const proc = (row as Record<string, unknown>).procedures as { procedure_name: string; description: string | null } | null;
+    const proc = (row as Record<string, unknown>).procedures as { procedure_name: string } | null;
 
     // NOTE: Do NOT update the shared procedures table — it is a global catalog.
 
@@ -405,7 +406,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       id: row.id,
       hospitalId: row.hospital_id,
       procedureName: proc?.procedure_name ?? '',
-      description: proc?.description ?? null,
+      description: null,
       priceMin: row.price_min,
       priceMax: row.price_max,
       priceRange: row.price_range,
@@ -511,7 +512,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   async listBeforeAfterCases(hospitalId: string): Promise<MaterialsBeforeAfterCase[]> {
     const { data, error } = await this.supabase
       .from('procedure_cases')
-      .select('id, hospital_id, procedure_id, procedure_name, case_number, provider_name, description')
+      .select('id, hospital_id, procedure_id, case_number, provider_name, description')
       .eq('hospital_id', hospitalId)
       .order('sort_order', { ascending: true });
 
@@ -531,26 +532,31 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         ? this.supabase.from('case_images').select('case_id, image_url, image_type, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
         : Promise.resolve({ data: [], error: null }),
       caseIds.length > 0
-        ? this.supabase.from('case_media').select('case_id, media_url, media_type, image_url, image_type, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
+        ? this.supabase.from('case_media').select('case_id, media_url, media_type, thumbnail_url, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
         : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (proceduresResult.error) throw proceduresResult.error;
-    if (caseImagesResult.error) throw caseImagesResult.error;
+    if (caseImagesResult.error && !shouldIgnoreCaseMediaError(caseImagesResult.error)) {
+      throw caseImagesResult.error;
+    }
+    if (caseMediaResult.error && !shouldIgnoreCaseMediaError(caseMediaResult.error)) {
+      throw caseMediaResult.error;
+    }
 
     const proceduresById = new Map(
       (proceduresResult.data ?? [])
         .filter((row): row is { id: string; procedure_name: string | null; slug: string | null } => typeof row.id === 'string')
         .map((row) => [row.id, { name: row.procedure_name ?? '', slug: row.slug ?? null }]),
     );
-    const caseImagesById = new Map<string, Array<{ image_url: string; image_type: 'before' | 'after' | 'combined'; sort_order?: number | null }>>();
+    const caseImagesById = new Map<string, Array<{ image_url: string; image_type?: 'before' | 'after' | 'combined' | null; sort_order?: number | null }>>();
     for (const imageRow of (caseImagesResult.data ?? [])) {
       const images = caseImagesById.get(imageRow.case_id) ?? [];
       images.push(imageRow);
       caseImagesById.set(imageRow.case_id, images);
     }
-    const caseMediaById = new Map<string, Array<{ media_url?: string | null; media_type?: string | null; image_url?: string | null; image_type?: 'before' | 'after' | 'combined' | null; sort_order?: number | null }>>();
-    for (const mediaRow of (caseMediaResult.error ? [] : (caseMediaResult.data ?? []))) {
+    const caseMediaById = new Map<string, Array<{ media_url?: string | null; media_type?: string | null; thumbnail_url?: string | null; sort_order?: number | null }>>();
+    for (const mediaRow of (caseMediaResult.data ?? [])) {
       const media = caseMediaById.get(mediaRow.case_id) ?? [];
       media.push(mediaRow);
       caseMediaById.set(mediaRow.case_id, media);
@@ -558,7 +564,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 
     return rows.map((row) => {
       const linkedProcedure = typeof row.procedure_id === 'string' ? proceduresById.get(row.procedure_id) : undefined;
-      const procedureName = (row.procedure_name as string | null) ?? linkedProcedure?.name ?? '';
+      const procedureName = linkedProcedure?.name ?? '';
       return {
         id: row.id as string,
         hospitalId: (row.hospital_id as string) ?? hospitalId,
@@ -624,7 +630,6 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       const imageRows = data.images.map((img, idx) => ({
         case_id: row!.id,
         image_url: img.url,
-        image_type: img.type,
         sort_order: idx,
       }));
 
@@ -699,7 +704,6 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         const imageRows = updates.images.map((img, idx) => ({
           case_id: id,
           image_url: img.url,
-          image_type: img.type,
           sort_order: idx,
         }));
 
@@ -719,19 +723,18 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     }
 
     // Fetch current images if not replaced
-    let images: Array<{ url: string; type: 'before' | 'after' | 'combined' }>;
+    let images: Array<{ url: string }>;
     if (updates.images !== undefined) {
       images = updates.images;
     } else {
       const { data: imgData } = await this.supabase
         .from('case_images')
-        .select('image_url, image_type, sort_order')
+        .select('image_url, sort_order')
         .eq('case_id', id)
         .order('sort_order', { ascending: true });
 
       images = (imgData ?? []).map((img) => ({
         url: img.image_url,
-        type: img.image_type as 'before' | 'after' | 'combined',
       }));
     }
 

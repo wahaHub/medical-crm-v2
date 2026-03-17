@@ -79,11 +79,16 @@ async function migrate() {
     const needsConcurrently = content.includes('CONCURRENTLY');
 
     if (needsConcurrently) {
-      // Run each statement individually — postgres.js may wrap multi-statement calls
-      const statements = content
+      // Run each statement individually — postgres.js may wrap multi-statement calls.
+      // Strip comment-only lines first, then split on ';' to get clean statements.
+      const stripped = content
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('--'))
+        .join('\n');
+      const statements = stripped
         .split(';')
         .map((s) => s.trim())
-        .filter((s) => s.length > 0 && !s.startsWith('--'));
+        .filter((s) => s.length > 0);
       for (const stmt of statements) {
         await sql.unsafe(stmt);
       }

@@ -4,6 +4,7 @@ import {
   buildSurgeonMutation,
   mapCaseAssetsToImages,
   mapSurgeonRowToMaterialsSurgeon,
+  shouldIgnoreCaseMediaError,
 } from '../../services/materials-compat.js';
 
 describe('materials compatibility helpers', () => {
@@ -86,9 +87,34 @@ describe('materials compatibility helpers', () => {
     });
 
     expect(images).toEqual([
-      { url: 'https://example.com/before.jpg', type: 'before' },
-      { url: 'https://example.com/after.jpg', type: 'after' },
+      { url: 'https://example.com/before.jpg' },
+      { url: 'https://example.com/after.jpg' },
     ]);
+  });
+
+  it('ignores non-image case_media entries when building gallery images', () => {
+    const images = mapCaseAssetsToImages({
+      caseMedia: [
+        { media_url: 'https://example.com/intro.mp4', media_type: 'video', sort_order: 1 },
+        { media_url: 'https://example.com/cover.jpg', media_type: 'image', sort_order: 2 },
+      ],
+    });
+
+    expect(images).toEqual([
+      { url: 'https://example.com/cover.jpg' },
+    ]);
+  });
+
+  it('converts relative case image paths to absolute URLs for hospital role', () => {
+    const images = mapCaseAssetsToImages({
+      caseImages: [
+        { image_url: '/hospitals/h-1/cases/demo/case-1.png', sort_order: 1 },
+      ],
+      isRegularHospital: false,
+    });
+
+    expect(images[0]?.url).toMatch(/^https?:\/\//);
+    expect(images[0]?.url).toContain('/hospitals/h-1/cases/demo/case-1.png');
   });
 
   it('falls back to the legacy generated before-after asset when rows only have case_number', () => {
@@ -100,7 +126,17 @@ describe('materials compatibility helpers', () => {
     });
 
     expect(images).toEqual([
-      { url: buildLegacyCaseImageUrl({ procedureSlug: 'rhinoplasty', caseNumber: 'CASE-100', hospitalId: 'hospital-1', isRegularHospital: false }), type: 'combined' },
+      { url: buildLegacyCaseImageUrl({ procedureSlug: 'rhinoplasty', caseNumber: 'CASE-100', hospitalId: 'hospital-1', isRegularHospital: false }) },
     ]);
+  });
+
+  it('ignores missing case_media table/column errors so cases can still load from case_images', () => {
+    expect(shouldIgnoreCaseMediaError({ code: 'PGRST200', message: 'Could not find the table case_media' })).toBe(true);
+    expect(shouldIgnoreCaseMediaError({ code: '42703', message: 'column case_media.image_url does not exist' })).toBe(true);
+    expect(shouldIgnoreCaseMediaError({ code: '42501', message: 'permission denied for table case_media' })).toBe(true);
+    expect(shouldIgnoreCaseMediaError({ code: 'PGRST200', message: 'Could not find the table case_images' })).toBe(true);
+    expect(shouldIgnoreCaseMediaError({ code: '42703', message: 'column case_images.image_url does not exist' })).toBe(true);
+    expect(shouldIgnoreCaseMediaError({ code: '42501', message: 'permission denied for table case_images' })).toBe(true);
+    expect(shouldIgnoreCaseMediaError({ code: 'XX000', message: 'unexpected db error' })).toBe(false);
   });
 });

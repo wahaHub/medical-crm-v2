@@ -11,6 +11,7 @@
     "./supabase-main/materials": "./supabase-main/supabase-materials.repository.ts",
     "./supabase-china": "./supabase-china/client.ts",
     "./supabase-china/types": "./supabase-china/types.ts",
+    "./supabase-china/materials": "./supabase-china/china-medical-materials.repository.ts",
     "./auth": "./auth/index.ts",
     "./database/idempotency": "./database/idempotency.ts",
     "./repositories": "./database/repositories/index.ts",

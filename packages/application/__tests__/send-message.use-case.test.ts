@@ -97,6 +97,9 @@ describe('SendMessageUseCase', () => {
         patientCode: 'P-001',
         preferredLanguage: 'th',
       }),
+      findByEmail: vi.fn(),
+      createTempPatient: vi.fn(),
+      updatePasswordHash: vi.fn(),
     };
 
     mockUserRepo = {

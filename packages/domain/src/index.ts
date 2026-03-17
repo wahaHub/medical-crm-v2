@@ -234,3 +234,5 @@ export type { IBookingRequestRepository } from './ports/booking-request-reposito
 
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';
+export { PatientAuthService } from './services/patient-auth.service.js';
+export type { PatientSessionPayload, MagicLinkPayload } from './services/patient-auth.service.js';

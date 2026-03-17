@@ -150,6 +150,9 @@ describe('GetHospitalCaseDetailUseCase', () => {
 
     mockPatientRepo = {
       findById: vi.fn().mockResolvedValue({ id: 'patient-1', patientCode: 'PAT-0042' }),
+      findByEmail: vi.fn(),
+      createTempPatient: vi.fn(),
+      updatePasswordHash: vi.fn(),
     };
 
     mockConversationRepo = {

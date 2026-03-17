@@ -136,11 +136,21 @@ apps/admin/src/
 
 **数据源**：`GET /api/v2/admin/dashboard`
 
-| 模块 | 内容 | 组件 |
-|------|------|------|
-| 统计卡片行 | 总案例 / 活跃案例 / 待报价案例 / 本月新增 | `StatCard` (shared/ui) |
-| 最近案例 | 最新 5-10 条 Case：患者名、状态、阶段、创建时间 | `DataTable` (shared/ui) |
-| 待办事项 | 待审核消息数 + 待回复报价数，可点击跳转 | 自定义 `TodoWidget` |
+**`AdminDashboardDTO` 实际返回结构：**
+```typescript
+{
+  stats: { totalCases, unassignedCases, assignedCases, openTickets, pendingOrders },
+  recentCases: Array<{ id, caseNumber, assignmentStatus, createdAt }>
+}
+```
+
+| 模块 | 内容 | 数据映射 | 组件 |
+|------|------|----------|------|
+| 统计卡片行 | 总案例 / 未分配案例 / 已分配案例 / 待处理工单 / 待处理订单 | `stats.totalCases` / `stats.unassignedCases` / `stats.assignedCases` / `stats.openTickets` / `stats.pendingOrders` | `StatCard` (shared/ui) |
+| 最近案例 | Case 列表：案例编号、分配状态、创建时间 | `recentCases[]` — 注意：DTO 不含患者名/阶段，仅有 `caseNumber` + `assignmentStatus` + `createdAt` | `DataTable` (shared/ui) |
+| 快捷操作 | "查看所有案例" / "查看所有医院" 跳转链接 | 纯前端 | `Button` (shared/ui) |
+
+**⚠️ 注意：** 原设计中的"待审核消息数 + 待回复报价数"待办事项无法从 Dashboard API 获取。如需此功能，需额外调用 `GET /api/v2/messages/pending-review`（获取待审核消息数）。可作为后续增强。
 
 ### 3.2 Cases 列表 (`/cases`)
 
@@ -196,7 +206,7 @@ apps/admin/src/
 | **统计卡片** | 关联案例数 / 活跃案例 / 已完成案例 |
 | **医院账号列表** | 该医院的用户账号、角色、最后登录时间 |
 | **关联案例表格** | 最近 10 条案例（复用 DataTable） |
-| **邀请链接管理** | "生成邀请链接" 按钮 → `POST /hospitals/{id}/registration-token`，显示当前令牌状态 |
+| **邀请链接管理** | "生成邀请链接" 按钮 → 弹出邮箱确认框 → `POST /hospitals/{id}/registration-token` body: `{ email }` |
 | **宣传材料审核**（底部） | 见下方详细设计 |
 
 #### 宣传材料审核区域（参照 v1）
@@ -224,7 +234,7 @@ apps/admin/src/
 | 医院类型 | ✅ | — | `type`: `COSMETIC` / `REGULAR` |
 | 地址 | ❌ | — | `address` |
 | 电话 | ❌ | — | `contactPhone` |
-| 邮箱 | ❌ | — | `contactEmail` |
+| 邮箱 | ✅ | — | `contactEmail`（schema 要求 `z.string().email()`） |
 | 描述 | ❌ | — | `description` |
 
 提交 → `POST /api/v2/hospitals` → 得到 `hospitalId`
@@ -233,12 +243,13 @@ apps/admin/src/
 
 创建成功后，表单继续展示以下字段（或自动跳转到编辑页面）：
 
-| 字段 | 必填 | 条件 | 说明 |
-|------|------|------|------|
-| 城市 | ✅ | 仅 REGULAR | text input |
-| 专科选择 | ✅ | 至少 1 个 | 多选 Badge，列表根据类型动态切换（见下方） |
+| 字段 | 必填 | 条件 | API 字段名 | 说明 |
+|------|------|------|-----------|------|
+| 专科选择 | ✅ | 至少 1 个 | `specialties` (string[]) | 多选 Badge，列表根据类型动态切换（见下方） |
 
-提交 → `PUT /api/v2/hospitals/{id}` → 更新城市和专科
+提交 → `PUT /api/v2/hospitals/{id}` → 更新专科
+
+**⚠️ 城市字段缺口：** `updateHospitalSchema` 当前不包含 `city` 字段（仅接受 `name`, `nameEn`, `address`, `phone`, `email`, `description`, `logoUrl`, `specialties`）。REGULAR 医院的城市信息需要通过 Supabase 同步层处理，或需扩展 `updateHospitalSchema` 增加 `city` 字段。**此为 API 缺口，Phase A 实现时需先补充。**
 
 **专科列表（根据医院类型动态切换）：**
 
@@ -252,9 +263,10 @@ apps/admin/src/
 #### Step 3: 生成邀请链接（手动触发）
 
 创建完成后，在 Hospital Detail 页面手动点击 **"生成邀请链接"** 按钮：
-- 调用 `POST /api/v2/hospitals/{id}/registration-token`
+- 弹出输入框让用户确认/输入医院邮箱（默认填充创建时的 `contactEmail`）
+- 调用 `POST /api/v2/hospitals/{id}/registration-token` body: `{ email: "hospital@example.com" }`（`generateRegistrationTokenSchema` 要求 `email` 字段）
 - 生成 72 小时有效的注册令牌
-- 系统发送邀请邮件到医院邮箱
+- 系统发送邀请邮件到指定邮箱
 
 **注意：邀请邮件不是创建时自动发送的，是独立的手动步骤。**
 
@@ -285,12 +297,13 @@ apps/admin/src/
 | Journey + Milestones | 6 | ✅ |
 | Question Collector | 8 | ✅ |
 
-### 4.2 缺失 API（前端空状态占位，后补）
+### 4.2 缺失/需扩展 API
 
-| API | 用途 | 影响页面 |
-|-----|------|----------|
-| `GET /cases/{id}/ai-summary` | AI 案例摘要 | Case Detail → AI Summary Tab |
-| `POST /cases/{id}/ai-summary/rebuild` | 重建 AI 摘要 | 同上 |
+| API | 类型 | 用途 | 影响页面 | 优先级 |
+|-----|------|------|----------|--------|
+| `updateHospitalSchema` 增加 `city` 字段 | Schema 扩展 | REGULAR 医院创建时设置城市 | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
+| `GET /cases/{id}/ai-summary` | 新 API | AI 案例摘要 | Case Detail → AI Summary Tab | P1（空状态占位） |
+| `POST /cases/{id}/ai-summary/rebuild` | 新 API | 重建 AI 摘要 | 同上 | P1 |
 
 ### 4.3 可选增强 API（不阻塞，后续优化）
 

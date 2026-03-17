@@ -7,6 +7,12 @@ import type {
   MaterialsBeforeAfterCase,
 } from '@medical-crm/domain';
 import { NotFoundError } from '@medical-crm/utils';
+import {
+  buildSurgeonMutation,
+  mapCaseAssetsToImages,
+  mapSurgeonRowToMaterialsSurgeon,
+  slugifyProcedureName,
+} from '../services/materials-compat.js';
 
 /**
  * China Medical Supabase implementation of IMaterialsRepository.
@@ -264,21 +270,12 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
   async listSurgeons(hospitalId: string): Promise<MaterialsSurgeon[]> {
     const { data, error } = await this.supabase
       .from('surgeons')
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
       .eq('hospital_id', hospitalId);
 
     if (error) throw error;
 
-    return (data ?? []).map((row) => ({
-      id: row.id,
-      hospitalId: row.hospital_id ?? hospitalId,
-      name: row.name,
-      title: row.title,
-      imageUrl: row.image_url,
-      experienceYears: row.experience_years,
-      specialties: row.specialties ?? [],
-      languages: row.languages ?? [],
-    }));
+    return (data ?? []).map((row) => mapSurgeonRowToMaterialsSurgeon(row, hospitalId));
   }
 
   async createSurgeon(data: Omit<MaterialsSurgeon, 'id'>): Promise<MaterialsSurgeon> {
@@ -287,44 +284,36 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       .insert({
         hospital_id: data.hospitalId,
         surgeon_id: data.hospitalId + '-' + Date.now(),
-        name: data.name,
-        title: data.title,
-        image_url: data.imageUrl,
-        experience_years: data.experienceYears,
-        specialties: data.specialties,
-        languages: data.languages,
-        education: [],
-        certifications: [],
+        ...buildSurgeonMutation(data),
         procedures_count: {},
-        bio: {},
-        images: {},
         translations: {},
       })
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
       .single();
 
     if (error) throw error;
 
-    return {
-      id: row!.id,
-      hospitalId: row!.hospital_id ?? data.hospitalId,
-      name: row!.name,
-      title: row!.title,
-      imageUrl: row!.image_url,
-      experienceYears: row!.experience_years,
-      specialties: row!.specialties ?? [],
-      languages: row!.languages ?? [],
-    };
+    return mapSurgeonRowToMaterialsSurgeon(row!, data.hospitalId);
   }
 
   async updateSurgeon(id: string, hospitalId: string, updates: Partial<MaterialsSurgeon>): Promise<MaterialsSurgeon> {
-    const updateData: Record<string, unknown> = {};
-    if (updates.name !== undefined) updateData['name'] = updates.name;
-    if (updates.title !== undefined) updateData['title'] = updates.title;
-    if (updates.imageUrl !== undefined) updateData['image_url'] = updates.imageUrl;
-    if (updates.experienceYears !== undefined) updateData['experience_years'] = updates.experienceYears;
-    if (updates.specialties !== undefined) updateData['specialties'] = updates.specialties;
-    if (updates.languages !== undefined) updateData['languages'] = updates.languages;
+    const requiresProfileMerge = updates.imageUrl !== undefined
+      || updates.intro !== undefined
+      || updates.expertise !== undefined
+      || updates.philosophy !== undefined
+      || updates.achievements !== undefined;
+    let existingProfile: { bio?: Record<string, unknown>; images?: Record<string, unknown> } | undefined;
+    if (requiresProfileMerge) {
+      const { data: existing } = await this.supabase
+        .from('surgeons')
+        .select('bio, images')
+        .eq('id', id)
+        .eq('hospital_id', hospitalId)
+        .single();
+      existingProfile = existing ?? undefined;
+    }
+
+    const updateData = buildSurgeonMutation(updates, existingProfile);
     updateData['updated_at'] = new Date().toISOString();
 
     const { data: row, error } = await this.supabase
@@ -332,7 +321,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       .update(updateData)
       .eq('id', id)
       .eq('hospital_id', hospitalId)
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
       .single();
 
     if (error) {
@@ -341,16 +330,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     }
     if (!row) throw new NotFoundError(`Surgeon ${id} not found for hospital ${hospitalId}`);
 
-    return {
-      id: row.id,
-      hospitalId: row.hospital_id ?? hospitalId,
-      name: row.name,
-      title: row.title,
-      imageUrl: row.image_url,
-      experienceYears: row.experience_years,
-      specialties: row.specialties ?? [],
-      languages: row.languages ?? [],
-    };
+    return mapSurgeonRowToMaterialsSurgeon(row, hospitalId);
   }
 
   async deleteSurgeon(id: string, hospitalId: string): Promise<void> {
@@ -370,26 +350,56 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
   async listBeforeAfterCases(hospitalId: string): Promise<MaterialsBeforeAfterCase[]> {
     const { data, error } = await this.supabase
       .from('procedure_cases')
-      .select('id, hospital_id, procedure_name, provider_name, description, case_images(id, image_url, image_type, sort_order)')
+      .select('id, hospital_id, procedure_name, case_number, provider_name, description')
       .eq('hospital_id', hospitalId)
       .order('sort_order', { ascending: true });
 
     if (error) throw error;
 
-    return (data ?? []).map((row: Record<string, unknown>) => {
-      const images = (row.case_images as Array<{ image_url: string; image_type: 'before' | 'after' | 'combined'; sort_order: number }>) ?? [];
-      images.sort((a, b) => a.sort_order - b.sort_order);
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    const caseIds = rows.map((row) => row.id).filter((id): id is string => typeof id === 'string');
 
+    const [caseImagesResult, caseMediaResult] = await Promise.all([
+      caseIds.length > 0
+        ? this.supabase.from('case_images').select('case_id, image_url, image_type, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
+      caseIds.length > 0
+        ? this.supabase.from('case_media').select('case_id, media_url, media_type, image_url, image_type, sort_order').in('case_id', caseIds).order('sort_order', { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (caseImagesResult.error) throw caseImagesResult.error;
+
+    const caseImagesById = new Map<string, Array<{ image_url: string; image_type: 'before' | 'after' | 'combined'; sort_order?: number | null }>>();
+    for (const imageRow of (caseImagesResult.data ?? [])) {
+      const images = caseImagesById.get(imageRow.case_id) ?? [];
+      images.push(imageRow);
+      caseImagesById.set(imageRow.case_id, images);
+    }
+    const caseMediaById = new Map<string, Array<{ media_url?: string | null; media_type?: string | null; image_url?: string | null; image_type?: 'before' | 'after' | 'combined' | null; sort_order?: number | null }>>();
+    for (const mediaRow of (caseMediaResult.error ? [] : (caseMediaResult.data ?? []))) {
+      const media = caseMediaById.get(mediaRow.case_id) ?? [];
+      media.push(mediaRow);
+      caseMediaById.set(mediaRow.case_id, media);
+    }
+
+    return rows.map((row) => {
+      const procedureName = (row.procedure_name as string) ?? '';
       return {
         id: row.id as string,
         hospitalId: (row.hospital_id as string) ?? hospitalId,
-        procedureName: (row.procedure_name as string) ?? '',
+        procedureName,
         surgeonName: row.provider_name as string | null,
         description: row.description as string | null,
-        images: images.map((img) => ({
-          url: img.image_url,
-          type: img.image_type,
-        })),
+        images: mapCaseAssetsToImages({
+          caseRow: row,
+          caseImages: caseImagesById.get(row.id as string) ?? [],
+          caseMedia: caseMediaById.get(row.id as string) ?? [],
+          procedureSlug: procedureName ? slugifyProcedureName(procedureName) : null,
+          caseNumber: row.case_number as string | null,
+          hospitalId,
+          isRegularHospital: true,
+        }),
       };
     });
   }

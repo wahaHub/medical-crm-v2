@@ -3,15 +3,20 @@ import type { IMessageRepository, MessageListQuery, Attachment } from '@medical-
 import { Message } from '@medical-crm/domain';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
-import { messages } from '../schema/index.js';
+import { messages, users } from '../schema/index.js';
 
 export class DrizzleMessageRepository implements IMessageRepository {
   constructor(private readonly db: CrmDb) {}
 
   async findById(id: string): Promise<Message | null> {
     const rows = await this.db
-      .select()
+      .select({
+        message: messages,
+        senderRole: users.role,
+        senderName: users.name,
+      })
       .from(messages)
+      .leftJoin(users, eq(messages.senderId, users.id))
       .where(eq(messages.id, id))
       .limit(1);
 
@@ -27,8 +32,13 @@ export class DrizzleMessageRepository implements IMessageRepository {
 
     const [rows, countResult] = await Promise.all([
       this.db
-        .select()
+        .select({
+          message: messages,
+          senderRole: users.role,
+          senderName: users.name,
+        })
         .from(messages)
+        .leftJoin(users, eq(messages.senderId, users.id))
         .where(eq(messages.conversationId, conversationId))
         .orderBy(sql`${messages.createdAt} DESC`)
         .limit(limit)
@@ -54,8 +64,13 @@ export class DrizzleMessageRepository implements IMessageRepository {
 
   async findPendingReview(): Promise<Message[]> {
     const rows = await this.db
-      .select()
+      .select({
+        message: messages,
+        senderRole: users.role,
+        senderName: users.name,
+      })
       .from(messages)
+      .leftJoin(users, eq(messages.senderId, users.id))
       .where(eq(messages.moderationStatus, 'REVIEW'));
 
     return rows.map((r) => this.rowToEntity(r));
@@ -92,7 +107,11 @@ export class DrizzleMessageRepository implements IMessageRepository {
       })
       .returning();
 
-    return this.rowToEntity(rows[0]!);
+    return this.rowToEntity({
+      message: rows[0]!,
+      senderRole: entity.senderRole,
+      senderName: entity.senderName,
+    });
   }
 
   async delete(id: string): Promise<void> {
@@ -101,19 +120,22 @@ export class DrizzleMessageRepository implements IMessageRepository {
       .where(eq(messages.id, id));
   }
 
-  private rowToEntity(row: typeof messages.$inferSelect): Message {
+  private rowToEntity(row: { message: typeof messages.$inferSelect; senderRole: string | null; senderName: string | null }): Message {
+    const message = row.message;
     return new Message({
-      id: row.id,
-      conversationId: row.conversationId,
-      senderId: row.senderId,
-      content: row.content,
-      originalLanguage: row.originalLanguage ?? null,
-      translatedContent: row.translatedContent ?? null,
-      messageType: row.messageType as import('@medical-crm/domain').MessageType,
-      moderationStatus: row.moderationStatus as import('@medical-crm/domain').ModerationStatus,
-      attachments: (row.attachments as Attachment[] | null) ?? [],
-      aiSummary: row.aiSummary ?? null,
-      createdAt: new Date(row.createdAt),
+      id: message.id,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      senderRole: row.senderRole ?? null,
+      senderName: row.senderName ?? null,
+      content: message.content,
+      originalLanguage: message.originalLanguage ?? null,
+      translatedContent: message.translatedContent ?? null,
+      messageType: message.messageType as import('@medical-crm/domain').MessageType,
+      moderationStatus: message.moderationStatus as import('@medical-crm/domain').ModerationStatus,
+      attachments: (message.attachments as Attachment[] | null) ?? [],
+      aiSummary: message.aiSummary ?? null,
+      createdAt: new Date(message.createdAt),
     });
   }
 }

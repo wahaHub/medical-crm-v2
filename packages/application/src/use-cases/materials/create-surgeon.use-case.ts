@@ -9,6 +9,12 @@ export interface CreateSurgeonInput {
   experienceYears?: number | null;
   specialties?: string[];
   languages?: string[];
+  education?: string[];
+  certifications?: string[];
+  intro?: string | null;
+  expertise?: string | null;
+  philosophy?: string | null;
+  achievements?: string[];
 }
 
 export class CreateSurgeonUseCase {
@@ -27,6 +33,12 @@ export class CreateSurgeonUseCase {
       experienceYears: input.experienceYears ?? null,
       specialties: input.specialties ?? [],
       languages: input.languages ?? [],
+      education: input.education ?? [],
+      certifications: input.certifications ?? [],
+      intro: input.intro ?? null,
+      expertise: input.expertise ?? null,
+      philosophy: input.philosophy ?? null,
+      achievements: input.achievements ?? [],
     });
   }
 }

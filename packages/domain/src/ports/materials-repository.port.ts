@@ -15,6 +15,68 @@ export interface MaterialsHospitalInfo {
   heroImage: string | null;
   photos: string[];
   highlights: Array<{ icon: string; text: string }>;
+  // Extended fields — matches CRM v1 HospitalInfo shape
+  nameEn?: string;
+  yearEstablished?: number;
+  totalPatients?: number;
+  tagline?: string;
+  taglineEn?: string;
+  description?: string;
+  descriptionEn?: string;
+  status?: string;
+  isActive?: boolean;
+  paymentMethods?: string[];
+  // Contact & Location
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  hours?: string;
+  latitude?: number;
+  longitude?: number;
+  mapEmbed?: string;
+  // CRM metadata fields
+  certifications?: Array<{ id: string; name: string; nameEn?: string; year?: number; isActive: boolean }>;
+  bedCount?: number;
+  patientCapacity?: number;
+  recommendRate?: number;
+  multilingualStaff?: string[];
+  airportServices?: string[];
+  followUpCare?: string[];
+  amenities?: string[];
+  nearbyAttractions?: Array<{ id: string; name: string; nameEn?: string; distance: string }>;
+  videoTestimonials?: Array<{
+    id: string;
+    patientName: string;
+    patientCountry?: string;
+    procedureName?: string;
+    videoUrl: string;
+    thumbnailUrl?: string;
+    duration?: string;
+    uploadedAt?: string;
+  }>;
+  // Regular hospital specific fields
+  city?: string;
+  district?: string;
+  province?: string;
+  hospitalType?: string;
+  tier?: string;
+  ownershipType?: string;
+  clinicalCapabilities?: string[];
+  equipment?: Array<{ name: string; image_url?: string; description?: string }>;
+  gallery?: Array<{ url: string; alt: string; type: string }>;
+  coreSpecialties?: Array<{ name: string; slug: string; image_url?: string; description: string; technologies: string[] }>;
+  overview?: string;
+  overviewEn?: string;
+  fullDescription?: string;
+  fullDescriptionEn?: string;
+  departments?: string[];
+  departmentDescriptions?: Record<string, string>;
+  departmentImages?: Record<string, string>;
+  departmentKeyServices?: Record<string, string[]>;
+  departmentStats?: Record<string, { specialists?: number; annualPatients?: number }>;
+  operatingHours?: string;
+  promotionalVideos?: string[];
 }
 
 export interface MaterialsProcedure {
@@ -38,6 +100,12 @@ export interface MaterialsSurgeon {
   experienceYears: number | null;
   specialties: string[];
   languages: string[];
+  education: string[];
+  certifications: string[];
+  intro: string | null;
+  expertise: string | null;
+  philosophy: string | null;
+  achievements: string[];
 }
 
 export interface MaterialsBeforeAfterCase {

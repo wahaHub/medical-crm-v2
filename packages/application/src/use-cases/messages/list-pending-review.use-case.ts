@@ -13,6 +13,6 @@ export class ListPendingReviewUseCase {
     }
 
     const messages = await this.messageRepo.findPendingReview();
-    return messages.map(toMessageDTO);
+    return messages.map((message) => toMessageDTO(message));
   }
 }

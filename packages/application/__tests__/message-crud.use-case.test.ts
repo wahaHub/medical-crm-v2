@@ -34,6 +34,8 @@ const makeMessage = (
     id: 'msg-1',
     conversationId: 'conv-1',
     senderId: 'admin-1',
+    senderRole: 'ADMIN',
+    senderName: 'Admin User',
     content: 'Hello!',
     originalLanguage: 'en',
     translatedContent: 'Hola!',
@@ -121,11 +123,39 @@ describe('ListMessagesUseCase', () => {
     expect(result.page).toBe(1);
     expect(result.data[0]!.id).toBe('msg-1');
     expect(result.data[0]!.content).toBe('Hello!');
+    expect(result.data[0]!.senderRole).toBe('ADMIN');
+    expect(result.data[0]!.senderName).toBe('Admin User');
     expect(typeof result.data[0]!.createdAt).toBe('string');
     expect(mockMessageRepo.findByConversationId).toHaveBeenCalledWith(
       'conv-1',
       { page: 1, limit: 20 },
     );
+  });
+
+  it('preserves sender metadata and signs attachment urls in list responses', async () => {
+    const msg = makeMessage({
+      senderId: 'patient-1',
+      senderRole: 'PATIENT',
+      senderName: 'Alice Patient',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+        storageKey: 'attachments/report.pdf',
+      }],
+    });
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation(), msg);
+    const storage = makeStorage();
+    vi.mocked(storage.getSignedUrls).mockResolvedValue({
+      'attachments/report.pdf': 'https://signed.example.com/report.pdf',
+    });
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, storage);
+
+    const result = await useCase.execute('conv-1', { page: 1, limit: 20 }, adminActor);
+
+    expect(result.data[0]!.senderRole).toBe('PATIENT');
+    expect(result.data[0]!.senderName).toBe('Alice Patient');
+    expect(result.data[0]!.attachments[0]!.url).toBe('https://signed.example.com/report.pdf');
   });
 
   it('HOSPITAL: can list messages in own conversation', async () => {
@@ -183,6 +213,32 @@ describe('GetMessageUseCase', () => {
     expect(typeof result.createdAt).toBe('string');
     expect(result.createdAt).toBe('2026-01-10T09:00:00.000Z');
     expect(mockMessageRepo.findById).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('preserves sender metadata and signs attachment urls in single-message responses', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos();
+    mockMessageRepo.findById = vi.fn().mockResolvedValue(makeMessage({
+      senderId: 'patient-1',
+      senderRole: 'PATIENT',
+      senderName: 'Alice Patient',
+      attachments: [{
+        fileName: 'scan.jpg',
+        fileSize: 2048,
+        mimeType: 'image/jpeg',
+        storageKey: 'attachments/scan.jpg',
+      }],
+    }));
+    const storage = makeStorage();
+    vi.mocked(storage.getSignedUrls).mockResolvedValue({
+      'attachments/scan.jpg': 'https://signed.example.com/scan.jpg',
+    });
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, storage);
+
+    const result = await useCase.execute('conv-1', 'msg-1', adminActor);
+
+    expect(result.senderRole).toBe('PATIENT');
+    expect(result.senderName).toBe('Alice Patient');
+    expect(result.attachments[0]!.url).toBe('https://signed.example.com/scan.jpg');
   });
 
   it('HOSPITAL: can get a message from own conversation', async () => {

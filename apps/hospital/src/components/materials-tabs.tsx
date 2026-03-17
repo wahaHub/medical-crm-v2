@@ -2641,17 +2641,88 @@ function ProcedureModal({
 /*  Tab 3 — Surgeons                                                          */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
+function RepeatableTextList({
+  label,
+  values,
+  onChange,
+  placeholder,
+  addLabel,
+}: {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+  addLabel: string;
+}) {
+  const updateValue = (index: number, value: string) => {
+    const next = [...values];
+    next[index] = value;
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm font-medium text-slate-700">{label}</label>
+      <div className="space-y-2">
+        {values.map((value, index) => (
+          <div key={`${label}-${index}`} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => updateValue(index, e.target.value)}
+              placeholder={placeholder}
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+            />
+            <button
+              type="button"
+              onClick={() => onChange(values.filter((_, itemIndex) => itemIndex !== index))}
+              className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+              aria-label={`Remove ${label}`}
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...values, ''])}
+          className="w-full px-3 py-2 border border-dashed border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:border-purple-300 hover:text-purple-600 transition-colors flex items-center justify-center gap-2"
+        >
+          <Plus size={14} />
+          {addLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SurgeonsTab() {
-  const { data, isLoading } = useSurgeons();
+  const { data, isLoading, isError, error } = useSurgeons();
+  const { data: proceduresData } = useProcedures();
+  const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<MaterialsSurgeonDTO | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const procedureOptions = ((proceduresData as MaterialsProcedureDTO[] | undefined) ?? []).map((procedure) => ({
+    value: procedure.procedureName,
+    label: procedure.procedureName,
+  }));
 
   if (isLoading) {
     return (
       <div className="flex justify-center py-16">
         <LoadingSpinner size="lg" />
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <EmptyState
+        icon={<Users size={48} />}
+        title="Surgeons failed to load"
+        description={error instanceof Error ? error.message : 'Unable to load surgeons.'}
+      />
     );
   }
 
@@ -2663,6 +2734,7 @@ function SurgeonsTab() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this surgeon?')) return;
     await deleteSurgeon(id);
+    await queryClient.invalidateQueries({ queryKey: ['materials', 'surgeons'] });
   };
 
   return (
@@ -2754,6 +2826,15 @@ function SurgeonsTab() {
                       <span className="font-medium text-slate-900">Languages:</span> {surgeon.languages.join(', ')}
                     </div>
                   )}
+                  {surgeon.education.length > 0 && (
+                    <div className="flex items-start gap-2 text-xs text-slate-600">
+                      <span className="font-medium text-slate-900">Education:</span>
+                      <span className="line-clamp-2">{surgeon.education.join(', ')}</span>
+                    </div>
+                  )}
+                  {surgeon.intro && (
+                    <p className="text-xs text-slate-500 line-clamp-2">{surgeon.intro}</p>
+                  )}
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
@@ -2786,6 +2867,7 @@ function SurgeonsTab() {
           open={showModal}
           onClose={() => { setShowModal(false); setEditingItem(null); }}
           existing={editingItem}
+          procedureOptions={procedureOptions}
         />
       )}
     </div>
@@ -2796,26 +2878,44 @@ function SurgeonModal({
   open,
   onClose,
   existing,
+  procedureOptions,
 }: {
   open: boolean;
   onClose: () => void;
   existing: MaterialsSurgeonDTO | null;
+  procedureOptions: Array<{ value: string; label: string }>;
 }) {
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [experienceYears, setExperienceYears] = useState('');
-  const [specialties, setSpecialties] = useState('');
-  const [languages, setLanguages] = useState('');
+  const [specialties, setSpecialties] = useState<string[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
+  const [education, setEducation] = useState<string[]>([]);
+  const [certifications, setCertifications] = useState<string[]>([]);
+  const [intro, setIntro] = useState('');
+  const [expertise, setExpertise] = useState('');
+  const [philosophy, setPhilosophy] = useState('');
+  const [achievements, setAchievements] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const specialtyOptions = procedureOptions.length > 0
+    ? [...procedureOptions, ...specialties.filter((value) => !procedureOptions.some((option) => option.value === value)).map((value) => ({ value, label: value }))]
+    : specialties.map((value) => ({ value, label: value }));
 
   useEffect(() => {
     setName(existing?.name ?? '');
     setTitle(existing?.title ?? '');
     setImageUrl(existing?.imageUrl ?? '');
     setExperienceYears(existing?.experienceYears != null ? String(existing.experienceYears) : '');
-    setSpecialties((existing?.specialties ?? []).join(', '));
-    setLanguages((existing?.languages ?? []).join(', '));
+    setSpecialties(existing?.specialties ?? []);
+    setLanguages(existing?.languages ?? []);
+    setEducation(existing?.education ?? []);
+    setCertifications(existing?.certifications ?? []);
+    setIntro(existing?.intro ?? '');
+    setExpertise(existing?.expertise ?? '');
+    setPhilosophy(existing?.philosophy ?? '');
+    setAchievements(existing?.achievements ?? []);
   }, [existing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2828,14 +2928,21 @@ function SurgeonModal({
         title: title.trim() || null,
         imageUrl: imageUrl.trim() || null,
         experienceYears: experienceYears ? Number(experienceYears) : null,
-        specialties: specialties ? specialties.split(',').map((s) => s.trim()).filter(Boolean) : [],
-        languages: languages ? languages.split(',').map((s) => s.trim()).filter(Boolean) : [],
+        specialties,
+        languages,
+        education: education.map((item) => item.trim()).filter(Boolean),
+        certifications: certifications.map((item) => item.trim()).filter(Boolean),
+        intro: intro.trim() || null,
+        expertise: expertise.trim() || null,
+        philosophy: philosophy.trim() || null,
+        achievements: achievements.map((item) => item.trim()).filter(Boolean),
       };
       if (existing) {
         await updateSurgeon(existing.id, payload);
       } else {
         await createSurgeon(payload);
       }
+      await queryClient.invalidateQueries({ queryKey: ['materials', 'surgeons'] });
       onClose();
     } catch {
       // Error handled upstream
@@ -2849,7 +2956,7 @@ function SurgeonModal({
 
   return (
     <Modal open={open} onClose={onClose} title={existing ? 'Edit Surgeon' : 'Add New Surgeon'}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <ImageUploadWidget
           value={imageUrl}
           onChange={setImageUrl}
@@ -2857,7 +2964,7 @@ function SurgeonModal({
           placeholder="https://... or click Upload"
           compact
         />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Dr. First Last" className={inputClass} />
@@ -2872,15 +2979,62 @@ function SurgeonModal({
             <label className="block text-sm font-medium text-slate-700 mb-1">Years of Experience</label>
             <input type="number" value={experienceYears} onChange={(e) => setExperienceYears(e.target.value)} placeholder="e.g. 15" className={inputClass} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Languages</label>
-            <input type="text" value={languages} onChange={(e) => setLanguages(e.target.value)} placeholder="e.g. English, Spanish" className={inputClass} />
-          </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Specialties</label>
-          <input type="text" value={specialties} onChange={(e) => setSpecialties(e.target.value)} placeholder="e.g. Cardiology, Heart Transplant (comma separated)" className={inputClass} />
+          <ChipSelector
+            options={specialtyOptions}
+            selected={specialties}
+            onChange={setSpecialties}
+            editing
+            label="Select Specialties"
+          />
         </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Languages</label>
+          <ChipSelector
+            options={LANGUAGE_OPTIONS}
+            selected={languages}
+            onChange={setLanguages}
+            editing
+            label="Select Languages"
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <RepeatableTextList
+            label="Education"
+            values={education}
+            onChange={setEducation}
+            placeholder="e.g. Seoul National University School of Medicine"
+            addLabel="Add Education"
+          />
+          <RepeatableTextList
+            label="Certifications"
+            values={certifications}
+            onChange={setCertifications}
+            placeholder="e.g. Board Certified Plastic Surgeon"
+            addLabel="Add Certification"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Introduction</label>
+          <textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={2} placeholder="A brief introduction to the surgeon..." className={`${inputClass} resize-none`} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Expertise & Specialization</label>
+          <textarea value={expertise} onChange={(e) => setExpertise(e.target.value)} rows={3} placeholder="Describe core areas of expertise..." className={`${inputClass} resize-none`} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Treatment Philosophy</label>
+          <textarea value={philosophy} onChange={(e) => setPhilosophy(e.target.value)} rows={2} placeholder="Describe the surgeon's treatment philosophy..." className={`${inputClass} resize-none`} />
+        </div>
+        <RepeatableTextList
+          label="Achievements"
+          values={achievements}
+          onChange={setAchievements}
+          placeholder="e.g. Published 50 research papers"
+          addLabel="Add Achievement"
+        />
         <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
           <button type="submit" disabled={submitting || !name.trim()} className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors disabled:opacity-50">
@@ -2897,7 +3051,7 @@ function SurgeonModal({
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 function BeforeAfterTab() {
-  const { data, isLoading } = useBeforeAfterCases();
+  const { data, isLoading, isError, error } = useBeforeAfterCases();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<MaterialsBeforeAfterCaseDTO | null>(null);
@@ -2908,6 +3062,16 @@ function BeforeAfterTab() {
       <div className="flex justify-center py-16">
         <LoadingSpinner size="lg" />
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <EmptyState
+        icon={<Camera size={48} />}
+        title="Cases failed to load"
+        description={error instanceof Error ? error.message : 'Unable to load before & after cases.'}
+      />
     );
   }
 
@@ -2959,35 +3123,47 @@ function BeforeAfterTab() {
           {cases.map((c) => {
             const beforeImg = c.images.find((img) => img.type === 'before');
             const afterImg = c.images.find((img) => img.type === 'after');
+            const combinedImg = c.images.find((img) => img.type === 'combined');
 
             return (
               <div key={c.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 {/* Side-by-side Before/After images */}
                 <div className="h-40 bg-slate-100 relative flex">
-                  <div className="w-1/2 h-full relative">
-                    {beforeImg ? (
-                      <img src={beforeImg.url} alt="Before" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-300">
-                        <ImageIcon size={32} />
+                  {combinedImg && !beforeImg && !afterImg ? (
+                    <div className="w-full h-full relative">
+                      <img src={combinedImg.url} alt="Before and After" className="w-full h-full object-cover" />
+                      <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
+                        Before / After
                       </div>
-                    )}
-                    <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
-                      Before
                     </div>
-                  </div>
-                  <div className="w-1/2 h-full relative border-l border-white/20">
-                    {afterImg ? (
-                      <img src={afterImg.url} alt="After" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-300">
-                        <ImageIcon size={32} />
+                  ) : (
+                    <>
+                      <div className="w-1/2 h-full relative">
+                        {beforeImg ? (
+                          <img src={beforeImg.url} alt="Before" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-300">
+                            <ImageIcon size={32} />
+                          </div>
+                        )}
+                        <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
+                          Before
+                        </div>
                       </div>
-                    )}
-                    <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
-                      After
-                    </div>
-                  </div>
+                      <div className="w-1/2 h-full relative border-l border-white/20">
+                        {afterImg ? (
+                          <img src={afterImg.url} alt="After" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-300">
+                            <ImageIcon size={32} />
+                          </div>
+                        )}
+                        <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
+                          After
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 {/* Details */}
                 <div className="p-5 flex-1 flex flex-col">
@@ -3063,7 +3239,8 @@ function BeforeAfterModal({
     setSurgeonName(existing?.surgeonName ?? '');
     const beforeImg = existing?.images.find((img) => img.type === 'before');
     const afterImg = existing?.images.find((img) => img.type === 'after');
-    setBeforeImageUrl(beforeImg?.url ?? '');
+    const combinedImg = existing?.images.find((img) => img.type === 'combined');
+    setBeforeImageUrl(beforeImg?.url ?? combinedImg?.url ?? '');
     setAfterImageUrl(afterImg?.url ?? '');
     setDescription(existing?.description ?? '');
   }, [existing]);
@@ -3073,13 +3250,12 @@ function BeforeAfterModal({
     setSubmitting(true);
     try {
       const images: Array<{ url: string; type: 'before' | 'after' | 'combined' }> = [];
-      if (existing) {
-        for (const img of existing.images) {
-          if (img.type === 'combined') images.push(img);
-        }
+      if (beforeImageUrl.trim() && afterImageUrl.trim()) {
+        images.push({ url: beforeImageUrl.trim(), type: 'before' });
+        images.push({ url: afterImageUrl.trim(), type: 'after' });
+      } else if (beforeImageUrl.trim()) {
+        images.push({ url: beforeImageUrl.trim(), type: 'combined' });
       }
-      if (beforeImageUrl.trim()) images.push({ url: beforeImageUrl.trim(), type: 'before' });
-      if (afterImageUrl.trim()) images.push({ url: afterImageUrl.trim(), type: 'after' });
 
       const payload: Record<string, unknown> = {
         procedureName: procedureName.trim() || undefined,

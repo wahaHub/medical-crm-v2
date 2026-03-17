@@ -41,6 +41,8 @@ interface ApiMessage {
   id: string;
   conversationId: string;
   senderId: string;
+  senderRole?: string | null;
+  senderName?: string | null;
   content: string;
   originalLanguage?: string | null;
   translatedContent?: string | null;
@@ -70,7 +72,7 @@ function mapApiMessages(
     currentUserId?: string;
   },
 ): ChatMessage[] {
-  const otherPartyRole = options.conversationCategory === 'ADMIN_HOSPITAL' ? 'ADMIN' : 'PATIENT';
+  const otherPartyRole: ChatMessage['senderRole'] = options.conversationCategory === 'ADMIN_HOSPITAL' ? 'ADMIN' : 'PATIENT';
   const otherPartyName = options.otherPartyName
     ?? (options.conversationCategory === 'ADMIN_HOSPITAL' ? 'Admin' : 'Patient');
 
@@ -78,8 +80,12 @@ function mapApiMessages(
     id: m.id,
     content: m.content,
     translatedContent: m.translatedContent ?? null,
-    senderRole: m.senderId === options.currentUserId ? 'HOSPITAL' : otherPartyRole,
-    senderName: m.senderId === options.currentUserId ? 'Hospital' : otherPartyName,
+    senderRole: (
+      m.senderRole === 'ADMIN' || m.senderRole === 'HOSPITAL' || m.senderRole === 'PATIENT'
+        ? m.senderRole
+        : (m.senderId === options.currentUserId ? 'HOSPITAL' : otherPartyRole)
+    ),
+    senderName: m.senderName ?? (m.senderId === options.currentUserId ? 'Hospital' : otherPartyName),
     senderId: m.senderId,
     createdAt: m.createdAt,
     isAiTranslated: !!m.translatedContent,
@@ -139,7 +145,12 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   const conversations: ConversationSummary[] = liveResponse?.data ?? initialConversations?.data ?? [];
   const selectedConvo = conversations.find((c) => c.id === selectedId);
 
-  const { data: messagesData } = useMessages(selectedId ?? '');
+  const {
+    data: messagesData,
+    isLoading: isMessagesLoading,
+    isError: isMessagesError,
+    error: messagesError,
+  } = useMessages(selectedId ?? '');
   const messagesResponse = messagesData as PaginatedResponse<ApiMessage> | undefined;
   const messages: ChatMessage[] = useMemo(
     () => mapApiMessages(messagesResponse?.data ?? [], {
@@ -357,46 +368,62 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   Privacy Notice: Patient contact information is hidden for privacy.
                 </span>
               </div>
-              <ChatLayout
-                messages={messages}
-                onSend={handleSend}
-                isSending={isSending}
-                showTranslation={showTranslation}
-                onToggleTranslation={setShowTranslation}
-                showRetranslate={false}
-                currentUserRole="HOSPITAL"
-                currentUserId={user.id}
-                onUploadFiles={handleUploadFiles}
-                isUploading={isUploading}
-                header={{
-                  name: caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? 'Unknown',
-                  subtitle: caseDetail?.caseNumber ?? undefined,
-                  isOnline: undefined,
-                  categoryBadge: selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : undefined,
-                  isAdminConversation: selectedConvo.category === 'ADMIN_HOSPITAL',
-                }}
-                showInfoToggle={!!selectedConvo.caseId}
-                onToggleInfo={() => setShowInfoPanel((prev) => !prev)}
-                infoPanelOpen={showInfoPanel}
-                inputNotice={
-                  selectedConvo.category !== 'ADMIN_HOSPITAL' ? (
-                    <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                      <Info size={14} className="text-amber-600 shrink-0" />
-                      <p className="text-xs text-amber-700">
-                        Messages are automatically forwarded to the patient via their preferred communication channel (Email/WhatsApp).
-                      </p>
-                    </div>
-                  ) : undefined
-                }
-                emptyState={
+              {isMessagesLoading ? (
+                <div className="flex flex-1 items-center justify-center bg-slate-50/40">
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent" />
+                    Loading conversation...
+                  </div>
+                </div>
+              ) : isMessagesError ? (
+                <div className="flex flex-1 items-center justify-center px-6">
                   <EmptyState
                     icon={<MessageSquare size={48} />}
-                    title="No messages yet"
-                    description="Start the conversation by sending a message."
+                    title="Conversation failed to load"
+                    description={messagesError instanceof Error ? messagesError.message : 'Unable to load conversation messages.'}
                   />
-                }
-                className="flex-1"
-              />
+                </div>
+              ) : (
+                <ChatLayout
+                  messages={messages}
+                  onSend={handleSend}
+                  isSending={isSending}
+                  showTranslation={showTranslation}
+                  onToggleTranslation={setShowTranslation}
+                  showRetranslate={false}
+                  currentUserRole="HOSPITAL"
+                  onUploadFiles={handleUploadFiles}
+                  isUploading={isUploading}
+                  header={{
+                    name: caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? 'Unknown',
+                    subtitle: caseDetail?.caseNumber ?? undefined,
+                    isOnline: undefined,
+                    categoryBadge: selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : undefined,
+                    isAdminConversation: selectedConvo.category === 'ADMIN_HOSPITAL',
+                  }}
+                  showInfoToggle={!!selectedConvo.caseId}
+                  onToggleInfo={() => setShowInfoPanel((prev) => !prev)}
+                  infoPanelOpen={showInfoPanel}
+                  inputNotice={
+                    selectedConvo.category !== 'ADMIN_HOSPITAL' ? (
+                      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                        <Info size={14} className="text-amber-600 shrink-0" />
+                        <p className="text-xs text-amber-700">
+                          Messages are automatically forwarded to the patient via their preferred communication channel (Email/WhatsApp).
+                        </p>
+                      </div>
+                    ) : undefined
+                  }
+                  emptyState={
+                    <EmptyState
+                      icon={<MessageSquare size={48} />}
+                      title="No messages yet"
+                      description="Start the conversation by sending a message."
+                    />
+                  }
+                  className="flex-1"
+                />
+              )}
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center">

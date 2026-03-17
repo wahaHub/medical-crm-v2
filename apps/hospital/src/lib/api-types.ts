@@ -327,6 +327,12 @@ export interface MaterialsSurgeonDTO {
   experienceYears: number | null;
   specialties: string[];
   languages: string[];
+  education: string[];
+  certifications: string[];
+  intro: string | null;
+  expertise: string | null;
+  philosophy: string | null;
+  achievements: string[];
 }
 
 /** Materials before/after case — matches MaterialsBeforeAfterCase domain type */

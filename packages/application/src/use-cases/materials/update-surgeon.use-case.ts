@@ -9,6 +9,12 @@ export interface UpdateSurgeonInput {
   experienceYears?: number | null;
   specialties?: string[];
   languages?: string[];
+  education?: string[];
+  certifications?: string[];
+  intro?: string | null;
+  expertise?: string | null;
+  philosophy?: string | null;
+  achievements?: string[];
 }
 
 export class UpdateSurgeonUseCase {

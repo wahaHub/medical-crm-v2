@@ -12,6 +12,8 @@ export interface MessageProps {
   id: string;
   conversationId: string;
   senderId: string;
+  senderRole?: string | null;
+  senderName?: string | null;
   content: string;
   originalLanguage: string | null;
   translatedContent: string | null;
@@ -26,6 +28,8 @@ export class Message {
   readonly id: string;
   conversationId: string;
   senderId: string;
+  senderRole: string | null;
+  senderName: string | null;
   content: string;
   originalLanguage: string | null;
   translatedContent: string | null;
@@ -39,6 +43,8 @@ export class Message {
     this.id = props.id;
     this.conversationId = props.conversationId;
     this.senderId = props.senderId;
+    this.senderRole = props.senderRole ?? null;
+    this.senderName = props.senderName ?? null;
     this.content = props.content;
     this.originalLanguage = props.originalLanguage;
     this.translatedContent = props.translatedContent;

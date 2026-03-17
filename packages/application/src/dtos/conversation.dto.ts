@@ -29,6 +29,8 @@ export interface MessageDTO {
   id: string;
   conversationId: string;
   senderId: string;
+  senderRole: string | null;
+  senderName: string | null;
   content: string;
   originalLanguage: string | null;
   translatedContent: string | null;

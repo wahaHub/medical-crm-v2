@@ -47,6 +47,8 @@ export function toMessageDTO(
     id: entity.id,
     conversationId: entity.conversationId,
     senderId: entity.senderId,
+    senderRole: entity.senderRole,
+    senderName: entity.senderName,
     content: entity.content,
     originalLanguage: entity.originalLanguage,
     translatedContent: entity.translatedContent,

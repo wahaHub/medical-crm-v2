@@ -40,3 +40,27 @@ export function useCaseQuestionnaire(caseId: string) {
     enabled: !!caseId,
   });
 }
+
+export function useCaseHospitalContacts(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'hospital-contacts'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/hospital-contacts`),
+    enabled: !!caseId,
+  });
+}
+
+export function useCaseQuotesCompare(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'quotes', 'compare'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/quotes/compare`),
+    enabled: !!caseId,
+  });
+}
+
+export function useCaseTimeline(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'timeline'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/timeline`),
+    enabled: !!caseId,
+  });
+}

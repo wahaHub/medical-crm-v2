@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { Tabs } from '@medical-crm/ui';
 import { CaseOverviewTab } from './tabs/case-overview-tab';
 import { CaseIntakeTab } from './tabs/case-intake-tab';
+import { CaseQuotesTab } from './tabs/case-quotes-tab';
+import { CaseTimelineTab } from './tabs/case-timeline-tab';
+import { CaseMessagesTab } from './tabs/case-messages-tab';
 import type { CaseSummary } from '@/lib/api-types';
 
 const TAB_ITEMS = [
@@ -43,9 +46,16 @@ export function CaseDetailTabs({ caseData }: CaseDetailTabsProps) {
       <div>
         {activeKey === 'overview' && <CaseOverviewTab caseData={caseData} />}
         {activeKey === 'intake' && <CaseIntakeTab caseId={caseData.id} />}
-        {activeKey !== 'overview' && activeKey !== 'intake' && (
-          <PlaceholderTab label={activeTab?.label ?? activeKey} />
-        )}
+        {activeKey === 'quotes' && <CaseQuotesTab caseId={caseData.id} />}
+        {activeKey === 'timeline' && <CaseTimelineTab caseId={caseData.id} />}
+        {activeKey === 'messages' && <CaseMessagesTab caseId={caseData.id} />}
+        {activeKey !== 'overview' &&
+          activeKey !== 'intake' &&
+          activeKey !== 'quotes' &&
+          activeKey !== 'timeline' &&
+          activeKey !== 'messages' && (
+            <PlaceholderTab label={activeTab?.label ?? activeKey} />
+          )}
       </div>
     </div>
   );

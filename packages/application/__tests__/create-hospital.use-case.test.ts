@@ -44,6 +44,7 @@ describe('CreateHospitalUseCase', () => {
         name: 'Test Hospital',
         type: 'BEAUTY',
         contactEmail: 'contact@hospital.com',
+        specialties: ['Cosmetic Surgery'],
       },
       adminActor,
     );
@@ -58,6 +59,7 @@ describe('CreateHospitalUseCase', () => {
         name: 'Test Hospital',
         type: 'BEAUTY',
         contactEmail: 'contact@hospital.com',
+        specialties: ['Cosmetic Surgery'],
       },
       adminActor,
     );
@@ -76,6 +78,7 @@ describe('CreateHospitalUseCase', () => {
           name: 'Test Hospital',
           type: 'BEAUTY',
           contactEmail: 'contact@hospital.com',
+          specialties: ['Cosmetic Surgery'],
         },
         hospitalActor,
       ),
@@ -88,6 +91,7 @@ describe('CreateHospitalUseCase', () => {
         name: 'Test Hospital',
         type: 'BEAUTY',
         contactEmail: 'contact@hospital.com',
+        specialties: ['Cosmetic Surgery'],
       },
       adminActor,
     );
@@ -103,7 +107,9 @@ describe('CreateHospitalUseCase', () => {
         contactEmail: 'info@fullhospital.com',
         contactPhone: '+1234567890',
         address: '123 Main St',
+        city: 'Bangkok',
         description: 'A great hospital',
+        specialties: ['Orthopedics', 'Cardiology'],
       },
       adminActor,
     );
@@ -119,6 +125,7 @@ describe('CreateHospitalUseCase', () => {
         name: 'Sync Hospital',
         type: 'BEAUTY',
         contactEmail: 'sync@hospital.com',
+        specialties: ['Cosmetic Surgery'],
       },
       adminActor,
     );

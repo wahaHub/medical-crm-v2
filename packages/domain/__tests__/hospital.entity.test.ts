@@ -4,7 +4,7 @@ import { Hospital } from '../src/entities/hospital.entity.js';
 function makeHospital(overrides: Partial<ConstructorParameters<typeof Hospital>[0]> = {}) {
   return new Hospital({
     id: 'h-1', name: 'Test Hospital', nameEn: 'Test Hospital EN',
-    address: null, phone: null, email: null, description: null,
+    address: null, city: null, phone: null, email: null, description: null,
     logoUrl: null, specialties: null,
     status: 'PENDING', type: 'COSMETIC',
     createdAt: new Date('2026-01-01'), updatedAt: new Date('2026-01-01'),

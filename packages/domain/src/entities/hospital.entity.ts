@@ -7,6 +7,7 @@ export interface HospitalProps {
   name: string;
   nameEn: string;
   address: string | null;
+  city: string | null;
   phone: string | null;
   email: string | null;
   description: string | null;
@@ -23,6 +24,7 @@ export class Hospital {
   name: string;
   nameEn: string;
   address: string | null;
+  city: string | null;
   phone: string | null;
   email: string | null;
   description: string | null;
@@ -38,6 +40,7 @@ export class Hospital {
     this.name = props.name;
     this.nameEn = props.nameEn;
     this.address = props.address;
+    this.city = props.city;
     this.phone = props.phone;
     this.email = props.email;
     this.description = props.description;

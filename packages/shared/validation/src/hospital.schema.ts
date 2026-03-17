@@ -9,7 +9,9 @@ export const createHospitalSchema = z.object({
   contactEmail: z.string().email(),
   contactPhone: z.string().optional(),
   address: z.string().optional(),
+  city: z.string().max(200).optional(),
   description: z.string().optional(),
+  specialties: z.array(z.string()).min(1),
 });
 
 export const hospitalListQuerySchema = z.object({

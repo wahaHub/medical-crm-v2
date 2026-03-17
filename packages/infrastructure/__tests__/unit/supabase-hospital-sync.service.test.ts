@@ -20,6 +20,7 @@ function makeHospital(overrides: Partial<ConstructorParameters<typeof Hospital>[
     name: '测试医院',
     nameEn: 'Test Hospital',
     address: '123 Main St',
+    city: null,
     phone: '+1-555-0100',
     email: 'contact@hospital.com',
     description: 'A test hospital',

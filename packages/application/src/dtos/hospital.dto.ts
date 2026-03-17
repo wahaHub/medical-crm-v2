@@ -5,6 +5,7 @@ export interface HospitalDTO {
   name: string;
   nameEn: string | null;
   address: string | null;
+  city: string | null;
   phone: string | null;
   email: string | null;
   description: string | null;

@@ -97,6 +97,7 @@ describe('Hospital routes', () => {
         name: 'Test Hospital',
         type: 'COSMETIC',
         contactEmail: 'hospital@test.com',
+        specialties: ['Cosmetic Surgery'],
       };
 
       const res = await app.request('/api/v2/hospitals', {

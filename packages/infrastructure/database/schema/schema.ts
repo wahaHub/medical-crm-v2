@@ -52,6 +52,7 @@ export const hospitals = pgTable("hospitals", {
 	name: varchar({ length: 200 }).notNull(),
 	nameEn: varchar("name_en", { length: 200 }),
 	address: text(),
+	city: varchar({ length: 200 }),
 	phone: varchar({ length: 50 }),
 	email: varchar({ length: 255 }),
 	description: text(),

@@ -35,6 +35,7 @@ describe('GenerateRegistrationTokenUseCase', () => {
     name: 'Test Hospital',
     nameEn: 'Test Hospital EN',
     address: '123 Main St',
+    city: null,
     phone: '+1234567890',
     email: 'contact@hospital.com',
     description: null,

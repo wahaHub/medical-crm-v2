@@ -11,7 +11,9 @@ export interface CreateHospitalInput {
   contactEmail: string;
   contactPhone?: string;
   address?: string;
+  city?: string;
   description?: string;
+  specialties: string[];
 }
 
 export class CreateHospitalUseCase {
@@ -31,11 +33,12 @@ export class CreateHospitalUseCase {
       name: input.name,
       nameEn: '',
       address: input.address ?? null,
+      city: input.city ?? null,
       phone: input.contactPhone ?? null,
       email: input.contactEmail,
       description: input.description ?? null,
       logoUrl: null,
-      specialties: null,
+      specialties: input.specialties,
       status: 'PENDING',
       type: input.type,
       createdAt: now,

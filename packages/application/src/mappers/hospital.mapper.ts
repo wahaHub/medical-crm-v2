@@ -7,6 +7,7 @@ export function toHospitalDTO(entity: Hospital): HospitalDTO {
     name: entity.name,
     nameEn: entity.nameEn,
     address: entity.address,
+    city: entity.city,
     phone: entity.phone,
     email: entity.email,
     description: entity.description,

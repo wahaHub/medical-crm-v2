@@ -1,0 +1,1 @@
+ALTER TABLE hospitals ADD COLUMN city VARCHAR(200);

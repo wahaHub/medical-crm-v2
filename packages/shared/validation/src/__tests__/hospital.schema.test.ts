@@ -7,6 +7,7 @@ describe('createHospitalSchema', () => {
       name: 'Test Hospital',
       type: 'COSMETIC',
       contactEmail: 'test@example.com',
+      specialties: ['Cosmetic Surgery'],
     });
     expect(result.success).toBe(true);
   });

@@ -17,7 +17,7 @@ Add a Patient Dashboard and a conversational Chat Widget to the Medora Beauty ma
 ```
 Visitor lands on site
   → Clicks floating chat bubble (bottom-right)
-  → Step 1: Select category (Face / Body / Breast / Non-Surgical)
+  → Step 1: Select category (Face / Body / Non-Surgical)
   → Step 2: Select procedure (dynamic list from CRM v2 API)
   → Step 3: Select destination (country/city)
   → Step 4: Enter name, email, phone → "Find My Hospitals"
@@ -30,12 +30,14 @@ Visitor lands on site
     - Link to complete medical intake form
 ```
 
+**Note**: Categories match existing DB schema: `face`, `body`, `non-surgical` (3 categories). Breast procedures are under `body`.
+
 ## Authentication
 
 ### "Try First, Register Later" Model
 
-1. **Temp session**: When visitor submits name + email + phone, backend creates a temporary patient record and returns a short-lived session token (JWT, 24h). Stored in `localStorage`.
-2. **Zero-friction entry**: After selecting a hospital, the chat widget uses this token to enter messaging immediately — no email verification required.
+1. **Temp session**: When visitor submits name + email + phone, backend creates a temporary patient record and returns a session token (JWT, 24h) via an `httpOnly` cookie set through a BFF proxy endpoint.
+2. **Zero-friction entry**: After selecting a hospital, the chat widget uses this cookie-based session to enter messaging immediately — no email verification required.
 3. **Email with magic link**: Sent after hospital selection. Contains link to:
    - Set password (optional) to create a full account
    - Complete medical intake form
@@ -43,7 +45,20 @@ Visitor lands on site
 
 ### Auth Middleware
 
-All `/api/patient/*` endpoints use a dedicated `patientAuthMiddleware` (not Keycloak). Validates the session token from `Authorization: Bearer <token>` header.
+All `/api/patient/*` endpoints use a dedicated `patientAuthMiddleware` (not Keycloak). Validates the session token from `httpOnly` cookie.
+
+### BFF Proxy & CORS
+
+The Medora Beauty frontend proxies all CRM v2 API calls through a local BFF layer:
+- **Development**: Vite `proxy` config forwards `/api/patient/*` to CRM v2 server
+- **Production**: Vercel serverless function at `/api/patient/[...path].ts` proxies to CRM v2, sets `httpOnly` cookies on the marketing site domain
+- This avoids CORS issues and keeps session tokens out of JavaScript-accessible storage
+
+### Abuse Protection
+
+- `POST /api/patient/register` is rate-limited: max 5 requests per IP per hour
+- `POST /api/patient/magic-link` is rate-limited: max 3 requests per email per hour
+- Cloudflare Turnstile CAPTCHA on the contact info step (Step 4) to prevent bot submissions
 
 ## Chat Widget (Floating)
 
@@ -52,7 +67,7 @@ All `/api/patient/*` endpoints use a dedicated `patientAuthMiddleware` (not Keyc
 - **Position**: Fixed bottom-right corner, all pages
 - **Bubble**: ~56px circle with icon + unread badge
 - **Window**: ~380×520px, expandable/collapsible
-- **Replaces**: Current `ConsultationModal` functionality (existing `/get-quote` page retained as fallback)
+- **Replaces**: Both the existing `ChatWidget.tsx` (Gemini AI chat) and `ConsultationModal`. The Gemini AI ChatWidget is removed; its component file is replaced by the new onboarding chat widget. `ConsultationContext` is deprecated. Existing `/get-quote` page retained as fallback.
 
 ### Dual Mode
 
@@ -65,7 +80,7 @@ All `/api/patient/*` endpoints use a dedicated `patientAuthMiddleware` (not Keyc
 
 | Step | UI Element | Data Source |
 |------|-----------|-------------|
-| 1. Category | Card grid: Face, Body, Breast, Non-Surgical | Static |
+| 1. Category | Card grid: Face, Body, Non-Surgical | Static |
 | 2. Procedure | Scrollable list filtered by category | `GET /api/patient/procedures?category=X` |
 | 3. Destination | Country/city selector | `GET /api/patient/destinations` |
 | 4. Contact Info | Form: name, email, phone + submit button | `POST /api/patient/register` |
@@ -77,13 +92,27 @@ All `/api/patient/*` endpoints use a dedicated `patientAuthMiddleware` (not Keyc
 - Message list with timestamps and read indicators
 - Text input with send button
 - Polling: 5s interval when chat window is open, stopped when closed
-- Unread badge on bubble: polled every 30s via `GET /api/patient/cases`
+- Unread badge on bubble: polled every 30s via `GET /api/patient/cases` (only when authenticated; skipped for unauthenticated visitors)
 
 ### Technical Implementation
 
 - State machine via `useReducer` to manage onboarding steps
 - Component: `ChatWidget.tsx` (always rendered in `App.tsx`)
 - Shares React Query cache with Dashboard for message data
+
+## Error States & Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| `match-hospitals` returns 0 results | Show "No matching hospitals found. Contact us directly at [email]" with a contact link |
+| Network error during any onboarding step | Show inline error with "Retry" button; preserve user's previous answers |
+| Session token expires mid-chat | Show "Session expired" banner with "Sign in again" link (triggers magic link flow) |
+| Patient already exists (same email) | `POST /register` returns existing patient's token; merges into existing account |
+| Quote expired | Quote tab shows "This quote has expired" with option to message hospital for a new one |
+
+## Dashboard Layout
+
+`/dashboard/*` routes render **outside** the marketing site's `<Header />` and `<Footer />`. In `App.tsx`, dashboard routes use a separate route group with `DashboardLayout` (own top bar + navigation), not the marketing shell.
 
 ## Patient Dashboard
 
@@ -121,7 +150,7 @@ Three tabs:
 | Tab | Content |
 |-----|---------|
 | **Messages** (default) | Chat with hospital — shared data with ChatWidget. MessageList + MessageInput. |
-| **Quote** | Quote details: line items, total price, validity period. Accept / Reject buttons. |
+| **Quote** | Quote details: line items, total price, validity period. Accept / Reject buttons (with confirmation modal; actions are final and cannot be undone). |
 | **Overview** | Case info: diagnosis, treatment stage, timeline milestones. |
 
 ### Medical Intake (`/dashboard/intake/:caseId`)
@@ -166,7 +195,7 @@ All endpoints prefixed with `/api/patient/` and protected by `patientAuthMiddlew
 |--------|------|-------------|
 | GET | `/api/patient/cases` | Patient's case list with status, hospital info, unread count |
 | GET | `/api/patient/cases/:id` | Case detail |
-| GET | `/api/patient/cases/:id/messages` | Message list for case |
+| GET | `/api/patient/cases/:id/messages` | Message list for case (paginated: `?cursor=X&limit=50`, polling fetches `?after=lastMessageId`) |
 | POST | `/api/patient/cases/:id/messages` | Send message |
 | GET | `/api/patient/cases/:id/quote` | View quote |
 | POST | `/api/patient/cases/:id/quote/accept` | Accept quote |
@@ -222,12 +251,18 @@ App.tsx
 - **Message polling**: 5s interval when chat window or Messages tab is open; stopped when closed.
 - **Unread badge**: ChatBubble polls `GET /patient/cases` every 30s for total unread count.
 
-## Styling
+## Styling & i18n
 
 - Reuse existing Tailwind theme: gold-600 (`#a6794b`), navy-900 (`#0f201b`), sage palette
 - Fonts: Cormorant Garamond (headings) + Lato (body) — consistent with marketing site
 - Dashboard uses same luxury/medical aesthetic as rest of site
 - Responsive: Dashboard works on mobile; ChatWidget adapts to small screens
+
+### Internationalization
+
+- Chat Widget and Dashboard UI strings added to existing `translations.ts` (all 9 languages)
+- CRM v2 patient API accepts `Accept-Language` header; returns localized content where available (procedure names, hospital descriptions)
+- Onboarding flow respects `LanguageContext` — category/procedure names shown in user's selected language
 
 ## Out of Scope (Post-MVP)
 

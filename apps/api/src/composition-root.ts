@@ -30,6 +30,7 @@ import {
   GetHospitalCasesUseCase,
   GenerateRegistrationTokenUseCase,
   RegisterHospitalUserUseCase,
+  ValidateRegistrationTokenUseCase,
   CreateConversationUseCase,
   ListConversationsUseCase,
   GetConversationUseCase,
@@ -213,6 +214,7 @@ interface AppServices {
   getHospitalCases: GetHospitalCasesUseCase;
   generateRegistrationToken: GenerateRegistrationTokenUseCase;
   registerHospitalUser: RegisterHospitalUserUseCase;
+  validateRegistrationToken: ValidateRegistrationTokenUseCase;
 
   // use cases — conversations
   createConversation: CreateConversationUseCase;
@@ -450,6 +452,7 @@ export function getServices(): AppServices {
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
       generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
+      validateRegistrationToken: new ValidateRegistrationTokenUseCase(registrationTokenRepo, hospitalManagementRepo),
 
       createConversation: new CreateConversationUseCase(conversationRepo),
       listConversations: new ListConversationsUseCase(conversationRepo),

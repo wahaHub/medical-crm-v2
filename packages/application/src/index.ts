@@ -64,6 +64,8 @@ export { GetHospitalCasesUseCase } from './use-cases/hospitals/get-hospital-case
 export { GenerateRegistrationTokenUseCase } from './use-cases/hospitals/generate-registration-token.use-case.js';
 export { RegisterHospitalUserUseCase } from './use-cases/hospitals/register-hospital-user.use-case.js';
 export type { RegisterHospitalUserInput } from './use-cases/hospitals/register-hospital-user.use-case.js';
+export { ValidateRegistrationTokenUseCase } from './use-cases/hospitals/validate-registration-token.use-case.js';
+export type { TokenValidationResult } from './use-cases/hospitals/validate-registration-token.use-case.js';
 
 // Use Cases — Conversations
 export { CreateConversationUseCase } from './use-cases/conversations/create-conversation.use-case.js';

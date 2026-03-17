@@ -27,6 +27,15 @@ app.post('/api/v2/auth/hospital/register', async (c) => {
   return c.json(result, 201);
 });
 
+// Public: validate hospital registration token (no auth required)
+app.get('/api/v2/auth/hospital/register', async (c) => {
+  const token = c.req.query('token');
+  if (!token) return c.json({ error: 'Token is required' }, 400);
+  const svc = getServices();
+  const result = await svc.validateRegistrationToken.execute(token);
+  return c.json(result);
+});
+
 // Public: booking request routes (no auth required)
 import publicBookingRoutes from './routes/public-booking.routes.js';
 app.route('/', publicBookingRoutes);
@@ -48,6 +57,15 @@ app.onError((err, c) => {
   if (err instanceof DomainError) {
     const status = mapErrorToStatus(err.code);
     return c.json({ error: err.message, code: err.code }, status as 200 | 400 | 401 | 403 | 404 | 500);
+  }
+  // Catch Zod validation errors (e.g. from @hono/zod-openapi) and return 400 instead of 500.
+  // Use name check to avoid importing zod directly (it's a transitive dependency).
+  if (err.name === 'ZodError' && 'errors' in err) {
+    return c.json({
+      error: 'Validation failed',
+      code: 'VALIDATION_FAILED',
+      details: (err as Error & { errors: unknown[] }).errors,
+    }, 400);
   }
   console.error('Unhandled error:', err);
   return c.json({ error: 'Internal server error' }, 500);

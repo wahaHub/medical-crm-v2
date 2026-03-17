@@ -159,7 +159,7 @@ apps/admin/src/
 | 模块 | 内容 |
 |------|------|
 | 统计卡片 | 总数 / 未分配 / 已分配 / 治疗中 / 已完成（对应 `CaseStatsDTO`: `total` / `unassigned` / `assigned` / `inTreatment` / `completed`） |
-| 筛选栏 | 搜索框 + 状态下拉 + 阶段下拉 + 日期范围 |
+| 筛选栏 | 搜索框（`search`）+ 状态下拉（`assignmentStatus`）+ 阶段下拉（`treatmentStage`）— 仅使用 `caseListQuerySchema` 已支持的参数。注：无日期范围过滤（schema 不支持） |
 | 案例表格 | 案例编号（`caseNumber`）、患者名（`patientName`）、状态 Badge（`status`）、阶段（`stage`）、分配状态（`assignmentStatus`）、创建日期（`createdAt`）— 均为 `CaseDTO` 已有字段。注：`CaseDTO` 不含医院数/报价数，不显示这两列 |
 
 **"新建案例" 按钮** → `/cases/new`（临时入口，因 `CompleteSignup` 尚未实现）。
@@ -219,7 +219,7 @@ apps/admin/src/
   - 状态为 `ACTIVE` 时：显示 **"撤回审核"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "PENDING" }`
   - 额外：显示 **"停用医院"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "INACTIVE" }`（需二次确认弹窗）
   - 状态为 `INACTIVE` 时：显示 **"重新启用"** 按钮 → `PATCH /hospitals/{id}/status` body: `{ status: "PENDING" }`
-- 消费者网站链接预览（可点击打开）
+- ~~消费者网站链接预览~~ — **`HospitalDTO` 无 website/public URL 字段，Phase A 不显示此项。** 后续可通过 Supabase 查询获取公开页面 URL，或扩展 `HospitalDTO` 增加 `publicUrl` 字段。
 - **⚠️ Supabase 同步缺口：** 当前 `update-hospital-status.use-case.ts` 未调用 Supabase 同步服务。且 China 同步逻辑只映射 `ACTIVE→approved`，其余映射为 `pending`（无 `INACTIVE` 对应）。状态变更目前仅更新 CRM 数据库。如需同步到消费者网站，需在 Phase A 实现时补充同步逻辑。
 
 ### 3.6 New Hospital (`/hospitals/new`)
@@ -255,12 +255,18 @@ apps/admin/src/
 
 **专科列表（根据医院类型动态切换）：**
 
-| 类型 | 数据源 | 分类 |
-|------|--------|------|
-| **COSMETIC** | Main Supabase `procedures` 表 | 按 category 分组：Face（Rhinoplasty, Facelift, Blepharoplasty...）/ Body（Liposuction, BBL, Breast Augmentation...）/ Non-surgical（Botox, Fillers, Laser...） |
-| **REGULAR** | China Medical Supabase `hospital_i18n.departments_info` | 科室列表：心脏科、肿瘤科、神经科、骨科、眼科、消化科、呼吸科、肝病科、肾内科、血液科、内分泌科、风湿免疫科、整形外科、泌尿外科、妇产科、儿科、皮肤科、耳鼻喉科 |
+| 类型 | 数据来源 | 分类 |
+|------|----------|------|
+| **COSMETIC** | Main Supabase `procedures` 表 | Face / Body / Non-surgical |
+| **REGULAR** | China Medical Supabase `hospital_i18n.departments_info` | 心脏科、肿瘤科、骨科等 18 个科室 |
 
 切换类型时重置已选专科。
+
+**⚠️ API 缺口：** 当前无 Admin BFF 路由获取专科选项列表。需新增：
+- `GET /api/admin/specialties?type=COSMETIC` — BFF 路由，从 Main Supabase 查询 `procedures` 表
+- `GET /api/admin/specialties?type=REGULAR` — BFF 路由，返回 REGULAR 科室硬编码列表（或从 China Medical Supabase 查询）
+
+这些是 Admin Portal 的 BFF 路由（`apps/admin/src/app/api/specialties/route.ts`），不是后端 API。
 
 #### Step 3: 生成邀请链接（手动触发）
 
@@ -307,6 +313,7 @@ apps/admin/src/
 | `GET /hospitals/{id}/users` | 新 API | 医院用户账号列表（角色、最后登录） | Hospital Detail 账号列表 | P1（暂不显示该模块） |
 | `GET /hospitals/{id}/stats` | 新 API | 医院统计（案例数、活跃、已完成） | Hospital Detail 统计卡片 | P1（暂不显示） |
 | `update-hospital-status` 增加 Supabase 同步 | 逻辑修复 | 状态变更同步到消费者网站 | Hospital Detail 审核操作 | P1（当前仅更新 CRM DB） |
+| Admin BFF `GET /api/admin/specialties` 路由 | 新 BFF 路由 | 获取专科选项列表（按类型） | New Hospital Step 2 | **P0（阻塞 New Hospital）** |
 | `ticketListQuerySchema` 增加 `caseId` 过滤 | Schema 扩展 | 按案例过滤工单 | Case Detail → Support Tab | **P0（阻塞 Support Tab）** |
 | `RequestRefundUseCase` 支持 ADMIN 角色 | 权限扩展 | Admin 代操作退款 | Case Detail → Orders Tab | P1（当前 Admin 只读） |
 | ~~`GET /cases/{id}/ai-summary`~~ | ~~不需要~~ | `CaseDTO.aiSummary` 已包含摘要数据 | — | — |

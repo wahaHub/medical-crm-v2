@@ -7,6 +7,11 @@ import { CaseIntakeTab } from './tabs/case-intake-tab';
 import { CaseQuotesTab } from './tabs/case-quotes-tab';
 import { CaseTimelineTab } from './tabs/case-timeline-tab';
 import { CaseMessagesTab } from './tabs/case-messages-tab';
+import { CaseJourneyTab } from './tabs/case-journey-tab';
+import { CaseConsultationsTab } from './tabs/case-consultations-tab';
+import { CaseOrdersTab } from './tabs/case-orders-tab';
+import { CaseSupportTab } from './tabs/case-support-tab';
+import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
 import type { CaseSummary } from '@/lib/api-types';
 
 const TAB_ITEMS = [
@@ -22,14 +27,6 @@ const TAB_ITEMS = [
   { key: 'ai-summary', label: 'AI Summary' },
 ];
 
-function PlaceholderTab({ label }: { label: string }) {
-  return (
-    <div className="flex items-center justify-center py-20 text-slate-400 text-sm">
-      {label} — coming soon
-    </div>
-  );
-}
-
 interface CaseDetailTabsProps {
   caseData: CaseSummary;
 }
@@ -37,7 +34,7 @@ interface CaseDetailTabsProps {
 export function CaseDetailTabs({ caseData }: CaseDetailTabsProps) {
   const [activeKey, setActiveKey] = useState('overview');
 
-  const activeTab = TAB_ITEMS.find((t) => t.key === activeKey);
+  const caseExt = caseData as CaseSummary & Record<string, unknown>;
 
   return (
     <div className="space-y-6">
@@ -49,13 +46,13 @@ export function CaseDetailTabs({ caseData }: CaseDetailTabsProps) {
         {activeKey === 'quotes' && <CaseQuotesTab caseId={caseData.id} />}
         {activeKey === 'timeline' && <CaseTimelineTab caseId={caseData.id} />}
         {activeKey === 'messages' && <CaseMessagesTab caseId={caseData.id} />}
-        {activeKey !== 'overview' &&
-          activeKey !== 'intake' &&
-          activeKey !== 'quotes' &&
-          activeKey !== 'timeline' &&
-          activeKey !== 'messages' && (
-            <PlaceholderTab label={activeTab?.label ?? activeKey} />
-          )}
+        {activeKey === 'journey' && <CaseJourneyTab caseId={caseData.id} />}
+        {activeKey === 'consultations' && <CaseConsultationsTab caseId={caseData.id} />}
+        {activeKey === 'orders' && <CaseOrdersTab caseId={caseData.id} />}
+        {activeKey === 'support' && <CaseSupportTab caseId={caseData.id} />}
+        {activeKey === 'ai-summary' && (
+          <CaseAiSummaryTab aiSummary={caseExt.aiSummary as string | null | undefined} />
+        )}
       </div>
     </div>
   );

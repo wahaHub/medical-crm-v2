@@ -156,6 +156,11 @@ import {
   GetFaqItemUseCase,
   UpdateFaqItemUseCase,
   DeleteFaqItemUseCase,
+  CreateEmailTemplateUseCase,
+  ListEmailTemplatesUseCase,
+  GetEmailTemplateUseCase,
+  UpdateEmailTemplateUseCase,
+  DeleteEmailTemplateUseCase,
   GetProfileUseCase,
   UpdateProfileUseCase,
   ChangePasswordUseCase,
@@ -187,6 +192,7 @@ import {
   DrizzleServiceCatalogRepository,
   DrizzleBookingRequestRepository,
   DrizzleChatbotFaqRepository,
+  DrizzleEmailTemplateRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -389,6 +395,13 @@ interface AppServices {
   updateFaqItem: UpdateFaqItemUseCase;
   deleteFaqItem: DeleteFaqItemUseCase;
 
+  // use cases — email templates
+  createEmailTemplate: CreateEmailTemplateUseCase;
+  listEmailTemplates: ListEmailTemplatesUseCase;
+  getEmailTemplate: GetEmailTemplateUseCase;
+  updateEmailTemplate: UpdateEmailTemplateUseCase;
+  deleteEmailTemplate: DeleteEmailTemplateUseCase;
+
   // use cases — user settings
   getProfile: GetProfileUseCase;
   updateProfile: UpdateProfileUseCase;
@@ -493,6 +506,7 @@ export function getServices(): AppServices {
     const serviceCatalogRepo = new DrizzleServiceCatalogRepository(crmDb);
     const bookingRequestRepo = new DrizzleBookingRequestRepository(crmDb);
     const faqRepo = new DrizzleChatbotFaqRepository(crmDb);
+    const emailTemplateRepo = new DrizzleEmailTemplateRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
     const idempotencyGuard = new IdempotencyGuard(crmDb);
 
@@ -656,6 +670,12 @@ export function getServices(): AppServices {
       getFaqItem: new GetFaqItemUseCase(faqRepo),
       updateFaqItem: new UpdateFaqItemUseCase(faqRepo),
       deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),
+
+      createEmailTemplate: new CreateEmailTemplateUseCase(emailTemplateRepo),
+      listEmailTemplates: new ListEmailTemplatesUseCase(emailTemplateRepo),
+      getEmailTemplate: new GetEmailTemplateUseCase(emailTemplateRepo),
+      updateEmailTemplate: new UpdateEmailTemplateUseCase(emailTemplateRepo),
+      deleteEmailTemplate: new DeleteEmailTemplateUseCase(emailTemplateRepo),
 
       getProfile: new GetProfileUseCase(userRepo),
       updateProfile: new UpdateProfileUseCase(userRepo, keycloakAdmin),

@@ -13,8 +13,18 @@ export interface DashboardData {
 }
 
 export interface CaseSummary {
-  id: string; caseNumber: string; patientName: string; status: string;
-  assignmentStatus: string; treatmentStage: string; createdAt: string;
+  id: string;
+  caseNumber: string;
+  patientName: string;
+  status: string;
+  assignmentStatus: string;
+  treatmentStage: string | null;
+  patientCountry?: string | null;
+  patientLanguage?: string | null;
+  primaryDiagnosis?: string | null;
+  riskLevel?: string | null;
+  aiSummary?: string | null;
+  createdAt: string;
 }
 
 export interface CaseStats {

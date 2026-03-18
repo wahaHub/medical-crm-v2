@@ -1,20 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 interface TokenData {
+  hospitalName: string;
+  hospitalNameEn?: string | null;
   email: string;
-  hospital: {
-    id: string;
-    name: string;
-    nameEn?: string;
-  };
   expiresAt: string;
 }
 
+const HOSPITAL_PORTAL_LOGIN_URL =
+  process.env.NEXT_PUBLIC_HOSPITAL_PORTAL_LOGIN_URL ?? 'http://localhost:3000/auth/login';
+
 export default function HospitalRegisterPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
@@ -40,15 +39,15 @@ export default function HospitalRegisterPage() {
     const verify = async () => {
       try {
         const res = await fetch(`/api/auth/hospital/register?token=${encodeURIComponent(token)}`);
-        const data = (await res.json()) as { success?: boolean; data?: TokenData; error?: { message?: string } };
+        const data = (await res.json()) as TokenData & { error?: string; code?: string };
 
-        if (!res.ok || !data.success) {
-          setErrorMessage(data.error?.message ?? 'Invalid or expired registration link.');
+        if (!res.ok) {
+          setErrorMessage(data.error ?? 'Invalid or expired registration link.');
           setState('error');
           return;
         }
 
-        setTokenData(data.data ?? null);
+        setTokenData(data);
         setState('form');
       } catch {
         setErrorMessage('Failed to verify the registration link. Please try again.');
@@ -96,24 +95,24 @@ export default function HospitalRegisterPage() {
         body: JSON.stringify({ token, username, password }),
       });
 
-      const data = (await res.json()) as { success?: boolean; error?: { code?: string; message?: string } };
+      const data = (await res.json()) as { code?: string; error?: string };
 
-      if (!res.ok || !data.success) {
-        if (data.error?.code === 'USERNAME_EXISTS') {
+      if (!res.ok) {
+        if (data.code === 'CONFLICT' && data.error?.toLowerCase().includes('username')) {
           setFieldErrors((prev) => ({ ...prev, username: 'This username is already taken.' }));
-        } else if (data.error?.code === 'EMAIL_EXISTS') {
+        } else if (data.code === 'CONFLICT' && data.error?.toLowerCase().includes('email')) {
           setSubmitError('This email has already been registered.');
         } else {
-          setSubmitError(data.error?.message ?? 'Registration failed. Please try again.');
+          setSubmitError(data.error ?? 'Registration failed. Please try again.');
         }
         setSubmitting(false);
         return;
       }
 
       setState('success');
-      // Redirect to hospital portal login after 3 seconds
+      // Redirect to Hospital Portal login after 3 seconds.
       setTimeout(() => {
-        router.push('/auth/login');
+        window.location.href = HOSPITAL_PORTAL_LOGIN_URL;
       }, 3000);
     } catch {
       setSubmitError('An unexpected error occurred. Please try again.');
@@ -206,7 +205,9 @@ export default function HospitalRegisterPage() {
               </p>
             </div>
             <button
-              onClick={() => router.push('/auth/login')}
+              onClick={() => {
+                window.location.href = HOSPITAL_PORTAL_LOGIN_URL;
+              }}
               className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 py-2.5 text-sm font-medium text-white hover:from-teal-600 hover:to-emerald-700 transition-all"
             >
               Go to Login
@@ -238,9 +239,9 @@ export default function HospitalRegisterPage() {
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-teal-900 text-sm">{tokenData.hospital.name}</p>
-                  {tokenData.hospital.nameEn && (
-                    <p className="text-xs text-teal-700 mt-0.5">{tokenData.hospital.nameEn}</p>
+                  <p className="font-semibold text-teal-900 text-sm">{tokenData.hospitalName}</p>
+                  {tokenData.hospitalNameEn && (
+                    <p className="text-xs text-teal-700 mt-0.5">{tokenData.hospitalNameEn}</p>
                   )}
                   <p className="text-xs text-teal-600 mt-1 flex items-center gap-1">
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">

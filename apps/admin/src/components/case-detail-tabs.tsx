@@ -34,8 +34,6 @@ interface CaseDetailTabsProps {
 export function CaseDetailTabs({ caseData }: CaseDetailTabsProps) {
   const [activeKey, setActiveKey] = useState('overview');
 
-  const caseExt = caseData as CaseSummary & Record<string, unknown>;
-
   return (
     <div className="space-y-6">
       <Tabs items={TAB_ITEMS} activeKey={activeKey} onChange={setActiveKey} />
@@ -51,7 +49,7 @@ export function CaseDetailTabs({ caseData }: CaseDetailTabsProps) {
         {activeKey === 'orders' && <CaseOrdersTab caseId={caseData.id} />}
         {activeKey === 'support' && <CaseSupportTab caseId={caseData.id} />}
         {activeKey === 'ai-summary' && (
-          <CaseAiSummaryTab aiSummary={caseExt.aiSummary as string | null | undefined} />
+          <CaseAiSummaryTab aiSummary={caseData.aiSummary} />
         )}
       </div>
     </div>

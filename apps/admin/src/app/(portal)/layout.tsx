@@ -23,6 +23,11 @@ export default async function PortalLayout({ children }: { children: React.React
     roles: keycloakUser.roles,
   };
 
+  const isAdmin = user.roles.some((role) => role.toLowerCase() === 'admin');
+  if (!isAdmin) {
+    redirect('/auth/logout');
+  }
+
   return (
     <AuthProvider user={user}>
       <QueryProvider>

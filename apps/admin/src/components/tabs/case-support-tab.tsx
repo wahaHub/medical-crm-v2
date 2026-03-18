@@ -34,7 +34,7 @@ interface CaseSupportTabProps {
 
 // ── Status Badge Colors ───────────────────────────────────────────────
 
-const STATUS_OPTIONS = ['OPEN', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'];
+const STATUS_OPTIONS = ['OPEN', 'ASSIGNED', 'PENDING_INFO', 'RESOLVED', 'CLOSED'];
 
 // ── Ticket Detail Panel ───────────────────────────────────────────────
 

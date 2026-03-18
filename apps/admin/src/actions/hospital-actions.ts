@@ -30,7 +30,10 @@ export async function generateRegistrationToken(hospitalId: string, email: strin
     throw new Error(err.message ?? 'Failed to generate registration token');
   }
 
-  return res.json() as Promise<{ token: string; registrationUrl: string }>;
+  const payload = await res.json() as { token: string; expiresAt: string };
+  const adminOrigin = process.env.ADMIN_ORIGIN ?? process.env.NEXT_PUBLIC_ADMIN_ORIGIN ?? 'http://localhost:3002';
+  const registrationUrl = `${adminOrigin}/auth/hospital/register?token=${encodeURIComponent(payload.token)}`;
+  return { ...payload, registrationUrl };
 }
 
 export async function createHospital(data: Record<string, unknown>) {

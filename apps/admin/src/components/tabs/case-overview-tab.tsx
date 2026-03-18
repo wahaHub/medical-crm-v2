@@ -9,24 +9,19 @@ import type { CaseSummary } from '@/lib/api-types';
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS = [
-  'ACTIVE',
-  'ON_HOLD',
-  'COMPLETED',
-  'CANCELLED',
-  'ARCHIVED',
+const ASSIGNMENT_STATUS_OPTIONS = [
+  'UNASSIGNED',
+  'ASSIGNED',
 ];
 
-const STAGE_OPTIONS = [
-  'INQUIRY',
-  'ASSESSMENT',
-  'TREATMENT_PLANNING',
-  'AWAITING_TRAVEL',
+const TREATMENT_STAGE_OPTIONS = [
+  'CONFIRMED',
   'IN_TREATMENT',
   'POST_TREATMENT',
+  'COMPLETED',
   'FOLLOW_UP',
-  'CLOSED',
 ];
+const FIRST_TREATMENT_STAGE = 'CONFIRMED';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -88,8 +83,8 @@ function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
 
 function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
   const [isPending, startTransition] = useTransition();
-  const [selectedStatus, setSelectedStatus] = useState(caseData.status);
-  const [selectedStage, setSelectedStage] = useState(caseData.treatmentStage ?? '');
+  const [selectedAssignmentStatus, setSelectedAssignmentStatus] = useState(caseData.assignmentStatus);
+  const [selectedStage, setSelectedStage] = useState(caseData.treatmentStage ?? FIRST_TREATMENT_STAGE);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -98,7 +93,7 @@ function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
     setSuccess(null);
     startTransition(async () => {
       try {
-        await updateCaseStatus(caseData.id, selectedStatus);
+        await updateCaseStatus(caseData.id, selectedAssignmentStatus);
         setSuccess('Status updated successfully');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to update status');
@@ -109,9 +104,9 @@ function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
   function handleStageAdvance() {
     setError(null);
     setSuccess(null);
-    const currentIdx = STAGE_OPTIONS.indexOf(selectedStage);
-    const nextStage = currentIdx >= 0 && currentIdx < STAGE_OPTIONS.length - 1
-      ? STAGE_OPTIONS[currentIdx + 1]
+    const currentIdx = TREATMENT_STAGE_OPTIONS.indexOf(selectedStage);
+    const nextStage = currentIdx >= 0 && currentIdx < TREATMENT_STAGE_OPTIONS.length - 1
+      ? (TREATMENT_STAGE_OPTIONS[currentIdx + 1] ?? null)
       : null;
 
     if (!nextStage) {
@@ -130,8 +125,8 @@ function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
     });
   }
 
-  const currentStageIdx = STAGE_OPTIONS.indexOf(selectedStage);
-  const isLastStage = currentStageIdx >= STAGE_OPTIONS.length - 1;
+  const currentStageIdx = TREATMENT_STAGE_OPTIONS.indexOf(selectedStage);
+  const isLastStage = currentStageIdx >= TREATMENT_STAGE_OPTIONS.length - 1;
 
   return (
     <Card>
@@ -170,12 +165,12 @@ function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
         {/* Status dropdown */}
         <div className="flex items-center gap-3">
           <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
+            value={selectedAssignmentStatus}
+            onChange={(e) => setSelectedAssignmentStatus(e.target.value)}
             disabled={isPending}
             className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           >
-            {STATUS_OPTIONS.map((s) => (
+            {ASSIGNMENT_STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
             ))}
           </select>
@@ -183,7 +178,7 @@ function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
             variant="default"
             size="sm"
             onClick={handleStatusUpdate}
-            disabled={isPending || selectedStatus === caseData.status}
+            disabled={isPending || selectedAssignmentStatus === caseData.assignmentStatus}
           >
             {isPending ? 'Saving…' : 'Update Status'}
           </Button>

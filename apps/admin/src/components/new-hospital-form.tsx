@@ -65,12 +65,12 @@ export function NewHospitalForm() {
     const payload: Record<string, unknown> = {
       name: name.trim(),
       type,
-      email: email.trim(),
+      contactEmail: email.trim(),
       specialties: selectedSpecialties,
     };
     if (address.trim()) payload.address = address.trim();
     if (city.trim()) payload.city = city.trim();
-    if (phone.trim()) payload.phone = phone.trim();
+    if (phone.trim()) payload.contactPhone = phone.trim();
     if (description.trim()) payload.description = description.trim();
 
     startTransition(async () => {

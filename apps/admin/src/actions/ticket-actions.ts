@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api-fetch';
 import { revalidatePath } from 'next/cache';
 
 export async function replyToTicket(ticketId: string, content: string) {
-  const res = await apiFetch(`/api/v2/tickets/${ticketId}/replies`, {
+  const res = await apiFetch(`/api/v2/tickets/${ticketId}/reply`, {
     method: 'POST',
     body: JSON.stringify({ content }),
   });
@@ -20,8 +20,8 @@ export async function replyToTicket(ticketId: string, content: string) {
 
 export async function assignTicket(ticketId: string, assigneeId: string) {
   const res = await apiFetch(`/api/v2/tickets/${ticketId}/assign`, {
-    method: 'PATCH',
-    body: JSON.stringify({ assigneeId }),
+    method: 'POST',
+    body: JSON.stringify({ assignedTo: assigneeId }),
   });
 
   if (!res.ok) {

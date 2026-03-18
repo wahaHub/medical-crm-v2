@@ -21,7 +21,7 @@ export async function createCase(data: Record<string, unknown>) {
 export async function updateCaseStatus(caseId: string, status: string) {
   const res = await apiFetch(`/api/v2/cases/${caseId}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ assignmentStatus: status }),
   });
 
   if (!res.ok) {
@@ -36,7 +36,7 @@ export async function updateCaseStatus(caseId: string, status: string) {
 export async function updateCaseStage(caseId: string, stage: string) {
   const res = await apiFetch(`/api/v2/cases/${caseId}/stage`, {
     method: 'PATCH',
-    body: JSON.stringify({ stage }),
+    body: JSON.stringify({ treatmentStage: stage }),
   });
 
   if (!res.ok) {

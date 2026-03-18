@@ -15,7 +15,7 @@ interface ApiMessage {
   senderRole: string;
   senderName?: string;
   senderId?: string;
-  status?: string;
+  moderationStatus?: string;
   createdAt: string;
   isAiTranslated?: boolean;
   messageType?: string;
@@ -32,11 +32,18 @@ interface ApiMessage {
 interface ApiConversation {
   id: string;
   caseId?: string;
+  category?: string;
+  title?: string | null;
+  hospitalId?: string | null;
   participantName?: string;
   participantRole?: string;
   lastMessageAt?: string;
   lastMessagePreview?: string;
   unreadCount?: number;
+}
+
+interface PaginatedLike<T> {
+  data?: T[];
 }
 
 interface CaseMessagesTabProps {
@@ -59,6 +66,14 @@ function mapApiMessages(messages: ApiMessage[]): ChatMessage[] {
     aiSummary: m.aiSummary,
     attachments: m.attachments,
   }));
+}
+
+function unwrapList<T>(raw: unknown): T[] {
+  if (Array.isArray(raw)) return raw as T[];
+  if (raw && typeof raw === 'object' && Array.isArray((raw as PaginatedLike<T>).data)) {
+    return (raw as PaginatedLike<T>).data ?? [];
+  }
+  return [];
 }
 
 // ── Conversation List Item ───────────────────────────────────────────
@@ -94,7 +109,7 @@ function ConversationItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-0.5">
           <span className="text-sm font-semibold text-slate-800 truncate">
-            {conv.participantName ?? 'Conversation'}
+            {conv.participantName ?? conv.title ?? conv.hospitalId ?? 'Conversation'}
           </span>
           {(conv.unreadCount ?? 0) > 0 && (
             <span className="ml-2 px-1.5 py-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full shrink-0">
@@ -105,9 +120,9 @@ function ConversationItem({
         {conv.lastMessagePreview && (
           <p className="text-xs text-slate-500 truncate">{conv.lastMessagePreview}</p>
         )}
-        {conv.participantRole && (
+        {(conv.participantRole ?? conv.category) && (
           <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-            {conv.participantRole}
+            {conv.participantRole ?? conv.category}
           </span>
         )}
       </div>
@@ -128,7 +143,7 @@ function ModerationNotice({
   onReject: (id: string) => void;
   isPending: boolean;
 }) {
-  const pendingMessages = messages.filter((m) => m.status === 'PENDING_APPROVAL');
+  const pendingMessages = messages.filter((m) => m.moderationStatus === 'REVIEW');
   if (pendingMessages.length === 0) return null;
 
   return (
@@ -172,7 +187,7 @@ function ModerationNotice({
 
 function ChatPanel({ conversationId }: { conversationId: string }) {
   const { data: raw, refetch } = useMessages(conversationId);
-  const apiMessages: ApiMessage[] = (raw as ApiMessage[] | undefined) ?? [];
+  const apiMessages = unwrapList<ApiMessage>(raw);
   const [isSending, startSend] = useTransition();
   const [isModerating, startModerate] = useTransition();
 
@@ -248,7 +263,7 @@ export function CaseMessagesTab({ caseId }: CaseMessagesTabProps) {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
 
   const { data: raw, isLoading } = useConversations({ caseId });
-  const conversations: ApiConversation[] = (raw as ApiConversation[] | undefined) ?? [];
+  const conversations = unwrapList<ApiConversation>(raw);
 
   return (
     <div className="flex h-[600px] rounded-xl border border-slate-200 overflow-hidden bg-white">

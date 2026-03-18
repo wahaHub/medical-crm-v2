@@ -1,137 +1,238 @@
 'use client';
 
-import { Card, CardHeader, CardTitle, EmptyState, StatusBadge } from '@medical-crm/ui';
-import { Plane, Shield, Building, Car, CheckCircle, Clock, Circle } from 'lucide-react';
+import { useMemo, useState, useTransition } from 'react';
+import { Button, Card, CardHeader, CardTitle, EmptyState, Modal } from '@medical-crm/ui';
+import { Calendar, Edit3, Plus, Trash2 } from 'lucide-react';
 import { useCaseJourney, useCaseMilestones } from '@/queries/use-journey';
-
-// ── Types ─────────────────────────────────────────────────────────────
+import { addMilestone, deleteMilestone, updateJourney, updateMilestone } from '@/actions/journey-actions';
 
 interface JourneyData {
-  visa?: {
-    status?: string;
-    type?: string;
-    expiryDate?: string;
-    notes?: string;
-  };
-  insurance?: {
-    provider?: string;
-    policyNumber?: string;
-    coverageType?: string;
-    expiryDate?: string;
-    notes?: string;
-  };
-  accommodation?: {
-    name?: string;
-    address?: string;
-    checkIn?: string;
-    checkOut?: string;
-    notes?: string;
-  };
-  transport?: {
-    type?: string;
-    details?: string;
-    notes?: string;
-  };
+  visa?: unknown | null;
+  insurance?: unknown | null;
+  accommodation?: unknown | null;
+  transportation?: unknown | null;
+  postCare?: unknown | null;
 }
 
-interface Milestone {
+interface JourneyMilestone {
   id: string;
-  title: string;
-  description?: string;
-  status?: string;
-  completedAt?: string;
-  dueAt?: string;
+  eventType: string;
+  eventDate: string;
+  note?: string | null;
+  isVisibleToPatient: boolean;
 }
 
 interface CaseJourneyTabProps {
   caseId: string;
 }
 
-// ── Helper ────────────────────────────────────────────────────────────
+const MILESTONE_EVENT_TYPES = [
+  'FLIGHT_ARRIVAL',
+  'FLIGHT_DEPARTURE',
+  'HOTEL_CHECKIN',
+  'HOTEL_CHECKOUT',
+  'HOSPITAL_APPOINTMENT',
+  'PRE_OP_EXAM',
+  'SURGERY_DATE',
+  'POST_OP_CHECKUP',
+  'MEDICATION_SCHEDULE',
+  'FOLLOW_UP_REMOTE',
+  'VISA_APPLICATION',
+  'VISA_APPROVED',
+  'INSURANCE_CONFIRMED',
+  'CUSTOM',
+];
 
-function InfoRow({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="space-y-0.5">
-      <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</dt>
-      <dd className="text-sm font-medium text-slate-800">{value || <span className="text-slate-400">—</span>}</dd>
-    </div>
-  );
+function toMilestones(raw: unknown): JourneyMilestone[] {
+  if (Array.isArray(raw)) return raw as JourneyMilestone[];
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: JourneyMilestone[] }).data)) {
+    return (raw as { data?: JourneyMilestone[] }).data ?? [];
+  }
+  return [];
 }
 
-function SectionCard({
-  icon: Icon,
-  title,
-  children,
-  iconColor,
-}: {
-  icon: React.ElementType;
-  title: string;
-  children: React.ReactNode;
-  iconColor: string;
-}) {
+function formatDate(value: string): string {
+  return new Date(value).toLocaleString();
+}
+
+function toJson(value: unknown): string {
+  if (value == null) return '';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return '';
+  }
+}
+
+function parseJsonInput(value: string, fieldLabel: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    throw new Error(`${fieldLabel} must be valid JSON`);
+  }
+}
+
+function JsonBlock({ title, value }: { title: string; value: unknown }) {
+  const pretty = toJson(value);
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <div className={`p-1.5 rounded-lg ${iconColor}`}>
-            <Icon size={16} />
-          </div>
-          <CardTitle>{title}</CardTitle>
-        </div>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">{children}</dl>
+      {pretty ? (
+        <pre className="overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">{pretty}</pre>
+      ) : (
+        <p className="text-sm text-slate-400">No data</p>
+      )}
     </Card>
   );
 }
 
-// ── Milestone Item ────────────────────────────────────────────────────
+function MilestoneRow({
+  caseId,
+  milestone,
+  onUpdated,
+}: {
+  caseId: string;
+  milestone: JourneyMilestone;
+  onUpdated: () => Promise<unknown>;
+}) {
+  const [isPending, startTransition] = useTransition();
 
-function MilestoneItem({ milestone }: { milestone: Milestone }) {
-  const isCompleted = milestone.status === 'COMPLETED' || !!milestone.completedAt;
-  const isInProgress = milestone.status === 'IN_PROGRESS';
+  function handleDelete() {
+    if (!window.confirm('Delete this milestone?')) return;
+    startTransition(async () => {
+      await deleteMilestone(caseId, milestone.id);
+      await onUpdated();
+    });
+  }
+
+  function handleEditNote() {
+    const nextNote = window.prompt('Update note', milestone.note ?? '');
+    if (nextNote == null) return;
+    startTransition(async () => {
+      await updateMilestone(caseId, milestone.id, { note: nextNote || null });
+      await onUpdated();
+    });
+  }
+
+  function handleToggleVisibility() {
+    startTransition(async () => {
+      await updateMilestone(caseId, milestone.id, { isVisibleToPatient: !milestone.isVisibleToPatient });
+      await onUpdated();
+    });
+  }
 
   return (
-    <div className="flex items-start gap-4 py-3 border-b border-slate-100 last:border-0">
-      <div className="mt-0.5 shrink-0">
-        {isCompleted ? (
-          <CheckCircle size={20} className="text-emerald-500" />
-        ) : isInProgress ? (
-          <Clock size={20} className="text-amber-500" />
-        ) : (
-          <Circle size={20} className="text-slate-300" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-semibold text-slate-800">{milestone.title}</p>
-          {milestone.status && <StatusBadge status={milestone.status} />}
+    <div className="rounded-lg border border-slate-200 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-800">{milestone.eventType.replace(/_/g, ' ')}</p>
+          <p className="text-xs text-slate-500">{formatDate(milestone.eventDate)}</p>
+          {milestone.note && (
+            <p className="mt-1 text-sm text-slate-600">{milestone.note}</p>
+          )}
+          <p className="mt-1 text-xs text-slate-500">
+            {milestone.isVisibleToPatient ? 'Visible to patient' : 'Internal only'}
+          </p>
         </div>
-        {milestone.description && (
-          <p className="text-xs text-slate-500 mt-0.5">{milestone.description}</p>
-        )}
-        <div className="flex items-center gap-4 mt-1 text-xs text-slate-400">
-          {milestone.completedAt && (
-            <span>Completed: {new Date(milestone.completedAt).toLocaleDateString()}</span>
-          )}
-          {milestone.dueAt && !milestone.completedAt && (
-            <span>Due: {new Date(milestone.dueAt).toLocaleDateString()}</span>
-          )}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleEditNote} disabled={isPending}>
+            <Edit3 size={13} className="mr-1" />
+            Edit Note
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleToggleVisibility} disabled={isPending}>
+            {milestone.isVisibleToPatient ? 'Hide' : 'Show'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDelete} disabled={isPending}>
+            <Trash2 size={13} className="mr-1" />
+            Delete
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Main Export ───────────────────────────────────────────────────────
-
 export function CaseJourneyTab({ caseId }: CaseJourneyTabProps) {
   const { data: rawJourney, isLoading: journeyLoading } = useCaseJourney(caseId);
-  const { data: rawMilestones, isLoading: milestonesLoading } = useCaseMilestones(caseId);
+  const { data: rawMilestones, isLoading: milestonesLoading, refetch } = useCaseMilestones(caseId);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [editJourneyOpen, setEditJourneyOpen] = useState(false);
+  const [addMilestoneOpen, setAddMilestoneOpen] = useState(false);
 
-  const journey = rawJourney as JourneyData | undefined;
-  const milestones = (rawMilestones as Milestone[] | undefined) ?? [];
+  const journey = (rawJourney as JourneyData | null) ?? null;
+  const milestones = useMemo(() => toMilestones(rawMilestones), [rawMilestones]);
+
+  const [visaJson, setVisaJson] = useState('');
+  const [insuranceJson, setInsuranceJson] = useState('');
+  const [accommodationJson, setAccommodationJson] = useState('');
+  const [transportationJson, setTransportationJson] = useState('');
+  const [postCareJson, setPostCareJson] = useState('');
+
+  const [eventType, setEventType] = useState(MILESTONE_EVENT_TYPES[0] ?? 'CUSTOM');
+  const [eventDate, setEventDate] = useState('');
+  const [note, setNote] = useState('');
+  const [visibleToPatient, setVisibleToPatient] = useState(true);
 
   const isLoading = journeyLoading || milestonesLoading;
+
+  function openJourneyEditor() {
+    setError(null);
+    setVisaJson(toJson(journey?.visa));
+    setInsuranceJson(toJson(journey?.insurance));
+    setAccommodationJson(toJson(journey?.accommodation));
+    setTransportationJson(toJson(journey?.transportation));
+    setPostCareJson(toJson(journey?.postCare));
+    setEditJourneyOpen(true);
+  }
+
+  function handleSaveJourney() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await updateJourney(caseId, {
+          visa: parseJsonInput(visaJson, 'Visa'),
+          insurance: parseJsonInput(insuranceJson, 'Insurance'),
+          accommodation: parseJsonInput(accommodationJson, 'Accommodation'),
+          transportation: parseJsonInput(transportationJson, 'Transportation'),
+          postCare: parseJsonInput(postCareJson, 'Post care'),
+        });
+        await refetch();
+        setEditJourneyOpen(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update journey');
+      }
+    });
+  }
+
+  function handleAddMilestone() {
+    if (!eventDate) {
+      setError('Milestone date is required');
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        await addMilestone(caseId, {
+          eventType,
+          eventDate: new Date(eventDate).toISOString(),
+          note: note.trim() || undefined,
+          isVisibleToPatient: visibleToPatient,
+        });
+        await refetch();
+        setAddMilestoneOpen(false);
+        setEventDate('');
+        setNote('');
+        setVisibleToPatient(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to add milestone');
+      }
+    });
+  }
 
   if (isLoading) {
     return (
@@ -143,82 +244,143 @@ export function CaseJourneyTab({ caseId }: CaseJourneyTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Visa */}
-      <SectionCard icon={Plane} title="Visa" iconColor="bg-blue-50 text-blue-600">
-        <InfoRow label="Status" value={journey?.visa?.status} />
-        <InfoRow label="Type" value={journey?.visa?.type} />
-        <InfoRow
-          label="Expiry Date"
-          value={journey?.visa?.expiryDate ? new Date(journey.visa.expiryDate).toLocaleDateString() : undefined}
-        />
-        <InfoRow label="Notes" value={journey?.visa?.notes} />
-      </SectionCard>
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={openJourneyEditor}>
+          <Edit3 size={14} className="mr-1" />
+          Edit Journey
+        </Button>
+      </div>
 
-      {/* Insurance */}
-      <SectionCard icon={Shield} title="Insurance" iconColor="bg-green-50 text-green-600">
-        <InfoRow label="Provider" value={journey?.insurance?.provider} />
-        <InfoRow label="Policy Number" value={journey?.insurance?.policyNumber} />
-        <InfoRow label="Coverage Type" value={journey?.insurance?.coverageType} />
-        <InfoRow
-          label="Expiry Date"
-          value={
-            journey?.insurance?.expiryDate
-              ? new Date(journey.insurance.expiryDate).toLocaleDateString()
-              : undefined
-          }
-        />
-        <InfoRow label="Notes" value={journey?.insurance?.notes} />
-      </SectionCard>
+      {error && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
 
-      {/* Accommodation */}
-      <SectionCard icon={Building} title="Accommodation" iconColor="bg-purple-50 text-purple-600">
-        <InfoRow label="Name" value={journey?.accommodation?.name} />
-        <InfoRow label="Address" value={journey?.accommodation?.address} />
-        <InfoRow
-          label="Check In"
-          value={
-            journey?.accommodation?.checkIn
-              ? new Date(journey.accommodation.checkIn).toLocaleDateString()
-              : undefined
-          }
-        />
-        <InfoRow
-          label="Check Out"
-          value={
-            journey?.accommodation?.checkOut
-              ? new Date(journey.accommodation.checkOut).toLocaleDateString()
-              : undefined
-          }
-        />
-        <InfoRow label="Notes" value={journey?.accommodation?.notes} />
-      </SectionCard>
+      <JsonBlock title="Visa" value={journey?.visa} />
+      <JsonBlock title="Insurance" value={journey?.insurance} />
+      <JsonBlock title="Accommodation" value={journey?.accommodation} />
+      <JsonBlock title="Transportation" value={journey?.transportation} />
+      <JsonBlock title="Post Care" value={journey?.postCare} />
 
-      {/* Transport */}
-      <SectionCard icon={Car} title="Transport" iconColor="bg-orange-50 text-orange-600">
-        <InfoRow label="Type" value={journey?.transport?.type} />
-        <InfoRow label="Details" value={journey?.transport?.details} />
-        <InfoRow label="Notes" value={journey?.transport?.notes} />
-      </SectionCard>
-
-      {/* Milestones */}
       <Card>
         <CardHeader>
-          <CardTitle>Milestones</CardTitle>
+          <CardTitle>Milestones ({milestones.length})</CardTitle>
+          <Button variant="outline" size="sm" onClick={() => setAddMilestoneOpen(true)}>
+            <Plus size={14} className="mr-1" />
+            Add Milestone
+          </Button>
         </CardHeader>
         {milestones.length === 0 ? (
           <EmptyState
-            icon={<CheckCircle size={36} />}
+            icon={<Calendar size={36} />}
             title="No milestones yet"
             description="Journey milestones will appear here as they are created."
           />
         ) : (
-          <div className="divide-y divide-slate-100">
+          <div className="space-y-3">
             {milestones.map((m) => (
-              <MilestoneItem key={m.id} milestone={m} />
+              <MilestoneRow key={m.id} caseId={caseId} milestone={m} onUpdated={refetch} />
             ))}
           </div>
         )}
       </Card>
+
+      <Modal
+        open={editJourneyOpen}
+        onClose={() => setEditJourneyOpen(false)}
+        title="Edit Journey (JSON)"
+        maxWidth="max-w-3xl"
+      >
+        <div className="space-y-3">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Visa</p>
+            <textarea value={visaJson} onChange={(event) => setVisaJson(event.target.value)} rows={4} className="w-full rounded-lg border border-slate-200 p-2 font-mono text-xs" />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Insurance</p>
+            <textarea value={insuranceJson} onChange={(event) => setInsuranceJson(event.target.value)} rows={4} className="w-full rounded-lg border border-slate-200 p-2 font-mono text-xs" />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Accommodation</p>
+            <textarea value={accommodationJson} onChange={(event) => setAccommodationJson(event.target.value)} rows={4} className="w-full rounded-lg border border-slate-200 p-2 font-mono text-xs" />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Transportation</p>
+            <textarea value={transportationJson} onChange={(event) => setTransportationJson(event.target.value)} rows={4} className="w-full rounded-lg border border-slate-200 p-2 font-mono text-xs" />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Post Care</p>
+            <textarea value={postCareJson} onChange={(event) => setPostCareJson(event.target.value)} rows={4} className="w-full rounded-lg border border-slate-200 p-2 font-mono text-xs" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditJourneyOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button variant="default" size="sm" onClick={handleSaveJourney} disabled={isPending}>
+              {isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={addMilestoneOpen}
+        onClose={() => setAddMilestoneOpen(false)}
+        title="Add Milestone"
+        maxWidth="max-w-xl"
+      >
+        <div className="space-y-3">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Event Type</p>
+            <select
+              value={eventType}
+              onChange={(event) => setEventType(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+            >
+              {MILESTONE_EVENT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Event Date</p>
+            <input
+              type="datetime-local"
+              value={eventDate}
+              onChange={(event) => setEventDate(event.target.value)}
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Note</p>
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={visibleToPatient}
+              onChange={(event) => setVisibleToPatient(event.target.checked)}
+            />
+            Visible to patient
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setAddMilestoneOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button variant="default" size="sm" onClick={handleAddMilestone} disabled={isPending}>
+              {isPending ? 'Adding...' : 'Add'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

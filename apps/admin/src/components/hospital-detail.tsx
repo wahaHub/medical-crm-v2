@@ -77,7 +77,7 @@ const casesColumns: Column<CaseSummary>[] = [
 function RegistrationLinkSection({ hospitalId }: { hospitalId: string }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [result, setResult] = useState<{ token: string; registrationUrl: string } | null>(null);
+  const [result, setResult] = useState<{ token: string; expiresAt: string; registrationUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 

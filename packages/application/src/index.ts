@@ -297,3 +297,16 @@ export type { PatientDashboardDTO, AdminDashboardDTO, HospitalDashboardDTO } fro
 export { PatientDashboardUseCase } from './use-cases/dashboard/patient-dashboard.use-case.js';
 export { AdminDashboardUseCase } from './use-cases/dashboard/admin-dashboard.use-case.js';
 export { HospitalDashboardUseCase } from './use-cases/dashboard/hospital-dashboard.use-case.js';
+
+// Use Cases — Patient Dashboard
+export { GetPatientCasesUseCase } from './use-cases/patient-dashboard/get-patient-cases.use-case.js';
+export { GetPatientCaseDetailUseCase } from './use-cases/patient-dashboard/get-patient-case-detail.use-case.js';
+export { GetPatientConversationsUseCase } from './use-cases/patient-dashboard/get-patient-conversations.use-case.js';
+export { PatientAcceptQuoteUseCase } from './use-cases/patient-dashboard/patient-accept-quote.use-case.js';
+export { PatientRejectQuoteUseCase } from './use-cases/patient-dashboard/patient-reject-quote.use-case.js';
+export { SelectHospitalsUseCase } from './use-cases/patient-dashboard/select-hospitals.use-case.js';
+
+// Use Cases — Patient Intake
+export { GetIntakeTemplateUseCase } from './use-cases/patient-intake/get-intake-template.use-case.js';
+export type { IntakeTemplate, IntakeQuestion } from './use-cases/patient-intake/get-intake-template.use-case.js';
+export { SubmitIntakeUseCase } from './use-cases/patient-intake/submit-intake.use-case.js';

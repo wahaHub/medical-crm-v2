@@ -1,9 +1,10 @@
-import { eq, and, count, sql } from 'drizzle-orm';
+import { eq, and, count, sql, inArray } from 'drizzle-orm';
 import type { IConversationRepository, ConversationListQuery } from '@medical-crm/domain';
 import { Conversation } from '@medical-crm/domain';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
 import { conversations } from '../schema/index.js';
+import { cases } from '../schema/index.js';
 
 export class DrizzleConversationRepository implements IConversationRepository {
   constructor(private readonly db: CrmDb) {}
@@ -54,6 +55,22 @@ export class DrizzleConversationRepository implements IConversationRepository {
       totalPages,
       hasMore: page < totalPages,
     };
+  }
+
+  async findByPatientId(patientId: string): Promise<Conversation[]> {
+    // Conversations are linked to patients via cases.patientId
+    const patientCaseIds = this.db
+      .select({ id: cases.id })
+      .from(cases)
+      .where(eq(cases.patientId, patientId));
+
+    const rows = await this.db
+      .select()
+      .from(conversations)
+      .where(inArray(conversations.caseId, patientCaseIds))
+      .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`);
+
+    return rows.map((r) => this.rowToEntity(r));
   }
 
   async save(entity: Conversation): Promise<Conversation> {

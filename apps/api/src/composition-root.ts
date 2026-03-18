@@ -134,6 +134,14 @@ import {
   PatientDashboardUseCase,
   AdminDashboardUseCase,
   HospitalDashboardUseCase,
+  GetPatientCasesUseCase,
+  GetPatientCaseDetailUseCase,
+  GetPatientConversationsUseCase,
+  PatientAcceptQuoteUseCase,
+  PatientRejectQuoteUseCase,
+  GetIntakeTemplateUseCase,
+  SubmitIntakeUseCase,
+  SelectHospitalsUseCase,
   CreateBookingRequestUseCase,
   GetHospitalRecommendationsUseCase,
   SaveHospitalSelectionsUseCase,
@@ -354,6 +362,16 @@ interface AppServices {
   sendMagicLink: SendMagicLinkUseCase;
   verifyMagicLink: VerifyMagicLinkUseCase;
   setPassword: SetPasswordUseCase;
+
+  // use cases — patient dashboard
+  getPatientCases: GetPatientCasesUseCase;
+  getPatientCaseDetail: GetPatientCaseDetailUseCase;
+  getPatientConversations: GetPatientConversationsUseCase;
+  patientAcceptQuote: PatientAcceptQuoteUseCase;
+  patientRejectQuote: PatientRejectQuoteUseCase;
+  getIntakeTemplate: GetIntakeTemplateUseCase;
+  submitIntake: SubmitIntakeUseCase;
+  selectHospitals: SelectHospitalsUseCase;
 
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
@@ -577,6 +595,15 @@ export function getServices(): AppServices {
       getQuoteTemplate: new GetQuoteTemplateUseCase(serviceCatalogRepo),
       updateQuoteTemplate: new UpdateQuoteTemplateUseCase(serviceCatalogRepo),
       deleteQuoteTemplate: new DeleteQuoteTemplateUseCase(serviceCatalogRepo),
+
+      getPatientCases: new GetPatientCasesUseCase(caseRepo),
+      getPatientCaseDetail: new GetPatientCaseDetailUseCase(caseRepo),
+      getPatientConversations: new GetPatientConversationsUseCase(conversationRepo),
+      patientAcceptQuote: new PatientAcceptQuoteUseCase(quoteRepo, caseRepo),
+      patientRejectQuote: new PatientRejectQuoteUseCase(quoteRepo, caseRepo),
+      getIntakeTemplate: new GetIntakeTemplateUseCase(),
+      submitIntake: new SubmitIntakeUseCase(),
+      selectHospitals: new SelectHospitalsUseCase(caseRepo, chcRepo, conversationRepo),
 
       patientDashboard: new PatientDashboardUseCase(caseRepo, orderRepo, journeyRepo),
       adminDashboard: new AdminDashboardUseCase(caseRepo, ticketRepo, orderRepo),

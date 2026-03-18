@@ -774,9 +774,29 @@ export const chatbotFaqItems = pgTable("chatbot_faq_items", {
 	keywords: jsonb().default([]),
 	isActive: boolean("is_active").default(true).notNull(),
 	sortOrder: integer("sort_order").default(0).notNull(),
+	hospitalId: uuid("hospital_id"),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
 }, (table) => [
 	index("chatbot_faq_items_category_idx").using("btree", table.category.asc().nullsLast()),
 	index("chatbot_faq_items_is_active_idx").using("btree", table.isActive.asc().nullsLast()),
+	index("chatbot_faq_items_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast()),
+]);
+
+export const emailTemplates = pgTable("email_templates", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	hospitalId: uuid("hospital_id").notNull(),
+	name: varchar({ length: 200 }).notNull(),
+	type: varchar({ length: 50 }).notNull(),
+	subject: varchar({ length: 500 }).notNull(),
+	body: text().notNull(),
+	variables: jsonb().default([]),
+	status: varchar({ length: 20 }).default('draft').notNull(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	deletedAt: timestamp("deleted_at", { precision: 6, mode: 'string' }),
+}, (table) => [
+	index("email_templates_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast()),
+	index("email_templates_type_idx").using("btree", table.type.asc().nullsLast()),
+	index("email_templates_status_idx").using("btree", table.status.asc().nullsLast()),
 ]);

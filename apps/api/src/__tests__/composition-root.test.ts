@@ -46,9 +46,18 @@ vi.mock('@medical-crm/infrastructure/services', () => ({
   KeycloakAdminService: vi.fn(() => ({})),
   SupabaseHospitalSyncService: vi.fn(() => ({})),
   OpenAITranslationService: vi.fn(() => ({})),
+  RoutingMaterialsRepository: vi.fn(() => ({})),
+  StubEmailService: vi.fn(() => ({})),
+}));
+vi.mock('@medical-crm/infrastructure/supabase-china/materials', () => ({
+  ChinaMedicalMaterialsRepository: vi.fn(() => ({})),
+}));
+vi.mock('@medical-crm/infrastructure/database/idempotency', () => ({
+  IdempotencyGuard: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/domain', () => ({
   CaseAssignmentService: vi.fn(() => ({})),
+  PatientAuthService: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/application', () => ({
   CreateCaseUseCase: vi.fn(() => ({})),
@@ -196,6 +205,21 @@ vi.mock('@medical-crm/application', () => ({
   GetHospitalRecommendationsUseCase: vi.fn(() => ({})),
   SaveHospitalSelectionsUseCase: vi.fn(() => ({})),
   CompleteSignupUseCase: vi.fn(() => ({})),
+  // Patient use cases
+  ValidateRegistrationTokenUseCase: vi.fn(() => ({})),
+  GetPatientCasesUseCase: vi.fn(() => ({})),
+  GetPatientCaseDetailUseCase: vi.fn(() => ({})),
+  GetPatientConversationsUseCase: vi.fn(() => ({})),
+  PatientAcceptQuoteUseCase: vi.fn(() => ({})),
+  PatientRejectQuoteUseCase: vi.fn(() => ({})),
+  GetIntakeTemplateUseCase: vi.fn(() => ({})),
+  SubmitIntakeUseCase: vi.fn(() => ({})),
+  SelectHospitalsUseCase: vi.fn(() => ({})),
+  InitOnboardingUseCase: vi.fn(() => ({})),
+  MatchHospitalsUseCase: vi.fn(() => ({})),
+  SendMagicLinkUseCase: vi.fn(() => ({})),
+  VerifyMagicLinkUseCase: vi.fn(() => ({})),
+  SetPasswordUseCase: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({
@@ -382,5 +406,28 @@ describe('composition root', () => {
     expect(services).toHaveProperty('getHospitalRecommendations');
     expect(services).toHaveProperty('saveHospitalSelections');
     expect(services).toHaveProperty('completeSignup');
+
+    // Patient onboarding
+    expect(services).toHaveProperty('initOnboarding');
+    expect(services).toHaveProperty('matchHospitals');
+
+    // Patient auth
+    expect(services).toHaveProperty('patientAuthService');
+    expect(services).toHaveProperty('sendMagicLink');
+    expect(services).toHaveProperty('verifyMagicLink');
+    expect(services).toHaveProperty('setPassword');
+
+    // Patient dashboard / portal
+    expect(services).toHaveProperty('getPatientCases');
+    expect(services).toHaveProperty('getPatientCaseDetail');
+    expect(services).toHaveProperty('getPatientConversations');
+    expect(services).toHaveProperty('patientAcceptQuote');
+    expect(services).toHaveProperty('patientRejectQuote');
+    expect(services).toHaveProperty('getIntakeTemplate');
+    expect(services).toHaveProperty('submitIntake');
+    expect(services).toHaveProperty('selectHospitals');
+
+    // Validate registration token
+    expect(services).toHaveProperty('validateRegistrationToken');
   });
 });

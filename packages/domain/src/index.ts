@@ -236,6 +236,10 @@ export type { IBookingRequestRepository } from './ports/booking-request-reposito
 export { ChatbotFaqItem } from './entities/chatbot-faq-item.entity.js';
 export type { ChatbotFaqItemProps } from './entities/chatbot-faq-item.entity.js';
 
+// Email Template Entities
+export { EmailTemplate } from './entities/email-template.entity.js';
+export type { EmailTemplateProps } from './entities/email-template.entity.js';
+
 // Phase CDE: Chatbot FAQ Ports
 export type { IChatbotFaqRepository, ChatbotFaqListQuery } from './ports/chatbot-faq-repository.port.js';
 

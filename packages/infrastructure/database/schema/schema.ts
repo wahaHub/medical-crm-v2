@@ -475,7 +475,7 @@ export const caseHospitalContacts = pgTable("case_hospital_contacts", {
 // Phase 2 M3: Support Tickets
 export const ticketType = pgEnum("TicketType", ['ACCOUNT_ISSUES', 'PAYMENT_PROBLEMS', 'HOSPITAL_COMMUNICATION', 'DOCUMENT_HELP', 'VISA_TRAVEL', 'GENERAL_QUESTIONS', 'FEEDBACK'])
 export const ticketPriority = pgEnum("TicketPriority", ['HIGH', 'MEDIUM', 'LOW'])
-export const ticketStatus = pgEnum("TicketStatus", ['OPEN', 'ASSIGNED', 'PENDING_INFO', 'RESOLVED', 'CLOSED'])
+export const ticketStatus = pgEnum("TicketStatus", ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_INFO', 'RESOLVED', 'CLOSED'])
 export const ticketReplyRole = pgEnum("TicketReplyRole", ['ADMIN', 'PATIENT'])
 
 export const supportTickets = pgTable("support_tickets", {
@@ -526,9 +526,27 @@ export const caseEvents = pgTable("case_events", {
 });
 
 // Phase 2 M4: Orders + Packages
-export const packageType = pgEnum("PackageType", ['TREATMENT', 'CONSULTATION', 'BUNDLE', 'ADD_ON'])
+export const packageType = pgEnum("PackageType", [
+	'CONSULTATION',
+	'HEALTH_CHECKUP',
+	'SECOND_OPINION',
+	'VISA_PACKAGE',
+	'INSURANCE',
+	'ACCOMMODATION',
+	'TREATMENT_DEPOSIT',
+	'TRANSLATION',
+])
 export const packageStatus = pgEnum("PackageStatus", ['DRAFT', 'PUBLISHED'])
-export const orderType = pgEnum("OrderType", ['PACKAGE', 'CONSULTATION', 'CUSTOM'])
+export const orderType = pgEnum("OrderType", [
+	'CONSULTATION',
+	'HEALTH_CHECKUP',
+	'SECOND_OPINION',
+	'VISA_PACKAGE',
+	'INSURANCE',
+	'ACCOMMODATION',
+	'TREATMENT_DEPOSIT',
+	'TRANSLATION',
+])
 export const orderStatus = pgEnum("OrderStatus", ['PENDING_PAYMENT', 'PAID', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'REFUNDED'])
 
 export const packages = pgTable("packages", {
@@ -744,4 +762,21 @@ export const bookingRequestHospitals = pgTable("booking_request_hospitals", {
 }, (table) => [
 	unique("booking_request_hospitals_br_hospital_key").on(table.bookingRequestId, table.hospitalId),
 	index("idx_booking_request_hospitals_br").using("btree", table.bookingRequestId.asc().nullsLast()),
+]);
+
+export const chatbotFaqItems = pgTable("chatbot_faq_items", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	category: varchar({ length: 100 }).notNull(),
+	questionEn: text("question_en").notNull(),
+	questionZh: text("question_zh").notNull(),
+	answerEn: text("answer_en").notNull(),
+	answerZh: text("answer_zh").notNull(),
+	keywords: jsonb().default([]),
+	isActive: boolean("is_active").default(true).notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+}, (table) => [
+	index("chatbot_faq_items_category_idx").using("btree", table.category.asc().nullsLast()),
+	index("chatbot_faq_items_is_active_idx").using("btree", table.isActive.asc().nullsLast()),
 ]);

@@ -17,6 +17,7 @@ import journeyRoutes from './journey.routes.js';
 import questionCollectorRoutes from './question-collector.routes.js';
 import serviceCatalogRoutes from './service-catalog.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
+import chatbotFaqRoutes from './chatbot-faq.routes.js';
 
 const router = new OpenAPIHono();
 router.route('/', caseRoutes);
@@ -37,5 +38,6 @@ router.route('/', journeyRoutes);
 router.route('/', questionCollectorRoutes);
 router.route('/', serviceCatalogRoutes);
 router.route('/', dashboardRoutes);
+router.route('/', chatbotFaqRoutes);
 
 export default router;

@@ -232,6 +232,13 @@ export type { BookingRequestHospitalProps } from './entities/booking-request-hos
 // Phase 2 M9: BookingRequest Ports
 export type { IBookingRequestRepository } from './ports/booking-request-repository.port.js';
 
+// Phase CDE: Chatbot FAQ Entities
+export { ChatbotFaqItem } from './entities/chatbot-faq-item.entity.js';
+export type { ChatbotFaqItemProps } from './entities/chatbot-faq-item.entity.js';
+
+// Phase CDE: Chatbot FAQ Ports
+export type { IChatbotFaqRepository, ChatbotFaqListQuery } from './ports/chatbot-faq-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';
 export { PatientAuthService } from './services/patient-auth.service.js';

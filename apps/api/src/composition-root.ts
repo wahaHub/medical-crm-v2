@@ -151,6 +151,11 @@ import {
   SendMagicLinkUseCase,
   VerifyMagicLinkUseCase,
   SetPasswordUseCase,
+  CreateFaqItemUseCase,
+  ListFaqItemsUseCase,
+  GetFaqItemUseCase,
+  UpdateFaqItemUseCase,
+  DeleteFaqItemUseCase,
 } from '@medical-crm/application';
 import type { IMagicLinkEmailService } from '@medical-crm/application';
 import {
@@ -178,6 +183,7 @@ import {
   DrizzleQuestionCollectorRepository,
   DrizzleServiceCatalogRepository,
   DrizzleBookingRequestRepository,
+  DrizzleChatbotFaqRepository,
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
@@ -373,6 +379,13 @@ interface AppServices {
   submitIntake: SubmitIntakeUseCase;
   selectHospitals: SelectHospitalsUseCase;
 
+  // use cases — chatbot FAQ
+  createFaqItem: CreateFaqItemUseCase;
+  listFaqItems: ListFaqItemsUseCase;
+  getFaqItem: GetFaqItemUseCase;
+  updateFaqItem: UpdateFaqItemUseCase;
+  deleteFaqItem: DeleteFaqItemUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -446,10 +459,17 @@ export function getServices(): AppServices {
     const emailService = new StubEmailService();
 
     // Patient auth
-    const patientAuthService = new PatientAuthService(process.env['PATIENT_JWT_SECRET'] ?? 'dev-patient-secret');
+    const patientJwtSecret = process.env['PATIENT_JWT_SECRET'];
+    const nodeEnv = process.env.NODE_ENV;
+    const allowDevSecret = nodeEnv === 'development' || nodeEnv === 'test';
+    if (!patientJwtSecret && !allowDevSecret) {
+      throw new Error('PATIENT_JWT_SECRET must be configured outside development/test');
+    }
+    const patientAuthService = new PatientAuthService(patientJwtSecret ?? 'dev-patient-secret');
     const magicLinkEmailService: IMagicLinkEmailService = {
       sendMagicLink: async (email, link) => {
-        console.log(`[STUB] Magic link for ${email}: ${link}`);
+        const hasToken = link.includes('token=');
+        console.log(`[STUB] Magic link generated for ${email}${hasToken ? ' (token redacted)' : ''}`);
       },
     };
 
@@ -464,6 +484,7 @@ export function getServices(): AppServices {
     const qcRepo = new DrizzleQuestionCollectorRepository(crmDb);
     const serviceCatalogRepo = new DrizzleServiceCatalogRepository(crmDb);
     const bookingRequestRepo = new DrizzleBookingRequestRepository(crmDb);
+    const faqRepo = new DrizzleChatbotFaqRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
     const idempotencyGuard = new IdempotencyGuard(crmDb);
 
@@ -621,6 +642,12 @@ export function getServices(): AppServices {
       sendMagicLink: new SendMagicLinkUseCase(patientRepo, patientAuthService, magicLinkEmailService),
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
       setPassword: new SetPasswordUseCase(patientRepo),
+
+      createFaqItem: new CreateFaqItemUseCase(faqRepo),
+      listFaqItems: new ListFaqItemsUseCase(faqRepo),
+      getFaqItem: new GetFaqItemUseCase(faqRepo),
+      updateFaqItem: new UpdateFaqItemUseCase(faqRepo),
+      deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

@@ -310,3 +310,18 @@ export { SelectHospitalsUseCase } from './use-cases/patient-dashboard/select-hos
 export { GetIntakeTemplateUseCase } from './use-cases/patient-intake/get-intake-template.use-case.js';
 export type { IntakeTemplate, IntakeQuestion } from './use-cases/patient-intake/get-intake-template.use-case.js';
 export { SubmitIntakeUseCase } from './use-cases/patient-intake/submit-intake.use-case.js';
+
+// DTOs — Chatbot FAQ
+export type { ChatbotFaqItemDTO } from './dtos/chatbot-faq.dto.js';
+
+// Mappers — Chatbot FAQ
+export { toChatbotFaqItemDTO } from './mappers/chatbot-faq.mapper.js';
+
+// Use Cases — Chatbot FAQ
+export { CreateFaqItemUseCase } from './use-cases/chatbot-faq/create-faq-item.use-case.js';
+export type { CreateFaqItemInput } from './use-cases/chatbot-faq/create-faq-item.use-case.js';
+export { ListFaqItemsUseCase } from './use-cases/chatbot-faq/list-faq-items.use-case.js';
+export { GetFaqItemUseCase } from './use-cases/chatbot-faq/get-faq-item.use-case.js';
+export { UpdateFaqItemUseCase } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
+export type { UpdateFaqItemInput } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
+export { DeleteFaqItemUseCase } from './use-cases/chatbot-faq/delete-faq-item.use-case.js';

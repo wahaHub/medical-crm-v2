@@ -13,6 +13,7 @@
 **Assumptions:**
 - Backend enum migration (packageType, orderType, ticketStatus) will be done separately by Codex. This plan uses the **new patientsflow-aligned enums** from the spec.
 - Phase A+B code is already in place (admin shell, BFF helpers, React Query setup, auth).
+- `013_align_admin_portal_enums.sql` is already reserved for enum alignment. Any new migration in this plan must use the **next available number** (currently `014_*`).
 
 ---
 
@@ -35,7 +36,7 @@ Build the complete Chatbot FAQ backend from scratch, following existing patterns
 - Create: `packages/application/src/use-cases/chatbot-faq/update-faq-item.use-case.ts`
 - Create: `packages/application/src/use-cases/chatbot-faq/delete-faq-item.use-case.ts`
 - Modify: `packages/application/src/index.ts` (export use cases + DTO)
-- Create: `packages/infrastructure/database/migrations/013_chatbot_faq_items.sql`
+- Create: `packages/infrastructure/database/migrations/014_chatbot_faq_items.sql` (or next available number)
 - Modify: `packages/infrastructure/database/schema/schema.ts` (add chatbot_faq_items table)
 - Create: `packages/infrastructure/database/repositories/drizzle-chatbot-faq.repository.ts`
 - Modify: `packages/infrastructure/database/repositories/index.ts` (export)
@@ -82,7 +83,7 @@ Export from `packages/shared/validation/src/index.ts`.
 Check latest migration number first (`ls packages/infrastructure/database/migrations/ | tail -1`), then create the next one:
 
 ```sql
--- packages/infrastructure/database/migrations/013_chatbot_faq_items.sql
+-- packages/infrastructure/database/migrations/014_chatbot_faq_items.sql
 CREATE TABLE chatbot_faq_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   category VARCHAR(100) NOT NULL,
@@ -101,7 +102,7 @@ CREATE INDEX chatbot_faq_items_category_idx ON chatbot_faq_items(category);
 CREATE INDEX chatbot_faq_items_is_active_idx ON chatbot_faq_items(is_active);
 ```
 
-> **Note:** Check latest migration number — if 012 was already used for `city`, this should be 013. If other migrations were added since, increment accordingly.
+> **Note:** `013_align_admin_portal_enums.sql` already exists. Use `014_chatbot_faq_items.sql` unless another migration has been added after 013.
 
 - [ ] **Step 3: Add table to Drizzle schema**
 
@@ -282,7 +283,11 @@ git commit -m "feat(settings): add user profile and change-password API endpoint
 ### Task 3: Update AdminShell sidebar
 
 **Files:**
-- Modify: `apps/admin/src/components/admin-shell.tsx`
+- Modify or Create: `apps/admin/src/components/admin-shell.tsx`
+
+- [ ] **Step 0: Verify AdminShell file path before editing**
+
+Run a quick symbol/path check first. If `apps/admin/src/components/admin-shell.tsx` does not exist in your branch, create it from the current Phase A+B shell baseline (the file imported by `apps/admin/src/app/(portal)/layout.tsx` as `@/components/admin-shell`) before adding nav items below.
 
 - [ ] **Step 1: Add 7 new nav items**
 
@@ -332,6 +337,16 @@ git commit -m "feat(admin): add Messages, Orders, Packages, Support, QC, Chatbot
 **Files:**
 - Create: `apps/admin/src/app/(portal)/messages/page.tsx`
 - Create: `apps/admin/src/components/messages-center.tsx`
+- Create: `apps/admin/src/queries/use-conversations.ts`
+- Create: `apps/admin/src/actions/message-actions.ts`
+
+- [ ] **Step 0: Extract shared conversations hooks/actions from Case Messages tab**
+
+Move data-fetching and mutation logic currently used by `case-messages-tab.tsx` into reusable modules first:
+- `queries/use-conversations.ts`: `useConversations`, `useMessages`
+- `actions/message-actions.ts`: `sendMessage`, `approveMessage`, `rejectMessage`
+
+Then update `case-messages-tab.tsx` to consume these shared modules so the new standalone page reuses the same source of truth.
 
 - [ ] **Step 1: Create messages-center.tsx**
 
@@ -375,6 +390,7 @@ git commit -m "feat(admin): add Messages standalone page with global conversatio
 - Create: `apps/admin/src/app/api/orders/[id]/route.ts` (BFF route, was missing from Phase A+B)
 - Create: `apps/admin/src/app/(portal)/orders/page.tsx`
 - Create: `apps/admin/src/components/orders-list.tsx`
+- Create: `apps/admin/src/queries/use-orders.ts`
 
 - [ ] **Step 1: Add missing BFF route for order detail**
 
@@ -469,6 +485,7 @@ git commit -m "feat(admin): add Packages management page with CRUD and publish/u
 **Files:**
 - Create: `apps/admin/src/app/(portal)/support/page.tsx`
 - Create: `apps/admin/src/components/support-list.tsx`
+- Create: `apps/admin/src/queries/use-tickets.ts`
 
 - [ ] **Step 1: Create support-list.tsx**
 

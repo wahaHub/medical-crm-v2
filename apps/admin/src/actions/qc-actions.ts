@@ -20,7 +20,7 @@ export async function createTemplate(data: Record<string, unknown>) {
 
 export async function updateTemplate(id: string, data: Record<string, unknown>) {
   const res = await apiFetch(`/api/v2/question-templates/${id}`, {
-    method: 'PATCH',
+    method: 'PUT',
     body: JSON.stringify(data),
   });
 
@@ -35,7 +35,7 @@ export async function updateTemplate(id: string, data: Record<string, unknown>) 
 
 export async function customizeQuestions(templateId: string, customizedQuestions: unknown) {
   const res = await apiFetch(`/api/v2/question-templates/${templateId}/customizations`, {
-    method: 'PUT',
+    method: 'POST',
     body: JSON.stringify({ customizedQuestions }),
   });
 

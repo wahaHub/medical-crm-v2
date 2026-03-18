@@ -332,6 +332,16 @@ export type { EmailTemplateDTO } from './dtos/email-template.dto.js';
 // Mappers — Email Template
 export { toEmailTemplateDTO } from './mappers/email-template.mapper.js';
 
+// Use Cases — Email Templates
+export { CreateEmailTemplateUseCase } from './use-cases/email-templates/create-email-template.use-case.js';
+export type { CreateEmailTemplateInput } from './use-cases/email-templates/create-email-template.use-case.js';
+export { ListEmailTemplatesUseCase } from './use-cases/email-templates/list-email-templates.use-case.js';
+export type { EmailTemplateListQueryInput } from './use-cases/email-templates/list-email-templates.use-case.js';
+export { GetEmailTemplateUseCase } from './use-cases/email-templates/get-email-template.use-case.js';
+export { UpdateEmailTemplateUseCase } from './use-cases/email-templates/update-email-template.use-case.js';
+export type { UpdateEmailTemplateInput } from './use-cases/email-templates/update-email-template.use-case.js';
+export { DeleteEmailTemplateUseCase } from './use-cases/email-templates/delete-email-template.use-case.js';
+
 // Use Cases — User Settings
 export { GetProfileUseCase } from './use-cases/users/get-profile.use-case.js';
 export { UpdateProfileUseCase } from './use-cases/users/update-profile.use-case.js';

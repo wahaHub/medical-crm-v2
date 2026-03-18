@@ -326,6 +326,12 @@ export { UpdateFaqItemUseCase } from './use-cases/chatbot-faq/update-faq-item.us
 export type { UpdateFaqItemInput } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export { DeleteFaqItemUseCase } from './use-cases/chatbot-faq/delete-faq-item.use-case.js';
 
+// DTOs — Email Template
+export type { EmailTemplateDTO } from './dtos/email-template.dto.js';
+
+// Mappers — Email Template
+export { toEmailTemplateDTO } from './mappers/email-template.mapper.js';
+
 // Use Cases — User Settings
 export { GetProfileUseCase } from './use-cases/users/get-profile.use-case.js';
 export { UpdateProfileUseCase } from './use-cases/users/update-profile.use-case.js';

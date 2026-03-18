@@ -243,6 +243,9 @@ export type { EmailTemplateProps } from './entities/email-template.entity.js';
 // Phase CDE: Chatbot FAQ Ports
 export type { IChatbotFaqRepository, ChatbotFaqListQuery } from './ports/chatbot-faq-repository.port.js';
 
+// Email Template Ports
+export type { IEmailTemplateRepository, EmailTemplateListQuery } from './ports/email-template-repository.port.js';
+
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';
 export { PatientAuthService } from './services/patient-auth.service.js';

@@ -158,23 +158,29 @@ export function NewHospitalForm() {
               <div className="text-sm text-slate-400 py-2">Loading specialties...</div>
             ) : (
               <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 p-3 bg-slate-50">
-                {specialties.map((specialty) => {
-                  const selected = selectedSpecialties.includes(specialty);
-                  return (
-                    <button
-                      key={specialty}
-                      type="button"
-                      onClick={() => toggleSpecialty(specialty)}
-                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        selected
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
-                      }`}
-                    >
-                      {specialty}
-                    </button>
-                  );
-                })}
+                {specialties.length > 0 ? (
+                  specialties.map((specialty) => {
+                    const selected = selectedSpecialties.includes(specialty);
+                    return (
+                      <button
+                        key={specialty}
+                        type="button"
+                        onClick={() => toggleSpecialty(specialty)}
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          selected
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                        }`}
+                      >
+                        {specialty}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    No specialties returned. Please refresh and try again.
+                  </p>
+                )}
               </div>
             )}
             {selectedSpecialties.length > 0 && (

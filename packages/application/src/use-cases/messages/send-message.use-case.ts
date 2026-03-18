@@ -42,7 +42,7 @@ export class SendMessageUseCase {
     // 1. Validate access
     const conversation = await this.conversationRepo.findById(conversationId);
     if (!conversation) throw new NotFoundError('Conversation not found');
-    this.checkAccess(conversation, actor);
+    await this.checkAccess(conversation, actor);
 
     // 2. Determine recipientLang
     const recipientLang = await this.deriveRecipientLang(conversation, actor);
@@ -164,7 +164,7 @@ export class SendMessageUseCase {
     return 'en';
   }
 
-  private checkAccess(conversation: Conversation, actor: Actor): void {
+  private async checkAccess(conversation: Conversation, actor: Actor): Promise<void> {
     if (actor.role === 'ADMIN') return;
     if (actor.role === 'HOSPITAL') {
       if (conversation.hospitalId !== actor.hospitalId) {
@@ -174,6 +174,19 @@ export class SendMessageUseCase {
         throw new ForbiddenError(
           'Hospital cannot access admin-patient conversations',
         );
+      }
+      return;
+    }
+    if (actor.role === 'PATIENT') {
+      if (conversation.category === 'ADMIN_HOSPITAL') {
+        throw new ForbiddenError('No access to this conversation');
+      }
+      if (!conversation.caseId) {
+        throw new ForbiddenError('No access to this conversation');
+      }
+      const caseEntity = await this.caseRepo.findById(conversation.caseId);
+      if (!caseEntity || caseEntity.patientId !== actor.userId) {
+        throw new ForbiddenError('No access to this conversation');
       }
       return;
     }

@@ -1,6 +1,15 @@
 import { z } from 'zod';
 
-export const orderTypeSchema = z.enum(['PACKAGE', 'CONSULTATION', 'CUSTOM']);
+export const orderTypeSchema = z.enum([
+  'CONSULTATION',
+  'HEALTH_CHECKUP',
+  'SECOND_OPINION',
+  'VISA_PACKAGE',
+  'INSURANCE',
+  'ACCOMMODATION',
+  'TREATMENT_DEPOSIT',
+  'TRANSLATION',
+]);
 export const orderStatusSchema = z.enum(['PENDING_PAYMENT', 'PAID', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'REFUNDED']);
 
 export const createOrderSchema = z.object({

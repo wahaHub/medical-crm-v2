@@ -6,7 +6,7 @@ export interface UpdateBeforeAfterCaseInput {
   procedureName?: string;
   surgeonName?: string | null;
   description?: string | null;
-  images?: Array<{ url: string; type: 'before' | 'after' | 'combined' }>;
+  images?: Array<{ url: string }>;
 }
 
 export class UpdateBeforeAfterCaseUseCase {

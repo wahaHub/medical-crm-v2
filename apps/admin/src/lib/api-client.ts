@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from './session';
+import { clearSession, getSession, saveSession } from './session';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
@@ -12,15 +12,21 @@ export async function apiClient(path: string, init?: RequestInit) {
 
   // Check token expiry — refresh if within 60s
   if (session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
-    const refreshed = await refreshToken(session.refresh_token);
-    if (!refreshed) {
-      session.destroy();
+    if (!session.refresh_token) {
+      await clearSession();
       redirect('/auth/login');
     }
+    const refreshed = await refreshToken(session.refresh_token);
+    if (!refreshed) {
+      await clearSession();
+      redirect('/auth/login');
+    }
+    await saveSession({
+      access_token: refreshed.access_token,
+      refresh_token: refreshed.refresh_token,
+      expires_at: refreshed.expires_at,
+    });
     session.access_token = refreshed.access_token;
-    session.refresh_token = refreshed.refresh_token;
-    session.expires_at = refreshed.expires_at;
-    await session.save();
   }
 
   return fetch(`${API_URL}${path}`, {

@@ -12,6 +12,11 @@ describe('CaseNumber', () => {
     expect(cn.value).toBe('CASE-2026-12345');
   });
 
+  it('accepts 3-digit sequences (legacy data)', () => {
+    const cn = new CaseNumber('CASE-2024-001');
+    expect(cn.value).toBe('CASE-2024-001');
+  });
+
   it('throws on invalid format', () => {
     expect(() => new CaseNumber('INVALID')).toThrow('Invalid case number format');
     expect(() => new CaseNumber('CASE-26-001')).toThrow('Invalid case number format');

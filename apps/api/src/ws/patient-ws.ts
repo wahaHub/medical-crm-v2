@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import type { PatientAuthService } from '@medical-crm/domain';
 import { wsManager } from './ws-manager.js';
+import { getServices } from '../composition-root.js';
 
 export function registerPatientWs(
   app: Hono,
@@ -18,8 +19,14 @@ export function registerPatientWs(
         if (!token) { ws.close(4001, 'Unauthorized'); return; }
         try {
           const payload = await authService.verifySessionToken(token);
+          const { getPatientConversations } = getServices();
+          const conversations = await getPatientConversations.execute({ patientId: payload.userId });
+          const hasConversationAccess = conversations.some((item) => item.id === conversationId);
+          if (!hasConversationAccess) {
+            ws.close(4003, 'Forbidden');
+            return;
+          }
           wsManager.join(`conv:${conversationId}`, ws);
-          void payload; // payload used for auth validation
         } catch {
           ws.close(4001, 'Invalid token');
         }

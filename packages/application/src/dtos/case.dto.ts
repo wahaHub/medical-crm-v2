@@ -23,6 +23,42 @@ export interface CaseDTO {
   updatedAt: string;
 }
 
+/** Step-based medical intake mirroring the patient questionnaire flow */
+export interface MedicalIntakeDTO {
+  step1?: {
+    symptomLocation?: string;
+    symptomNature?: string[];
+    onsetTime?: string;
+    progressTrend?: string;
+    diagnosisStage?: string;
+    diseaseCategory?: string;
+  };
+  step2?: {
+    detailedDescription?: string;
+    aggravatingFactors?: string[];
+    relievingFactors?: string[];
+    previousTreatment?: string;
+  };
+  step3?: {
+    medicalHistory?: string[];
+    chronicConditions?: string;
+    familyHistory?: string;
+  };
+  step4?: {
+    currentMedications?: string;
+    drugAllergies?: string;
+    foodAllergies?: string;
+  };
+  step5?: {
+    examTypes?: string[];
+    examDetails?: string;
+    labResults?: string;
+    treatmentExpectations?: string[];
+    budgetRange?: string;
+    expectedTimeline?: string;
+  };
+}
+
 export interface HospitalCaseDetailDTO {
   id: string;
   caseNumber: string;
@@ -42,6 +78,7 @@ export interface HospitalCaseDetailDTO {
     symptoms: string[] | null;
     medicalHistory: string | null;
   };
+  medicalIntake: MedicalIntakeDTO;
   aiSummary: string | null;
   riskLevel: string | null;
   diagnoses: DiagnosisDTO[];

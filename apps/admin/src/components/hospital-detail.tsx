@@ -7,13 +7,11 @@ import {
   EmptyState,
   LoadingSpinner,
   Button,
-  Modal,
   type Column,
 } from '@medical-crm/ui';
-import { HospitalReview } from './hospital-review';
 import { useHospitalCases } from '@/queries/use-hospitals';
-import { generateRegistrationToken } from '@/actions/hospital-actions';
 import type { HospitalSummary, CaseSummary } from '@/lib/api-types';
+import { updateHospitalStatus } from '@/actions/hospital-actions';
 import { useRouter } from 'next/navigation';
 
 interface HospitalDetailProps {
@@ -35,6 +33,31 @@ const CASE_STATUS_COLORS: Record<string, string> = {
   COMPLETED: 'bg-emerald-50 text-emerald-700',
   CANCELLED: 'bg-slate-100 text-slate-500',
 };
+
+const HOSPITAL_STATUS_COLORS: Record<string, string> = {
+  PENDING: 'bg-amber-50 text-amber-700',
+  ACTIVE: 'bg-emerald-50 text-emerald-700',
+  INACTIVE: 'bg-slate-100 text-slate-500',
+};
+
+const CONSUMER_REGULAR_ORIGIN =
+  process.env.NEXT_PUBLIC_CONSUMER_REGULAR_ORIGIN ?? 'https://medicaltourismchina.health';
+const CONSUMER_COSMETIC_ORIGIN =
+  process.env.NEXT_PUBLIC_CONSUMER_COSMETIC_ORIGIN ?? CONSUMER_REGULAR_ORIGIN;
+const CONSUMER_HOSPITAL_PATH_TEMPLATE =
+  process.env.NEXT_PUBLIC_CONSUMER_HOSPITAL_PATH_TEMPLATE ?? '/hospitals/{hospitalId}';
+
+function joinUrl(origin: string, path: string): string {
+  const base = origin.replace(/\/+$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
+}
+
+function fillTemplate(template: string, hospital: HospitalSummary): string {
+  return template
+    .replaceAll('{hospitalId}', hospital.id)
+    .replaceAll('{hospitalType}', String(hospital.type ?? '').toLowerCase());
+}
 
 const casesColumns: Column<CaseSummary>[] = [
   {
@@ -74,91 +97,67 @@ const casesColumns: Column<CaseSummary>[] = [
   },
 ];
 
-function RegistrationLinkSection({ hospitalId }: { hospitalId: string }) {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [email, setEmail] = useState('');
-  const [result, setResult] = useState<{ token: string; expiresAt: string; registrationUrl: string } | null>(null);
+function ConsumerShowcaseLinkSection({ hospital }: { hospital: HospitalSummary }) {
+  const [status, setStatus] = useState(hospital.status);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function openModal() {
-    setEmail('');
-    setResult(null);
-    setError(null);
-    setModalOpen(true);
-  }
+  const consumerOrigin =
+    hospital.type === 'REGULAR' ? CONSUMER_REGULAR_ORIGIN : CONSUMER_COSMETIC_ORIGIN;
+  const consumerUrl = joinUrl(
+    consumerOrigin,
+    fillTemplate(CONSUMER_HOSPITAL_PATH_TEMPLATE, hospital),
+  );
+  const canApprove = status === 'PENDING';
 
-  function handleGenerate() {
-    if (!email.trim()) return;
+  function handleApprove() {
+    if (!canApprove) return;
     setError(null);
     startTransition(async () => {
       try {
-        const data = await generateRegistrationToken(hospitalId, email.trim());
-        setResult(data);
+        await updateHospitalStatus(hospital.id, 'ACTIVE');
+        setStatus('ACTIVE');
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to generate token');
+        setError(err instanceof Error ? err.message : 'Failed to approve hospital');
       }
     });
   }
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-700">Registration Link</h3>
-          <p className="mt-1 text-sm text-slate-500">Generate a registration link to invite this hospital.</p>
+      <h3 className="text-sm font-semibold text-slate-700">
+        消费者端展示页链接（按医院角色自动区分域名）
+      </h3>
+      <div className="mt-3 flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <a
+            href={consumerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="block break-all font-mono text-xs text-indigo-600 hover:text-indigo-700"
+          >
+            {consumerUrl}
+          </a>
+          <p className="mt-1 text-xs text-slate-500">
+            Domain policy: {hospital.type === 'REGULAR' ? 'REGULAR' : 'COSMETIC'} hospital
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={openModal}>
-          Regenerate Token
-        </Button>
-      </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Generate Registration Link" maxWidth="max-w-lg">
-        {result ? (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">Registration link generated successfully. Share this link with the hospital:</p>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <p className="break-all font-mono text-xs text-slate-700">{result.registrationUrl}</p>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  void navigator.clipboard.writeText(result.registrationUrl);
-                }}
-              >
-                Copy Link
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">Enter the email address for the hospital representative.</p>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor="reg-email">
-                Email Address
-              </label>
-              <input
-                id="reg-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="hospital@example.com"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleGenerate(); }}
-              />
-            </div>
-            {error && <p className="text-sm text-rose-600">{error}</p>}
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-              <Button variant="default" onClick={handleGenerate} disabled={isPending || !email.trim()}>
-                {isPending ? 'Generating...' : 'Generate'}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        <div className="flex shrink-0 items-center gap-2">
+          <StatusBadge status={status} colorMap={HOSPITAL_STATUS_COLORS} />
+          {canApprove && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleApprove}
+              disabled={isPending}
+            >
+              {isPending ? 'Approving...' : 'Approve'}
+            </Button>
+          )}
+        </div>
+      </div>
+      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
     </div>
   );
 }
@@ -268,11 +267,8 @@ export function HospitalDetail({ hospital }: HospitalDetailProps) {
         )}
       </div>
 
-      {/* Status Management */}
-      <HospitalReview hospitalId={hospital.id} currentStatus={hospital.status} />
-
-      {/* Registration Link */}
-      <RegistrationLinkSection hospitalId={hospital.id} />
+      {/* Consumer Link + Review */}
+      <ConsumerShowcaseLinkSection hospital={hospital} />
 
       {/* Associated Cases */}
       <div className="rounded-xl border border-slate-200 bg-white p-5">

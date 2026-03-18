@@ -295,7 +295,7 @@ const TABS = [
   { id: 'info', label: 'Hospital Info', icon: Building2 },
   { id: 'procedures', label: 'Procedures', icon: Stethoscope },
   { id: 'surgeons', label: 'Surgeons', icon: Users },
-  { id: 'cases', label: 'Cases Before & After', icon: Camera },
+  { id: 'cases', label: 'Case Gallery', icon: Camera },
 ];
 
 function ConsumerWebsiteLink({ slug, hospitalType }: { slug: string; hospitalType: 'hospital' | 'regular_hospital' }) {
@@ -944,14 +944,6 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
   const [deptImages, setDeptImages] = useState<Record<string, string>>({});
   const [pendingDeptImages, setPendingDeptImages] = useState(emptyDeptImageMap);
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const raw = (data as any) ?? null;
   const info = {
@@ -1051,6 +1043,14 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     setVideoTestimonials(raw.videoTestimonials ?? []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raw]);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
 
   const startEdit = () => {
     setForm({
@@ -2955,8 +2955,9 @@ function SurgeonModal({
     'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500';
 
   return (
-    <Modal open={open} onClose={onClose} title={existing ? 'Edit Surgeon' : 'Add New Surgeon'}>
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <Modal open={open} onClose={onClose} title={existing ? 'Edit Surgeon' : 'Add New Surgeon'} maxWidth="max-w-4xl">
+      <div className="max-h-[80vh] overflow-y-auto pr-1">
+        <form onSubmit={handleSubmit} className="space-y-5">
         <ImageUploadWidget
           value={imageUrl}
           onChange={setImageUrl}
@@ -3041,13 +3042,14 @@ function SurgeonModal({
             {submitting ? 'Saving...' : 'Save Surgeon'}
           </button>
         </div>
-      </form>
+        </form>
+      </div>
     </Modal>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-/*  Tab 4 — Cases Before & After                                              */
+/*  Tab 4 — Case Gallery                                                       */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 function BeforeAfterTab() {
@@ -3070,7 +3072,7 @@ function BeforeAfterTab() {
       <EmptyState
         icon={<Camera size={48} />}
         title="Cases failed to load"
-        description={error instanceof Error ? error.message : 'Unable to load before & after cases.'}
+        description={error instanceof Error ? error.message : 'Unable to load case gallery.'}
       />
     );
   }
@@ -3081,7 +3083,7 @@ function BeforeAfterTab() {
   );
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this before & after case?')) return;
+    if (!confirm('Delete this case?')) return;
     await deleteBeforeAfterCase(id);
     await queryClient.invalidateQueries({ queryKey: ['materials', 'cases'] });
   };
@@ -3110,7 +3112,7 @@ function BeforeAfterTab() {
       {cases.length === 0 ? (
         <EmptyState
           icon={<Camera size={48} />}
-          title="No before & after cases"
+          title="No case photos"
           description="Add cases to showcase your results."
           action={
             <Button onClick={() => { setEditingItem(null); setShowModal(true); }} className="gap-2">
@@ -3121,48 +3123,17 @@ function BeforeAfterTab() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {cases.map((c) => {
-            const beforeImg = c.images.find((img) => img.type === 'before');
-            const afterImg = c.images.find((img) => img.type === 'after');
-            const combinedImg = c.images.find((img) => img.type === 'combined');
+            const coverImage = c.images[0]?.url ?? '';
 
             return (
               <div key={c.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                {/* Side-by-side Before/After images */}
-                <div className="h-40 bg-slate-100 relative flex">
-                  {combinedImg && !beforeImg && !afterImg ? (
-                    <div className="w-full h-full relative">
-                      <img src={combinedImg.url} alt="Before and After" className="w-full h-full object-cover" />
-                      <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
-                        Before / After
-                      </div>
-                    </div>
+                <div className="h-40 bg-slate-100 relative">
+                  {coverImage ? (
+                    <img src={coverImage} alt={c.procedureName || 'Case cover'} className="w-full h-full object-cover" />
                   ) : (
-                    <>
-                      <div className="w-1/2 h-full relative">
-                        {beforeImg ? (
-                          <img src={beforeImg.url} alt="Before" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-slate-300">
-                            <ImageIcon size={32} />
-                          </div>
-                        )}
-                        <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
-                          Before
-                        </div>
-                      </div>
-                      <div className="w-1/2 h-full relative border-l border-white/20">
-                        {afterImg ? (
-                          <img src={afterImg.url} alt="After" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-slate-300">
-                            <ImageIcon size={32} />
-                          </div>
-                        )}
-                        <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded backdrop-blur-sm">
-                          After
-                        </div>
-                      </div>
-                    </>
+                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                      <ImageIcon size={32} />
+                    </div>
                   )}
                 </div>
                 {/* Details */}
@@ -3177,6 +3148,10 @@ function BeforeAfterTab() {
                     <div className="flex justify-between">
                       <span className="text-slate-400">Surgeon:</span>
                       <span className="font-medium text-slate-900">{c.surgeonName ?? 'Not specified'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Photos:</span>
+                      <span className="font-medium text-slate-900">{c.images.length}</span>
                     </div>
                     {c.description && <p className="text-xs text-slate-500 mt-1">{c.description}</p>}
                   </div>
@@ -3229,33 +3204,39 @@ function BeforeAfterModal({
   const queryClient = useQueryClient();
   const [procedureName, setProcedureName] = useState('');
   const [surgeonName, setSurgeonName] = useState('');
-  const [beforeImageUrl, setBeforeImageUrl] = useState('');
-  const [afterImageUrl, setAfterImageUrl] = useState('');
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const imagesInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setProcedureName(existing?.procedureName ?? '');
     setSurgeonName(existing?.surgeonName ?? '');
-    const beforeImg = existing?.images.find((img) => img.type === 'before');
-    const afterImg = existing?.images.find((img) => img.type === 'after');
-    const combinedImg = existing?.images.find((img) => img.type === 'combined');
-    setBeforeImageUrl(beforeImg?.url ?? combinedImg?.url ?? '');
-    setAfterImageUrl(afterImg?.url ?? '');
+    setImageUrls(existing?.images.map((img) => img.url) ?? []);
     setDescription(existing?.description ?? '');
   }, [existing]);
+
+  const addImagesFromFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const uploadedUrls = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file)));
+    setImageUrls((prev) => [...prev, ...uploadedUrls.filter((url) => url.trim().length > 0)]);
+  };
+
+  const updateImageAt = (idx: number, value: string) => {
+    setImageUrls((prev) => prev.map((url, i) => (i === idx ? value : url)));
+  };
+
+  const removeImageAt = (idx: number) => {
+    setImageUrls((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const images: Array<{ url: string; type: 'before' | 'after' | 'combined' }> = [];
-      if (beforeImageUrl.trim() && afterImageUrl.trim()) {
-        images.push({ url: beforeImageUrl.trim(), type: 'before' });
-        images.push({ url: afterImageUrl.trim(), type: 'after' });
-      } else if (beforeImageUrl.trim()) {
-        images.push({ url: beforeImageUrl.trim(), type: 'combined' });
-      }
+      const images = imageUrls
+        .map((url) => ({ url: url.trim() }))
+        .filter((img) => img.url.length > 0);
 
       const payload: Record<string, unknown> = {
         procedureName: procedureName.trim() || undefined,
@@ -3297,21 +3278,69 @@ function BeforeAfterModal({
           <label className="block text-sm font-medium text-slate-700 mb-1">Case Description</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Describe the procedure and outcome..." className={`${inputClass} resize-none`} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <ImageUploadWidget
-            value={beforeImageUrl}
-            onChange={setBeforeImageUrl}
-            label="Before Image"
-            placeholder="https://... or upload"
-            compact
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-slate-700">Case Photos</label>
+            <span className="text-xs text-slate-500">First image is cover</span>
+          </div>
+
+          <input
+            type="file"
+            ref={imagesInputRef}
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={async (e) => {
+              await addImagesFromFiles(e.target.files);
+              e.target.value = '';
+            }}
           />
-          <ImageUploadWidget
-            value={afterImageUrl}
-            onChange={setAfterImageUrl}
-            label="After Image"
-            placeholder="https://... or upload"
-            compact
-          />
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => imagesInputRef.current?.click()}
+              className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
+            >
+              <Upload size={12} /> Upload Photos
+            </button>
+          </div>
+
+          {imageUrls.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+              Upload multiple photos or add image URLs.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {imageUrls.map((url, idx) => (
+                <div key={`${idx}-${url}`} className="flex items-start gap-2">
+                  <div className="w-16 h-16 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center text-slate-300">
+                    {url ? <img src={url} alt={`Case photo ${idx + 1}`} className="w-full h-full object-cover" /> : <ImageIcon size={18} />}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">{idx === 0 ? 'Cover photo' : `Photo ${idx + 1}`}</span>
+                    </div>
+                    <input
+                      type="text"
+                      value={url}
+                      onChange={(e) => updateImageAt(idx, e.target.value)}
+                      className={inputClass}
+                      placeholder="https://... or upload"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeImageAt(idx)}
+                    className="p-2 text-slate-400 hover:text-rose-500"
+                    aria-label={`Remove photo ${idx + 1}`}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>

@@ -46,6 +46,8 @@ export interface ChatHeaderConfig {
 export interface ChatLayoutProps {
   messages: ChatMessage[];
   onSend: (content: string) => void;
+  /** Whether current viewer can send messages in this conversation */
+  canSend?: boolean;
   isSending?: boolean;
   patientInfo?: ReactNode;
   showTranslation?: boolean;
@@ -68,6 +70,8 @@ export interface ChatLayoutProps {
   infoPanelOpen?: boolean;
   /** Optional notice banner rendered above the input area */
   inputNotice?: ReactNode;
+  /** Optional message shown when chat is read-only */
+  readOnlyNotice?: ReactNode;
   /** Callback for file upload. If provided, shows a paperclip button in the input area. */
   onUploadFiles?: (files: File[]) => void;
   /** Whether a file upload is in progress */
@@ -191,6 +195,7 @@ function LoaderIcon({ className }: { className?: string }) {
 export function ChatLayout({
   messages,
   onSend,
+  canSend = true,
   isSending = false,
   patientInfo,
   showTranslation = true,
@@ -206,6 +211,7 @@ export function ChatLayout({
   onToggleInfo,
   infoPanelOpen = false,
   inputNotice,
+  readOnlyNotice,
   onUploadFiles,
   isUploading = false,
 }: ChatLayoutProps) {
@@ -219,6 +225,7 @@ export function ChatLayout({
   }, [messages.length]);
 
   const handleSend = () => {
+    if (!canSend) return;
     // If there are selected files, upload them first
     if (selectedFiles.length > 0 && onUploadFiles) {
       onUploadFiles(selectedFiles);
@@ -257,6 +264,9 @@ export function ChatLayout({
 
   // Use senderId matching if currentUserId is provided, otherwise fall back to senderRole matching
   const isOwnMessage = (msg: ChatMessage) => {
+    if (msg.senderRole) {
+      return msg.senderRole.toUpperCase() === currentUserRole.toUpperCase();
+    }
     if (currentUserId && msg.senderId) {
       return msg.senderId === currentUserId;
     }
@@ -510,73 +520,81 @@ export function ChatLayout({
             {/* Optional notice above input (e.g. CRM forwarding) */}
             {inputNotice}
 
-            {/* File upload button row */}
-            {onUploadFiles && (
-              <div className="flex items-center gap-2 mb-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition-colors"
-                  title="Attach files"
-                >
-                  <PaperclipIcon className="w-5 h-5" />
-                </button>
-              </div>
-            )}
-
-            {/* Selected files preview */}
-            {selectedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
-                {selectedFiles.map((file, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 px-2 py-1 bg-white rounded border border-slate-200 text-xs"
-                  >
-                    {file.type.startsWith('image/') ? (
-                      <ImageIcon className="w-4 h-4 text-cyan-500" />
-                    ) : (
-                      <FileTextIcon className="w-4 h-4 text-blue-500" />
-                    )}
-                    <span className="max-w-[120px] truncate text-slate-600">{file.name}</span>
+            {canSend ? (
+              <>
+                {/* File upload button row */}
+                {onUploadFiles && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
                     <button
-                      onClick={() => removeSelectedFile(index)}
-                      className="text-slate-400 hover:text-red-500 transition-colors"
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition-colors"
+                      title="Attach files"
                     >
-                      <XIcon className="w-3 h-3" />
+                      <PaperclipIcon className="w-5 h-5" />
                     </button>
                   </div>
-                ))}
+                )}
+
+                {/* Selected files preview */}
+                {selectedFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
+                    {selectedFiles.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 px-2 py-1 bg-white rounded border border-slate-200 text-xs"
+                      >
+                        {file.type.startsWith('image/') ? (
+                          <ImageIcon className="w-4 h-4 text-cyan-500" />
+                        ) : (
+                          <FileTextIcon className="w-4 h-4 text-blue-500" />
+                        )}
+                        <span className="max-w-[120px] truncate text-slate-600">{file.name}</span>
+                        <button
+                          onClick={() => removeSelectedFile(index)}
+                          className="text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="relative">
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a message..."
+                    rows={1}
+                    className="w-full resize-none pl-4 pr-12 py-3 bg-slate-50 border border-slate-200/80 rounded-xl text-sm h-12 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={(!input.trim() && selectedFiles.length === 0) || isSending || isUploading}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-cyan-600 hover:bg-cyan-700 p-2 text-white transition-colors disabled:opacity-50"
+                  >
+                    {isSending || isUploading ? (
+                      <LoaderIcon className="w-4 h-4" />
+                    ) : (
+                      <SendIcon className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                {readOnlyNotice ?? 'Read-only conversation'}
               </div>
             )}
-
-            <div className="relative">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type a message..."
-                rows={1}
-                className="w-full resize-none pl-4 pr-12 py-3 bg-slate-50 border border-slate-200/80 rounded-xl text-sm h-12 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
-              />
-              <button
-                onClick={handleSend}
-                disabled={(!input.trim() && selectedFiles.length === 0) || isSending || isUploading}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-cyan-600 hover:bg-cyan-700 p-2 text-white transition-colors disabled:opacity-50"
-              >
-                {isSending || isUploading ? (
-                  <LoaderIcon className="w-4 h-4" />
-                ) : (
-                  <SendIcon className="w-4 h-4" />
-                )}
-              </button>
-            </div>
           </div>
         </div>
 

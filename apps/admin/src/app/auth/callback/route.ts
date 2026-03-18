@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
   };
   session.access_token = data.access_token;
   session.refresh_token = data.refresh_token;
-  session.id_token = data.id_token;
   session.expires_at = Math.floor(Date.now() / 1000) + data.expires_in;
+  delete session.id_token;
   delete session.code_verifier; // consumed
   await session.save();
 

@@ -8,6 +8,7 @@ import {
   messageListQuerySchema,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
+import { wsManager } from '../ws/ws-manager.js';
 
 const app = new OpenAPIHono();
 
@@ -115,7 +116,23 @@ app.openapi(sendMessageRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
+  const conversation = await svc.getConversation.execute(id, actor);
   const result = await svc.sendMessage.execute(id, body, actor);
+  wsManager.broadcast(`conv:${id}`, {
+    type: 'new_message',
+    data: result,
+  });
+
+  if (conversation.caseId) {
+    const caseEntity = await svc.caseRepo.findById(conversation.caseId);
+    if (caseEntity && actor.userId !== caseEntity.patientId) {
+      wsManager.broadcast(`patient:${caseEntity.patientId}`, {
+        type: 'unread_update',
+        data: { conversationId: id, unreadDelta: 1 },
+      });
+    }
+  }
+
   return c.json(result, 201);
 });
 

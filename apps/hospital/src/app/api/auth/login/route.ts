@@ -43,6 +43,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const roles = (user.roles ?? []).map((role) => role.toLowerCase());
+    const isHospitalUser =
+      roles.includes('hospital') || roles.includes('regular_hospital');
+    if (!isHospitalUser) {
+      return NextResponse.json(
+        {
+          error: 'This account is not authorized for Hospital Portal',
+          details: 'Please use Admin Portal for admin accounts',
+          redirectTo: process.env.ADMIN_ORIGIN ?? 'http://localhost:3002',
+        },
+        { status: 403 },
+      );
+    }
+
     // Store tokens in session cookie
     await saveSession({
       access_token: tokens.access_token,

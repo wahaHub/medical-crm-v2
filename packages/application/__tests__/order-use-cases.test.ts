@@ -46,7 +46,7 @@ function makeMockOrder(overrides: Partial<ConstructorParameters<typeof Order>[0]
     patientId: 'patient-1',
     caseId: null,
     packageId: 'pkg-1',
-    type: 'PACKAGE',
+    type: 'CONSULTATION',
     amount: '1000.00',
     currency: 'USD',
     status: 'PENDING_PAYMENT',
@@ -85,7 +85,7 @@ describe('CreateOrderUseCase', () => {
   it('creates an order successfully', async () => {
     const uc = new CreateOrderUseCase(repo);
     const result = await uc.execute({
-      type: 'PACKAGE',
+      type: 'CONSULTATION',
       amount: '1000.00',
       packageId: 'pkg-1',
     }, patientActor);
@@ -93,7 +93,7 @@ describe('CreateOrderUseCase', () => {
     expect(result.orderNumber).toBe('ORD-20260316-0001');
     expect(result.patientId).toBe('patient-1');
     expect(result.status).toBe('PENDING_PAYMENT');
-    expect(result.type).toBe('PACKAGE');
+    expect(result.type).toBe('CONSULTATION');
     expect(result.amount).toBe('1000.00');
     expect(repo.save).toHaveBeenCalledOnce();
   });
@@ -101,7 +101,7 @@ describe('CreateOrderUseCase', () => {
   it('admin can create orders with explicit patientId', async () => {
     const uc = new CreateOrderUseCase(repo);
     const result = await uc.execute({
-      type: 'CUSTOM',
+      type: 'TRANSLATION',
       amount: '500.00',
       patientId: 'patient-1',
     }, adminActor);
@@ -113,7 +113,7 @@ describe('CreateOrderUseCase', () => {
   it('throws ValidationError when admin omits patientId', async () => {
     const uc = new CreateOrderUseCase(repo);
     await expect(uc.execute({
-      type: 'CUSTOM',
+      type: 'TRANSLATION',
       amount: '500.00',
     }, adminActor)).rejects.toThrow('Admin must specify patientId');
   });
@@ -121,7 +121,7 @@ describe('CreateOrderUseCase', () => {
   it('throws ForbiddenError for hospital role', async () => {
     const uc = new CreateOrderUseCase(repo);
     await expect(uc.execute({
-      type: 'PACKAGE',
+      type: 'CONSULTATION',
       amount: '1000.00',
     }, hospitalActor)).rejects.toThrow('Only patients and admins can create orders');
   });
@@ -132,7 +132,7 @@ describe('CreateOrderUseCase', () => {
     };
     const uc = new CreateOrderUseCase(repo, mockGuard);
     await uc.execute({
-      type: 'PACKAGE',
+      type: 'CONSULTATION',
       amount: '1000.00',
       idempotencyKey: 'idem-key-1',
     }, patientActor);
@@ -147,7 +147,7 @@ describe('CreateOrderUseCase', () => {
     };
     const uc = new CreateOrderUseCase(repo, mockGuard);
     await uc.execute({
-      type: 'PACKAGE',
+      type: 'CONSULTATION',
       amount: '1000.00',
     }, patientActor);
 

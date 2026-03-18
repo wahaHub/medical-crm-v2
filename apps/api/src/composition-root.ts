@@ -156,6 +156,9 @@ import {
   GetFaqItemUseCase,
   UpdateFaqItemUseCase,
   DeleteFaqItemUseCase,
+  GetProfileUseCase,
+  UpdateProfileUseCase,
+  ChangePasswordUseCase,
 } from '@medical-crm/application';
 import type { IMagicLinkEmailService } from '@medical-crm/application';
 import {
@@ -385,6 +388,11 @@ interface AppServices {
   getFaqItem: GetFaqItemUseCase;
   updateFaqItem: UpdateFaqItemUseCase;
   deleteFaqItem: DeleteFaqItemUseCase;
+
+  // use cases — user settings
+  getProfile: GetProfileUseCase;
+  updateProfile: UpdateProfileUseCase;
+  changePassword: ChangePasswordUseCase;
 
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
@@ -648,6 +656,14 @@ export function getServices(): AppServices {
       getFaqItem: new GetFaqItemUseCase(faqRepo),
       updateFaqItem: new UpdateFaqItemUseCase(faqRepo),
       deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),
+
+      getProfile: new GetProfileUseCase(userRepo),
+      updateProfile: new UpdateProfileUseCase(userRepo, keycloakAdmin),
+      changePassword: new ChangePasswordUseCase(
+        keycloakAdmin,
+        process.env['KEYCLOAK_CLIENT_ID'] ?? 'admin-cli',
+        process.env['KEYCLOAK_CLIENT_SECRET'],
+      ),
 
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),

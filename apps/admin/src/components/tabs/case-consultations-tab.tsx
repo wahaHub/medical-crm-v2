@@ -2,20 +2,31 @@
 
 import { useState } from 'react';
 import { Card, CardHeader, CardTitle, StatusBadge, EmptyState } from '@medical-crm/ui';
-import { Video, Clock, Building, ChevronDown, ChevronUp, FileText, X } from 'lucide-react';
+import { Video, Clock, Building, ChevronDown, ChevronUp, FileText, X, Sparkles, ExternalLink } from 'lucide-react';
 import { useCaseConsultations, useConsultationTranscript } from '@/queries/use-consultations';
+import { useHospitalNameMap } from '@/queries/use-hospital-names';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
 interface ConsultationSummary {
   id: string;
   hospitalId?: string;
+  hospitalName?: string;
   caseId?: string;
   status?: string;
   scheduledAt?: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
   durationMinutes?: number;
+  actualDuration?: number | null;
   notes?: string;
   patientName?: string;
+  aiSummary?: unknown;
+  aiSummaryStatus?: string;
+  videoStorageKey?: string | null;
+  videoDuration?: number | null;
+  videoThumbnail?: string | null;
+  videoUploadedAt?: string | null;
 }
 
 interface TranscriptEntry {
@@ -23,6 +34,15 @@ interface TranscriptEntry {
   timestamp: string;
   original: string;
   translated?: string;
+}
+
+interface TranscriptEntryLike {
+  speaker?: unknown;
+  timestamp?: unknown;
+  original?: unknown;
+  text?: unknown;
+  translated?: unknown;
+  translatedText?: unknown;
 }
 
 interface CaseConsultationsTabProps {
@@ -47,6 +67,82 @@ function formatTimeBox(dateStr: string) {
   };
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
+function formatDurationSeconds(totalSeconds: number): string {
+  const seconds = Math.max(0, totalSeconds);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatTranscriptTimestamp(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return formatDurationSeconds(value);
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime()) && value.includes('T')) {
+      return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return value;
+  }
+  return '--:--';
+}
+
+function normalizeTranscriptEntries(raw: unknown): TranscriptEntry[] {
+  const list = raw && typeof raw === 'object' && Array.isArray((raw as { entries?: unknown[] }).entries)
+    ? ((raw as { entries?: unknown[] }).entries ?? [])
+    : [];
+
+  return list
+    .filter((entry): entry is TranscriptEntryLike => Boolean(entry && typeof entry === 'object'))
+    .map((entry, idx) => ({
+      speaker: String(entry.speaker ?? `Speaker ${idx + 1}`),
+      timestamp: formatTranscriptTimestamp(entry.timestamp),
+      original: String(entry.original ?? entry.text ?? ''),
+      translated: typeof entry.translated === 'string'
+        ? entry.translated
+        : (typeof entry.translatedText === 'string' ? entry.translatedText : undefined),
+    }))
+    .filter((entry) => entry.original.trim().length > 0);
+}
+
+function toLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatSummaryValue(value: unknown): string {
+  if (value == null) return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map((item) => formatSummaryValue(item)).join(', ');
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function toVideoUrl(storageKey?: string | null): string | null {
+  if (!storageKey) return null;
+  if (/^https?:\/\//.test(storageKey)) return storageKey;
+  return null;
+}
+
 // ── Transcript Modal ──────────────────────────────────────────────────
 
 function TranscriptModal({
@@ -57,12 +153,11 @@ function TranscriptModal({
   onClose: () => void;
 }) {
   const [showTranslation, setShowTranslation] = useState(true);
-  const { data, isLoading } = useConsultationTranscript(consultationId);
+  const { data, isLoading, error } = useConsultationTranscript(consultationId);
 
   if (!consultationId) return null;
 
-  const transcript = data as { entries?: TranscriptEntry[] } | null;
-  const entries = transcript?.entries ?? [];
+  const entries = normalizeTranscriptEntries(data);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm">
@@ -99,6 +194,10 @@ function TranscriptModal({
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-slate-400">
               Loading transcript...
+            </div>
+          ) : error ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {getErrorMessage(error, 'Failed to load transcript')}
             </div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
@@ -160,6 +259,9 @@ function ConsultationCard({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { date, time, period } = formatTimeBox(consultation.scheduledAt ?? '');
+  const summaryEntries = isRecord(consultation.aiSummary) ? Object.entries(consultation.aiSummary) : [];
+  const summaryText = typeof consultation.aiSummary === 'string' ? consultation.aiSummary : null;
+  const videoUrl = toVideoUrl(consultation.videoStorageKey);
 
   return (
     <div className="rounded-2xl border border-slate-100 bg-white shadow-sm transition-shadow hover:shadow-md">
@@ -182,7 +284,9 @@ function ConsultationCard({
               {consultation.hospitalId && (
                 <span className="flex items-center gap-1">
                   <Building size={14} className="shrink-0" />
-                  <span className="font-mono text-xs">{consultation.hospitalId.slice(0, 8)}...</span>
+                  <span className="text-xs">
+                    {consultation.hospitalName ?? consultation.hospitalId.slice(0, 8)}
+                  </span>
                 </span>
               )}
               <span className="flex items-center gap-1">
@@ -215,10 +319,12 @@ function ConsultationCard({
               <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">Consultation ID</dt>
               <dd className="font-mono text-xs text-slate-700 mt-0.5">{consultation.id}</dd>
             </div>
-            {consultation.hospitalId && (
+            {(consultation.hospitalId || consultation.hospitalName) && (
               <div>
-                <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">Hospital ID</dt>
-                <dd className="font-mono text-xs text-slate-700 mt-0.5">{consultation.hospitalId}</dd>
+                <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">Hospital</dt>
+                <dd className="text-xs text-slate-700 mt-0.5">
+                  {consultation.hospitalName ?? consultation.hospitalId}
+                </dd>
               </div>
             )}
             {consultation.scheduledAt && (
@@ -229,20 +335,99 @@ function ConsultationCard({
                 </dd>
               </div>
             )}
+            {consultation.startedAt && (
+              <div>
+                <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">Started At</dt>
+                <dd className="text-slate-700 mt-0.5">
+                  {new Date(consultation.startedAt).toLocaleString()}
+                </dd>
+              </div>
+            )}
+            {consultation.endedAt && (
+              <div>
+                <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">Ended At</dt>
+                <dd className="text-slate-700 mt-0.5">
+                  {new Date(consultation.endedAt).toLocaleString()}
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">Duration</dt>
               <dd className="text-slate-700 mt-0.5">{consultation.durationMinutes ?? 30} minutes</dd>
             </div>
+            {consultation.actualDuration != null && (
+              <div>
+                <dt className="text-xs font-medium text-slate-500 uppercase tracking-wide">Actual Duration</dt>
+                <dd className="text-slate-700 mt-0.5">{consultation.actualDuration} minutes</dd>
+              </div>
+            )}
           </dl>
 
           {consultation.status === 'COMPLETED' && (
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => onViewTranscript(consultation.id)}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50 transition-colors"
-              >
-                <FileText size={14} /> View Transcript
-              </button>
+            <div className="space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+              <div className="flex items-center gap-2 text-indigo-700">
+                <Sparkles size={16} />
+                <h4 className="text-sm font-semibold">Completed Consultation Assets</h4>
+              </div>
+
+              {summaryText && (
+                <p className="rounded-lg border border-indigo-100 bg-white px-3 py-2 text-sm text-slate-700">
+                  {summaryText}
+                </p>
+              )}
+
+              {!summaryText && summaryEntries.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {summaryEntries.map(([key, value]) => (
+                    <div key={key} className="rounded-lg border border-indigo-100 bg-white p-2.5">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                        {toLabel(key)}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">{formatSummaryValue(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!summaryText && summaryEntries.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  AI summary is not available yet.
+                </p>
+              )}
+
+              {consultation.videoThumbnail && (
+                <div className="overflow-hidden rounded-lg border border-indigo-100 bg-white">
+                  <img
+                    src={consultation.videoThumbnail}
+                    alt="Consultation video thumbnail"
+                    className="h-40 w-full object-cover"
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  onClick={() => onViewTranscript(consultation.id)}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50 transition-colors"
+                >
+                  <FileText size={14} /> View Transcript
+                </button>
+                {videoUrl && (
+                  <a
+                    href={videoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50 transition-colors"
+                  >
+                    <Video size={14} /> View Video <ExternalLink size={13} />
+                  </a>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                {consultation.videoDuration != null
+                  ? `Video length: ${formatDurationSeconds(consultation.videoDuration)}`
+                  : 'No video duration metadata'}
+              </p>
             </div>
           )}
         </div>
@@ -255,11 +440,19 @@ function ConsultationCard({
 
 export function CaseConsultationsTab({ caseId }: CaseConsultationsTabProps) {
   const [transcriptId, setTranscriptId] = useState<string | null>(null);
-  const { data: raw, isLoading } = useCaseConsultations(caseId);
+  const { data: raw, isLoading, error } = useCaseConsultations(caseId);
 
   const consultations: ConsultationSummary[] = (raw as ConsultationSummary[] | { data: ConsultationSummary[] } | undefined) != null
     ? (Array.isArray(raw) ? raw : ((raw as { data?: ConsultationSummary[] }).data ?? []))
     : [];
+  const { nameMap: hospitalNameMap } = useHospitalNameMap(consultations.map((item) => item.hospitalId));
+  const consultationsWithNames = consultations
+    .map((consultation) => ({
+      ...consultation,
+      hospitalName: consultation.hospitalName
+        ?? (consultation.hospitalId ? hospitalNameMap[consultation.hospitalId] : undefined),
+    }))
+    .sort((a, b) => new Date(b.scheduledAt ?? 0).getTime() - new Date(a.scheduledAt ?? 0).getTime());
 
   return (
     <Card>
@@ -271,7 +464,11 @@ export function CaseConsultationsTab({ caseId }: CaseConsultationsTabProps) {
         <div className="flex items-center justify-center py-20">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
         </div>
-      ) : consultations.length === 0 ? (
+      ) : error ? (
+        <div className="mx-6 mb-6 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {getErrorMessage(error, 'Failed to load consultations')}
+        </div>
+      ) : consultationsWithNames.length === 0 ? (
         <EmptyState
           icon={<Video size={36} />}
           title="No consultations yet"
@@ -279,7 +476,7 @@ export function CaseConsultationsTab({ caseId }: CaseConsultationsTabProps) {
         />
       ) : (
         <div className="space-y-4 pt-2">
-          {consultations.map((c) => (
+          {consultationsWithNames.map((c) => (
             <ConsultationCard
               key={c.id}
               consultation={c}

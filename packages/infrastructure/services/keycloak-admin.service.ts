@@ -199,4 +199,43 @@ export class KeycloakAdminService implements IKeycloakAdminService {
     const users = (await res.json()) as unknown[];
     return users.length > 0;
   }
+
+  async updateUserEmail(keycloakUserId: string, email: string): Promise<void> {
+    const token = await this.getAdminToken();
+    const url = `${this.baseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}`;
+
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Failed to update email for user ${keycloakUserId}: ${res.status} ${await res.text()}`);
+    }
+  }
+
+  async verifyPassword(username: string, password: string, clientId: string, clientSecret?: string): Promise<boolean> {
+    const url = `${this.baseUrl}/realms/${this.realm}/protocol/openid-connect/token`;
+    const body = new URLSearchParams({
+      grant_type: 'password',
+      client_id: clientId,
+      username,
+      password,
+    });
+    if (clientSecret) {
+      body.set('client_secret', clientSecret);
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+
+    return res.ok;
+  }
 }

@@ -11,4 +11,6 @@ export interface IKeycloakAdminService {
   deleteUser(keycloakUserId: string): Promise<void>;
   checkUsernameExists(username: string): Promise<boolean>;
   checkEmailExists(email: string): Promise<boolean>;
+  updateUserEmail(keycloakUserId: string, email: string): Promise<void>;
+  verifyPassword(username: string, password: string, clientId: string, clientSecret?: string): Promise<boolean>;
 }

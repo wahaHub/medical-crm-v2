@@ -11,6 +11,8 @@ export class GetPatientConversationsUseCase {
 
   async execute(input: GetPatientConversationsInput): Promise<ConversationDTO[]> {
     const conversations = await this.conversationRepo.findByPatientId(input.patientId);
-    return conversations.map((c) => toConversationDTO(c));
+    return conversations
+      .filter((conversation) => conversation.category !== 'ADMIN_HOSPITAL')
+      .map((c) => toConversationDTO(c));
   }
 }

@@ -13,14 +13,31 @@ export interface Session {
   hospitalId: string | null;
 }
 
-const ROLE_PRIORITY: string[] = ['ADMIN', 'HOSPITAL', 'PATIENT'];
+/** Map Keycloak realm roles to application Actor roles. */
+const ROLE_MAP: Record<string, Actor['role']> = {
+  admin: 'ADMIN',
+  hospital: 'HOSPITAL',
+  regular_hospital: 'HOSPITAL',
+  beauty_hospital: 'HOSPITAL',
+  patient: 'PATIENT',
+  // Also support uppercase (case-insensitive matching below)
+  ADMIN: 'ADMIN',
+  HOSPITAL: 'HOSPITAL',
+  PATIENT: 'PATIENT',
+};
+
+const ROLE_PRIORITY: Actor['role'][] = ['ADMIN', 'HOSPITAL', 'PATIENT'];
 
 export function toActor(session: Session): Actor {
-  const role = ROLE_PRIORITY.find((r) => session.roles.includes(r)) ?? 'PATIENT';
+  // Map each Keycloak role to an app role, then pick highest priority
+  const mappedRoles = session.roles
+    .map((r) => ROLE_MAP[r])
+    .filter((r): r is Actor['role'] => r !== undefined);
+  const role = ROLE_PRIORITY.find((r) => mappedRoles.includes(r)) ?? 'PATIENT';
   return {
     userId: session.userId,
     email: session.email,
-    role: role as Actor['role'],
+    role,
     hospitalId: session.hospitalId,
   };
 }

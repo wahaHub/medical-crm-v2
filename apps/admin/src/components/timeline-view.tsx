@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { EmptyState } from '@medical-crm/ui';
 import { Activity } from 'lucide-react';
 
@@ -59,7 +60,37 @@ function groupEventsByDate(events: TimelineEvent[]): Map<string, TimelineEvent[]
   return groups;
 }
 
+function toLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (value == null) return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') {
+    const asDate = new Date(value);
+    if (!Number.isNaN(asDate.getTime()) && value.includes('T')) {
+      return asDate.toLocaleString();
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => formatMetadataValue(item)).join(', ');
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 export function TimelineView({ events }: TimelineViewProps) {
+  const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>({});
+
   if (!events || events.length === 0) {
     return (
       <EmptyState
@@ -96,6 +127,11 @@ export function TimelineView({ events }: TimelineViewProps) {
 
             {dayEvents.map((event) => {
               const colors = getEventColors(event.type);
+              const metadataEntries = Object.entries(event.metadata ?? {}).filter(
+                ([, value]) => value !== null && value !== undefined && value !== '',
+              );
+              const hasDetails = metadataEntries.length > 0;
+              const isExpanded = expandedMap[event.id] ?? false;
               return (
                 <div key={event.id} className="relative">
                   {/* Dot */}
@@ -127,11 +163,39 @@ export function TimelineView({ events }: TimelineViewProps) {
                           )}
                         </div>
                         <p className="text-sm text-slate-700">{event.description}</p>
+                        {hasDetails && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedMap((prev) => ({
+                                ...prev,
+                                [event.id]: !isExpanded,
+                              }))
+                            }
+                            className="mt-2 inline-flex rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            {isExpanded ? 'Hide details' : 'Expand details'}
+                          </button>
+                        )}
                       </div>
                       <span className="text-[11px] text-slate-400 shrink-0 mt-0.5">
                         {formatTime(event.createdAt)}
                       </span>
                     </div>
+                    {hasDetails && isExpanded && (
+                      <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                        <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {metadataEntries.map(([key, value]) => (
+                            <div key={key} className="space-y-0.5">
+                              <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                {toLabel(key)}
+                              </dt>
+                              <dd className="text-xs text-slate-700">{formatMetadataValue(value)}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

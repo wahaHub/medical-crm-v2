@@ -1,18 +1,58 @@
 import { apiClient } from '@/lib/api-client';
-import type { PaginatedResponse, ConsultationSummary, ConsultationStats } from '@/lib/api-types';
-import { PageHeader } from '@medical-crm/ui';
+import type { PaginatedResponse, ConsultationSummary, ConsultationStats, CaseSummary } from '@/lib/api-types';
 import { ConsultationsList } from '@/components/consultations-list';
 
+const EMPTY_CONSULTATIONS: PaginatedResponse<ConsultationSummary> = { data: [] };
+const EMPTY_STATS: ConsultationStats = {};
+const EMPTY_CASES: PaginatedResponse<CaseSummary> = { data: [] };
+
 export default async function ConsultationsPage() {
-  const [consultations, stats] = await Promise.all([
+  // Use Promise.allSettled so one API failure does not crash the entire page.
+  const [consultationsResult, statsResult, casesResult] = await Promise.allSettled([
     apiClient<PaginatedResponse<ConsultationSummary>>('/api/v2/consultations?status=SCHEDULED&limit=20'),
     apiClient<ConsultationStats>('/api/v2/consultations/stats'),
+    apiClient<PaginatedResponse<CaseSummary>>('/api/v2/cases?limit=100'),
   ]);
+
+  const consultations = consultationsResult.status === 'fulfilled' ? consultationsResult.value : EMPTY_CONSULTATIONS;
+  const stats = statsResult.status === 'fulfilled' ? statsResult.value : EMPTY_STATS;
+  const cases = casesResult.status === 'fulfilled' ? casesResult.value : EMPTY_CASES;
+
+  // Log failures for debugging without crashing the page
+  if (consultationsResult.status === 'rejected') {
+    console.error('[ConsultationsPage] Failed to load consultations:', consultationsResult.reason);
+  }
+  if (statsResult.status === 'rejected') {
+    console.error('[ConsultationsPage] Failed to load stats:', statsResult.reason);
+  }
+  if (casesResult.status === 'rejected') {
+    console.error('[ConsultationsPage] Failed to load cases:', casesResult.reason);
+  }
+
+  // Build a map from caseId → patientName for enriching consultations
+  const caseMap = new Map<string, string>();
+  for (const c of cases?.data ?? []) {
+    if (c.id && c.patientName) caseMap.set(c.id, c.patientName);
+  }
+
+  // Enrich consultations with patient names from cases
+  const enrichedData: PaginatedResponse<ConsultationSummary> = {
+    ...consultations,
+    data: (consultations.data ?? []).map((c) => ({
+      ...c,
+      patientName: c.patientName || caseMap.get(c.caseId ?? '') || undefined,
+    })),
+  };
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Consultations" subtitle="Manage video consultations" />
-      <ConsultationsList initialData={consultations} initialStats={stats} />
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Consultations</h1>
+          <p className="text-sm text-slate-500 mt-1">Manage and review patient video consultations</p>
+        </div>
+      </div>
+      <ConsultationsList initialData={enrichedData} initialStats={stats} caseMap={Object.fromEntries(caseMap)} cases={cases?.data ?? []} />
     </div>
   );
 }

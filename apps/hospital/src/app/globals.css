@@ -1,2 +1,6 @@
 @import "tailwindcss";
-@source "../../../../packages/shared/ui/src/**/*.tsx";
+@source "../app";
+@source "../components";
+@source "../actions";
+@source "../queries";
+@source "../../../../packages/shared/ui/src/components";

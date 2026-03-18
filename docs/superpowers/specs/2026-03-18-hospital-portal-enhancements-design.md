@@ -16,8 +16,8 @@ Extend the existing Hospital Portal with new features aligned to the patientsflo
 |------|--------|
 | Case Detail | 7 tabs → 9 tabs (+ AI Summary, + Quote) |
 | Materials — Procedures | Expand fields into a full Procedures Catalog |
-| Email Templates | New top-level page + 4 new API endpoints |
-| FAQ | New top-level page + 4 new API endpoints |
+| Email Templates | New top-level page + 5 new API endpoints |
+| FAQ | New top-level page (reuse existing 5 chatbot-faq API endpoints) |
 | Settings | New top-level page + 1 new API endpoint |
 | Sidebar Nav | 5 items → 8 items |
 
@@ -84,14 +84,14 @@ Extend the existing Hospital Portal with new features aligned to the patientsflo
 
 4. **Quote Actions**:
    - Send: `POST /api/v2/quotes/{id}/send`
-   - Edit (draft only): `PUT /api/v2/quotes/{id}`
+   - Edit (draft only): `PATCH /api/v2/quotes/{id}`
    - View status changes
 
 **Existing API endpoints used**:
-- `POST /api/v2/quotes` — create
-- `GET /api/v2/quotes?caseId={caseId}` — list
+- `POST /api/v2/quotes` — create (requires `caseId`, `hospitalId`, `totalAmount`)
+- `GET /api/v2/quotes?caseId={caseId}` — list (caseId filter supported in `quoteListQuerySchema`)
 - `GET /api/v2/quotes/{id}` — get detail
-- `PUT /api/v2/quotes/{id}` — update
+- `PATCH /api/v2/quotes/{id}` — update (PATCH, not PUT)
 - `POST /api/v2/quotes/{id}/send` — send to patient
 - `POST /api/v2/cases/{caseId}/documents` — upload quote file
 
@@ -101,33 +101,40 @@ Extend the existing Hospital Portal with new features aligned to the patientsflo
 
 ## 3. Materials — Procedures Catalog Expansion
 
-### Current State
+### Context: Two Procedure Systems
 
-The Procedures tab in Materials has these fields per `MaterialsProcedureDTO`:
-- `procedureName`, `description`, `priceMin`, `priceMax`, `priceRange`, `isPopular`, `sortOrder`
+The project has two separate procedure data sources:
+
+1. **Materials Procedures** (`MaterialsProcedureDTO`) — sourced from Supabase, displayed in the hospital portal Materials tab. Fields: `procedureName`, `description`, `priceMin`, `priceMax`, `priceRange`, `isPopular`, `sortOrder`. Managed via `materials-actions.ts`.
+
+2. **Service Catalog Items** (`service_catalog_items` table in CRM DB) — used for quote generation. Already has: `estimatedStayDays` (integer), `estimatedRecoveryDays` (integer), `inclusions` (jsonb). Managed via `service-catalog.routes.ts`.
+
+### Approach: Expand Materials Procedures
+
+We expand the **Materials Procedures** (what hospital staff see and edit in the Materials tab) with richer detail fields. This keeps the UI change localized to the existing Procedures tab.
 
 ### Expanded Fields
 
-Add the following fields to the procedure model:
+Add the following fields to `MaterialsProcedureDTO` and the underlying Supabase table:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `recoveryTime` | string | e.g. "2-4 weeks" |
-| `duration` | string | e.g. "2-3 hours" |
-| `hospitalStayDays` | string | e.g. "1-2 days" |
-| `indications` | string | Suitable candidates / conditions |
-| `risks` | string | Risks and precautions |
+| `recoveryTime` | string \| null | e.g. "2-4 weeks" |
+| `duration` | string \| null | e.g. "2-3 hours" |
+| `hospitalStayDays` | string \| null | e.g. "1-2 days" |
+| `indications` | string \| null | Suitable candidates / conditions |
+| `risks` | string \| null | Risks and precautions |
 | `inclusions` | string[] | What's included (pre-op tests, follow-ups, etc.) |
 
 ### Backend Changes
 
-1. **Database**: Add columns to the procedures table (all nullable, non-breaking)
-2. **Validation schemas**: Extend `createServiceCatalogItemSchema` / `updateServiceCatalogItemSchema` in `@medical-crm/validation`
-3. **API**: No new endpoints — existing CRUD endpoints serve the expanded fields
+1. **Supabase procedures table**: Add columns (all nullable, non-breaking migration)
+2. **Materials API** (Supabase sync layer): Return new fields in procedure read/write
+3. **API**: No new endpoints — existing materials CRUD endpoints serve the expanded fields
 
 ### Frontend Changes
 
-- Expand the create/edit procedure modal with new fields
+- Expand the create/edit procedure modal in `materials-tabs.tsx` with new fields
 - Display new fields in the procedure card/table (collapsible details section)
 - Existing file: `apps/hospital/src/components/materials-tabs.tsx` (Procedures section)
 
@@ -194,11 +201,12 @@ In `case-detail-panel.tsx` → Marketing tab → Email sub-tab:
 - Selecting a template populates subject + body with variables auto-replaced using current case data
 - Hospital can edit before sending
 
-### Backend — 4 New API Endpoints
+### Backend — 5 New API Endpoints
 
 ```
 POST   /api/v2/hospitals/{hospitalId}/email-templates     — Create template
 GET    /api/v2/hospitals/{hospitalId}/email-templates     — List templates (filter by type, status)
+GET    /api/v2/email-templates/{id}                       — Get single template (for edit modal)
 PUT    /api/v2/email-templates/{id}                       — Update template
 DELETE /api/v2/email-templates/{id}                       — Delete template (soft)
 ```
@@ -217,18 +225,34 @@ DELETE /api/v2/email-templates/{id}                       — Delete template (s
 
 `/faq` → `apps/hospital/src/app/(portal)/faq/page.tsx`
 
-### Data Model
+### Existing Backend — Reuse `chatbot-faq` API
+
+A complete FAQ backend **already exists**:
+
+- **DB table**: `chatbot_faq_items` with bilingual columns (`question_en`, `question_zh`, `answer_en`, `answer_zh`), `category`, `keywords` (jsonb), `is_active`, `sort_order`
+- **API routes**: `apps/api/src/routes/chatbot-faq.routes.ts` — 5 endpoints + analytics:
+  - `POST /api/v2/chatbot/faqs` — create
+  - `GET /api/v2/chatbot/faqs` — list (with query filters)
+  - `GET /api/v2/chatbot/faqs/{id}` — get single
+  - `PATCH /api/v2/chatbot/faqs/{id}` — update
+  - `DELETE /api/v2/chatbot/faqs/{id}` — delete
+  - `GET /api/v2/chatbot/analytics` — analytics stub
+
+**No new backend endpoints needed.** The frontend consumes the existing API.
+
+### Data Model (matches existing `chatbot_faq_items` table)
 
 ```typescript
 interface FaqItem {
   id: string;
-  hospitalId: string;
-  question: string;
-  answer: string;
   category: string;              // general | pricing | procedures | recovery | travel | insurance
-  language: string;              // en | zh
+  questionEn: string;            // English question
+  questionZh: string;            // Chinese question
+  answerEn: string;              // English answer
+  answerZh: string;              // Chinese answer
+  keywords: string[];            // Search keywords
   sortOrder: number;
-  status: 'active' | 'inactive';
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -238,32 +262,16 @@ interface FaqItem {
 
 1. **List View**:
    - Filter by category (tabs or dropdown)
-   - Filter by language
-   - Search by question text
-   - Table/card list: Question, Category, Language, Status, Actions
+   - Search by question text (matches keywords + question text)
+   - Table/card list: Question (en/zh), Category, Status, Actions
    - "Add FAQ" button
 
 2. **Create/Edit Modal**:
-   - Question input
-   - Answer textarea
+   - Question EN input + Question ZH input (bilingual)
+   - Answer EN textarea + Answer ZH textarea (bilingual)
    - Category selector
-   - Language selector (en / zh)
-   - Status toggle (active / inactive)
-
-### Backend — 4 New API Endpoints
-
-```
-POST   /api/v2/hospitals/{hospitalId}/faqs     — Create FAQ
-GET    /api/v2/hospitals/{hospitalId}/faqs     — List FAQs (filter by category, language, status)
-PUT    /api/v2/faqs/{id}                       — Update FAQ
-DELETE /api/v2/faqs/{id}                       — Delete FAQ (soft)
-```
-
-**Implementation**:
-- New route file: `apps/api/src/routes/faq.routes.ts`
-- New domain entity, repository, use cases
-- New DB table: `chatbot_faqs`
-- New validation schemas in `@medical-crm/validation`
+   - Keywords input (comma-separated tags)
+   - Active toggle
 
 ---
 
@@ -306,8 +314,8 @@ Save button.
 PATCH /api/v2/users/me/preferences — Update user preferences (language + notifications)
 ```
 
-- Keycloak password change: use Keycloak Account API or Admin REST API
-- User preferences: new `user_preferences` table or JSONB column on users table
+- **Keycloak password change**: New BFF endpoint `POST /api/auth/change-password` in the hospital app's Next.js API routes. The BFF calls Keycloak Admin REST API (`PUT /admin/realms/{realm}/users/{userId}` with `credentials` payload) using the service account. The frontend never talks to Keycloak directly. Error handling: wrong current password returns 400 with message.
+- **User preferences**: new `user_preferences` table or JSONB column on users table
 
 ---
 
@@ -316,15 +324,16 @@ PATCH /api/v2/users/me/preferences — Update user preferences (language + notif
 ### New Navigation (8 items)
 
 ```typescript
+// Note: existing code uses JSX elements for icons (e.g. <LayoutDashboard size={20} />)
 const navItems: NavItem[] = [
-  { key: 'dashboard',        label: 'Dashboard',        icon: LayoutDashboard, href: '/dashboard' },
-  { key: 'cases',            label: 'Cases',             icon: FolderOpen,      href: '/cases' },
-  { key: 'consultations',    label: 'Consultations',     icon: Video,           href: '/consultations' },
-  { key: 'messages',         label: 'Messages',          icon: MessageSquare,   href: '/messages' },
-  { key: 'materials',        label: 'Materials',         icon: Megaphone,       href: '/materials' },
-  { key: 'email-templates',  label: 'Email Templates',   icon: Mail,            href: '/email-templates' },
-  { key: 'faq',              label: 'FAQ',               icon: HelpCircle,      href: '/faq' },
-  { key: 'settings',         label: 'Settings',          icon: Settings,        href: '/settings' },
+  { key: 'dashboard',        label: 'Dashboard',        icon: <LayoutDashboard size={20} />, href: '/dashboard' },
+  { key: 'cases',            label: 'Cases',             icon: <FolderOpen size={20} />,      href: '/cases' },
+  { key: 'consultations',    label: 'Consultations',     icon: <Video size={20} />,           href: '/consultations' },
+  { key: 'messages',         label: 'Messages',          icon: <MessageSquare size={20} />,   href: '/messages' },
+  { key: 'materials',        label: 'Materials',         icon: <Megaphone size={20} />,       href: '/materials' },
+  { key: 'email-templates',  label: 'Email Templates',   icon: <Mail size={20} />,            href: '/email-templates' },
+  { key: 'faq',              label: 'FAQ',               icon: <HelpCircle size={20} />,      href: '/faq' },
+  { key: 'settings',         label: 'Settings',          icon: <Settings size={20} />,        href: '/settings' },
 ];
 ```
 
@@ -334,35 +343,37 @@ Settings placed last, above Logout button.
 
 ## 8. Backend Changes Summary
 
-### New API Endpoints (9 total)
+### New API Endpoints (7 total)
 
 | # | Method | Path | Module |
 |---|--------|------|--------|
 | 1 | POST | `/api/v2/hospitals/{hospitalId}/email-templates` | Email Templates |
 | 2 | GET | `/api/v2/hospitals/{hospitalId}/email-templates` | Email Templates |
-| 3 | PUT | `/api/v2/email-templates/{id}` | Email Templates |
-| 4 | DELETE | `/api/v2/email-templates/{id}` | Email Templates |
-| 5 | POST | `/api/v2/hospitals/{hospitalId}/faqs` | FAQ |
-| 6 | GET | `/api/v2/hospitals/{hospitalId}/faqs` | FAQ |
-| 7 | PUT | `/api/v2/faqs/{id}` | FAQ |
-| 8 | DELETE | `/api/v2/faqs/{id}` | FAQ |
-| 9 | PATCH | `/api/v2/users/me/preferences` | Settings |
+| 3 | GET | `/api/v2/email-templates/{id}` | Email Templates |
+| 4 | PUT | `/api/v2/email-templates/{id}` | Email Templates |
+| 5 | DELETE | `/api/v2/email-templates/{id}` | Email Templates |
+| 6 | PATCH | `/api/v2/users/me/preferences` | Settings |
+| 7 | POST | `/api/auth/change-password` (BFF) | Settings |
 
 ### New DB Tables
 
 1. **`email_templates`**: id, hospital_id, name, type, subject, body, variables (jsonb), status, created_at, updated_at, deleted_at
-2. **`chatbot_faqs`**: id, hospital_id, question, answer, category, language, sort_order, status, created_at, updated_at, deleted_at
-3. **`user_preferences`** (or JSONB column on users): preferred_language, notification_settings (jsonb)
+2. **`user_preferences`** (or JSONB column on users): preferred_language, notification_settings (jsonb)
+
+### Existing DB Tables Used (no changes)
+
+- **`chatbot_faq_items`**: Already exists with bilingual columns, keywords, categories — 5 API endpoints ready
 
 ### Schema Extensions
 
-- **Procedures table**: Add columns `recovery_time`, `duration`, `hospital_stay_days`, `indications`, `risks`, `inclusions` (jsonb)
-- **Validation schemas**: Extend procedure schemas, add email-template schemas, add FAQ schemas, add user-preferences schema
+- **Supabase procedures table**: Add columns `recovery_time`, `duration`, `hospital_stay_days`, `indications`, `risks`, `inclusions` (jsonb array)
+- **Validation schemas**: Add email-template schemas, add user-preferences schema
 
 ### Existing API Endpoints Used (no changes needed)
 
-- Quotes: 7 endpoints (create, list, get, update, send, accept, reject)
-- Service Catalog: 6 endpoints
+- Quotes: 7 endpoints (create, list, get, update via PATCH, send, accept, reject) — `quoteListQuerySchema` supports `caseId` filter
+- Chatbot FAQ: 5 endpoints + analytics at `/api/v2/chatbot/faqs`
+- Service Catalog: 6 service-catalog + 5 quote-template endpoints
 - Documents: upload endpoint for quote files
 - Cases: case detail returns `aiSummary` field
 
@@ -400,8 +411,8 @@ apps/hospital/src/
 apps/api/src/
 ├── routes/
 │   ├── email-template.routes.ts        # New route file
-│   ├── faq.routes.ts                   # New route file
 │   └── user-preferences.routes.ts      # New route file
+# Note: FAQ uses existing chatbot-faq.routes.ts — no new route file needed
 ```
 
 ---

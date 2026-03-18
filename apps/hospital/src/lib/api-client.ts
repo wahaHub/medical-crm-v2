@@ -8,7 +8,16 @@ export async function apiClient<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await apiFetch(path, init);
+  let res: Response;
+  try {
+    res = await apiFetch(path, init);
+  } catch (err) {
+    // Network errors (ECONNREFUSED, ECONNRESET, timeouts) throw before we get a Response.
+    // Wrap them as a 503 ApiError so callers can handle them uniformly.
+    const message = err instanceof Error ? err.message : 'Network error';
+    console.error(`[apiClient] fetch failed for ${path}:`, message);
+    throw new ApiError(503, { error: `Service unavailable: ${message}` });
+  }
 
   if (res.status === 401) {
     redirect('/auth/login');

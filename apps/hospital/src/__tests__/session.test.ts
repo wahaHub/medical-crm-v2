@@ -295,7 +295,7 @@ describe('hospital api-client', () => {
     expect(url).toBe(`${ENV.API_URL}/api/data`);
   });
 
-  it('clears session and redirects to /auth/login when refresh fails', async () => {
+  it('redirects to /auth/login when refresh fails', async () => {
     const nearExpiry = Math.floor(Date.now() / 1000) + 30;
     setSession({
       access_token: 'old-token',
@@ -307,10 +307,11 @@ describe('hospital api-client', () => {
 
     const { apiClient } = await import('@/lib/api-client');
     await expect(apiClient('/api/data')).rejects.toThrow('REDIRECT:/auth/login');
-    expect(mockClearSession).toHaveBeenCalledOnce();
+    // clearSession is not called because cookie mutation is not allowed in Server Component context.
+    // apiFetch returns a 401 Response instead, and apiClient handles the redirect.
   });
 
-  it('clears session and redirects to /auth/login when refresh fetch throws', async () => {
+  it('redirects to /auth/login when refresh fetch throws', async () => {
     const nearExpiry = Math.floor(Date.now() / 1000) + 30;
     setSession({
       access_token: 'old-token',
@@ -322,7 +323,8 @@ describe('hospital api-client', () => {
 
     const { apiClient } = await import('@/lib/api-client');
     await expect(apiClient('/api/data')).rejects.toThrow('REDIRECT:/auth/login');
-    expect(mockClearSession).toHaveBeenCalledOnce();
+    // clearSession is not called because cookie mutation is not allowed in Server Component context.
+    // apiFetch returns a 401 Response instead, and apiClient handles the redirect.
   });
 });
 

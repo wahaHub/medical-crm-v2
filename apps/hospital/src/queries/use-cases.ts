@@ -46,3 +46,21 @@ export function useCaseConsultations(caseId: string) {
     enabled: !!caseId,
   });
 }
+
+/** Fetch conversations for a case — returns PaginatedResponse with conversation summaries */
+export function useCaseConversations(caseId: string) {
+  return useQuery({
+    queryKey: ['conversations', { caseId }],
+    queryFn: () => queryFetch(`/api/conversations?caseId=${caseId}`),
+    enabled: !!caseId,
+  });
+}
+
+/** Fetch messages for a conversation */
+export function useConversationMessages(conversationId: string | undefined) {
+  return useQuery({
+    queryKey: ['conversations', conversationId, 'messages'],
+    queryFn: () => queryFetch(`/api/conversations/${conversationId}/messages`),
+    enabled: !!conversationId,
+  });
+}

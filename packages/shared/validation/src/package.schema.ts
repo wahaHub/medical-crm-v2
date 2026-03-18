@@ -1,6 +1,15 @@
 import { z } from 'zod';
 
-export const packageTypeSchema = z.enum(['TREATMENT', 'CONSULTATION', 'BUNDLE', 'ADD_ON']);
+export const packageTypeSchema = z.enum([
+  'CONSULTATION',
+  'HEALTH_CHECKUP',
+  'SECOND_OPINION',
+  'VISA_PACKAGE',
+  'INSURANCE',
+  'ACCOMMODATION',
+  'TREATMENT_DEPOSIT',
+  'TRANSLATION',
+]);
 export const packageStatusSchema = z.enum(['DRAFT', 'PUBLISHED']);
 
 export const createPackageSchema = z.object({

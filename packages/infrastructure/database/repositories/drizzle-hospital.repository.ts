@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, ilike, sql } from 'drizzle-orm';
 import type { IHospitalRepository, HospitalInfo, MatchedHospital, FindMatchingHospitalsInput } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { hospitals } from '../schema/index.js';
@@ -27,7 +27,34 @@ export class DrizzleHospitalRepository implements IHospitalRepository {
   }
 
   async findMatchingHospitals(_input: FindMatchingHospitalsInput): Promise<MatchedHospital[]> {
-    // TODO: implement hospital matching query with filters (procedure, destination, category)
-    return [];
+    const destination = _input.destination?.trim();
+    const where = destination
+      ? and(
+        eq(hospitals.status, 'ACTIVE'),
+        ilike(hospitals.city, `%${destination}%`),
+      )
+      : eq(hospitals.status, 'ACTIVE');
+
+    const rows = await this.db
+      .select({
+        id: hospitals.id,
+        name: hospitals.name,
+        nameEn: hospitals.nameEn,
+        logoUrl: hospitals.logoUrl,
+      })
+      .from(hospitals)
+      .where(where)
+      .orderBy(sql`${hospitals.name} ASC`)
+      .limit(10);
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      nameEn: row.nameEn ?? null,
+      rating: null,
+      logoUrl: row.logoUrl ?? null,
+      tags: [],
+      procedureCount: 0,
+    }));
   }
 }

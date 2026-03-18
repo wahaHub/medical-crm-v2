@@ -20,6 +20,12 @@ export async function apiFetch(
   // Auto-refresh if expiring within 60 seconds
   let accessToken = session.access_token;
   if (session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
+    if (!session.refresh_token) {
+      return new Response(JSON.stringify({ error: 'Token refresh unavailable' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     try {
       const newTokens = await refreshAccessToken(session.refresh_token);
       accessToken = newTokens.access_token;

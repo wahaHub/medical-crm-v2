@@ -325,3 +325,10 @@ export { GetFaqItemUseCase } from './use-cases/chatbot-faq/get-faq-item.use-case
 export { UpdateFaqItemUseCase } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export type { UpdateFaqItemInput } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export { DeleteFaqItemUseCase } from './use-cases/chatbot-faq/delete-faq-item.use-case.js';
+
+// Use Cases — User Settings
+export { GetProfileUseCase } from './use-cases/users/get-profile.use-case.js';
+export { UpdateProfileUseCase } from './use-cases/users/update-profile.use-case.js';
+export type { UpdateProfileInput } from './use-cases/users/update-profile.use-case.js';
+export { ChangePasswordUseCase } from './use-cases/users/change-password.use-case.js';
+export type { ChangePasswordInput } from './use-cases/users/change-password.use-case.js';

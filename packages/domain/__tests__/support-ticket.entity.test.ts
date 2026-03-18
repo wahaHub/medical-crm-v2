@@ -80,7 +80,7 @@ describe('SupportTicket entity', () => {
 
     it('throws on CLOSED -> any (terminal state)', () => {
       const t = createTestTicket({ status: 'CLOSED' });
-      const allStatuses: TicketStatus[] = ['OPEN', 'ASSIGNED', 'PENDING_INFO', 'RESOLVED', 'CLOSED'];
+      const allStatuses: TicketStatus[] = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_INFO', 'RESOLVED', 'CLOSED'];
       for (const status of allStatuses) {
         expect(() => t.transitionStatus(status)).toThrow(
           `Cannot transition ticket status from CLOSED to ${status}`,

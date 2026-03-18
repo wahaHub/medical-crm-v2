@@ -29,6 +29,16 @@ export class ListMessagesUseCase {
         throw new ForbiddenError('Access denied to this conversation');
       }
     }
+    if (actor.role === 'PATIENT') {
+      if (conversation.category === 'ADMIN_HOSPITAL') {
+        throw new ForbiddenError('Access denied to this conversation');
+      }
+      const conversations = await this.conversationRepo.findByPatientId(actor.userId);
+      const hasAccess = conversations.some((item) => item.id === conversationId);
+      if (!hasAccess) {
+        throw new ForbiddenError('Access denied to this conversation');
+      }
+    }
 
     const result = await this.messageRepo.findByConversationId(conversationId, query);
     const attachmentKeys = result.data

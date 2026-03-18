@@ -32,9 +32,16 @@ interface CaseSupportTabProps {
   caseId: string;
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 // ── Status Badge Colors ───────────────────────────────────────────────
 
-const STATUS_OPTIONS = ['OPEN', 'ASSIGNED', 'PENDING_INFO', 'RESOLVED', 'CLOSED'];
+const STATUS_OPTIONS = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_INFO', 'RESOLVED', 'CLOSED'];
 
 // ── Ticket Detail Panel ───────────────────────────────────────────────
 
@@ -267,7 +274,7 @@ function TicketCard({ ticket }: { ticket: TicketItem }) {
 // ── Main Export ───────────────────────────────────────────────────────
 
 export function CaseSupportTab({ caseId }: CaseSupportTabProps) {
-  const { data: raw, isLoading } = useTickets({ caseId });
+  const { data: raw, isLoading, error } = useTickets({ caseId });
 
   const tickets: TicketItem[] =
     raw != null
@@ -285,6 +292,10 @@ export function CaseSupportTab({ caseId }: CaseSupportTabProps) {
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+        </div>
+      ) : error ? (
+        <div className="mx-6 mb-6 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {getErrorMessage(error, 'Failed to load support tickets')}
         </div>
       ) : tickets.length === 0 ? (
         <EmptyState

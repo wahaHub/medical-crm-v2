@@ -81,7 +81,7 @@ describe('Orders routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'PACKAGE',
+          type: 'CONSULTATION',
           amount: '1000.00',
         }),
       });

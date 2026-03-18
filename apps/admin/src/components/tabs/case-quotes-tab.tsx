@@ -16,6 +16,7 @@ import {
 import { Bell, Building2, Clock, Plus, Trash2 } from 'lucide-react';
 import { useCaseHospitalContacts, useCaseQuotesCompare } from '@/queries/use-cases';
 import { useHospitals } from '@/queries/use-hospitals';
+import { useHospitalNameMap } from '@/queries/use-hospital-names';
 import { QuoteComparison } from '@/components/quote-comparison';
 import { addHospitalToCase, removeHospitalContact, sendHospitalContactReminder } from '@/actions/quote-actions';
 
@@ -92,9 +93,17 @@ function toLineItems(input: unknown): Array<{ name: string; amount: number; curr
   return lineItems;
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 function InvitedHospitalsCard({ caseId }: { caseId: string }) {
-  const { data: raw, isLoading, refetch } = useCaseHospitalContacts(caseId);
+  const { data: raw, isLoading, error: queryError, refetch } = useCaseHospitalContacts(caseId);
   const contacts = toContacts(raw);
+  const { nameMap: hospitalNameMap } = useHospitalNameMap(contacts.map((contact) => contact.hospitalId));
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -159,7 +168,9 @@ function InvitedHospitalsCard({ caseId }: { caseId: string }) {
       render: (row) => (
         <div className="flex items-center gap-2">
           <Building2 size={14} className="text-indigo-400 shrink-0" />
-          <span className="text-sm font-medium text-slate-800">{row.hospitalName ?? row.hospitalId}</span>
+          <span className="text-sm font-medium text-slate-800">
+            {row.hospitalName ?? hospitalNameMap[row.hospitalId] ?? row.hospitalId}
+          </span>
         </div>
       ),
     },
@@ -228,6 +239,11 @@ function InvitedHospitalsCard({ caseId }: { caseId: string }) {
       {error && (
         <div className="mx-6 mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
+        </div>
+      )}
+      {queryError && (
+        <div className="mx-6 mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {getErrorMessage(queryError, 'Failed to load invited hospitals')}
         </div>
       )}
 
@@ -303,13 +319,14 @@ function InvitedHospitalsCard({ caseId }: { caseId: string }) {
 }
 
 function QuoteComparisonCard({ caseId }: { caseId: string }) {
-  const { data: raw, isLoading } = useCaseQuotesCompare(caseId);
+  const { data: raw, isLoading, error } = useCaseQuotesCompare(caseId);
   const quoteDtos = toQuotes(raw);
+  const { nameMap: hospitalNameMap } = useHospitalNameMap(quoteDtos.map((quote) => quote.hospitalId));
   const quotes = quoteDtos.map((quote) => {
     const items = toLineItems(quote.lineItems);
     return {
       hospitalId: quote.hospitalId,
-      hospitalName: quote.hospitalName ?? quote.hospitalId,
+      hospitalName: quote.hospitalName ?? hospitalNameMap[quote.hospitalId] ?? quote.hospitalId,
       items,
       total: toAmount(quote.totalAmount),
       currency: quote.currency ?? 'USD',
@@ -327,6 +344,10 @@ function QuoteComparisonCard({ caseId }: { caseId: string }) {
       {isLoading ? (
         <div className="flex items-center justify-center py-10">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+        </div>
+      ) : error ? (
+        <div className="mx-6 mb-6 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {getErrorMessage(error, 'Failed to load quote comparison')}
         </div>
       ) : (
         <QuoteComparison quotes={quotes} />

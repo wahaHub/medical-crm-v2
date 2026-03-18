@@ -82,7 +82,7 @@ describe('Packages routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nameEn: 'Test',
-          type: 'TREATMENT',
+          type: 'HEALTH_CHECKUP',
           price: '500.00',
         }),
       });

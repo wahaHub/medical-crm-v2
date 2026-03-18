@@ -6,7 +6,8 @@ export function middleware(request: NextRequest) {
   const sessionCookie = request.cookies.get('medical-crm-hospital-session');
 
   if (!sessionCookie?.value) {
-    return NextResponse.redirect(new URL('/auth/login', request.url));
+    const adminLogin = `${process.env.ADMIN_ORIGIN ?? 'http://localhost:3002'}/auth/login`;
+    return NextResponse.redirect(adminLogin);
   }
 
   return NextResponse.next();

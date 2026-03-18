@@ -84,7 +84,7 @@ function makeMockOrder(overrides: Partial<ConstructorParameters<typeof Order>[0]
     patientId: 'patient-1',
     caseId: null,
     packageId: 'pkg-1',
-    type: 'PACKAGE',
+    type: 'CONSULTATION',
     amount: '1000.00',
     currency: 'USD',
     status: 'PENDING_PAYMENT',

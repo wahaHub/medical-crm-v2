@@ -7,7 +7,7 @@ export const ticketTypeSchema = z.enum([
 
 export const ticketPrioritySchema = z.enum(['HIGH', 'MEDIUM', 'LOW']);
 
-export const ticketStatusSchema = z.enum(['OPEN', 'ASSIGNED', 'PENDING_INFO', 'RESOLVED', 'CLOSED']);
+export const ticketStatusSchema = z.enum(['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_INFO', 'RESOLVED', 'CLOSED']);
 
 export const createTicketSchema = z.object({
   caseId: z.string().uuid().optional(),

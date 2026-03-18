@@ -1,6 +1,6 @@
 import { ValidationError } from '@medical-crm/utils';
 
-const CASE_NUMBER_REGEX = /^CASE-\d{4}-\d{4,}$/;
+const CASE_NUMBER_REGEX = /^CASE-\d{4}-\d{3,}$/;
 
 export class CaseNumber {
   constructor(readonly value: string) {

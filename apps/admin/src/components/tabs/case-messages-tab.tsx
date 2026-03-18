@@ -52,13 +52,29 @@ interface CaseMessagesTabProps {
 
 // ── Map API messages to ChatLayout format ────────────────────────────
 
+function toRoleLabel(role?: string): string {
+  const upper = role?.toUpperCase() ?? 'UNKNOWN';
+  if (upper === 'PATIENT') return 'Patient';
+  if (upper === 'HOSPITAL') return 'Hospital';
+  if (upper === 'ADMIN') return 'Admin';
+  return upper;
+}
+
+function toDisplaySenderName(message: ApiMessage): string {
+  const roleLabel = toRoleLabel(message.senderRole);
+  const baseName = message.senderName?.trim() || 'Unknown';
+  return `${roleLabel} · ${baseName}`;
+}
+
 function mapApiMessages(messages: ApiMessage[]): ChatMessage[] {
-  return messages.map((m) => ({
+  return [...messages]
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map((m) => ({
     id: m.id,
     content: m.content,
     translatedContent: m.translatedContent,
     senderRole: (m.senderRole?.toUpperCase() ?? 'ADMIN') as ChatMessage['senderRole'],
-    senderName: m.senderName ?? m.senderRole ?? 'Unknown',
+    senderName: toDisplaySenderName(m),
     senderId: m.senderId,
     createdAt: m.createdAt,
     isAiTranslated: m.isAiTranslated,
@@ -74,6 +90,19 @@ function unwrapList<T>(raw: unknown): T[] {
     return (raw as PaginatedLike<T>).data ?? [];
   }
   return [];
+}
+
+function resolveChatPerspectiveRole(conversation: ApiConversation): ChatMessage['senderRole'] {
+  const category = conversation.category?.toUpperCase() ?? '';
+  if (category === 'HOSPITAL_PATIENT') return 'HOSPITAL';
+  if (category === 'ADMIN_HOSPITAL') return 'ADMIN';
+  if (category === 'ADMIN_PATIENT') return 'ADMIN';
+  return 'ADMIN';
+}
+
+function canAdminReply(conversation: ApiConversation): boolean {
+  const category = conversation.category?.toUpperCase() ?? '';
+  return category.startsWith('ADMIN_');
 }
 
 // ── Conversation List Item ───────────────────────────────────────────
@@ -185,13 +214,22 @@ function ModerationNotice({
 
 // ── Chat Panel ───────────────────────────────────────────────────────
 
-function ChatPanel({ conversationId }: { conversationId: string }) {
+function ChatPanel({ conversation }: { conversation: ApiConversation }) {
+  const conversationId = conversation.id;
   const { data: raw, refetch } = useMessages(conversationId);
   const apiMessages = unwrapList<ApiMessage>(raw);
   const [isSending, startSend] = useTransition();
   const [isModerating, startModerate] = useTransition();
 
   const chatMessages = mapApiMessages(apiMessages);
+  const perspectiveRole = resolveChatPerspectiveRole(conversation);
+  const conversationTitle =
+    conversation.participantName ??
+    conversation.title ??
+    conversation.hospitalId ??
+    'Conversation';
+  const conversationCategory = conversation.category?.replace(/_/g, ' / ') ?? undefined;
+  const canReply = canAdminReply(conversation);
 
   function handleSend(content: string) {
     startSend(async () => {
@@ -240,11 +278,19 @@ function ChatPanel({ conversationId }: { conversationId: string }) {
       <ChatLayout
         messages={chatMessages}
         onSend={handleSend}
+        canSend={canReply}
         isSending={isSending}
-        currentUserRole="ADMIN"
+        currentUserRole={perspectiveRole}
         showTranslation={true}
         className="h-full"
         inputNotice={moderationNotice}
+        readOnlyNotice="Hospital conversation is view-only for admin. Reply is disabled."
+        header={{
+          name: conversationTitle,
+          subtitle: conversation.participantRole ? `${toRoleLabel(conversation.participantRole)} chat` : undefined,
+          categoryBadge: conversationCategory,
+          isAdminConversation: true,
+        }}
         emptyState={
           <EmptyState
             icon={<MessageSquare size={36} />}
@@ -264,6 +310,7 @@ export function CaseMessagesTab({ caseId }: CaseMessagesTabProps) {
 
   const { data: raw, isLoading } = useConversations({ caseId });
   const conversations = unwrapList<ApiConversation>(raw);
+  const selectedConversation = conversations.find((conv) => conv.id === selectedConvId) ?? null;
 
   return (
     <div className="flex h-[600px] rounded-xl border border-slate-200 overflow-hidden bg-white">
@@ -297,8 +344,8 @@ export function CaseMessagesTab({ caseId }: CaseMessagesTabProps) {
       </div>
 
       {/* Right panel — chat */}
-      {selectedConvId ? (
-        <ChatPanel conversationId={selectedConvId} />
+      {selectedConversation ? (
+        <ChatPanel conversation={selectedConversation} />
       ) : (
         <div className="flex-1 flex items-center justify-center text-slate-400">
           <div className="text-center space-y-2">

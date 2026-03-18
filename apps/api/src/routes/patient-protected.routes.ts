@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
+import { wsManager } from '../ws/ws-manager.js';
 import {
   selectHospitalsSchema, sendPatientMessageSchema,
   listMessagesQuerySchema, quoteActionSchema, submitIntakeSchema,
@@ -51,7 +52,12 @@ app.get('/conversations/:convId/messages', async (c) => {
   const { listMessages } = getServices();
   const actor = { userId: session.userId, role: 'PATIENT' as const, email: '', hospitalId: null };
   const result = await listMessages.execute(convId, { page: 1, limit: query.limit }, actor);
-  return c.json(result);
+  const data = result.data.map((message) => ({
+    ...message,
+    senderRole: message.senderId === session.userId ? 'PATIENT' : 'HOSPITAL',
+  }));
+  const response = { ...result, data };
+  return c.json(response);
 });
 
 // POST /conversations/:convId/messages
@@ -65,7 +71,15 @@ app.post('/conversations/:convId/messages', async (c) => {
     content: body.content,
     messageType: 'TEXT',
   }, actor);
-  return c.json(result);
+  const response = {
+    ...result,
+    senderRole: 'PATIENT',
+  };
+  wsManager.broadcast(`conv:${convId}`, {
+    type: 'new_message',
+    data: response,
+  });
+  return c.json(response);
 });
 
 // GET /cases
@@ -114,8 +128,15 @@ app.post('/cases/:id/quote/reject', async (c) => {
 
 // GET /intake/:caseId/template
 app.get('/intake/:caseId/template', async (c) => {
+  const session = c.get('patientSession');
+  const caseId = c.req.param('caseId');
+  const { caseRepo } = getServices();
+  const caseEntity = await caseRepo.findById(caseId);
+  if (!caseEntity || caseEntity.patientId !== session.userId) {
+    return c.json({ error: 'Access denied to this case' }, 403);
+  }
   const { getIntakeTemplate } = getServices();
-  const result = await getIntakeTemplate.execute({ caseId: c.req.param('caseId') });
+  const result = await getIntakeTemplate.execute({ caseId });
   return c.json(result);
 });
 
@@ -123,8 +144,14 @@ app.get('/intake/:caseId/template', async (c) => {
 app.post('/intake/:caseId', async (c) => {
   const body = submitIntakeSchema.parse(await c.req.json());
   const session = c.get('patientSession');
+  const caseId = c.req.param('caseId');
+  const { caseRepo } = getServices();
+  const caseEntity = await caseRepo.findById(caseId);
+  if (!caseEntity || caseEntity.patientId !== session.userId) {
+    return c.json({ error: 'Access denied to this case' }, 403);
+  }
   const { submitIntake } = getServices();
-  await submitIntake.execute({ caseId: c.req.param('caseId'), patientId: session.userId, responses: body.responses });
+  await submitIntake.execute({ caseId, patientId: session.userId, responses: body.responses });
   return c.json({ ok: true });
 });
 

@@ -30,7 +30,7 @@ function makeMockPackage(overrides: Partial<ConstructorParameters<typeof Package
     id: 'pkg-1',
     nameEn: 'Test Package',
     nameZh: null,
-    type: 'TREATMENT',
+    type: 'HEALTH_CHECKUP',
     price: '1000.00',
     currency: 'USD',
     descriptionEn: 'Test description',
@@ -71,12 +71,12 @@ describe('CreatePackageUseCase', () => {
     const uc = new CreatePackageUseCase(repo);
     const result = await uc.execute({
       nameEn: 'New Package',
-      type: 'TREATMENT',
+      type: 'HEALTH_CHECKUP',
       price: '500.00',
     }, adminActor);
 
     expect(result.nameEn).toBe('New Package');
-    expect(result.type).toBe('TREATMENT');
+    expect(result.type).toBe('HEALTH_CHECKUP');
     expect(result.price).toBe('500.00');
     expect(result.status).toBe('DRAFT');
     expect(result.createdBy).toBe('admin-1');
@@ -87,7 +87,7 @@ describe('CreatePackageUseCase', () => {
     const uc = new CreatePackageUseCase(repo);
     await expect(uc.execute({
       nameEn: 'Test',
-      type: 'TREATMENT',
+      type: 'HEALTH_CHECKUP',
       price: '100.00',
     }, patientActor)).rejects.toThrow('Admin only');
   });

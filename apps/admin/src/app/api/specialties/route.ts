@@ -7,6 +7,31 @@ const REGULAR_DEPARTMENTS = [
   'Rheumatology', 'Hematology', 'Radiology', 'Psychiatry',
 ];
 
+const COSMETIC_FALLBACK_SPECIALTIES = [
+  'Rhinoplasty',
+  'Double Eyelid Surgery',
+  'Facelift',
+  'Liposuction',
+  'Breast Augmentation',
+  'Body Contouring',
+  'Orthognathic Surgery',
+  'Hair Transplant',
+  'Dermal Fillers',
+  'Botox',
+  'Skin Rejuvenation',
+  'Scar Revision',
+];
+
+function normalizeSpecialties(list: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      list
+        .map((item) => item?.trim())
+        .filter((item): item is string => Boolean(item)),
+    ),
+  );
+}
+
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get('type');
   if (type === 'REGULAR') return Response.json({ specialties: REGULAR_DEPARTMENTS });
@@ -14,7 +39,7 @@ export async function GET(request: NextRequest) {
     const supabaseUrl = process.env.MAIN_SUPABASE_URL;
     const supabaseAnonKey = process.env.MAIN_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseAnonKey) {
-      return Response.json({ specialties: [] });
+      return Response.json({ specialties: COSMETIC_FALLBACK_SPECIALTIES });
     }
 
     const res = await fetch(
@@ -28,17 +53,14 @@ export async function GET(request: NextRequest) {
       },
     );
     if (!res.ok) {
-      return Response.json({ specialties: [] });
+      return Response.json({ specialties: COSMETIC_FALLBACK_SPECIALTIES });
     }
 
     const procedures = (await res.json()) as Array<{ name?: string }>;
-    const specialties = Array.from(
-      new Set(
-        procedures
-          .map((procedure) => procedure.name?.trim())
-          .filter((name): name is string => Boolean(name)),
-      ),
-    );
+    const specialties = normalizeSpecialties(procedures.map((procedure) => procedure.name));
+    if (specialties.length === 0) {
+      return Response.json({ specialties: COSMETIC_FALLBACK_SPECIALTIES });
+    }
     return Response.json({ specialties });
   }
   return Response.json({ error: 'type parameter required' }, { status: 400 });

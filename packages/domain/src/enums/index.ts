@@ -61,13 +61,21 @@ export type ActorType = 'PATIENT' | 'HOSPITAL' | 'ADMIN' | 'SYSTEM';
 // Phase 2 M3: Support Tickets
 export type TicketType = 'ACCOUNT_ISSUES' | 'PAYMENT_PROBLEMS' | 'HOSPITAL_COMMUNICATION' | 'DOCUMENT_HELP' | 'VISA_TRAVEL' | 'GENERAL_QUESTIONS' | 'FEEDBACK';
 export type TicketPriority = 'HIGH' | 'MEDIUM' | 'LOW';
-export type TicketStatus = 'OPEN' | 'ASSIGNED' | 'PENDING_INFO' | 'RESOLVED' | 'CLOSED';
+export type TicketStatus = 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'PENDING_INFO' | 'RESOLVED' | 'CLOSED';
 export type TicketReplyRole = 'ADMIN' | 'PATIENT';
 
 // Phase 2 M4: Orders + Packages
-export type PackageType = 'TREATMENT' | 'CONSULTATION' | 'BUNDLE' | 'ADD_ON';
+export type PackageType =
+  | 'CONSULTATION'
+  | 'HEALTH_CHECKUP'
+  | 'SECOND_OPINION'
+  | 'VISA_PACKAGE'
+  | 'INSURANCE'
+  | 'ACCOMMODATION'
+  | 'TREATMENT_DEPOSIT'
+  | 'TRANSLATION';
 export type PackageStatus = 'DRAFT' | 'PUBLISHED';
-export type OrderType = 'PACKAGE' | 'CONSULTATION' | 'CUSTOM';
+export type OrderType = PackageType;
 export type OrderStatus = 'PENDING_PAYMENT' | 'PAID' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED';
 
 // Phase 2 M5: Journey + Milestones

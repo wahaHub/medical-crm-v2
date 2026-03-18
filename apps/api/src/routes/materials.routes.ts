@@ -405,7 +405,6 @@ const createBeforeAfterCaseRoute = createRoute({
             description: z.string().nullable().optional(),
             images: z.array(z.object({
               url: z.string(),
-              type: z.enum(['before', 'after', 'combined']),
             })).optional(),
           }),
         },
@@ -442,7 +441,6 @@ const updateBeforeAfterCaseRoute = createRoute({
             description: z.string().nullable().optional(),
             images: z.array(z.object({
               url: z.string(),
-              type: z.enum(['before', 'after', 'combined']),
             })).optional(),
           }),
         },

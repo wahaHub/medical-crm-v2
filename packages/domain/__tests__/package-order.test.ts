@@ -50,7 +50,7 @@ describe('Package entity', () => {
       id: 'pkg-1',
       nameEn: 'Test Package',
       nameZh: null,
-      type: 'TREATMENT',
+      type: 'HEALTH_CHECKUP',
       price: '1000.00',
       currency: 'USD',
       descriptionEn: 'Test description',
@@ -74,7 +74,7 @@ describe('Package entity', () => {
       const p = createTestPackage();
       expect(p.id).toBe('pkg-1');
       expect(p.nameEn).toBe('Test Package');
-      expect(p.type).toBe('TREATMENT');
+      expect(p.type).toBe('HEALTH_CHECKUP');
       expect(p.price).toBe('1000.00');
       expect(p.status).toBe('DRAFT');
       expect(p.createdBy).toBe('admin-1');
@@ -154,7 +154,7 @@ describe('Order entity', () => {
       patientId: 'patient-1',
       caseId: null,
       packageId: 'pkg-1',
-      type: 'PACKAGE',
+      type: 'CONSULTATION',
       amount: '1000.00',
       currency: 'USD',
       status: 'PENDING_PAYMENT',
@@ -177,7 +177,7 @@ describe('Order entity', () => {
       expect(o.id).toBe('order-1');
       expect(o.orderNumber.value).toBe('ORD-20260316-0001');
       expect(o.patientId).toBe('patient-1');
-      expect(o.type).toBe('PACKAGE');
+      expect(o.type).toBe('CONSULTATION');
       expect(o.amount).toBe('1000.00');
       expect(o.status).toBe('PENDING_PAYMENT');
       expect(o.version).toBe(1);

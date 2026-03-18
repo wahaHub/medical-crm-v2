@@ -20,3 +20,11 @@ export function useConsultationStats() {
     queryFn: () => queryFetch('/api/consultations/stats'),
   });
 }
+
+export function useConsultationTranscript(consultationId: string | null) {
+  return useQuery({
+    queryKey: ['consultations', consultationId, 'transcript'],
+    queryFn: () => queryFetch(`/api/consultations/${consultationId}/transcript`),
+    enabled: !!consultationId,
+  });
+}

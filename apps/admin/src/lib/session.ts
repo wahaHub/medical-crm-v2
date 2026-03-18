@@ -3,15 +3,24 @@ import { cookies } from 'next/headers';
 
 export interface SessionData {
   access_token: string;
-  refresh_token: string;
-  id_token: string;
-  expires_at: number;
+  refresh_token?: string;
+  id_token?: string;
+  expires_at?: number;
   /** PKCE code_verifier — stored during login, consumed during callback */
   code_verifier?: string;
 }
 
+const fallbackDevSecret = 'dev-session-secret-for-admin-portal-32chars-minimum';
+const sessionPassword =
+  process.env.SESSION_SECRET ??
+  (process.env.NODE_ENV !== 'production' ? fallbackDevSecret : undefined);
+
+if (!sessionPassword) {
+  throw new Error('SESSION_SECRET is required in production');
+}
+
 const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET!,
+  password: sessionPassword,
   cookieName: 'medical-crm-admin-session',
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',

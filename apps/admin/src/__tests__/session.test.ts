@@ -50,9 +50,16 @@ const ENV = {
   KEYCLOAK_CLIENT_ID: 'admin-client',
   KEYCLOAK_CLIENT_SECRET: 'super-secret',
   ADMIN_ORIGIN: 'https://admin.example.com',
+  HOSPITAL_ORIGIN: 'https://hospital.example.com',
   SESSION_SECRET: 'test-session-secret-32-chars-min!!',
   API_URL: 'http://localhost:3001',
 };
+
+function makeJwt(payload: Record<string, unknown>) {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${header}.${body}.signature`;
+}
 
 // ---------------------------------------------------------------------------
 // Login route tests
@@ -62,73 +69,122 @@ describe('admin auth — login route', () => {
     vi.resetModules();
     mockSave.mockReset();
     mockDestroy.mockReset();
+    vi.stubGlobal('fetch', vi.fn());
     createSession({});
     Object.assign(process.env, ENV);
   });
 
-  it('redirects to Keycloak auth URL', async () => {
-    const { GET } = await import('@/app/auth/login/route');
-    const response = await GET();
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get('location')!;
-    expect(location).toContain(`${ENV.KEYCLOAK_ISSUER}/protocol/openid-connect/auth`);
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it('includes all required OAuth params in the redirect URL', async () => {
-    const { GET } = await import('@/app/auth/login/route');
-    const response = await GET();
+  function makeLoginRequest(body: Record<string, unknown>) {
+    return new NextRequest('https://admin.example.com/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
 
-    const location = response.headers.get('location')!;
-    const url = new URL(location);
-
-    expect(url.searchParams.get('client_id')).toBe(ENV.KEYCLOAK_CLIENT_ID);
-    expect(url.searchParams.get('redirect_uri')).toBe(`${ENV.ADMIN_ORIGIN}/auth/callback`);
-    expect(url.searchParams.get('response_type')).toBe('code');
-    expect(url.searchParams.get('scope')).toBe('openid profile email');
-    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+  it('returns 400 when username/password are missing', async () => {
+    const { POST } = await import('@/app/api/auth/login/route');
+    const response = await POST(makeLoginRequest({ username: '' }));
+    expect(response.status).toBe(400);
   });
 
-  it('generates a base64url-encoded code_challenge', async () => {
-    const { GET } = await import('@/app/auth/login/route');
-    const response = await GET();
+  it('returns 401 when credentials are invalid', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+      error_description: 'Bad credentials',
+    }), { status: 401, headers: { 'Content-Type': 'application/json' } }));
 
-    const location = response.headers.get('location')!;
-    const url = new URL(location);
-    const challenge = url.searchParams.get('code_challenge')!;
-
-    // base64url characters only — no +, /, or = padding
-    expect(challenge).toMatch(/^[A-Za-z0-9_-]+$/);
-    // SHA-256 in base64url is always 43 characters
-    expect(challenge.length).toBe(43);
+    const { POST } = await import('@/app/api/auth/login/route');
+    const response = await POST(makeLoginRequest({ username: 'x', password: 'y' }));
+    expect(response.status).toBe(401);
   });
 
-  it('stores code_verifier in session and calls session.save()', async () => {
-    const { GET } = await import('@/app/auth/login/route');
-    await GET();
+  it('creates admin session and redirects to / for admin role', async () => {
+    const adminToken = makeJwt({
+      sub: 'admin-sub',
+      email: 'admin@medicaltourismchina.health',
+      realm_access: { roles: ['admin'] },
+    });
 
-    expect(currentSession.code_verifier).toBeDefined();
-    expect(typeof currentSession.code_verifier).toBe('string');
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        access_token: adminToken,
+        refresh_token: 'refresh-token',
+        id_token: 'id-token',
+        expires_in: 300,
+        refresh_expires_in: 1800,
+        token_type: 'Bearer',
+        scope: 'openid email profile',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const { POST } = await import('@/app/api/auth/login/route');
+    const response = await POST(makeLoginRequest({ username: 'admin', password: 'pw' }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as { success?: boolean; redirectTo?: string };
+    expect(body.success).toBe(true);
+    expect(body.redirectTo).toBe('/');
     expect(mockSave).toHaveBeenCalledOnce();
+    expect(currentSession.access_token).toBe(adminToken);
+    expect(currentSession.refresh_token).toBe('refresh-token');
   });
 
-  it('PKCE challenge is the SHA-256/base64url hash of the stored verifier', async () => {
-    const { GET } = await import('@/app/auth/login/route');
-    const response = await GET();
+  it('sets hospital cookie and redirects to hospital origin for hospital role', async () => {
+    const hospitalToken = makeJwt({
+      sub: 'hospital-sub',
+      email: 'hospital@example.com',
+      realm_access: { roles: ['hospital'] },
+    });
 
-    const location = response.headers.get('location')!;
-    const url = new URL(location);
-    const challenge = url.searchParams.get('code_challenge')!;
-    const verifier = currentSession.code_verifier as string;
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        access_token: hospitalToken,
+        refresh_token: 'refresh-token',
+        id_token: 'id-token',
+        expires_in: 300,
+        refresh_expires_in: 1800,
+        token_type: 'Bearer',
+        scope: 'openid email profile',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
 
-    // Independently compute the expected challenge
-    const crypto = await import('node:crypto');
-    const expected = crypto
-      .createHash('sha256')
-      .update(verifier)
-      .digest('base64url');
+    const { POST } = await import('@/app/api/auth/login/route');
+    const response = await POST(makeLoginRequest({ username: 'hospital', password: 'pw' }));
 
-    expect(challenge).toBe(expected);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { success?: boolean; redirectTo?: string };
+    expect(body.success).toBe(true);
+    expect(body.redirectTo).toBe(ENV.HOSPITAL_ORIGIN);
+    expect(response.headers.get('set-cookie')).toContain('medical-crm-hospital-session=');
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when role is not admin/hospital', async () => {
+    const otherToken = makeJwt({
+      sub: 'other-sub',
+      email: 'someone@example.com',
+      realm_access: { roles: ['patient'] },
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        access_token: otherToken,
+        refresh_token: 'refresh-token',
+        id_token: 'id-token',
+        expires_in: 300,
+        refresh_expires_in: 1800,
+        token_type: 'Bearer',
+        scope: 'openid email profile',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const { POST } = await import('@/app/api/auth/login/route');
+    const response = await POST(makeLoginRequest({ username: 'other', password: 'pw' }));
+    expect(response.status).toBe(403);
   });
 });
 
@@ -184,7 +240,7 @@ describe('admin auth — callback route', () => {
     expect(response.headers.get('location')).toContain('/auth/login');
   });
 
-  it('saves tokens to session and redirects to / on successful exchange', async () => {
+  it('saves access/refresh token to session and redirects to / on successful exchange', async () => {
     const fakeTokens = {
       access_token: 'access-abc',
       refresh_token: 'refresh-xyz',
@@ -207,7 +263,7 @@ describe('admin auth — callback route', () => {
 
     expect(currentSession.access_token).toBe('access-abc');
     expect(currentSession.refresh_token).toBe('refresh-xyz');
-    expect(currentSession.id_token).toBe('id-tok-123');
+    expect(currentSession.id_token).toBeUndefined();
     expect(typeof currentSession.expires_at).toBe('number');
     expect(currentSession.expires_at as number).toBeGreaterThan(Math.floor(Date.now() / 1000));
   });

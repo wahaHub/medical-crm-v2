@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 const mockServices = {
   sendMessage: { execute: vi.fn() },
+  getConversation: { execute: vi.fn() },
   listMessages: { execute: vi.fn() },
   getMessage: { execute: vi.fn() },
   updateMessage: { execute: vi.fn() },
@@ -14,6 +15,7 @@ const mockServices = {
   rejectMessage: { execute: vi.fn() },
   regenerateSummary: { execute: vi.fn() },
   retranslateMessage: { execute: vi.fn() },
+  caseRepo: { findById: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -58,6 +60,15 @@ const VALID_MSG_ID = '00000000-0000-0000-0000-000000000002';
 describe('Message routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServices.getConversation.execute.mockResolvedValue({
+      id: VALID_UUID,
+      caseId: VALID_UUID,
+      category: 'HOSPITAL_PATIENT',
+    });
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: VALID_UUID,
+      patientId: 'patient-1',
+    });
     currentSession = {
       userId: 'u-1',
       email: 'admin@test.com',

@@ -35,6 +35,7 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleServiceCatalogRepository: vi.fn(() => ({})),
   DrizzleBookingRequestRepository: vi.fn(() => ({})),
   DrizzleChatbotFaqRepository: vi.fn(() => ({})),
+  DrizzleEmailTemplateRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
@@ -227,6 +228,12 @@ vi.mock('@medical-crm/application', () => ({
   GetFaqItemUseCase: vi.fn(() => ({})),
   UpdateFaqItemUseCase: vi.fn(() => ({})),
   DeleteFaqItemUseCase: vi.fn(() => ({})),
+  // Email Templates
+  CreateEmailTemplateUseCase: vi.fn(() => ({})),
+  ListEmailTemplatesUseCase: vi.fn(() => ({})),
+  GetEmailTemplateUseCase: vi.fn(() => ({})),
+  UpdateEmailTemplateUseCase: vi.fn(() => ({})),
+  DeleteEmailTemplateUseCase: vi.fn(() => ({})),
   // User settings
   GetProfileUseCase: vi.fn(() => ({})),
   UpdateProfileUseCase: vi.fn(() => ({})),

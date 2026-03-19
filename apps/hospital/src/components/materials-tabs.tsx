@@ -2368,6 +2368,130 @@ const DEPARTMENT_OPTIONS = [
 /*  Tab 2 — Procedures                                                        */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
+function ProcedureRow({
+  proc,
+  onEdit,
+  onDelete,
+}: {
+  proc: MaterialsProcedureDTO;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails =
+    proc.recoveryTime ||
+    proc.duration ||
+    proc.hospitalStayDays ||
+    proc.indications ||
+    proc.risks ||
+    (proc.inclusions && proc.inclusions.length > 0);
+
+  return (
+    <>
+      <tr className="hover:bg-slate-50/50 transition-colors">
+        <td className="px-6 py-4">
+          <div className="flex items-center gap-2">
+            {hasDetails ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="text-slate-400 hover:text-slate-700 transition-colors"
+                aria-label="Toggle details"
+              >
+                {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+            ) : (
+              <span className="w-4" />
+            )}
+            <span className="font-medium text-slate-900">{proc.procedureName}</span>
+          </div>
+        </td>
+        <td className="px-6 py-4 text-slate-600">
+          {proc.priceMin != null || proc.priceMax != null
+            ? `USD ${(proc.priceMin ?? 0).toLocaleString()} - ${(proc.priceMax ?? 0).toLocaleString()}`
+            : proc.priceRange ?? '-'}
+        </td>
+        <td className="px-6 py-4">
+          {proc.isPopular && (
+            <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200/50 rounded-md text-xs font-medium">
+              Popular
+            </span>
+          )}
+        </td>
+        <td className="px-6 py-4">
+          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/50 rounded-md text-xs font-medium">
+            Active
+          </span>
+        </td>
+        <td className="px-6 py-4 text-right">
+          <div className="flex items-center justify-end gap-2">
+            <button
+              onClick={onEdit}
+              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+            >
+              <Edit2 size={16} />
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </td>
+      </tr>
+      {expanded && hasDetails && (
+        <tr className="bg-slate-50/70">
+          <td colSpan={5} className="px-10 py-4">
+            <div className="grid grid-cols-2 gap-4 text-sm text-slate-700">
+              {proc.recoveryTime && (
+                <div>
+                  <span className="font-medium text-slate-500">Recovery Time: </span>
+                  {proc.recoveryTime}
+                </div>
+              )}
+              {proc.duration && (
+                <div>
+                  <span className="font-medium text-slate-500">Duration: </span>
+                  {proc.duration}
+                </div>
+              )}
+              {proc.hospitalStayDays && (
+                <div>
+                  <span className="font-medium text-slate-500">Hospital Stay: </span>
+                  {proc.hospitalStayDays}
+                </div>
+              )}
+              {proc.indications && (
+                <div className="col-span-2">
+                  <span className="font-medium text-slate-500">Indications: </span>
+                  {proc.indications}
+                </div>
+              )}
+              {proc.risks && (
+                <div className="col-span-2">
+                  <span className="font-medium text-slate-500">Risks: </span>
+                  {proc.risks}
+                </div>
+              )}
+              {proc.inclusions && proc.inclusions.length > 0 && (
+                <div className="col-span-2">
+                  <span className="font-medium text-slate-500 block mb-1">Inclusions:</span>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {proc.inclusions.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function ProceduresTab() {
   const { data, isLoading } = useProcedures();
   const [showModal, setShowModal] = useState(false);
@@ -2447,45 +2571,15 @@ function ProceduresTab() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {procedures.map((proc) => (
-                <tr key={proc.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4 font-medium text-slate-900">{proc.procedureName}</td>
-                  <td className="px-6 py-4 text-slate-600">
-                    {proc.priceMin != null || proc.priceMax != null
-                      ? `USD ${(proc.priceMin ?? 0).toLocaleString()} - ${(proc.priceMax ?? 0).toLocaleString()}`
-                      : proc.priceRange ?? '-'}
-                  </td>
-                  <td className="px-6 py-4">
-                    {proc.isPopular && (
-                      <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200/50 rounded-md text-xs font-medium">
-                        Popular
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/50 rounded-md text-xs font-medium">
-                      Active
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => {
-                          setEditingItem(proc);
-                          setShowModal(true);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProcedure(proc.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <ProcedureRow
+                  key={proc.id}
+                  proc={proc}
+                  onEdit={() => {
+                    setEditingItem(proc);
+                    setShowModal(true);
+                  }}
+                  onDelete={() => handleDeleteProcedure(proc.id)}
+                />
               ))}
             </tbody>
           </table>
@@ -2520,6 +2614,12 @@ function ProcedureModal({
   const [priceMax, setPriceMax] = useState('');
   const [isPopular, setIsPopular] = useState(false);
   const [sortOrder, setSortOrder] = useState('');
+  const [recoveryTime, setRecoveryTime] = useState('');
+  const [duration, setDuration] = useState('');
+  const [hospitalStayDays, setHospitalStayDays] = useState('');
+  const [indications, setIndications] = useState('');
+  const [risks, setRisks] = useState('');
+  const [inclusions, setInclusions] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -2528,6 +2628,12 @@ function ProcedureModal({
     setPriceMax(existing?.priceMax != null ? String(existing.priceMax) : '');
     setIsPopular(existing?.isPopular ?? false);
     setSortOrder(existing?.sortOrder != null ? String(existing.sortOrder) : '');
+    setRecoveryTime(existing?.recoveryTime ?? '');
+    setDuration(existing?.duration ?? '');
+    setHospitalStayDays(existing?.hospitalStayDays ?? '');
+    setIndications(existing?.indications ?? '');
+    setRisks(existing?.risks ?? '');
+    setInclusions(existing?.inclusions ?? []);
   }, [existing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2541,6 +2647,12 @@ function ProcedureModal({
         priceMax: priceMax ? Number(priceMax) : null,
         isPopular,
         sortOrder: sortOrder ? Number(sortOrder) : 0,
+        recoveryTime: recoveryTime.trim() || null,
+        duration: duration.trim() || null,
+        hospitalStayDays: hospitalStayDays.trim() || null,
+        indications: indications.trim() || null,
+        risks: risks.trim() || null,
+        inclusions: inclusions.filter((s) => s.trim()),
       };
       if (existing) {
         await updateProcedure(existing.id, payload);
@@ -2557,6 +2669,8 @@ function ProcedureModal({
 
   const inputClass =
     'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500';
+  const textareaClass =
+    'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 resize-none';
 
   return (
     <Modal open={open} onClose={onClose} title={existing ? 'Edit Procedure' : 'Add New Procedure'}>
@@ -2602,6 +2716,94 @@ function ProcedureModal({
               placeholder="e.g. 8000"
               className={inputClass}
             />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Recovery Time</label>
+            <input
+              type="text"
+              value={recoveryTime}
+              onChange={(e) => setRecoveryTime(e.target.value)}
+              placeholder="e.g. 2-4 weeks"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Duration</label>
+            <input
+              type="text"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              placeholder="e.g. 2-3 hours"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Hospital Stay Days</label>
+            <input
+              type="text"
+              value={hospitalStayDays}
+              onChange={(e) => setHospitalStayDays(e.target.value)}
+              placeholder="e.g. 1-2 days"
+              className={inputClass}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Indications</label>
+          <textarea
+            value={indications}
+            onChange={(e) => setIndications(e.target.value)}
+            placeholder="Suitable candidates / conditions"
+            rows={3}
+            className={textareaClass}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Risks</label>
+          <textarea
+            value={risks}
+            onChange={(e) => setRisks(e.target.value)}
+            placeholder="Risks and precautions"
+            rows={3}
+            className={textareaClass}
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-700">Inclusions</label>
+          <div className="space-y-2">
+            {inclusions.map((item, index) => (
+              <div key={`inclusion-${index}`} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={item}
+                  onChange={(e) => {
+                    const next = [...inclusions];
+                    next[index] = e.target.value;
+                    setInclusions(next);
+                  }}
+                  placeholder="e.g. Post-op consultation"
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  onClick={() => setInclusions(inclusions.filter((_, i) => i !== index))}
+                  className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                  aria-label="Remove inclusion"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setInclusions([...inclusions, ''])}
+              className="w-full px-3 py-2 border border-dashed border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:border-cyan-300 hover:text-cyan-600 transition-colors flex items-center justify-center gap-2"
+            >
+              <Plus size={14} />
+              Add Inclusion
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-2 pt-2">

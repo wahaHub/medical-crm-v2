@@ -315,6 +315,12 @@ export interface MaterialsProcedureDTO {
   priceRange: string | null;
   isPopular: boolean;
   sortOrder: number;
+  recoveryTime?: string | null;
+  duration?: string | null;
+  hospitalStayDays?: string | null;
+  indications?: string | null;
+  risks?: string | null;
+  inclusions?: string[];
 }
 
 /** Materials surgeon — matches MaterialsSurgeon domain type */
@@ -346,6 +352,20 @@ export interface QuoteItem {
   notes?: string | null;
   validUntil?: string | null;
   status: string; // PENDING | ACCEPTED | REJECTED | EXPIRED
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Email template item */
+export interface EmailTemplateItem {
+  id: string;
+  hospitalId: string;
+  name: string;
+  type: string;
+  subject: string;
+  body: string;
+  variables: string[];
+  status: string;
   createdAt: string;
   updatedAt: string;
 }

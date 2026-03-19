@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, FolderOpen, Video, MessageSquare, Megaphone, LogOut, Search, Bell } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, Video, MessageSquare, Megaphone, LogOut, Search, Bell, Mail, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
 import { SidebarNav, type NavItem } from '@medical-crm/ui';
 import { useAuth } from '@/lib/auth-context';
 
@@ -11,6 +11,9 @@ const navItems: NavItem[] = [
   { key: 'consultations', label: 'Consultations', icon: <Video size={20} />, href: '/consultations' },
   { key: 'messages', label: 'Messages', icon: <MessageSquare size={20} />, href: '/messages' },
   { key: 'materials', label: 'Materials', icon: <Megaphone size={20} />, href: '/materials' },
+  { key: 'email-templates', label: 'Email Templates', icon: <Mail size={20} />, href: '/email-templates' },
+  { key: 'faq', label: 'Chatbot & FAQ', icon: <HelpCircle size={20} />, href: '/faq' },
+  { key: 'settings', label: 'Settings', icon: <SettingsIcon size={20} />, href: '/settings' },
 ];
 
 export function PortalShell({ children }: { children: React.ReactNode }) {

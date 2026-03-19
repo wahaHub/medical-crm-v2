@@ -1,6 +1,6 @@
 import type { IChatbotFaqRepository } from '@medical-crm/domain';
 import { ChatbotFaqItem } from '@medical-crm/domain';
-import { generateId } from '@medical-crm/utils';
+import { generateId, ForbiddenError } from '@medical-crm/utils';
 import type { ChatbotFaqItemDTO } from '../../dtos/chatbot-faq.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toChatbotFaqItemDTO } from '../../mappers/chatbot-faq.mapper.js';
@@ -20,9 +20,12 @@ export class CreateFaqItemUseCase {
   constructor(private readonly faqRepo: IChatbotFaqRepository) {}
 
   async execute(input: CreateFaqItemInput, actor: Actor): Promise<ChatbotFaqItemDTO> {
-    if (actor.role !== 'ADMIN') {
-      throw new Error('Forbidden: only ADMIN can create FAQ items');
+    if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
+      throw new ForbiddenError('Forbidden');
     }
+
+    // Derive hospitalId from actor — never accept from input
+    const hospitalId = actor.role === 'HOSPITAL' ? actor.hospitalId : null;
 
     const entity = new ChatbotFaqItem({
       id: generateId(),
@@ -34,6 +37,7 @@ export class CreateFaqItemUseCase {
       keywords: input.keywords ?? [],
       sortOrder: input.sortOrder ?? 0,
       isActive: input.isActive ?? true,
+      hospitalId,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

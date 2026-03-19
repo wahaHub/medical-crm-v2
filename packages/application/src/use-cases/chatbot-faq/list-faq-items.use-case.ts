@@ -1,4 +1,5 @@
 import type { IChatbotFaqRepository, ChatbotFaqListQuery } from '@medical-crm/domain';
+import { ForbiddenError } from '@medical-crm/utils';
 import type { ChatbotFaqItemDTO } from '../../dtos/chatbot-faq.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toChatbotFaqItemDTO } from '../../mappers/chatbot-faq.mapper.js';
@@ -10,11 +11,17 @@ export class ListFaqItemsUseCase {
     query: ChatbotFaqListQuery,
     actor: Actor,
   ): Promise<{ data: ChatbotFaqItemDTO[]; total: number; page: number; limit: number }> {
-    if (actor.role !== 'ADMIN') {
-      throw new Error('Forbidden: only ADMIN can list FAQ items');
+    if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
+      throw new ForbiddenError('Forbidden');
     }
 
-    const result = await this.faqRepo.findAll(query);
+    // HOSPITAL actors only see their own hospital's FAQs
+    const scopedQuery: ChatbotFaqListQuery =
+      actor.role === 'HOSPITAL'
+        ? { ...query, hospitalId: actor.hospitalId }
+        : query;
+
+    const result = await this.faqRepo.findAll(scopedQuery);
 
     return {
       data: result.data.map((e) => toChatbotFaqItemDTO(e)),

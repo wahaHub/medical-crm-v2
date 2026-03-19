@@ -335,6 +335,21 @@ export interface MaterialsSurgeonDTO {
   achievements: string[];
 }
 
+/** Quote item — matches backend QuoteDTO */
+export interface QuoteItem {
+  id: string;
+  caseId: string;
+  hospitalId: string;
+  totalAmount: string;
+  currency: string;
+  lineItems?: Array<{ name: string; amount: string }>;
+  notes?: string | null;
+  validUntil?: string | null;
+  status: string; // PENDING | ACCEPTED | REJECTED | EXPIRED
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Materials before/after case — matches MaterialsBeforeAfterCase domain type */
 export interface MaterialsBeforeAfterCaseDTO {
   id: string;

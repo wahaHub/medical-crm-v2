@@ -21,8 +21,11 @@ import {
   Upload,
   X,
   AlertCircle,
+  Receipt,
 } from 'lucide-react';
 import { StatusBadge } from '@medical-crm/ui';
+import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
+import { CaseQuoteTab } from './tabs/case-quote-tab';
 import { useCaseConsultations, useCaseConversations, useConversationMessages } from '@/queries/use-cases';
 import { useAuth } from '@/lib/auth-context';
 import type {
@@ -56,10 +59,12 @@ function getInitials(name: string) {
 // ── Tab Definitions ─────────────────────────────────────────────────
 
 const tabs = [
+  { id: 'ai-summary', label: 'AI Summary', icon: Sparkles },
   { id: 'intake', label: 'Intake', icon: FileText },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'messages', label: 'Messages', icon: MessageSquare },
   { id: 'diagnosis', label: 'Diagnosis', icon: Stethoscope },
+  { id: 'quote', label: 'Quote', icon: Receipt },
   { id: 'marketing', label: 'Marketing', icon: Megaphone },
   { id: 'invitation', label: 'Invitation Letter', icon: FileSignature },
   { id: 'consultation', label: 'Consultation', icon: Video },
@@ -68,7 +73,7 @@ const tabs = [
 // ── Main Component ──────────────────────────────────────────────────
 
 export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
-  const [activeTab, setActiveTab] = useState('intake');
+  const [activeTab, setActiveTab] = useState('ai-summary');
   const router = useRouter();
 
   const { data: consultations } = useCaseConsultations(caseDetail.id);
@@ -146,10 +151,12 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-10">
         <div className="max-w-5xl mx-auto">
+          {activeTab === 'ai-summary' && <CaseAiSummaryTab aiSummary={caseDetail.aiSummary} />}
           {activeTab === 'intake' && <IntakeTab caseDetail={caseDetail} />}
           {activeTab === 'documents' && <DocumentsTab caseDetail={caseDetail} />}
           {activeTab === 'messages' && <MessagesTab caseDetail={caseDetail} />}
           {activeTab === 'diagnosis' && <DiagnosisTab caseDetail={caseDetail} />}
+          {activeTab === 'quote' && <CaseQuoteTab caseId={caseDetail.id} />}
           {activeTab === 'marketing' && <MarketingTab />}
           {activeTab === 'invitation' && <InvitationLetterTab />}
           {activeTab === 'consultation' && <ConsultationTab consultations={consultationsList} router={router} />}

@@ -8,6 +8,7 @@ export interface ChatbotFaqItemDTO {
   keywords: string[];
   sortOrder: number;
   isActive: boolean;
+  hospitalId: string | null;
   createdAt: string;
   updatedAt: string;
 }

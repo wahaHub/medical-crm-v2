@@ -40,6 +40,15 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
         ) as ReturnType<typeof eq>,
       );
     }
+    if (query.hospitalId !== undefined) {
+      if (query.hospitalId === null) {
+        conditions.push(
+          sql`${chatbotFaqItems.hospitalId} IS NULL` as unknown as ReturnType<typeof eq>,
+        );
+      } else {
+        conditions.push(eq(chatbotFaqItems.hospitalId, query.hospitalId));
+      }
+    }
 
     const { page, limit } = query;
     const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -79,6 +88,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       keywords: entity.keywords,
       isActive: entity.isActive,
       sortOrder: entity.sortOrder,
+      hospitalId: entity.hospitalId,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: now,
     };
@@ -97,6 +107,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
           keywords: values.keywords,
           isActive: values.isActive,
           sortOrder: values.sortOrder,
+          hospitalId: values.hospitalId,
           updatedAt: now,
         },
       })
@@ -122,6 +133,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       keywords: Array.isArray(row.keywords) ? (row.keywords as string[]) : [],
       sortOrder: row.sortOrder,
       isActive: row.isActive,
+      hospitalId: row.hospitalId ?? null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });

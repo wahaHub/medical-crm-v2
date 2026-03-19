@@ -8,6 +8,7 @@ export interface ChatbotFaqItemProps {
   keywords: string[];
   sortOrder: number;
   isActive: boolean;
+  hospitalId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +23,7 @@ export class ChatbotFaqItem {
   keywords: string[];
   sortOrder: number;
   isActive: boolean;
+  hospitalId: string | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -35,6 +37,7 @@ export class ChatbotFaqItem {
     this.keywords = props.keywords;
     this.sortOrder = props.sortOrder;
     this.isActive = props.isActive;
+    this.hospitalId = props.hospitalId;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

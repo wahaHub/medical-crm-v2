@@ -6,6 +6,7 @@ export interface ChatbotFaqListQuery {
   category?: string;
   isActive?: boolean;
   search?: string;
+  hospitalId?: string | null;
 }
 
 export interface IChatbotFaqRepository {

@@ -12,6 +12,7 @@ export function toChatbotFaqItemDTO(entity: ChatbotFaqItem): ChatbotFaqItemDTO {
     keywords: entity.keywords,
     sortOrder: entity.sortOrder,
     isActive: entity.isActive,
+    hospitalId: entity.hospitalId,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   };

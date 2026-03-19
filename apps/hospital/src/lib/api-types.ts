@@ -370,6 +370,22 @@ export interface EmailTemplateItem {
   updatedAt: string;
 }
 
+/** FAQ item — matches backend ChatbotFaqDTO */
+export interface FaqItem {
+  id: string;
+  hospitalId?: string | null;
+  category: string;
+  questionEn: string;
+  questionZh: string;
+  answerEn: string;
+  answerZh: string;
+  keywords: string[];
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Materials before/after case — matches MaterialsBeforeAfterCase domain type */
 export interface MaterialsBeforeAfterCaseDTO {
   id: string;

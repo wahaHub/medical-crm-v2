@@ -83,6 +83,7 @@ export const users = pgTable("users", {
 	preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh').notNull(),
 	phone: varchar({ length: 20 }),
 	passwordHash: varchar("password_hash", { length: 255 }),
+	notificationSettings: jsonb("notification_settings"),
 }, (table) => [
 	index("users_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
 	uniqueIndex("users_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")),

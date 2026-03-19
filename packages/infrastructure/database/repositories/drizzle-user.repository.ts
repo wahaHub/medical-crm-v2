@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import type { IUserRepository, CreateUserInput, UserProfile, UpdateUserProfileInput } from '@medical-crm/domain';
+import type { IUserRepository, CreateUserInput, UserProfile, UpdateUserProfileInput, NotificationPreferences } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { users } from '../schema/index.js';
 
@@ -51,6 +51,7 @@ export class DrizzleUserRepository implements IUserRepository {
         role: users.role,
         preferredLanguage: users.preferredLanguage,
         hospitalId: users.hospitalId,
+        notificationSettings: users.notificationSettings,
       })
       .from(users)
       .where(eq(users.id, id))
@@ -65,6 +66,7 @@ export class DrizzleUserRepository implements IUserRepository {
       role: row.role,
       preferredLanguage: row.preferredLanguage,
       hospitalId: row.hospitalId ?? null,
+      notificationSettings: (row.notificationSettings as NotificationPreferences | null) ?? null,
     };
   }
 
@@ -74,6 +76,7 @@ export class DrizzleUserRepository implements IUserRepository {
     };
     if (input.email !== undefined) updateFields.email = input.email;
     if (input.preferredLanguage !== undefined) updateFields.preferredLanguage = input.preferredLanguage;
+    if (input.notificationSettings !== undefined) updateFields.notificationSettings = input.notificationSettings;
 
     await this.db
       .update(users)

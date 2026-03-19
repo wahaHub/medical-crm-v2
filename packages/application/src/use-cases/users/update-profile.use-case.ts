@@ -1,10 +1,11 @@
-import type { IUserRepository, IKeycloakAdminService, UserProfile } from '@medical-crm/domain';
+import type { IUserRepository, IKeycloakAdminService, UserProfile, NotificationPreferences } from '@medical-crm/domain';
 import { NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 
 export interface UpdateProfileInput {
   email?: string;
   preferredLanguage?: string;
+  notifications?: NotificationPreferences;
 }
 
 export class UpdateProfileUseCase {
@@ -23,6 +24,7 @@ export class UpdateProfileUseCase {
     await this.userRepo.update(actor.userId, {
       email: input.email,
       preferredLanguage: input.preferredLanguage,
+      notificationSettings: input.notifications,
     });
 
     // If email changed, also sync to Keycloak

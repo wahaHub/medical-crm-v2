@@ -7,6 +7,13 @@ export interface CreateUserInput {
   preferredLanguage: string;
 }
 
+export interface NotificationPreferences {
+  newCase?: boolean;
+  newMessage?: boolean;
+  quoteStatusChange?: boolean;
+  consultationReminder?: boolean;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -14,11 +21,13 @@ export interface UserProfile {
   role: string;
   preferredLanguage: string;
   hospitalId: string | null;
+  notificationSettings: NotificationPreferences | null;
 }
 
 export interface UpdateUserProfileInput {
   email?: string;
   preferredLanguage?: string;
+  notificationSettings?: NotificationPreferences;
 }
 
 export interface IUserRepository {

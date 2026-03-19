@@ -27,6 +27,7 @@ import { StatusBadge } from '@medical-crm/ui';
 import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
 import { CaseQuoteTab } from './tabs/case-quote-tab';
 import { useCaseConsultations, useCaseConversations, useConversationMessages } from '@/queries/use-cases';
+import { useEmailTemplates } from '@/queries/use-email-templates';
 import { useAuth } from '@/lib/auth-context';
 import type {
   HospitalCaseDetail,
@@ -34,6 +35,7 @@ import type {
   PaginatedResponse,
   ConversationSummary,
   MessageItem,
+  EmailTemplateItem,
 } from '@/lib/api-types';
 
 // ── Shared Helpers ──────────────────────────────────────────────────
@@ -157,7 +159,7 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
           {activeTab === 'messages' && <MessagesTab caseDetail={caseDetail} />}
           {activeTab === 'diagnosis' && <DiagnosisTab caseDetail={caseDetail} />}
           {activeTab === 'quote' && <CaseQuoteTab caseId={caseDetail.id} />}
-          {activeTab === 'marketing' && <MarketingTab />}
+          {activeTab === 'marketing' && <MarketingTab caseDetail={caseDetail} />}
           {activeTab === 'invitation' && <InvitationLetterTab />}
           {activeTab === 'consultation' && <ConsultationTab consultations={consultationsList} router={router} />}
         </div>
@@ -769,9 +771,40 @@ function AddDiagnosisModal({ open, onClose }: { open: boolean; onClose: () => vo
 
 // ── Tab: Marketing ──────────────────────────────────────────────────
 
-function MarketingTab() {
+function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [activeSubTab, setActiveSubTab] = useState('Email');
   const [selectedModules, setSelectedModules] = useState(['Logo / Slogan', 'Success Cases', 'Patient Reviews']);
+  const [emailSubject, setEmailSubject] = useState('Your Personalized Treatment Plan');
+  const [emailBody, setEmailBody] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const { data: templatesData } = useEmailTemplates();
+  const { user } = useAuth();
+
+  const activeTemplates: EmailTemplateItem[] = (() => {
+    if (!templatesData) return [];
+    const list = Array.isArray(templatesData) ? templatesData : (templatesData as { data?: EmailTemplateItem[] }).data ?? [];
+    return list.filter((t) => t.status === 'active');
+  })();
+
+  const replaceVariables = (text: string) => {
+    return text
+      .replace(/\{\{patient_name\}\}/g, caseDetail.patient.name ?? '')
+      .replace(/\{\{case_number\}\}/g, caseDetail.caseNumber ?? '')
+      .replace(/\{\{hospital_name\}\}/g, user?.hospitalId ?? 'Our Hospital')
+      .replace(/\{\{quote_total\}\}/g, '')
+      .replace(/\{\{doctor_name\}\}/g, '')
+      .replace(/\{\{procedure_name\}\}/g, caseDetail.medicalCondition?.primaryDiagnosis ?? '');
+  };
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (!templateId) return;
+    const template = activeTemplates.find((t) => t.id === templateId);
+    if (!template) return;
+    setEmailSubject(replaceVariables(template.subject));
+    setEmailBody(replaceVariables(template.body));
+  };
+
   const optionalModules = ['Hospital Introduction', 'Expert Team', 'Service Features', 'Pricing Plans', 'Travel Services', 'Contact Information'];
   const toggleModule = (mod: string) => {
     if (selectedModules.includes(mod)) setSelectedModules(selectedModules.filter((m) => m !== mod));
@@ -804,9 +837,23 @@ function MarketingTab() {
           <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900 mb-6">Compose Email</h3>
             <div className="space-y-5">
+              {/* Load Template dropdown */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Load Template</label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleTemplateSelect(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none bg-white"
+                >
+                  <option value="">-- Select a template --</option>
+                  {activeTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
+                  ))}
+                </select>
+              </div>
               <div className="bg-amber-50 border border-amber-100/50 p-3 rounded-xl text-amber-700 text-sm font-medium flex items-center gap-2"><AlertCircle size={16} /> Privacy Notice: Patient email address is hidden for privacy.</div>
-              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Subject</label><input type="text" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none" defaultValue="Your Personalized Treatment Plan" /></div>
-              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Email Content</label><textarea className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none h-48 resize-none" placeholder="Generated content will appear here..." /></div>
+              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Subject</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none" /></div>
+              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Email Content</label><textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none h-48 resize-none" placeholder="Generated content will appear here..." /></div>
               <div className="flex justify-end gap-3 pt-4">
                 <button className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full">Save Draft</button>
                 <button className="px-6 py-2.5 text-sm font-semibold text-white bg-pink-600 hover:bg-pink-700 rounded-full flex items-center gap-2 shadow-md shadow-pink-200/50"><Send size={16} /> Send Email</button>

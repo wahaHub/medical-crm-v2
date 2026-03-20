@@ -771,11 +771,11 @@ export function getServices(): AppServices {
       setPassword: new SetPasswordUseCase(patientRepo),
 
       createFaqItem: new CreateFaqItemUseCase(faqRepo),
-      listFaqItems: new ListFaqItemsUseCase(faqRepo),
+      listFaqItems: new ListFaqItemsUseCase(faqRepo, routedStorageService),
       listFaqCategories: new ListFaqCategoriesUseCase(faqRepo),
       createFaqCategory: new CreateFaqCategoryUseCase(faqRepo),
       deleteFaqCategory: new DeleteFaqCategoryUseCase(faqRepo),
-      getFaqItem: new GetFaqItemUseCase(faqRepo),
+      getFaqItem: new GetFaqItemUseCase(faqRepo, routedStorageService),
       updateFaqItem: new UpdateFaqItemUseCase(faqRepo),
       deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),
 

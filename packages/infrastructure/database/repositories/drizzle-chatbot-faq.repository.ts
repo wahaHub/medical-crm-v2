@@ -1,8 +1,13 @@
 import { eq, and, sql, count, ilike, or } from 'drizzle-orm';
-import type { IChatbotFaqRepository, ChatbotFaqListQuery } from '@medical-crm/domain';
+import type {
+  IChatbotFaqRepository,
+  ChatbotFaqListQuery,
+  ChatbotFaqCategory,
+  ChatbotFaqCategoryListQuery,
+} from '@medical-crm/domain';
 import { ChatbotFaqItem } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
-import { chatbotFaqItems } from '../schema/index.js';
+import { chatbotFaqItems, chatbotFaqCategories } from '../schema/index.js';
 
 export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
   constructor(private readonly db: CrmDb) {}
@@ -26,6 +31,9 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     if (query.category) {
       conditions.push(eq(chatbotFaqItems.category, query.category));
     }
+    if (query.hospitalType) {
+      conditions.push(eq(chatbotFaqItems.hospitalType, query.hospitalType));
+    }
     if (query.isActive !== undefined) {
       conditions.push(eq(chatbotFaqItems.isActive, query.isActive));
     }
@@ -33,10 +41,8 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       const searchPattern = `%${query.search}%`;
       conditions.push(
         or(
-          ilike(chatbotFaqItems.questionEn, searchPattern),
-          ilike(chatbotFaqItems.questionZh, searchPattern),
-          ilike(chatbotFaqItems.answerEn, searchPattern),
-          ilike(chatbotFaqItems.answerZh, searchPattern),
+          ilike(chatbotFaqItems.question, searchPattern),
+          ilike(chatbotFaqItems.answer, searchPattern),
         ) as ReturnType<typeof eq>,
       );
     }
@@ -81,14 +87,14 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     const values = {
       id: entity.id,
       category: entity.category,
-      questionEn: entity.questionEn,
-      questionZh: entity.questionZh,
-      answerEn: entity.answerEn,
-      answerZh: entity.answerZh,
+      question: entity.question,
+      answer: entity.answer,
+      hospitalType: entity.hospitalType,
       keywords: entity.keywords,
       isActive: entity.isActive,
       sortOrder: entity.sortOrder,
       hospitalId: entity.hospitalId,
+      attachments: entity.attachments,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: now,
     };
@@ -100,14 +106,14 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
         target: chatbotFaqItems.id,
         set: {
           category: values.category,
-          questionEn: values.questionEn,
-          questionZh: values.questionZh,
-          answerEn: values.answerEn,
-          answerZh: values.answerZh,
+          question: values.question,
+          answer: values.answer,
+          hospitalType: values.hospitalType,
           keywords: values.keywords,
           isActive: values.isActive,
           sortOrder: values.sortOrder,
           hospitalId: values.hospitalId,
+          attachments: values.attachments,
           updatedAt: now,
         },
       })
@@ -116,24 +122,160 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     return this.rowToEntity(rows[0]!);
   }
 
+  async listCategories(query: ChatbotFaqCategoryListQuery): Promise<ChatbotFaqCategory[]> {
+    const conditions: ReturnType<typeof eq>[] = [];
+
+    if (query.hospitalType) {
+      conditions.push(eq(chatbotFaqCategories.hospitalType, query.hospitalType));
+    }
+    if (query.isActive !== undefined) {
+      conditions.push(eq(chatbotFaqCategories.isActive, query.isActive));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const rows = await this.db
+      .select()
+      .from(chatbotFaqCategories)
+      .where(where)
+      .orderBy(
+        sql`${chatbotFaqCategories.hospitalType} ASC`,
+        sql`${chatbotFaqCategories.sortOrder} ASC`,
+        sql`${chatbotFaqCategories.name} ASC`,
+      );
+
+    const countRows = await this.db
+      .select({
+        category: chatbotFaqItems.category,
+        hospitalType: chatbotFaqItems.hospitalType,
+        total: count(),
+      })
+      .from(chatbotFaqItems)
+      .groupBy(chatbotFaqItems.category, chatbotFaqItems.hospitalType);
+
+    const countMap = new Map(
+      countRows.map((row) => [`${row.category}::${row.hospitalType}`, Number(row.total ?? 0)]),
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+      questionCount: countMap.get(`${row.name}::${row.hospitalType}`) ?? 0,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    }));
+  }
+
+  async findCategoryById(id: string): Promise<ChatbotFaqCategory | null> {
+    const rows = await this.db
+      .select()
+      .from(chatbotFaqCategories)
+      .where(eq(chatbotFaqCategories.id, id))
+      .limit(1);
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const row = rows[0]!;
+    const questionCount = await this.countItemsForCategory(
+      row.name,
+      row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+    );
+
+    return {
+      id: row.id,
+      name: row.name,
+      hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+      questionCount,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    };
+  }
+
+  async createCategory(input: {
+    name: string;
+    hospitalType: 'REGULAR' | 'COSMETIC';
+    sortOrder?: number;
+    isActive?: boolean;
+  }): Promise<ChatbotFaqCategory> {
+    const now = new Date().toISOString();
+    const rows = await this.db
+      .insert(chatbotFaqCategories)
+      .values({
+        name: input.name,
+        hospitalType: input.hospitalType,
+        sortOrder: input.sortOrder ?? 0,
+        isActive: input.isActive ?? true,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [chatbotFaqCategories.name, chatbotFaqCategories.hospitalType],
+        set: {
+          sortOrder: input.sortOrder ?? 0,
+          isActive: input.isActive ?? true,
+          updatedAt: now,
+        },
+      })
+      .returning();
+
+    const row = rows[0]!;
+    return {
+      id: row.id,
+      name: row.name,
+      hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+      questionCount: 0,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    };
+  }
+
+  async countItemsForCategory(name: string, hospitalType: 'REGULAR' | 'COSMETIC'): Promise<number> {
+    const rows = await this.db
+      .select({ total: count() })
+      .from(chatbotFaqItems)
+      .where(
+        and(
+          eq(chatbotFaqItems.category, name),
+          eq(chatbotFaqItems.hospitalType, hospitalType),
+        ),
+      );
+
+    return Number(rows[0]?.total ?? 0);
+  }
+
   async delete(id: string): Promise<void> {
     await this.db
       .delete(chatbotFaqItems)
       .where(eq(chatbotFaqItems.id, id));
   }
 
+  async deleteCategory(id: string): Promise<void> {
+    await this.db
+      .delete(chatbotFaqCategories)
+      .where(eq(chatbotFaqCategories.id, id));
+  }
+
   private rowToEntity(row: typeof chatbotFaqItems.$inferSelect): ChatbotFaqItem {
     return new ChatbotFaqItem({
       id: row.id,
       category: row.category,
-      questionEn: row.questionEn,
-      questionZh: row.questionZh,
-      answerEn: row.answerEn,
-      answerZh: row.answerZh,
+      question: row.question,
+      answer: row.answer,
+      hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
       keywords: Array.isArray(row.keywords) ? (row.keywords as string[]) : [],
       sortOrder: row.sortOrder,
       isActive: row.isActive,
       hospitalId: row.hospitalId ?? null,
+      attachments: Array.isArray(row.attachments)
+        ? (row.attachments as Array<{ storageKey: string; fileName: string; mimeType: string; fileSize: number }>)
+        : [],
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });

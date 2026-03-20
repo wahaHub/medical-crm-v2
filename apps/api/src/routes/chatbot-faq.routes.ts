@@ -5,6 +5,8 @@ import {
   createChatbotFaqSchema,
   updateChatbotFaqSchema,
   chatbotFaqListQuerySchema,
+  createFaqCategorySchema,
+  faqCategoryListQuerySchema,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
 
@@ -14,6 +16,10 @@ const app = new OpenAPIHono();
 // Param schemas
 // ---------------------------------------------------------------------------
 const faqIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const faqCategoryIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
@@ -58,6 +64,69 @@ app.openapi(listFaqRoute, async (c) => {
   const svc = getServices();
   const result = await svc.listFaqItems.execute(query, actor);
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 2b. GET /api/v2/chatbot/faqs/categories — ListFaqCategories
+// ---------------------------------------------------------------------------
+const listFaqCategoriesRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/chatbot/faqs/categories',
+  request: {
+    query: faqCategoryListQuerySchema,
+  },
+  responses: { 200: { description: 'FAQ categories' } },
+});
+
+app.openapi(listFaqCategoriesRoute, async (c) => {
+  const query = c.req.valid('query');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.listFaqCategories.execute(query, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 2c. POST /api/v2/chatbot/faqs/categories — CreateFaqCategory
+// ---------------------------------------------------------------------------
+const createFaqCategoryRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/chatbot/faqs/categories',
+  request: {
+    body: {
+      content: { 'application/json': { schema: createFaqCategorySchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'FAQ category created' } },
+});
+
+app.openapi(createFaqCategoryRoute, async (c) => {
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.createFaqCategory.execute(body, actor);
+  return c.json(result, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 2d. DELETE /api/v2/chatbot/faqs/categories/{id} — DeleteFaqCategory
+// ---------------------------------------------------------------------------
+const deleteFaqCategoryRoute = createRoute({
+  method: 'delete',
+  path: '/api/v2/chatbot/faqs/categories/{id}',
+  request: {
+    params: faqCategoryIdParamSchema,
+  },
+  responses: { 204: { description: 'FAQ category deleted' } },
+});
+
+app.openapi(deleteFaqCategoryRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  await svc.deleteFaqCategory.execute(id, actor);
+  return c.body(null, 204);
 });
 
 // ---------------------------------------------------------------------------
@@ -126,7 +195,56 @@ app.openapi(deleteFaqRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. GET /api/v2/chatbot/analytics — stub analytics
+// 6. POST /api/v2/chatbot/faqs/{id}/attachments/upload — InitFaqAttachmentUpload
+// ---------------------------------------------------------------------------
+const faqUploadInitSchema = z.object({
+  fileName: z.string().min(1),
+  fileSize: z.number().positive(),
+  mimeType: z.string().min(1),
+});
+
+const initFaqAttachmentUploadRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/chatbot/faqs/{id}/attachments/upload',
+  request: {
+    params: faqIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: faqUploadInitSchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'FAQ attachment upload initialized' } },
+});
+
+app.openapi(initFaqAttachmentUploadRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+
+  await svc.getFaqItem.execute(id, actor);
+
+  const result = await svc.mediaUpload.createUploadIntent({
+    policyId: 'faq_attachment',
+    ownerType: 'faq',
+    ownerId: id,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  return c.json({
+    upload: {
+      uploadUrl: result.uploadUrl,
+      storageKey: result.storageKey,
+      expiresIn: result.expiresIn,
+    },
+    asset: result.asset,
+  }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 7. GET /api/v2/chatbot/analytics — stub analytics
 // ---------------------------------------------------------------------------
 const analyticsRoute = createRoute({
   method: 'get',

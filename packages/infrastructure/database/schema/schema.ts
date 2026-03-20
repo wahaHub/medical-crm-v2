@@ -768,20 +768,35 @@ export const bookingRequestHospitals = pgTable("booking_request_hospitals", {
 export const chatbotFaqItems = pgTable("chatbot_faq_items", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	category: varchar({ length: 100 }).notNull(),
-	questionEn: text("question_en").notNull(),
-	questionZh: text("question_zh").notNull(),
-	answerEn: text("answer_en").notNull(),
-	answerZh: text("answer_zh").notNull(),
+	question: text().notNull(),
+	answer: text().notNull(),
+	hospitalType: varchar("hospital_type", { length: 20 }).notNull(),
 	keywords: jsonb().default([]),
 	isActive: boolean("is_active").default(true).notNull(),
 	sortOrder: integer("sort_order").default(0).notNull(),
 	hospitalId: uuid("hospital_id"),
+	attachments: jsonb('attachments').default([]),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
 }, (table) => [
 	index("chatbot_faq_items_category_idx").using("btree", table.category.asc().nullsLast()),
+	index("chatbot_faq_items_hospital_type_idx").using("btree", table.hospitalType.asc().nullsLast()),
 	index("chatbot_faq_items_is_active_idx").using("btree", table.isActive.asc().nullsLast()),
 	index("chatbot_faq_items_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast()),
+]);
+
+export const chatbotFaqCategories = pgTable("chatbot_faq_categories", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	name: varchar({ length: 100 }).notNull(),
+	hospitalType: varchar("hospital_type", { length: 20 }).notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+}, (table) => [
+	unique("chatbot_faq_categories_name_hospital_type_key").on(table.name, table.hospitalType),
+	index("chatbot_faq_categories_hospital_type_idx").using("btree", table.hospitalType.asc().nullsLast()),
+	index("chatbot_faq_categories_is_active_idx").using("btree", table.isActive.asc().nullsLast()),
 ]);
 
 export const emailTemplates = pgTable("email_templates", {

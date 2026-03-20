@@ -13,6 +13,7 @@ export interface CreateFaqItemInput {
   keywords?: string[];
   sortOrder?: number;
   isActive?: boolean;
+  attachments?: Array<{ storageKey: string; fileName: string; mimeType: string; fileSize: number }>;
 }
 
 export class CreateFaqItemUseCase {
@@ -36,7 +37,7 @@ export class CreateFaqItemUseCase {
       sortOrder: input.sortOrder ?? 0,
       isActive: input.isActive ?? true,
       hospitalId,
-      attachments: [],
+      attachments: input.attachments ?? [],
       createdAt: new Date(),
       updatedAt: new Date(),
     });

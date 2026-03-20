@@ -6,13 +6,13 @@ import { toChatbotFaqItemDTO } from '../../mappers/chatbot-faq.mapper.js';
 
 export interface UpdateFaqItemInput {
   category?: string;
-  questionEn?: string;
-  questionZh?: string;
-  answerEn?: string;
-  answerZh?: string;
+  question?: string;
+  answer?: string;
+  hospitalType?: 'REGULAR' | 'COSMETIC';
   keywords?: string[];
   sortOrder?: number;
   isActive?: boolean;
+  attachments?: Array<{ storageKey: string; fileName: string; mimeType: string; fileSize: number }>;
 }
 
 export class UpdateFaqItemUseCase {
@@ -34,13 +34,13 @@ export class UpdateFaqItemUseCase {
     }
 
     if (input.category !== undefined) entity.category = input.category;
-    if (input.questionEn !== undefined) entity.questionEn = input.questionEn;
-    if (input.questionZh !== undefined) entity.questionZh = input.questionZh;
-    if (input.answerEn !== undefined) entity.answerEn = input.answerEn;
-    if (input.answerZh !== undefined) entity.answerZh = input.answerZh;
+    if (input.question !== undefined) entity.question = input.question;
+    if (input.answer !== undefined) entity.answer = input.answer;
+    if (input.hospitalType !== undefined) entity.hospitalType = input.hospitalType;
     if (input.keywords !== undefined) entity.keywords = input.keywords;
     if (input.sortOrder !== undefined) entity.sortOrder = input.sortOrder;
     if (input.isActive !== undefined) entity.isActive = input.isActive;
+    if (input.attachments !== undefined) entity.attachments = input.attachments;
     entity.updatedAt = new Date();
 
     const saved = await this.faqRepo.save(entity);

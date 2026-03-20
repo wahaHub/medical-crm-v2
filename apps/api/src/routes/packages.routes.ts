@@ -88,6 +88,7 @@ app.openapi(initPackageImageUploadRoute, async (c) => {
       expiresIn: result.expiresIn,
     },
     asset: result.asset,
+    image: result.asset, // backward compat: admin package-form-modal reads initBody.image
   }, 201);
 });
 

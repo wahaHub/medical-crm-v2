@@ -96,6 +96,7 @@ app.openapi(initMessageUploadRoute, async (c) => {
       expiresIn: result.expiresIn,
     },
     asset: result.asset,
+    attachment: result.asset, // backward compat: hospital app reads init.attachment
   }, 201);
 });
 

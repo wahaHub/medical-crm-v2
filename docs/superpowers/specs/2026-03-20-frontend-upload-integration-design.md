@@ -50,10 +50,12 @@ Component
 interface UploadInitFn {
   (params: { fileName: string; fileSize: number; mimeType: string }):
     Promise<{
-      upload: { uploadUrl: string; storageKey: string };
+      upload: { uploadUrl: string; storageKey: string; expiresIn: number };
       asset: UploadedAsset;
     }>;
 }
+// Note: `expiresIn` is included for completeness (matches backend response shape)
+// but the hook does not use it — the PUT upload happens immediately.
 
 interface UploadedAsset {
   storageKey: string;
@@ -89,7 +91,7 @@ interface UseMediaUploadReturn {
 **Current state:** `messages-center.tsx` renders `ChatLayout` without `onUploadFiles` prop. The shared `ChatLayout` component already has full upload UI support (paperclip button, file preview, selected file management) gated by the `onUploadFiles` prop.
 
 **Files to modify:**
-- Create: `apps/admin/src/actions/message-actions.ts` — add `uploadMessageFile(conversationId, file)` server action
+- Modify: `apps/admin/src/actions/message-actions.ts` — add `uploadMessageFile` server action (file already exists with `sendMessage`, `approveMessage`, etc.)
 - Modify: `apps/admin/src/components/messages-center.tsx` — add `handleUploadFiles` callback + `isUploading` state
 
 **Server action pattern:**
@@ -114,8 +116,12 @@ const { upload, isUploading, error: uploadError } = useMediaUpload();
 const handleUploadFiles = useCallback(async (files: File[]) => {
   const initFn = (params) => uploadMessageFile(selectedConversationId, params);
   const assets = await upload(files, initFn);
-  // Send message with attachments via existing sendMessageWithAttachments action
-  // messageType: assets have image MIME → 'IMAGE', else 'FILE'
+  // Determine messageType based on uploaded assets' MIME types
+  const messageType = assets.every(a => a.mimeType.startsWith('image/')) ? 'IMAGE' : 'FILE';
+  const attachments = assets.map(a => ({
+    storageKey: a.storageKey, fileName: a.fileName, mimeType: a.mimeType, fileSize: a.fileSize,
+  }));
+  await sendMessage(selectedConversationId, '', messageType, attachments);
 }, [selectedConversationId, upload]);
 
 // Pass to ChatLayout:
@@ -127,6 +133,10 @@ const handleUploadFiles = useCallback(async (files: File[]) => {
 ```
 
 **No changes needed to `ChatLayout`** — the shared component already renders the paperclip button, file preview area, and handles file selection when `onUploadFiles` is provided.
+
+**Note:** The existing admin `sendMessage` action currently only sends text. It must be updated to accept optional `messageType` and `attachments` parameters (the backend `POST /conversations/{id}/messages` already supports these fields). Alternatively, add a separate `sendMessageWithAttachments` action. The hospital portal already has this pattern in `message-actions.ts`.
+
+**Note:** `ChatLayout.onUploadFiles` has return type `void`. The async `handleUploadFiles` callback works because TypeScript allows async functions where void is expected — the Promise is simply ignored. Upload errors are surfaced via the hook's `error` state, not via the callback return.
 
 **Backend endpoint:** `POST /api/v2/conversations/{id}/attachments/upload` — already exists, uses `message_attachment` policy (20MB, images + pdf + docx + txt).
 
@@ -155,10 +165,10 @@ export async function uploadMaterialFile(
 ```
 
 **ImageUploadWidget change:**
-- Add optional `onUpload?: (file: File) => Promise<string>` prop — returns `storageKey`
-- When `onUpload` is provided: call it instead of `readFileAsDataUrl`, set the returned `storageKey` as the value
-- When `onUpload` is NOT provided: keep existing behavior (backward compatible)
-- Show `URL.createObjectURL(file)` for immediate preview while upload is in progress
+- The widget already has an `onFileSelect?: (file: File) => void` prop (used for preview via `URL.createObjectURL`). Replace this with `onUpload?: (file: File) => Promise<string>` which returns `storageKey`.
+- When `onUpload` is provided: show `URL.createObjectURL(file)` as immediate preview, call `onUpload` in the background, set the returned `storageKey` as the value via `onChange`
+- When `onUpload` is NOT provided: fall back to existing `readFileAsDataUrl` behavior (backward compatible, though no callers should use this path after migration)
+- The old `onFileSelect` prop is removed — `onUpload` subsumes its functionality
 
 **Material form integration:**
 Each material form (surgeon, case, hospital info) passes an `onUpload` function that calls `uploadMaterialFile` with the appropriate `materialKind`:
@@ -218,6 +228,8 @@ export async function replyToTicket(
 - On send: upload files via `useMediaUpload` hook → get `storageKey[]` → call `replyToTicket` with content + attachments
 
 **Backend endpoint:** `POST /api/v2/tickets/{id}/attachments/upload` — already exists, uses `ticket_reply_attachment` policy (20MB, images + pdf + docx + txt).
+
+**Note:** The backend `POST /api/v2/tickets/{id}/reply` already accepts `attachments` in the request body (typed as `unknown`). No backend changes are needed — only the frontend action signature is updated to include typed attachments.
 
 ### 5. Admin & Hospital FAQ — Add Attachment Upload
 
@@ -285,7 +297,7 @@ packages/shared/ui/src/
 
 apps/admin/src/
   ├── actions/
-  │   ├── message-actions.ts                         ← NEW: uploadMessageFile
+  │   ├── message-actions.ts                         ← MODIFY: add uploadMessageFile + sendMessageWithAttachments
   │   ├── ticket-actions.ts                          ← MODIFY: uploadTicketAttachment + replyToTicket
   │   └── faq-upload-actions.ts                      ← NEW: uploadFaqAttachment
   └── components/

@@ -42,7 +42,9 @@ import {
   Modal,
   EmptyState,
   LoadingSpinner,
+  useMediaUpload,
 } from '@medical-crm/ui';
+import type { UploadedAsset } from '@medical-crm/ui';
 import {
   useMaterialsInfo,
   useProcedures,
@@ -60,6 +62,7 @@ import {
   createBeforeAfterCase,
   updateBeforeAfterCase,
   deleteBeforeAfterCase,
+  uploadMaterialFile,
 } from '@/actions/materials-actions';
 import type {
   MaterialsHospitalInfoDTO,
@@ -83,6 +86,7 @@ function ImageUploadWidget({
   value,
   onChange,
   onFileSelect,
+  onUpload,
   label = 'Image',
   placeholder = 'https://... or click Upload',
   previewClassName = 'h-40 w-full',
@@ -91,17 +95,30 @@ function ImageUploadWidget({
   value: string;
   onChange: (url: string) => void;
   onFileSelect?: (file: File) => void;
+  onUpload?: (file: File) => Promise<UploadedAsset>;
   label?: string;
   placeholder?: string;
   previewClassName?: string;
   compact?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [_uploading, setUploading] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (onFileSelect) {
+    if (onUpload) {
+      const previewUrl = URL.createObjectURL(file);
+      onChange(previewUrl);
+      setUploading(true);
+      try {
+        await onUpload(file);
+      } catch {
+        // Upload failed — preview remains, caller can handle error
+      } finally {
+        setUploading(false);
+      }
+    } else if (onFileSelect) {
       const previewUrl = URL.createObjectURL(file);
       onChange(previewUrl);
       onFileSelect(file);
@@ -884,6 +901,7 @@ const emptyDeptImageMap: PendingDeptImageMap = new Map();
 function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular_hospital' }) {
   const { data, isLoading } = useMaterialsInfo();
   const queryClient = useQueryClient();
+  const { upload, isUploading: _isUploading, error: _uploadError } = useMediaUpload();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -943,6 +961,13 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
   // Department images state (regular_hospital only)
   const [deptImages, setDeptImages] = useState<Record<string, string>>({});
   const [pendingDeptImages, setPendingDeptImages] = useState(emptyDeptImageMap);
+
+  async function uploadOne(file: File, materialKind: string) {
+    const assets = await upload([file], (params) => uploadMaterialFile(materialKind, params));
+    const asset = assets[0];
+    if (!asset) throw new Error(`Upload failed for "${file.name}"`);
+    return { asset, previewUrl: URL.createObjectURL(file) };
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const raw = (data as any) ?? null;
@@ -1176,12 +1201,17 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    void Promise.all(Array.from(files).map(async (file) => ({
-      previewUrl: await readFileAsDataUrl(file),
+    const newPhotos = Array.from(files).map((file) => ({
+      previewUrl: URL.createObjectURL(file),
       file,
-    }))).then((newPhotos) => {
-      setPendingPhotos((prev) => [...prev, ...newPhotos]);
-    });
+    }));
+    setPendingPhotos((prev) => [...prev, ...newPhotos]);
+    // Fire uploads in background — assets are tracked but not persisted to URL fields
+    for (const { file } of newPhotos) {
+      void uploadOne(file, 'gallery').catch(() => {
+        // Upload error is surfaced via useMediaUpload error state
+      });
+    }
     e.target.value = '';
   };
 
@@ -1290,6 +1320,10 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                 <ImageUploadWidget
                   value={form.heroImage ?? ''}
                   onChange={(url) => setForm({ ...form, heroImage: url })}
+                  onUpload={async (file) => {
+                    const { asset } = await uploadOne(file, 'hero');
+                    return asset;
+                  }}
                   label="Hero Image"
                   placeholder="https://... or click Upload"
                   previewClassName="h-40 w-full"
@@ -1431,10 +1465,10 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                   label="Promotional Videos"
                   emptyText="No videos uploaded"
                   onAdd={(file) => {
-                    void readFileAsDataUrl(file).then((previewUrl) => {
-                      setPendingVideos((prev) => new Map(prev).set(previewUrl, file));
-                      setPromotionalVideos((prev) => [...prev, previewUrl]);
-                    });
+                    const previewUrl = URL.createObjectURL(file);
+                    setPendingVideos((prev) => new Map(prev).set(previewUrl, file));
+                    setPromotionalVideos((prev) => [...prev, previewUrl]);
+                    void uploadOne(file, 'hospital_video').catch(() => {});
                   }}
                   onRemove={(idx) => {
                     const url = promotionalVideos[idx];
@@ -1460,16 +1494,16 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                void readFileAsDataUrl(file).then((previewUrl) => {
-                  setPendingTestimonial({
-                    previewUrl,
-                    file,
-                    patientName: '',
-                    patientCountry: '',
-                    procedureName: '',
-                  });
-                  setIsAddingTestimonial(true);
+                const previewUrl = URL.createObjectURL(file);
+                setPendingTestimonial({
+                  previewUrl,
+                  file,
+                  patientName: '',
+                  patientCountry: '',
+                  procedureName: '',
                 });
+                setIsAddingTestimonial(true);
+                void uploadOne(file, 'testimonial_video').catch(() => {});
                 e.target.value = '';
               }}
             />
@@ -1895,14 +1929,14 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                             onChange={(e) => {
                                               const file = e.target.files?.[0];
                                               if (file) {
-                                                void readFileAsDataUrl(file).then((previewUrl) => {
-                                                  setPendingDeptImages((prev) => {
-                                                    const m = new Map(prev);
-                                                    m.set(deptValue, { previewUrl, file });
-                                                    return m;
-                                                  });
-                                                  setDeptImages((prev) => ({ ...prev, [deptValue]: previewUrl }));
+                                                const previewUrl = URL.createObjectURL(file);
+                                                setPendingDeptImages((prev) => {
+                                                  const m = new Map(prev);
+                                                  m.set(deptValue, { previewUrl, file });
+                                                  return m;
                                                 });
+                                                setDeptImages((prev) => ({ ...prev, [deptValue]: previewUrl }));
+                                                void uploadOne(file, 'gallery').catch(() => {});
                                               }
                                               e.target.value = '';
                                             }}
@@ -2120,6 +2154,10 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                             const current = newEquip[idx]!;
                             newEquip[idx] = { ...current, imageUrl: url };
                             setEquipment(newEquip);
+                          }}
+                          onUpload={async (file) => {
+                            const { asset } = await uploadOne(file, 'equipment');
+                            return asset;
                           }}
                           label="Equipment Image"
                           placeholder="https://... or click Upload"
@@ -3088,6 +3126,7 @@ function SurgeonModal({
   procedureOptions: Array<{ value: string; label: string }>;
 }) {
   const queryClient = useQueryClient();
+  const { upload: uploadMedia } = useMediaUpload();
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -3163,6 +3202,12 @@ function SurgeonModal({
         <ImageUploadWidget
           value={imageUrl}
           onChange={setImageUrl}
+          onUpload={async (file) => {
+            const assets = await uploadMedia([file], (params) => uploadMaterialFile('surgeon', params));
+            const asset = assets[0];
+            if (!asset) throw new Error(`Upload failed for "${file.name}"`);
+            return asset;
+          }}
           label="Profile Photo"
           placeholder="https://... or click Upload"
           compact
@@ -3404,6 +3449,7 @@ function BeforeAfterModal({
   existing: MaterialsBeforeAfterCaseDTO | null;
 }) {
   const queryClient = useQueryClient();
+  const { upload: uploadMedia } = useMediaUpload();
   const [procedureName, setProcedureName] = useState('');
   const [surgeonName, setSurgeonName] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -3420,8 +3466,13 @@ function BeforeAfterModal({
 
   const addImagesFromFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const uploadedUrls = await Promise.all(Array.from(files).map((file) => readFileAsDataUrl(file)));
-    setImageUrls((prev) => [...prev, ...uploadedUrls.filter((url) => url.trim().length > 0)]);
+    const fileArr = Array.from(files);
+    const previewUrls = fileArr.map((file) => URL.createObjectURL(file));
+    setImageUrls((prev) => [...prev, ...previewUrls]);
+    // Fire uploads in background — assets are tracked but not persisted to URL fields
+    for (const file of fileArr) {
+      void uploadMedia([file], (params) => uploadMaterialFile('case', params)).catch(() => {});
+    }
   };
 
   const updateImageAt = (idx: number, value: string) => {

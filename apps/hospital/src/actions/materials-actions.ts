@@ -107,3 +107,22 @@ export async function deleteBeforeAfterCase(id: string) {
   });
   revalidatePath('/materials');
 }
+
+export async function uploadMaterialFile(
+  materialKind: string,
+  params: { fileName: string; fileSize: number; mimeType: string },
+): Promise<{
+  upload: { uploadUrl: string; storageKey: string; expiresIn: number };
+  asset: { storageKey: string; fileName: string; mimeType: string; fileSize: number };
+}> {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
+  const result = await apiClient(`/api/v2/hospitals/${hospitalId}/materials/upload`, {
+    method: 'POST',
+    body: JSON.stringify({ ...params, materialKind }),
+  });
+  return result as {
+    upload: { uploadUrl: string; storageKey: string; expiresIn: number };
+    asset: { storageKey: string; fileName: string; mimeType: string; fileSize: number };
+  };
+}

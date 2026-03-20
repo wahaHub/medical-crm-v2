@@ -17,12 +17,23 @@ export const serverEnvSchema = z.object({
   SESSION_SECRET: z.string().min(32),
   // AI
   OPENAI_API_KEY: z.string().min(1),
-  // Storage (CRM file storage)
+  // Storage (CRM file storage - legacy Supabase)
   CRM_SUPABASE_URL: z.string().url(),
   CRM_SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  // R2 (primary CRM media storage)
+  R2_ACCOUNT_ID: z.string().min(1),
+  R2_ACCESS_KEY_ID: z.string().min(1),
+  R2_SECRET_ACCESS_KEY: z.string().min(1),
+  R2_BUCKET_NAME: z.string().min(1),
+  // R2 beauty materials (medora-images bucket — public, for Medora Beauty website)
+  R2_MATERIALS_BEAUTY_BUCKET_NAME: z.string().min(1),
+  R2_MATERIALS_BEAUTY_PUBLIC_URL: z.string().url(),
+  // AWS S3 (regular hospital materials — required, legacy reads depend on s3-materials)
+  AWS_ACCESS_KEY_ID: z.string().min(1),
+  AWS_SECRET_ACCESS_KEY: z.string().min(1),
+  AWS_REGION: z.string().default('eu-west-1'),
+  AWS_S3_BUCKET: z.string().default('medchina-cloudfront'),
+  AWS_CLOUDFRONT_URL: z.string().url().optional(),
   // Email
   RESEND_API_KEY: z.string().optional(),
   // CORS origins

@@ -239,6 +239,7 @@ interface AppServices {
   patientRepo: IPatientRepository;
   storage: IStorageService;
   mediaUpload: MediaUploadService;
+  resolveHospitalType: (hospitalId: string) => Promise<'COSMETIC' | 'REGULAR'>;
 
   // use cases — cases
   createCase: CreateCaseUseCase;
@@ -618,6 +619,7 @@ export function getServices(): AppServices {
       caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo,
       storage: routedStorageService,
       mediaUpload: mediaUploadService,
+      resolveHospitalType,
 
       createCase: new CreateCaseUseCase(caseRepo),
       listCases,

@@ -1,6 +1,8 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { toActor } from '@medical-crm/application';
+import { resolveMaterialsPolicyId } from '@medical-crm/application/upload-policies';
 import type { Session } from '@medical-crm/infrastructure/auth';
+import { ForbiddenError } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 
 const app = new OpenAPIHono();
@@ -476,6 +478,66 @@ app.openapi(deleteBeforeAfterCaseRoute, async (c) => {
   const svc = getServices();
   await svc.deleteBeforeAfterCase.execute(hospitalId, id, actor);
   return c.body(null, 204);
+});
+
+// ---------------------------------------------------------------------------
+// 15. POST /api/v2/hospitals/:hospitalId/materials/upload — InitMaterialsUpload
+// ---------------------------------------------------------------------------
+const materialsUploadInitSchema = z.object({
+  materialKind: z.string().min(1),
+  fileName: z.string().min(1),
+  fileSize: z.number().positive(),
+  mimeType: z.string().min(1),
+});
+
+const materialsUploadRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/hospitals/{hospitalId}/materials/upload',
+  request: {
+    params: hospitalIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: materialsUploadInitSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Upload intent created' } },
+});
+
+app.openapi(materialsUploadRoute, async (c) => {
+  const { hospitalId } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+
+  // Access control: HOSPITAL role may only upload for their own hospital
+  if (actor.role === 'HOSPITAL' && actor.hospitalId !== hospitalId) {
+    throw new ForbiddenError('Access denied to this hospital');
+  }
+
+  const hospitalType = await svc.resolveHospitalType(hospitalId);
+  const policyId = resolveMaterialsPolicyId(hospitalType, body.materialKind);
+
+  const uploadResult = await svc.mediaUpload.createUploadIntent({
+    policyId,
+    ownerType: 'hospital_material',
+    ownerId: hospitalId,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  return c.json({
+    upload: {
+      uploadUrl: uploadResult.uploadUrl,
+      storageKey: uploadResult.storageKey,
+      expiresIn: uploadResult.expiresIn,
+    },
+    asset: uploadResult.asset,
+  }, 201);
 });
 
 export default app;

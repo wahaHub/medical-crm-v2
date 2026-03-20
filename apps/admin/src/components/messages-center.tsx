@@ -1,10 +1,28 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { ChatLayout, type ChatMessage, EmptyState, SearchInput } from '@medical-crm/ui';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  ChatLayout,
+  type ChatMessage,
+  EmptyState,
+  MessageConversationSidebar,
+  MessageNewConversationModal,
+  MessageCaseDetailPanel,
+  type MessageConversationSection,
+  type MessageNewConversationPayload,
+  useMediaUpload,
+} from '@medical-crm/ui';
 import { MessageSquare, Check, X } from 'lucide-react';
 import { useConversations, useMessages } from '@/queries/use-conversations';
-import { sendMessage, approveMessage, rejectMessage } from '@/actions/message-actions';
+import {
+  sendMessage,
+  approveMessage,
+  rejectMessage,
+  createConversation,
+  uploadMessageFile,
+  sendMessageWithAttachments,
+} from '@/actions/message-actions';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -42,8 +60,23 @@ interface ApiConversation {
   unreadCount?: number;
 }
 
+type AdminVisibleConversationCategory = 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT';
+
 interface PaginatedLike<T> {
   data?: T[];
+}
+
+interface MessagesCenterProps {
+  caseId?: string;
+  showSearch?: boolean;
+  showCategoryFilter?: boolean;
+  showInfoPanel?: boolean;
+  groupByCategorySections?: boolean;
+  allowCreateConversation?: boolean;
+  containerHeightClassName?: string;
+  leftPanelWidthClassName?: string;
+  listTitle?: string;
+  emptyListMessage?: string;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -63,9 +96,7 @@ function toDisplaySenderName(message: ApiMessage): string {
 }
 
 function mapApiMessages(messages: ApiMessage[]): ChatMessage[] {
-  return [...messages]
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    .map((m) => ({
+  return messages.map((m) => ({
       id: m.id,
       content: m.content,
       translatedContent: m.translatedContent,
@@ -88,15 +119,22 @@ function unwrapList<T>(raw: unknown): T[] {
   return [];
 }
 
+function toAdminCategory(category?: string): AdminVisibleConversationCategory | null {
+  const upper = category?.toUpperCase();
+  if (upper === 'ADMIN_HOSPITAL') return 'ADMIN_HOSPITAL';
+  if (upper === 'ADMIN_PATIENT') return 'ADMIN_PATIENT';
+  return null;
+}
+
 function resolveChatPerspectiveRole(conversation: ApiConversation): ChatMessage['senderRole'] {
-  const category = conversation.category?.toUpperCase() ?? '';
-  if (category === 'HOSPITAL_PATIENT') return 'HOSPITAL';
+  const category = toAdminCategory(conversation.category);
+  if (category === 'ADMIN_HOSPITAL') return 'ADMIN';
+  if (category === 'ADMIN_PATIENT') return 'ADMIN';
   return 'ADMIN';
 }
 
 function canAdminReply(conversation: ApiConversation): boolean {
-  const category = conversation.category?.toUpperCase() ?? '';
-  return category.startsWith('ADMIN_');
+  return toAdminCategory(conversation.category) !== null;
 }
 
 function matchesSearch(conv: ApiConversation, query: string): boolean {
@@ -115,62 +153,17 @@ const CATEGORY_OPTIONS = [
   { value: '', label: 'All Categories' },
   { value: 'ADMIN_HOSPITAL', label: 'Admin / Hospital' },
   { value: 'ADMIN_PATIENT', label: 'Admin / Patient' },
-  { value: 'HOSPITAL_PATIENT', label: 'Hospital / Patient' },
 ];
 
-// ── Conversation List Item ───────────────────────────────────────────
+const CATEGORY_SECTION_ORDER: Array<{ key: AdminVisibleConversationCategory; label: string }> = [
+  { key: 'ADMIN_HOSPITAL', label: 'Admin / Hospital' },
+  { key: 'ADMIN_PATIENT', label: 'Admin / Patient' },
+];
 
-function ConversationItem({
-  conv,
-  isSelected,
-  onClick,
-}: {
-  conv: ApiConversation;
-  isSelected: boolean;
-  onClick: () => void;
-}) {
-  const initials = (conv.participantName ?? 'U')
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left px-4 py-3 flex items-start gap-3 border-l-2 transition-colors ${
-        isSelected
-          ? 'bg-cyan-50/50 border-cyan-500'
-          : 'border-transparent hover:bg-slate-50'
-      }`}
-    >
-      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
-        {initials}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-sm font-semibold text-slate-800 truncate">
-            {conv.participantName ?? conv.title ?? conv.hospitalId ?? 'Conversation'}
-          </span>
-          {(conv.unreadCount ?? 0) > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full shrink-0">
-              {conv.unreadCount}
-            </span>
-          )}
-        </div>
-        {conv.lastMessagePreview && (
-          <p className="text-xs text-slate-500 truncate">{conv.lastMessagePreview}</p>
-        )}
-        {(conv.participantRole ?? conv.category) && (
-          <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-            {conv.participantRole ?? conv.category}
-          </span>
-        )}
-      </div>
-    </button>
-  );
-}
+const NEW_CONVERSATION_CATEGORY_OPTIONS: Array<{ value: 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT'; label: string }> = [
+  { value: 'ADMIN_HOSPITAL', label: 'Admin / Hospital' },
+  { value: 'ADMIN_PATIENT', label: 'Admin / Patient' },
+];
 
 // ── Moderation Notice ────────────────────────────────────────────────
 
@@ -228,36 +221,26 @@ function ModerationNotice({
 // ── Case Info Sidebar ────────────────────────────────────────────────
 
 function CaseInfoSidebar({ conversation }: { conversation: ApiConversation }) {
-  if (!conversation.caseId) return null;
-
   return (
-    <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-slate-700">Conversation Info</h3>
-      {conversation.caseId && (
-        <div className="text-xs text-slate-600">
-          <span className="text-slate-400 block mb-1">Linked Case</span>
-          <span className="font-mono text-indigo-600">{conversation.caseId.slice(0, 8)}…</span>
-        </div>
-      )}
-      {conversation.category && (
-        <div className="text-xs text-slate-600">
-          <span className="text-slate-400 block mb-1">Category</span>
-          <span>{conversation.category.replace(/_/g, ' / ')}</span>
-        </div>
-      )}
-      {conversation.participantRole && (
-        <div className="text-xs text-slate-600">
-          <span className="text-slate-400 block mb-1">Participant Role</span>
-          <span>{toRoleLabel(conversation.participantRole)}</span>
-        </div>
-      )}
-    </div>
+    <MessageCaseDetailPanel
+      caseId={conversation.caseId ?? null}
+      category={conversation.category ?? null}
+      participantRole={conversation.participantRole ? toRoleLabel(conversation.participantRole) : null}
+      participantName={conversation.participantName ?? null}
+      hospitalId={conversation.hospitalId ?? null}
+    />
   );
 }
 
 // ── Chat Panel ───────────────────────────────────────────────────────
 
-function ChatPanel({ conversation }: { conversation: ApiConversation }) {
+function ChatPanel({
+  conversation,
+  showInfoPanel,
+}: {
+  conversation: ApiConversation;
+  showInfoPanel: boolean;
+}) {
   const conversationId = conversation.id;
   const { data: raw, refetch } = useMessages(conversationId);
   const apiMessages = unwrapList<ApiMessage>(raw);
@@ -274,6 +257,24 @@ function ChatPanel({ conversation }: { conversation: ApiConversation }) {
     'Conversation';
   const conversationCategory = conversation.category?.replace(/_/g, ' / ') ?? undefined;
   const canReply = canAdminReply(conversation);
+
+  const { upload, isUploading } = useMediaUpload();
+
+  async function handleUploadFiles(files: File[]) {
+    if (!conversationId) return;
+    try {
+      const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
+        uploadMessageFile(conversationId, params);
+      const assets = await upload(files, initFn);
+      if (assets.length === 0) return;
+
+      const messageType = assets.every((a) => a.mimeType.startsWith('image/')) ? 'IMAGE' : 'FILE';
+      await sendMessageWithAttachments(conversationId, '', messageType, assets);
+      await refetch();
+    } catch (e) {
+      console.error('Failed to upload files', e);
+    }
+  }
 
   function handleSend(content: string) {
     startSend(async () => {
@@ -323,6 +324,8 @@ function ChatPanel({ conversation }: { conversation: ApiConversation }) {
     <ChatLayout
       messages={chatMessages}
       onSend={handleSend}
+      onUploadFiles={handleUploadFiles}
+      isUploading={isUploading}
       canSend={canReply}
       isSending={isSending}
       currentUserRole={perspectiveRole}
@@ -330,10 +333,10 @@ function ChatPanel({ conversation }: { conversation: ApiConversation }) {
       className="h-full"
       inputNotice={moderationNotice}
       readOnlyNotice="Hospital conversation is view-only for admin. Reply is disabled."
-      patientInfo={showInfo ? caseInfo : undefined}
-      showInfoToggle={!!conversation.caseId}
+      patientInfo={showInfoPanel && showInfo ? caseInfo : undefined}
+      showInfoToggle={showInfoPanel && !!conversation.caseId}
       onToggleInfo={() => setShowInfo((v) => !v)}
-      infoPanelOpen={showInfo}
+      infoPanelOpen={showInfoPanel && showInfo}
       header={{
         name: conversationTitle,
         subtitle: conversation.participantRole ? `${toRoleLabel(conversation.participantRole)} chat` : undefined,
@@ -353,71 +356,142 @@ function ChatPanel({ conversation }: { conversation: ApiConversation }) {
 
 // ── Main Component ───────────────────────────────────────────────────
 
-export function MessagesCenter() {
+export function MessagesCenter({
+  caseId,
+  showSearch = true,
+  showCategoryFilter = true,
+  showInfoPanel = true,
+  groupByCategorySections = true,
+  allowCreateConversation = true,
+  containerHeightClassName = 'h-[calc(100dvh-220px)] min-h-[560px]',
+  leftPanelWidthClassName = 'w-80',
+  listTitle,
+  emptyListMessage = 'No conversations found.',
+}: MessagesCenterProps) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreatingConversation, startCreateConversation] = useTransition();
 
   const filters: Record<string, string> = {};
-  if (category) filters['category'] = category;
+  if (caseId) filters['caseId'] = caseId;
+  if (showCategoryFilter && category) filters['category'] = category;
 
   const { data: raw, isLoading } = useConversations(filters);
   const allConversations = unwrapList<ApiConversation>(raw);
-  const conversations = allConversations.filter((c) => matchesSearch(c, search));
+  const conversations = allConversations
+    .filter((c) => toAdminCategory(c.category) !== null)
+    .filter((c) => matchesSearch(c, search));
   const selectedConversation = conversations.find((conv) => conv.id === selectedConvId) ?? null;
 
-  return (
-    <div className="flex h-[calc(100vh-140px)] rounded-xl border border-slate-200 overflow-hidden bg-white">
-      {/* Left panel — conversation list */}
-      <div className="w-80 border-r border-slate-200 flex flex-col shrink-0">
-        {/* Search + filter */}
-        <div className="px-4 py-3 border-b border-slate-100 space-y-2">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search conversations…"
-          />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-          >
-            {CATEGORY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
+  const groupedConversations = useMemo(
+    () =>
+      CATEGORY_SECTION_ORDER.map((section) => ({
+        ...section,
+        conversations: conversations.filter((c) => toAdminCategory(c.category) === section.key),
+      })).filter((section) => section.conversations.length > 0),
+    [conversations],
+  );
 
-        {/* List */}
-        <div className="flex-1 overflow-y-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent" />
-            </div>
-          ) : conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2 px-4">
-              <MessageSquare size={24} className="opacity-40" />
-              <p className="text-xs text-center">No conversations found.</p>
-            </div>
-          ) : (
-            conversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conv={conv}
-                isSelected={selectedConvId === conv.id}
-                onClick={() => setSelectedConvId(conv.id)}
-              />
-            ))
-          )}
-        </div>
+  const sidebarSections: MessageConversationSection[] = useMemo(
+    () =>
+      groupedConversations.map((group) => ({
+        key: group.key,
+        label: group.label,
+        items: group.conversations.map((conv) => ({
+          id: conv.id,
+          title: conv.participantName ?? conv.title ?? conv.hospitalId ?? 'Conversation',
+          subtitle: conv.lastMessagePreview ?? undefined,
+          meta: conv.participantRole ?? conv.category ?? undefined,
+          unreadCount: conv.unreadCount ?? 0,
+        })),
+      })),
+    [groupedConversations],
+  );
+
+  useEffect(() => {
+    if (!selectedConvId && conversations.length > 0) {
+      setSelectedConvId(conversations[0]!.id);
+      return;
+    }
+    if (selectedConvId && !conversations.some((conv) => conv.id === selectedConvId)) {
+      setSelectedConvId(conversations[0]?.id ?? null);
+    }
+  }, [conversations, selectedConvId]);
+
+  function handleCreateConversation(payload: MessageNewConversationPayload) {
+    startCreateConversation(async () => {
+      try {
+        setCreateError(null);
+        const created = await createConversation({
+          category: payload.category as 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT',
+          title: payload.title,
+          hospitalId: payload.hospitalId,
+          caseId: payload.caseId,
+        });
+        await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        const createdId =
+          created && typeof created === 'object' && 'id' in created
+            ? String((created as { id: string }).id)
+            : null;
+        if (createdId) setSelectedConvId(createdId);
+        setCreateModalOpen(false);
+      } catch (error) {
+        setCreateError(error instanceof Error ? error.message : 'Failed to create conversation');
+      }
+    });
+  }
+
+  return (
+    <div className={`flex min-h-0 ${containerHeightClassName} rounded-xl border border-slate-200 overflow-hidden bg-white`}>
+      {/* Left panel — conversation list */}
+      <div className={`${leftPanelWidthClassName} min-h-0 border-r border-slate-200 flex flex-col shrink-0`}>
+        {showCategoryFilter && (
+          <div className="border-b border-slate-100 px-4 py-2">
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+            >
+              {CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <MessageConversationSidebar
+          sections={
+            groupByCategorySections
+              ? sidebarSections
+              : [
+                  {
+                    key: 'all',
+                    label: 'Conversations',
+                    items: sidebarSections.flatMap((section) => section.items),
+                  },
+                ]
+          }
+          selectedId={selectedConvId}
+          onSelect={setSelectedConvId}
+          searchValue={showSearch ? search : ''}
+          onSearchChange={setSearch}
+          showSearch={showSearch}
+          onClickNewConversation={allowCreateConversation ? () => setCreateModalOpen(true) : undefined}
+          isLoading={isLoading}
+          title={listTitle}
+          emptyMessage={emptyListMessage}
+        />
       </div>
 
       {/* Right panel — chat */}
       {selectedConversation ? (
-        <div className="flex-1 overflow-hidden">
-          <ChatPanel conversation={selectedConversation} />
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ChatPanel conversation={selectedConversation} showInfoPanel={showInfoPanel} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-slate-400">
@@ -427,6 +501,19 @@ export function MessagesCenter() {
           </div>
         </div>
       )}
+
+      <MessageNewConversationModal
+        open={createModalOpen}
+        onClose={() => {
+          if (isCreatingConversation) return;
+          setCreateModalOpen(false);
+          setCreateError(null);
+        }}
+        onSubmit={handleCreateConversation}
+        categoryOptions={NEW_CONVERSATION_CATEGORY_OPTIONS}
+        isPending={isCreatingConversation}
+        error={createError}
+      />
     </div>
   );
 }

@@ -659,7 +659,9 @@ git commit -m "feat(hospital): update ImageUploadWidget to support presigned upl
 **Files:**
 - Modify: `apps/hospital/src/components/materials-tabs.tsx` — multiple form sections
 
-This task updates all `ImageUploadWidget` callers and `readFileAsDataUrl` usages in material forms to use `uploadMaterialFile`. The pattern is the same for each: pass an `onUpload` prop that calls `uploadMaterialFile(materialKind, ...)` and returns the `storageKey`.
+This task updates all `ImageUploadWidget` callers and `readFileAsDataUrl` usages in material forms to use `uploadMaterialFile`. The pattern is the same for each: pass an `onUpload` prop that calls `uploadMaterialFile(materialKind, ...)`, uploads to presigned URL, and returns the `storageKey`.
+
+**Important — storageKey vs display URL:** Beauty hospital materials use a public R2 bucket. The `makeMaterialUploader` returns a raw `storageKey` (e.g. `crm/dev/materials-beauty/...`). For beauty hospitals, the display URL is `${R2_MATERIALS_BEAUTY_PUBLIC_URL}/${storageKey}`. For regular hospitals, the backend returns CloudFront URLs. The existing `ImageUploadWidget` shows `URL.createObjectURL(file)` as immediate preview during upload, then the `onChange` callback receives the `storageKey`. The form stores this `storageKey` and the save handler submits it to the backend CRUD endpoint, which already accepts string values for image fields. The read path (when loading existing materials) returns resolved URLs from the backend mapper — no frontend URL resolution needed.
 
 - [ ] **Step 1: Import uploadMaterialFile and useMediaUpload**
 
@@ -1276,53 +1278,93 @@ Inside `ChatbotFaqFormModal`, after the `isPending` state (around line 140):
     } else if (open) {
       setAttachments([]);
     }
+    setPendingFiles([]);
   }, [open, editFaq]);
 
-  // Generate a stable draft ID for new FAQ uploads
-  const [draftId] = useState(() => `draft_${crypto.randomUUID()}`);
-  const faqId = editFaq?.id ?? draftId;
+  // For new FAQs: store files locally until FAQ is created (two-phase flow)
+  // For edit: upload immediately since faqId exists
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   async function handleAttachmentUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     e.target.value = '';
 
-    const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
-      uploadFaqAttachment(faqId, params);
-    const assets = await upload(Array.from(files), initFn);
-    if (assets.length > 0) {
-      setAttachments((prev) => [...prev, ...assets]);
+    if (isEdit && editFaq) {
+      // Edit mode: upload immediately, faqId exists
+      const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
+        uploadFaqAttachment(editFaq.id, params);
+      const assets = await upload(Array.from(files), initFn);
+      if (assets.length > 0) {
+        setAttachments((prev) => [...prev, ...assets]);
+      }
+    } else {
+      // Create mode: store files locally, upload after FAQ is created
+      setPendingFiles((prev) => [...prev, ...Array.from(files)]);
     }
   }
 
   function removeAttachment(storageKey: string) {
     setAttachments((prev) => prev.filter((a) => a.storageKey !== storageKey));
   }
-```
 
-- [ ] **Step 4: Update buildPayload to include attachments**
-
-In the `buildPayload` function, add `attachments` to the returned object:
-
-```typescript
-  function buildPayload() {
-    const keywords = form.keywordsRaw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    return {
-      category: form.category.trim(),
-      question: form.question.trim(),
-      answer: form.answer.trim(),
-      hospitalType: form.hospitalType,
-      keywords,
-      sortOrder: parseInt(form.sortOrder, 10) || 0,
-      isActive: form.isActive,
-      attachments,
-    };
+  function removePendingFile(index: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
   }
 ```
+
+- [ ] **Step 4: Update handleSubmit for two-phase create flow**
+
+Replace the `handleSubmit` function to support two-phase create (create FAQ → upload pending files → patch with attachments):
+
+```typescript
+  function handleSubmit() {
+    setError(null);
+    if (!form.category.trim()) { setError('Category is required.'); return; }
+    if (!form.question.trim()) { setError('Question is required.'); return; }
+    if (!form.answer.trim()) { setError('Answer is required.'); return; }
+
+    startTransition(async () => {
+      try {
+        const keywords = form.keywordsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+        const basePayload = {
+          category: form.category.trim(),
+          question: form.question.trim(),
+          answer: form.answer.trim(),
+          hospitalType: form.hospitalType,
+          keywords,
+          sortOrder: parseInt(form.sortOrder, 10) || 0,
+          isActive: form.isActive,
+        };
+
+        if (isEdit && editFaq) {
+          // Edit: attachments already uploaded, just include in payload
+          await updateFaq(editFaq.id, { ...basePayload, attachments });
+        } else {
+          // Create: two-phase flow
+          // Phase 1: create FAQ without attachments
+          const created = await createFaq(basePayload) as { id: string };
+
+          // Phase 2: upload pending files using the real FAQ ID, then patch
+          if (pendingFiles.length > 0) {
+            const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
+              uploadFaqAttachment(created.id, params);
+            const uploadedAssets = await upload(pendingFiles, initFn);
+            if (uploadedAssets.length > 0) {
+              await updateFaq(created.id, { attachments: uploadedAssets });
+            }
+          }
+        }
+        onSuccess();
+        onClose();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'An error occurred');
+      }
+    });
+  }
+```
+
+Note: The original `buildPayload` function is no longer needed as payload construction is inlined into `handleSubmit`.
 
 - [ ] **Step 5: Add attachments UI section after Keywords (before isActive toggle)**
 
@@ -1351,6 +1393,7 @@ Insert before the `{/* isActive toggle */}` section (around line 299):
           {uploadError && (
             <p className="mt-1 text-xs text-rose-600">{uploadError}</p>
           )}
+          {/* Existing uploaded attachments (edit mode) */}
           {attachments.length > 0 && (
             <div className="mt-2 space-y-1.5">
               {attachments.map((att) => (
@@ -1372,6 +1415,32 @@ Insert before the `{/* isActive toggle */}` section (around line 299):
                   <button
                     type="button"
                     onClick={() => removeAttachment(att.storageKey)}
+                    className="text-slate-400 hover:text-rose-500 transition-colors shrink-0"
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Pending files (create mode — will upload after FAQ is created) */}
+          {pendingFiles.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {pendingFiles.map((file, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-2 px-2.5 py-1.5 bg-amber-50 rounded-lg border border-amber-200 text-xs"
+                >
+                  {file.type.startsWith('image/') ? (
+                    <ImageIcon size={14} className="text-cyan-500 shrink-0" />
+                  ) : (
+                    <FileText size={14} className="text-blue-500 shrink-0" />
+                  )}
+                  <span className="truncate text-slate-600 flex-1">{file.name}</span>
+                  <span className="text-slate-400 shrink-0 italic">pending</span>
+                  <button
+                    type="button"
+                    onClick={() => removePendingFile(index)}
                     className="text-slate-400 hover:text-rose-500 transition-colors shrink-0"
                   >
                     <XIcon size={12} />
@@ -1430,35 +1499,44 @@ Inside `FaqModal` (around line 266), after the existing state declarations:
   const [attachments, setAttachments] = useState<FaqAttachment[]>(
     (faq as FaqItem & { attachments?: FaqAttachment[] })?.attachments ?? [],
   );
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const { upload, isUploading, error: uploadError } = useMediaUpload({
     allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
     maxFileSize: 10 * 1024 * 1024,
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [draftId] = useState(() => `draft_${crypto.randomUUID()}`);
-  const faqId = faq?.id ?? draftId;
 
   async function handleAttachmentUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     e.target.value = '';
 
-    const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
-      uploadFaqAttachment(faqId, params);
-    const assets = await upload(Array.from(files), initFn);
-    if (assets.length > 0) {
-      setAttachments((prev) => [...prev, ...assets]);
+    if (faq) {
+      // Edit mode: upload immediately
+      const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
+        uploadFaqAttachment(faq.id, params);
+      const assets = await upload(Array.from(files), initFn);
+      if (assets.length > 0) {
+        setAttachments((prev) => [...prev, ...assets]);
+      }
+    } else {
+      // Create mode: store locally, upload after FAQ is created
+      setPendingFiles((prev) => [...prev, ...Array.from(files)]);
     }
   }
 
   function removeAttachment(storageKey: string) {
     setAttachments((prev) => prev.filter((a) => a.storageKey !== storageKey));
   }
+
+  function removePendingFile(index: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  }
 ```
 
-- [ ] **Step 3: Update handleSave to include attachments**
+- [ ] **Step 3: Update handleSave for two-phase create**
 
-Update the `handleSave` function to include attachments in the payload:
+Replace `handleSave` with two-phase create flow:
 
 ```typescript
   const handleSave = async () => {
@@ -1473,19 +1551,28 @@ Update the `handleSave` function to include attachments in the payload:
         .split(',')
         .map((k) => k.trim())
         .filter(Boolean);
-      const payload = {
+      const basePayload = {
         question,
         answer,
         category,
         hospitalType,
         keywords: keywordsArray,
         isActive,
-        attachments,
       };
       if (faq) {
-        await updateFaqItem(faq.id, payload);
+        // Edit: attachments already uploaded
+        await updateFaqItem(faq.id, { ...basePayload, attachments });
       } else {
-        await createFaqItem(payload);
+        // Create: two-phase flow
+        const created = await createFaqItem(basePayload) as { id: string };
+        if (pendingFiles.length > 0) {
+          const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
+            uploadFaqAttachment(created.id, params);
+          const uploadedAssets = await upload(pendingFiles, initFn);
+          if (uploadedAssets.length > 0) {
+            await updateFaqItem(created.id, { attachments: uploadedAssets });
+          }
+        }
       }
       onSaved();
     } catch (err) {
@@ -1525,6 +1612,7 @@ Insert before the `{/* Footer */}` section (around line 432):
             {uploadError && (
               <p className="mt-1 text-sm text-rose-600">{uploadError}</p>
             )}
+            {/* Existing uploaded attachments (edit mode) */}
             {attachments.length > 0 && (
               <div className="mt-3 space-y-2">
                 {attachments.map((att) => (
@@ -1554,6 +1642,32 @@ Insert before the `{/* Footer */}` section (around line 432):
                 ))}
               </div>
             )}
+            {/* Pending files (create mode) */}
+            {pendingFiles.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {pendingFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 px-3 py-2 bg-amber-50 rounded-xl border border-amber-200 text-sm"
+                  >
+                    {file.type.startsWith('image/') ? (
+                      <ImageIcon size={16} className="text-cyan-500 shrink-0" />
+                    ) : (
+                      <FileText size={16} className="text-blue-500 shrink-0" />
+                    )}
+                    <span className="truncate text-slate-600 flex-1">{file.name}</span>
+                    <span className="text-slate-400 text-xs italic shrink-0">pending</span>
+                    <button
+                      type="button"
+                      onClick={() => removePendingFile(index)}
+                      className="text-slate-400 hover:text-rose-500 transition-colors shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 ```
 
@@ -1565,10 +1679,10 @@ Expected: PASS
 - [ ] **Step 6: Manual test**
 
 Open http://localhost:3003/chatbot-faq (hospital portal), verify:
-1. Create FAQ → attachments section visible
-2. Upload image/PDF → shows in attachment list
-3. Save FAQ → attachments included in payload
-4. Edit FAQ → existing attachments shown, can add/remove
+1. Create FAQ → select files → shows as "pending" in amber
+2. Save FAQ → files upload after creation → FAQ patched with attachments
+3. Edit FAQ → existing attachments shown, new files upload immediately
+4. Can remove both pending files and existing attachments
 
 - [ ] **Step 7: Commit**
 

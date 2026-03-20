@@ -28,6 +28,8 @@
     "db:migrate": "tsx database/migrate.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1013.0",
+    "@aws-sdk/s3-request-presigner": "^3.1013.0",
     "@medical-crm/config": "workspace:*",
     "@medical-crm/domain": "workspace:*",
     "@medical-crm/utils": "workspace:*",
@@ -35,10 +37,12 @@
     "drizzle-orm": "^0.45.1",
     "hono": "^4.7.0",
     "jose": "^6.0.0",
+    "nodemailer": "^8.0.3",
     "openai": "^6.29.0",
     "postgres": "^3.4.0"
   },
   "devDependencies": {
+    "@types/nodemailer": "^7.0.11",
     "drizzle-kit": "^0.31.9",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",

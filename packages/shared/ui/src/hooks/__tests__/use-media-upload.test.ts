@@ -103,6 +103,20 @@ describe('useMediaUpload', () => {
     expect(mockInitFn).not.toHaveBeenCalled();
   });
 
+  it('rejects when too many files exceed maxFiles', async () => {
+    const files = Array.from({ length: 3 }, (_, i) => new File(['d'], `f${i}.jpg`, { type: 'image/jpeg' }));
+    const { result } = renderHook(() => useMediaUpload({ maxFiles: 2 }));
+
+    let assets: unknown[];
+    await act(async () => {
+      assets = await result.current.upload(files, mockInitFn);
+    });
+
+    expect(assets!).toEqual([]);
+    expect(result.current.error).toMatch(/too many files/i);
+    expect(mockInitFn).not.toHaveBeenCalled();
+  });
+
   it('sets error when PUT to presigned URL fails', async () => {
     mockInitFn.mockResolvedValue({
       upload: { uploadUrl: 'https://fail.example.com', storageKey: 'k', expiresIn: 600 },

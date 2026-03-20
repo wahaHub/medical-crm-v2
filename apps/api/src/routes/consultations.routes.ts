@@ -196,7 +196,56 @@ app.openapi(getTranscriptRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. GET /api/v2/cases/:caseId/consultations — ListCaseConsultations
+// 8. POST /api/v2/consultations/:id/recording/upload — InitConsultationRecordingUpload
+// ---------------------------------------------------------------------------
+const uploadInitSchema = z.object({
+  fileName: z.string().min(1),
+  fileSize: z.number().positive(),
+  mimeType: z.string().min(1),
+});
+
+const initConsultationRecordingUploadRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/consultations/{id}/recording/upload',
+  request: {
+    params: consultationIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: uploadInitSchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Consultation recording upload initialized' } },
+});
+
+app.openapi(initConsultationRecordingUploadRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+
+  await svc.getConsultation.execute(id, actor);
+
+  const result = await svc.mediaUpload.createUploadIntent({
+    policyId: 'consultation_recording',
+    ownerType: 'consultation',
+    ownerId: id,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  return c.json({
+    upload: {
+      uploadUrl: result.uploadUrl,
+      storageKey: result.storageKey,
+      expiresIn: result.expiresIn,
+    },
+    asset: result.asset,
+  }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 9. GET /api/v2/cases/:caseId/consultations — ListCaseConsultations
 // ---------------------------------------------------------------------------
 const listCaseConsultationsRoute = createRoute({
   method: 'get',

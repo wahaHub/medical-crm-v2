@@ -12,6 +12,7 @@ const mockServices = {
   getConsultationTranscript: { execute: vi.fn() },
   getConsultationStats: { execute: vi.fn() },
   listCaseConsultations: { execute: vi.fn() },
+  mediaUpload: { createUploadIntent: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -239,6 +240,116 @@ describe('Consultation routes', () => {
       const body = await res.json();
       expect(body).toEqual(consultations);
       expect(mockServices.listCaseConsultations.execute).toHaveBeenCalledWith(VALID_UUID, expect.anything());
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /api/v2/consultations/:id/recording/upload
+  // -----------------------------------------------------------------------
+  describe('POST /api/v2/consultations/:id/recording/upload', () => {
+    const validBody = {
+      fileName: 'consultation-recording.mp4',
+      fileSize: 10485760,
+      mimeType: 'video/mp4',
+    };
+
+    const uploadIntentResult = {
+      uploadUrl: 'https://storage.example.com/upload/consultation-recording.mp4',
+      storageKey: 'crm/dev/consultations/consultation/cons-1/asset-1/consultation-recording.mp4',
+      expiresIn: 600,
+      asset: {
+        fileName: 'consultation-recording.mp4',
+        mimeType: 'video/mp4',
+        fileSize: 10485760,
+        storageKey: 'crm/dev/consultations/consultation/cons-1/asset-1/consultation-recording.mp4',
+      },
+    };
+
+    beforeEach(() => {
+      mockServices.getConsultation.execute.mockResolvedValue({ id: VALID_UUID });
+      mockServices.mediaUpload.createUploadIntent.mockResolvedValue(uploadIntentResult);
+    });
+
+    it('returns 201 with upload URL and asset on success', async () => {
+      const res = await app.request(`/api/v2/consultations/${VALID_UUID}/recording/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(res.status).toBe(201);
+      const json = await res.json() as Record<string, unknown>;
+      expect((json.upload as Record<string, unknown>).uploadUrl).toBe(uploadIntentResult.uploadUrl);
+      expect((json.upload as Record<string, unknown>).storageKey).toBe(uploadIntentResult.storageKey);
+      expect((json.upload as Record<string, unknown>).expiresIn).toBe(600);
+      expect(json.asset).toEqual(uploadIntentResult.asset);
+    });
+
+    it('calls getConsultation to verify access and passes correct params to createUploadIntent', async () => {
+      await app.request(`/api/v2/consultations/${VALID_UUID}/recording/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(mockServices.getConsultation.execute).toHaveBeenCalledWith(VALID_UUID, expect.anything());
+      expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          policyId: 'consultation_recording',
+          ownerType: 'consultation',
+          ownerId: VALID_UUID,
+          fileName: 'consultation-recording.mp4',
+          fileSize: 10485760,
+          mimeType: 'video/mp4',
+        }),
+      );
+    });
+
+    it('returns 400 for missing fileName', async () => {
+      const res = await app.request(`/api/v2/consultations/${VALID_UUID}/recording/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileSize: 1024, mimeType: 'video/mp4' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for non-positive fileSize', async () => {
+      const res = await app.request(`/api/v2/consultations/${VALID_UUID}/recording/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: 'recording.mp4', fileSize: 0, mimeType: 'video/mp4' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for invalid consultation UUID param', async () => {
+      const res = await app.request('/api/v2/consultations/not-a-uuid/recording/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+    });
+
+    it('propagates error when getConsultation throws (access denied / not found)', async () => {
+      mockServices.getConsultation.execute.mockRejectedValue(new Error('Not found'));
+
+      await expect(
+        app.request(`/api/v2/consultations/${VALID_UUID}/recording/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(validBody),
+        }),
+      ).resolves.toBeDefined();
+
+      expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
     });
   });
 });

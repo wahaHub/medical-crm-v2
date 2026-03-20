@@ -62,7 +62,7 @@ export type { IDocumentRepository } from './ports/document-repository.port.js';
 export type { ICaseProgressRepository } from './ports/case-progress-repository.port.js';
 export type { IHospitalRepository, HospitalInfo, MatchedHospital, FindMatchingHospitalsInput } from './ports/hospital-repository.port.js';
 export type { IPatientRepository, PatientBasicInfo } from './ports/patient-repository.port.js';
-export type { IStorageService, PresignedUploadResult } from './ports/storage-service.port.js';
+export type { IStorageService, PresignedUploadResult, StorageBackend, IStorageAdapterRegistry } from './ports/storage-service.port.js';
 
 // Phase 2BC Ports — Hospital
 export type { IHospitalManagementRepository, HospitalListQuery } from './ports/hospital-management-repository.port.js';
@@ -241,7 +241,12 @@ export { EmailTemplate } from './entities/email-template.entity.js';
 export type { EmailTemplateProps } from './entities/email-template.entity.js';
 
 // Phase CDE: Chatbot FAQ Ports
-export type { IChatbotFaqRepository, ChatbotFaqListQuery } from './ports/chatbot-faq-repository.port.js';
+export type {
+  IChatbotFaqRepository,
+  ChatbotFaqListQuery,
+  ChatbotFaqCategory,
+  ChatbotFaqCategoryListQuery,
+} from './ports/chatbot-faq-repository.port.js';
 
 // Email Template Ports
 export type { IEmailTemplateRepository, EmailTemplateListQuery } from './ports/email-template-repository.port.js';

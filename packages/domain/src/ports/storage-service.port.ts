@@ -19,3 +19,10 @@ export interface IStorageService {
   getSignedUrl(key: string): Promise<string>;
   getSignedUrls(keys: string[]): Promise<Record<string, string>>;
 }
+
+export type StorageBackend = 'r2-private' | 'r2-materials-beauty' | 's3-materials' | 'supabase-legacy';
+
+export interface IStorageAdapterRegistry {
+  get(backend: StorageBackend): IStorageService;
+  resolveForDownload(storageKey: string): IStorageService;
+}

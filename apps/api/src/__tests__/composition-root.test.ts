@@ -41,6 +41,32 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
 vi.mock('@medical-crm/infrastructure/storage', () => ({
   SupabaseStorageAdapter: vi.fn(() => ({})),
 }));
+vi.mock('@medical-crm/infrastructure/storage/r2', () => ({
+  R2StorageAdapter: vi.fn(() => ({})),
+}));
+vi.mock('@medical-crm/infrastructure/storage/s3', () => ({
+  S3StorageAdapter: vi.fn(() => ({})),
+}));
+vi.mock('@medical-crm/infrastructure/storage/registry', () => ({
+  StorageAdapterRegistry: vi.fn(() => ({ get: vi.fn(() => ({})), resolveForDownload: vi.fn(() => ({})) })),
+}));
+vi.mock('@medical-crm/infrastructure/storage/routed', () => ({
+  RoutedStorageService: vi.fn(() => ({})),
+}));
+vi.mock('@medical-crm/application/services/media-upload', () => ({
+  MediaUploadService: vi.fn(() => ({})),
+}));
+vi.mock('@medical-crm/application/upload-policies', () => ({
+  UploadPolicyRegistry: vi.fn(() => ({})),
+  messageAttachmentPolicy: {},
+  packageImagePolicy: {},
+  caseDocumentPolicy: {},
+  ticketReplyAttachmentPolicy: {},
+  faqAttachmentPolicy: {},
+  consultationRecordingPolicy: {},
+  materialsBeautyPolicies: [],
+  materialsRegularPolicies: [],
+}));
 vi.mock('@medical-crm/infrastructure/supabase-main/materials', () => ({
   SupabaseMaterialsRepository: vi.fn(() => ({})),
 }));
@@ -50,6 +76,8 @@ vi.mock('@medical-crm/infrastructure/services', () => ({
   OpenAITranslationService: vi.fn(() => ({})),
   RoutingMaterialsRepository: vi.fn(() => ({})),
   StubEmailService: vi.fn(() => ({})),
+  ResendEmailService: { fromEnv: vi.fn(() => null) },
+  SmtpEmailService: { fromEnv: vi.fn(() => null) },
 }));
 vi.mock('@medical-crm/infrastructure/supabase-china/materials', () => ({
   ChinaMedicalMaterialsRepository: vi.fn(() => ({})),
@@ -156,6 +184,7 @@ vi.mock('@medical-crm/application', () => ({
   // Packages
   CreatePackageUseCase: vi.fn(() => ({})),
   UpdatePackageUseCase: vi.fn(() => ({})),
+  DeletePackageUseCase: vi.fn(() => ({})),
   PublishPackageUseCase: vi.fn(() => ({})),
   UnpublishPackageUseCase: vi.fn(() => ({})),
   ListPackagesUseCase: vi.fn(() => ({})),
@@ -177,6 +206,7 @@ vi.mock('@medical-crm/application', () => ({
   // QuestionCollector
   CreateTemplateUseCase: vi.fn(() => ({})),
   UpdateTemplateUseCase: vi.fn(() => ({})),
+  DeleteTemplateUseCase: vi.fn(() => ({})),
   ListTemplatesUseCase: vi.fn(() => ({})),
   GetTemplateUseCase: vi.fn(() => ({})),
   SubmitResponseUseCase: vi.fn(() => ({})),
@@ -225,6 +255,9 @@ vi.mock('@medical-crm/application', () => ({
   // Chatbot FAQ
   CreateFaqItemUseCase: vi.fn(() => ({})),
   ListFaqItemsUseCase: vi.fn(() => ({})),
+  ListFaqCategoriesUseCase: vi.fn(() => ({})),
+  CreateFaqCategoryUseCase: vi.fn(() => ({})),
+  DeleteFaqCategoryUseCase: vi.fn(() => ({})),
   GetFaqItemUseCase: vi.fn(() => ({})),
   UpdateFaqItemUseCase: vi.fn(() => ({})),
   DeleteFaqItemUseCase: vi.fn(() => ({})),
@@ -366,6 +399,7 @@ describe('composition root', () => {
     // Packages
     expect(services).toHaveProperty('createPackage');
     expect(services).toHaveProperty('updatePackage');
+    expect(services).toHaveProperty('deletePackage');
     expect(services).toHaveProperty('publishPackage');
     expect(services).toHaveProperty('unpublishPackage');
     expect(services).toHaveProperty('listPackages');
@@ -390,6 +424,7 @@ describe('composition root', () => {
     // QuestionCollector
     expect(services).toHaveProperty('createTemplate');
     expect(services).toHaveProperty('updateTemplate');
+    expect(services).toHaveProperty('deleteTemplate');
     expect(services).toHaveProperty('listTemplates');
     expect(services).toHaveProperty('getTemplate');
     expect(services).toHaveProperty('submitQCResponse');
@@ -398,6 +433,16 @@ describe('composition root', () => {
     expect(services).toHaveProperty('listQCResponses');
     expect(services).toHaveProperty('customizeQuestions');
     expect(services).toHaveProperty('getCustomization');
+
+    // Chatbot FAQ
+    expect(services).toHaveProperty('createFaqItem');
+    expect(services).toHaveProperty('listFaqItems');
+    expect(services).toHaveProperty('listFaqCategories');
+    expect(services).toHaveProperty('createFaqCategory');
+    expect(services).toHaveProperty('deleteFaqCategory');
+    expect(services).toHaveProperty('getFaqItem');
+    expect(services).toHaveProperty('updateFaqItem');
+    expect(services).toHaveProperty('deleteFaqItem');
 
     // ServiceCatalog
     expect(services).toHaveProperty('createServiceCatalogItem');

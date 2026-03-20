@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./upload-policies": "./src/upload-policies/index.ts",
+    "./services/media-upload": "./src/services/media-upload.service.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

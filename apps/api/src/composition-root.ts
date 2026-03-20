@@ -94,6 +94,7 @@ import {
   CloseTicketUseCase,
   CreatePackageUseCase,
   UpdatePackageUseCase,
+  DeletePackageUseCase,
   PublishPackageUseCase,
   UnpublishPackageUseCase,
   ListPackagesUseCase,
@@ -112,6 +113,7 @@ import {
   DeleteMilestoneUseCase,
   CreateTemplateUseCase,
   UpdateTemplateUseCase,
+  DeleteTemplateUseCase,
   ListTemplatesUseCase,
   GetTemplateUseCase,
   SubmitResponseUseCase,
@@ -153,6 +155,9 @@ import {
   SetPasswordUseCase,
   CreateFaqItemUseCase,
   ListFaqItemsUseCase,
+  ListFaqCategoriesUseCase,
+  CreateFaqCategoryUseCase,
+  DeleteFaqCategoryUseCase,
   GetFaqItemUseCase,
   UpdateFaqItemUseCase,
   DeleteFaqItemUseCase,
@@ -196,10 +201,26 @@ import {
   DrizzleTransactionRunner,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
+import { R2StorageAdapter } from '@medical-crm/infrastructure/storage/r2';
+import { S3StorageAdapter } from '@medical-crm/infrastructure/storage/s3';
+import { StorageAdapterRegistry } from '@medical-crm/infrastructure/storage/registry';
+import { RoutedStorageService } from '@medical-crm/infrastructure/storage/routed';
+import { MediaUploadService } from '@medical-crm/application/services/media-upload';
+import {
+  UploadPolicyRegistry,
+  messageAttachmentPolicy,
+  packageImagePolicy,
+  caseDocumentPolicy,
+  ticketReplyAttachmentPolicy,
+  faqAttachmentPolicy,
+  consultationRecordingPolicy,
+  materialsBeautyPolicies,
+  materialsRegularPolicies,
+} from '@medical-crm/application/upload-policies';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
 import { ChinaMedicalMaterialsRepository } from '@medical-crm/infrastructure/supabase-china/materials';
 import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
@@ -217,6 +238,7 @@ interface AppServices {
   hospitalRepo: IHospitalRepository;
   patientRepo: IPatientRepository;
   storage: IStorageService;
+  mediaUpload: MediaUploadService;
 
   // use cases — cases
   createCase: CreateCaseUseCase;
@@ -309,6 +331,7 @@ interface AppServices {
   // use cases — packages
   createPackage: CreatePackageUseCase;
   updatePackage: UpdatePackageUseCase;
+  deletePackage: DeletePackageUseCase;
   publishPackage: PublishPackageUseCase;
   unpublishPackage: UnpublishPackageUseCase;
   listPackages: ListPackagesUseCase;
@@ -333,6 +356,7 @@ interface AppServices {
   // use cases — question collector
   createTemplate: CreateTemplateUseCase;
   updateTemplate: UpdateTemplateUseCase;
+  deleteTemplate: DeleteTemplateUseCase;
   listTemplates: ListTemplatesUseCase;
   getTemplate: GetTemplateUseCase;
   submitQCResponse: SubmitResponseUseCase;
@@ -391,6 +415,9 @@ interface AppServices {
   // use cases — chatbot FAQ
   createFaqItem: CreateFaqItemUseCase;
   listFaqItems: ListFaqItemsUseCase;
+  listFaqCategories: ListFaqCategoriesUseCase;
+  createFaqCategory: CreateFaqCategoryUseCase;
+  deleteFaqCategory: DeleteFaqCategoryUseCase;
   getFaqItem: GetFaqItemUseCase;
   updateFaqItem: UpdateFaqItemUseCase;
   deleteFaqItem: DeleteFaqItemUseCase;
@@ -426,6 +453,27 @@ interface AppServices {
 
 let _services: AppServices | null = null;
 
+function resolveKeycloakAdminBaseUrl(): string {
+  const configuredBaseUrl = process.env['KEYCLOAK_URL']?.trim();
+  if (configuredBaseUrl) {
+    return configuredBaseUrl.replace(/\/+$/, '');
+  }
+
+  const issuer = process.env['KEYCLOAK_ISSUER']?.trim();
+  if (!issuer) {
+    return '';
+  }
+
+  try {
+    const url = new URL(issuer);
+    const match = url.pathname.match(/^(.*)\/realms\/[^/]+\/?$/);
+    url.pathname = match?.[1] || '';
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
+}
+
 /** Wire all infrastructure adapters, repositories, and use cases. Lazy singleton. */
 export function getServices(): AppServices {
   if (!_services) {
@@ -442,13 +490,61 @@ export function getServices(): AppServices {
     const hospitalManagementRepo = new DrizzleHospitalManagementRepository(crmDb);
     const registrationTokenRepo = new DrizzleRegistrationTokenRepository(crmDb);
     const userRepo = new DrizzleUserRepository(crmDb);
-    const storage = new SupabaseStorageAdapter(mainSupabase);
+    const supabaseLegacyAdapter = new SupabaseStorageAdapter(mainSupabase);
+
+    const r2Adapter = new R2StorageAdapter({
+      accountId: process.env['R2_ACCOUNT_ID'] ?? '',
+      accessKeyId: process.env['R2_ACCESS_KEY_ID'] ?? '',
+      secretAccessKey: process.env['R2_SECRET_ACCESS_KEY'] ?? '',
+      bucketName: process.env['R2_BUCKET_NAME'] ?? '',
+    });
+
+    const r2MaterialsBeautyAdapter = new R2StorageAdapter({
+      accountId: process.env['R2_ACCOUNT_ID'] ?? '',
+      accessKeyId: process.env['R2_ACCESS_KEY_ID'] ?? '',
+      secretAccessKey: process.env['R2_SECRET_ACCESS_KEY'] ?? '',
+      bucketName: process.env['R2_MATERIALS_BEAUTY_BUCKET_NAME'] ?? '',
+      publicUrl: process.env['R2_MATERIALS_BEAUTY_PUBLIC_URL'],
+    });
+
+    const s3Adapter = new S3StorageAdapter({
+      region: process.env['AWS_REGION'] ?? '',
+      accessKeyId: process.env['AWS_ACCESS_KEY_ID'] ?? '',
+      secretAccessKey: process.env['AWS_SECRET_ACCESS_KEY'] ?? '',
+      bucketName: process.env['AWS_S3_BUCKET'] ?? '',
+      cloudfrontUrl: process.env['AWS_CLOUDFRONT_URL'],
+    });
+
+    const storageAdapterRegistry = new StorageAdapterRegistry(
+      {
+        'r2-private': r2Adapter,
+        'r2-materials-beauty': r2MaterialsBeautyAdapter,
+        's3-materials': s3Adapter,
+        'supabase-legacy': supabaseLegacyAdapter,
+      },
+      supabaseLegacyAdapter,
+    );
+
+    const routedStorageService = new RoutedStorageService(storageAdapterRegistry);
+
+    const uploadPolicyRegistry = new UploadPolicyRegistry([
+      messageAttachmentPolicy,
+      packageImagePolicy,
+      caseDocumentPolicy,
+      ticketReplyAttachmentPolicy,
+      faqAttachmentPolicy,
+      consultationRecordingPolicy,
+      ...materialsBeautyPolicies,
+      ...materialsRegularPolicies,
+    ]);
+
+    const mediaUploadService = new MediaUploadService(uploadPolicyRegistry, storageAdapterRegistry);
 
     // Domain services
     const assignmentService = new CaseAssignmentService();
     const syncService = new SupabaseHospitalSyncService(mainSupabase, chinaSupabase);
     const keycloakAdmin = new KeycloakAdminService(
-      process.env['KEYCLOAK_URL'] ?? '',
+      resolveKeycloakAdminBaseUrl(),
       process.env['KEYCLOAK_REALM'] ?? '',
       process.env['KEYCLOAK_ADMIN_USERNAME'] ?? '',
       process.env['KEYCLOAK_ADMIN_PASSWORD'] ?? '',
@@ -477,7 +573,12 @@ export function getServices(): AppServices {
     };
 
     const materialsRepo = new RoutingMaterialsRepository(cosmeticMaterialsRepo, regularMaterialsRepo, resolveHospitalType);
-    const emailService = new StubEmailService();
+    const resendEmailService = ResendEmailService.fromEnv();
+    const smtpEmailService = SmtpEmailService.fromEnv();
+    if (!resendEmailService && !smtpEmailService) {
+      console.warn('[EMAIL] Neither RESEND nor SMTP is configured; falling back to StubEmailService.');
+    }
+    const emailService = resendEmailService ?? smtpEmailService ?? new StubEmailService();
 
     // Patient auth
     const patientJwtSecret = process.env['PATIENT_JWT_SECRET'];
@@ -514,26 +615,28 @@ export function getServices(): AppServices {
 
     _services = {
       crmDb, mainSupabase, chinaSupabase,
-      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, storage,
+      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo,
+      storage: routedStorageService,
+      mediaUpload: mediaUploadService,
 
       createCase: new CreateCaseUseCase(caseRepo),
       listCases,
       getCase: new GetCaseUseCase(caseRepo),
-      getHospitalCaseDetail: new GetHospitalCaseDetailUseCase(caseRepo, progressRepo, documentRepo, storage, patientRepo, conversationRepo, messageRepo),
+      getHospitalCaseDetail: new GetHospitalCaseDetailUseCase(caseRepo, progressRepo, documentRepo, routedStorageService, patientRepo, conversationRepo, messageRepo),
       updateCase: new UpdateCaseUseCase(caseRepo),
       assignCase: new AssignCaseUseCase(caseRepo, hospitalRepo, assignmentService, progressRepo),
       updateCaseStatus: new UpdateCaseStatusUseCase(caseRepo, progressRepo),
       advanceCaseStage: new AdvanceCaseStageUseCase(caseRepo, progressRepo),
       getCaseStats: new GetCaseStatsUseCase(caseRepo),
-      uploadDocument: new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, storage),
-      listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, storage),
+      uploadDocument: new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo),
+      listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, routedStorageService),
       deleteDocument: new DeleteDocumentUseCase(documentRepo, caseRepo),
       getCaseProgress: new GetCaseProgressUseCase(progressRepo, caseRepo),
       addCaseProgress: new AddCaseProgressUseCase(progressRepo, caseRepo),
 
       createHospital: new CreateHospitalUseCase(hospitalManagementRepo, syncService),
       listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
-      getHospital: new GetHospitalUseCase(hospitalManagementRepo),
+      getHospital: new GetHospitalUseCase(hospitalManagementRepo, userRepo),
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
       updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo),
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
@@ -546,8 +649,8 @@ export function getServices(): AppServices {
       getConversation: new GetConversationUseCase(conversationRepo),
       updateConversation: new UpdateConversationUseCase(conversationRepo),
       sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo),
-      listMessages: new ListMessagesUseCase(conversationRepo, messageRepo, storage),
-      getMessage: new GetMessageUseCase(conversationRepo, messageRepo, storage),
+      listMessages: new ListMessagesUseCase(conversationRepo, messageRepo, routedStorageService),
+      getMessage: new GetMessageUseCase(conversationRepo, messageRepo, routedStorageService),
       updateMessage: new UpdateMessageUseCase(conversationRepo, messageRepo),
       deleteMessage: new DeleteMessageUseCase(conversationRepo, messageRepo),
       listPendingReview: new ListPendingReviewUseCase(messageRepo),
@@ -596,6 +699,7 @@ export function getServices(): AppServices {
 
       createPackage: new CreatePackageUseCase(packageRepo),
       updatePackage: new UpdatePackageUseCase(packageRepo),
+      deletePackage: new DeletePackageUseCase(packageRepo),
       publishPackage: new PublishPackageUseCase(packageRepo),
       unpublishPackage: new UnpublishPackageUseCase(packageRepo),
       listPackages: new ListPackagesUseCase(packageRepo),
@@ -617,6 +721,7 @@ export function getServices(): AppServices {
 
       createTemplate: new CreateTemplateUseCase(qcRepo),
       updateTemplate: new UpdateTemplateUseCase(qcRepo),
+      deleteTemplate: new DeleteTemplateUseCase(qcRepo),
       listTemplates: new ListTemplatesUseCase(qcRepo),
       getTemplate: new GetTemplateUseCase(qcRepo, caseRepo),
       submitQCResponse: new SubmitResponseUseCase(qcRepo, caseRepo),
@@ -667,6 +772,9 @@ export function getServices(): AppServices {
 
       createFaqItem: new CreateFaqItemUseCase(faqRepo),
       listFaqItems: new ListFaqItemsUseCase(faqRepo),
+      listFaqCategories: new ListFaqCategoriesUseCase(faqRepo),
+      createFaqCategory: new CreateFaqCategoryUseCase(faqRepo),
+      deleteFaqCategory: new DeleteFaqCategoryUseCase(faqRepo),
       getFaqItem: new GetFaqItemUseCase(faqRepo),
       updateFaqItem: new UpdateFaqItemUseCase(faqRepo),
       deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),

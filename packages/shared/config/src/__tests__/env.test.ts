@@ -24,6 +24,14 @@ describe('serverEnvSchema', () => {
     KEYCLOAK_ADMIN_USERNAME: 'admin',
     KEYCLOAK_ADMIN_PASSWORD: 'admin-password',
     INTERNAL_API_SECRET: 'must-be-at-least-32-characters-long-secret-key',
+    R2_ACCOUNT_ID: 'test-account-id',
+    R2_ACCESS_KEY_ID: 'test-r2-key',
+    R2_SECRET_ACCESS_KEY: 'test-r2-secret',
+    R2_BUCKET_NAME: 'test-bucket',
+    R2_MATERIALS_BEAUTY_BUCKET_NAME: 'test-beauty-bucket',
+    R2_MATERIALS_BEAUTY_PUBLIC_URL: 'https://beauty.example.com',
+    AWS_ACCESS_KEY_ID: 'test-aws-key',
+    AWS_SECRET_ACCESS_KEY: 'test-aws-secret',
   };
 
   it('parses valid env without throwing', () => {

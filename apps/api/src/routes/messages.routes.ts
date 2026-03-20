@@ -1,7 +1,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
-import { generateId } from '@medical-crm/utils';
+
 import {
   sendMessageSchema,
   updateMessageSchema,
@@ -80,18 +80,22 @@ app.openapi(initMessageUploadRoute, async (c) => {
 
   await svc.getConversation.execute(id, actor);
 
-  const safeFileName = body.fileName.replace(/[^a-zA-Z0-9._-]+/g, '-');
-  const storageKey = `messages/${id}/${generateId()}-${safeFileName}`;
-  const upload = await svc.storage.createPresignedUpload(storageKey, body.mimeType);
+  const result = await svc.mediaUpload.createUploadIntent({
+    policyId: 'message_attachment',
+    ownerType: 'conversation',
+    ownerId: id,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
 
   return c.json({
-    upload,
-    attachment: {
-      fileName: body.fileName,
-      fileSize: body.fileSize,
-      mimeType: body.mimeType,
-      storageKey,
+    upload: {
+      uploadUrl: result.uploadUrl,
+      storageKey: result.storageKey,
+      expiresIn: result.expiresIn,
     },
+    asset: result.asset,
   }, 201);
 });
 

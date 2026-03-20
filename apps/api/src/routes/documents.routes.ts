@@ -39,11 +39,32 @@ app.openapi(uploadDocumentRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
-  const result = await svc.uploadDocument.execute(
-    { caseId, ...body },
+
+  // Get upload URL
+  const uploadResult = await svc.mediaUpload.createUploadIntent({
+    policyId: 'case_document',
+    ownerType: 'case',
+    ownerId: caseId,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  // Save document entity
+  const { documentId } = await svc.uploadDocument.execute(
+    { ...body, caseId, storageKey: uploadResult.storageKey },
     actor,
   );
-  return c.json(result, 201);
+
+  return c.json({
+    upload: {
+      uploadUrl: uploadResult.uploadUrl,
+      storageKey: uploadResult.storageKey,
+      expiresIn: uploadResult.expiresIn,
+    },
+    asset: uploadResult.asset,
+    documentId,
+  }, 201);
 });
 
 // ---------------------------------------------------------------------------

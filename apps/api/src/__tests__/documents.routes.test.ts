@@ -17,6 +17,7 @@ const mockServices = {
   uploadDocument: { execute: vi.fn() },
   listDocuments: { execute: vi.fn() },
   deleteDocument: { execute: vi.fn() },
+  mediaUpload: { createUploadIntent: vi.fn() },
   getCaseProgress: { execute: vi.fn() },
   addCaseProgress: { execute: vi.fn() },
 };
@@ -75,8 +76,13 @@ describe('Documents routes', () => {
     };
 
     it('creates a document and returns 201', async () => {
-      const created = { id: DOC_UUID, uploadUrl: 'https://storage.example.com/upload' };
-      mockServices.uploadDocument.execute.mockResolvedValue(created);
+      mockServices.mediaUpload.createUploadIntent.mockResolvedValue({
+        uploadUrl: 'https://storage.example.com/upload',
+        storageKey: 'crm/dev/cases/documents/case-1/asset-1/report.pdf',
+        expiresIn: 600,
+        asset: { fileName: 'report.pdf', mimeType: 'application/pdf', fileSize: 1024, storageKey: 'crm/dev/cases/documents/case-1/asset-1/report.pdf' },
+      });
+      mockServices.uploadDocument.execute.mockResolvedValue({ documentId: DOC_UUID });
 
       const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents`, {
         method: 'POST',
@@ -86,11 +92,13 @@ describe('Documents routes', () => {
 
       expect(res.status).toBe(201);
       const json = await res.json();
-      expect(json).toEqual(created);
+      expect(json.documentId).toBe(DOC_UUID);
+      expect(json.upload.uploadUrl).toBe('https://storage.example.com/upload');
+      expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
       expect(mockServices.uploadDocument.execute).toHaveBeenCalledOnce();
 
       const [input] = mockServices.uploadDocument.execute.mock.calls[0]!;
-      expect(input).toMatchObject({ caseId: CASE_UUID, fileName: 'report.pdf' });
+      expect(input).toMatchObject({ caseId: CASE_UUID, fileName: 'report.pdf', storageKey: 'crm/dev/cases/documents/case-1/asset-1/report.pdf' });
     });
 
     it('rejects missing required fields', async () => {

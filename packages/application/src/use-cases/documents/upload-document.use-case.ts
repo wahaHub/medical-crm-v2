@@ -1,8 +1,7 @@
-import type { ICaseRepository, IDocumentRepository, ICaseProgressRepository, IStorageService, DocumentType, Sensitivity } from '@medical-crm/domain';
+import type { ICaseRepository, IDocumentRepository, ICaseProgressRepository, DocumentType, Sensitivity } from '@medical-crm/domain';
 import { Document, CaseProgress } from '@medical-crm/domain';
 import { generateId, NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
-import type { PresignedUploadResult } from '@medical-crm/domain';
 
 export interface UploadDocumentInput {
   caseId: string;
@@ -12,6 +11,7 @@ export interface UploadDocumentInput {
   documentType: string;
   sensitivity: string;
   language: string;
+  storageKey: string;
 }
 
 export class UploadDocumentUseCase {
@@ -19,10 +19,9 @@ export class UploadDocumentUseCase {
     private readonly documentRepo: IDocumentRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly progressRepo: ICaseProgressRepository,
-    private readonly storageService: IStorageService,
   ) {}
 
-  async execute(input: UploadDocumentInput, actor: Actor): Promise<{ upload: PresignedUploadResult; documentId: string }> {
+  async execute(input: UploadDocumentInput, actor: Actor): Promise<{ documentId: string }> {
     const caze = await this.caseRepo.findById(input.caseId);
     if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
     if (actor.role === 'HOSPITAL' && caze.assignedHospitalId !== actor.hospitalId) {
@@ -30,8 +29,7 @@ export class UploadDocumentUseCase {
     }
 
     const docId = generateId();
-    const storageKey = `documents/${input.caseId}/${docId}/${input.fileName}`;
-    const upload = await this.storageService.createPresignedUpload(storageKey, input.mimeType);
+    const storageKey = input.storageKey;
 
     const now = new Date();
     const doc = new Document({
@@ -63,6 +61,6 @@ export class UploadDocumentUseCase {
       recordedById: actor.userId,
     }));
 
-    return { upload, documentId: docId };
+    return { documentId: docId };
   }
 }

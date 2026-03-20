@@ -4,8 +4,6 @@ import type {
   ICaseRepository,
   IDocumentRepository,
   ICaseProgressRepository,
-  IStorageService,
-  PresignedUploadResult,
 } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
@@ -15,7 +13,6 @@ describe('UploadDocumentUseCase', () => {
   let mockCaseRepo: ICaseRepository;
   let mockDocumentRepo: IDocumentRepository;
   let mockProgressRepo: ICaseProgressRepository;
-  let mockStorageService: IStorageService;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -54,14 +51,6 @@ describe('UploadDocumentUseCase', () => {
       updatedAt: new Date('2026-01-10T08:00:00Z'),
     });
 
-  const fakeUploadResult: PresignedUploadResult = {
-    uploadUrl: 'https://storage.example.com/upload',
-    storageKey: 'documents/case-1/doc-id/report.pdf',
-    path: 'documents/case-1/doc-id/report.pdf',
-    token: 'fake-token',
-    expiresIn: 3600,
-  };
-
   const validInput = {
     caseId: 'case-1',
     fileName: 'report.pdf',
@@ -70,6 +59,7 @@ describe('UploadDocumentUseCase', () => {
     documentType: 'MEDICAL_REPORT',
     sensitivity: 'NORMAL',
     language: 'en',
+    storageKey: 'crm/dev/cases/documents/case-1/asset-123/report.pdf',
   };
 
   beforeEach(() => {
@@ -93,28 +83,18 @@ describe('UploadDocumentUseCase', () => {
       save: vi.fn().mockImplementation((progress) => Promise.resolve(progress)),
     };
 
-    mockStorageService = {
-      createPresignedUpload: vi.fn().mockResolvedValue(fakeUploadResult),
-      getSignedUrl: vi.fn(),
-      getSignedUrls: vi.fn(),
-    };
-
     useCase = new UploadDocumentUseCase(
       mockDocumentRepo,
       mockCaseRepo,
       mockProgressRepo,
-      mockStorageService,
     );
   });
 
-  it('generates storage key as documents/{caseId}/{uuid}/{fileName}', async () => {
+  it('uses the provided storageKey and returns documentId', async () => {
     const result = await useCase.execute(validInput, adminActor);
 
-    expect(mockStorageService.createPresignedUpload).toHaveBeenCalledOnce();
-    const [storageKey, mimeType] = (mockStorageService.createPresignedUpload as ReturnType<typeof vi.fn>).mock.calls[0]!;
-    expect(storageKey).toMatch(/^documents\/case-1\/[^/]+\/report\.pdf$/);
-    expect(mimeType).toBe('application/pdf');
     expect(result.documentId).toBeTruthy();
+    expect(result).not.toHaveProperty('upload');
   });
 
   it('throws NotFoundError when case does not exist', async () => {
@@ -143,13 +123,6 @@ describe('UploadDocumentUseCase', () => {
     expect(mockDocumentRepo.save).toHaveBeenCalledOnce();
   });
 
-  it('calls storageService.createPresignedUpload and returns presigned result', async () => {
-    const result = await useCase.execute(validInput, adminActor);
-
-    expect(result.upload).toEqual(fakeUploadResult);
-    expect(mockStorageService.createPresignedUpload).toHaveBeenCalledOnce();
-  });
-
   it('saves document metadata to repo with correct fields', async () => {
     await useCase.execute(validInput, adminActor);
 
@@ -165,6 +138,7 @@ describe('UploadDocumentUseCase', () => {
     expect(savedDoc.language).toBe('en');
     expect(savedDoc.isTranslated).toBe(false);
     expect(savedDoc.status).toBe('PENDING');
+    expect(savedDoc.storageKey).toBe('crm/dev/cases/documents/case-1/asset-123/report.pdf');
   });
 
   it('creates a DOCUMENT_UPLOAD progress entry', async () => {

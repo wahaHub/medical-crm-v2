@@ -214,9 +214,9 @@ Hospital Type: COSMETIC / REGULAR
 
 ```typescript
 interface DifySyncService {
-  // FAQ sync (by category)
-  syncFaqCategory(categoryId: string): Promise<void>;
-  deleteFaqCategoryDocument(categoryId: string): Promise<void>;
+  // FAQ sync (by category name + hospitalType, since chatbot_faq_items.category is a VARCHAR name, not a FK)
+  syncFaqCategory(categoryName: string, hospitalType: 'COSMETIC' | 'REGULAR'): Promise<void>;
+  deleteFaqCategoryDocument(categoryName: string, hospitalType: 'COSMETIC' | 'REGULAR'): Promise<void>;
 
   // Package sync (by type)
   syncPackageType(type: PackageType): Promise<void>;
@@ -226,8 +226,10 @@ interface DifySyncService {
 }
 ```
 
+**Note:** `chatbot_faq_items.category` is a VARCHAR string (category name), not a FK to `chatbot_faq_categories.id`. The sync key is `(categoryName, hospitalType)`.
+
 **Logic:**
-1. Query all active FAQs/Packages for that category/type
+1. Query all active FAQs/Packages for that category name + hospitalType / package type
 2. Convert to Markdown document
 3. Check `dify_document_mappings` for existing Dify document ID
 4. Existing → `PUT` update document in Dify
@@ -255,7 +257,8 @@ Streaming proxy to Dify Chat API.
   "message": "string",
   "difyConversationId": "string | null",
   "userId": "string | null",
-  "sessionId": "string (for anonymous users)"
+  "sessionId": "string (for anonymous users)",
+  "hospitalType": "COSMETIC | REGULAR"
 }
 ```
 
@@ -293,14 +296,14 @@ Transfer to human agent + create Ticket.
    - `description`: AI 对话摘要 + 转人工原因
 3. Update mapping status → `ESCALATED`
 
-#### `GET /api/v2/chatbot/history/{conversationId}`
+#### `GET /api/v2/chatbot/history/{difyConversationId}`
 
-Retrieve chat history for page refresh / context restore.
+Retrieve chat history for page refresh / context restore. Uses `difyConversationId` (from SSE response) as the lookup key.
 
 **Response:**
 ```json
 {
-  "conversationId": "string",
+  "difyConversationId": "string",
   "messages": [
     {
       "role": "user | assistant",
@@ -374,6 +377,7 @@ DifyChatWidget
 │   └── EscalationForm  — 转人工时收集联系信息
 └── Props:
     ├── apiBaseUrl: string     — CRM API 地址
+    ├── hospitalType: string   — 'COSMETIC' | 'REGULAR'
     ├── userId?: string        — 已登录用户 ID
     ├── theme?: object         — 样式定制
     └── locale?: string        — 默认语言
@@ -399,7 +403,7 @@ DifyChatWidget
 
 ### 6.3 Sharing Strategy
 
-共享组件以 npm package 或 git submodule 方式供两个项目使用。
+共享组件作为 Turborepo 内部 package `packages/chat-widget`，与现有 monorepo 结构一致。两个患者端项目通过 npm dependency 引用（`"@medora/chat-widget": "workspace:*"`）。
 
 ---
 
@@ -453,3 +457,98 @@ DIFY_PACKAGE_DATASET_ID=xxxx
 - **同步失败**: 记录日志 + 告警通知
 - **Admin 操作**: `fullSync()` 端点供手动触发全量重建
 - **成本监控**: OpenAI API 用量 (GPT-4o per-token billing)
+
+---
+
+## 9. Edge Cases & Security
+
+### 9.1 Anonymous Users & Message Storage
+
+**Problem:** `messages.sender_id` and `support_tickets.patient_id` are NOT NULL FK to `users`.
+
+**Solution:**
+- Create a well-known **system bot user** record (e.g., UUID `00000000-0000-0000-0000-000000000001`, role `SYSTEM`) for AI-generated messages
+- Anonymous users: on first message, create a **guest user** record using `sessionId` as identifier. If escalation happens, the `EscalationForm` collects contact info to update the guest user record
+- This avoids schema changes to existing NOT NULL constraints
+
+### 9.2 Rate Limiting & Abuse Prevention
+
+`/chatbot/chat` is a public endpoint proxying to a paid LLM. Required protections:
+
+- **Per-session rate limit:** max 30 messages/minute
+- **Per-IP rate limit:** max 60 messages/minute
+- **Max message length:** 2000 characters
+- **Max conversation length:** 100 messages (after which suggest escalation)
+- Implement via Hono middleware (consistent with existing rate limiting patterns)
+
+### 9.3 Authentication Strategy
+
+- `POST /api/v2/chatbot/chat` — **public** (supports both auth and anon users)
+- `GET /api/v2/chatbot/history/{difyConversationId}` — **public** (scoped by difyConversationId or sessionId)
+- `POST /api/v2/chatbot/escalate` — **public** (requires contactInfo for anon users)
+- `POST /api/v2/chatbot/sync` — **admin-only** (existing auth middleware)
+
+These public endpoints follow the same pattern as `patient-public.routes.ts`.
+
+### 9.4 Streaming Response Format (SSE)
+
+```
+event: message
+data: {"chunk": "Hello", "difyConversationId": "abc123"}
+
+event: message
+data: {"chunk": " how", "difyConversationId": "abc123"}
+
+event: done
+data: {"difyConversationId": "abc123", "canAnswer": true, "fullResponse": "Hello how can I help?"}
+
+// Error case:
+event: error
+data: {"code": "DIFY_UNAVAILABLE", "message": "AI service temporarily unavailable"}
+```
+
+- First chunk includes `difyConversationId` — frontend stores it in `localStorage` for session continuity
+- `done` event includes `canAnswer` flag — frontend uses this to trigger escalation flow
+- Connection timeout: 60 seconds
+
+### 9.5 Multi-Hospital Context
+
+The two patient-facing sites serve different hospital types. The widget passes context:
+
+- `DifyChatWidget` adds a `hospitalType` prop (`COSMETIC` | `REGULAR`)
+- `/chatbot/chat` request includes `hospitalType` field
+- CRM proxy passes `hospitalType` as a Dify conversation variable
+- Dify Chatflow uses this variable to filter which FAQ documents are relevant (metadata filtering in Knowledge Retrieval node)
+
+### 9.6 Package Sync — Only Published
+
+- Only `PUBLISHED` packages are included in Dify documents
+- When the last published package of a type is unpublished, the document is regenerated as empty (Dify handles empty documents gracefully)
+
+---
+
+## 10. Database Migrations Required
+
+All migrations in a single file: `XXX_dify_integration.sql`
+
+1. **ALTER TYPE** `conversation_category` ADD VALUE `'AI_CHATBOT'`
+2. **ALTER TYPE** `ticket_type` ADD VALUE `'AI_ESCALATION'`
+3. **CREATE TABLE** `dify_conversation_mappings` (per Section 5.2, with UNIQUE on both `dify_conversation_id` and `conversation_id`)
+4. **CREATE TABLE** `dify_document_mappings` (per Section 5.2)
+5. **INSERT** system bot user record (`id: 00000000-0000-0000-0000-000000000001`, role: SYSTEM)
+
+---
+
+## 11. Admin Sync Endpoints (Appendix to Section 5.1)
+
+#### `POST /api/v2/chatbot/sync` (Admin-only)
+
+Trigger full sync of all FAQ + Package documents to Dify.
+
+#### `POST /api/v2/chatbot/sync/faq-categories/{categoryId}` (Admin-only)
+
+Trigger sync of a single FAQ category document.
+
+#### `POST /api/v2/chatbot/sync/package-types/{type}` (Admin-only)
+
+Trigger sync of a single package type document.

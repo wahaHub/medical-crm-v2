@@ -3,6 +3,7 @@ export { Button, buttonVariants, type ButtonProps } from './components/button';
 export { theme } from './lib/theme';
 export { formatDate, formatTime, formatRelative } from './lib/format-date';
 export { useDebounce } from './hooks/use-debounce';
+export { useMediaUpload, type UploadedAsset, type UploadInitFn, type UploadInitResult, type UseMediaUploadOptions, type UseMediaUploadReturn } from './hooks/use-media-upload';
 export { SidebarNav, type NavItem, type SidebarNavProps } from './components/sidebar-nav';
 export { PageHeader, type PageHeaderProps } from './components/page-header';
 export { Tabs, type TabItem, type TabsProps } from './components/tabs';
@@ -17,4 +18,15 @@ export { LoadingSpinner, type LoadingSpinnerProps } from './components/loading-s
 export { SearchInput, type SearchInputProps } from './components/search-input';
 export { DataTable, type Column, type DataTableProps, type PaginationState } from './components/data-table';
 export { ChatLayout, type ChatMessage, type ChatAttachment, type ChatLayoutProps, type ChatHeaderConfig } from './components/chat-layout';
+export {
+  MessageConversationSidebar,
+  MessageNewConversationModal,
+  MessageCaseDetailPanel,
+  type MessageConversationSidebarItem,
+  type MessageConversationSection,
+  type MessageConversationSidebarProps,
+  type MessageNewConversationPayload,
+  type MessageNewConversationModalProps,
+  type MessageCaseDetailPanelProps,
+} from './components/message-widgets';
 export { QuestionnaireReadonlyView, type QuestionnaireReadonlyViewProps } from './components/questionnaire-readonly-view';

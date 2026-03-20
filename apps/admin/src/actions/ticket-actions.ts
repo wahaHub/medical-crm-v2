@@ -3,10 +3,17 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { revalidatePath } from 'next/cache';
 
-export async function replyToTicket(ticketId: string, content: string) {
+export async function replyToTicket(
+  ticketId: string,
+  content: string,
+  attachments?: Array<{ storageKey: string; fileName: string; mimeType: string; fileSize: number }>,
+) {
   const res = await apiFetch(`/api/v2/tickets/${ticketId}/reply`, {
     method: 'POST',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({
+      content,
+      ...(attachments?.length ? { attachments } : {}),
+    }),
   });
 
   if (!res.ok) {
@@ -15,6 +22,23 @@ export async function replyToTicket(ticketId: string, content: string) {
   }
 
   revalidatePath('/cases');
+  return res.json();
+}
+
+export async function uploadTicketAttachment(
+  ticketId: string,
+  params: { fileName: string; fileSize: number; mimeType: string },
+): Promise<{ upload: { uploadUrl: string; storageKey: string; expiresIn: number }; asset: { storageKey: string; fileName: string; mimeType: string; fileSize: number } }> {
+  const res = await apiFetch(`/api/v2/tickets/${ticketId}/attachments/upload`, {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string };
+    throw new Error(err.message ?? 'Failed to initialize ticket attachment upload');
+  }
+
   return res.json();
 }
 

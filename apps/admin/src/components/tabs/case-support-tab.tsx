@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { Card, CardHeader, CardTitle, StatusBadge, EmptyState } from '@medical-crm/ui';
-import { LifeBuoy, ChevronDown, ChevronUp, Send, X, Check } from 'lucide-react';
+import { useState, useTransition, useRef } from 'react';
+import { Card, CardHeader, CardTitle, StatusBadge, EmptyState, useMediaUpload } from '@medical-crm/ui';
+import { LifeBuoy, ChevronDown, ChevronUp, Send, X, Check, Paperclip, FileText, Image as ImageIcon } from 'lucide-react';
 import { useTickets, useTicket } from '@/queries/use-tickets';
-import { replyToTicket, updateTicketStatus, closeTicket } from '@/actions/ticket-actions';
+import { replyToTicket, updateTicketStatus, closeTicket, uploadTicketAttachment } from '@/actions/ticket-actions';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ const STATUS_OPTIONS = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_INFO', 'RESO
 
 // ── Ticket Detail Panel ───────────────────────────────────────────────
 
-function TicketDetailPanel({
+export function CaseSupportDetailPanel({
   ticketId,
   onClose,
 }: {
@@ -62,13 +62,39 @@ function TicketDetailPanel({
   const [isUpdating, startUpdate] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const { upload, isUploading, error: uploadError } = useMediaUpload({
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+    maxFileSize: 20 * 1024 * 1024,
+  });
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+    setSelectedFiles((prev) => [...prev, ...Array.from(files)]);
+    e.target.value = '';
+  }
+
+  function removeFile(index: number) {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function handleReply() {
-    if (!replyContent.trim()) return;
+    if (!replyContent.trim() && selectedFiles.length === 0) return;
     setError(null);
     startSend(async () => {
       try {
-        await replyToTicket(ticketId, replyContent.trim());
+        let attachments: Array<{ storageKey: string; fileName: string; mimeType: string; fileSize: number }> | undefined;
+        if (selectedFiles.length > 0) {
+          const initFn = (params: { fileName: string; fileSize: number; mimeType: string }) =>
+            uploadTicketAttachment(ticketId, params);
+          const assets = await upload(selectedFiles, initFn);
+          if (assets.length > 0) attachments = assets;
+        }
+        await replyToTicket(ticketId, replyContent.trim(), attachments);
         setReplyContent('');
+        setSelectedFiles([]);
         await refetch();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to send reply');
@@ -197,22 +223,66 @@ function TicketDetailPanel({
       </div>
 
       {/* Reply input */}
-      <div className="flex items-end gap-3">
-        <textarea
-          value={replyContent}
-          onChange={(e) => setReplyContent(e.target.value)}
-          placeholder="Write a reply..."
-          rows={3}
-          disabled={isSending}
-          className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50"
-        />
-        <button
-          onClick={handleReply}
-          disabled={isSending || !replyContent.trim()}
-          className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50 transition-colors shrink-0"
-        >
-          <Send size={14} /> {isSending ? 'Sending…' : 'Reply'}
-        </button>
+      <div className="space-y-2">
+        {(uploadError) && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-700">
+            {uploadError}
+          </div>
+        )}
+
+        {selectedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {selectedFiles.map((file, idx) => (
+              <div
+                key={`${file.name}-${idx}`}
+                className="flex items-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 px-2 py-1 text-xs text-slate-600"
+              >
+                {file.type.startsWith('image/') ? <ImageIcon size={12} /> : <FileText size={12} />}
+                <span className="max-w-[120px] truncate">{file.name}</span>
+                <button
+                  onClick={() => removeFile(idx)}
+                  className="p-0.5 text-slate-400 hover:text-red-500 transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-end gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            accept="image/jpeg,image/png,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            onChange={handleFileSelect}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isSending || isUploading}
+            className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl border border-slate-200 transition-colors disabled:opacity-50 shrink-0"
+            title="Attach files"
+          >
+            <Paperclip size={16} />
+          </button>
+          <textarea
+            value={replyContent}
+            onChange={(e) => setReplyContent(e.target.value)}
+            placeholder="Write a reply..."
+            rows={3}
+            disabled={isSending || isUploading}
+            className="flex-1 resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50"
+          />
+          <button
+            onClick={handleReply}
+            disabled={isSending || isUploading || (!replyContent.trim() && selectedFiles.length === 0)}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm disabled:opacity-50 transition-colors shrink-0"
+          >
+            <Send size={14} /> {isSending || isUploading ? 'Sending…' : 'Reply'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -262,7 +332,7 @@ function TicketCard({ ticket }: { ticket: TicketItem }) {
       </div>
 
       {isExpanded && (
-        <TicketDetailPanel
+        <CaseSupportDetailPanel
           ticketId={ticket.id}
           onClose={() => setIsExpanded(false)}
         />

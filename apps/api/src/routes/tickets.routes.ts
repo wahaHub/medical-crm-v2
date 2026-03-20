@@ -20,6 +20,15 @@ const ticketIdParamSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Body schemas
+// ---------------------------------------------------------------------------
+const uploadInitSchema = z.object({
+  fileName: z.string().min(1),
+  fileSize: z.number().positive(),
+  mimeType: z.string().min(1),
+});
+
+// ---------------------------------------------------------------------------
 // 1. POST /api/v2/tickets — CreateTicket
 // ---------------------------------------------------------------------------
 const createTicketRoute = createRoute({
@@ -175,6 +184,49 @@ app.openapi(closeTicketRoute, async (c) => {
   const svc = getServices();
   const result = await svc.closeTicket.execute(id, actor);
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 8. POST /api/v2/tickets/{id}/attachments/upload — InitTicketAttachmentUpload
+// ---------------------------------------------------------------------------
+const initTicketAttachmentUploadRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/tickets/{id}/attachments/upload',
+  request: {
+    params: ticketIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: uploadInitSchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Ticket attachment upload initialized' } },
+});
+
+app.openapi(initTicketAttachmentUploadRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+
+  await svc.getTicket.execute(id, actor);
+
+  const result = await svc.mediaUpload.createUploadIntent({
+    policyId: 'ticket_reply_attachment',
+    ownerType: 'ticket_reply',
+    ownerId: id,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  return c.json({
+    upload: {
+      uploadUrl: result.uploadUrl,
+      storageKey: result.storageKey,
+      expiresIn: result.expiresIn,
+    },
+    asset: result.asset,
+  }, 201);
 });
 
 export default app;

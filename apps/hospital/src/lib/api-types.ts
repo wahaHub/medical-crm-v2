@@ -346,14 +346,30 @@ export interface QuoteItem {
   id: string;
   caseId: string;
   hospitalId: string;
+  hospitalName?: string;
+  quoteNumber?: string;
+  version?: number;
+  isDraft?: boolean;
   totalAmount: string;
   currency: string;
   lineItems?: Array<{ name: string; amount: string }>;
+  treatmentPlan?: string | null;
   notes?: string | null;
   validUntil?: string | null;
   status: string; // PENDING | ACCEPTED | REJECTED | EXPIRED
+  sentAt?: string | null;
+  createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Email template attachment */
+export interface EmailTemplateAttachmentItem {
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  storageKey: string;
+  url?: string;
 }
 
 /** Email template item */
@@ -366,8 +382,18 @@ export interface EmailTemplateItem {
   body: string;
   variables: string[];
   status: string;
+  attachments: EmailTemplateAttachmentItem[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** FAQ attachment — matches backend FaqAttachmentDTO */
+export interface FaqAttachmentItem {
+  storageKey: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  url?: string;
 }
 
 /** FAQ item — matches backend ChatbotFaqDTO */
@@ -375,11 +401,11 @@ export interface FaqItem {
   id: string;
   hospitalId?: string | null;
   category: string;
-  questionEn: string;
-  questionZh: string;
-  answerEn: string;
-  answerZh: string;
+  question: string;
+  answer: string;
+  hospitalType: 'REGULAR' | 'COSMETIC';
   keywords: string[];
+  attachments?: FaqAttachmentItem[];
   isActive: boolean;
   sortOrder: number;
   createdAt: string;

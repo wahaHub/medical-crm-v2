@@ -16,7 +16,7 @@ A unified, async AI translation system covering 6+ modules across CRM DB and two
 | Support Ticket Replies | `support_ticket_replies` | `content` | New `translations jsonb` column |
 | Consultations | `consultations` | `notes` | New `translations jsonb` column |
 | Consultation Transcripts | `consultation_transcripts` | `entries[]` (each entry's text) | Already has `translatedLang` + `entries` structure |
-| QC Templates | `question_collector_templates` | `title`, `description`, each question's `label`/`placeholder`/`options` | New `translations jsonb` column |
+| QC Templates | `question_collector_templates` | `templateName`, each question's `label`/`placeholder`/`options` | New `translations jsonb` column |
 | QC Responses | `question_collector_responses` | Answer text values | New `translations jsonb` column |
 | Cases (AI Summary) | `cases` | `aiSummary` | Existing `aiSummaryZh`/`aiSummaryEn` fields (keep as-is) |
 
@@ -26,7 +26,7 @@ A unified, async AI translation system covering 6+ modules across CRM DB and two
 |--------|-------|---------------------|---------|
 | Hospital Info | `hospital_translations` | `tagline`, `description`, `highlights` | Existing table — one row per `(hospital_id, language_code)` |
 | Hospital Nearby | `hospital_nearby_attractions` | `name` | Existing table — one row per `(hospital_id, language_code)` |
-| Procedures | `procedures` | `procedure_name`, `description` | Currently no i18n columns; add `translations jsonb` or use naming convention |
+| Procedures | `procedures` | `procedure_name`, `description` | Add `translations jsonb` column |
 | Surgeons | `surgeons` | `title`, `bio.intro`, `bio.expertise`, `bio.philosophy`, `bio.achievements`, `specialties[]`, `education[]`, `certifications[]` | Existing `translations jsonb` column |
 | Before/After Cases | `procedure_cases` | `description`, `provider_name` | Add `translations jsonb` column |
 
@@ -100,8 +100,17 @@ ALTER TABLE translation_tasks
   ADD COLUMN target_languages TEXT[],                         -- ['en','ru','fr',...]
   ADD COLUMN detected_language VARCHAR(10);                   -- filled after OpenAI detection
 
--- Change: targetLanguage becomes nullable (replaced by target_languages array)
--- Keep for backward compat with existing records, new records use target_languages[]
+-- Drop old unique constraint and replace with new deduplication model
+DROP INDEX IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
+CREATE UNIQUE INDEX translation_tasks_entity_dedup
+  ON translation_tasks (entity_type, entity_id)
+  WHERE status IN ('pending', 'processing');
+
+-- hospitalType becomes nullable (CRM-origin tasks don't have it; replaced by source_db for routing)
+ALTER TABLE translation_tasks ALTER COLUMN hospital_type DROP NOT NULL;
+
+-- targetLanguage becomes nullable (replaced by target_languages array)
+-- Keep column for backward compat with existing records, new records use target_languages[]
 ```
 
 ### Add `translations jsonb` to CRM Tables
@@ -124,6 +133,33 @@ ALTER TABLE procedure_cases ADD COLUMN translations JSONB DEFAULT '{}';
 ALTER TABLE procedure_cases ADD COLUMN translations JSONB DEFAULT '{}';
 ```
 
+### Relationship to `message_tasks`
+
+The existing `message_tasks` table and `ProcessMessageTasksUseCase` remain **unchanged** — they handle message-specific async tasks (IMAGE/FILE summarization and translation). The new `translation_tasks` system is for entity-level batch translation only. These are two separate pipelines:
+
+- `message_tasks` → message translation/summarization (existing, keep as-is)
+- `translation_tasks` → entity-level multi-language batch translation (new/extended)
+
+> **Note:** The existing `ProcessMessageTasksUseCase` has known bugs (non-atomic `pullPending`, broken retry logic). These should be fixed separately but are out of scope for this spec.
+
+### Worker Atomicity
+
+The new `ProcessTranslationTasksUseCase` MUST use atomic task pulling to prevent concurrent worker races:
+
+```sql
+-- Atomic pull: SELECT ... FOR UPDATE SKIP LOCKED
+-- This requires raw SQL or Drizzle's for('update').skipLocked() support
+-- The existing message_tasks pullPending uses a plain SELECT (known bug) — do NOT copy that pattern
+```
+
+### Retry Logic
+
+The new retry logic differs from the existing (broken) `message_tasks` pattern:
+
+- On failure: increment `retry_count`, keep `status = 'pending'` (so it gets re-pulled)
+- When `retry_count >= 3`: set `status = 'failed'` (terminal state)
+- Manual retry via API: resets `status = 'pending'` AND `retry_count = 0`
+
 ## JSONB Translation Storage Format
 
 ### Standard Format (CRM DB entities)
@@ -142,8 +178,7 @@ ALTER TABLE procedure_cases ADD COLUMN translations JSONB DEFAULT '{}';
 ```jsonb
 {
   "zh": {
-    "title": "医疗问诊表",
-    "description": "术前病史咨询",
+    "templateName": "医疗问诊表",
     "questions": {
       "q1": { "label": "主诉", "placeholder": "请描述..." },
       "q2": { "label": "病史" },
@@ -151,8 +186,7 @@ ALTER TABLE procedure_cases ADD COLUMN translations JSONB DEFAULT '{}';
     }
   },
   "en": {
-    "title": "Medical Intake Form",
-    "description": "Pre-consultation medical history",
+    "templateName": "Medical Intake Form",
     "questions": {
       "q1": { "label": "Chief Complaint", "placeholder": "Please describe..." },
       "q2": { "label": "Medical History" },
@@ -259,7 +293,7 @@ For entities with large text (e.g., consultation transcripts with many entries):
 | `CreateConsultationUseCase` | After create (if notes present) | `notes` |
 | `UpdateConsultationUseCase` | After update (if notes changed) | `notes` |
 | `UploadTranscriptUseCase` | After transcript saved | `entries` |
-| `CreateQCTemplateUseCase` | After create | `title`, `description`, questions |
+| `CreateQCTemplateUseCase` | After create | `templateName`, questions |
 | `UpdateQCTemplateUseCase` | After update | Changed fields |
 | `SubmitQCResponseUseCase` | After submit | Answer text values |
 | Materials CRUD use cases | After create/update | Per-entity translatable fields |
@@ -294,7 +328,7 @@ class TranslationWritebackService {
 - **Surgeons**: Write to `surgeons.translations` JSONB column directly
 - **Hospital Info**: UPSERT into `hospital_translations` table (one row per language_code)
 - **Procedure Cases**: Write to `procedure_cases.translations` JSONB column
-- **Procedures**: Add `translations` JSONB column or use separate translation rows (TBD based on existing structure)
+- **Procedures**: Add `translations` JSONB column (consistent with overall design)
 
 ### Supabase China Medical Writeback Details
 
@@ -356,7 +390,7 @@ export const TRANSLATION_CONFIG = {
     support_ticket_reply: ['content'],
     consultation: ['notes'],
     consultation_transcript: ['entries'],
-    qc_template: ['title', 'description', 'questions.*.label', 'questions.*.placeholder', 'questions.*.options'],
+    qc_template: ['templateName', 'questions.*.label', 'questions.*.placeholder', 'questions.*.options'],
     qc_response: ['answers.*.value'],
     surgeon: ['title', 'bio.intro', 'bio.expertise', 'bio.philosophy', 'bio.achievements', 'specialties', 'education', 'certifications'],
     hospital_beauty: ['tagline', 'description', 'highlights'],
@@ -412,6 +446,35 @@ const subject = getTranslated(ticket, locale, { subject: ticket.subject }).subje
 | `vi` | Vietnamese |
 
 Adding a new language: append to `TRANSLATION_CONFIG.supportedLanguages`, then batch-retranslate existing entities if needed.
+
+## Migration Strategy
+
+### CRM DB
+- Use Drizzle Kit to generate migration files for schema changes (new columns on existing tables, `translation_tasks` alterations)
+- Run via `drizzle-kit generate` → `drizzle-kit migrate`
+
+### Supabase (Beauty + China Medical)
+- Write raw SQL migration files in `/migrations/` directory
+- Apply via Supabase Dashboard or `supabase db push`
+- Order: Supabase migrations first (add `translations` columns), then CRM DB migrations
+
+### Rollback
+- All changes are additive (new columns, new indexes) — safe to roll back by ignoring new columns
+- No data loss risk since existing columns remain untouched
+
+## Rate Limiting & Cost
+
+- **Worker concurrency**: Process 1 task at a time per worker invocation (configurable batch size)
+- **OpenAI rate limit**: Respect GPT-4o tokens-per-minute limit; worker backs off on 429 errors
+- **Estimated cost per entity**: ~$0.01–0.05 depending on field count and text length (9 target languages × ~500 tokens avg)
+- **Bulk retranslation**: When adding a new language, batch jobs should throttle to avoid quota exhaustion
+
+## Testing Strategy
+
+- **Unit tests**: `TranslationTaskService` (enqueue, dedup, retry reset), `TranslationWritebackService` (routing logic), `OpenAITranslationService` (mock OpenAI responses)
+- **Integration tests**: Full flow from enqueue → process → writeback for each `sourceDb` type
+- **OpenAI mock**: Use a mock `IBatchTranslationService` in tests that returns deterministic translations
+- **Seed data**: QC Templates for medical intake testing, sample entities across all modules
 
 ## Out of Scope
 

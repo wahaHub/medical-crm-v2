@@ -127,6 +127,7 @@ describe('RegisterHospitalUserUseCase', () => {
       role: 'HOSPITAL',
       hospitalId: 'hosp-1',
       preferredLanguage: 'zh',
+      keycloakUserId: 'kc-user-id-xyz',
     });
     expect(typeof createArg.id).toBe('string');
 
@@ -232,6 +233,16 @@ describe('RegisterHospitalUserUseCase', () => {
     await expect(useCase.execute(validInput)).rejects.toThrow('DB connection lost');
 
     // KC user must be cleaned up
+    expect(mockKeycloakAdmin.deleteUser).toHaveBeenCalledWith('kc-user-id-xyz');
+  });
+
+  it('returns ConflictError when CRM email already exists and still cleans up the KC user', async () => {
+    const crmError = new ConflictError('Email already exists');
+    (mockUserRepo.create as ReturnType<typeof vi.fn>).mockRejectedValue(crmError);
+
+    const execution = useCase.execute(validInput);
+    await expect(execution).rejects.toThrow(ConflictError);
+    await expect(execution).rejects.toThrow('Email already exists');
     expect(mockKeycloakAdmin.deleteUser).toHaveBeenCalledWith('kc-user-id-xyz');
   });
 

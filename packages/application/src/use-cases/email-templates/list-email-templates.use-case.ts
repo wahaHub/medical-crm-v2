@@ -1,4 +1,4 @@
-import type { IEmailTemplateRepository, EmailTemplateListQuery } from '@medical-crm/domain';
+import type { IEmailTemplateRepository, EmailTemplateListQuery, IStorageService } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { EmailTemplateDTO } from '../../dtos/email-template.dto.js';
 import type { Actor } from '../../types/actor.js';
@@ -12,7 +12,10 @@ export interface EmailTemplateListQueryInput {
 }
 
 export class ListEmailTemplatesUseCase {
-  constructor(private readonly repo: IEmailTemplateRepository) {}
+  constructor(
+    private readonly repo: IEmailTemplateRepository,
+    private readonly storageService?: IStorageService,
+  ) {}
 
   async execute(
     hospitalId: string,
@@ -27,9 +30,24 @@ export class ListEmailTemplatesUseCase {
     }
 
     const result = await this.repo.findByHospital(hospitalId, query as EmailTemplateListQuery);
+    let signedUrls: Record<string, string> = {};
+    if (this.storageService && result.data.length > 0) {
+      const keys = result.data
+        .flatMap((template) => template.attachments.map((attachment) => attachment.storageKey))
+        .filter(
+          (storageKey) =>
+            storageKey &&
+            !storageKey.startsWith('http://') &&
+            !storageKey.startsWith('https://') &&
+            !storageKey.startsWith('data:'),
+        );
+      if (keys.length > 0) {
+        signedUrls = await this.storageService.getSignedUrls(Array.from(new Set(keys)));
+      }
+    }
 
     return {
-      data: result.data.map((e) => toEmailTemplateDTO(e)),
+      data: result.data.map((template) => toEmailTemplateDTO(template, signedUrls)),
       total: result.total,
       page: query.page,
       limit: query.limit,

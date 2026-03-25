@@ -68,10 +68,12 @@ describe('KeycloakAdminService', () => {
       const body = JSON.parse(createCall[1]?.body as string) as {
         username: string;
         email: string;
+        emailVerified: boolean;
         attributes: { hospital_id: string[] };
       };
       expect(body.username).toBe('jsmith');
       expect(body.email).toBe('j@example.com');
+      expect(body.emailVerified).toBe(true);
       expect(body.attributes.hospital_id).toEqual(['hosp-1']);
     });
 

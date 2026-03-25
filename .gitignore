@@ -6,3 +6,5 @@ dist/
 .env.local
 *.tsbuildinfo
 coverage/
+BabelDOC/
+dify/

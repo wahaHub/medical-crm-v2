@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryFetch } from '@/lib/query-fetch';
-import type { EmailTemplateItem } from '@/lib/api-types';
+import type { EmailTemplateItem, ListResponse } from '@/lib/api-types';
 
 export function useEmailTemplates() {
-  return useQuery<EmailTemplateItem[]>({
+  return useQuery<ListResponse<EmailTemplateItem>>({
     queryKey: ['email-templates'],
     queryFn: () => queryFetch('/api/email-templates'),
   });

@@ -10,6 +10,7 @@ export interface ChatAttachment {
   type?: string;
   url?: string;
   size?: number;
+  storageKey?: string;
 }
 
 export interface ChatMessage {
@@ -76,6 +77,8 @@ export interface ChatLayoutProps {
   onUploadFiles?: (files: File[]) => void;
   /** Whether a file upload is in progress */
   isUploading?: boolean;
+  /** Optional callback to open a larger attachment preview */
+  onOpenAttachment?: (attachment: ChatAttachment) => void;
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -214,6 +217,7 @@ export function ChatLayout({
   readOnlyNotice,
   onUploadFiles,
   isUploading = false,
+  onOpenAttachment,
 }: ChatLayoutProps) {
   const [input, setInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -456,25 +460,35 @@ export function ChatLayout({
                                   own ? 'border-cyan-400' : 'border-slate-200',
                                 )}
                               >
-                                {isImage && att.url ? (
-                                  <div className="w-40 h-40 bg-slate-100">
-                                    <img
-                                      src={att.url}
-                                      alt={att.name || 'Image'}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className={cn('w-48 p-3 flex items-center gap-3', own ? 'bg-cyan-50' : 'bg-slate-50')}>
-                                    <div className={cn('shrink-0 p-2 rounded-lg', own ? 'bg-cyan-100 text-cyan-600' : 'bg-slate-200 text-slate-600')}>
-                                      <FileTextIcon className="w-5 h-5" />
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenAttachment?.(att)}
+                                  className={cn(
+                                    'block text-left',
+                                    onOpenAttachment && 'cursor-zoom-in hover:opacity-90',
+                                  )}
+                                  disabled={!onOpenAttachment}
+                                >
+                                  {isImage && att.url ? (
+                                    <div className="w-40 h-40 bg-slate-100">
+                                      <img
+                                        src={att.url}
+                                        alt={att.name || 'Image'}
+                                        className="w-full h-full object-cover"
+                                      />
                                     </div>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-xs font-medium text-slate-700 truncate">{att.name || 'File'}</p>
-                                      <p className="text-[10px] text-slate-400">{att.type?.split('/')[1]?.toUpperCase() || 'FILE'}</p>
+                                  ) : (
+                                    <div className={cn('w-48 p-3 flex items-center gap-3', own ? 'bg-cyan-50' : 'bg-slate-50')}>
+                                      <div className={cn('shrink-0 p-2 rounded-lg', own ? 'bg-cyan-100 text-cyan-600' : 'bg-slate-200 text-slate-600')}>
+                                        <FileTextIcon className="w-5 h-5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-xs font-medium text-slate-700 truncate">{att.name || 'File'}</p>
+                                        <p className="text-[10px] text-slate-400">{att.type?.split('/')[1]?.toUpperCase() || 'FILE'}</p>
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  )}
+                                </button>
                               </div>
                             );
                           })}

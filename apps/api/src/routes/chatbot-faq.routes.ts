@@ -221,7 +221,6 @@ app.openapi(initFaqAttachmentUploadRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
-
   await svc.getFaqItem.execute(id, actor);
 
   const result = await svc.mediaUpload.createUploadIntent({

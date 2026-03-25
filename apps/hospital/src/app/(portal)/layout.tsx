@@ -3,6 +3,11 @@ import { getSession } from '@/lib/session';
 import { AuthProvider, type AuthUser } from '@/lib/auth-context';
 import { PortalShell } from '@/components/portal-shell';
 import { extractUserFromToken } from '@/lib/keycloak-client';
+import { apiFetch } from '@/lib/api-fetch';
+
+interface UserProfileResponse {
+  preferredLanguage?: string;
+}
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -16,11 +21,17 @@ export default async function PortalLayout({ children }: { children: React.React
     redirect('/auth/login');
   }
 
+  const profileRes = await apiFetch('/api/v2/users/me');
+  const profile = profileRes.ok
+    ? await profileRes.json() as UserProfileResponse
+    : null;
+
   const user: AuthUser = {
     id: keycloakUser.sub,
     email: keycloakUser.email ?? '',
     roles: keycloakUser.roles,
     hospitalId: keycloakUser.hospital_id ?? null,
+    preferredLanguage: profile?.preferredLanguage,
   };
 
   return (

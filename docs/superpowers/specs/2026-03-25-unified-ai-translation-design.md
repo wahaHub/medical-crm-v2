@@ -2,9 +2,34 @@
 
 ## Overview
 
-A unified, async AI translation system covering 6+ modules across CRM DB and two Supabase instances. Uses JSONB columns for translation storage + the existing `translation_tasks` table as a centralized async queue + OpenAI GPT-4o for translation with automatic language detection.
+This design defines a unified, async AI translation system for business data across CRM DB and two Supabase instances.
 
-**Message TEXT translation remains inline (synchronous)** — all other modules use the async queue.
+It uses:
+
+- JSONB translation storage where the source schema is entity-local
+- existing translation tables where the source schema is already locale-row based
+- the existing `translation_tasks` table as the centralized async queue, but with a revised identity model
+- OpenAI GPT-4o for translation with automatic source-language detection
+
+**Message TEXT translation remains inline (synchronous).** This spec covers entity-level multilingual content, not the existing message flow.
+
+## Scope
+
+### In Scope for V1
+
+- Materials
+- Chatbot & FAQ
+- Support Tickets
+- Consultations (`notes` only)
+- Question Collectors
+- Case medical intake display, but only through Question Collector once that path exists
+
+### Explicitly Out of Scope for V1
+
+- message inline translation
+- consultation transcript multi-language persistence redesign
+- global rework of beauty `procedures` catalog ownership
+- full medical intake migration from legacy `cases` fields to QC
 
 ## Modules & Translatable Fields
 
@@ -13,178 +38,219 @@ A unified, async AI translation system covering 6+ modules across CRM DB and two
 | Module | Table | Translatable Fields | Storage |
 |--------|-------|---------------------|---------|
 | Support Tickets | `support_tickets` | `subject`, `description` | New `translations jsonb` column |
-| Support Ticket Replies | `support_ticket_replies` | `content` | New `translations jsonb` column |
+| Support Ticket Replies | `support_ticket_replies` | `content` when `is_internal_note = false` | New `translations jsonb` column |
 | Consultations | `consultations` | `notes` | New `translations jsonb` column |
-| Consultation Transcripts | `consultation_transcripts` | `entries[]` (each entry's text) | Already has `translatedLang` + `entries` structure |
-| QC Templates | `question_collector_templates` | `templateName`, each question's `label`/`placeholder`/`options` | New `translations jsonb` column |
-| QC Responses | `question_collector_responses` | Answer text values | New `translations jsonb` column |
-| Cases (AI Summary) | `cases` | `aiSummary` | Existing `aiSummaryZh`/`aiSummaryEn` fields (keep as-is) |
+| QC Templates | `question_collector_templates` | `templateName`, question labels/placeholders/options | New `translations jsonb` column |
+| QC Responses | `question_collector_responses` | Patient answer text values | New `translations jsonb` column |
+| Chatbot FAQ Items | `chatbot_faq_items` | `question`, `answer` | New `translations jsonb` column |
+| Chatbot FAQ Categories | `chatbot_faq_categories` | `name` | New `translations jsonb` column |
+| Cases (AI Summary) | `cases` | `aiSummary` | Keep current `aiSummary` + `aiSummaryZh`/`aiSummaryEn` behavior for now |
 
 ### Supabase Beauty (Main Supabase - Cosmetic Hospitals)
 
 | Module | Table | Translatable Fields | Storage |
 |--------|-------|---------------------|---------|
-| Hospital Info | `hospital_translations` | `tagline`, `description`, `highlights` | Existing table — one row per `(hospital_id, language_code)` |
-| Hospital Nearby | `hospital_nearby_attractions` | `name` | Existing table — one row per `(hospital_id, language_code)` |
-| Procedures | `procedures` | `procedure_name`, `description` | Add `translations jsonb` column |
+| Hospital Info | `hospital_translations` | `tagline`, `description`, locale-facing highlight text | Existing locale rows |
+| Hospital Nearby | `hospital_nearby_attractions` | `name` | Existing locale rows if table supports per-language rows; otherwise defer |
 | Surgeons | `surgeons` | `title`, `bio.intro`, `bio.expertise`, `bio.philosophy`, `bio.achievements`, `specialties[]`, `education[]`, `certifications[]` | Existing `translations jsonb` column |
 | Before/After Cases | `procedure_cases` | `description`, `provider_name` | Add `translations jsonb` column |
+| Procedures | `hospital_procedures` presentation payload | Deferred in V1 | Beauty currently reads from shared global `procedures` catalog; do not auto-translate shared catalog rows in V1 |
 
 ### Supabase China Medical (Regular Hospitals)
 
 | Module | Table | Translatable Fields | Storage |
 |--------|-------|---------------------|---------|
-| Hospital Info | `hospital_i18n` | `display_name`, `name`, `hospital_type`, `tier`, `ownership_type`, `short_description`, `overview`, `full_description`, `value_proposition`, `core_specialties`, `departments_info`, `facilities_info` | Existing table — one row per `(hospital_id, locale)` |
-| Hospital Extended | `hospitals` | `airport_services`, `followup_care`, `amenities`, `payment_methods`, `equipment`, `certifications`, `supported_languages` | These are JSONB columns on the main table; translations go into `hospital_i18n` rows |
+| Hospital Info | `hospital_i18n` | locale-facing descriptive fields already stored per locale | Existing locale rows |
+| Hospital Extended | `hospitals` | `airport_services`, `followup_care`, `amenities`, `payment_methods`, `equipment`, `certifications`, `supported_languages` when they are user-facing text | Write translated values into `hospital_i18n`-backed payloads or defer per field if the live schema has no stable locale slot |
 | Surgeons | `surgeons` | Same as beauty | Existing `translations jsonb` column |
 | Before/After Cases | `procedure_cases` | `description`, `procedure_name`, `provider_name` | Add `translations jsonb` column |
+
+### Deferred Modules
+
+| Module | Reason |
+|--------|--------|
+| Consultation Transcripts | Current schema only supports a single `translated_lang` plus optional per-entry `translatedText`; not a true multi-locale store |
+| Beauty Procedures | Current beauty implementation uses a shared global `procedures` catalog and intentionally does not update it during hospital-specific edits |
+| Legacy Case Medical Intake Fields | Current hospital UI still derives intake primarily from `cases` fields / `structuredData`; migration to QC is a separate project |
 
 ## Architecture
 
 ### High-Level Flow
 
-```
+```text
 Entity Create/Update
-    → TranslationTaskService.enqueue({entityType, entityId, sourceDb, fieldsToTranslate})
-    → INSERT into translation_tasks (status: 'pending')
+    -> TranslationTaskService.enqueue({ sourceDb, entityType, entityId, fieldsToTranslate })
+    -> UPSERT translation_tasks (status: 'pending')
 
 Worker (cron / internal API)
-    → ProcessTranslationTasksUseCase.execute()
-    → Pull pending tasks (atomic: SELECT ... FOR UPDATE SKIP LOCKED)
-    → For each task:
-        → OpenAI: detect source language + translate all fields to target languages
-        → Write translations back to entity table (CRM or Supabase)
-        → Mark task completed
-    → On failure:
-        → retry_count < 3 → increment retry_count, reset to 'pending'
-        → retry_count >= 3 → mark 'failed'
+    -> ProcessTranslationTasksUseCase.execute()
+    -> Pull pending tasks atomically (SELECT ... FOR UPDATE SKIP LOCKED)
+    -> For each task:
+        -> detect source language
+        -> translate all requested fields into target languages
+        -> write translations back to the correct DB
+        -> mark task completed
+    -> On failure:
+        -> retry_count < 3 -> increment retry_count, set status='pending'
+        -> retry_count >= 3 -> mark status='failed'
 
 Manual Retry (UI)
-    → POST /api/translations/retry {entityType, entityId}
-    → Reset task: status='pending', retry_count=0
+    -> POST /api/translations/retry { sourceDb, entityType, entityId }
+    -> Reset task: status='pending', retry_count=0
 ```
 
 ### Core Components
 
 | Component | Layer | Responsibility |
 |-----------|-------|----------------|
-| `ITranslationTaskService` | Domain Port | Interface for enqueue, retry, query status |
-| `TranslationTaskService` | Application | Enqueue logic, deduplication, retry reset |
-| `ProcessTranslationTasksUseCase` | Application | Worker: pull → translate → write back |
-| `OpenAITranslationService` | Infrastructure | Extended: `translateBatch()`, `detectLanguage()` |
-| `DrizzleTranslationTaskRepository` | Infrastructure | CRM DB task queue CRUD |
-| `TranslationWritebackService` | Infrastructure | Routes write-back to correct DB (CRM / Supabase Beauty / Supabase China) |
+| `ITranslationTaskRepository` | Domain Port | Task enqueue, pull, retry, status |
+| `TranslationTaskService` | Application | Enqueue logic, deduplication, changed-field merge |
+| `ProcessTranslationTasksUseCase` | Application | Worker: pull -> translate -> write back |
+| `IBatchTranslationService` | Domain Port | Batch translation contract |
+| `OpenAITranslationService` | Infrastructure | GPT-backed translation implementation |
+| `DrizzleTranslationTaskRepository` | Infrastructure | CRM queue CRUD |
+| `TranslationWritebackService` | Infrastructure | Routes writeback to CRM / Supabase Beauty / Supabase China |
 
 ### Dependency Flow
 
-```
-API Route (trigger)
-  → Use Case (TranslationTaskService / ProcessTranslationTasksUseCase)
-    → Domain Port (ITranslationTaskService, ITranslationService)
-      → Infrastructure (DrizzleTranslationTaskRepository, OpenAITranslationService, TranslationWritebackService)
+```text
+API / Use Case trigger
+  -> TranslationTaskService
+    -> ITranslationTaskRepository
+    -> IBatchTranslationService
+    -> TranslationWritebackService
 ```
 
 ## Database Changes
 
 ### Extend `translation_tasks` Table (CRM DB)
 
-Current schema already has: `id`, `hospitalType`, `entityType`, `entityId`, `sourceLanguage`, `targetLanguage`, `status`, `errorMessage`, `retryCount`, `createdAt`, `startedAt`, `completedAt`.
+Current schema already has:
+
+- `id`
+- `hospitalType`
+- `entityType`
+- `entityId`
+- `sourceLanguage`
+- `targetLanguage`
+- `status`
+- `errorMessage`
+- `retryCount`
+- `createdAt`
+- `startedAt`
+- `completedAt`
 
 **Changes needed:**
 
 ```sql
--- Add columns
 ALTER TABLE translation_tasks
-  ADD COLUMN source_db VARCHAR(20) DEFAULT 'crm',           -- 'crm' | 'supabase_beauty' | 'supabase_china'
-  ADD COLUMN fields_to_translate JSONB,                       -- {"title": "原文", "description": "原文"}
-  ADD COLUMN target_languages TEXT[],                         -- ['en','ru','fr',...]
-  ADD COLUMN detected_language VARCHAR(10);                   -- filled after OpenAI detection
+  ADD COLUMN source_db VARCHAR(32) NOT NULL DEFAULT 'crm',     -- 'crm' | 'supabase_beauty' | 'supabase_china'
+  ADD COLUMN fields_to_translate JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN target_languages TEXT[] NOT NULL DEFAULT '{}'::text[],
+  ADD COLUMN detected_language VARCHAR(10);
 
--- Drop old unique constraint and replace with new deduplication model
+ALTER TABLE translation_tasks
+  ALTER COLUMN hospital_type DROP NOT NULL;
+
+ALTER TABLE translation_tasks
+  ALTER COLUMN target_language DROP NOT NULL;
+
 DROP INDEX IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
+
 CREATE UNIQUE INDEX translation_tasks_entity_dedup
-  ON translation_tasks (entity_type, entity_id)
+  ON translation_tasks (source_db, entity_type, entity_id)
   WHERE status IN ('pending', 'processing');
-
--- hospitalType becomes nullable (CRM-origin tasks don't have it; replaced by source_db for routing)
-ALTER TABLE translation_tasks ALTER COLUMN hospital_type DROP NOT NULL;
-
--- targetLanguage becomes nullable (replaced by target_languages array)
--- Keep column for backward compat with existing records, new records use target_languages[]
 ```
+
+### Why `source_db` Must Be Part of Identity
+
+This system routes tasks across three databases. `entity_type + entity_id` alone is not a safe task identity for:
+
+- `procedure_case` in Beauty Supabase
+- `procedure_case` in China Medical Supabase
+- future entities with the same logical type name across DBs
+
+All task APIs, retries, and status queries must use:
+
+- `sourceDb`
+- `entityType`
+- `entityId`
 
 ### Add `translations jsonb` to CRM Tables
 
 ```sql
-ALTER TABLE support_tickets ADD COLUMN translations JSONB DEFAULT '{}';
-ALTER TABLE support_ticket_replies ADD COLUMN translations JSONB DEFAULT '{}';
-ALTER TABLE consultations ADD COLUMN translations JSONB DEFAULT '{}';
-ALTER TABLE question_collector_templates ADD COLUMN translations JSONB DEFAULT '{}';
-ALTER TABLE question_collector_responses ADD COLUMN translations JSONB DEFAULT '{}';
+ALTER TABLE support_tickets ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE support_ticket_replies ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE consultations ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE question_collector_templates ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE question_collector_responses ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE chatbot_faq_items ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE chatbot_faq_categories ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
 ```
 
 ### Add `translations jsonb` to Supabase Tables (where missing)
 
 ```sql
 -- Beauty Supabase
-ALTER TABLE procedure_cases ADD COLUMN translations JSONB DEFAULT '{}';
+ALTER TABLE procedure_cases ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- China Medical Supabase
-ALTER TABLE procedure_cases ADD COLUMN translations JSONB DEFAULT '{}';
+ALTER TABLE procedure_cases ADD COLUMN translations JSONB NOT NULL DEFAULT '{}'::jsonb;
 ```
 
 ### Relationship to `message_tasks`
 
-The existing `message_tasks` table and `ProcessMessageTasksUseCase` remain **unchanged** — they handle message-specific async tasks (IMAGE/FILE summarization and translation). The new `translation_tasks` system is for entity-level batch translation only. These are two separate pipelines:
+`message_tasks` and `ProcessMessageTasksUseCase` remain separate.
 
-- `message_tasks` → message translation/summarization (existing, keep as-is)
-- `translation_tasks` → entity-level multi-language batch translation (new/extended)
+- `message_tasks` -> message translation / summarization
+- `translation_tasks` -> entity-level multilingual translation
 
-> **Note:** The existing `ProcessMessageTasksUseCase` has known bugs (non-atomic `pullPending`, broken retry logic). These should be fixed separately but are out of scope for this spec.
+Do not reuse the current message-task pull pattern for the new worker. The new worker must be atomic.
 
 ### Worker Atomicity
 
-The new `ProcessTranslationTasksUseCase` MUST use atomic task pulling to prevent concurrent worker races:
+The new `ProcessTranslationTasksUseCase` MUST use atomic task pulling:
 
 ```sql
--- Atomic pull: SELECT ... FOR UPDATE SKIP LOCKED
--- This requires raw SQL or Drizzle's for('update').skipLocked() support
--- The existing message_tasks pullPending uses a plain SELECT (known bug) — do NOT copy that pattern
+SELECT ...
+FROM translation_tasks
+WHERE status = 'pending'
+ORDER BY created_at
+FOR UPDATE SKIP LOCKED
+LIMIT ?
 ```
 
 ### Retry Logic
 
-The new retry logic differs from the existing (broken) `message_tasks` pattern:
+- On failure: increment `retry_count`, keep `status = 'pending'`
+- When `retry_count >= 3`: set `status = 'failed'`
+- Manual retry: reset `status = 'pending'` and `retry_count = 0`
 
-- On failure: increment `retry_count`, keep `status = 'pending'` (so it gets re-pulled)
-- When `retry_count >= 3`: set `status = 'failed'` (terminal state)
-- Manual retry via API: resets `status = 'pending'` AND `retry_count = 0`
+## Translation Storage Format
 
-## JSONB Translation Storage Format
+### Standard JSONB Shape
 
-### Standard Format (CRM DB entities)
-
-```jsonb
+```json
 {
   "en": { "subject": "Visa Inquiry", "description": "I need help..." },
   "zh": { "subject": "签证问题", "description": "我需要帮助..." },
-  "ru": { "subject": "Запрос по визе", "description": "Мне нужна помощь..." },
-  "fr": { "subject": "Demande de visa", "description": "J'ai besoin d'aide..." }
+  "ru": { "subject": "Запрос по визе", "description": "Мне нужна помощь..." }
 }
 ```
 
-### QC Template Format (nested questions)
+### FAQ Item Shape
 
-```jsonb
+```json
 {
-  "zh": {
-    "templateName": "医疗问诊表",
-    "questions": {
-      "q1": { "label": "主诉", "placeholder": "请描述..." },
-      "q2": { "label": "病史" },
-      "q3": { "label": "当前症状", "options": ["疼痛", "肿胀", "麻木"] }
-    }
-  },
+  "en": { "question": "Do you offer visa support?", "answer": "Yes, we do." },
+  "zh": { "question": "是否提供签证支持？", "answer": "是的，提供。" }
+}
+```
+
+### QC Template Shape
+
+```json
+{
   "en": {
     "templateName": "Medical Intake Form",
     "questions": {
@@ -196,32 +262,34 @@ The new retry logic differs from the existing (broken) `message_tasks` pattern:
 }
 ```
 
-### Surgeon Bio Format (existing `translations` column)
+### Important Constraint: QC Payload Must Be Canonical First
 
-```jsonb
-{
-  "en": {
-    "title": "Chief Physician",
-    "bio": {
-      "intro": "Dr. Zhang is a renowned...",
-      "expertise": "Specializing in...",
-      "philosophy": "Patient-centered care...",
-      "achievements": ["Published 50+ papers", "WHO advisor"]
-    },
-    "specialties": ["Oncology Surgery", "Minimally Invasive"],
-    "education": ["MD, Peking University"],
-    "certifications": ["Board Certified"]
-  },
-  "ru": { ... },
-  "fr": { ... }
-}
+Current code stores:
+
+- `question_collector_templates.questions` as `unknown`
+- `question_collector_responses.responses` as `unknown`
+
+Before translation is implemented, application code must define and enforce a stable QC JSON shape, for example:
+
+```ts
+type QCTemplateQuestion = {
+  id: string;
+  type: 'text' | 'textarea' | 'select' | 'multiselect' | 'checkbox' | 'date';
+  label: string;
+  placeholder?: string;
+  options?: string[];
+};
+
+type QCResponsePayload = Record<string, string | string[] | null>;
 ```
+
+Without that canonical shape, the translation worker cannot safely extract or write back nested QC fields.
 
 ## OpenAI Integration
 
-### Extended `ITranslationService` Interface
+### Batch Translation Interface
 
-```typescript
+```ts
 export interface IBatchTranslationService {
   translateBatch(request: BatchTranslateRequest): Promise<BatchTranslateResult>;
 }
@@ -229,49 +297,45 @@ export interface IBatchTranslationService {
 export interface BatchTranslateRequest {
   fields: Record<string, string | string[] | Record<string, unknown>>;
   targetLanguages: string[];
-  // No sourceLanguage — OpenAI auto-detects
 }
 
 export interface BatchTranslateResult {
   detectedLanguage: string;
   translations: Record<string, Record<string, unknown>>;
-  // e.g. { "en": { "title": "...", "description": "..." }, "ru": { ... } }
 }
 ```
 
-### OpenAI Prompt Strategy
+### Prompt Strategy
 
-Single request per task — translate all fields into all target languages at once:
+Single request per task:
 
-```typescript
-const systemPrompt = `You are a professional medical translator.
-Given a JSON object of fields, translate ALL fields into the requested target languages.
-Auto-detect the source language.
-Return a JSON object with this exact structure:
-{
-  "detected_language": "<iso-639-1 code>",
-  "translations": {
-    "<lang>": { <translated fields matching input structure> },
-    ...
-  }
-}
-Do NOT include the source language in translations.
-Preserve JSON structure, arrays, and nesting.
-Use formal medical terminology where appropriate.`;
-```
-
-**Parameters:**
-- Model: `gpt-4o`
-- Temperature: `0.3`
-- Response format: `{ type: "json_object" }`
-- Max tokens: scaled by input size
+- auto-detect the source language
+- preserve JSON structure
+- translate only user-facing text
+- skip empty/null values
+- do not emit the source language inside the translation result set
 
 ### Large Text Handling
 
-For entities with large text (e.g., consultation transcripts with many entries):
-- Split into chunks if total input exceeds ~4000 tokens
-- Translate each chunk separately
-- Reassemble into final JSONB structure
+For large text blobs:
+
+- split when input exceeds a safe token budget
+- translate chunk-by-chunk
+- reassemble into the same target structure
+
+### Transcript Rule for V1
+
+Consultation transcript translation is **not** included in V1 multi-language storage.
+
+Reason:
+
+- current schema supports only one `translatedLang`
+- current entity shape supports only one optional `translatedText` per entry
+
+If transcript translation is needed later, it should use one of these designs:
+
+- `consultation_transcripts.translations jsonb`
+- child table keyed by `(consultation_id, locale)`
 
 ## API Endpoints
 
@@ -279,43 +343,40 @@ For entities with large text (e.g., consultation transcripts with many entries):
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/api/translations/retry` | Admin, Hospital | Reset failed task: `{ entityType, entityId }` |
-| `GET` | `/api/translations/status` | Admin, Hospital | Query status: `?entityType=X&entityId=Y` |
+| `POST` | `/api/translations/retry` | Admin, Hospital | Reset failed task: `{ sourceDb, entityType, entityId }` |
+| `GET` | `/api/translations/status` | Admin, Hospital | Query status: `?sourceDb=X&entityType=Y&entityId=Z` |
 | `POST` | `/api/internal/process-translation-tasks` | Internal/Worker | Pull and process pending tasks |
 
-### Trigger Points (automatic, inside existing use cases)
+### Trigger Points
 
 | Use Case | When | Fields Enqueued |
 |----------|------|-----------------|
 | `CreateSupportTicketUseCase` | After create | `subject`, `description` |
-| `UpdateSupportTicketUseCase` | After update (if translatable fields changed) | Changed fields |
-| `ReplySupportTicketUseCase` | After reply created | `content` |
-| `CreateConsultationUseCase` | After create (if notes present) | `notes` |
-| `UpdateConsultationUseCase` | After update (if notes changed) | `notes` |
-| `UploadTranscriptUseCase` | After transcript saved | `entries` |
-| `CreateQCTemplateUseCase` | After create | `templateName`, questions |
-| `UpdateQCTemplateUseCase` | After update | Changed fields |
-| `SubmitQCResponseUseCase` | After submit | Answer text values |
-| Materials CRUD use cases | After create/update | Per-entity translatable fields |
+| `UpdateSupportTicketUseCase` | After update when user-facing fields changed | changed fields |
+| `ReplyToTicketUseCase` | After reply create when `isInternalNote = false` | `content` |
+| `CreateConsultationUseCase` | After create when `notes` present | `notes` |
+| `UpdateConsultationUseCase` | After update when `notes` changed | `notes` |
+| `CreateQCTemplateUseCase` | After create | `templateName`, question text fields |
+| `UpdateQCTemplateUseCase` | After update | changed fields |
+| `SubmitQCResponseUseCase` | After submit | patient answer values |
+| `CreateFaqItemUseCase` | After create | `question`, `answer` |
+| `UpdateFaqItemUseCase` | After update | changed fields |
+| FAQ category create/update use cases | After create/update | `name` |
+| Materials hospital/surgeon/case mutations | After create/update | per-entity translatable fields |
 
 ## Translation Writeback Strategy
 
-The `TranslationWritebackService` routes completed translations to the correct database:
-
-```typescript
+```ts
 class TranslationWritebackService {
   async writeback(task: TranslationTask, result: BatchTranslateResult): Promise<void> {
     switch (task.sourceDb) {
       case 'crm':
-        // UPDATE entity SET translations = $result WHERE id = $entityId
         await this.crmWriteback(task, result);
         break;
       case 'supabase_beauty':
-        // Route to beauty Supabase, handle per-table differences
         await this.beautyWriteback(task, result);
         break;
       case 'supabase_china':
-        // Route to china medical Supabase, handle hospital_i18n structure
         await this.chinaWriteback(task, result);
         break;
     }
@@ -323,63 +384,60 @@ class TranslationWritebackService {
 }
 ```
 
-### Supabase Beauty Writeback Details
+### CRM Writeback
 
-- **Surgeons**: Write to `surgeons.translations` JSONB column directly
-- **Hospital Info**: UPSERT into `hospital_translations` table (one row per language_code)
-- **Procedure Cases**: Write to `procedure_cases.translations` JSONB column
-- **Procedures**: Add `translations` JSONB column (consistent with overall design)
+- `support_tickets.translations`
+- `support_ticket_replies.translations`
+- `consultations.translations`
+- `question_collector_templates.translations`
+- `question_collector_responses.translations`
+- `chatbot_faq_items.translations`
+- `chatbot_faq_categories.translations`
 
-### Supabase China Medical Writeback Details
+### Supabase Beauty Writeback
 
-- **Surgeons**: Write to `surgeons.translations` JSONB column
-- **Hospital Info**: UPSERT into `hospital_i18n` table (one row per locale)
-- **Procedure Cases**: Write to `procedure_cases.translations` JSONB column
+- surgeons -> `surgeons.translations`
+- hospital info -> upsert locale rows into `hospital_translations`
+- before/after cases -> `procedure_cases.translations`
+- procedures -> deferred in V1
 
-## Medical Intake Refactor: Cases → Question Collector
+### Supabase China Writeback
+
+- surgeons -> `surgeons.translations`
+- hospital info -> upsert locale rows into `hospital_i18n`
+- before/after cases -> `procedure_cases.translations`
+
+## Medical Intake Strategy
 
 ### Current State
 
-Cases table has fixed intake fields: `primaryDiagnosis`, `medicalHistory`, `symptoms`, `conditionSummary`, `structuredData`, `riskFlags`.
+Today the codebase still has two realities:
 
-Cases table already has: `questionCollectorTemplateId` (FK to `question_collector_templates`).
+- patient intake use cases are stubbed
+- hospital case detail still derives intake from `cases` legacy fields / `structuredData`
 
-### Target State
+### V1 Decision
 
-- **Deprecate** fixed intake fields (keep in DB for backward compat, stop writing new data to them)
-- **Medical Intake = QC Template questions + QC Response answers**
-- **Translation follows QC**: template questions translated via QC Template `translations` JSONB, patient answers translated via QC Response `translations` JSONB
-- **CaseDetail UI**: Medical Intake tab reads QC data; falls back to legacy fields for old cases
+Do **not** make medical intake migration a prerequisite for translation rollout.
 
-### Data Flow
+Instead:
 
-```
-Admin creates QC Template (medical intake questions)
-  → Template auto-translated via translation_tasks queue
-  → Template assigned to hospital/case type
+- ship translation for QC templates and QC responses
+- keep hospital case detail fallback behavior for legacy cases
+- treat "medical intake rendered from QC end-to-end" as a separate follow-up project
 
-Patient fills out intake form (QC Response)
-  → Response saved to question_collector_responses
-  → Response auto-translated via translation_tasks queue
-  → Case linked via questionCollectorTemplateId
+### Follow-Up Project: Cases -> QC Intake Migration
 
-CaseDetail page renders Medical Intake:
-  → Load QC Template (questions) + QC Response (answers)
-  → Display in user's locale using translations JSONB
-  → Fallback: if no QC data, show legacy fixed fields
-```
+That later project should handle:
 
-### Seed Data for Testing
-
-Insert sample QC Templates mimicking the current fixed intake structure:
-- "Medical Intake Form" with questions: Chief Complaint (text), Medical History (textarea), Current Symptoms (multiselect), Risk Factors (checkbox), Condition Summary (textarea)
-- Link existing cases to these templates for testing
+- replacing the patient intake stub routes with DB-backed QC flows
+- linking cases to QC templates / responses end-to-end
+- switching case detail rendering to QC-first, legacy-second
+- deciding how legacy intake data is backfilled
 
 ## Translation Configuration
 
-```typescript
-// packages/domain/src/config/translation.config.ts
-
+```ts
 export const TRANSLATION_CONFIG = {
   supportedLanguages: ['zh', 'en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as const,
 
@@ -389,12 +447,13 @@ export const TRANSLATION_CONFIG = {
     support_ticket: ['subject', 'description'],
     support_ticket_reply: ['content'],
     consultation: ['notes'],
-    consultation_transcript: ['entries'],
     qc_template: ['templateName', 'questions.*.label', 'questions.*.placeholder', 'questions.*.options'],
-    qc_response: ['answers.*.value'],
+    qc_response: ['responses.*'],
+    chatbot_faq_item: ['question', 'answer'],
+    chatbot_faq_category: ['name'],
     surgeon: ['title', 'bio.intro', 'bio.expertise', 'bio.philosophy', 'bio.achievements', 'specialties', 'education', 'certifications'],
     hospital_beauty: ['tagline', 'description', 'highlights'],
-    hospital_china: ['display_name', 'hospital_type', 'tier', 'short_description', 'overview', 'full_description', 'value_proposition', 'core_specialties', 'departments_info', 'facilities_info'],
+    hospital_china: ['display_name', 'name', 'hospital_type', 'tier', 'ownership_type', 'short_description', 'overview', 'full_description', 'value_proposition', 'core_specialties', 'departments_info', 'facilities_info'],
     procedure_case: ['description', 'provider_name'],
   },
 
@@ -404,10 +463,17 @@ export const TRANSLATION_CONFIG = {
 } as const;
 ```
 
+### Source Language Handling
+
+The worker should:
+
+- detect the source language once per task
+- skip writing a translation for that same language
+- still persist `detected_language` on the task for observability
+
 ## Frontend Rendering Pattern
 
-```typescript
-// Utility function for all modules
+```ts
 function getTranslated<T>(
   entity: { translations?: Record<string, T> },
   locale: string,
@@ -415,21 +481,16 @@ function getTranslated<T>(
 ): T {
   return entity.translations?.[locale] ?? fallback;
 }
-
-// Usage example
-const ticket = await fetchSupportTicket(id);
-const subject = getTranslated(ticket, locale, { subject: ticket.subject }).subject;
-
-// For Supabase entities with separate translation tables (hospital_translations, hospital_i18n),
-// the API layer merges translations into a unified response shape before sending to frontend.
 ```
+
+For entities already backed by locale-row tables such as `hospital_translations` / `hospital_i18n`, the API layer should merge them into a unified response shape before sending to the frontend.
 
 ## Error Handling & Observability
 
-- **Failed tasks**: `status='failed'`, `errorMessage` contains OpenAI error details
-- **UI retry button**: Calls `POST /api/translations/retry` → resets task
-- **Monitoring**: Query `translation_tasks WHERE status='failed'` for dashboard alerts
-- **Idempotency**: Same `(entityType, entityId)` with pending/processing task → update existing task instead of creating duplicate
+- failed tasks -> `status = 'failed'`, `errorMessage` captured
+- UI retry button -> `POST /api/translations/retry`
+- dashboard / ops query -> `translation_tasks WHERE status = 'failed'`
+- idempotency -> same `(source_db, entity_type, entity_id)` with pending/processing task updates the existing task payload instead of inserting a duplicate
 
 ## Supported Languages
 
@@ -445,40 +506,45 @@ const subject = getTranslated(ticket, locale, { subject: ticket.subject }).subje
 | `id` | Indonesian |
 | `vi` | Vietnamese |
 
-Adding a new language: append to `TRANSLATION_CONFIG.supportedLanguages`, then batch-retranslate existing entities if needed.
-
 ## Migration Strategy
 
 ### CRM DB
-- Use Drizzle Kit to generate migration files for schema changes (new columns on existing tables, `translation_tasks` alterations)
-- Run via `drizzle-kit generate` → `drizzle-kit migrate`
 
-### Supabase (Beauty + China Medical)
-- Write raw SQL migration files in `/migrations/` directory
-- Apply via Supabase Dashboard or `supabase db push`
-- Order: Supabase migrations first (add `translations` columns), then CRM DB migrations
+- generate Drizzle migrations for CRM schema changes
+- update Drizzle schema and repository/entity mappings together
 
-### Rollback
-- All changes are additive (new columns, new indexes) — safe to roll back by ignoring new columns
-- No data loss risk since existing columns remain untouched
+### Supabase
+
+- write raw SQL migrations for Supabase schema changes
+- apply per database
+- only add `translations` columns to tables that already have stable ownership and stable read/write paths
+
+### Safe Rollout Order
+
+1. add schema columns
+2. ship backend write/read support
+3. enable worker
+4. enqueue backfill for selected entities
+5. expose translated content in UI
 
 ## Rate Limiting & Cost
 
-- **Worker concurrency**: Process 1 task at a time per worker invocation (configurable batch size)
-- **OpenAI rate limit**: Respect GPT-4o tokens-per-minute limit; worker backs off on 429 errors
-- **Estimated cost per entity**: ~$0.01–0.05 depending on field count and text length (9 target languages × ~500 tokens avg)
-- **Bulk retranslation**: When adding a new language, batch jobs should throttle to avoid quota exhaustion
+- worker concurrency starts at 1 task per invocation
+- back off on 429 / quota errors
+- large entities should be chunked conservatively
+- new language backfills must be throttled
 
 ## Testing Strategy
 
-- **Unit tests**: `TranslationTaskService` (enqueue, dedup, retry reset), `TranslationWritebackService` (routing logic), `OpenAITranslationService` (mock OpenAI responses)
-- **Integration tests**: Full flow from enqueue → process → writeback for each `sourceDb` type
-- **OpenAI mock**: Use a mock `IBatchTranslationService` in tests that returns deterministic translations
-- **Seed data**: QC Templates for medical intake testing, sample entities across all modules
+- unit tests for enqueue, dedup, retry reset, field-merge behavior
+- integration tests for CRM / Beauty / China writeback routing
+- mock `IBatchTranslationService` for deterministic tests
+- fixtures for FAQ, QC, support tickets, materials, consultations
 
 ## Out of Scope
 
-- Message TEXT inline translation (keep existing implementation)
-- Real-time translation streaming
-- Per-hospital language customization (future enhancement)
-- Materials Supabase schema unification (beauty vs china medical — use existing structures as-is)
+- message inline translation
+- consultation transcript multi-locale redesign
+- beauty global `procedures` catalog redesign
+- full legacy-case medical-intake migration
+- per-hospital custom language packs

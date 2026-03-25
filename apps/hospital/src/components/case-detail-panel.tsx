@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -22,15 +22,23 @@ import {
   X,
   AlertCircle,
   Receipt,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
 } from 'lucide-react';
-import { StatusBadge } from '@medical-crm/ui';
+import { StatusBadge, MessageCaseDetailPanel } from '@medical-crm/ui';
 import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
 import { CaseQuoteTab } from './tabs/case-quote-tab';
 import { useCaseConsultations, useCaseConversations, useConversationMessages } from '@/queries/use-cases';
+import { useConsultationTranscript } from '@/queries/use-consultations';
 import { useEmailTemplates } from '@/queries/use-email-templates';
+import { addDiagnosis } from '@/actions/case-actions';
+import { CreateConsultationModal } from '@/components/create-consultation-modal';
 import { useAuth } from '@/lib/auth-context';
 import type {
   HospitalCaseDetail,
+  CaseSummary,
   ConsultationSummary,
   PaginatedResponse,
   ConversationSummary,
@@ -161,7 +169,19 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
           {activeTab === 'quote' && <CaseQuoteTab caseId={caseDetail.id} />}
           {activeTab === 'marketing' && <MarketingTab caseDetail={caseDetail} />}
           {activeTab === 'invitation' && <InvitationLetterTab />}
-          {activeTab === 'consultation' && <ConsultationTab consultations={consultationsList} router={router} />}
+          {activeTab === 'consultation' && (
+            <ConsultationTab
+              consultations={consultationsList}
+              router={router}
+              caseId={caseDetail.id}
+              currentCase={{
+                id: caseDetail.id,
+                caseNumber: caseDetail.caseNumber,
+                patientName: caseDetail.patient.name,
+                patientCode: caseDetail.patient.code,
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -589,42 +609,26 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
         </div>
       </div>
 
-      {/* Patient Context Panel */}
-      <div className="w-64 bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-5 space-y-4 shrink-0">
-        <div className="text-center pb-4 border-b border-slate-100">
-          <div className={`flex h-14 w-14 mx-auto mb-2 shrink-0 items-center justify-center rounded-full text-lg font-bold ring-4 ring-indigo-50 ${avatarColor(patientName)}`}>
-            {getInitials(patientName)}
-          </div>
-          <h3 className="font-bold text-slate-800">{patientName}</h3>
-          <p className="text-xs text-slate-500">Code: {caseDetail.patient.code}</p>
-          <div className="flex items-center justify-center gap-2 mt-2">
-            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-md">
-              {caseDetail.patient.gender === 'MALE' ? 'M' : caseDetail.patient.gender === 'FEMALE' ? 'F' : caseDetail.patient.gender ?? '-'} / {caseDetail.patient.age ?? '-'}y
-            </span>
-          </div>
-        </div>
-        <div>
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Case Status</h4>
-          <StatusBadge status={caseDetail.displayStatus} />
-        </div>
-        {caseDetail.medicalCondition.primaryDiagnosis && (
-          <div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Diagnosis</h4>
-            <p className="text-sm text-slate-700">{caseDetail.medicalCondition.primaryDiagnosis}</p>
-          </div>
-        )}
-        <div>
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Stats</h4>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">Documents</span>
-            <span className="font-semibold text-indigo-600">{caseDetail.documents.length}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm mt-1">
-            <span className="text-slate-500">Messages</span>
-            <span className="font-semibold text-indigo-600">{caseDetail.totalMessages}</span>
-          </div>
-        </div>
-      </div>
+      {/* Patient Context Panel (shared with Admin/Hospital message experiences) */}
+      <MessageCaseDetailPanel
+        caseId={caseDetail.id}
+        category={selectedConversation?.category ?? null}
+        participantRole="Patient"
+        participantName={patientName}
+        patientCode={caseDetail.patient.code}
+        patientAge={caseDetail.patient.age}
+        patientGender={
+          caseDetail.patient.gender === 'MALE'
+            ? 'M'
+            : caseDetail.patient.gender === 'FEMALE'
+              ? 'F'
+              : caseDetail.patient.gender ?? null
+        }
+        caseStatus={caseDetail.displayStatus}
+        diagnosis={caseDetail.medicalCondition.primaryDiagnosis}
+        documentCount={caseDetail.documents.length}
+        messageCount={caseDetail.totalMessages}
+      />
     </div>
   );
 }
@@ -639,6 +643,7 @@ const SEVERITY_STYLES: Record<string, string> = {
 
 function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const router = useRouter();
   const diagnoses = caseDetail.diagnoses;
   return (
     <div className="space-y-6">
@@ -709,18 +714,81 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
               )}
 
               {/* Backward compat: show old condition/notes fields if present */}
-              {d.notes && !d.treatmentRecommendation && <p className="text-sm text-slate-600 mt-2">{d.notes}</p>}
+              {d.notes && (
+                <div className="mt-4 bg-slate-50 p-3 rounded-lg">
+                  <p className="text-xs text-slate-500 mb-1">Details</p>
+                  <p className="text-sm text-slate-600">{d.notes}</p>
+                </div>
+              )}
             </div>
           );
         })
       )}
-      <AddDiagnosisModal open={showAddModal} onClose={() => setShowAddModal(false)} />
+      <AddDiagnosisModal
+        caseId={caseDetail.id}
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={() => {
+          setShowAddModal(false);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
 
-function AddDiagnosisModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AddDiagnosisModal({
+  caseId,
+  open,
+  onClose,
+  onSuccess,
+}: {
+  caseId: string;
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [diagnosisType, setDiagnosisType] = useState('Preliminary');
+  const [title, setTitle] = useState('');
+  const [icdCode, setIcdCode] = useState('');
+  const [severity, setSeverity] = useState('moderate');
+  const [description, setDescription] = useState('');
+  const [treatmentRecommendation, setTreatmentRecommendation] = useState('');
+  const [costEstimate, setCostEstimate] = useState('< $5k');
+  const [treatmentDuration, setTreatmentDuration] = useState('< 1 Week');
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
   if (!open) return null;
+
+  const handleSave = () => {
+    if (!title.trim()) {
+      setError('Diagnosis name is required.');
+      return;
+    }
+
+    setError(null);
+    startTransition(() => {
+      void (async () => {
+        try {
+          await addDiagnosis(caseId, {
+            title,
+            diagnosisType,
+            icdCode,
+            severity: severity.toUpperCase(),
+            description,
+            treatmentRecommendation,
+            costEstimate,
+            treatmentDuration,
+          });
+          onSuccess();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to save diagnosis');
+        }
+      })();
+    });
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -729,40 +797,75 @@ function AddDiagnosisModal({ open, onClose }: { open: boolean; onClose: () => vo
           <button onClick={onClose} className="p-2 text-slate-400 hover:bg-slate-50 rounded-full"><X size={20} /></button>
         </div>
         <div className="p-6 space-y-6">
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <AlertCircle size={16} />
+              {error}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-3">Diagnosis Type</label>
             <div className="grid grid-cols-3 gap-3">
-              <button className="py-3 px-4 rounded-xl border-2 border-amber-500 bg-amber-50 text-amber-700 text-sm font-semibold">Preliminary</button>
-              <button className="py-3 px-4 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50">Confirmed</button>
-              <button className="py-3 px-4 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50">Follow-up</button>
+              {['Preliminary', 'Confirmed', 'Follow-up'].map((option) => {
+                const selected = diagnosisType === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setDiagnosisType(option)}
+                    className={`py-3 px-4 rounded-xl text-sm transition-colors ${
+                      selected
+                        ? 'border-2 border-amber-500 bg-amber-50 text-amber-700 font-semibold'
+                        : 'border border-slate-200 text-slate-600 font-medium hover:bg-slate-50'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-6">
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Diagnosis Name *</label><input type="text" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder="e.g. Coronary Artery Disease" /></div>
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">ICD-10 Code</label><input type="text" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder="e.g. I25.10" /></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Diagnosis Name *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder="e.g. Coronary Artery Disease" /></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">ICD-10 Code</label><input type="text" value={icdCode} onChange={(e) => setIcdCode(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder="e.g. I25.10" /></div>
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-3">Severity</label>
             <div className="flex gap-4">
-              <label className="flex items-center gap-2 text-sm"><input type="radio" name="severity" /> <span className="text-rose-600 font-medium">Severe</span></label>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" name="severity" defaultChecked /> <span className="text-amber-600 font-medium">Moderate</span></label>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" name="severity" /> <span className="text-emerald-600 font-medium">Mild</span></label>
+              {[
+                { value: 'severe', label: 'Severe', color: 'text-rose-600' },
+                { value: 'moderate', label: 'Moderate', color: 'text-amber-600' },
+                { value: 'mild', label: 'Mild', color: 'text-emerald-600' },
+              ].map((option) => (
+                <label key={option.value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="severity"
+                    checked={severity === option.value}
+                    onChange={() => setSeverity(option.value)}
+                  />
+                  <span className={`${option.color} font-medium`}>{option.label}</span>
+                </label>
+              ))}
             </div>
           </div>
-          <div><label className="block text-sm font-semibold text-slate-700 mb-2">Detailed Description</label><textarea className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-24 resize-none" /></div>
-          <div><label className="block text-sm font-semibold text-slate-700 mb-2">Treatment Recommendation</label><textarea className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-20 resize-none" /></div>
+          <div><label className="block text-sm font-semibold text-slate-700 mb-2">Detailed Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-24 resize-none" /></div>
+          <div><label className="block text-sm font-semibold text-slate-700 mb-2">Treatment Recommendation</label><textarea value={treatmentRecommendation} onChange={(e) => setTreatmentRecommendation(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-20 resize-none" /></div>
           <div className="grid grid-cols-2 gap-6">
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Estimated Cost</label><select className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; $5k</option><option>$5k - $10k</option><option>$10k - $20k</option><option>$20k - $50k</option><option>&gt; $50k</option></select></div>
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Treatment Duration</label><select className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; 1 Week</option><option>1 - 2 Weeks</option><option>2 Weeks - 1 Month</option><option>1 - 3 Months</option><option>&gt; 3 Months</option></select></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Estimated Cost</label><select value={costEstimate} onChange={(e) => setCostEstimate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; $5k</option><option>$5k - $10k</option><option>$10k - $20k</option><option>$20k - $50k</option><option>&gt; $50k</option></select></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Treatment Duration</label><select value={treatmentDuration} onChange={(e) => setTreatmentDuration(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; 1 Week</option><option>1 - 2 Weeks</option><option>2 Weeks - 1 Month</option><option>1 - 3 Months</option><option>&gt; 3 Months</option></select></div>
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">Attachments (Max 10MB)</label>
-            <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 hover:bg-slate-50 cursor-pointer"><FileText size={32} className="mb-2 text-slate-300" /><span className="text-sm font-medium">Click to upload PDF, DOC, or JPG</span></div>
+            <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 bg-slate-50/60"><FileText size={32} className="mb-2 text-slate-300" /><span className="text-sm font-medium">Attachment upload is not wired yet</span></div>
           </div>
         </div>
         <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50 rounded-b-[2rem]">
-          <button onClick={onClose} className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-full">Cancel</button>
-          <button onClick={onClose} className="px-6 py-2.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-full flex items-center gap-2 shadow-md shadow-cyan-200/50"><Stethoscope size={16} /> Save Diagnosis</button>
+          <button onClick={onClose} disabled={isPending} className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-full disabled:opacity-50">Cancel</button>
+          <button onClick={handleSave} disabled={isPending} className="px-6 py-2.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-full flex items-center gap-2 shadow-md shadow-cyan-200/50 disabled:opacity-50">
+            {isPending ? <Loader2 size={16} className="animate-spin" /> : <Stethoscope size={16} />}
+            Save Diagnosis
+          </button>
         </div>
       </div>
     </div>
@@ -778,7 +881,6 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [emailBody, setEmailBody] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const { data: templatesData } = useEmailTemplates();
-  const { user } = useAuth();
 
   const activeTemplates: EmailTemplateItem[] = (() => {
     if (!templatesData) return [];
@@ -786,11 +888,13 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     return list.filter((t) => t.status === 'active');
   })();
 
+  const formatTemplateType = (type: string) => type.replace(/_/g, ' ');
+
   const replaceVariables = (text: string) => {
     return text
       .replace(/\{\{patient_name\}\}/g, caseDetail.patient.name ?? '')
       .replace(/\{\{case_number\}\}/g, caseDetail.caseNumber ?? '')
-      .replace(/\{\{hospital_name\}\}/g, user?.hospitalId ?? 'Our Hospital')
+      .replace(/\{\{hospital_name\}\}/g, 'Our Hospital')
       .replace(/\{\{quote_total\}\}/g, '')
       .replace(/\{\{doctor_name\}\}/g, '')
       .replace(/\{\{procedure_name\}\}/g, caseDetail.medicalCondition?.primaryDiagnosis ?? '');
@@ -844,12 +948,22 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                   value={selectedTemplateId}
                   onChange={(e) => handleTemplateSelect(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none bg-white"
+                  disabled={activeTemplates.length === 0}
                 >
-                  <option value="">-- Select a template --</option>
+                  <option value="">
+                    {activeTemplates.length === 0
+                      ? 'No active templates — create one in Email Templates page'
+                      : '-- Select a template --'}
+                  </option>
                   {activeTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
+                    <option key={t.id} value={t.id}>{t.name} ({formatTemplateType(t.type)})</option>
                   ))}
                 </select>
+                {activeTemplates.length === 0 && templatesData && (
+                  <p className="mt-1.5 text-xs text-amber-600">
+                    Templates must be set to &quot;Active&quot; status to appear here.
+                  </p>
+                )}
               </div>
               <div className="bg-amber-50 border border-amber-100/50 p-3 rounded-xl text-amber-700 text-sm font-medium flex items-center gap-2"><AlertCircle size={16} /> Privacy Notice: Patient email address is hidden for privacy.</div>
               <div><label className="block text-sm font-semibold text-slate-700 mb-2">Subject</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none" /></div>
@@ -916,50 +1030,173 @@ function InvitationLetterTab() {
 
 // ── Tab: Consultation ───────────────────────────────────────────────
 
-function ConsultationTab({ consultations, router }: { consultations: ConsultationSummary[]; router: ReturnType<typeof useRouter> }) {
+function ConsultationTab({
+  consultations,
+  router,
+  caseId,
+  currentCase,
+}: {
+  consultations: ConsultationSummary[];
+  router: ReturnType<typeof useRouter>;
+  caseId: string;
+  currentCase: CaseSummary;
+}) {
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [transcriptId, setTranscriptId] = useState<string | null>(null);
+
   return (
-    <div className="space-y-8">
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2"><Video size={20} className="text-indigo-600" /> Book Video Consultation</h3>
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-6">
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Consultation Type</label><select className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>Initial Consultation</option><option>Follow-up</option><option>Expert Panel</option></select></div>
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Consulting Doctor</label><select className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>Select a doctor...</option></select></div>
-          </div>
-          <div className="grid grid-cols-2 gap-6">
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Date</label><input type="date" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white" /></div>
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Time</label><input type="time" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white" /></div>
-          </div>
-          <div><label className="block text-sm font-semibold text-slate-700 mb-2">Meeting Link (Auto-generated)</label><input type="text" disabled className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 text-sm outline-none" placeholder="Will be generated after scheduling" /></div>
-          <div className="flex justify-end pt-4 border-t border-slate-100"><button className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50">Schedule Consultation</button></div>
-        </div>
+    <div className="space-y-6">
+      {/* Schedule button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowScheduleModal(true)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full shadow-md shadow-indigo-200/50 transition-colors"
+        >
+          <Video size={16} /> Schedule Consultation
+        </button>
       </div>
-      {consultations.length > 0 && (
-        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900 mb-6">Scheduled Consultations</h3>
-          <div className="space-y-4">
-            {consultations.map((c) => (
-              <div key={c.id} className="flex items-center justify-between p-4 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 flex-col items-center justify-center rounded-xl bg-slate-50 text-sm">
-                    <span className="font-bold text-slate-900">{c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}</span>
+
+      {/* Schedule modal — reuses the shared CreateConsultationModal with fixedCaseId */}
+      <CreateConsultationModal
+        open={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        fixedCaseId={caseId}
+        cases={[currentCase]}
+      />
+
+      {/* Consultation list */}
+      {consultations.length === 0 ? (
+        <div className="bg-white p-12 rounded-[2rem] border border-slate-100 shadow-sm text-center text-sm text-slate-400">
+          No consultations yet. Schedule one to get started.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {consultations.map((c) => {
+            const isExpanded = expandedId === c.id;
+            return (
+              <div key={c.id} className="rounded-2xl border border-slate-100 bg-white shadow-sm transition-shadow hover:shadow-md">
+                <div className="flex items-center justify-between p-5">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-16 flex-col items-center justify-center rounded-xl bg-slate-50">
+                      <span className="text-xs font-medium text-slate-400">
+                        {c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
+                      </span>
+                      <span className="text-base font-bold text-slate-900">
+                        {c.scheduledAt ? new Date(c.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--'}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={c.status ?? 'UNKNOWN'} />
+                        <span className="flex items-center gap-1 text-xs text-slate-500"><Clock size={12} /> {c.durationMinutes ?? 30} min</span>
+                      </div>
+                      {c.notes && <p className="mt-1 text-xs text-slate-400">{c.notes}</p>}
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-medium text-slate-900">{c.scheduledAt ? new Date(c.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'N/A'}</div>
-                    <div className="text-xs text-slate-500">{c.durationMinutes ?? 30} min</div>
+                  <div className="flex items-center gap-3">
+                    {c.status === 'SCHEDULED' && (
+                      <button onClick={() => router.push(`/consultations/${c.id}/room`)}
+                        className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-sm">
+                        <Video size={16} /> Enter
+                      </button>
+                    )}
+                    {c.status === 'COMPLETED' && (
+                      <button onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                        className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                        View Details {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <StatusBadge status={c.status ?? 'UNKNOWN'} />
-                  {c.status === 'SCHEDULED' && (
-                    <button onClick={() => router.push(`/consultations/${c.id}/room`)} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-sm">Enter</button>
-                  )}
-                </div>
+
+                {/* Expanded details for completed consultations */}
+                {isExpanded && c.status === 'COMPLETED' && (
+                  <CompletedConsultationDetails consultationId={c.id} onViewTranscript={() => setTranscriptId(c.id)} />
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       )}
+
+      {/* Transcript Modal */}
+      {transcriptId && <ConsultationTranscriptModal consultationId={transcriptId} onClose={() => setTranscriptId(null)} />}
+    </div>
+  );
+}
+
+function CompletedConsultationDetails({ consultationId: _consultationId, onViewTranscript }: { consultationId: string; onViewTranscript: () => void }) {
+  return (
+    <div className="border-t border-slate-100 bg-indigo-50/50 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Sparkles size={18} className="text-indigo-600" />
+          <h4 className="font-semibold text-slate-900">AI Summary</h4>
+          <span className="text-xs text-slate-400 uppercase">AI Generated</span>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onViewTranscript}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50">
+            <FileText size={14} /> Transcript
+          </button>
+          <button className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50">
+            <Video size={14} /> Video
+          </button>
+        </div>
+      </div>
+      <p className="text-sm text-slate-500 text-center py-4">AI summary will be available after consultation recording is processed.</p>
+    </div>
+  );
+}
+
+function ConsultationTranscriptModal({ consultationId, onClose }: { consultationId: string; onClose: () => void }) {
+  const { data, isPending } = useConsultationTranscript(consultationId);
+  const transcript = data as { entries?: Array<{ speaker: string; timestamp: string; original: string; translated?: string }> } | null;
+  const entries = transcript?.entries ?? [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm">
+      <div className="w-full max-w-3xl h-[80vh] bg-white rounded-[2rem] shadow-2xl flex flex-col overflow-hidden mx-4">
+        <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center"><FileText size={18} className="text-purple-600" /></div>
+            <h3 className="text-lg font-semibold text-slate-900">Full Transcript</h3>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"><X size={20} /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
+          {isPending ? (
+            <div className="flex items-center justify-center py-12 text-slate-400">Loading transcript...</div>
+          ) : entries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <FileText size={40} className="mb-3 opacity-50" />
+              <p className="text-sm">No transcript entries available yet.</p>
+              <p className="text-xs mt-1">Transcript will be generated after the consultation recording is processed.</p>
+            </div>
+          ) : (
+            entries.map((entry, i) => {
+              const isDoctor = entry.speaker?.toLowerCase().includes('dr') || i % 2 === 0;
+              return (
+                <div key={i} className={`flex flex-col ${isDoctor ? 'items-start' : 'items-end'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold text-slate-700">{entry.speaker}</span>
+                    <span className="text-[10px] font-mono text-slate-400">{entry.timestamp}</span>
+                  </div>
+                  <div className={`max-w-[80%] p-4 border ${isDoctor ? 'bg-blue-50 border-blue-100 rounded-2xl rounded-tl-none' : 'bg-cyan-50 border-cyan-100 rounded-2xl rounded-tr-none'}`}>
+                    <p className="text-sm text-slate-700">{entry.original}</p>
+                    {entry.translated && (
+                      <div className={`mt-2 pt-2 border-t ${isDoctor ? 'border-blue-200/60' : 'border-cyan-200/60'}`}>
+                        <p className="text-sm italic text-slate-500">{entry.translated}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
     </div>
   );
 }

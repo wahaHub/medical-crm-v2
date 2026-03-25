@@ -1,7 +1,10 @@
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
 import * as jose from 'jose';
+import { eq } from 'drizzle-orm';
 import { getServerEnv } from '@medical-crm/config';
+import { getCrmDb } from '../database/crm-client.js';
+import { users } from '../database/schema/index.js';
 
 let jwks: jose.JWTVerifyGetKey;
 
@@ -22,6 +25,26 @@ export type Session = {
   hospitalId: string | null;
 };
 
+type CrmIdentity = {
+  id: string;
+  hospitalId: string | null;
+};
+
+async function findCrmIdentityByKeycloakUserId(
+  keycloakUserId: string,
+): Promise<CrmIdentity | null> {
+  const rows = await getCrmDb()
+    .select({
+      id: users.id,
+      hospitalId: users.hospitalId,
+      keycloakUserId: users.keycloakUserId,
+    })
+    .from(users)
+    .where(eq(users.keycloakUserId, keycloakUserId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
 export const authMiddleware = createMiddleware<{ Variables: { session: Session } }>(
   async (c, next) => {
     const authHeader = c.req.header('Authorization');
@@ -44,11 +67,25 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
         throw new Error(`Token azp '${payload.azp}' does not match client '${env.KEYCLOAK_CLIENT_ID}'`);
       }
 
+      const keycloakUserId = payload.sub;
+      const email = payload.email as string | undefined;
+      if (!keycloakUserId || !email) {
+        throw new Error('Token missing required identity claims');
+      }
+
+      const crmIdentity = await findCrmIdentityByKeycloakUserId(keycloakUserId);
+      if (!crmIdentity) {
+        throw new Error(`No CRM user found for keycloak user ${keycloakUserId}`);
+      }
+
       c.set('session', {
-        userId: payload.sub!,
-        email: payload.email as string,
+        userId: crmIdentity.id,
+        email,
         roles: (payload.realm_access as { roles?: string[] })?.roles ?? [],
-        hospitalId: (payload as Record<string, unknown>).hospital_id as string ?? null,
+        hospitalId:
+          crmIdentity.hospitalId
+          ?? (payload as Record<string, unknown>).hospital_id as string
+          ?? null,
       });
     } catch (err) {
       console.error('[Auth] JWT verification failed:', err instanceof Error ? err.message : err);

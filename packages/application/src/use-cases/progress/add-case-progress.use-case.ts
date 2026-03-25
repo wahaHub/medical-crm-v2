@@ -6,7 +6,8 @@ import type { CaseProgressDTO } from '../../dtos/progress.dto.js';
 import { toProgressDTO } from '../../mappers/progress.mapper.js';
 
 export type AddProgressInput =
-  | { type: 'DIAGNOSIS'; caseId: string; icdCode?: string; severity?: string;
+  | { type: 'DIAGNOSIS'; caseId: string; title?: string; description?: string;
+      diagnosisType?: string; icdCode?: string; severity?: string;
       treatmentRecommendation?: string; suggestedTests?: string;
       costEstimate?: string; treatmentDuration?: string; }
   | { type: 'PHONE_CALL'; caseId: string; callResult?: string;
@@ -27,12 +28,12 @@ export class AddCaseProgressUseCase {
       throw new ForbiddenError('Access denied to this case');
     }
 
-    const { progressType, title, metadata } = this.mapInput(input);
+    const { progressType, title, description, metadata } = this.mapInput(input);
     const progress = new CaseProgress({
       id: generateId(),
       caseId: input.caseId,
       title,
-      description: null,
+      description,
       progressType,
       metadata,
       recordedAt: new Date(),
@@ -48,9 +49,11 @@ export class AddCaseProgressUseCase {
       case 'DIAGNOSIS':
         return {
           progressType: 'STATUS_CHANGE' as const,
-          title: 'Diagnosis recorded',
+          title: input.title?.trim() || 'Diagnosis recorded',
+          description: input.description?.trim() || null,
           metadata: {
-            kind: 'diagnosis', icdCode: input.icdCode, severity: input.severity,
+            kind: 'diagnosis', type: input.diagnosisType,
+            icdCode: input.icdCode, severity: input.severity,
             treatmentRecommendation: input.treatmentRecommendation,
             suggestedTests: input.suggestedTests, costEstimate: input.costEstimate,
             treatmentDuration: input.treatmentDuration,
@@ -60,6 +63,7 @@ export class AddCaseProgressUseCase {
         return {
           progressType: 'APPOINTMENT' as const,
           title: 'Phone follow-up',
+          description: null,
           metadata: {
             kind: 'phone_call', callResult: input.callResult, summary: input.summary,
             duration: input.duration, nextFollowUp: input.nextFollowUp,
@@ -69,12 +73,14 @@ export class AddCaseProgressUseCase {
         return {
           progressType: 'STATUS_CHANGE' as const,
           title: 'Status changed',
+          description: null,
           metadata: { kind: 'status_change', reason: input.reason },
         };
       case 'DOCUMENT_UPLOAD':
         return {
           progressType: 'DOCUMENT_UPLOAD' as const,
           title: 'Document uploaded',
+          description: null,
           metadata: { documentId: input.documentId },
         };
     }

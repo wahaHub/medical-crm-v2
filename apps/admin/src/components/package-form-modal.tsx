@@ -17,6 +17,7 @@ export interface PackageRow {
   descriptionEn?: string | null;
   descriptionZh?: string | null;
   coverImageUrl?: string | null;
+  config?: unknown;
   sortWeight?: number;
   publishAt?: string | null;
   takedownAt?: string | null;
@@ -48,53 +49,126 @@ const CURRENCIES = ['USD', 'CNY', 'EUR', 'GBP', 'SGD', 'AUD', 'CAD', 'JPY', 'KRW
 // ── Form State ────────────────────────────────────────────────────────
 
 interface FormState {
-  nameEn: string;
-  nameZh: string;
+  name: string;
   type: string;
   price: string;
   currency: string;
-  descriptionEn: string;
-  descriptionZh: string;
-  coverImageUrl: string;
+  description: string;
   sortWeight: string;
-  publishAt: string;
-  takedownAt: string;
 }
 
 const EMPTY_FORM: FormState = {
-  nameEn: '',
-  nameZh: '',
+  name: '',
   type: 'CONSULTATION',
   price: '',
   currency: 'USD',
-  descriptionEn: '',
-  descriptionZh: '',
-  coverImageUrl: '',
+  description: '',
   sortWeight: '0',
-  publishAt: '',
-  takedownAt: '',
 };
 
 function toFormState(pkg: PackageRow): FormState {
   return {
-    nameEn: pkg.nameEn,
-    nameZh: pkg.nameZh ?? '',
+    name: pkg.nameEn || pkg.nameZh || '',
     type: pkg.type,
     price: pkg.price,
     currency: pkg.currency,
-    descriptionEn: pkg.descriptionEn ?? '',
-    descriptionZh: pkg.descriptionZh ?? '',
-    coverImageUrl: pkg.coverImageUrl ?? '',
+    description: pkg.descriptionEn ?? pkg.descriptionZh ?? '',
     sortWeight: String(pkg.sortWeight ?? 0),
-    publishAt: pkg.publishAt ? pkg.publishAt.slice(0, 16) : '',
-    takedownAt: pkg.takedownAt ? pkg.takedownAt.slice(0, 16) : '',
   };
+}
+
+interface PackageImageItem {
+  storageKey: string;
+  fileName: string;
+  mimeType?: string;
+  fileSize?: number;
+  previewUrl?: string;
+}
+
+interface UploadInitResponse {
+  upload?: {
+    uploadUrl: string;
+    storageKey: string;
+  };
+  asset?: {
+    storageKey: string;
+    fileName: string;
+    mimeType?: string;
+    fileSize?: number;
+  };
+  image?: {
+    storageKey: string;
+    fileName: string;
+    mimeType?: string;
+    fileSize?: number;
+  };
+  message?: string;
+}
+
+function parseExistingImages(pkg: PackageRow | null | undefined): PackageImageItem[] {
+  if (!pkg) return [];
+
+  const dedupe = new Set<string>();
+  const items: PackageImageItem[] = [];
+
+  const pushImage = (image: PackageImageItem | null) => {
+    if (!image || !image.storageKey) return;
+    if (dedupe.has(image.storageKey)) return;
+    dedupe.add(image.storageKey);
+    items.push(image);
+  };
+
+  if (pkg.coverImageUrl) {
+    pushImage({
+      storageKey: pkg.coverImageUrl,
+      fileName: pkg.coverImageUrl.split('/').pop() || 'cover-image',
+      previewUrl: pkg.coverImageUrl.startsWith('http') ? pkg.coverImageUrl : undefined,
+    });
+  }
+
+  if (pkg.config && typeof pkg.config === 'object') {
+    const gallery = (pkg.config as Record<string, unknown>)['imageGallery'];
+    if (Array.isArray(gallery)) {
+      for (const entry of gallery) {
+        if (typeof entry === 'string') {
+          pushImage({
+            storageKey: entry,
+            fileName: entry.split('/').pop() || 'image',
+            previewUrl: entry.startsWith('http') ? entry : undefined,
+          });
+          continue;
+        }
+        if (entry && typeof entry === 'object') {
+          const obj = entry as Record<string, unknown>;
+          const storageKey =
+            (typeof obj['storageKey'] === 'string' && obj['storageKey']) ||
+            (typeof obj['url'] === 'string' && obj['url']) ||
+            '';
+          if (!storageKey) continue;
+          pushImage({
+            storageKey,
+            fileName:
+              (typeof obj['fileName'] === 'string' && obj['fileName']) ||
+              storageKey.split('/').pop() ||
+              'image',
+            mimeType: typeof obj['mimeType'] === 'string' ? obj['mimeType'] : undefined,
+            fileSize: typeof obj['fileSize'] === 'number' ? obj['fileSize'] : undefined,
+            previewUrl: storageKey.startsWith('http') ? storageKey : undefined,
+          });
+        }
+      }
+    }
+  }
+
+  return items;
 }
 
 // ── Component ─────────────────────────────────────────────────────────
 
 export function PackageFormModal({ open, onClose, onSuccess, editPackage }: PackageFormModalProps) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [images, setImages] = useState<PackageImageItem[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -103,6 +177,7 @@ export function PackageFormModal({ open, onClose, onSuccess, editPackage }: Pack
   useEffect(() => {
     if (open) {
       setForm(editPackage ? toFormState(editPackage) : EMPTY_FORM);
+      setImages(parseExistingImages(editPackage ?? null));
       setError(null);
     }
   }, [open, editPackage]);
@@ -113,25 +188,120 @@ export function PackageFormModal({ open, onClose, onSuccess, editPackage }: Pack
 
   function buildPayload() {
     const payload: Record<string, unknown> = {
-      nameEn: form.nameEn,
+      nameEn: form.name,
       type: form.type,
       price: form.price,
       currency: form.currency,
       sortWeight: parseInt(form.sortWeight, 10) || 0,
     };
-    if (form.nameZh) payload['nameZh'] = form.nameZh;
-    if (form.descriptionEn) payload['descriptionEn'] = form.descriptionEn;
-    if (form.descriptionZh) payload['descriptionZh'] = form.descriptionZh;
-    if (form.coverImageUrl) payload['coverImageUrl'] = form.coverImageUrl;
-    if (form.publishAt) payload['publishAt'] = new Date(form.publishAt).toISOString();
-    if (form.takedownAt) payload['takedownAt'] = new Date(form.takedownAt).toISOString();
+    if (form.description) payload['descriptionEn'] = form.description;
+
+    const imageGallery = images.map((image) => ({
+      storageKey: image.storageKey,
+      fileName: image.fileName,
+      mimeType: image.mimeType,
+      fileSize: image.fileSize,
+    }));
+
+    const firstImage = imageGallery.at(0);
+    if (firstImage) {
+      payload['coverImageUrl'] = firstImage.storageKey;
+      const baseConfig =
+        editPackage?.config && typeof editPackage.config === 'object'
+          ? (editPackage.config as Record<string, unknown>)
+          : {};
+      payload['config'] = {
+        ...baseConfig,
+        imageGallery,
+      };
+    } else if (isEdit) {
+      payload['coverImageUrl'] = null;
+      const baseConfig =
+        editPackage?.config && typeof editPackage.config === 'object'
+          ? (editPackage.config as Record<string, unknown>)
+          : {};
+      payload['config'] = {
+        ...baseConfig,
+        imageGallery: [],
+      };
+    }
     return payload;
+  }
+
+  async function handleImageUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    setIsUploadingImages(true);
+    try {
+      const uploaded: PackageImageItem[] = [];
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) {
+          throw new Error(`"${file.name}" is not an image file.`);
+        }
+
+        const initRes = await fetch('/api/packages/images/upload-init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType: file.type,
+          }),
+        });
+
+        const initBody = await initRes.json().catch(() => ({})) as UploadInitResponse;
+        const uploadedAsset = initBody.asset ?? initBody.image;
+        if (!initRes.ok || !initBody.upload || !uploadedAsset) {
+          throw new Error(initBody.message ?? `Failed to initialize upload for "${file.name}".`);
+        }
+
+        const uploadRes = await fetch(initBody.upload.uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type,
+          },
+          body: file,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error(`Failed to upload "${file.name}".`);
+        }
+
+        uploaded.push({
+          storageKey: uploadedAsset.storageKey,
+          fileName: uploadedAsset.fileName,
+          mimeType: uploadedAsset.mimeType,
+          fileSize: uploadedAsset.fileSize,
+          previewUrl: URL.createObjectURL(file),
+        });
+      }
+
+      setImages((prev) => {
+        const merged = [...prev];
+        const seen = new Set(prev.map((item) => item.storageKey));
+        for (const image of uploaded) {
+          if (!seen.has(image.storageKey)) {
+            seen.add(image.storageKey);
+            merged.push(image);
+          }
+        }
+        return merged;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to upload image(s)');
+    } finally {
+      setIsUploadingImages(false);
+    }
+  }
+
+  function removeImage(storageKey: string) {
+    setImages((prev) => prev.filter((image) => image.storageKey !== storageKey));
   }
 
   function handleSubmit() {
     setError(null);
     // Basic validation
-    if (!form.nameEn.trim()) { setError('Package name (English) is required.'); return; }
+    if (!form.name.trim()) { setError('Package name is required.'); return; }
     if (!form.price.match(/^\d+(\.\d{1,2})?$/)) { setError('Price must be a valid number (e.g. 99.99).'); return; }
 
     startTransition(async () => {
@@ -168,27 +338,14 @@ export function PackageFormModal({ open, onClose, onSuccess, editPackage }: Pack
           </div>
         )}
 
-        {/* Name (EN) */}
+        {/* Name */}
         <div>
-          <label className={labelClass}>Name (English) *</label>
+          <label className={labelClass}>Name *</label>
           <input
             type="text"
-            value={form.nameEn}
-            onChange={(e) => handleChange('nameEn', e.target.value)}
+            value={form.name}
+            onChange={(e) => handleChange('name', e.target.value)}
             placeholder="e.g. Premium Consultation Package"
-            className={inputClass}
-            maxLength={200}
-          />
-        </div>
-
-        {/* Name (ZH) */}
-        <div>
-          <label className={labelClass}>Name (Chinese)</label>
-          <input
-            type="text"
-            value={form.nameZh}
-            onChange={(e) => handleChange('nameZh', e.target.value)}
-            placeholder="中文名称"
             className={inputClass}
             maxLength={200}
           />
@@ -248,64 +405,79 @@ export function PackageFormModal({ open, onClose, onSuccess, editPackage }: Pack
           </div>
         </div>
 
-        {/* Description (EN) */}
+        {/* Description */}
         <div>
-          <label className={labelClass}>Description (English)</label>
+          <label className={labelClass}>Description</label>
           <textarea
-            value={form.descriptionEn}
-            onChange={(e) => handleChange('descriptionEn', e.target.value)}
+            value={form.description}
+            onChange={(e) => handleChange('description', e.target.value)}
             rows={3}
             className={`${inputClass} resize-none`}
-            placeholder="Package description in English…"
+            placeholder="Package description…"
           />
         </div>
 
-        {/* Description (ZH) */}
+        {/* Package Images */}
         <div>
-          <label className={labelClass}>Description (Chinese)</label>
-          <textarea
-            value={form.descriptionZh}
-            onChange={(e) => handleChange('descriptionZh', e.target.value)}
-            rows={3}
-            className={`${inputClass} resize-none`}
-            placeholder="中文描述…"
-          />
-        </div>
-
-        {/* Cover Image URL */}
-        <div>
-          <label className={labelClass}>Cover Image URL</label>
+          <label className={labelClass}>Package Images</label>
           <input
-            type="url"
-            value={form.coverImageUrl}
-            onChange={(e) => handleChange('coverImageUrl', e.target.value)}
-            placeholder="https://…"
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => {
+              void handleImageUpload(e.target.files);
+              e.currentTarget.value = '';
+            }}
             className={inputClass}
-            maxLength={500}
+            disabled={isUploadingImages || isPending}
           />
+          <p className="mt-1 text-xs text-slate-500">
+            Upload one or more images. The first image will be used as cover.
+          </p>
+          {isUploadingImages && (
+            <p className="mt-2 text-xs font-medium text-cyan-700">Uploading images...</p>
+          )}
+          {images.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {images.map((image, index) => (
+                <div key={image.storageKey} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <div className="aspect-square overflow-hidden rounded-md bg-slate-100">
+                    {image.previewUrl ? (
+                      <img
+                        src={image.previewUrl}
+                        alt={image.fileName}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : image.storageKey.startsWith('http') ? (
+                      <img
+                        src={image.storageKey}
+                        alt={image.fileName}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-2 text-center text-[11px] text-slate-500">
+                        Uploaded
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-1 truncate text-[11px] text-slate-600" title={image.fileName}>
+                    {index === 0 ? 'Cover: ' : ''}
+                    {image.fileName}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => removeImage(image.storageKey)}
+                    className="mt-1 text-[11px] font-medium text-rose-600 hover:text-rose-700"
+                    disabled={isPending}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Publish At + Takedown At */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={labelClass}>Publish At</label>
-            <input
-              type="datetime-local"
-              value={form.publishAt}
-              onChange={(e) => handleChange('publishAt', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Takedown At</label>
-            <input
-              type="datetime-local"
-              value={form.takedownAt}
-              onChange={(e) => handleChange('takedownAt', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        </div>
       </div>
 
       {/* Actions */}

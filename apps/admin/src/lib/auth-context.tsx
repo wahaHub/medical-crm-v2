@@ -6,6 +6,7 @@ interface AdminUser {
   id: string;
   email: string;
   roles: string[];
+  preferredLanguage?: string;
 }
 
 interface AuthContextValue {
@@ -17,7 +18,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ user, children }: { user: AdminUser; children: ReactNode }) {
   const logout = useCallback(async () => {
-    window.location.href = '/auth/logout';
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/auth/login';
   }, []);
   return <AuthContext.Provider value={{ user, logout }}>{children}</AuthContext.Provider>;
 }

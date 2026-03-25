@@ -68,6 +68,7 @@ export interface ChinaMedicalHospital {
   clinical_capabilities?: string[];
   equipment?: Equipment[];
   certifications?: Certification[];
+  phone?: string;
   official_website?: string;
   wiki_link?: string;
   data_source?: string;

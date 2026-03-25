@@ -15,6 +15,8 @@ const MATERIALS_POLICY_MAP: Record<string, Record<string, UploadPolicyId>> = {
     hero: 'materials_regular_hospital_image',
     gallery: 'materials_regular_hospital_image',
     equipment: 'materials_regular_hospital_image',
+    hospital_video: 'materials_regular_hospital_video',
+    testimonial_video: 'materials_regular_testimonial_video',
     surgeon: 'materials_regular_surgeon_image',
     case: 'materials_regular_case_media',
   },

@@ -15,6 +15,26 @@ export const materialsRegularPolicies: UploadPolicy[] = [
       `crm/${env}/materials-regular/hospital-image/${input.ownerId}/${assetId}/${sanitizeFileName(input.fileName)}`,
   },
   {
+    policyId: 'materials_regular_hospital_video',
+    feature: 'materials_media',
+    backend: 's3-materials',
+    keyNamespace: 'materials-regular/hospital-video',
+    allowedMimeTypes: ['video/mp4', 'video/webm'],
+    maxFileSize: 200 * 1024 * 1024,
+    buildStorageKey: (input, assetId) =>
+      `crm/${env}/materials-regular/hospital-video/${input.ownerId}/${assetId}/${sanitizeFileName(input.fileName)}`,
+  },
+  {
+    policyId: 'materials_regular_testimonial_video',
+    feature: 'materials_media',
+    backend: 's3-materials',
+    keyNamespace: 'materials-regular/testimonial-video',
+    allowedMimeTypes: ['video/mp4', 'video/webm'],
+    maxFileSize: 200 * 1024 * 1024,
+    buildStorageKey: (input, assetId) =>
+      `crm/${env}/materials-regular/testimonial-video/${input.ownerId}/${assetId}/${sanitizeFileName(input.fileName)}`,
+  },
+  {
     policyId: 'materials_regular_surgeon_image',
     feature: 'materials_media',
     backend: 's3-materials',

@@ -12,13 +12,19 @@ const STAGE_DISPLAY_MAP: Record<CaseStage, string> = {
   TREATMENT_COMPLETED: 'completed',
 };
 
-export function toCaseDTO(entity: Case, hospitalName?: string): CaseDTO {
+export function toCaseDTO(
+  entity: Case,
+  hospitalName?: string,
+  patientContact?: { email?: string | null; phone?: string | null },
+): CaseDTO {
   return {
     id: entity.id,
     caseNumber: entity.caseNumber.value,
     patientName: entity.patientName,
     patientCountry: entity.patientCountry,
     patientLanguage: entity.patientLanguage,
+    patientEmail: patientContact?.email ?? null,
+    patientPhone: patientContact?.phone ?? null,
     assignedHospitalId: entity.assignedHospitalId,
     hospitalName: hospitalName ?? null,
     primaryDiagnosis: entity.primaryDiagnosis,
@@ -37,6 +43,7 @@ export function toCaseDTO(entity: Case, hospitalName?: string): CaseDTO {
 export interface PatientInfo {
   id: string;
   code: string;
+  preferredLanguage?: string;
   age: number | null;
   gender: string | null;
 }
@@ -251,7 +258,7 @@ export function toHospitalCaseDetailDTO(
       name: entity.patientName,
       code: patient.code,
       country: entity.patientCountry,
-      language: entity.patientLanguage,
+      language: patient.preferredLanguage ?? entity.patientLanguage,
       age: patient.age,
       gender: patient.gender,
     },

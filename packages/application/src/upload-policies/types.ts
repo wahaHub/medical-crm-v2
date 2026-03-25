@@ -7,7 +7,8 @@ export type UploadFeature =
   | 'ticket_reply_attachment'
   | 'faq_attachment'
   | 'consultation_recording'
-  | 'materials_media';
+  | 'materials_media'
+  | 'email_template_attachment';
 
 export type UploadPolicyId =
   | 'message_attachment'
@@ -22,8 +23,11 @@ export type UploadPolicyId =
   | 'materials_beauty_surgeon_image'
   | 'materials_beauty_case_media'
   | 'materials_regular_hospital_image'
+  | 'materials_regular_hospital_video'
+  | 'materials_regular_testimonial_video'
   | 'materials_regular_surgeon_image'
-  | 'materials_regular_case_media';
+  | 'materials_regular_case_media'
+  | 'email_template_attachment';
 
 export type UploadOwnerType =
   | 'conversation'
@@ -32,7 +36,8 @@ export type UploadOwnerType =
   | 'ticket_reply'
   | 'faq'
   | 'hospital_material'
-  | 'consultation';
+  | 'consultation'
+  | 'email_template';
 
 export interface CreateUploadIntentInput {
   policyId: UploadPolicyId;

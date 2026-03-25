@@ -214,6 +214,7 @@ import {
   ticketReplyAttachmentPolicy,
   faqAttachmentPolicy,
   consultationRecordingPolicy,
+  emailTemplateAttachmentPolicy,
   materialsBeautyPolicies,
   materialsRegularPolicies,
 } from '@medical-crm/application/upload-policies';
@@ -535,6 +536,7 @@ export function getServices(): AppServices {
       ticketReplyAttachmentPolicy,
       faqAttachmentPolicy,
       consultationRecordingPolicy,
+      emailTemplateAttachmentPolicy,
       ...materialsBeautyPolicies,
       ...materialsRegularPolicies,
     ]);
@@ -558,8 +560,8 @@ export function getServices(): AppServices {
     const consultationRepo = new DrizzleConsultationRepository(crmDb);
     const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
     // Materials: route to correct Supabase based on hospital type (COSMETIC → Main, REGULAR → China)
-    const cosmeticMaterialsRepo = new SupabaseMaterialsRepository(mainSupabase);
-    const regularMaterialsRepo = new ChinaMedicalMaterialsRepository(chinaSupabase);
+    const cosmeticMaterialsRepo = new SupabaseMaterialsRepository(mainSupabase, routedStorageService);
+    const regularMaterialsRepo = new ChinaMedicalMaterialsRepository(chinaSupabase, routedStorageService);
 
     // Hospital type resolver — uses DrizzleHospitalManagementRepository to look up type
     const hospitalTypeCache = new Map<string, 'COSMETIC' | 'REGULAR'>();
@@ -623,7 +625,7 @@ export function getServices(): AppServices {
 
       createCase: new CreateCaseUseCase(caseRepo),
       listCases,
-      getCase: new GetCaseUseCase(caseRepo),
+      getCase: new GetCaseUseCase(caseRepo, userRepo, hospitalRepo),
       getHospitalCaseDetail: new GetHospitalCaseDetailUseCase(caseRepo, progressRepo, documentRepo, routedStorageService, patientRepo, conversationRepo, messageRepo),
       updateCase: new UpdateCaseUseCase(caseRepo),
       assignCase: new AssignCaseUseCase(caseRepo, hospitalRepo, assignmentService, progressRepo),
@@ -646,7 +648,7 @@ export function getServices(): AppServices {
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
       validateRegistrationToken: new ValidateRegistrationTokenUseCase(registrationTokenRepo, hospitalManagementRepo),
 
-      createConversation: new CreateConversationUseCase(conversationRepo),
+      createConversation: new CreateConversationUseCase(conversationRepo, caseRepo, hospitalRepo),
       listConversations: new ListConversationsUseCase(conversationRepo),
       getConversation: new GetConversationUseCase(conversationRepo),
       updateConversation: new UpdateConversationUseCase(conversationRepo),
@@ -782,8 +784,8 @@ export function getServices(): AppServices {
       deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),
 
       createEmailTemplate: new CreateEmailTemplateUseCase(emailTemplateRepo),
-      listEmailTemplates: new ListEmailTemplatesUseCase(emailTemplateRepo),
-      getEmailTemplate: new GetEmailTemplateUseCase(emailTemplateRepo),
+      listEmailTemplates: new ListEmailTemplatesUseCase(emailTemplateRepo, routedStorageService),
+      getEmailTemplate: new GetEmailTemplateUseCase(emailTemplateRepo, routedStorageService),
       updateEmailTemplate: new UpdateEmailTemplateUseCase(emailTemplateRepo),
       deleteEmailTemplate: new DeleteEmailTemplateUseCase(emailTemplateRepo),
 

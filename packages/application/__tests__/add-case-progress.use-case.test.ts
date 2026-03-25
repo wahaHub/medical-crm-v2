@@ -69,6 +69,9 @@ describe('AddCaseProgressUseCase', () => {
         {
           type: 'DIAGNOSIS',
           caseId: 'case-1',
+          title: 'Coronary Artery Disease',
+          description: 'Severe narrowing in two vessels.',
+          diagnosisType: 'Confirmed',
           icdCode: 'J30.1',
           severity: 'MILD',
           treatmentRecommendation: 'Antihistamines',
@@ -80,9 +83,11 @@ describe('AddCaseProgressUseCase', () => {
       );
 
       expect(result.progressType).toBe('STATUS_CHANGE');
-      expect(result.title).toBe('Diagnosis recorded');
+      expect(result.title).toBe('Coronary Artery Disease');
+      expect(result.description).toBe('Severe narrowing in two vessels.');
       expect(result.metadata).toMatchObject({
         kind: 'diagnosis',
+        type: 'Confirmed',
         icdCode: 'J30.1',
         severity: 'MILD',
         treatmentRecommendation: 'Antihistamines',
@@ -98,6 +103,16 @@ describe('AddCaseProgressUseCase', () => {
       const savedProgress = (mockProgressRepo.save as ReturnType<typeof vi.fn>).mock.calls[0]![0];
       expect(savedProgress.caseId).toBe('case-1');
       expect(savedProgress.recordedById).toBe('admin-1');
+    });
+
+    it('falls back to a generic title when diagnosis title is omitted', async () => {
+      const result = await useCase.execute(
+        { type: 'DIAGNOSIS', caseId: 'case-1' },
+        adminActor,
+      );
+
+      expect(result.title).toBe('Diagnosis recorded');
+      expect(result.description).toBeNull();
     });
   });
 

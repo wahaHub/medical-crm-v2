@@ -5,6 +5,7 @@ export interface CreateUserInput {
   role: 'HOSPITAL';
   hospitalId: string;
   preferredLanguage: string;
+  keycloakUserId?: string | null;
 }
 
 export interface NotificationPreferences {
@@ -19,6 +20,7 @@ export interface UserProfile {
   email: string;
   name: string;
   role: string;
+  phone: string | null;
   preferredLanguage: string;
   hospitalId: string | null;
   notificationSettings: NotificationPreferences | null;

@@ -34,3 +34,13 @@ export async function deleteEmailTemplate(id: string) {
   });
   revalidatePath('/email-templates');
 }
+
+export async function getAttachmentUploadUrl(
+  templateId: string,
+  file: { fileName: string; fileSize: number; mimeType: string },
+): Promise<{ uploadUrl: string; storageKey: string; expiresIn: number; asset: { fileName: string; mimeType: string; fileSize: number; storageKey: string } }> {
+  return apiClient(`/api/v2/email-templates/${templateId}/upload`, {
+    method: 'POST',
+    body: JSON.stringify(file),
+  });
+}

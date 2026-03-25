@@ -43,6 +43,7 @@ export function toChatbotFaqCategoryDTO(entity: ChatbotFaqCategory): ChatbotFaqC
     id: entity.id,
     name: entity.name,
     hospitalType: entity.hospitalType,
+    hospitalId: entity.hospitalId,
     sortOrder: entity.sortOrder,
     isActive: entity.isActive,
     questionCount: entity.questionCount,

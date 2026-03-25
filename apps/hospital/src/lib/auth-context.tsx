@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string;
   roles: string[];
   hospitalId: string | null;
+  preferredLanguage?: string;
 }
 
 interface AuthContextValue {

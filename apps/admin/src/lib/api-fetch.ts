@@ -36,7 +36,6 @@ export async function apiFetch(
         await saveSession({
           access_token: newTokens.access_token,
           refresh_token: newTokens.refresh_token || session.refresh_token,
-          id_token: newTokens.id_token,
           expires_at: Math.floor(Date.now() / 1000) + newTokens.expires_in,
         });
       } catch {

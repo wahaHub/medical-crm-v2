@@ -3,6 +3,18 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { revalidatePath } from 'next/cache';
 
+async function readErrorMessage(
+  res: Response,
+  fallback: string,
+): Promise<string> {
+  const err = await res.json().catch(() => ({})) as {
+    message?: string;
+    error?: string;
+    code?: string;
+  };
+  return err.message ?? err.error ?? err.code ?? fallback;
+}
+
 export async function createPackage(data: Record<string, unknown>) {
   const res = await apiFetch('/api/v2/packages', {
     method: 'POST',
@@ -10,8 +22,7 @@ export async function createPackage(data: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to create package');
+    throw new Error(await readErrorMessage(res, 'Failed to create package'));
   }
 
   revalidatePath('/packages');
@@ -25,8 +36,7 @@ export async function updatePackage(id: string, data: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to update package');
+    throw new Error(await readErrorMessage(res, 'Failed to update package'));
   }
 
   revalidatePath('/packages');
@@ -39,8 +49,7 @@ export async function publishPackage(id: string) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to publish package');
+    throw new Error(await readErrorMessage(res, 'Failed to publish package'));
   }
 
   revalidatePath('/packages');
@@ -53,10 +62,21 @@ export async function unpublishPackage(id: string) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to unpublish package');
+    throw new Error(await readErrorMessage(res, 'Failed to unpublish package'));
   }
 
   revalidatePath('/packages');
   return res.json();
+}
+
+export async function deletePackage(id: string) {
+  const res = await apiFetch(`/api/v2/packages/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, 'Failed to delete package'));
+  }
+
+  revalidatePath('/packages');
 }

@@ -238,7 +238,7 @@ export type { ChatbotFaqItemProps } from './entities/chatbot-faq-item.entity.js'
 
 // Email Template Entities
 export { EmailTemplate } from './entities/email-template.entity.js';
-export type { EmailTemplateProps } from './entities/email-template.entity.js';
+export type { EmailTemplateProps, EmailTemplateAttachment } from './entities/email-template.entity.js';
 
 // Phase CDE: Chatbot FAQ Ports
 export type {

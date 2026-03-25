@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GetHospitalUseCase } from '../src/use-cases/hospitals/get-hospital.use-case.js';
-import type { IHospitalManagementRepository } from '@medical-crm/domain';
+import type { IHospitalManagementRepository, IUserRepository } from '@medical-crm/domain';
 import { Hospital } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 describe('GetHospitalUseCase', () => {
   let useCase: GetHospitalUseCase;
   let mockHospitalRepo: IHospitalManagementRepository;
+  let mockUserRepo: IUserRepository;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -53,7 +54,13 @@ describe('GetHospitalUseCase', () => {
       save: vi.fn(),
       updateStatus: vi.fn(),
     };
-    useCase = new GetHospitalUseCase(mockHospitalRepo);
+    mockUserRepo = {
+      create: vi.fn(),
+      findPreferredLanguage: vi.fn().mockResolvedValue('zh'),
+      findById: vi.fn(),
+      update: vi.fn(),
+    };
+    useCase = new GetHospitalUseCase(mockHospitalRepo, mockUserRepo);
   });
 
   it('returns HospitalDTO for ADMIN actor viewing any hospital', async () => {
@@ -63,6 +70,7 @@ describe('GetHospitalUseCase', () => {
     expect(result.name).toBe('Test Hospital');
     expect(result.status).toBe('ACTIVE');
     expect(result.type).toBe('BEAUTY');
+    expect(result.hasRegisteredUser).toBe(true);
     expect(mockHospitalRepo.findFullById).toHaveBeenCalledWith('h-1');
   });
 
@@ -78,6 +86,15 @@ describe('GetHospitalUseCase', () => {
 
     expect(result.createdAt).toBe('2026-01-01T00:00:00.000Z');
     expect(result.updatedAt).toBe('2026-01-02T00:00:00.000Z');
+  });
+
+  it('sets hasRegisteredUser to false when no hospital user exists yet', async () => {
+    (mockUserRepo.findPreferredLanguage as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const result = await useCase.execute('h-1', adminActor);
+
+    expect(result.hasRegisteredUser).toBe(false);
+    expect(mockUserRepo.findPreferredLanguage).toHaveBeenCalledWith('h-1');
   });
 
   it('throws NotFoundError if hospital not found', async () => {

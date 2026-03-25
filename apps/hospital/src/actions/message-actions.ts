@@ -1,15 +1,45 @@
-'use server';
+async function localApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      ...init?.headers,
+    },
+  });
 
-import { revalidatePath } from 'next/cache';
-import { apiClient } from '@/lib/api-client';
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login';
+    }
+    throw new Error('Unauthorized');
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    let error = 'Request failed';
+    try {
+      const parsed = JSON.parse(text) as { error?: string };
+      error = parsed.error ?? text ?? error;
+    } catch {
+      error = text || error;
+    }
+    throw new Error(error);
+  }
+
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T;
+  }
+
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
 
 export async function sendMessage(conversationId: string, content: string) {
-  const result = await apiClient(`/api/v2/conversations/${conversationId}/messages`, {
+  return localApiRequest(`/api/conversations/${conversationId}/messages`, {
     method: 'POST',
     body: JSON.stringify({ content }),
   });
-  revalidatePath('/messages');
-  return result;
 }
 
 interface AttachmentInput {
@@ -29,7 +59,7 @@ export async function sendMessageWithAttachments(
   messageType: string,
   attachments: AttachmentInput[],
 ) {
-  const result = await apiClient(`/api/v2/conversations/${conversationId}/messages`, {
+  return localApiRequest(`/api/conversations/${conversationId}/messages`, {
     method: 'POST',
     body: JSON.stringify({
       content,
@@ -37,8 +67,6 @@ export async function sendMessageWithAttachments(
       attachments,
     }),
   });
-  revalidatePath('/messages');
-  return result;
 }
 
 /**
@@ -48,13 +76,14 @@ export async function uploadFile(
   conversationId: string,
   file: File,
 ): Promise<AttachmentInput> {
-  const init = await apiClient<{
+  const init = await localApiRequest<{
     upload: {
       uploadUrl: string;
       storageKey: string;
     };
-    attachment: AttachmentInput;
-  }>(`/api/v2/conversations/${conversationId}/attachments/upload`, {
+    asset?: AttachmentInput;
+    attachment?: AttachmentInput;
+  }>(`/api/conversations/${conversationId}/attachments/upload`, {
     method: 'POST',
     body: JSON.stringify({
       fileName: file.name,
@@ -75,14 +104,17 @@ export async function uploadFile(
     throw new Error(`Upload failed with status ${uploadRes.status}`);
   }
 
-  return init.attachment;
+  const attachment = init.asset ?? init.attachment;
+  if (!attachment) {
+    throw new Error('Upload initialized successfully but no attachment payload was returned');
+  }
+
+  return attachment;
 }
 
-export async function createConversation(data: { caseId: string; category: string }) {
-  const result = await apiClient('/api/v2/conversations', {
+export async function createConversation(data: { category: string; caseId?: string }) {
+  return localApiRequest('/api/conversations', {
     method: 'POST',
     body: JSON.stringify(data),
   });
-  revalidatePath('/messages');
-  return result;
 }

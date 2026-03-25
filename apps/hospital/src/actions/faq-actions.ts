@@ -27,3 +27,19 @@ export async function deleteFaqItem(id: string) {
   });
   revalidatePath('/faq');
 }
+
+export async function createFaqCategory(data: { name: string; hospitalType: string }) {
+  const result = await apiClient('/api/v2/chatbot/faqs/categories', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  revalidatePath('/faq');
+  return result;
+}
+
+export async function deleteFaqCategory(id: string) {
+  await apiClient(`/api/v2/chatbot/faqs/categories/${id}`, {
+    method: 'DELETE',
+  });
+  revalidatePath('/faq');
+}

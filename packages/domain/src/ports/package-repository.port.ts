@@ -11,4 +11,5 @@ export interface IPackageRepository {
   findById(id: string, tx?: unknown): Promise<Package | null>;
   findAll(query: PackageListQuery): Promise<{ data: Package[]; total: number }>;
   save(entity: Package, tx?: unknown): Promise<Package>;
+  delete(id: string, tx?: unknown): Promise<void>;
 }

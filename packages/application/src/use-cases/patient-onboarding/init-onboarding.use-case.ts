@@ -4,7 +4,7 @@ import { generateId } from '@medical-crm/utils';
 export interface InitOnboardingInput {
   email: string;
   name: string;
-  phone: string;
+  phone?: string;
   preferredLanguage: string;
   procedureId?: string;
   destination?: string;

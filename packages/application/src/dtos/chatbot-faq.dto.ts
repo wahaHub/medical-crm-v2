@@ -25,6 +25,7 @@ export interface ChatbotFaqCategoryDTO {
   id: string;
   name: string;
   hospitalType: 'REGULAR' | 'COSMETIC';
+  hospitalId: string | null;
   sortOrder: number;
   isActive: boolean;
   questionCount: number;

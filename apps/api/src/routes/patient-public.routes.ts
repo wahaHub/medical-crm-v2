@@ -5,22 +5,95 @@ import { rateLimitByIp } from '../middleware/rate-limit.middleware.js';
 import { initOnboardingSchema, matchHospitalsSchema } from '@medical-crm/validation';
 
 const app = new Hono();
+const ONBOARDING_RATE_LIMIT = process.env.NODE_ENV === 'production'
+  ? { maxRequests: 20, windowMs: 3600_000 } // 20 / hour in production
+  : { maxRequests: 200, windowMs: 600_000 }; // 200 / 10 minutes in local/dev
 
 const PROCEDURE_FALLBACK: Record<string, Array<{ id: string; name: string }>> = {
   face: [
+    { id: 'face-eyelid-surgery', name: 'Eyelid Surgery' },
     { id: 'face-rhinoplasty', name: 'Rhinoplasty' },
-    { id: 'face-blepharoplasty', name: 'Blepharoplasty' },
+    { id: 'face-revision-rhinoplasty', name: 'Revision Rhinoplasty' },
+    { id: 'face-nose-tip-refinement', name: 'Nose Tip Refinement' },
     { id: 'face-facelift', name: 'Facelift' },
+    { id: 'face-mini-facelift', name: 'Mini Facelift' },
+    { id: 'face-midface-lift', name: 'Midface Lift (Mid Facelift)' },
+    { id: 'face-neck-lift', name: 'Neck Lift' },
+    { id: 'face-deep-neck-contouring', name: 'Deep Neck Contouring' },
+    { id: 'face-brow-lift', name: 'Brow Lift' },
+    { id: 'face-temples-lift', name: 'Temples Lift / Temporofrontal Lift' },
+    { id: 'face-forehead-reduction-surgery', name: 'Forehead Reduction Surgery' },
+    { id: 'face-cheek-augmentation', name: 'Cheek Augmentation' },
+    { id: 'face-chin-augmentation', name: 'Chin Augmentation' },
+    { id: 'face-jaw-contouring', name: 'Jaw Contouring' },
+    { id: 'face-zygomatic-arch-contouring', name: 'Zygomatic Arch Contouring' },
+    { id: 'face-otoplasty-ear-pinning', name: 'Otoplasty (Ear Pinning)' },
+    { id: 'face-buccal-fat-removal', name: 'Buccal Fat Removal' },
+    { id: 'face-renuvion-skin-tightening', name: 'Renuvion Skin Tightening Treatment' },
+    { id: 'face-laser-liposuction', name: 'Laser Liposuction' },
+    { id: 'face-skin-resurfacing', name: 'Skin Resurfacing' },
+    { id: 'face-microdermabrasion', name: 'Microdermabrasion' },
+    { id: 'face-facial-injectables', name: 'Facial Injectables' },
+    { id: 'face-botox-neurotoxins', name: 'BOTOX & Neurotoxins' },
+    { id: 'face-dermal-fillers', name: 'Dermal Fillers' },
+    { id: 'face-fat-dissolving-injections', name: 'Fat Dissolving Injections' },
+    { id: 'face-fat-transfer-facial', name: 'Fat Transfer (Facial Fat Grafting)' },
+    { id: 'face-facial-rejuvenation-prp', name: 'Facial Rejuvenation with PRP' },
+    { id: 'face-lip-filler', name: 'Lip Filler' },
+    { id: 'face-lip-injections', name: 'Lip Injections' },
+    { id: 'face-lip-augmentation', name: 'Lip Augmentation' },
+    { id: 'face-lip-lift', name: 'Lip Lift' },
+    { id: 'face-neck-liposuction', name: 'Neck Liposuction' },
+    { id: 'face-neck-tightening', name: 'Neck Tightening' },
+    { id: 'face-platysmaplasty', name: 'Platysmaplasty' },
+    { id: 'face-cervicoplasty', name: 'Cervicoplasty' },
+    { id: 'face-hair-restoration', name: 'Hair Restoration' },
+    { id: 'face-mohs-reconstruction', name: 'Mohs Skin Cancer Reconstruction' },
+    { id: 'face-facial-implants', name: 'Facial Implants' },
+    { id: 'face-submalar-implants', name: 'Submalar Implants' },
   ],
   body: [
     { id: 'body-liposuction', name: 'Liposuction' },
-    { id: 'body-abdominoplasty', name: 'Abdominoplasty' },
+    { id: 'body-tummy-tuck', name: 'Tummy Tuck' },
+    { id: 'body-mommy-makeover', name: 'Mommy Makeover' },
+    { id: 'body-scar-reduction-revision', name: 'Scar Reduction & Revision' },
+    { id: 'body-renuvion-skin-tightening', name: 'Renuvion Skin Tightening Treatment' },
+    { id: 'body-weight-loss-injections', name: 'Weight Loss Injections' },
+    { id: 'body-arm-lift', name: 'Arm Lift' },
+    { id: 'body-thigh-lift', name: 'Thigh Lift' },
+    { id: 'body-bra-line-back-lift', name: 'Bra Line Back Lift' },
+    { id: 'body-contouring-after-weight-loss', name: 'Body Contouring After Weight Loss' },
+    { id: 'body-lower-body-lift-360', name: 'Lower Body Lift / 360 Body Lift' },
+    { id: 'body-upper-body-lift', name: 'Upper Body Lift' },
+    { id: 'body-panniculectomy', name: 'Panniculectomy' },
+    { id: 'body-mons-pubis-reduction-lift', name: 'Mons Pubis Reduction / Lift' },
     { id: 'body-breast-augmentation', name: 'Breast Augmentation' },
+    { id: 'body-breast-lift', name: 'Breast Lift' },
+    { id: 'body-breast-reduction', name: 'Breast Reduction' },
+    { id: 'body-breast-implant-removal-exchange-revision', name: 'Breast Implant Removal / Exchange & Revision' },
+    { id: 'body-gynecomastia-surgery', name: 'Gynecomastia Surgery' },
+    { id: 'body-brazilian-butt-lift', name: 'Brazilian Butt Lift (BBL)' },
+    { id: 'body-buttock-lift', name: 'Buttock Lift' },
+    { id: 'body-labiaplasty', name: 'Labiaplasty' },
+    { id: 'body-aveli-cellulite-treatment', name: 'Aveli Cellulite Treatment' },
   ],
   'non-surgical': [
-    { id: 'non-surgical-botox', name: 'Botox' },
+    { id: 'non-surgical-botox-cosmetic', name: 'BOTOX Cosmetic' },
+    { id: 'non-surgical-botox-neurotoxins', name: 'BOTOX & Neurotoxins' },
     { id: 'non-surgical-fillers', name: 'Dermal Fillers' },
-    { id: 'non-surgical-laser', name: 'Laser Resurfacing' },
+    { id: 'non-surgical-lip-injections', name: 'Lip Injections' },
+    { id: 'non-surgical-lip-filler', name: 'Lip Filler' },
+    { id: 'non-surgical-aveli-cellulite-treatment', name: 'Aveli Cellulite Treatment' },
+    { id: 'non-surgical-skin-tightening', name: 'Non-surgical Skin Tightening' },
+    { id: 'non-surgical-chemical-peels', name: 'Chemical Peels' },
+    { id: 'non-surgical-skin-resurfacing', name: 'Skin Resurfacing' },
+    { id: 'non-surgical-laser-skin-resurfacing', name: 'Laser Skin Resurfacing' },
+    { id: 'non-surgical-microdermabrasion', name: 'Microdermabrasion' },
+    { id: 'non-surgical-ipl-photofacial', name: 'IPL / Photofacial' },
+    { id: 'non-surgical-laser-hair-removal', name: 'Laser Hair Removal' },
+    { id: 'non-surgical-collagen-stimulators', name: 'Collagen Stimulators / Non-HA Fillers' },
+    { id: 'non-surgical-microneedling', name: 'Microneedling' },
+    { id: 'non-surgical-prp-prf', name: 'PRP / PRF' },
   ],
 };
 
@@ -51,7 +124,7 @@ async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<b
 }
 
 // POST /onboarding/init — rate limited
-app.post('/onboarding/init', rateLimitByIp({ maxRequests: 5, windowMs: 3600_000 }), async (c) => {
+app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => {
   const body = initOnboardingSchema.parse(await c.req.json());
   const remoteIp = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? undefined;
   const captchaValid = await verifyTurnstileToken(body.captchaToken, remoteIp);

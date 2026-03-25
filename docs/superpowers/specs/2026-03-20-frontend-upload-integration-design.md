@@ -101,10 +101,20 @@ export async function uploadMessageFile(
   conversationId: string,
   params: { fileName: string; fileSize: number; mimeType: string },
 ) {
-  return apiFetch(`/api/v2/conversations/${conversationId}/attachments/upload`, {
+  const res = await apiFetch(`/api/v2/conversations/${conversationId}/attachments/upload`, {
     method: 'POST',
     body: JSON.stringify(params),
   });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string };
+    throw new Error(err.message ?? 'Failed to init message attachment upload');
+  }
+
+  return res.json() as Promise<{
+    upload: { uploadUrl: string; storageKey: string; expiresIn: number };
+    asset: UploadedAsset;
+  }>;
 }
 ```
 
@@ -132,21 +142,30 @@ const handleUploadFiles = useCallback(async (files: File[]) => {
 />
 ```
 
-**No changes needed to `ChatLayout`** — the shared component already renders the paperclip button, file preview area, and handles file selection when `onUploadFiles` is provided.
+**No structural changes needed to `ChatLayout` for Phase 1** — the shared component already renders the paperclip button, file preview area, and handles file selection when `onUploadFiles` is provided.
 
 **Note:** The existing admin `sendMessage` action currently only sends text. It must be updated to accept optional `messageType` and `attachments` parameters (the backend `POST /conversations/{id}/messages` already supports these fields). Alternatively, add a separate `sendMessageWithAttachments` action. The hospital portal already has this pattern in `message-actions.ts`.
 
 **Note:** `ChatLayout.onUploadFiles` has return type `void`. The async `handleUploadFiles` callback works because TypeScript allows async functions where void is expected — the Promise is simply ignored. Upload errors are surfaced via the hook's `error` state, not via the callback return.
 
+**Note:** Phase 1 preserves the current `ChatLayout` send semantics: if the user has both typed text and selected files, attachments are sent via `onUploadFiles(...)` and any non-empty text still goes through `onSend(...)` as a separate text message. Supporting one combined "text + attachments" message would require a dedicated `ChatLayout` API change and is out of scope for this spec.
+
 **Backend endpoint:** `POST /api/v2/conversations/{id}/attachments/upload` — already exists, uses `message_attachment` policy (20MB, images + pdf + docx + txt).
 
-### 2. Hospital Materials — Replace Data URLs with Presigned Upload
+### 2. Hospital Materials — Replace Image/Video Data URLs with Presigned Upload
 
-**Current state:** `ImageUploadWidget` in `materials-tabs.tsx` converts selected files to data URLs via `readFileAsDataUrl()` or creates blob URLs. These raw strings are stored in form state and submitted to the backend CRUD endpoints. This breaks for large files and doesn't use the upload service.
+**Current state:** `materials-tabs.tsx` still uses local file conversions in multiple places:
+- `ImageUploadWidget` converts images to data URLs or blob URLs
+- `VideoUploadWidget` and testimonial upload flows keep video blob/data URLs in local state
+- Department/equipment image pickers also use `readFileAsDataUrl()`
+
+These raw strings are stored in form state and submitted to the existing materials CRUD endpoints. This breaks for large files and bypasses the unified upload service.
 
 **Files to modify:**
 - Modify: `apps/hospital/src/actions/materials-actions.ts` — add `uploadMaterialFile(materialKind, params)` server action
-- Modify: `apps/hospital/src/components/materials-tabs.tsx` — update `ImageUploadWidget` callers to use presigned upload
+- Modify: `apps/hospital/src/components/materials-tabs.tsx` — update image/video upload flows to use presigned upload
+- Backend dependency: current materials read/write contracts are URL-shaped (`heroImage`, `imageUrl`, `images[].url`, `videoUrl`). Persisting raw `storageKey` values requires a companion backend change to accept asset-backed references and resolve signed/public read URLs. This integration point is therefore not frontend-only.
+- Backend dependency: the current materials policy resolver only accepts existing `materialKind` values (`hero`, `gallery`, `equipment`, `surgeon`, `case`, plus `hospital_video` / `testimonial_video` for cosmetic hospitals). Department images can reuse the existing hospital-image policy via `gallery`; regular-hospital video flows still need an explicit backend policy decision before migration.
 
 **Server action:**
 ```typescript
@@ -164,19 +183,29 @@ export async function uploadMaterialFile(
 }
 ```
 
-**ImageUploadWidget change:**
-- The widget already has an `onFileSelect?: (file: File) => void` prop (used for preview via `URL.createObjectURL`). Replace this with `onUpload?: (file: File) => Promise<string>` which returns `storageKey`.
-- When `onUpload` is provided: show `URL.createObjectURL(file)` as immediate preview, call `onUpload` in the background, set the returned `storageKey` as the value via `onChange`
-- When `onUpload` is NOT provided: fall back to existing `readFileAsDataUrl` behavior (backward compatible, though no callers should use this path after migration)
-- The old `onFileSelect` prop is removed — `onUpload` subsumes its functionality
+**Upload widget changes:**
+- `ImageUploadWidget` replaces `onFileSelect?: (file: File) => void` with `onUpload?: (file: File) => Promise<UploadedAsset>`
+- `VideoUploadWidget` adds `onUpload?: (file: File) => Promise<UploadedAsset>` for promotional videos and testimonials
+- Equipment image pickers reuse the same shared `useMediaUpload` hook instead of `readFileAsDataUrl()`
+- Department image pickers also reuse the shared hook and upload with `materialKind: 'gallery'` because they are hospital images, not a new media class
+- Widgets show `URL.createObjectURL(file)` as immediate preview while the upload runs in the background
+- Local edit state stores `{ previewUrl, asset }` so the UI can render immediately without treating `storageKey` as an image/video URL
+- The legacy data-URL fallback may remain temporarily only for untouched callers during migration; all hospital materials callers should move off it in this phase
 
 **Material form integration:**
-Each material form (surgeon, case, hospital info) passes an `onUpload` function that calls `uploadMaterialFile` with the appropriate `materialKind`:
-- Hospital hero/gallery images → `materialKind: 'hero'` / `'gallery'`
+Each materials editor passes an `onUpload` function that calls `uploadMaterialFile` with the appropriate `materialKind`:
+- Hospital hero/gallery/equipment images → `materialKind: 'hero'` / `'gallery'` / `'equipment'`
+- Department images → reuse `materialKind: 'gallery'`
 - Surgeon photos → `materialKind: 'surgeon'`
-- Before/after case media → `materialKind: 'case'`
+- Before/after case images/video → `materialKind: 'case'`
+- Cosmetic-hospital promotional videos → `materialKind: 'hospital_video'`
+- Cosmetic-hospital testimonial videos → `materialKind: 'testimonial_video'`
 
-After upload, the `storageKey` is stored in form state. On save, the storageKey is submitted to the existing CRUD endpoints.
+**Persistence strategy:**
+- Immediate preview uses `previewUrl` from `URL.createObjectURL(file)`
+- Uploaded metadata is kept in transient edit state as `UploadedAsset`
+- Do NOT write raw `storageKey` values into existing URL-only fields until the materials CRUD/read model is upgraded to understand asset references
+- This spec therefore depends on a companion backend patch for materials DTOs/routes/repositories; once that lands, the save payload should send storage-backed references and the read path should resolve browser-consumable URLs
 
 **Backend endpoint:** `POST /api/v2/hospitals/{hospitalId}/materials/upload` — already exists, resolves `policyId` from `hospitalType + materialKind`.
 
@@ -245,6 +274,7 @@ export async function replyToTicket(
 - Create: `apps/hospital/src/actions/faq-upload-actions.ts` — same for hospital
 - Modify: `apps/admin/src/components/chatbot-faq-form-modal.tsx` — add Attachments section
 - Modify: `apps/hospital/src/components/faq-list.tsx` — add Attachments section in `FaqModal`
+- Modify: `apps/hospital/src/lib/api-types.ts` — add `attachments` to `FaqItem` so edit mode can render existing files
 
 **Server action (same for both portals):**
 ```typescript
@@ -259,14 +289,21 @@ export async function uploadFaqAttachment(
 }
 ```
 
-**Draft ID pattern for new FAQs:**
-When creating a new FAQ, no `faqId` exists yet. The component generates a `draft_{uuid}` as the faqId for uploads. The storageKey contains this draft ID permanently (same pattern as package images).
+**New FAQ flow (two-phase create):**
+The current backend FAQ attachment endpoint requires a real FAQ UUID and verifies that the FAQ already exists before creating an upload intent. New FAQ creation must therefore use a two-phase flow:
+
+1. Create the FAQ first without attachments
+2. Use the returned `faqId` to upload selected files
+3. Patch the FAQ with the uploaded `attachments[]`
+
+For edit mode, uploads can happen immediately because `faqId` already exists.
 
 **UI changes (both portals):**
 - Add "Attachments" section below the Answer field
 - File input (accept images + PDF) + upload button
 - Attachment preview list showing fileName, fileSize, remove button
-- On form submit: include `attachments` array in the create/update payload
+- On create submit: create FAQ first, then upload pending files, then patch with `attachments[]`
+- On edit submit: include `attachments` array in the update payload
 - On edit: show existing attachments from `faq.attachments[]` with resolved download URLs
 
 **Attachment data shape in form state:**
@@ -325,9 +362,16 @@ All backend endpoints already exist and are tested:
 | `POST /tickets/{id}/attachments/upload` | `ticket_reply_attachment` | 20 MB | jpeg, png, webp, pdf, docx, txt |
 | `POST /chatbot/faqs/{id}/attachments/upload` | `faq_attachment` | 10 MB | jpeg, png, webp, pdf |
 
+Additional dependency for the hospital materials integration:
+
+- Materials CRUD/read contracts are still URL-based and do not currently resolve signed/public URLs from `storageKey`
+- A companion backend change is required before hospital materials can persist uploaded assets end-to-end using storage-backed references
+
 ## Test Strategy
 
 - **Hook unit test**: Mock `initFn`, verify upload flow (init → PUT → return asset), error handling, multi-file sequential upload
 - **Component tests**: Verify file input renders, upload button triggers handler, preview shows after upload
 - **Server action tests**: Verify correct API endpoint is called with correct params
+- **FAQ create-flow test**: Verify create → upload attachments → patch sequence for a brand-new FAQ
+- **Materials editor tests**: Verify previews use `previewUrl` during edit state and no raw `storageKey` is rendered directly as `img/video src`
 - **No E2E upload tests**: Live storage tested manually (presigned URLs require real R2/S3 credentials)

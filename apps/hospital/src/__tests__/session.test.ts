@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 // Session state — simulates the cookie store
 // ---------------------------------------------------------------------------
 let sessionData: Record<string, unknown> | null = null;
+let adminSessionData: Record<string, unknown> | null = null;
 
 const mockGetSession = vi.fn(() => Promise.resolve(sessionData));
 const mockSaveSession = vi.fn((data: Record<string, unknown>) => {
@@ -15,6 +16,7 @@ const mockClearSession = vi.fn(() => {
   sessionData = null;
   return Promise.resolve();
 });
+const mockAdminSessionSave = vi.fn(async () => undefined);
 
 // ---------------------------------------------------------------------------
 // Mock session module
@@ -23,6 +25,32 @@ vi.mock('@/lib/session', () => ({
   getSession: () => mockGetSession(),
   saveSession: (data: Record<string, unknown>) => mockSaveSession(data),
   clearSession: () => mockClearSession(),
+}));
+
+vi.mock('iron-session', () => ({
+  getIronSession: vi.fn(async () => ({
+    get access_token() { return adminSessionData?.access_token as string | undefined; },
+    set access_token(value: string | undefined) {
+      adminSessionData = { ...(adminSessionData ?? {}), access_token: value };
+    },
+    get refresh_token() { return adminSessionData?.refresh_token as string | undefined; },
+    set refresh_token(value: string | undefined) {
+      adminSessionData = { ...(adminSessionData ?? {}), refresh_token: value };
+    },
+    get id_token() { return adminSessionData?.id_token as string | undefined; },
+    set id_token(value: string | undefined) {
+      adminSessionData = { ...(adminSessionData ?? {}), id_token: value };
+    },
+    get expires_at() { return adminSessionData?.expires_at as number | undefined; },
+    set expires_at(value: number | undefined) {
+      adminSessionData = { ...(adminSessionData ?? {}), expires_at: value };
+    },
+    get code_verifier() { return adminSessionData?.code_verifier as string | undefined; },
+    set code_verifier(value: string | undefined) {
+      adminSessionData = { ...(adminSessionData ?? {}), code_verifier: value };
+    },
+    save: mockAdminSessionSave,
+  })),
 }));
 
 // Mock next/headers
@@ -60,8 +88,10 @@ describe('hospital auth — login API route', () => {
     vi.resetModules();
     mockSaveSession.mockClear();
     mockClearSession.mockClear();
+    mockAdminSessionSave.mockClear();
     vi.stubGlobal('fetch', vi.fn());
     setSession(null);
+    adminSessionData = null;
     Object.assign(process.env, ENV);
   });
 
@@ -120,6 +150,39 @@ describe('hospital auth — login API route', () => {
     const saved = mockSaveSession.mock.calls[0]![0] as Record<string, unknown>;
     expect(saved.access_token).toBe(fakeJwt);
     expect(saved.refresh_token).toBe('refresh-xyz');
+  });
+
+  it('accepts admin accounts and redirects to admin origin', async () => {
+    const payload = { sub: 'admin-1', email: 'admin@test.com', realm_access: { roles: ['admin'] } };
+    const fakeJwt = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
+    adminSessionData = {
+      id_token: 'stale-admin-id',
+      code_verifier: 'stale-code-verifier',
+    };
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        access_token: fakeJwt,
+        refresh_token: 'admin-refresh',
+        id_token: 'admin-id',
+        expires_in: 300,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    process.env.ADMIN_ORIGIN = 'https://admin.example.com';
+
+    const { POST } = await import('@/app/api/auth/login/route');
+    const res = await POST(makeLoginRequest({ username: 'admin', password: 'pass' }));
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.redirectTo).toBe('https://admin.example.com');
+    expect(mockSaveSession).not.toHaveBeenCalled();
+    expect(mockAdminSessionSave).toHaveBeenCalledOnce();
+    expect(adminSessionData?.access_token).toBe(fakeJwt);
+    expect(adminSessionData?.id_token).toBeUndefined();
+    expect(adminSessionData?.code_verifier).toBeUndefined();
   });
 
   it('sends password grant to Keycloak token endpoint', async () => {
@@ -371,5 +434,13 @@ describe('hospital middleware', () => {
     });
     const response = middleware(request);
     expect(response.status).toBe(307);
+  });
+
+  it('does not redirect public assets like the login logo', async () => {
+    const { middleware } = await import('@/middleware');
+    const request = new NextRequest('https://hospital.example.com/medora_logo.png');
+    const response = middleware(request);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
   });
 });

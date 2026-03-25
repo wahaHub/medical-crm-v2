@@ -20,11 +20,10 @@ import {
 import {
   StatusBadge,
   Button,
-  Modal,
   EmptyState,
 } from '@medical-crm/ui';
 import { useConsultations, useConsultationStats, useConsultationTranscript } from '@/queries/use-consultations';
-import { createConsultation } from '@/actions/consultation-actions';
+import { CreateConsultationModal } from '@/components/create-consultation-modal';
 import type { PaginatedResponse, ConsultationSummary, ConsultationStats, CaseSummary } from '@/lib/api-types';
 
 interface ConsultationsListProps {
@@ -264,6 +263,7 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
         cases={cases}
       />
 
+
       {/* Transcript Modal */}
       <TranscriptModal
         consultationId={transcriptId}
@@ -380,157 +380,4 @@ function TranscriptModal({
   );
 }
 
-/* ── Create Consultation Modal ────────────────────────────────────── */
-
-function CreateConsultationModal({
-  open,
-  onClose,
-  cases = [],
-}: {
-  open: boolean;
-  onClose: () => void;
-  cases?: CaseSummary[];
-}) {
-  const [caseId, setCaseId] = useState('');
-  const [doctorName, setDoctorName] = useState('');
-  const [scheduledAt, setScheduledAt] = useState('');
-  const [durationMinutes, setDurationMinutes] = useState('30');
-  const [aiTranslation, setAiTranslation] = useState(true);
-  const [notes, setNotes] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!caseId || !scheduledAt) return;
-    setIsSubmitting(true);
-    try {
-      const combinedNotes = doctorName
-        ? `医生: ${doctorName}${notes ? '\n' + notes : ''}`
-        : notes || undefined;
-      await createConsultation({
-        caseId,
-        scheduledAt: new Date(scheduledAt).toISOString(),
-        durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
-        notes: combinedNotes,
-      });
-      setCaseId('');
-      setDoctorName('');
-      setScheduledAt('');
-      setDurationMinutes('30');
-      setAiTranslation(true);
-      setNotes('');
-      onClose();
-    } catch {
-      // Error handled by apiClient
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const inputClass = 'w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100';
-
-  return (
-    <Modal open={open} onClose={onClose} title="Schedule Consultation">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Select Case */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Select Case</label>
-          <select
-            value={caseId}
-            onChange={(e) => setCaseId(e.target.value)}
-            required
-            className={`${inputClass} bg-white`}
-          >
-            <option value="">Choose a case...</option>
-            {cases.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.caseNumber ? `${c.caseNumber} - ` : ''}{c.patientName ?? 'Unknown'}{c.patientCode ? ` (${c.patientCode})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Doctor Name */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Doctor Name</label>
-          <input
-            type="text"
-            value={doctorName}
-            onChange={(e) => setDoctorName(e.target.value)}
-            className={inputClass}
-            placeholder="Enter doctor name (optional)"
-          />
-        </div>
-
-        {/* Scheduled Date & Time */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Scheduled Date & Time</label>
-          <input
-            type="datetime-local"
-            value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
-            required
-            min={new Date().toISOString().slice(0, 16)}
-            className={inputClass}
-          />
-        </div>
-
-        {/* Duration */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Duration</label>
-          <select
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(e.target.value)}
-            className={`${inputClass} bg-white`}
-          >
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="45">45 minutes</option>
-            <option value="60">60 minutes</option>
-          </select>
-        </div>
-
-        {/* AI Translation */}
-        <div className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-200 rounded-xl">
-          <input
-            type="checkbox"
-            id="aiTranslation"
-            checked={aiTranslation}
-            onChange={(e) => setAiTranslation(e.target.checked)}
-            className="h-4 w-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-          />
-          <label htmlFor="aiTranslation" className="text-sm text-purple-700 flex-1">
-            Enable AI Translation
-          </label>
-        </div>
-
-        {/* Notes */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Notes</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            className={`${inputClass} resize-none`}
-            placeholder="Optional notes..."
-          />
-        </div>
-
-        {/* CRM Notification info */}
-        <div className="flex items-center gap-3 p-3 bg-teal-50 border border-teal-200 rounded-xl">
-          <CheckCircle size={16} className="text-teal-600 shrink-0" />
-          <p className="text-xs text-teal-700">
-            A CRM notification will be sent to the patient when the consultation is scheduled.
-          </p>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={isSubmitting || !caseId || !scheduledAt}>
-            {isSubmitting ? 'Creating...' : 'Schedule Consultation'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
+/* CreateConsultationModal extracted to @/components/create-consultation-modal */

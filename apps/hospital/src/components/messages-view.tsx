@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -23,11 +23,14 @@ import {
   Info,
 } from 'lucide-react';
 import {
+  AsyncStatusCard,
   ChatLayout,
+  type ChatAttachment,
   type ChatMessage,
   Button,
   EmptyState,
   Modal,
+  PdfPreview,
 } from '@medical-crm/ui';
 import { useAuth } from '@/lib/auth-context';
 import { useConversations } from '@/queries/use-conversations';
@@ -63,6 +66,29 @@ interface ApiMessage {
   createdAt: string;
 }
 
+interface TranslationOutputFile {
+  fileName: string;
+  path: string;
+}
+
+interface TranslationResult {
+  inputFileName: string;
+  outputDir: string;
+  outputFiles: TranslationOutputFile[];
+  stdout: string;
+  stderr: string;
+}
+
+type AttachmentTranslationStatus = 'idle' | 'translating' | 'ready' | 'failed';
+
+interface AttachmentTranslationState {
+  status: AttachmentTranslationStatus;
+  translatedUrl?: string;
+  error?: string;
+  fileName: string;
+  targetLanguage: string;
+}
+
 /** Map raw API messages to the ChatMessage shape expected by the UI */
 function mapApiMessages(
   raw: ApiMessage[],
@@ -96,9 +122,65 @@ function mapApiMessages(
       type: attachment.type ?? attachment.mimeType,
       url: attachment.url ?? attachment.storageKey,
       size: attachment.size ?? attachment.fileSize,
+      storageKey: attachment.storageKey,
     })),
     aiSummary: m.aiSummary ?? null,
   }));
+}
+
+function isPdfAttachment(attachment: ChatAttachment | null): boolean {
+  return attachment?.type === 'application/pdf';
+}
+
+function isImageAttachment(attachment: ChatAttachment | null): boolean {
+  return !!attachment?.type?.startsWith('image/');
+}
+
+function buildPdfPreviewUrl(url: string, fileName: string): string {
+  return `/api/documents/preview?url=${encodeURIComponent(url)}&fileName=${encodeURIComponent(fileName)}`;
+}
+
+function mapLocaleToTargetLanguage(locale?: string): string {
+  const value = (locale || 'en').toLowerCase();
+  if (value.startsWith('zh')) return 'zh';
+  if (value.startsWith('ja')) return 'ja';
+  if (value.startsWith('ko')) return 'ko';
+  if (value.startsWith('es')) return 'es';
+  if (value.startsWith('fr')) return 'fr';
+  if (value.startsWith('de')) return 'de';
+  if (value.startsWith('ar')) return 'ar';
+  if (value.startsWith('ru')) return 'ru';
+  if (value.startsWith('th')) return 'th';
+  return 'en';
+}
+
+async function translatePdfForPreview(sourceUrl: string, fileName: string, targetLanguage: string): Promise<TranslationResult> {
+  const res = await fetch('/api/documents/translate', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sourceUrl,
+      fileName,
+      targetLanguage,
+      outputMode: 'mono',
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to translate PDF');
+  }
+
+  return res.json() as Promise<TranslationResult>;
+}
+
+function pickTranslatedPdf(result: TranslationResult): TranslationOutputFile | undefined {
+  return result.outputFiles.find((file) => file.fileName.toLowerCase().endsWith('.pdf'));
+}
+
+function getAttachmentTranslationKey(attachment: ChatAttachment, targetLanguage: string): string {
+  return `${attachment.storageKey ?? attachment.url ?? attachment.name ?? 'attachment'}::${targetLanguage}`;
 }
 
 interface MessagesViewProps {
@@ -135,10 +217,22 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   const [isSending, setIsSending] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
+  const [translatedPreviewUrl, setTranslatedPreviewUrl] = useState<string | null>(null);
+  const [isTranslatingPreview, setIsTranslatingPreview] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
+  const [portalLanguage, setPortalLanguage] = useState('en');
+  const [attachmentTranslations, setAttachmentTranslations] = useState<Record<string, AttachmentTranslationState>>({});
+  const [activeTranslationKey, setActiveTranslationKey] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState({ admin: true, patient: true });
   const [showTranslation, setShowTranslation] = useState(true);
   const [showInfoPanel, setShowInfoPanel] = useState(true);
+  const [pendingRevealId, setPendingRevealId] = useState<string | null>(null);
+  const [flashConversationId, setFlashConversationId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const flashTimeoutRef = useRef<number | null>(null);
+  const previewRequestRef = useRef(0);
 
   const { data: liveConversations } = useConversations();
   const liveResponse = liveConversations as PaginatedResponse<ConversationSummary> | undefined;
@@ -153,7 +247,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   } = useMessages(selectedId ?? '');
   const messagesResponse = messagesData as PaginatedResponse<ApiMessage> | undefined;
   const messages: ChatMessage[] = useMemo(
-    () => mapApiMessages(messagesResponse?.data ?? [], {
+    () => mapApiMessages([...(messagesResponse?.data ?? [])].reverse(), {
       conversationCategory: selectedConvo?.category,
       otherPartyName: selectedConvo?.patientName ?? selectedConvo?.title ?? undefined,
       currentUserId: user.id,
@@ -224,6 +318,170 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   const adminUnread = adminConvos.reduce((acc, c) => acc + (c.unreadCount ?? 0), 0);
   const patientUnread = patientConvos.reduce((acc, c) => acc + (c.unreadCount ?? 0), 0);
 
+  const revealConversation = useCallback((id: string, category: 'ADMIN_HOSPITAL' | 'HOSPITAL_PATIENT') => {
+    setSelectedId(id);
+    setSearchQuery('');
+    setExpandedSections((prev) => ({
+      ...prev,
+      admin: category === 'ADMIN_HOSPITAL' ? true : prev.admin,
+      patient: category !== 'ADMIN_HOSPITAL' ? true : prev.patient,
+    }));
+    setPendingRevealId(id);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingRevealId) return;
+    const exists = conversations.some((conversation) => conversation.id === pendingRevealId);
+    if (!exists) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const target = sidebarRef.current?.querySelector<HTMLElement>(`[data-conversation-item-id="${pendingRevealId}"]`);
+      if (!target) return;
+
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFlashConversationId(pendingRevealId);
+      setPendingRevealId(null);
+
+      if (flashTimeoutRef.current) {
+        window.clearTimeout(flashTimeoutRef.current);
+      }
+      flashTimeoutRef.current = window.setTimeout(() => {
+        setFlashConversationId((current) => (current === pendingRevealId ? null : current));
+        flashTimeoutRef.current = null;
+      }, 1400);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversations, pendingRevealId]);
+
+  useEffect(() => () => {
+    if (flashTimeoutRef.current) {
+      window.clearTimeout(flashTimeoutRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user.preferredLanguage) {
+      setPortalLanguage(mapLocaleToTargetLanguage(user.preferredLanguage));
+      return;
+    }
+    if (typeof navigator !== 'undefined') {
+      setPortalLanguage(mapLocaleToTargetLanguage(navigator.language));
+    }
+  }, [user.preferredLanguage]);
+
+  const handleOpenAttachment = useCallback(async (attachment: ChatAttachment) => {
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
+    setPreviewAttachment(attachment);
+    setTranslatedPreviewUrl(null);
+    setTranslationError(null);
+
+    if (!isPdfAttachment(attachment) || !attachment.url) {
+      return;
+    }
+
+    const targetLanguage = mapLocaleToTargetLanguage(user.preferredLanguage || portalLanguage);
+    const translationKey = getAttachmentTranslationKey(attachment, targetLanguage);
+    const cached = attachmentTranslations[translationKey];
+    setActiveTranslationKey(translationKey);
+
+    if (cached?.status === 'ready' && cached.translatedUrl) {
+      if (previewRequestRef.current === requestId) {
+        setTranslatedPreviewUrl(cached.translatedUrl);
+        setIsTranslatingPreview(false);
+      }
+      return;
+    }
+
+    if (cached?.status === 'translating') {
+      if (previewRequestRef.current === requestId) {
+        setIsTranslatingPreview(true);
+      }
+      return;
+    }
+
+    setIsTranslatingPreview(true);
+    setAttachmentTranslations((current) => ({
+      ...current,
+      [translationKey]: {
+        status: 'translating',
+        fileName: attachment.name ?? 'document.pdf',
+        targetLanguage,
+      },
+    }));
+    console.debug('[messages.preview] translation start', {
+      fileName: attachment.name,
+      targetLanguage,
+      url: attachment.url,
+    });
+    try {
+      const result = await translatePdfForPreview(
+        attachment.url,
+        attachment.name ?? 'document.pdf',
+        targetLanguage,
+      );
+      const translatedPdf = pickTranslatedPdf(result);
+      if (!translatedPdf) {
+        throw new Error('Translated PDF output was not found');
+      }
+      const translatedUrl = `/api/documents/translate/file?path=${encodeURIComponent(translatedPdf.path)}`;
+      if (previewRequestRef.current !== requestId) {
+        return;
+      }
+      setTranslatedPreviewUrl(translatedUrl);
+      setAttachmentTranslations((current) => ({
+        ...current,
+        [translationKey]: {
+          status: 'ready',
+          translatedUrl,
+          fileName: attachment.name ?? 'document.pdf',
+          targetLanguage,
+        },
+      }));
+      console.debug('[messages.preview] translation ready', {
+        fileName: attachment.name,
+        targetLanguage,
+        translatedPath: translatedPdf.path,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to translate PDF preview';
+      if (previewRequestRef.current !== requestId) {
+        return;
+      }
+      setTranslationError(message);
+      setAttachmentTranslations((current) => ({
+        ...current,
+        [translationKey]: {
+          status: 'failed',
+          error: message,
+          fileName: attachment.name ?? 'document.pdf',
+          targetLanguage,
+        },
+      }));
+      console.error('[messages.preview] translation failed', {
+        fileName: attachment.name,
+        targetLanguage,
+        error: message,
+      });
+    } finally {
+      if (previewRequestRef.current === requestId) {
+        setIsTranslatingPreview(false);
+      }
+    }
+  }, [attachmentTranslations, portalLanguage, user.preferredLanguage]);
+
+  const handleCloseAttachmentPreview = useCallback(() => {
+    previewRequestRef.current += 1;
+    setPreviewAttachment(null);
+    setTranslatedPreviewUrl(null);
+    setTranslationError(null);
+    setIsTranslatingPreview(false);
+    setActiveTranslationKey(null);
+  }, []);
+
+  const activeTranslationState = activeTranslationKey ? attachmentTranslations[activeTranslationKey] : null;
+
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)]">
       {/* CRM Forwarding Info Banner */}
@@ -250,7 +508,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden rounded-b-2xl bg-white shadow-sm">
         {/* Left Sidebar: Conversation List */}
-        <div className="w-[340px] border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.05)]">
+        <div ref={sidebarRef} className="w-[340px] border-r border-slate-200/50 flex flex-col shrink-0 shadow-[4px_0_24px_-12px_rgba(0,0,0,0.05)]">
           <div className="p-4 border-b border-slate-100 space-y-4">
             <button
               onClick={() => setShowNewModal(true)}
@@ -299,6 +557,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                         key={c.id}
                         conversation={c}
                         isSelected={selectedId === c.id}
+                        isFlashing={flashConversationId === c.id}
                         onClick={() => setSelectedId(c.id)}
                         isAdmin
                       />
@@ -341,6 +600,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                         key={c.id}
                         conversation={c}
                         isSelected={selectedId === c.id}
+                        isFlashing={flashConversationId === c.id}
                         onClick={() => setSelectedId(c.id)}
                         isAdmin={false}
                       />
@@ -383,47 +643,83 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                     description={messagesError instanceof Error ? messagesError.message : 'Unable to load conversation messages.'}
                   />
                 </div>
-              ) : (
-                <ChatLayout
-                  messages={messages}
-                  onSend={handleSend}
-                  isSending={isSending}
-                  showTranslation={showTranslation}
-                  onToggleTranslation={setShowTranslation}
-                  showRetranslate={false}
-                  currentUserRole="HOSPITAL"
-                  onUploadFiles={handleUploadFiles}
-                  isUploading={isUploading}
-                  header={{
-                    name: caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? 'Unknown',
-                    subtitle: caseDetail?.caseNumber ?? undefined,
-                    isOnline: undefined,
-                    categoryBadge: selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : undefined,
-                    isAdminConversation: selectedConvo.category === 'ADMIN_HOSPITAL',
-                  }}
-                  showInfoToggle={!!selectedConvo.caseId}
-                  onToggleInfo={() => setShowInfoPanel((prev) => !prev)}
-                  infoPanelOpen={showInfoPanel}
-                  inputNotice={
-                    selectedConvo.category !== 'ADMIN_HOSPITAL' ? (
-                      <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                        <Info size={14} className="text-amber-600 shrink-0" />
-                        <p className="text-xs text-amber-700">
-                          Messages are automatically forwarded to the patient via their preferred communication channel (Email/WhatsApp).
-                        </p>
-                      </div>
-                    ) : undefined
-                  }
-                  emptyState={
-                    <EmptyState
-                      icon={<MessageSquare size={48} />}
-                      title="No messages yet"
-                      description="Start the conversation by sending a message."
-                    />
-                  }
-                  className="flex-1"
-                />
-              )}
+	              ) : (
+	                <>
+	                  {activeTranslationState && (
+	                    <div className="mx-6 mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+	                      <div className="flex items-center justify-between gap-3">
+	                        <div className="min-w-0">
+	                          <div className="font-medium text-slate-900 truncate">
+	                            {activeTranslationState.fileName}
+	                          </div>
+	                          <div className="mt-1 text-xs text-slate-500">
+	                            {activeTranslationState.status === 'translating'
+	                              ? `Translating to ${activeTranslationState.targetLanguage}...`
+	                              : activeTranslationState.status === 'ready'
+	                                ? `Translation ready in ${activeTranslationState.targetLanguage}. Reopening this PDF will reuse the cached result.`
+	                                : activeTranslationState.status === 'failed'
+	                                  ? `Translation failed: ${activeTranslationState.error}`
+	                                  : 'Translation idle'}
+	                          </div>
+	                        </div>
+	                        <span
+	                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+	                            activeTranslationState.status === 'translating'
+	                              ? 'bg-amber-100 text-amber-700'
+	                              : activeTranslationState.status === 'ready'
+	                                ? 'bg-emerald-100 text-emerald-700'
+	                                : activeTranslationState.status === 'failed'
+	                                  ? 'bg-rose-100 text-rose-700'
+	                                  : 'bg-slate-100 text-slate-600'
+	                          }`}
+	                        >
+	                          {activeTranslationState.status}
+	                        </span>
+	                      </div>
+	                    </div>
+	                  )}
+	                  <ChatLayout
+	                    messages={messages}
+	                    onSend={handleSend}
+	                    isSending={isSending}
+	                    showTranslation={showTranslation}
+	                    onToggleTranslation={setShowTranslation}
+	                    showRetranslate={false}
+	                    currentUserRole="HOSPITAL"
+	                    onUploadFiles={handleUploadFiles}
+	                    isUploading={isUploading}
+	                    onOpenAttachment={handleOpenAttachment}
+	                    header={{
+	                      name: caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? 'Unknown',
+	                      subtitle: caseDetail?.caseNumber ?? undefined,
+	                      isOnline: undefined,
+	                      categoryBadge: selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : undefined,
+	                      isAdminConversation: selectedConvo.category === 'ADMIN_HOSPITAL',
+	                    }}
+	                    showInfoToggle={!!selectedConvo.caseId}
+	                    onToggleInfo={() => setShowInfoPanel((prev) => !prev)}
+	                    infoPanelOpen={showInfoPanel}
+	                    inputNotice={
+	                      selectedConvo.category !== 'ADMIN_HOSPITAL' ? (
+	                        <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+	                          <Info size={14} className="text-amber-600 shrink-0" />
+	                          <p className="text-xs text-amber-700">
+	                            Messages are automatically forwarded to the patient via their preferred communication channel (Email/WhatsApp).
+	                          </p>
+	                        </div>
+	                      ) : undefined
+	                    }
+	                    emptyState={
+	                      <EmptyState
+	                        icon={<MessageSquare size={48} />}
+	                        title="No messages yet"
+	                        description="Start the conversation by sending a message."
+	                      />
+	                    }
+	                    className="flex-1"
+	                  />
+	                </>
+	              )}
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center">
@@ -553,7 +849,87 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         open={showNewModal}
         onClose={() => setShowNewModal(false)}
         conversations={conversations}
+        onSelectConversation={(id, category) => {
+          revealConversation(id, category);
+          setShowNewModal(false);
+        }}
       />
+
+      <Modal
+        open={!!previewAttachment}
+        onClose={handleCloseAttachmentPreview}
+        title={previewAttachment?.name ?? 'Attachment Preview'}
+        maxWidth="max-w-7xl"
+      >
+        {previewAttachment && (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">Original</h3>
+                <span className="text-xs text-slate-500">{previewAttachment.type ?? 'attachment'}</span>
+              </div>
+              <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                {isImageAttachment(previewAttachment) && previewAttachment.url ? (
+                  <img
+                    src={previewAttachment.url}
+                    alt={previewAttachment.name ?? 'Attachment'}
+                    className="h-full w-full object-contain bg-slate-950/5"
+                  />
+                ) : isPdfAttachment(previewAttachment) && previewAttachment.url ? (
+                  <PdfPreview
+                    title={`${previewAttachment.name ?? 'Attachment'} original`}
+                    url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? 'document.pdf')}
+                    className="bg-slate-50"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                    Preview is not available for this file type.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">Translated</h3>
+                <span className="text-xs text-slate-500">
+                  {isPdfAttachment(previewAttachment)
+                    ? `Target: ${portalLanguage}`
+                    : 'Preview only'}
+                </span>
+              </div>
+              <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                {isPdfAttachment(previewAttachment) ? (
+                  isTranslatingPreview ? (
+                    <AsyncStatusCard
+                      title="Translating PDF preview"
+                      description={`BabelDOC is preparing a ${portalLanguage.toUpperCase()} preview for ${activeTranslationState?.fileName ?? previewAttachment.name ?? 'this document'}.`}
+                    />
+                  ) : translatedPreviewUrl ? (
+                    <PdfPreview
+                      title={`${previewAttachment.name ?? 'Attachment'} translated`}
+                      url={translatedPreviewUrl}
+                      className="bg-slate-50"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                      {translationError ?? 'Translation preview is not available.'}
+                    </div>
+                  )
+                ) : isImageAttachment(previewAttachment) ? (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                    Image preview is supported here. Structured image or scanned-document translation is not enabled yet in this BabelDOC flow.
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                    Translation preview is currently available for PDF attachments only.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -563,11 +939,13 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 function ChatItem({
   conversation,
   isSelected,
+  isFlashing,
   onClick,
   isAdmin,
 }: {
   conversation: ConversationSummary;
   isSelected: boolean;
+  isFlashing: boolean;
   onClick: () => void;
   isAdmin: boolean;
 }) {
@@ -578,9 +956,10 @@ function ChatItem({
   return (
     <div
       onClick={onClick}
-      className={`relative p-3 flex items-start gap-3 cursor-pointer transition-colors border-l-2 ${
+      data-conversation-item-id={conversation.id}
+      className={`relative p-3 flex items-start gap-3 cursor-pointer transition-all border-l-2 ${
         isSelected ? 'bg-cyan-50/50 border-cyan-500' : 'border-transparent hover:bg-slate-50'
-      }`}
+      } ${isFlashing ? 'animate-pulse bg-amber-50 ring-1 ring-inset ring-amber-300' : ''}`}
     >
       <div className="relative shrink-0">
         <div
@@ -621,12 +1000,13 @@ function NewConversationModal({
   open,
   onClose,
   conversations,
+  onSelectConversation,
 }: {
   open: boolean;
   onClose: () => void;
   conversations: ConversationSummary[];
+  onSelectConversation: (id: string, category: 'ADMIN_HOSPITAL' | 'HOSPITAL_PATIENT') => void;
 }) {
-  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [caseSearch, setCaseSearch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const queryClient = useQueryClient();
@@ -634,15 +1014,31 @@ function NewConversationModal({
   const casesResponse = casesData as PaginatedResponse<CaseSummary> | undefined;
   const allCases = casesResponse?.data ?? [];
 
-  // Build case-to-conversation mapping (Issue 1)
-  const caseConversationMap = useMemo(() => {
+  // Build maps: caseId → conversationId for each category
+  const patientConvMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of conversations) {
-      if (c.caseId) {
+      if (c.caseId && c.category === 'HOSPITAL_PATIENT') {
         map.set(c.caseId, c.id);
       }
     }
     return map;
+  }, [conversations]);
+
+  const adminConvMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of conversations) {
+      if (c.caseId && c.category === 'ADMIN_HOSPITAL') {
+        map.set(c.caseId, c.id);
+      }
+    }
+    return map;
+  }, [conversations]);
+
+  // Check if a general admin conversation (no case) exists
+  const generalAdminConvId = useMemo(() => {
+    const conv = conversations.find((c) => c.category === 'ADMIN_HOSPITAL' && !c.caseId);
+    return conv?.id ?? null;
   }, [conversations]);
 
   const filteredCases = allCases.filter((c) => {
@@ -655,14 +1051,15 @@ function NewConversationModal({
     );
   });
 
-  const handleCreateForCase = async () => {
-    if (!selectedCaseId) return;
+  const handleCreate = async (caseId: string | undefined, category: string) => {
     setIsSubmitting(true);
     try {
-      await createConversation({ caseId: selectedCaseId, category: 'HOSPITAL_PATIENT' });
-      setSelectedCaseId(null);
-      setCaseSearch('');
+      const payload = caseId ? { caseId, category } : { category };
+      const result = await createConversation(payload) as { id?: string };
       await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      if (result?.id) {
+        onSelectConversation(result.id, category as 'ADMIN_HOSPITAL' | 'HOSPITAL_PATIENT');
+      }
       onClose();
     } catch {
       // Error handled by apiClient
@@ -671,135 +1068,137 @@ function NewConversationModal({
     }
   };
 
-  const handleAdminMessage = async () => {
-    setIsSubmitting(true);
-    try {
-      await createConversation({ caseId: '', category: 'ADMIN_HOSPITAL' });
-      await queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      onClose();
-    } catch {
-      // Error handled by apiClient
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const renderCaseList = (convMap: Map<string, string>, category: string) => (
+    <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/60 bg-white">
+      {casesLoading ? (
+        <div className="py-6 text-center text-sm text-slate-400">Loading cases...</div>
+      ) : filteredCases.length === 0 ? (
+        <div className="py-6 text-center text-sm text-slate-400">
+          <FolderOpen size={20} className="mx-auto mb-1.5 opacity-50" />
+          No cases found
+        </div>
+      ) : (
+        filteredCases.map((c) => {
+          const existingConvId = convMap.get(c.id);
+          return (
+            <button
+              key={c.id}
+              onClick={() => {
+                if (existingConvId) {
+                  onSelectConversation(existingConvId, category as 'ADMIN_HOSPITAL' | 'HOSPITAL_PATIENT');
+                } else {
+                  handleCreate(c.id, category);
+                }
+              }}
+              disabled={isSubmitting}
+              className={`w-full px-4 py-3 flex items-center gap-3 text-left border-b border-slate-100 last:border-b-0 transition-colors disabled:opacity-50 ${
+                existingConvId
+                  ? 'bg-emerald-50/50 hover:bg-emerald-50'
+                  : 'hover:bg-blue-50'
+              }`}
+            >
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
+                  existingConvId ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600'
+                }`}
+              >
+                {getInitials(c.patientName ?? 'U')}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm text-slate-900 truncate">{c.patientName ?? 'Unknown'}</span>
+                  {c.caseNumber && (
+                    <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{c.caseNumber}</span>
+                  )}
+                </div>
+                {c.medicalCondition && <p className="text-xs text-slate-500 truncate mt-0.5">{c.medicalCondition}</p>}
+              </div>
+              {existingConvId ? (
+                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
+                  <MessageSquare size={10} /> Go to Chat
+                </span>
+              ) : (
+                <span className="text-[10px] font-medium text-blue-500 opacity-0 group-hover:opacity-100 shrink-0">
+                  + New
+                </span>
+              )}
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
 
   return (
-    <Modal open={open} onClose={onClose} title="New Conversation">
+    <Modal open={open} onClose={onClose} title="New Conversation" maxWidth="max-w-2xl">
       <div className="space-y-6">
-        {/* Header description */}
-        <p className="text-sm text-slate-500">
-          Start a new conversation with an admin or a patient case.
-        </p>
+        {/* Search (shared for both sections) */}
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search cases by patient, case number..."
+            value={caseSearch}
+            onChange={(e) => setCaseSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+          />
+        </div>
 
-        {/* General Admin Message Button */}
-        <button
-          onClick={handleAdminMessage}
-          disabled={isSubmitting}
-          className="w-full p-4 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white flex items-center gap-4 hover:shadow-md hover:shadow-indigo-500/20 transition-all text-left disabled:opacity-50"
-        >
-          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-            <MessageSquarePlus size={20} className="text-white" />
+        {/* Section 1: Message Admin */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
+              <MessageSquarePlus size={14} className="text-purple-600" />
+            </div>
+            <h3 className="text-sm font-semibold text-slate-700">Message Admin</h3>
           </div>
-          <div>
-            <div className="font-semibold">General Message</div>
-            <div className="text-sm text-indigo-100">Create a general admin conversation</div>
-          </div>
-        </button>
+
+          {/* General admin message (no case) */}
+          <button
+            onClick={() => {
+              if (generalAdminConvId) {
+                onSelectConversation(generalAdminConvId, 'ADMIN_HOSPITAL');
+              } else {
+                handleCreate(undefined, 'ADMIN_HOSPITAL');
+              }
+            }}
+            disabled={isSubmitting}
+            className="w-full mb-3 p-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white flex items-center gap-3 hover:shadow-md hover:shadow-indigo-500/20 transition-all text-left disabled:opacity-50"
+          >
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <MessageSquarePlus size={16} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-sm">General Message</div>
+              <div className="text-xs text-indigo-100">No case attached</div>
+            </div>
+            {generalAdminConvId && (
+              <span className="text-[10px] font-semibold text-white/90 bg-white/20 px-2 py-0.5 rounded-full">Go to Chat</span>
+            )}
+          </button>
+
+          {/* Case-specific admin messages */}
+          <p className="text-xs text-slate-400 mb-2">Or message admin about a specific case:</p>
+          {renderCaseList(adminConvMap, 'ADMIN_HOSPITAL')}
+        </div>
 
         {/* Divider */}
-        <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-slate-200" />
-          <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-            Or select a Case
+        <div className="h-px bg-slate-200" />
+
+        {/* Section 2: Message Patient */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
+              <MessageSquare size={14} className="text-blue-600" />
+            </div>
+            <h3 className="text-sm font-semibold text-slate-700">Message Patient</h3>
+            <span className="text-xs text-slate-400">(select a case)</span>
           </div>
-          <div className="flex-1 h-px bg-slate-200" />
+          {renderCaseList(patientConvMap, 'HOSPITAL_PATIENT')}
         </div>
 
-        {/* Case Search & List */}
-        <div className="space-y-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search cases by patient, case number..."
-              value={caseSearch}
-              onChange={(e) => setCaseSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-            />
-          </div>
-
-          <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200/60 bg-white">
-            {casesLoading ? (
-              <div className="py-8 text-center text-sm text-slate-400">Loading cases...</div>
-            ) : filteredCases.length === 0 ? (
-              <div className="py-8 text-center text-sm text-slate-400">
-                <FolderOpen size={24} className="mx-auto mb-2 opacity-50" />
-                No cases found
-              </div>
-            ) : (
-              filteredCases.map((c) => {
-                const hasConversation = caseConversationMap.has(c.id);
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedCaseId(c.id)}
-                    className={`w-full px-4 py-3 flex items-center gap-3 text-left border-b border-slate-100 last:border-b-0 transition-colors ${
-                      hasConversation
-                        ? selectedCaseId === c.id
-                          ? 'bg-emerald-50 border-l-2 border-l-emerald-500'
-                          : 'bg-emerald-50/50 hover:bg-emerald-50 border-l-2 border-l-emerald-300'
-                        : selectedCaseId === c.id
-                          ? 'bg-blue-50 border-l-2 border-l-blue-500'
-                          : 'hover:bg-slate-50 border-l-2 border-l-transparent'
-                    }`}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
-                        hasConversation
-                          ? 'bg-emerald-100 text-emerald-600'
-                          : 'bg-indigo-100 text-indigo-600'
-                      }`}
-                    >
-                      {getInitials(c.patientName ?? 'U')}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-slate-900 truncate">
-                          {c.patientName ?? 'Unknown'}
-                        </span>
-                        {c.caseNumber && (
-                          <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                            {c.caseNumber}
-                          </span>
-                        )}
-                      </div>
-                      {c.medicalCondition && (
-                        <p className="text-xs text-slate-500 truncate mt-0.5">
-                          {c.medicalCondition}
-                        </p>
-                      )}
-                    </div>
-                    {hasConversation && (
-                      <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
-                        <MessageSquare size={10} />
-                        Has Conversation
-                      </span>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleCreateForCase} disabled={isSubmitting || !selectedCaseId}>
-            {isSubmitting ? 'Creating...' : 'Create Conversation'}
-          </Button>
+        <div className="flex justify-end pt-2">
+          <Button type="button" variant="outline" onClick={onClose}>Close</Button>
         </div>
       </div>
     </Modal>

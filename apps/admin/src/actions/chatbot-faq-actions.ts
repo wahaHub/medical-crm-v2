@@ -3,6 +3,18 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { revalidatePath } from 'next/cache';
 
+async function readErrorMessage(
+  res: Response,
+  fallback: string,
+): Promise<string> {
+  const payload = await res.json().catch(() => ({})) as {
+    message?: string;
+    error?: string;
+    code?: string;
+  };
+  return payload.message ?? payload.error ?? payload.code ?? fallback;
+}
+
 export async function createFaq(data: Record<string, unknown>) {
   const res = await apiFetch('/api/v2/chatbot/faqs', {
     method: 'POST',
@@ -10,8 +22,7 @@ export async function createFaq(data: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to create FAQ');
+    throw new Error(await readErrorMessage(res, 'Failed to create FAQ'));
   }
 
   revalidatePath('/chatbot');
@@ -25,8 +36,7 @@ export async function updateFaq(id: string, data: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to update FAQ');
+    throw new Error(await readErrorMessage(res, 'Failed to update FAQ'));
   }
 
   revalidatePath('/chatbot');
@@ -39,8 +49,38 @@ export async function deleteFaq(id: string) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to delete FAQ');
+    throw new Error(await readErrorMessage(res, 'Failed to delete FAQ'));
+  }
+
+  revalidatePath('/chatbot');
+}
+
+export async function createFaqCategory(data: {
+  name: string;
+  hospitalType: 'REGULAR' | 'COSMETIC';
+  sortOrder?: number;
+  isActive?: boolean;
+}) {
+  const res = await apiFetch('/api/v2/chatbot/faqs/categories', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, 'Failed to create FAQ category'));
+  }
+
+  revalidatePath('/chatbot');
+  return res.json();
+}
+
+export async function deleteFaqCategory(id: string) {
+  const res = await apiFetch(`/api/v2/chatbot/faqs/categories/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, 'Failed to delete FAQ category'));
   }
 
   revalidatePath('/chatbot');

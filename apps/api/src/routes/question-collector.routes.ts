@@ -123,7 +123,27 @@ app.openapi(updateTemplateRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. POST /api/v2/cases/{caseId}/questionnaire — SubmitResponse
+// 5. DELETE /api/v2/question-templates/{id} — DeleteTemplate
+// ---------------------------------------------------------------------------
+const deleteTemplateRoute = createRoute({
+  method: 'delete',
+  path: '/api/v2/question-templates/{id}',
+  request: {
+    params: templateIdParamSchema,
+  },
+  responses: { 204: { description: 'Template deleted' } },
+});
+
+app.openapi(deleteTemplateRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  await svc.deleteTemplate.execute(id, actor);
+  return c.body(null, 204);
+});
+
+// ---------------------------------------------------------------------------
+// 6. POST /api/v2/cases/{caseId}/questionnaire — SubmitResponse
 // ---------------------------------------------------------------------------
 const submitResponseRoute = createRoute({
   method: 'post',
@@ -148,7 +168,7 @@ app.openapi(submitResponseRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. PATCH /api/v2/cases/{caseId}/questionnaire — SaveResponseDraft
+// 7. PATCH /api/v2/cases/{caseId}/questionnaire — SaveResponseDraft
 // ---------------------------------------------------------------------------
 const saveResponseDraftRoute = createRoute({
   method: 'patch',
@@ -173,7 +193,7 @@ app.openapi(saveResponseDraftRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. GET /api/v2/cases/{caseId}/questionnaire — GetResponse
+// 8. GET /api/v2/cases/{caseId}/questionnaire — GetResponse
 // ---------------------------------------------------------------------------
 const getResponseRoute = createRoute({
   method: 'get',
@@ -193,7 +213,7 @@ app.openapi(getResponseRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. GET /api/v2/questionnaire-responses — ListResponses (Admin)
+// 9. GET /api/v2/questionnaire-responses — ListResponses (Admin)
 // ---------------------------------------------------------------------------
 const listResponsesRoute = createRoute({
   method: 'get',
@@ -213,7 +233,7 @@ app.openapi(listResponsesRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 9. POST /api/v2/question-templates/{templateId}/customizations — CustomizeQuestions
+// 10. POST /api/v2/question-templates/{templateId}/customizations — CustomizeQuestions
 // ---------------------------------------------------------------------------
 const customizeQuestionsRoute = createRoute({
   method: 'post',
@@ -238,7 +258,7 @@ app.openapi(customizeQuestionsRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 10. GET /api/v2/question-templates/{templateId}/customizations — GetCustomization
+// 11. GET /api/v2/question-templates/{templateId}/customizations — GetCustomization
 // ---------------------------------------------------------------------------
 const getCustomizationRoute = createRoute({
   method: 'get',

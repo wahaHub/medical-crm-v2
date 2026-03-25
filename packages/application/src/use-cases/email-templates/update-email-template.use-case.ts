@@ -1,4 +1,4 @@
-import type { IEmailTemplateRepository } from '@medical-crm/domain';
+import type { IEmailTemplateRepository, EmailTemplateAttachment } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { EmailTemplateDTO } from '../../dtos/email-template.dto.js';
 import type { Actor } from '../../types/actor.js';
@@ -11,6 +11,7 @@ export interface UpdateEmailTemplateInput {
   body?: string;
   variables?: string[];
   status?: string;
+  attachments?: EmailTemplateAttachment[];
 }
 
 export class UpdateEmailTemplateUseCase {

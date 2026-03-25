@@ -16,7 +16,7 @@ type OrderStatus =
   | 'CANCELLED'
   | 'REFUNDED';
 
-interface OrderItem {
+export interface CaseOrderItem {
   id: string;
   orderNumber?: string;
   packageId?: string;
@@ -40,7 +40,13 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 // ── Order Detail Row ──────────────────────────────────────────────────
 
-function OrderDetailRow({ order, packageName }: { order: OrderItem; packageName?: string }) {
+export function CaseOrderDetailRow({
+  order,
+  packageName,
+}: {
+  order: CaseOrderItem;
+  packageName?: string;
+}) {
   return (
     <div className="bg-slate-50 border-t border-slate-100 px-4 py-4">
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 text-sm">
@@ -74,15 +80,15 @@ export function CaseOrdersTab({ caseId }: CaseOrdersTabProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { data: raw, isLoading, error } = useOrders({ caseId });
 
-  const orders: OrderItem[] =
+  const orders: CaseOrderItem[] =
     raw != null
       ? Array.isArray(raw)
         ? raw
-        : ((raw as { data?: OrderItem[] }).data ?? [])
+        : ((raw as { data?: CaseOrderItem[] }).data ?? [])
       : [];
   const { nameMap: packageNameMap } = usePackageNameMap(orders.map((order) => order.packageId));
 
-  const columns: Column<OrderItem>[] = [
+  const columns: Column<CaseOrderItem>[] = [
     {
       key: 'orderNumber',
       header: 'Order #',
@@ -183,7 +189,7 @@ export function CaseOrdersTab({ caseId }: CaseOrdersTabProps) {
           {/* Expanded detail rows rendered below table */}
           {orders.map((order) =>
             expandedId === order.id ? (
-              <OrderDetailRow
+              <CaseOrderDetailRow
                 key={`detail-${order.id}`}
                 order={order}
                 packageName={order.packageId ? packageNameMap[order.packageId] : undefined}

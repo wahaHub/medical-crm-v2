@@ -1,8 +1,9 @@
 import { eq, and, sql, count } from 'drizzle-orm';
 import type { IPackageRepository, PackageListQuery } from '@medical-crm/domain';
 import { Package } from '@medical-crm/domain';
+import { ConflictError } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
-import { packages } from '../schema/index.js';
+import { orders, packages } from '../schema/index.js';
 
 export class DrizzlePackageRepository implements IPackageRepository {
   constructor(private readonly db: CrmDb) {}
@@ -77,6 +78,22 @@ export class DrizzlePackageRepository implements IPackageRepository {
       .returning();
 
     return this.rowToEntity(rows[0]!);
+  }
+
+  async delete(id: string, tx?: unknown): Promise<void> {
+    const db = (tx as CrmDb) ?? this.db;
+    const orderRefs = await db
+      .select({ total: count() })
+      .from(orders)
+      .where(eq(orders.packageId, id));
+
+    if (Number(orderRefs[0]?.total ?? 0) > 0) {
+      throw new ConflictError('Package cannot be deleted because it is referenced by orders');
+    }
+
+    await db
+      .delete(packages)
+      .where(eq(packages.id, id));
   }
 
   private applyFilters(

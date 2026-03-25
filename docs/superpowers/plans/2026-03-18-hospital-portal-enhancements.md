@@ -4,11 +4,73 @@
 
 **Goal:** Add AI Summary tab, Quote tab, Procedures Catalog expansion, Email Templates page, FAQ page, and Settings page to the Hospital Portal.
 
-**Architecture:** Incremental additions to the existing `apps/hospital/` Next.js 15 app backed by `apps/api/` Hono server. New backend modules (Email Templates) follow the clean architecture pattern: validation schema → domain entity → repository → use case → route. FAQ and Settings reuse existing backend with targeted refactoring. Frontend uses React Query for reads, Server Actions for writes, and the shared `@medical-crm/ui` component library.
+**Architecture:** Incremental additions to the existing `apps/hospital/` Next.js 15 app backed by `apps/api/` Hono server. New backend modules (Email Templates) follow the existing clean architecture pattern in this repo: validation schema → domain entity → domain port (`*.port.ts`) → use case → route. FAQ and Settings reuse existing backend with targeted refactoring. Frontend uses React Query for reads, Server Actions for writes, and the shared `@medical-crm/ui` component library.
 
 **Tech Stack:** Next.js 15, React 19, TanStack React Query, Tailwind CSS v4, Hono + Zod OpenAPI, Drizzle ORM, PostgreSQL
 
 **Spec:** `docs/superpowers/specs/2026-03-18-hospital-portal-enhancements-design.md`
+
+## Execution Guardrails (Apply Before Coding)
+
+1. **Migration-first rule:** execute DB migration tasks before backend/frontend implementation tasks.
+2. **Domain naming rule:** use `packages/domain/src/ports/*.port.ts`; do not introduce `packages/domain/src/repositories/`.
+3. **Hospital app API rule:** do not use `createMutationHandler` (not present). For BFF mutations, implement explicit `POST/PUT/PATCH/DELETE` handlers using `apiFetch`.
+4. **Read/write path rule:** queries go through hospital BFF routes (`/app/api/...`), writes go through Server Actions calling `/api/v2/...` (or explicit BFF mutation handlers when truly needed).
+5. **FAQ isolation rule:** never accept `hospitalId` from client query/body for hospital users; derive from `actor.hospitalId` in use cases.
+
+---
+
+## Chunk 0 (Run First): DB Migrations & Schema Prerequisites
+
+### Task 0: Create/Apply Required Migrations Before Feature Work
+
+- [ ] **Step 1: Create migration for `email_templates` table**
+
+Generate Drizzle migration or write SQL:
+```sql
+CREATE TABLE IF NOT EXISTS email_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hospital_id UUID NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  subject VARCHAR(500) NOT NULL,
+  body TEXT NOT NULL,
+  variables JSONB DEFAULT '[]',
+  status VARCHAR(20) DEFAULT 'draft' NOT NULL,
+  created_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP(6) NOT NULL,
+  deleted_at TIMESTAMP(6)
+);
+
+CREATE INDEX email_templates_hospital_id_idx ON email_templates (hospital_id);
+CREATE INDEX email_templates_type_idx ON email_templates (type);
+CREATE INDEX email_templates_status_idx ON email_templates (status);
+```
+
+- [ ] **Step 2: Create migration for `chatbot_faq_items.hospital_id`**
+
+```sql
+ALTER TABLE chatbot_faq_items ADD COLUMN IF NOT EXISTS hospital_id UUID;
+CREATE INDEX IF NOT EXISTS chatbot_faq_items_hospital_id_idx ON chatbot_faq_items (hospital_id);
+```
+
+- [ ] **Step 3: Add notification storage for settings**
+
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_settings JSONB;
+```
+
+- [ ] **Step 4: Run migrations**
+
+Run: `pnpm db:migrate`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/infrastructure/database/migrations packages/infrastructure/database/schema/schema.ts
+git commit -m "feat: add schema prerequisites for hospital portal enhancements"
+```
 
 ---
 
@@ -236,7 +298,7 @@ git commit -m "feat: add email template DTO and mapper"
 ### Task 4: Email Template Repository Interface & Drizzle Implementation
 
 **Files:**
-- Create: `packages/domain/src/repositories/email-template.repository.ts`
+- Create: `packages/domain/src/ports/email-template-repository.port.ts`
 - Create: `packages/infrastructure/database/repositories/drizzle-email-template.repository.ts`
 - Modify: `packages/infrastructure/database/schema/schema.ts` (add email_templates table)
 
@@ -267,7 +329,7 @@ export const emailTemplates = pgTable("email_templates", {
 - [ ] **Step 2: Create repository interface**
 
 ```typescript
-// packages/domain/src/repositories/email-template.repository.ts
+// packages/domain/src/ports/email-template-repository.port.ts
 import type { EmailTemplate } from '../entities/email-template.entity.js';
 
 export interface EmailTemplateListQuery {
@@ -292,8 +354,8 @@ export interface IEmailTemplateRepository {
 import { eq, and, isNull, count, sql } from 'drizzle-orm';
 import { EmailTemplate } from '@medical-crm/domain';
 import type { IEmailTemplateRepository, EmailTemplateListQuery } from '@medical-crm/domain';
-import { emailTemplates } from '../schema/schema.js';
-import type { CrmDb } from '../connection.js';
+import { emailTemplates } from '../schema/index.js';
+import type { CrmDb } from '../crm-client.js';
 
 export class DrizzleEmailTemplateRepository implements IEmailTemplateRepository {
   constructor(private readonly db: CrmDb) {}
@@ -393,7 +455,7 @@ export class DrizzleEmailTemplateRepository implements IEmailTemplateRepository 
 
 Add repository interface export to `packages/domain/src/index.ts`:
 ```typescript
-export * from './repositories/email-template.repository.js';
+export * from './ports/email-template-repository.port.js';
 ```
 
 - [ ] **Step 5: Run typecheck**
@@ -404,7 +466,7 @@ Expected: PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/domain/src/repositories/email-template.repository.ts \
+git add packages/domain/src/ports/email-template-repository.port.ts \
   packages/infrastructure/database/repositories/drizzle-email-template.repository.ts \
   packages/infrastructure/database/schema/schema.ts \
   packages/domain/src/index.ts
@@ -427,21 +489,21 @@ git commit -m "feat: add email template repository interface and Drizzle impleme
 ```typescript
 // packages/application/src/use-cases/email-templates/create-email-template.use-case.ts
 import { EmailTemplate, type IEmailTemplateRepository } from '@medical-crm/domain';
-import type { Actor } from '../../types.js';
+import type { Actor } from '../../types/actor.js';
 import type { CreateEmailTemplateInput } from '@medical-crm/validation';
 import { toEmailTemplateDTO } from '../../mappers/email-template.mapper.js';
 import type { EmailTemplateDTO } from '../../dtos/email-template.dto.js';
-import { generateId } from '../../utils.js';
+import { ForbiddenError, generateId } from '@medical-crm/utils';
 
 export class CreateEmailTemplateUseCase {
   constructor(private readonly repo: IEmailTemplateRepository) {}
 
   async execute(hospitalId: string, input: CreateEmailTemplateInput, actor: Actor): Promise<EmailTemplateDTO> {
     if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
-      throw new Error('Forbidden');
+      throw new ForbiddenError('Forbidden');
     }
     if (actor.role === 'HOSPITAL' && actor.hospitalId !== hospitalId) {
-      throw new Error('Forbidden: hospital mismatch');
+      throw new ForbiddenError('Hospital users can only manage their own templates');
     }
 
     const entity = new EmailTemplate({
@@ -469,8 +531,9 @@ export class CreateEmailTemplateUseCase {
 ```typescript
 // packages/application/src/use-cases/email-templates/list-email-templates.use-case.ts
 import type { IEmailTemplateRepository } from '@medical-crm/domain';
-import type { Actor } from '../../types.js';
+import type { Actor } from '../../types/actor.js';
 import type { EmailTemplateListQueryInput } from '@medical-crm/validation';
+import { ForbiddenError } from '@medical-crm/utils';
 import { toEmailTemplateDTO } from '../../mappers/email-template.mapper.js';
 
 export class ListEmailTemplatesUseCase {
@@ -478,10 +541,10 @@ export class ListEmailTemplatesUseCase {
 
   async execute(hospitalId: string, query: EmailTemplateListQueryInput, actor: Actor) {
     if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
-      throw new Error('Forbidden');
+      throw new ForbiddenError('Forbidden');
     }
     if (actor.role === 'HOSPITAL' && actor.hospitalId !== hospitalId) {
-      throw new Error('Forbidden: hospital mismatch');
+      throw new ForbiddenError('Hospital users can only manage their own templates');
     }
 
     const result = await this.repo.findByHospital(hospitalId, query);
@@ -732,15 +795,16 @@ index("chatbot_faq_items_hospital_id_idx").using("btree", table.hospitalId.asc()
 
 - [ ] **Step 3: Update repository to support hospital filtering**
 
-Find the FAQ repository (likely `drizzle-chatbot-faq.repository.ts` or similar in infrastructure). Add `hospitalId` filter to list queries:
+Find the FAQ repository (`drizzle-chatbot-faq.repository.ts`) and add hospital filtering support.
+For hospital actor requests, pass `actor.hospitalId` into repository query inputs from use cases.
 
 ```typescript
-if (query.hospitalId) {
-  conditions.push(eq(chatbotFaqItems.hospitalId, query.hospitalId));
+if (query.actorHospitalId) {
+  conditions.push(eq(chatbotFaqItems.hospitalId, query.actorHospitalId));
 }
 ```
 
-Also include `hospitalId` in save/update operations.
+Also include `hospitalId` in entity mapping and save/update operations.
 
 - [ ] **Step 4: Run typecheck**
 
@@ -783,12 +847,10 @@ For HOSPITAL actors, enforce scoping:
 - **List**: filter by `actor.hospitalId`
 - **Get/Update/Delete**: verify the FAQ item belongs to `actor.hospitalId`
 
-- [ ] **Step 2: Update validation schema to accept hospitalId in query**
+- [ ] **Step 2: Keep validation schema hospital-safe**
 
-In the FAQ list query schema (`packages/shared/validation/src/chatbot-faq.schema.ts` or similar), add:
-```typescript
-hospitalId: z.string().uuid().optional(),
-```
+Do **not** add `hospitalId` as a client-provided FAQ query field for hospital portal routes.
+Hospital scoping must be derived from server-side actor context (`actor.hospitalId`), not from request query/body.
 
 - [ ] **Step 3: Run typecheck and tests**
 
@@ -808,6 +870,8 @@ git commit -m "feat: allow HOSPITAL actor in FAQ use cases with hospital-scoped 
 
 **Files:**
 - Modify: `packages/shared/validation/src/user-settings.schema.ts` (extend update schema)
+- Modify: `packages/domain/src/ports/user-repository.port.ts` (extend profile/update types)
+- Modify: `packages/infrastructure/database/repositories/drizzle-user.repository.ts` (persist notification settings)
 - Modify: user profile use case (update profile) to handle `notifications` field
 
 - [ ] **Step 1: Extend update profile schema**
@@ -830,6 +894,9 @@ If not already present, add `notification_settings` JSONB column to users table 
 - [ ] **Step 3: Update profile use case to persist notifications**
 
 In the update profile use case, handle the `notifications` field and persist to storage.
+Also propagate through repository port + implementation:
+- `UpdateUserProfileInput` includes `notifications?`
+- `UserProfile` includes `notifications?`
 
 - [ ] **Step 4: Run typecheck**
 
@@ -940,20 +1007,20 @@ export interface QuoteItem {
 
 ```typescript
 // apps/hospital/src/app/api/quotes/route.ts
-import { createQueryHandler, createMutationHandler } from '@/lib/route-handler-helpers';
+import { createQueryHandler } from '@/lib/route-handler-helpers';
 
 export const GET = createQueryHandler((params) => `/api/v2/quotes?${params}`);
-export const POST = createMutationHandler('/api/v2/quotes');
 ```
 
-Create additional routes as needed for `quotes/[id]/send` etc. following the existing BFF patterns.
+For mutations, prefer Server Actions calling `/api/v2/...` directly.
+If a mutation BFF route is required, implement explicit handlers using `apiFetch` (do not rely on `createMutationHandler`).
 
 - [ ] **Step 3: Create React Query hooks**
 
 ```typescript
 // apps/hospital/src/queries/use-quotes.ts
 import { useQuery } from '@tanstack/react-query';
-import { queryFetch } from '@/lib/api-client';
+import { queryFetch } from '@/lib/query-fetch';
 
 export function useCaseQuotes(caseId: string) {
   return useQuery({
@@ -971,19 +1038,21 @@ export function useCaseQuotes(caseId: string) {
 'use server';
 import { revalidatePath } from 'next/cache';
 import { apiClient } from '@/lib/api-client';
+import { getSessionHospitalId } from '@/lib/session-helpers';
 
 export async function createQuote(data: {
   caseId: string;
-  hospitalId: string;
   totalAmount: string;
   currency?: string;
   lineItems?: Array<{ name: string; amount: string }>;
   notes?: string;
   validUntil?: string;
 }) {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
   const result = await apiClient('/api/v2/quotes', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, hospitalId }),
   });
   revalidatePath('/cases');
   return result;
@@ -1217,16 +1286,16 @@ export interface EmailTemplateItem {
 
 ```typescript
 // apps/hospital/src/app/api/email-templates/route.ts
-// GET: proxy to /api/v2/hospitals/{hospitalId}/email-templates
-// POST: proxy to /api/v2/hospitals/{hospitalId}/email-templates
+// GET only: proxy to /api/v2/hospitals/{hospitalId}/email-templates
 ```
 
 ```typescript
 // apps/hospital/src/app/api/email-templates/[id]/route.ts
 // GET: proxy to /api/v2/email-templates/{id}
-// PUT: proxy to /api/v2/email-templates/{id}
-// DELETE: proxy to /api/v2/email-templates/{id}
+// (optional) keep GET only for detail preload
 ```
+
+Use Server Actions for create/update/delete writes (`/api/v2/...`).
 
 - [ ] **Step 3: Create React Query hooks**
 
@@ -1338,7 +1407,8 @@ git commit -m "feat: integrate email template loading in Case Marketing tab"
 
 - [ ] **Step 1: Create BFF routes**
 
-Proxy to existing `/api/v2/chatbot/faqs` endpoints.
+Create read-oriented BFF handlers (GET list and optional GET detail) proxying to `/api/v2/chatbot/faqs`.
+Use Server Actions for create/update/delete writes.
 
 - [ ] **Step 2: Create React Query hooks**
 
@@ -1418,7 +1488,6 @@ git commit -m "feat: add FAQ management page with bilingual CRUD"
 - Create: `apps/hospital/src/app/(portal)/settings/page.tsx`
 - Create: `apps/hospital/src/components/settings-view.tsx`
 - Create: `apps/hospital/src/actions/settings-actions.ts`
-- Create: `apps/hospital/src/app/api/user-settings/route.ts` (BFF, if not already proxied)
 
 - [ ] **Step 1: Create server actions**
 
@@ -1537,41 +1606,7 @@ git commit -m "fix: resolve any remaining typecheck or build issues"
 
 ---
 
-### Task 21: DB Migration Script
+### Task 21: Migration Checkpoint (Do Not Re-run)
 
-- [ ] **Step 1: Create migration for email_templates table**
-
-Generate Drizzle migration or write SQL:
-```sql
-CREATE TABLE IF NOT EXISTS email_templates (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  hospital_id UUID NOT NULL,
-  name VARCHAR(200) NOT NULL,
-  type VARCHAR(50) NOT NULL,
-  subject VARCHAR(500) NOT NULL,
-  body TEXT NOT NULL,
-  variables JSONB DEFAULT '[]',
-  status VARCHAR(20) DEFAULT 'draft' NOT NULL,
-  created_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  updated_at TIMESTAMP(6) NOT NULL,
-  deleted_at TIMESTAMP(6)
-);
-
-CREATE INDEX email_templates_hospital_id_idx ON email_templates (hospital_id);
-CREATE INDEX email_templates_type_idx ON email_templates (type);
-CREATE INDEX email_templates_status_idx ON email_templates (status);
-```
-
-- [ ] **Step 2: Create migration for chatbot_faq_items hospital_id**
-
-```sql
-ALTER TABLE chatbot_faq_items ADD COLUMN IF NOT EXISTS hospital_id UUID;
-CREATE INDEX IF NOT EXISTS chatbot_faq_items_hospital_id_idx ON chatbot_faq_items (hospital_id);
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add migrations/ || git add drizzle/
-git commit -m "feat: add DB migrations for email_templates and FAQ hospital_id"
-```
+Migration work is already defined and required in **Chunk 0 / Task 0**.
+At this stage, only verify migrations were applied successfully in the target environment.

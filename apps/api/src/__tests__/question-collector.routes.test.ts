@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockServices = {
   createTemplate: { execute: vi.fn() },
   updateTemplate: { execute: vi.fn() },
+  deleteTemplate: { execute: vi.fn() },
   listTemplates: { execute: vi.fn() },
   getTemplate: { execute: vi.fn() },
   submitQCResponse: { execute: vi.fn() },
@@ -177,6 +178,22 @@ describe('QuestionCollector routes', () => {
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.templateName).toBe('Updated');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // DELETE /api/v2/question-templates/{id} — DeleteTemplate
+  // -----------------------------------------------------------------------
+  describe('DELETE /api/v2/question-templates/{id}', () => {
+    it('returns 204 on success', async () => {
+      mockServices.deleteTemplate.execute.mockResolvedValue(undefined);
+
+      const res = await app.request(`/api/v2/question-templates/${VALID_UUID}`, {
+        method: 'DELETE',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.deleteTemplate.execute).toHaveBeenCalled();
     });
   });
 

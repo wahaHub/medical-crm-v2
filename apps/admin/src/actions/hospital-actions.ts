@@ -3,6 +3,18 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { revalidatePath } from 'next/cache';
 
+async function readErrorMessage(
+  res: Response,
+  fallback: string,
+): Promise<string> {
+  const payload = await res.json().catch(() => ({})) as {
+    message?: string;
+    error?: string;
+    code?: string;
+  };
+  return payload.message ?? payload.error ?? payload.code ?? fallback;
+}
+
 export async function updateHospitalStatus(hospitalId: string, status: string) {
   const res = await apiFetch(`/api/v2/hospitals/${hospitalId}/status`, {
     method: 'PATCH',
@@ -10,8 +22,7 @@ export async function updateHospitalStatus(hospitalId: string, status: string) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to update hospital status');
+    throw new Error(await readErrorMessage(res, 'Failed to update hospital status'));
   }
 
   revalidatePath(`/hospitals/${hospitalId}`);
@@ -26,8 +37,7 @@ export async function generateRegistrationToken(hospitalId: string, email: strin
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to generate registration token');
+    throw new Error(await readErrorMessage(res, 'Failed to generate registration token'));
   }
 
   const payload = await res.json() as { token: string; expiresAt: string };
@@ -43,8 +53,7 @@ export async function createHospital(data: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to create hospital');
+    throw new Error(await readErrorMessage(res, 'Failed to create hospital'));
   }
 
   revalidatePath('/hospitals');

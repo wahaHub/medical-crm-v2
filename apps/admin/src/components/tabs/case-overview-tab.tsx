@@ -57,7 +57,6 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
 // ── Patient Info Card ────────────────────────────────────────────────
 
 function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
-  const c = caseData as CaseSummary & Record<string, unknown>;
   return (
     <Card>
       <CardHeader>
@@ -66,14 +65,43 @@ function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
       </CardHeader>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
         <InfoRow label="Patient Name" value={caseData.patientName} />
-        <InfoRow label="Country" value={c.patientCountry as string | undefined} />
-        <InfoRow label="Language" value={c.patientLanguage as string | undefined} />
-        <InfoRow label="Primary Diagnosis" value={c.primaryDiagnosis as string | undefined} />
-        <InfoRow label="Risk Level" value={c.riskLevel as string | undefined} />
-        <InfoRow label="Assignment Status" value={caseData.assignmentStatus} />
-        <InfoRow label="Treatment Stage" value={caseData.treatmentStage} />
+        <InfoRow label="Email" value={caseData.patientEmail} />
+        <InfoRow label="Phone" value={caseData.patientPhone} />
+        <InfoRow label="Country" value={caseData.patientCountry} />
+        <InfoRow label="Language" value={caseData.patientLanguage} />
+        <InfoRow label="Primary Diagnosis" value={caseData.primaryDiagnosis} />
+        <InfoRow label="Risk Level" value={caseData.riskLevel} />
         <InfoRow label="Case Number" value={caseData.caseNumber} />
         <InfoRow label="Created" value={caseData.createdAt ? new Date(caseData.createdAt).toLocaleDateString() : undefined} />
+      </dl>
+    </Card>
+  );
+}
+
+function AssignedHospitalCard({ caseData }: { caseData: CaseSummary }) {
+  if (!caseData.assignedHospitalId) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Assigned Hospital</CardTitle>
+          <StatusBadge status="UNASSIGNED" />
+        </CardHeader>
+        <p className="text-sm text-slate-400">No hospital assigned to this case yet.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Assigned Hospital</CardTitle>
+        <StatusBadge status="ASSIGNED" />
+      </CardHeader>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
+        <InfoRow label="Hospital Name" value={caseData.hospitalName} />
+        <InfoRow label="Hospital ID" value={caseData.assignedHospitalId} />
+        <InfoRow label="Assignment Status" value={caseData.assignmentStatus} />
+        <InfoRow label="Treatment Stage" value={caseData.treatmentStage} />
       </dl>
     </Card>
   );
@@ -362,6 +390,7 @@ export function CaseOverviewTab({ caseData }: CaseOverviewTabProps) {
   return (
     <div className="space-y-6">
       <PatientInfoCard caseData={caseData} />
+      <AssignedHospitalCard caseData={caseData} />
       <StatusActionsCard caseData={caseData} />
       <DocumentsCard caseId={caseData.id} />
     </div>

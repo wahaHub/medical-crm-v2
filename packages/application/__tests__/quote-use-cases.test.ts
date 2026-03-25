@@ -375,6 +375,19 @@ describe('SendQuoteUseCase', () => {
     expect(chc.firstReplyAt).toEqual(existingDate);
   });
 
+  it('keeps working when CHC is already QUOTED', async () => {
+    (mockQuoteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeMockQuote());
+    const chc = makeMockCHC({ subStatus: 'QUOTED', firstReplyAt: new Date('2026-02-01') });
+    (mockCHCRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue(chc);
+
+    const result = await useCase.execute('quote-1', hospitalActor);
+
+    expect(result.isDraft).toBe(false);
+    expect(chc.subStatus).toBe('QUOTED');
+    expect(chc.quoteId).toBe('quote-1');
+    expect(mockCHCRepo.save).toHaveBeenCalledOnce();
+  });
+
   it('succeeds even when no CHC exists', async () => {
     (mockQuoteRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeMockQuote());
     (mockCHCRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue(null);

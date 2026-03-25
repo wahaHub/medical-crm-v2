@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { SidebarNav, type NavItem } from '@medical-crm/ui';
 import { LayoutDashboard, FolderOpen, Building2, LogOut, MessageSquare, ShoppingCart, Package, Ticket, ClipboardList, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -35,28 +36,46 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   return (
-    <div className="flex h-screen">
+    <div className="flex min-h-screen bg-[#F8F9FB]">
       <SidebarNav
         items={NAV_ITEMS}
         activeKey={getActiveKey(pathname)}
         onNavigate={(href) => router.push(href)}
       />
-      <div className="ml-[72px] flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between border-b bg-white px-6">
-          <h1 className="text-sm font-semibold text-gray-600">Admin Portal</h1>
+      <div className="ml-[72px] flex flex-1 flex-col">
+        <header className="fixed left-[72px] right-0 top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200/50 bg-white/75 px-8 backdrop-blur-md">
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">{user.email}</span>
+            <div className="h-12 w-44 rounded-xl bg-white/80 px-2 shadow-md flex items-center">
+              {logoLoadFailed ? (
+                <span className="w-full text-center text-lg font-semibold tracking-[0.18em] text-slate-700">
+                  MEDORA
+                </span>
+              ) : (
+                <img
+                  src="/medora_logo.png"
+                  alt="Medora"
+                  className="h-10 w-full object-contain"
+                  onError={() => setLogoLoadFailed(true)}
+                />
+              )}
+            </div>
+            <div className="h-6 w-px bg-slate-200" />
+            <h1 className="text-lg font-semibold tracking-tight text-slate-700">Admin Portal</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-slate-500">{user.email}</span>
             <button
-              onClick={logout}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+              onClick={() => void logout()}
+              className="flex items-center gap-1 text-sm text-slate-500 hover:text-rose-600"
             >
               <LogOut className="h-4 w-4" /> Logout
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 p-8 pt-24">{children}</main>
       </div>
     </div>
   );

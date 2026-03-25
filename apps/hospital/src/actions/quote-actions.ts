@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { apiClient } from '@/lib/api-client';
+import type { QuoteItem } from '@/lib/api-types';
 import { getSessionHospitalId } from '@/lib/session-helpers';
 
 export async function createQuote(data: {
@@ -10,11 +11,11 @@ export async function createQuote(data: {
   currency?: string;
   lineItems?: Array<{ name: string; amount: string }>;
   notes?: string;
-  validUntil?: string;
+  validUntil: string;
 }) {
   const hospitalId = await getSessionHospitalId();
   if (!hospitalId) throw new Error('No hospital ID in session');
-  const result = await apiClient('/api/v2/quotes', {
+  const result = await apiClient<QuoteItem>('/api/v2/quotes', {
     method: 'POST',
     body: JSON.stringify({ ...data, hospitalId }),
   });

@@ -60,6 +60,7 @@ export class GetHospitalCaseDetailUseCase {
     return toHospitalCaseDetailDTO(entity, progress, documents, signedUrls, {
       id: entity.patientId,
       code: patientInfo?.patientCode ?? '',
+      preferredLanguage: patientInfo?.preferredLanguage,
       age: null,
       gender: null,
     }, totalMessages);

@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useTransition, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import {
   StatusBadge,
   SearchInput,
   EmptyState,
   LoadingSpinner,
 } from '@medical-crm/ui';
-import { HelpCircle, Send } from 'lucide-react';
+import { HelpCircle } from 'lucide-react';
 import { useTickets } from '@/queries/use-tickets';
-import { replyToTicket, updateTicketStatus, closeTicket } from '@/actions/ticket-actions';
+import { CaseSupportDetailPanel } from '@/components/tabs/case-support-tab';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -18,15 +18,6 @@ interface Column<T> {
   header: string;
   render: (row: T) => ReactNode;
   className?: string;
-}
-
-interface TicketReply {
-  id: string;
-  content: string;
-  createdAt: string;
-  authorRole?: string;
-  authorName?: string;
-  isInternalNote?: boolean;
 }
 
 interface TicketRow {
@@ -40,7 +31,6 @@ interface TicketRow {
   assignedTo?: string | null;
   caseId?: string | null;
   sourcePage?: string | null;
-  replies?: TicketReply[];
   createdAt: string;
   updatedAt?: string;
 }
@@ -123,8 +113,6 @@ const TICKET_TYPE_COLORS: Record<string, string> = {
   FEEDBACK: 'bg-teal-50 text-teal-700',
 };
 
-const ACTIONABLE_STATUSES = ['IN_PROGRESS', 'PENDING_INFO', 'RESOLVED'];
-
 function formatDate(dateStr: string) {
   if (!dateStr) return '';
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -134,183 +122,19 @@ function formatDate(dateStr: string) {
   });
 }
 
-// ── Expanded Detail Row ───────────────────────────────────────────────
+// ── Expanded Detail Row (reused from Case Support tab) ────────────────
 
 function TicketDetailRow({
-  ticket,
-  onRefresh,
+  ticketId,
+  onClose,
 }: {
-  ticket: TicketRow;
-  onRefresh: () => void;
+  ticketId: string;
+  onClose: () => void;
 }) {
-  const [replyText, setReplyText] = useState('');
-  const [newStatus, setNewStatus] = useState(ticket.status);
-  const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
-  const replies = ticket.replies ?? [];
-
-  function handleReply() {
-    if (!replyText.trim()) return;
-    setError(null);
-    startTransition(async () => {
-      try {
-        await replyToTicket(ticket.id, replyText.trim());
-        setReplyText('');
-        onRefresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to send reply');
-      }
-    });
-  }
-
-  function handleStatusChange(s: string) {
-    setNewStatus(s);
-    if (s === 'CLOSED') {
-      startTransition(async () => {
-        try {
-          await closeTicket(ticket.id);
-          onRefresh();
-        } catch (e) {
-          setError(e instanceof Error ? e.message : 'Failed to close ticket');
-        }
-      });
-    } else {
-      startTransition(async () => {
-        try {
-          await updateTicketStatus(ticket.id, s);
-          onRefresh();
-        } catch (e) {
-          setError(e instanceof Error ? e.message : 'Failed to update status');
-        }
-      });
-    }
-  }
-
   return (
     <tr className="bg-slate-50 border-b border-slate-200">
-      <td colSpan={8} className="px-6 py-4">
-        <div className="space-y-4 max-w-3xl">
-          {/* Description */}
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Description</p>
-            <p className="text-sm text-slate-700 bg-white rounded-lg border border-slate-200 p-3">
-              {ticket.description}
-            </p>
-          </div>
-
-          {/* Metadata */}
-          <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-            {ticket.caseId && (
-              <span>
-                <span className="text-slate-400">Case:</span>{' '}
-                <span className="font-mono text-indigo-600">{ticket.caseId.slice(0, 8)}…</span>
-              </span>
-            )}
-            {ticket.sourcePage && (
-              <span>
-                <span className="text-slate-400">Source Page:</span> {ticket.sourcePage}
-              </span>
-            )}
-          </div>
-
-          {/* Reply history */}
-          {replies.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
-                Reply History
-              </p>
-              <div className="space-y-2">
-                {replies.map((reply) => (
-                  <div
-                    key={reply.id}
-                    className={`rounded-lg border px-3 py-2 text-sm ${
-                      reply.isInternalNote
-                        ? 'bg-amber-50 border-amber-200'
-                        : 'bg-white border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-slate-500">
-                        {reply.authorName ?? 'Staff'}
-                        {reply.isInternalNote && (
-                          <span className="ml-2 text-amber-600">(Internal Note)</span>
-                        )}
-                      </span>
-                      <span className="text-[10px] text-slate-400">{formatDate(reply.createdAt)}</span>
-                    </div>
-                    <p className="text-slate-700">{reply.content}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          {/* Reply input + status management */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Reply</label>
-                <textarea
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  rows={3}
-                  disabled={isPending || ticket.status === 'CLOSED'}
-                  placeholder={
-                    ticket.status === 'CLOSED'
-                      ? 'Ticket is closed.'
-                      : 'Type your reply…'
-                  }
-                  className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-50"
-                />
-              </div>
-              <button
-                onClick={handleReply}
-                disabled={isPending || !replyText.trim() || ticket.status === 'CLOSED'}
-                className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition-colors disabled:opacity-50 mb-0.5"
-              >
-                <Send size={14} />
-                Send
-              </button>
-            </div>
-
-            {/* Status update */}
-            {ticket.status !== 'CLOSED' && (
-              <div className="flex items-center gap-3">
-                <label className="text-xs font-medium text-slate-600">Update Status:</label>
-                <div className="flex flex-wrap gap-2">
-                  {ACTIONABLE_STATUSES.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => handleStatusChange(s)}
-                      disabled={isPending || newStatus === s}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-                        newStatus === s
-                          ? 'bg-cyan-600 text-white'
-                          : 'border border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-700'
-                      }`}
-                    >
-                      {s.replace(/_/g, ' ')}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => handleStatusChange('CLOSED')}
-                    disabled={isPending}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
-                  >
-                    Close Ticket
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+      <td colSpan={8} className="px-0 py-0">
+        <CaseSupportDetailPanel ticketId={ticketId} onClose={onClose} />
       </td>
     </tr>
   );
@@ -331,7 +155,7 @@ export function SupportList() {
   if (type) filters['type'] = type;
   if (priority) filters['priority'] = priority;
 
-  const { data: raw, isLoading, refetch } = useTickets(filters);
+  const { data: raw, isLoading } = useTickets(filters);
   const tickets = unwrapList<TicketRow>(raw);
   const pagination = unwrapPagination(raw);
 
@@ -350,10 +174,6 @@ export function SupportList() {
 
   function handleRowClick(row: TicketRow) {
     setExpandedId((prev) => (prev === row.id ? null : row.id));
-  }
-
-  function handleRefresh() {
-    void refetch();
   }
 
   const columns: Column<TicketRow>[] = [
@@ -496,9 +316,8 @@ export function SupportList() {
             </thead>
             <tbody>
               {filtered.map((row) => (
-                <>
+                <Fragment key={row.id}>
                   <tr
-                    key={row.id}
                     onClick={() => handleRowClick(row)}
                     className="border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50"
                   >
@@ -509,9 +328,12 @@ export function SupportList() {
                     ))}
                   </tr>
                   {expandedId === row.id && (
-                    <TicketDetailRow key={`${row.id}-detail`} ticket={row} onRefresh={handleRefresh} />
+                    <TicketDetailRow
+                      ticketId={row.id}
+                      onClose={() => setExpandedId(null)}
+                    />
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

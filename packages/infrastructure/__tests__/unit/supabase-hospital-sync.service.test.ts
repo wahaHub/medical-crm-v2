@@ -4,8 +4,17 @@ import { Hospital } from '@medical-crm/domain';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 // Helper to build a mock Supabase client
-function makeMockSupabase(upsertResult: { error: { message: string } | null } = { error: null }): SupabaseClient {
-  const upsertMock = vi.fn().mockResolvedValue(upsertResult);
+function makeMockSupabase(
+  upsertResult: { error: { message: string } | null } | Array<{ error: { message: string } | null }> = { error: null },
+): SupabaseClient {
+  const sequence = Array.isArray(upsertResult) ? upsertResult : [upsertResult];
+  const upsertMock = vi.fn();
+  for (const item of sequence) {
+    upsertMock.mockResolvedValueOnce(item);
+  }
+  if (sequence.length > 0) {
+    upsertMock.mockResolvedValue(sequence[sequence.length - 1]!);
+  }
   const fromMock = vi.fn(() => ({
     upsert: upsertMock,
   }));
@@ -166,6 +175,60 @@ describe('SupabaseHospitalSyncService', () => {
       const upsertMock = fromMock.mock.results[0]!.value.upsert as ReturnType<typeof vi.fn>;
       const upsertData = upsertMock.mock.calls[0]![0] as { slug: string };
       expect(upsertData.slug).toBe('hospital-name');
+    });
+
+    it('falls back to hospital.name when nameEn is empty', async () => {
+      const hospital = makeHospital({
+        type: 'COSMETIC',
+        name: 'Seoul Beauty Clinic',
+        nameEn: '',
+      });
+      await service.syncToSupabase(hospital);
+
+      const fromMock = mainSupabase.from as ReturnType<typeof vi.fn>;
+      const upsertMock = fromMock.mock.results[0]!.value.upsert as ReturnType<typeof vi.fn>;
+      const upsertData = upsertMock.mock.calls[0]![0] as { slug: string };
+      expect(upsertData.slug).toBe('seoul-beauty-clinic');
+    });
+
+    it('uses an id-based fallback slug when the name cannot be slugified', async () => {
+      const hospital = makeHospital({
+        id: '88d29817-faeb-4a83-a46a-e2e914f5a5c0',
+        type: 'REGULAR',
+        name: '测试医院',
+        nameEn: '',
+      });
+      await service.syncToSupabase(hospital);
+
+      const fromMock = chinaSupabase.from as ReturnType<typeof vi.fn>;
+      const upsertMock = fromMock.mock.results[0]!.value.upsert as ReturnType<typeof vi.fn>;
+      const upsertData = upsertMock.mock.calls[0]![0] as { slug: string };
+      expect(upsertData.slug).toBe('hospital-88d29817');
+    });
+
+    it('retries with a suffixed slug when the base slug already exists', async () => {
+      chinaSupabase = makeMockSupabase([
+        { error: { message: 'duplicate key value violates unique constraint "hospitals_slug_key"' } },
+        { error: null },
+      ]);
+      service = new SupabaseHospitalSyncService(mainSupabase, chinaSupabase);
+
+      const hospital = makeHospital({
+        id: 'cb48e204-60aa-4ea4-97d9-227388d1641a',
+        type: 'REGULAR',
+        name: 'Seoul Beauty Clinic',
+        nameEn: '',
+      });
+      await service.syncToSupabase(hospital);
+
+      const fromMock = chinaSupabase.from as ReturnType<typeof vi.fn>;
+      const upsertMock = fromMock.mock.results[0]!.value.upsert as ReturnType<typeof vi.fn>;
+      expect(upsertMock).toHaveBeenCalledTimes(2);
+
+      const firstAttempt = upsertMock.mock.calls[0]![0] as { slug: string };
+      const secondAttempt = upsertMock.mock.calls[1]![0] as { slug: string };
+      expect(firstAttempt.slug).toBe('seoul-beauty-clinic');
+      expect(secondAttempt.slug).toBe('seoul-beauty-clinic-cb48e204');
     });
   });
 });

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   IMaterialsRepository,
+  IStorageService,
   MaterialsHospitalInfo,
   MaterialsProcedure,
   MaterialsSurgeon,
@@ -14,6 +15,7 @@ import {
   slugifyProcedureName,
   shouldIgnoreCaseMediaError,
 } from '../services/materials-compat.js';
+import { resolveMediaRef, resolveMediaRefs } from '../services/materials-media.js';
 
 /**
  * Supabase implementation of IMaterialsRepository.
@@ -27,11 +29,36 @@ import {
  * All mutation queries are scoped by hospital_id for tenant isolation.
  */
 export class SupabaseMaterialsRepository implements IMaterialsRepository {
-  constructor(private readonly supabase: SupabaseClient) {}
+  constructor(
+    private readonly supabase: SupabaseClient,
+    private readonly storage?: IStorageService,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // Hospital Info
   // ---------------------------------------------------------------------------
+
+  private async resolveSurgeon(row: {
+    id: string;
+    hospital_id?: string | null;
+    name: string;
+    title?: string | null;
+    image_url?: string | null;
+    experience_years?: number | null;
+    specialties?: string[] | null;
+    languages?: string[] | null;
+    education?: string[] | null;
+    certifications?: string[] | null;
+    bio?: Record<string, unknown> | null;
+    images?: Record<string, unknown> | null;
+  }, hospitalId: string): Promise<MaterialsSurgeon> {
+    const surgeon = mapSurgeonRowToMaterialsSurgeon(row, hospitalId);
+    const resolvedImage = await resolveMediaRef(surgeon.imageUrl, this.storage);
+    return {
+      ...surgeon,
+      imageUrl: resolvedImage.url || null,
+    };
+  }
 
   async getHospitalInfo(hospitalId: string): Promise<MaterialsHospitalInfo | null> {
     const { data, error } = await this.supabase
@@ -85,14 +112,31 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 
     // Extract multilingual staff from crm_metadata or highlights
     const multilingualStaffFromHighlights = this.extractLanguagesFromHighlights(data.highlights);
+    const heroImage = await resolveMediaRef(data.hero_image ?? null, this.storage);
+    const photos = await resolveMediaRefs((data.photos ?? []) as Array<string | null | undefined>, this.storage);
+    const promotionalVideos = await resolveMediaRefs(
+      ((crmMeta.promotionalVideos as string[] | undefined) ?? []) as Array<string | null | undefined>,
+      this.storage,
+    );
+    const testimonialVideoUrls = await resolveMediaRefs(
+      (((crmMeta.videoTestimonials as MaterialsHospitalInfo['videoTestimonials']) ?? []).map((item) => item.videoUrl)) as Array<string | null | undefined>,
+      this.storage,
+    );
+    const testimonialThumbnailUrls = await resolveMediaRefs(
+      (((crmMeta.videoTestimonials as MaterialsHospitalInfo['videoTestimonials']) ?? []).map((item) => item.thumbnailUrl)) as Array<string | null | undefined>,
+      this.storage,
+    );
+    const rawVideoTestimonials = (crmMeta.videoTestimonials as MaterialsHospitalInfo['videoTestimonials']) ?? [];
 
     return {
       id: data.id,
       name: data.name,
       nameEn: data.name,
       slug: data.slug,
-      heroImage: data.hero_image ?? null,
-      photos: data.photos ?? [],
+      heroImage: heroImage.url || null,
+      heroImageStorageKey: heroImage.storageKey,
+      photos: photos.map((item) => item.url),
+      photoStorageKeys: photos.map((item) => item.storageKey),
       highlights: data.highlights ?? [],
       yearEstablished: data.year_established ?? undefined,
       totalPatients: data.total_patients ?? undefined,
@@ -132,8 +176,15 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         nameEn: a.name as string,
         distance: a.distance as string,
       })),
-      promotionalVideos: (crmMeta.promotionalVideos as string[] | undefined) ?? [],
-      videoTestimonials: (crmMeta.videoTestimonials as MaterialsHospitalInfo['videoTestimonials']) ?? [],
+      promotionalVideos: promotionalVideos.map((item) => item.url),
+      promotionalVideoStorageKeys: promotionalVideos.map((item) => item.storageKey),
+      videoTestimonials: rawVideoTestimonials.map((item, index) => ({
+        ...item,
+        videoUrl: testimonialVideoUrls[index]?.url ?? item.videoUrl,
+        videoStorageKey: testimonialVideoUrls[index]?.storageKey ?? null,
+        thumbnailUrl: testimonialThumbnailUrls[index]?.url || item.thumbnailUrl,
+        thumbnailStorageKey: testimonialThumbnailUrls[index]?.storageKey ?? null,
+      })),
     };
   }
 
@@ -437,7 +488,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 
     if (error) throw error;
 
-    return (data ?? []).map((row) => mapSurgeonRowToMaterialsSurgeon(row, hospitalId));
+    return Promise.all((data ?? []).map((row) => this.resolveSurgeon(row, hospitalId)));
   }
 
   async createSurgeon(data: Omit<MaterialsSurgeon, 'id'>): Promise<MaterialsSurgeon> {
@@ -455,7 +506,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 
     if (error) throw error;
 
-    return mapSurgeonRowToMaterialsSurgeon(row!, data.hospitalId);
+    return this.resolveSurgeon(row!, data.hospitalId);
   }
 
   async updateSurgeon(id: string, hospitalId: string, updates: Partial<MaterialsSurgeon>): Promise<MaterialsSurgeon> {
@@ -492,7 +543,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     }
     if (!row) throw new NotFoundError(`Surgeon ${id} not found for hospital ${hospitalId}`);
 
-    return mapSurgeonRowToMaterialsSurgeon(row, hospitalId);
+    return this.resolveSurgeon(row, hospitalId);
   }
 
   async deleteSurgeon(id: string, hospitalId: string): Promise<void> {

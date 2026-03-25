@@ -3,6 +3,18 @@
 import { apiFetch } from '@/lib/api-fetch';
 import { revalidatePath } from 'next/cache';
 
+async function readErrorMessage(
+  res: Response,
+  fallback: string,
+): Promise<string> {
+  const payload = await res.json().catch(() => ({})) as {
+    message?: string;
+    error?: string;
+    code?: string;
+  };
+  return payload.message ?? payload.error ?? payload.code ?? fallback;
+}
+
 export async function createTemplate(data: Record<string, unknown>) {
   const res = await apiFetch('/api/v2/question-templates', {
     method: 'POST',
@@ -10,8 +22,7 @@ export async function createTemplate(data: Record<string, unknown>) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to create template');
+    throw new Error(await readErrorMessage(res, 'Failed to create template'));
   }
 
   revalidatePath('/question-collectors');
@@ -25,12 +36,23 @@ export async function updateTemplate(id: string, data: Record<string, unknown>) 
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to update template');
+    throw new Error(await readErrorMessage(res, 'Failed to update template'));
   }
 
   revalidatePath('/question-collectors');
   return res.json();
+}
+
+export async function deleteTemplate(id: string) {
+  const res = await apiFetch(`/api/v2/question-templates/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, 'Failed to delete template'));
+  }
+
+  revalidatePath('/question-collectors');
 }
 
 export async function customizeQuestions(templateId: string, customizedQuestions: unknown) {
@@ -40,8 +62,7 @@ export async function customizeQuestions(templateId: string, customizedQuestions
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to customize questions');
+    throw new Error(await readErrorMessage(res, 'Failed to customize questions'));
   }
 
   revalidatePath('/question-collectors');

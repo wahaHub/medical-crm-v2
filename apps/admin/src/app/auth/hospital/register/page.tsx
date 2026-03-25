@@ -11,7 +11,39 @@ interface TokenData {
 }
 
 const HOSPITAL_PORTAL_LOGIN_URL =
-  process.env.NEXT_PUBLIC_HOSPITAL_PORTAL_LOGIN_URL ?? 'http://localhost:3000/auth/login';
+  process.env.NEXT_PUBLIC_HOSPITAL_PORTAL_LOGIN_URL ?? 'http://localhost:3003/auth/login';
+
+function PageWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-emerald-50 flex items-center justify-center p-4">
+      {children}
+    </div>
+  );
+}
+
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`w-full max-w-md rounded-2xl bg-white shadow-xl border ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function BrandHeader() {
+  return (
+    <div className="text-center space-y-3">
+      <img
+        src="/medora_logo.png"
+        alt="Medora"
+        className="mx-auto h-14 w-auto"
+      />
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold text-slate-800">Hospital Account Registration</h1>
+        <p className="text-sm text-slate-500">Welcome to Medora Health Medical Case Management</p>
+      </div>
+    </div>
+  );
+}
 
 export default function HospitalRegisterPage() {
   const searchParams = useSearchParams();
@@ -120,29 +152,17 @@ export default function HospitalRegisterPage() {
     }
   }
 
-  // ---- Shared wrapper ----
-  function PageWrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-emerald-50 flex items-center justify-center p-4">
-        {children}
-      </div>
-    );
-  }
-
-  function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-    return (
-      <div className={`w-full max-w-md rounded-2xl bg-white shadow-xl border ${className}`}>
-        {children}
-      </div>
-    );
-  }
-
   // ---- Loading ----
   if (state === 'loading') {
     return (
       <PageWrapper>
         <Card>
           <div className="flex flex-col items-center gap-4 p-8">
+            <img
+              src="/medora_logo.png"
+              alt="Medora"
+              className="h-12 w-auto"
+            />
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-500 border-t-transparent" />
             <p className="text-slate-600 text-sm">Verifying your registration link...</p>
           </div>
@@ -157,6 +177,7 @@ export default function HospitalRegisterPage() {
       <PageWrapper>
         <Card className="border-red-200">
           <div className="p-8 space-y-4">
+            <BrandHeader />
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                 <svg className="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -188,6 +209,7 @@ export default function HospitalRegisterPage() {
       <PageWrapper>
         <Card className="border-emerald-200">
           <div className="p-8 space-y-4">
+            <BrandHeader />
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
                 <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -223,11 +245,7 @@ export default function HospitalRegisterPage() {
     <PageWrapper>
       <Card>
         <div className="p-8 space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-1">
-            <h1 className="text-2xl font-bold text-slate-800">Hospital Account Registration</h1>
-            <p className="text-sm text-slate-500">Welcome to Medora Health Medical Case Management</p>
-          </div>
+          <BrandHeader />
 
           {/* Hospital info */}
           {tokenData && (

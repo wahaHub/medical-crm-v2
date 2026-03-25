@@ -1,20 +1,26 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  AsyncStatusCard,
   ChatLayout,
+  type ChatAttachment,
   type ChatMessage,
   EmptyState,
   MessageConversationSidebar,
-  MessageNewConversationModal,
   MessageCaseDetailPanel,
+  Modal,
+  PdfPreview,
   type MessageConversationSection,
-  type MessageNewConversationPayload,
   useMediaUpload,
 } from '@medical-crm/ui';
-import { MessageSquare, Check, X } from 'lucide-react';
+import { MessageSquare, Check, X, Search, FolderOpen, Building2, User } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
 import { useConversations, useMessages } from '@/queries/use-conversations';
+import { useHospitals, useHospitalCases } from '@/queries/use-hospitals';
+import { useCases } from '@/queries/use-cases';
+import type { PaginatedResponse, HospitalSummary, CaseSummary } from '@/lib/api-types';
 import {
   sendMessage,
   approveMessage,
@@ -40,6 +46,10 @@ interface ApiMessage {
   aiSummary?: string | null;
   attachments?: Array<{
     id?: string;
+    fileName?: string;
+    fileSize?: number;
+    mimeType?: string;
+    storageKey?: string;
     name?: string;
     type?: string;
     url?: string;
@@ -60,6 +70,29 @@ interface ApiConversation {
   unreadCount?: number;
 }
 
+interface TranslationOutputFile {
+  fileName: string;
+  path: string;
+}
+
+interface TranslationResult {
+  inputFileName: string;
+  outputDir: string;
+  outputFiles: TranslationOutputFile[];
+  stdout: string;
+  stderr: string;
+}
+
+type AttachmentTranslationStatus = 'idle' | 'translating' | 'ready' | 'failed';
+
+interface AttachmentTranslationState {
+  status: AttachmentTranslationStatus;
+  translatedUrl?: string;
+  error?: string;
+  fileName: string;
+  targetLanguage: string;
+}
+
 type AdminVisibleConversationCategory = 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT';
 
 interface PaginatedLike<T> {
@@ -77,6 +110,10 @@ interface MessagesCenterProps {
   leftPanelWidthClassName?: string;
   listTitle?: string;
   emptyListMessage?: string;
+  /** When set, only show conversations matching these categories (bypasses toAdminCategory filter) */
+  includedCategories?: string[];
+  /** When true, hide the message input (read-only / monitoring mode) */
+  readOnly?: boolean;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -96,7 +133,8 @@ function toDisplaySenderName(message: ApiMessage): string {
 }
 
 function mapApiMessages(messages: ApiMessage[]): ChatMessage[] {
-  return messages.map((m) => ({
+  // Backend returns messages in DESC order (newest first); reverse to chronological for chat display
+  return [...messages].reverse().map((m) => ({
       id: m.id,
       content: m.content,
       translatedContent: m.translatedContent,
@@ -107,7 +145,14 @@ function mapApiMessages(messages: ApiMessage[]): ChatMessage[] {
       isAiTranslated: m.isAiTranslated,
       messageType: m.messageType,
       aiSummary: m.aiSummary,
-      attachments: m.attachments,
+      attachments: m.attachments?.map((attachment) => ({
+        id: attachment.id,
+        name: attachment.name ?? attachment.fileName,
+        type: attachment.type ?? attachment.mimeType,
+        url: attachment.url ?? attachment.storageKey,
+        size: attachment.size ?? attachment.fileSize,
+        storageKey: attachment.storageKey,
+      })),
     }));
 }
 
@@ -147,6 +192,61 @@ function matchesSearch(conv: ApiConversation, query: string): boolean {
   );
 }
 
+function isPdfAttachment(attachment: ChatAttachment | null): boolean {
+  return attachment?.type === 'application/pdf';
+}
+
+function isImageAttachment(attachment: ChatAttachment | null): boolean {
+  return !!attachment?.type?.startsWith('image/');
+}
+
+function buildPdfPreviewUrl(url: string, fileName: string): string {
+  return `/api/documents/preview?url=${encodeURIComponent(url)}&fileName=${encodeURIComponent(fileName)}`;
+}
+
+function mapLocaleToTargetLanguage(locale?: string): string {
+  const value = (locale || 'en').toLowerCase();
+  if (value.startsWith('zh')) return 'zh';
+  if (value.startsWith('ja')) return 'ja';
+  if (value.startsWith('ko')) return 'ko';
+  if (value.startsWith('es')) return 'es';
+  if (value.startsWith('fr')) return 'fr';
+  if (value.startsWith('de')) return 'de';
+  if (value.startsWith('ar')) return 'ar';
+  if (value.startsWith('ru')) return 'ru';
+  if (value.startsWith('th')) return 'th';
+  return 'en';
+}
+
+async function translatePdfForPreview(sourceUrl: string, fileName: string, targetLanguage: string): Promise<TranslationResult> {
+  const res = await fetch('/api/documents/translate', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sourceUrl,
+      fileName,
+      targetLanguage,
+      outputMode: 'mono',
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Failed to translate PDF');
+  }
+
+  return res.json() as Promise<TranslationResult>;
+}
+
+function pickTranslatedPdf(result: TranslationResult): TranslationOutputFile | undefined {
+  return result.outputFiles.find((file) => file.fileName.toLowerCase().endsWith('.pdf'));
+}
+
+function getAttachmentTranslationKey(attachment: ChatAttachment, targetLanguage: string): string {
+  return `${attachment.storageKey ?? attachment.url ?? attachment.name ?? 'attachment'}::${targetLanguage}`;
+}
+
 // ── Category filter options ──────────────────────────────────────────
 
 const CATEGORY_OPTIONS = [
@@ -160,10 +260,9 @@ const CATEGORY_SECTION_ORDER: Array<{ key: AdminVisibleConversationCategory; lab
   { key: 'ADMIN_PATIENT', label: 'Admin / Patient' },
 ];
 
-const NEW_CONVERSATION_CATEGORY_OPTIONS: Array<{ value: 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT'; label: string }> = [
-  { value: 'ADMIN_HOSPITAL', label: 'Admin / Hospital' },
-  { value: 'ADMIN_PATIENT', label: 'Admin / Patient' },
-];
+function getInitials(name: string): string {
+  return name.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
+}
 
 // ── Moderation Notice ────────────────────────────────────────────────
 
@@ -237,16 +336,26 @@ function CaseInfoSidebar({ conversation }: { conversation: ApiConversation }) {
 function ChatPanel({
   conversation,
   showInfoPanel,
+  readOnly = false,
 }: {
   conversation: ApiConversation;
   showInfoPanel: boolean;
+  readOnly?: boolean;
 }) {
+  const { user } = useAuth();
   const conversationId = conversation.id;
   const { data: raw, refetch } = useMessages(conversationId);
   const apiMessages = unwrapList<ApiMessage>(raw);
   const [isSending, startSend] = useTransition();
   const [isModerating, startModerate] = useTransition();
   const [showInfo, setShowInfo] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
+  const [translatedPreviewUrl, setTranslatedPreviewUrl] = useState<string | null>(null);
+  const [isTranslatingPreview, setIsTranslatingPreview] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
+  const [portalLanguage, setPortalLanguage] = useState('en');
+  const [attachmentTranslations, setAttachmentTranslations] = useState<Record<string, AttachmentTranslationState>>({});
+  const previewRequestRef = useRef(0);
 
   const chatMessages = mapApiMessages(apiMessages);
   const perspectiveRole = resolveChatPerspectiveRole(conversation);
@@ -320,37 +429,218 @@ function ChatPanel({
 
   const caseInfo = <CaseInfoSidebar conversation={conversation} />;
 
-  return (
-    <ChatLayout
-      messages={chatMessages}
-      onSend={handleSend}
-      onUploadFiles={handleUploadFiles}
-      isUploading={isUploading}
-      canSend={canReply}
-      isSending={isSending}
-      currentUserRole={perspectiveRole}
-      showTranslation={true}
-      className="h-full"
-      inputNotice={moderationNotice}
-      readOnlyNotice="Hospital conversation is view-only for admin. Reply is disabled."
-      patientInfo={showInfoPanel && showInfo ? caseInfo : undefined}
-      showInfoToggle={showInfoPanel && !!conversation.caseId}
-      onToggleInfo={() => setShowInfo((v) => !v)}
-      infoPanelOpen={showInfoPanel && showInfo}
-      header={{
-        name: conversationTitle,
-        subtitle: conversation.participantRole ? `${toRoleLabel(conversation.participantRole)} chat` : undefined,
-        categoryBadge: conversationCategory,
-        isAdminConversation: true,
-      }}
-      emptyState={
-        <EmptyState
-          icon={<MessageSquare size={36} />}
-          title="No messages yet"
-          description="Messages in this conversation will appear here."
-        />
+  useEffect(() => {
+    if (user.preferredLanguage) {
+      setPortalLanguage(mapLocaleToTargetLanguage(user.preferredLanguage));
+      return;
+    }
+    if (typeof navigator !== 'undefined') {
+      setPortalLanguage(mapLocaleToTargetLanguage(navigator.language));
+    }
+  }, [user.preferredLanguage]);
+
+  const handleOpenAttachment = useCallback(async (attachment: ChatAttachment) => {
+    const requestId = previewRequestRef.current + 1;
+    previewRequestRef.current = requestId;
+    setPreviewAttachment(attachment);
+    setTranslatedPreviewUrl(null);
+    setTranslationError(null);
+
+    if (!isPdfAttachment(attachment) || !attachment.url) {
+      return;
+    }
+
+    const targetLanguage = mapLocaleToTargetLanguage(user.preferredLanguage || portalLanguage);
+    const translationKey = getAttachmentTranslationKey(attachment, targetLanguage);
+    const cached = attachmentTranslations[translationKey];
+
+    if (cached?.status === 'ready' && cached.translatedUrl) {
+      if (previewRequestRef.current === requestId) {
+        setTranslatedPreviewUrl(cached.translatedUrl);
+        setIsTranslatingPreview(false);
       }
-    />
+      return;
+    }
+
+    if (cached?.status === 'translating') {
+      if (previewRequestRef.current === requestId) {
+        setIsTranslatingPreview(true);
+      }
+      return;
+    }
+
+    setIsTranslatingPreview(true);
+    setAttachmentTranslations((current) => ({
+      ...current,
+      [translationKey]: {
+        status: 'translating',
+        fileName: attachment.name ?? 'document.pdf',
+        targetLanguage,
+      },
+    }));
+
+    try {
+      const result = await translatePdfForPreview(
+        attachment.url,
+        attachment.name ?? 'document.pdf',
+        targetLanguage,
+      );
+      const translatedPdf = pickTranslatedPdf(result);
+      if (!translatedPdf) {
+        throw new Error('Translated PDF output was not found');
+      }
+      const translatedUrl = `/api/documents/translate/file?path=${encodeURIComponent(translatedPdf.path)}`;
+      if (previewRequestRef.current !== requestId) {
+        return;
+      }
+      setTranslatedPreviewUrl(translatedUrl);
+      setAttachmentTranslations((current) => ({
+        ...current,
+        [translationKey]: {
+          status: 'ready',
+          translatedUrl,
+          fileName: attachment.name ?? 'document.pdf',
+          targetLanguage,
+        },
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to translate PDF preview';
+      if (previewRequestRef.current !== requestId) {
+        return;
+      }
+      setTranslationError(message);
+      setAttachmentTranslations((current) => ({
+        ...current,
+        [translationKey]: {
+          status: 'failed',
+          error: message,
+          fileName: attachment.name ?? 'document.pdf',
+          targetLanguage,
+        },
+      }));
+    } finally {
+      if (previewRequestRef.current === requestId) {
+        setIsTranslatingPreview(false);
+      }
+    }
+  }, [attachmentTranslations, portalLanguage, user.preferredLanguage]);
+
+  const handleCloseAttachmentPreview = useCallback(() => {
+    previewRequestRef.current += 1;
+    setPreviewAttachment(null);
+    setTranslatedPreviewUrl(null);
+    setTranslationError(null);
+    setIsTranslatingPreview(false);
+  }, []);
+
+  return (
+    <>
+      <ChatLayout
+        messages={chatMessages}
+        onSend={handleSend}
+        onUploadFiles={handleUploadFiles}
+        isUploading={isUploading}
+        canSend={canReply && !readOnly}
+        isSending={isSending}
+        currentUserRole={perspectiveRole}
+        showTranslation={true}
+        className="h-full"
+        inputNotice={moderationNotice}
+        readOnlyNotice="Hospital conversation is view-only for admin. Reply is disabled."
+        patientInfo={showInfoPanel && showInfo ? caseInfo : undefined}
+        showInfoToggle={showInfoPanel && !!conversation.caseId}
+        onToggleInfo={() => setShowInfo((v) => !v)}
+        infoPanelOpen={showInfoPanel && showInfo}
+        onOpenAttachment={handleOpenAttachment}
+        header={{
+          name: conversationTitle,
+          subtitle: conversation.participantRole ? `${toRoleLabel(conversation.participantRole)} chat` : undefined,
+          categoryBadge: conversationCategory,
+          isAdminConversation: true,
+        }}
+        emptyState={
+          <EmptyState
+            icon={<MessageSquare size={36} />}
+            title="No messages yet"
+            description="Messages in this conversation will appear here."
+          />
+        }
+      />
+
+      <Modal
+        open={!!previewAttachment}
+        onClose={handleCloseAttachmentPreview}
+        title={previewAttachment?.name ?? 'Attachment Preview'}
+        maxWidth="max-w-[92vw]"
+      >
+        {previewAttachment && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">Original</h3>
+                <span className="text-xs text-slate-500">{previewAttachment.type ?? 'file'}</span>
+              </div>
+              <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                {isImageAttachment(previewAttachment) && previewAttachment.url ? (
+                  <img
+                    src={previewAttachment.url}
+                    alt={previewAttachment.name ?? 'Attachment preview'}
+                    className="h-full w-full object-contain bg-white"
+                  />
+                ) : isPdfAttachment(previewAttachment) && previewAttachment.url ? (
+                  <PdfPreview
+                    title={`${previewAttachment.name ?? 'Attachment'} original`}
+                    url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? 'document.pdf')}
+                    className="bg-slate-50"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                    Preview is not available for this file type.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">Translated</h3>
+                <span className="text-xs text-slate-500">
+                  {isPdfAttachment(previewAttachment) ? `Target: ${portalLanguage}` : 'Preview only'}
+                </span>
+              </div>
+              <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                {isPdfAttachment(previewAttachment) ? (
+                  isTranslatingPreview ? (
+                    <AsyncStatusCard
+                      title="Translating PDF preview"
+                      description={`BabelDOC is preparing a ${portalLanguage.toUpperCase()} preview for ${previewAttachment.name ?? 'this document'}.`}
+                    />
+                  ) : translatedPreviewUrl ? (
+                    <PdfPreview
+                      title={`${previewAttachment.name ?? 'Attachment'} translated`}
+                      url={translatedPreviewUrl}
+                      className="bg-slate-50"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                      {translationError ?? 'Translation preview is not available.'}
+                    </div>
+                  )
+                ) : isImageAttachment(previewAttachment) ? (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                    Image preview is available here. Structured image translation is not enabled yet in this BabelDOC flow.
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+                    Translation preview is currently available for PDF attachments only.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }
 
@@ -367,6 +657,8 @@ export function MessagesCenter({
   leftPanelWidthClassName = 'w-80',
   listTitle,
   emptyListMessage = 'No conversations found.',
+  includedCategories,
+  readOnly = false,
 }: MessagesCenterProps) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
@@ -374,7 +666,11 @@ export function MessagesCenter({
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [pendingRevealId, setPendingRevealId] = useState<string | null>(null);
+  const [flashConversationId, setFlashConversationId] = useState<string | null>(null);
   const [isCreatingConversation, startCreateConversation] = useTransition();
+  const leftPanelRef = useRef<HTMLDivElement | null>(null);
+  const flashTimeoutRef = useRef<number | null>(null);
 
   const filters: Record<string, string> = {};
   if (caseId) filters['caseId'] = caseId;
@@ -383,7 +679,12 @@ export function MessagesCenter({
   const { data: raw, isLoading } = useConversations(filters);
   const allConversations = unwrapList<ApiConversation>(raw);
   const conversations = allConversations
-    .filter((c) => toAdminCategory(c.category) !== null)
+    .filter((c) => {
+      if (includedCategories) {
+        return includedCategories.includes(c.category?.toUpperCase() ?? '');
+      }
+      return toAdminCategory(c.category) !== null;
+    })
     .filter((c) => matchesSearch(c, search));
   const selectedConversation = conversations.find((conv) => conv.id === selectedConvId) ?? null;
 
@@ -422,22 +723,60 @@ export function MessagesCenter({
     }
   }, [conversations, selectedConvId]);
 
-  function handleCreateConversation(payload: MessageNewConversationPayload) {
+  const revealConversation = useCallback((id: string) => {
+    setSelectedConvId(id);
+    setSearch('');
+    setCategory('');
+    setPendingRevealId(id);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingRevealId) return;
+    const exists = conversations.some((conversation) => conversation.id === pendingRevealId);
+    if (!exists) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const target = leftPanelRef.current?.querySelector<HTMLElement>(`[data-conversation-item-id="${pendingRevealId}"]`);
+      if (!target) return;
+
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFlashConversationId(pendingRevealId);
+      setPendingRevealId(null);
+
+      if (flashTimeoutRef.current) {
+        window.clearTimeout(flashTimeoutRef.current);
+      }
+      flashTimeoutRef.current = window.setTimeout(() => {
+        setFlashConversationId((current) => (current === pendingRevealId ? null : current));
+        flashTimeoutRef.current = null;
+      }, 1400);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversations, pendingRevealId]);
+
+  useEffect(() => () => {
+    if (flashTimeoutRef.current) {
+      window.clearTimeout(flashTimeoutRef.current);
+    }
+  }, []);
+
+  function handleCreateOrNavigate(existingConvId: string | null, payload: { category: 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT'; hospitalId?: string; caseId?: string }) {
+    if (existingConvId) {
+      revealConversation(existingConvId);
+      setCreateModalOpen(false);
+      return;
+    }
     startCreateConversation(async () => {
       try {
         setCreateError(null);
-        const created = await createConversation({
-          category: payload.category as 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT',
-          title: payload.title,
-          hospitalId: payload.hospitalId,
-          caseId: payload.caseId,
-        });
+        const created = await createConversation(payload);
         await queryClient.invalidateQueries({ queryKey: ['conversations'] });
         const createdId =
           created && typeof created === 'object' && 'id' in created
             ? String((created as { id: string }).id)
             : null;
-        if (createdId) setSelectedConvId(createdId);
+        if (createdId) revealConversation(createdId);
         setCreateModalOpen(false);
       } catch (error) {
         setCreateError(error instanceof Error ? error.message : 'Failed to create conversation');
@@ -448,7 +787,7 @@ export function MessagesCenter({
   return (
     <div className={`flex min-h-0 ${containerHeightClassName} rounded-xl border border-slate-200 overflow-hidden bg-white`}>
       {/* Left panel — conversation list */}
-      <div className={`${leftPanelWidthClassName} min-h-0 border-r border-slate-200 flex flex-col shrink-0`}>
+      <div ref={leftPanelRef} className={`${leftPanelWidthClassName} min-h-0 border-r border-slate-200 flex flex-col shrink-0`}>
         {showCategoryFilter && (
           <div className="border-b border-slate-100 px-4 py-2">
             <select
@@ -477,6 +816,7 @@ export function MessagesCenter({
                 ]
           }
           selectedId={selectedConvId}
+          highlightedId={flashConversationId}
           onSelect={setSelectedConvId}
           searchValue={showSearch ? search : ''}
           onSearchChange={setSearch}
@@ -491,7 +831,7 @@ export function MessagesCenter({
       {/* Right panel — chat */}
       {selectedConversation ? (
         <div className="flex-1 min-h-0 overflow-hidden">
-          <ChatPanel conversation={selectedConversation} showInfoPanel={showInfoPanel} />
+          <ChatPanel conversation={selectedConversation} showInfoPanel={showInfoPanel} readOnly={readOnly} />
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-slate-400">
@@ -502,18 +842,259 @@ export function MessagesCenter({
         </div>
       )}
 
-      <MessageNewConversationModal
+      <AdminNewConversationModal
         open={createModalOpen}
         onClose={() => {
           if (isCreatingConversation) return;
           setCreateModalOpen(false);
           setCreateError(null);
         }}
-        onSubmit={handleCreateConversation}
-        categoryOptions={NEW_CONVERSATION_CATEGORY_OPTIONS}
+        conversations={allConversations}
+        onCreateOrNavigate={handleCreateOrNavigate}
         isPending={isCreatingConversation}
         error={createError}
       />
     </div>
+  );
+}
+
+/* ── Admin New Conversation Modal ───────────────────────────────── */
+
+function AdminNewConversationModal({
+  open,
+  onClose,
+  conversations,
+  onCreateOrNavigate,
+  isPending,
+  error,
+}: {
+  open: boolean;
+  onClose: () => void;
+  conversations: ApiConversation[];
+  onCreateOrNavigate: (existingConvId: string | null, payload: { category: 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT'; hospitalId?: string; caseId?: string }) => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedHospitalId, setSelectedHospitalId] = useState<string | null>(null);
+  const caseListParams = { page: '1', limit: '100' };
+
+  const { data: hospitalsRaw } = useHospitals({ limit: '100' });
+  const hospitals = (hospitalsRaw as PaginatedResponse<HospitalSummary> | undefined)?.data ?? [];
+
+  // All cases (for patient section)
+  const { data: allCasesRaw } = useCases(caseListParams);
+  const allCases = (allCasesRaw as PaginatedResponse<CaseSummary> | undefined)?.data ?? [];
+
+  // Cases assigned to selected hospital (for hospital section)
+  const { data: hospitalCasesRaw } = useHospitalCases(selectedHospitalId ?? '', caseListParams);
+  const hospitalCases = (hospitalCasesRaw as PaginatedResponse<CaseSummary> | undefined)?.data ?? [];
+
+  // Build dedup maps
+  const hospitalConvMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of conversations) {
+      if (c.category === 'ADMIN_HOSPITAL' && c.hospitalId) {
+        map.set(`${c.hospitalId}::${c.caseId ?? ''}`, c.id);
+      }
+    }
+    return map;
+  }, [conversations]);
+
+  const patientConvMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of conversations) {
+      if (c.category === 'ADMIN_PATIENT' && c.caseId) {
+        map.set(c.caseId, c.id);
+      }
+    }
+    return map;
+  }, [conversations]);
+
+  const selectedHospital = hospitals.find((h) => h.id === selectedHospitalId);
+
+  // Filter hospital cases by search
+  const filteredHospitalCases = hospitalCases.filter((c) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (c.patientName ?? '').toLowerCase().includes(q) ||
+      (c.caseNumber ?? '').toLowerCase().includes(q) ||
+      (c.primaryDiagnosis ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  // Filter all cases by search (for patient section)
+  const filteredAllCases = allCases.filter((c) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (c.patientName ?? '').toLowerCase().includes(q) ||
+      (c.caseNumber ?? '').toLowerCase().includes(q) ||
+      (c.primaryDiagnosis ?? '').toLowerCase().includes(q)
+    );
+  });
+
+  const filteredHospitals = hospitals.filter((h) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return h.name.toLowerCase().includes(q) || (h.nameEn ?? '').toLowerCase().includes(q);
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="New Conversation" maxWidth="max-w-2xl">
+      <div className="space-y-5">
+        {error && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+        )}
+
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input type="text" placeholder="Search hospitals, patients, case numbers..."
+            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
+        </div>
+
+        {/* Section 1: Message Hospital */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center"><Building2 size={14} className="text-purple-600" /></div>
+            <h3 className="text-sm font-semibold text-slate-700">Message Hospital</h3>
+          </div>
+
+          {!selectedHospitalId ? (
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/60 bg-white">
+              {filteredHospitals.length === 0 ? (
+                <div className="py-6 text-center text-sm text-slate-400">No hospitals found</div>
+              ) : (
+                filteredHospitals.map((h) => {
+                  const generalConvId = hospitalConvMap.get(`${h.id}::`);
+                  return (
+                    <button key={h.id} onClick={() => setSelectedHospitalId(h.id)}
+                      className="w-full px-4 py-3 flex items-center gap-3 text-left border-b border-slate-100 last:border-b-0 hover:bg-purple-50 transition-colors">
+                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-semibold text-purple-600 shrink-0">
+                        {getInitials(h.name)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium text-sm text-slate-900 truncate block">{h.name}</span>
+                        {h.nameEn && <span className="text-xs text-slate-400 truncate block">{h.nameEn}</span>}
+                      </div>
+                      {generalConvId && (
+                        <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full shrink-0">Active</span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl">
+                <Building2 size={14} className="text-purple-600" />
+                <span className="text-sm font-medium text-purple-700 flex-1">{selectedHospital?.name ?? selectedHospitalId}</span>
+                <button onClick={() => setSelectedHospitalId(null)} className="text-purple-400 hover:text-purple-600"><X size={14} /></button>
+              </div>
+
+              {(() => {
+                const existingId = hospitalConvMap.get(`${selectedHospitalId}::`) ?? null;
+                return (
+                  <button onClick={() => onCreateOrNavigate(existingId, { category: 'ADMIN_HOSPITAL', hospitalId: selectedHospitalId })}
+                    disabled={isPending}
+                    className="w-full p-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white flex items-center gap-3 hover:shadow-md transition-all text-left disabled:opacity-50">
+                    <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0"><MessageSquare size={14} className="text-white" /></div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-sm">General Message</div>
+                      <div className="text-xs text-indigo-100">No case attached</div>
+                    </div>
+                    {existingId && <span className="text-[10px] font-semibold text-white/90 bg-white/20 px-2 py-0.5 rounded-full">Go to Chat</span>}
+                  </button>
+                );
+              })()}
+
+              <p className="text-xs text-slate-400">Or about a specific case assigned to this hospital:</p>
+              <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200/60 bg-white">
+                {filteredHospitalCases.length === 0 ? (
+                  <div className="py-4 text-center text-sm text-slate-400">No cases assigned to this hospital</div>
+                ) : (
+                  filteredHospitalCases.map((c) => {
+                    const existingId = hospitalConvMap.get(`${selectedHospitalId}::${c.id}`) ?? null;
+                    return (
+                      <button key={c.id}
+                        onClick={() => onCreateOrNavigate(existingId, { category: 'ADMIN_HOSPITAL', hospitalId: selectedHospitalId, caseId: c.id })}
+                        disabled={isPending}
+                        className={`w-full px-4 py-2.5 flex items-center gap-3 text-left border-b border-slate-100 last:border-b-0 transition-colors disabled:opacity-50 ${existingId ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${existingId ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                          {getInitials(c.patientName ?? 'U')}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium text-sm text-slate-900 truncate block">{c.patientName ?? 'Unknown'}</span>
+                          {c.caseNumber && <span className="text-[10px] text-slate-400">{c.caseNumber}</span>}
+                        </div>
+                        {existingId ? (
+                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">Go to Chat</span>
+                        ) : (
+                          <span className="text-[10px] text-blue-500 shrink-0">+ New</span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="h-px bg-slate-200" />
+
+        {/* Section 2: Message Patient */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center"><User size={14} className="text-blue-600" /></div>
+            <h3 className="text-sm font-semibold text-slate-700">Message Patient</h3>
+            <span className="text-xs text-slate-400">(select a case)</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/60 bg-white">
+            {filteredAllCases.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-400">
+                <FolderOpen size={20} className="mx-auto mb-1.5 opacity-50" />
+                No cases found
+              </div>
+            ) : (
+              filteredAllCases.map((c) => {
+                const existingId = patientConvMap.get(c.id) ?? null;
+                return (
+                  <button key={c.id}
+                    onClick={() => onCreateOrNavigate(existingId, { category: 'ADMIN_PATIENT', caseId: c.id })}
+                    disabled={isPending}
+                    className={`w-full px-4 py-3 flex items-center gap-3 text-left border-b border-slate-100 last:border-b-0 transition-colors disabled:opacity-50 ${existingId ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-blue-50'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${existingId ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                      {getInitials(c.patientName ?? 'U')}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm text-slate-900 truncate">{c.patientName ?? 'Unknown'}</span>
+                        {c.caseNumber && <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{c.caseNumber}</span>}
+                      </div>
+                      {c.primaryDiagnosis && <p className="text-xs text-slate-500 truncate mt-0.5">{c.primaryDiagnosis}</p>}
+                    </div>
+                    {existingId ? (
+                      <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
+                        <MessageSquare size={10} /> Go to Chat
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-blue-500 shrink-0">+ New</span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100">Close</button>
+        </div>
+      </div>
+    </Modal>
   );
 }

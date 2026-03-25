@@ -24,9 +24,27 @@ export async function apiClient<T>(
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: 'Unknown error' }));
+    const text = await res.text();
+    const body = safeParseJson(text) ?? { error: text || 'Unknown error' };
     throw new ApiError(res.status, body);
   }
 
-  return res.json() as Promise<T>;
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T;
+  }
+
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return (safeParseJson(text) ?? text) as T;
+}
+
+function safeParseJson(text: string): unknown | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }

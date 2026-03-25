@@ -15,8 +15,11 @@ export { Modal, type ModalProps } from './components/modal';
 export { ConfirmDialog, type ConfirmDialogProps } from './components/confirm-dialog';
 export { EmptyState, type EmptyStateProps } from './components/empty-state';
 export { LoadingSpinner, type LoadingSpinnerProps } from './components/loading-spinner';
+export { AsyncStatusCard, type AsyncStatusCardProps } from './components/async-status-card';
+export { PdfPreview, type PdfPreviewProps } from './components/pdf-preview';
 export { SearchInput, type SearchInputProps } from './components/search-input';
 export { DataTable, type Column, type DataTableProps, type PaginationState } from './components/data-table';
+export { PortalLogin, type PortalLoginProps } from './components/portal-login';
 export { ChatLayout, type ChatMessage, type ChatAttachment, type ChatLayoutProps, type ChatHeaderConfig } from './components/chat-layout';
 export {
   MessageConversationSidebar,

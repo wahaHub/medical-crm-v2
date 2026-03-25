@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const addProgressSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('DIAGNOSIS'),
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+    diagnosisType: z.string().optional(),
     icdCode: z.string().optional(),
     severity: z.string().optional(),
     treatmentRecommendation: z.string().optional(),

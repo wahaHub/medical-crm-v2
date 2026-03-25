@@ -1,8 +1,14 @@
 import { eq, and, sql, count, desc } from 'drizzle-orm';
 import type { IQuestionCollectorRepository, QCTemplateListQuery, QCResponseListQuery } from '@medical-crm/domain';
 import { QCTemplate, QCResponse, QCCustomization } from '@medical-crm/domain';
+import { ConflictError } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
-import { questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations } from '../schema/index.js';
+import {
+  questionCollectorTemplates,
+  questionCollectorResponses,
+  questionCollectorCustomizations,
+  users,
+} from '../schema/index.js';
 
 export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRepository {
   constructor(private readonly db: CrmDb) {}
@@ -57,6 +63,7 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
 
   async saveTemplate(entity: QCTemplate): Promise<QCTemplate> {
     const now = new Date().toISOString();
+    const createdBy = await this.resolveExistingUserId(entity.createdBy);
     const values = {
       id: entity.id,
       templateName: entity.templateName,
@@ -65,7 +72,7 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
       questions: entity.questions,
       version: entity.version,
       isActive: entity.isActive,
-      createdBy: entity.createdBy,
+      createdBy,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: now,
     };
@@ -88,6 +95,29 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
       .returning();
 
     return this.rowToTemplate(rows[0]!);
+  }
+
+  async deleteTemplate(id: string): Promise<void> {
+    const [responseCount, customizationCount] = await Promise.all([
+      this.db
+        .select({ total: count() })
+        .from(questionCollectorResponses)
+        .where(eq(questionCollectorResponses.templateId, id)),
+      this.db
+        .select({ total: count() })
+        .from(questionCollectorCustomizations)
+        .where(eq(questionCollectorCustomizations.templateId, id)),
+    ]);
+
+    const totalResponses = Number(responseCount[0]?.total ?? 0);
+    const totalCustomizations = Number(customizationCount[0]?.total ?? 0);
+    if (totalResponses > 0 || totalCustomizations > 0) {
+      throw new ConflictError('Template cannot be deleted after it has responses or customizations');
+    }
+
+    await this.db
+      .delete(questionCollectorTemplates)
+      .where(eq(questionCollectorTemplates.id, id));
   }
 
   // ---------------------------------------------------------------------------
@@ -215,12 +245,13 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
 
   async saveCustomization(entity: QCCustomization): Promise<QCCustomization> {
     const now = new Date().toISOString();
+    const customizedBy = await this.resolveExistingUserId(entity.customizedBy);
     const values = {
       id: entity.id,
       templateId: entity.templateId,
       hospitalId: entity.hospitalId,
       customizedQuestions: entity.customizedQuestions,
-      customizedBy: entity.customizedBy,
+      customizedBy,
       customizedAt: entity.customizedAt ? entity.customizedAt.toISOString() : null,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: now,
@@ -289,5 +320,15 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });
+  }
+
+  private async resolveExistingUserId(userId: string | null | undefined): Promise<string | null> {
+    if (!userId) return null;
+    const rows = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return rows[0]?.id ?? null;
   }
 }

@@ -18,11 +18,14 @@ export class ListFaqItemsUseCase {
       throw new ForbiddenError('Forbidden');
     }
 
-    // HOSPITAL actors only see their own hospital's FAQs
-    const scopedQuery: ChatbotFaqListQuery =
-      actor.role === 'HOSPITAL'
-        ? { ...query, hospitalId: actor.hospitalId }
-        : query;
+    // Each role only sees their own FAQs
+    const scopedQuery: ChatbotFaqListQuery = { ...query };
+    if (actor.role === 'HOSPITAL') {
+      scopedQuery.hospitalId = actor.hospitalId;
+    } else if (actor.role === 'ADMIN') {
+      // Admin only sees global FAQs (hospitalId=NULL)
+      scopedQuery.hospitalId = null;
+    }
 
     const result = await this.faqRepo.findAll(scopedQuery);
 

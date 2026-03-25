@@ -1,14 +1,16 @@
 # Hospital Portal Enhancements Design Spec
 
 > Date: 2026-03-18
-> Status: Approved
-> Scope: Incremental feature additions to `apps/hospital/` in medical-crm-v2
+> Status: Revised (Phase 1 Alignment Draft)
+> Scope: Phase 1 incremental feature additions to `apps/hospital/` in medical-crm-v2
 
 ---
 
 ## 1. Overview
 
-Extend the existing Hospital Portal with new features aligned to the patientsflow design documents. The portal currently has 5 pages (Dashboard, Cases, Consultations, Messages, Materials) and will gain 3 new pages plus expanded functionality on existing pages.
+Extend the existing Hospital Portal with a Phase 1 subset aligned to the patientsflow design documents. The portal currently has 5 pages (Dashboard, Cases, Consultations, Messages, Materials) and will gain 3 new pages plus expanded functionality on existing pages.
+
+This document intentionally scopes to high-value incremental delivery first, while deferring some patientsflow modules (Timeline, Reply Task Queue, top-level Quotes module) to later phases.
 
 ### What's Changing
 
@@ -17,17 +19,18 @@ Extend the existing Hospital Portal with new features aligned to the patientsflo
 | Case Detail | 7 tabs → 9 tabs (+ AI Summary, + Quote) |
 | Materials — Procedures | Expand fields into a full Procedures Catalog |
 | Email Templates | New top-level page + 5 new API endpoints |
-| FAQ | New top-level page (reuse existing 5 chatbot-faq API endpoints) |
-| Settings | New top-level page + 1 new API endpoint |
+| FAQ | New top-level page (reuse chatbot-faq endpoint paths with hospital-scope refactor) |
+| Settings | New top-level page (reuse existing user settings APIs with schema extension) |
 | Sidebar Nav | 5 items → 8 items |
 
-### What's NOT Changing
+### Deferred to Phase 2+
 
-- Dashboard (no Reply Task Queue)
-- Case Timeline (not adding)
+- Dashboard (Reply Task Queue deferred)
+- Case Timeline (deferred)
 - Contact Logging (already in Case Marketing tab)
 - Messages page
 - Consultations page
+- Top-level Quotes page (cross-case tracking deferred)
 
 ---
 
@@ -67,7 +70,7 @@ Extend the existing Hospital Portal with new features aligned to the patientsflo
 
 **Features**:
 
-1. **Quote List** — Display all quotes for this case with status badges (DRAFT / PENDING / ACCEPTED / REJECTED / EXPIRED)
+1. **Quote List** — Display all quotes for this case with status badges (PENDING / ACCEPTED / REJECTED / EXPIRED)
 
 2. **Create Quote Form** (Modal):
    - Dynamic line items list:
@@ -76,7 +79,7 @@ Extend the existing Hospital Portal with new features aligned to the patientsflo
    - Auto-calculated total at bottom
    - Notes / terms textarea
    - Valid until date picker
-   - Save as draft / Send immediately actions
+   - Save (unsent form state in UI) / Send immediately actions
 
 3. **Upload Quote Document**:
    - Upload a quote PDF/document via `POST /api/v2/cases/{caseId}/documents` with `documentType: "quote"`
@@ -84,8 +87,12 @@ Extend the existing Hospital Portal with new features aligned to the patientsflo
 
 4. **Quote Actions**:
    - Send: `POST /api/v2/quotes/{id}/send`
-   - Edit (draft only): `PATCH /api/v2/quotes/{id}`
+   - Edit quote details: `PATCH /api/v2/quotes/{id}`
    - View status changes
+
+**Quote status contract**:
+- Follow `STATE_MACHINES.md`: quote business status is only `PENDING | ACCEPTED | REJECTED | EXPIRED`
+- Do not introduce `DRAFT` as a persisted quote status
 
 **Existing API endpoints used**:
 - `POST /api/v2/quotes` — create (requires `caseId`, `hospitalId`, `totalAmount`)
@@ -149,6 +156,14 @@ Add the following fields to `MaterialsProcedureDTO` and the underlying Supabase 
 ### Data Model
 
 ```typescript
+interface EmailTemplateAttachment {
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  storageKey: string;
+  url?: string;
+}
+
 interface EmailTemplate {
   id: string;
   hospitalId: string;
@@ -158,6 +173,7 @@ interface EmailTemplate {
   body: string;                    // Email body (supports variables)
   variables: string[];             // Available variable names for this template
   status: 'draft' | 'active';     // Only active templates appear in Case Marketing
+  attachments: EmailTemplateAttachment[]; // Uploaded photos/files
   createdAt: string;
   updatedAt: string;
 }
@@ -187,6 +203,7 @@ Templates support placeholder variables that get auto-replaced when used from Ca
    - Type selector (dropdown)
    - Subject input (with variable insert buttons)
    - Body textarea (with variable insert buttons)
+   - Attachments section — upload photos/files (JPEG, PNG, WebP, GIF, PDF, DOCX, max 10MB)
    - Status toggle (draft / active)
    - Preview button — renders with sample data
 
@@ -209,6 +226,7 @@ GET    /api/v2/hospitals/{hospitalId}/email-templates     — List templates (fi
 GET    /api/v2/email-templates/{id}                       — Get single template (for edit modal)
 PUT    /api/v2/email-templates/{id}                       — Update template
 DELETE /api/v2/email-templates/{id}                       — Delete template (soft)
+POST   /api/v2/email-templates/{id}/upload                — Get presigned upload URL for attachment
 ```
 
 **Implementation**:
@@ -225,11 +243,11 @@ DELETE /api/v2/email-templates/{id}                       — Delete template (s
 
 `/faq` → `apps/hospital/src/app/(portal)/faq/page.tsx`
 
-### Existing Backend — Reuse `chatbot-faq` API
+### Existing Backend — Reuse `chatbot-faq` surface, refactor for hospital scope
 
-A complete FAQ backend **already exists**:
+A FAQ backend foundation exists and endpoint shapes can be reused, but hospital portal usage requires role/scope updates:
 
-- **DB table**: `chatbot_faq_items` with bilingual columns (`question_en`, `question_zh`, `answer_en`, `answer_zh`), `category`, `keywords` (jsonb), `is_active`, `sort_order`
+- **DB table**: `chatbot_faq_items` currently has bilingual columns (`question_en`, `question_zh`, `answer_en`, `answer_zh`), `category`, `keywords` (jsonb), `is_active`, `sort_order`
 - **API routes**: `apps/api/src/routes/chatbot-faq.routes.ts` — 5 endpoints + analytics:
   - `POST /api/v2/chatbot/faqs` — create
   - `GET /api/v2/chatbot/faqs` — list (with query filters)
@@ -238,13 +256,20 @@ A complete FAQ backend **already exists**:
   - `DELETE /api/v2/chatbot/faqs/{id}` — delete
   - `GET /api/v2/chatbot/analytics` — analytics stub
 
-**No new backend endpoints needed.** The frontend consumes the existing API.
+**Backend adjustments required before hospital frontend can consume this API**:
 
-### Data Model (matches existing `chatbot_faq_items` table)
+1. Add `hospital_id` to `chatbot_faq_items` (hospital-scoped FAQ isolation)
+2. Update FAQ use cases/policies to allow `HOSPITAL` actor (currently ADMIN-only)
+3. Enforce actor-hospital scoping in list/get/update/delete
+
+**No new endpoint paths needed** if the above refactor is applied.
+
+### Data Model (target, hospital-scoped)
 
 ```typescript
 interface FaqItem {
   id: string;
+  hospitalId: string;
   category: string;              // general | pricing | procedures | recovery | travel | insurance
   questionEn: string;            // English question
   questionZh: string;            // Chinese question
@@ -289,13 +314,13 @@ interface FaqItem {
 - New password input
 - Confirm new password input
 - Save button
-- **Backend**: Keycloak user account API — password update endpoint
+- **Backend**: Reuse existing API `POST /api/v2/users/me/change-password`
 
 #### 6.2 Preferred Language
 
 - Dropdown: English / 中文 / (extensible)
 - Save button
-- **Backend**: `PATCH /api/v2/users/me/preferences` with `{ preferredLanguage: "en" | "zh" }`
+- **Backend**: Reuse existing API `PATCH /api/v2/users/me` with `{ preferredLanguage: "en" | "zh" }`
 
 #### 6.3 Email Notification Management
 
@@ -306,16 +331,16 @@ Toggle switches for:
 - Consultation reminder notifications
 
 Save button.
-- **Backend**: `PATCH /api/v2/users/me/preferences` with `{ notifications: { newCase: true, ... } }`
+- **Backend**: Extend `PATCH /api/v2/users/me` payload to accept `{ notifications: { newCase: true, ... } }`
 
-### Backend — 1 New API Endpoint
+### Backend Changes (no new route path required)
 
 ```
-PATCH /api/v2/users/me/preferences — Update user preferences (language + notifications)
+PATCH /api/v2/users/me — Extend profile update payload for notification preferences
 ```
 
-- **Keycloak password change**: New BFF endpoint `POST /api/auth/change-password` in the hospital app's Next.js API routes. The BFF calls Keycloak Admin REST API (`PUT /admin/realms/{realm}/users/{userId}` with `credentials` payload) using the service account. The frontend never talks to Keycloak directly. Error handling: wrong current password returns 400 with message.
-- **User preferences**: new `user_preferences` table or JSONB column on users table
+- **Password change**: reuse existing `POST /api/v2/users/me/change-password` implementation
+- **User preferences**: add `notificationSettings` JSONB to `users` or add a `user_preferences` table behind the existing user settings route
 
 ---
 
@@ -332,7 +357,7 @@ const navItems: NavItem[] = [
   { key: 'messages',         label: 'Messages',          icon: <MessageSquare size={20} />,   href: '/messages' },
   { key: 'materials',        label: 'Materials',         icon: <Megaphone size={20} />,       href: '/materials' },
   { key: 'email-templates',  label: 'Email Templates',   icon: <Mail size={20} />,            href: '/email-templates' },
-  { key: 'faq',              label: 'FAQ',               icon: <HelpCircle size={20} />,      href: '/faq' },
+  { key: 'faq',              label: 'Chatbot & FAQ',     icon: <HelpCircle size={20} />,      href: '/faq' },
   { key: 'settings',         label: 'Settings',          icon: <Settings size={20} />,        href: '/settings' },
 ];
 ```
@@ -343,7 +368,7 @@ Settings placed last, above Logout button.
 
 ## 8. Backend Changes Summary
 
-### New API Endpoints (7 total)
+### New API Endpoints (6 total)
 
 | # | Method | Path | Module |
 |---|--------|------|--------|
@@ -352,30 +377,31 @@ Settings placed last, above Logout button.
 | 3 | GET | `/api/v2/email-templates/{id}` | Email Templates |
 | 4 | PUT | `/api/v2/email-templates/{id}` | Email Templates |
 | 5 | DELETE | `/api/v2/email-templates/{id}` | Email Templates |
-| 6 | PATCH | `/api/v2/users/me/preferences` | Settings |
-| 7 | POST | `/api/auth/change-password` (BFF) | Settings |
+| 6 | POST | `/api/v2/email-templates/{id}/upload` | Email Templates (attachment upload) |
 
-### New DB Tables
+### New / Extended Data Storage
 
-1. **`email_templates`**: id, hospital_id, name, type, subject, body, variables (jsonb), status, created_at, updated_at, deleted_at
-2. **`user_preferences`** (or JSONB column on users): preferred_language, notification_settings (jsonb)
+1. **`email_templates`**: id, hospital_id, name, type, subject, body, variables (jsonb), status, attachments (jsonb), created_at, updated_at, deleted_at
+2. **User settings storage**: `user_preferences` table or JSONB column on `users` for preferred language and notification settings
 
-### Existing DB Tables Used (no changes)
+### Existing DB Tables Used (with extension)
 
-- **`chatbot_faq_items`**: Already exists with bilingual columns, keywords, categories — 5 API endpoints ready
+- **`chatbot_faq_items`**: Exists with bilingual columns, keywords, categories — extend with `hospital_id` and hospital role scoping
 
 ### Schema Extensions
 
 - **Supabase procedures table**: Add columns `recovery_time`, `duration`, `hospital_stay_days`, `indications`, `risks`, `inclusions` (jsonb array)
-- **Validation schemas**: Add email-template schemas, add user-preferences schema
+- **FAQ schema/storage**: Add `hospital_id` to `chatbot_faq_items`; enforce hospital isolation
+- **Validation schemas**: Add email-template schemas; extend user settings schema for notifications
 
-### Existing API Endpoints Used (no changes needed)
+### Existing API Endpoints Reused
 
 - Quotes: 7 endpoints (create, list, get, update via PATCH, send, accept, reject) — `quoteListQuerySchema` supports `caseId` filter
-- Chatbot FAQ: 5 endpoints + analytics at `/api/v2/chatbot/faqs`
+- Chatbot FAQ: 5 endpoints + analytics at `/api/v2/chatbot/faqs` (with role/scope refactor)
 - Service Catalog: 6 service-catalog + 5 quote-template endpoints
 - Documents: upload endpoint for quote files
 - Cases: case detail returns `aiSummary` field
+- User settings: `GET/PATCH /api/v2/users/me`, `POST /api/v2/users/me/change-password`
 
 ---
 
@@ -411,7 +437,7 @@ apps/hospital/src/
 apps/api/src/
 ├── routes/
 │   ├── email-template.routes.ts        # New route file
-│   └── user-preferences.routes.ts      # New route file
+│   └── (no new settings route file)    # Reuse existing user-settings.routes.ts
 # Note: FAQ uses existing chatbot-faq.routes.ts — no new route file needed
 ```
 
@@ -424,5 +450,6 @@ apps/api/src/
 - Rebuild/regenerate AI Summary button
 - Case Timeline tab
 - Reply Task Queue
+- Top-level Quotes module (cross-case quote tracking + service catalog entrypoint)
 - Real-time WebSocket for messages
 - Quote comparison from patient perspective

@@ -11,7 +11,7 @@ import {
 } from '@medical-crm/ui';
 import { useHospitalCases } from '@/queries/use-hospitals';
 import type { HospitalSummary, CaseSummary } from '@/lib/api-types';
-import { updateHospitalStatus } from '@/actions/hospital-actions';
+import { updateHospitalStatus, generateRegistrationToken } from '@/actions/hospital-actions';
 import { useRouter } from 'next/navigation';
 
 interface HospitalDetailProps {
@@ -108,17 +108,39 @@ function ConsumerShowcaseLinkSection({ hospital }: { hospital: HospitalSummary }
     consumerOrigin,
     fillTemplate(CONSUMER_HOSPITAL_PATH_TEMPLATE, hospital),
   );
-  const canApprove = status === 'PENDING';
+  const nextStatus =
+    status === 'PENDING'
+      ? 'ACTIVE'
+      : status === 'ACTIVE'
+        ? 'INACTIVE'
+        : 'ACTIVE';
+  const actionLabel =
+    status === 'PENDING'
+      ? 'Approve'
+      : status === 'ACTIVE'
+        ? 'Revoke Approval'
+        : 'Re-Approve';
+  const pendingLabel =
+    status === 'PENDING'
+      ? 'Approving...'
+      : status === 'ACTIVE'
+        ? 'Revoking...'
+        : 'Approving...';
 
-  function handleApprove() {
-    if (!canApprove) return;
+  function handleStatusChange() {
     setError(null);
     startTransition(async () => {
       try {
-        await updateHospitalStatus(hospital.id, 'ACTIVE');
-        setStatus('ACTIVE');
+        await updateHospitalStatus(hospital.id, nextStatus);
+        setStatus(nextStatus);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to approve hospital');
+        setError(
+          err instanceof Error
+            ? err.message
+            : nextStatus === 'INACTIVE'
+              ? 'Failed to revoke hospital approval'
+              : 'Failed to approve hospital',
+        );
       }
     });
   }
@@ -145,19 +167,81 @@ function ConsumerShowcaseLinkSection({ hospital }: { hospital: HospitalSummary }
 
         <div className="flex shrink-0 items-center gap-2">
           <StatusBadge status={status} colorMap={HOSPITAL_STATUS_COLORS} />
-          {canApprove && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleApprove}
-              disabled={isPending}
-            >
-              {isPending ? 'Approving...' : 'Approve'}
-            </Button>
-          )}
+          <Button
+            variant={status === 'ACTIVE' ? 'secondary' : 'default'}
+            size="sm"
+            onClick={handleStatusChange}
+            disabled={isPending}
+          >
+            {isPending ? pendingLabel : actionLabel}
+          </Button>
         </div>
       </div>
       {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+    </div>
+  );
+}
+
+function RegistrationInviteSection({ hospital }: { hospital: HospitalSummary }) {
+  if (hospital.hasRegisteredUser) {
+    return null;
+  }
+
+  const [email, setEmail] = useState(hospital.email ?? '');
+  const [result, setResult] = useState<{ registrationUrl: string; expiresAt: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleSendInvite() {
+    setError(null);
+    setResult(null);
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setError('Email is required.');
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const payload = await generateRegistrationToken(hospital.id, normalizedEmail);
+        setResult({ registrationUrl: payload.registrationUrl, expiresAt: payload.expiresAt });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to send invitation email');
+      }
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <h3 className="text-sm font-semibold text-slate-700">Hospital User Invitation</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        Send registration email for hospital account setup.
+      </p>
+
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="hospital-admin@example.com"
+          className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+        />
+        <Button variant="default" size="sm" onClick={handleSendInvite} disabled={isPending}>
+          {isPending ? 'Sending...' : 'Send Invite Email'}
+        </Button>
+      </div>
+
+      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+
+      {result && (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          <p className="font-semibold">Invite generated successfully.</p>
+          <p className="mt-1">Expires: {new Date(result.expiresAt).toLocaleString()}</p>
+          <p className="mt-1 break-all">
+            Registration URL: <a className="underline" href={result.registrationUrl} target="_blank" rel="noreferrer">{result.registrationUrl}</a>
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -269,6 +353,9 @@ export function HospitalDetail({ hospital }: HospitalDetailProps) {
 
       {/* Consumer Link + Review */}
       <ConsumerShowcaseLinkSection hospital={hospital} />
+
+      {/* Registration Invite */}
+      <RegistrationInviteSection hospital={hospital} />
 
       {/* Associated Cases */}
       <div className="rounded-xl border border-slate-200 bg-white p-5">

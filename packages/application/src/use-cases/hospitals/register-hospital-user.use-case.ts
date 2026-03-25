@@ -63,6 +63,7 @@ export class RegisterHospitalUserUseCase {
         role: 'HOSPITAL',
         hospitalId: token.hospitalId,
         preferredLanguage: 'zh',
+        keycloakUserId,
       });
 
       // 7. Mark token as used

@@ -19,6 +19,7 @@
   "dependencies": {
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "pdfjs-dist": "^4.10.38",
     "tailwind-merge": "^3.0.0"
   },
   "devDependencies": {

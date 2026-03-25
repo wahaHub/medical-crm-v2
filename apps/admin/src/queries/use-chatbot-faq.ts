@@ -23,3 +23,11 @@ export function useChatbotAnalytics() {
     queryFn: () => queryFetch('/api/chatbot/analytics'),
   });
 }
+
+export function useFaqCategories(filters: Record<string, string>) {
+  return useQuery({
+    queryKey: ['faq-categories', filters],
+    queryFn: () =>
+      queryFetch(`/api/chatbot/faqs/categories?${new URLSearchParams(filters)}`),
+  });
+}

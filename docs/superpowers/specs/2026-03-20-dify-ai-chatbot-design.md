@@ -2,553 +2,435 @@
 
 **Date:** 2026-03-20
 **Status:** Draft
-**Author:** Claude (brainstorming session)
+**Author:** Claude (revised by Codex)
 
 ---
 
 ## 1. Overview
 
-将 Dify (self-hosted) 作为 AI 客服引擎集成到 CRM v2，利用现有 FAQ 和 Package 数据构建 RAG 知识库，为患者提供多语言自动问答服务。当 AI 无法回答时自动转人工并创建 Support Ticket。
+将 Dify (self-hosted) 作为 AI 客服引擎集成到 CRM v2，利用现有 FAQ 与 Package 数据构建 RAG 知识库，为患者提供多语言自动问答服务。AI 无法回答时转人工，并在 CRM 内创建可跟踪的升级记录。
+
+这版设计基于当前代码库的真实约束做了修正：
+
+- 不信任前端传入的 `userId`
+- 不把匿名 AI 会话强行塞进现有 `conversations/messages`
+- FAQ 同步显式支持 `hospital_id` scope
+- Dify 文档同步按当前仓库内 Dify SDK 的实际 API 形状设计
 
 ### 1.1 Goals
 
-- 基于 CRM 已有的 FAQ 和 Package 数据，通过 RAG 自动回答患者问题
-- 支持多语言（依赖 LLM 自身能力，自动检测用户语言并用同语言回复）
-- 超出知识库范围时转人工 + 自动创建 Support Ticket
-- 所有 AI 对话记录同步到 CRM（无论是否转人工）
-- 遵守医疗边界规则（不诊断、不保证疗效、紧急情况提示就医）
+- 基于 CRM 已有 FAQ 和 Package 数据，通过 RAG 自动回答患者问题
+- 支持多语言回复
+- 超出知识库范围时转人工
+- 所有 AI 对话记录落 CRM，支持回放与审计
+- 遵守医疗边界规则
 
 ### 1.2 Non-Goals
 
-- 不替代现有的 Conversations/Messages 人工消息系统
+- 不替代现有人工 `conversations/messages` 系统
 - 不做医疗诊断或治疗建议
-- 不处理支付/订单流程（仅展示 Package 信息）
+- 不处理支付/订单流程
+- v1 不要求把 AI 聊天直接接入现有人工消息收件箱
 
 ---
 
 ## 2. Architecture
 
-```
-┌─────────────────────────────────────┐
-│  患者端网站                          │
-│  (medora-health-beauty)             │
-│  (china-medical-journeys)           │
-│         │                           │
-│   DifyChatWidget (共享组件)          │
-└─────────┬───────────────────────────┘
-          │ POST /api/v2/chatbot/chat
-          ▼
-┌─────────────────────────────────────┐
-│  CRM v2 API (Hono) — 代理层        │
-│  - /chatbot/chat (streaming proxy)  │
-│  - /chatbot/escalate (转人工)       │
-│  - /chatbot/history (历史记录)      │
-│  - DifySyncService (知识库同步)      │
-└─────────┬──────────┬────────────────┘
-          │          │
-     Dify API    DB (Drizzle)
-          │          │
-          ▼          ▼
-┌──────────────┐  ┌──────────────────┐
-│ Dify (VPS)   │  │ CRM Database     │
-│ - Chatflow   │  │ - conversations  │
-│ - FAQ Dataset│  │ - messages       │
-│ - Pkg Dataset│  │ - support_tickets│
-│ - GPT-4o     │  │ - dify_*_mappings│
-└──────────────┘  └──────────────────┘
+```text
+患者端网站
+  -> POST /api/v2/chatbot/chat
+  -> GET  /api/v2/chatbot/history/:sessionId
+  -> POST /api/v2/chatbot/escalate
+
+CRM v2 API (Hono)
+  - Public chatbot proxy
+  - Patient session detection (cookie)
+  - AI chat session/message persistence
+  - Escalation orchestration
+  - Dify dataset sync
+
+Dify
+  - Chat app
+  - FAQ dataset
+  - Package dataset
+
+CRM DB
+  - ai_chat_sessions
+  - ai_chat_messages
+  - support_tickets
+  - dify_document_mappings
 ```
 
-### 2.1 System Responsibilities
+### 2.1 Why CRM Proxy Layer
 
-| System | Responsibility |
-|--------|---------------|
-| **患者端网站** | 展示 DifyChatWidget，调用 CRM API |
-| **CRM v2 API** | 代理层：转发 Dify API、同步消息到 DB、创建 Ticket、知识库同步 |
-| **Dify** | AI 对话引擎：RAG 检索、LLM 生成、对话管理 |
-| **CRM Database** | 持久化所有对话记录、映射关系 |
-
-### 2.2 Why CRM Proxy Layer (Not Direct Frontend → Dify)
-
-- **安全** — Dify API Key 不暴露在前端
-- **消息同步** — CRM 侧统一处理，不依赖 Dify Webhook 可靠性
-- **用户关联** — CRM 侧将消息与 Patient/Case 关联
-- **统一入口** — 两个前端项目调同一个 CRM API
+- Dify API key 不暴露到前端
+- 统一做鉴权、限流、日志与错误处理
+- 可以把登录用户和匿名访客统一映射到 CRM 侧 session
+- 两个患者端站点共享同一入口
 
 ---
 
-## 3. Dify Chatflow Design
+## 3. Chat Flow
 
-```
-┌──────────────┐
-│  用户输入     │
-└──────┬───────┘
-       ▼
-┌──────────────────┐
-│  语言检测         │  LLM 自动识别，设置回复语言
-└──────┬───────────┘
-       ▼
-┌──────────────────┐
-│  Knowledge        │  检索 FAQ + Package 知识库
-│  Retrieval (RAG)  │  top-k 相关文档
-└──────┬───────────┘
-       ▼
-┌──────────────────┐
-│  LLM 节点         │
-│  (GPT-4o)        │
-│                  │
-│  System Prompt:  │
-│  - 用检索到的知识回答
-│  - 用用户语言回复
-│  - 医疗边界规则：
-│    · 不诊断、不保证疗效
-│    · 紧急情况提示就医
-│    · 不替代医生建议
-│  - 可回答通识信息
-│    （地址、流程、营业时间）
-│  - 可推荐相关 Package
-│  - 判断是否能回答
-│    → 输出 can_answer: bool
-└──────┬───────────┘
-       ▼
-┌──────────────────┐
-│  条件分支         │  can_answer?
-├──── YES ─────────┼──→ 返回 AI 回复
-│                  │
-└──── NO ──────────┘
-       ▼
-┌──────────────────┐
-│  转人工流程       │
-│  - 告知用户正在转接
-│  - 收集联系方式    │
-│    (匿名用户)
-│  - 触发 CRM API  │
-│    → 创建 Ticket  │
-└──────────────────┘
+### 3.1 Request Flow
+
+1. 前端生成并持久化 `sessionId` 到 `localStorage`
+2. 前端调用 `POST /api/v2/chatbot/chat`
+3. CRM API 从 `patient_session` cookie 判断是否为已登录患者
+4. CRM API 以 streaming 模式调用 Dify `/chat-messages`
+5. CRM API 将用户消息和 AI 回复写入 `ai_chat_messages`
+6. CRM API 将 SSE 转发给前端
+7. 当前端或后端判断需要转人工时，调用 `POST /api/v2/chatbot/escalate`
+
+### 3.2 Authentication Strategy
+
+- 登录用户：后端从 `patient_session` cookie 推导 `patientId`
+- 匿名用户：仅依赖 `sessionId`
+- `POST /api/v2/chatbot/chat` 请求体不接受 `userId`
+
+### 3.3 Dify Chatflow
+
+```text
+用户输入
+  -> Knowledge Retrieval (FAQ + Package)
+  -> LLM
+  -> 输出:
+     - answer
+     - can_answer
+     - escalation_reason (optional)
 ```
 
-### 3.1 Knowledge Base (Datasets)
+建议在 Dify 中让最终输出带结构化字段，而不是仅靠前端猜测：
 
-**两个 Dataset：**
-
-1. **FAQ Dataset** — 按 category 聚合，每个 category 一个文档
-2. **Package Dataset** — 按 type 聚合，每个 type 一个文档
-
-### 3.2 Medical Boundary Rules (System Prompt)
-
+```json
+{
+  "answer": "string",
+  "can_answer": true,
+  "escalation_reason": null
+}
 ```
+
+### 3.4 Medical Boundary Rules
+
+```text
 你是 Medora Health & Beauty 的 AI 客服助手。
 
 规则：
-1. 只基于知识库内容回答问题
-2. 可以回答通识信息（医院地址、营业时间、就医流程、套餐介绍等）
-3. 可以推荐相关套餐（Package）
-4. 严禁提供医疗诊断或治疗建议
-5. 严禁保证治疗效果
-6. 遇到紧急医疗情况，立即提示用户就医或拨打急救电话
-7. 所有医疗相关问题都应建议用户咨询专业医生
-8. 用用户的语言回复
-9. 如果无法回答用户的问题，设置 can_answer = false，礼貌告知将转接人工客服
+1. 只基于知识库内容回答
+2. 可以回答机构信息、流程、营业时间、套餐介绍
+3. 可以推荐相关套餐，但不能替代医生判断
+4. 不提供诊断、处方、疗效保证
+5. 如遇紧急情况，立即建议线下就医或联系急救服务
+6. 必须使用用户当前语言回复
+7. 若知识库无法支持回答，输出 can_answer = false
 ```
 
 ---
 
 ## 4. Knowledge Base Sync Strategy
 
-### 4.1 FAQ Document Format (Per Category)
+### 4.1 Dataset Strategy
 
-```markdown
-# [Category Name]
+- **FAQ Dataset**
+  - 按分类文档同步
+  - 同步粒度必须带 scope：`hospitalType + hospitalId + categoryName`
+- **Package Dataset**
+  - 按 `Package.type` 聚合同步
+  - 仅同步 `PUBLISHED` package
 
-Hospital Type: COSMETIC / REGULAR
+### 4.2 FAQ Document Identity
 
----
+当前 FAQ 已支持全局分类与医院级分类并存，因此不能只用 `(categoryName, hospitalType)` 做映射键。
 
-## Q: [Question 1]
-**A:** [Answer 1]
-**Keywords:** keyword1, keyword2
+建议在 CRM 侧生成稳定 `entity_key`：
 
----
-
-## Q: [Question 2]
-**A:** [Answer 2]
-**Keywords:** keyword3, keyword4
+```text
+faq:{hospitalType}:{hospitalId || "global"}:{categoryName}
 ```
 
-### 4.2 Package Document Format (Per Type)
+例如：
+
+```text
+faq:COSMETIC:global:General
+faq:COSMETIC:1f2e...:General
+```
+
+### 4.3 FAQ Document Format
 
 ```markdown
-# [Package Type] Packages
+# General
+
+Hospital Type: COSMETIC
+Hospital Scope: global
 
 ---
 
-## [Package Name (EN)] / [Package Name (ZH)]
+## Q: ...
+**A:** ...
+**Keywords:** ...
+```
 
-**Price:** $XXX USD
+若 `hospitalId` 不为空，建议额外写入：
+
+```markdown
+Hospital Scope: hospital
+Hospital ID: ...
+```
+
+### 4.4 Package Document Format
+
+```markdown
+# CONSULTATION Packages
+
+---
+
+## Basic Consult / 基础咨询
+
+**Price:** 100 USD
 **Status:** PUBLISHED
 
 ### Description
-[descriptionEn]
-[descriptionZh]
+...
 
 ### What's Included
-- inclusion 1
-- inclusion 2
+- ...
 ```
 
-### 4.3 Sync Triggers
+### 4.5 Sync Triggers
 
 | CRM Use Case | Sync Action |
 |--------------|-------------|
-| CreateFaqItem | Regenerate that category's document → upsert to Dify |
-| UpdateFaqItem | Regenerate that category's document → upsert to Dify |
-| DeleteFaqItem | Regenerate that category's document → upsert to Dify |
-| CreateFaqCategory | Create new empty document in Dify |
-| DeleteFaqCategory | Delete document from Dify |
-| CreatePackage | Regenerate that type's document → upsert to Dify |
-| UpdatePackage | Regenerate that type's document → upsert to Dify |
-| PublishPackage | Regenerate that type's document → upsert to Dify |
-| UnpublishPackage | Regenerate that type's document → upsert to Dify |
-| DeletePackage | Regenerate that type's document → upsert to Dify |
+| CreateFaqItem | Regenerate scoped FAQ document |
+| UpdateFaqItem | Regenerate scoped FAQ document |
+| DeleteFaqItem | Regenerate scoped FAQ document |
+| CreateFaqCategory | No immediate sync if category has no item |
+| DeleteFaqCategory | Delete mapped document if it exists |
+| CreatePackage | Regenerate that package type if package is published |
+| UpdatePackage | Regenerate that package type |
+| PublishPackage | Regenerate that package type |
+| UnpublishPackage | Regenerate that package type |
+| DeletePackage | Regenerate that package type |
 
-### 4.4 DifySyncService
+### 4.6 Dify API Notes
 
-```typescript
-interface DifySyncService {
-  // FAQ sync (by category name + hospitalType, since chatbot_faq_items.category is a VARCHAR name, not a FK)
-  syncFaqCategory(categoryName: string, hospitalType: 'COSMETIC' | 'REGULAR'): Promise<void>;
-  deleteFaqCategoryDocument(categoryName: string, hospitalType: 'COSMETIC' | 'REGULAR'): Promise<void>;
+基于当前仓库中的 Dify SDK，文本文档同步应使用：
 
-  // Package sync (by type)
-  syncPackageType(type: PackageType): Promise<void>;
+- `POST /datasets/{datasetId}/document/create_by_text`
+- `POST /datasets/{datasetId}/documents/{documentId}/update_by_text`
 
-  // Full sync (initial deployment / data repair)
-  fullSync(): Promise<void>;
-}
-```
+不使用：
 
-**Note:** `chatbot_faq_items.category` is a VARCHAR string (category name), not a FK to `chatbot_faq_categories.id`. The sync key is `(categoryName, hospitalType)`.
+- `PUT` 更新文档
+- `create-by-text` / `update-by-text` 这种连字符路径
+- 空文本文档
 
-**Logic:**
-1. Query all active FAQs/Packages for that category name + hospitalType / package type
-2. Convert to Markdown document
-3. Check `dify_document_mappings` for existing Dify document ID
-4. Existing → `PUT` update document in Dify
-5. New → `POST` create document in Dify, save mapping
+### 4.7 Fault Tolerance
 
-### 4.5 Fault Tolerance
-
-- Sync failure **does not block** FAQ/Package CRUD (async fire-and-forget + error logging)
-- `dify_document_mappings.lastSyncedAt` for audit
-- `fullSync()` endpoint for Admin to manually trigger full rebuild
+- 同步失败不阻塞 FAQ / Package CRUD
+- 记录 `last_synced_at`
+- 提供 admin-only `fullSync` 触发器
 
 ---
 
 ## 5. CRM Backend Changes
 
-### 5.1 New API Endpoints
+### 5.1 New Public Endpoints
 
 #### `POST /api/v2/chatbot/chat`
 
-Streaming proxy to Dify Chat API.
+请求体：
 
-**Request:**
 ```json
 {
   "message": "string",
+  "sessionId": "string",
   "difyConversationId": "string | null",
-  "userId": "string | null",
-  "sessionId": "string (for anonymous users)",
   "hospitalType": "COSMETIC | REGULAR"
 }
 ```
 
-**Response:** Server-Sent Events (streaming)
+处理逻辑：
 
-**Logic:**
-1. Forward message to Dify Chat API (streaming mode)
-2. On first message: create Conversation (category: `AI_CHATBOT`) + `dify_conversation_mappings`
-3. Save user message + AI response to Messages table
-4. Return streaming response to frontend
+1. 从 cookie 解析患者登录态；如果没有则视为匿名会话
+2. 校验 `sessionId`、限流、消息长度
+3. 调用 Dify `/chat-messages`
+4. 将 user/assistant 消息写入 `ai_chat_messages`
+5. 返回 SSE
+
+#### `GET /api/v2/chatbot/history/{sessionId}`
+
+返回该 `sessionId` 下最近一段 AI 聊天记录。
+
+访问控制：
+
+- 匿名用户：必须携带同一个 `sessionId`
+- 登录用户：后端校验 `patientId` 与 `ai_chat_sessions.patient_id`
 
 #### `POST /api/v2/chatbot/escalate`
 
-Transfer to human agent + create Ticket.
+请求体：
 
-**Request:**
 ```json
 {
-  "difyConversationId": "string",
+  "sessionId": "string",
   "reason": "string",
   "contactInfo": {
     "name": "string",
     "email": "string",
-    "phone": "string (optional)"
+    "phone": "string | null"
   }
 }
 ```
 
-**Logic:**
-1. Find Conversation via `dify_conversation_mappings`
-2. Create SupportTicket:
-   - `type`: `AI_ESCALATION`
-   - `priority`: `MEDIUM`
-   - `subject`: "AI 客服转人工 - [问题摘要]"
-   - `description`: AI 对话摘要 + 转人工原因
-3. Update mapping status → `ESCALATED`
+处理逻辑：
 
-#### `GET /api/v2/chatbot/history/{difyConversationId}`
+1. 查找 `ai_chat_session`
+2. 生成 AI 对话摘要
+3. 若当前为匿名访客，按联系信息创建或 upsert 一个最小 `PATIENT` 用户
+4. 创建 `support_ticket(type = AI_ESCALATION)`
+5. 将 `ai_chat_session.status` 标记为 `ESCALATED`
 
-Retrieve chat history for page refresh / context restore. Uses `difyConversationId` (from SSE response) as the lookup key.
+### 5.2 New Admin Endpoint
 
-**Response:**
-```json
-{
-  "difyConversationId": "string",
-  "messages": [
-    {
-      "role": "user | assistant",
-      "content": "string",
-      "createdAt": "ISO timestamp"
-    }
-  ]
-}
-```
+#### `POST /api/v2/chatbot/sync`
 
-### 5.2 New Database Tables
+- admin-only
+- 触发 FAQ + Package 全量重建
 
-#### `dify_conversation_mappings`
+### 5.3 Database Changes
+
+#### `ai_chat_sessions`
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | PK |
-| dify_conversation_id | VARCHAR(255) | Dify conversation ID (UNIQUE) |
-| conversation_id | UUID | FK → conversations.id |
-| user_id | UUID (nullable) | FK → users.id (logged-in user) |
-| session_id | VARCHAR(255) (nullable) | Anonymous user session |
-| status | ENUM | `ACTIVE`, `ESCALATED`, `CLOSED` |
+| session_id | VARCHAR(255) | 前端匿名/半匿名 session key |
+| dify_conversation_id | VARCHAR(255) | Dify conversation id |
+| patient_id | UUID nullable | 已登录患者或升级后关联患者 |
+| hospital_type | VARCHAR(20) | `COSMETIC` / `REGULAR` |
+| status | VARCHAR(20) | `ACTIVE` / `ESCALATED` / `CLOSED` |
 | created_at | TIMESTAMPTZ | |
 | updated_at | TIMESTAMPTZ | |
+
+约束：
+
+- `dify_conversation_id` unique
+- `session_id` indexed
+
+#### `ai_chat_messages`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | UUID | PK |
+| session_id | UUID | FK -> ai_chat_sessions.id |
+| role | VARCHAR(20) | `USER` / `ASSISTANT` / `SYSTEM` |
+| content | TEXT | message body |
+| can_answer | BOOLEAN nullable | only for assistant terminal message |
+| metadata | JSONB | 原始 Dify event、reason 等 |
+| created_at | TIMESTAMPTZ | |
 
 #### `dify_document_mappings`
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | UUID | PK |
-| entity_type | VARCHAR(50) | `FAQ_CATEGORY` or `PACKAGE_TYPE` |
-| entity_id | VARCHAR(255) | Category ID or Package Type string |
-| dify_dataset_id | VARCHAR(255) | Dify Dataset ID |
-| dify_document_id | VARCHAR(255) | Dify Document ID |
+| entity_type | VARCHAR(50) | `FAQ_CATEGORY` / `PACKAGE_TYPE` |
+| entity_key | VARCHAR(255) | scoped stable key |
+| dify_dataset_id | VARCHAR(255) | |
+| dify_document_id | VARCHAR(255) | |
 | last_synced_at | TIMESTAMPTZ | |
 | created_at | TIMESTAMPTZ | |
 
-### 5.3 Enum Changes
+唯一约束：
 
-- `TicketType` 新增: `AI_ESCALATION`
-- `Conversation.category` 新增: `AI_CHATBOT`
+- `(entity_type, entity_key)`
 
-### 5.4 New Service
+### 5.4 Enum Changes
 
+- `TicketType` 新增 `AI_ESCALATION`
+
+本方案不要求把 AI 聊天接入现有 `ConversationCategory`。
+
+---
+
+## 6. Frontend: Chat Widget
+
+### 6.1 Props
+
+```ts
+type DifyChatWidgetProps = {
+  apiBaseUrl: string;
+  hospitalType: 'COSMETIC' | 'REGULAR';
+  locale?: string;
+  theme?: Record<string, unknown>;
+};
 ```
-DifySyncService (infrastructure layer)
-├── Implements IDifySyncService (domain port)
-├── Uses Dify Dataset API (HTTP client)
-├── Injected into FAQ/Package use cases
-└── Configuration via env vars:
-    - DIFY_API_BASE_URL
-    - DIFY_API_KEY
-    - DIFY_FAQ_DATASET_ID
-    - DIFY_PACKAGE_DATASET_ID
+
+不暴露 `userId` prop。
+
+### 6.2 Client Storage
+
+- `sessionId` 存 `localStorage`
+- `difyConversationId` 存 `localStorage`
+- 登录身份由浏览器自动带 cookie
+
+### 6.3 SSE Contract
+
+```text
+event: chunk
+data: {"text":"Hello","difyConversationId":"conv-1"}
+
+event: done
+data: {"difyConversationId":"conv-1","canAnswer":true}
+
+event: error
+data: {"code":"DIFY_UNAVAILABLE","message":"..."}
 ```
 
 ---
 
-## 6. Frontend: DifyChatWidget
+## 7. Security & Abuse Prevention
 
-Shared React component embedded in both patient-facing projects.
-
-### 6.1 Component Structure
-
-```
-DifyChatWidget
-├── ChatBubble          — 浮动按钮 (右下角)
-├── ChatWindow
-│   ├── MessageList     — 消息列表 (支持 streaming 显示)
-│   ├── MessageInput    — 输入框
-│   └── EscalationForm  — 转人工时收集联系信息
-└── Props:
-    ├── apiBaseUrl: string     — CRM API 地址
-    ├── hospitalType: string   — 'COSMETIC' | 'REGULAR'
-    ├── userId?: string        — 已登录用户 ID
-    ├── theme?: object         — 样式定制
-    └── locale?: string        — 默认语言
-```
-
-### 6.2 Chat Flow
-
-```
-用户打开 Widget
-    │
-    ├── 已登录 → 自动携带 userId + 语言偏好
-    └── 匿名 → 生成临时 sessionId (localStorage)
-    │
-    ▼
-用户发消息 → POST /api/v2/chatbot/chat (streaming)
-    │
-    ▼
-前端逐字展示 AI 回复
-    │
-    ├── AI 正常回答 → 继续对话
-    └── AI 转人工 → 显示 EscalationForm → POST /api/v2/chatbot/escalate
-```
-
-### 6.3 Sharing Strategy
-
-共享组件作为 Turborepo 内部 package `packages/chat-widget`，与现有 monorepo 结构一致。两个患者端项目通过 npm dependency 引用（`"@medora/chat-widget": "workspace:*"`）。
+- `POST /api/v2/chatbot/chat` 做 IP + session 双限流
+- 最大消息长度 2000
+- 服务端自行推导登录用户，不信任 body.userId
+- `history` 端点必须校验 `sessionId` 或登录归属
+- escalation 必须强校验 contact info
 
 ---
 
-## 7. Deployment
+## 8. Deployment
 
-### 7.1 Dify VPS
+### 8.1 Dify
 
-- **Provider:** Hetzner (推荐) 或 DigitalOcean
-- **Spec:** 2 Core CPU, 4 GiB RAM
-- **Cost:** ~€7-24/mo
-- **Stack:** Docker Compose (official Dify)
-- **Domain:** e.g. `ai.medora.com`
-- **SSL:** Let's Encrypt (certbot)
+- self-hosted Docker Compose
+- 独立域名，如 `ai.medora.com`
+- 配置 OpenAI provider
+- 建立两个 dataset：FAQ / Package
+- 建立 chatbot app
 
-### 7.2 Docker Compose Services
+### 8.2 CRM Env Vars
 
-- dify-api
-- dify-worker
-- dify-web (管理后台)
-- postgres (Dify internal)
-- redis
-- weaviate (向量数据库)
-- nginx (反向代理 + SSL)
-
-### 7.3 CRM v2 Environment Variables
-
-```
+```bash
 DIFY_API_BASE_URL=https://ai.medora.com/v1
 DIFY_API_KEY=app-xxxx
 DIFY_FAQ_DATASET_ID=xxxx
 DIFY_PACKAGE_DATASET_ID=xxxx
 ```
 
-### 7.4 Init Sequence
+### 8.3 Init Sequence
 
-1. VPS 部署 Dify Docker Compose
-2. Dify 后台配置 LLM Provider (OpenAI GPT-4o)
-3. 创建 2 个 Dataset (FAQ / Package)
-4. 创建 Chatflow (按 Section 3 设计)
-5. CRM 配置环境变量
-6. CRM 运行 `fullSync()` 导入所有 FAQ + Package
-7. 测试端到端对话
-8. 两个前端项目接入 DifyChatWidget
+1. 部署 Dify
+2. 配置模型与 app
+3. 创建 FAQ / Package dataset
+4. CRM 配置 env
+5. 运行全量 `fullSync`
+6. 联调 SSE、history、escalation
 
 ---
 
-## 8. Monitoring & Operations
+## 9. Open Questions
 
-- **Dify 自带**: 对话日志、用量统计、模型调用监控
-- **CRM 侧**: `dify_document_mappings.lastSyncedAt` 监控同步状态
-- **同步失败**: 记录日志 + 告警通知
-- **Admin 操作**: `fullSync()` 端点供手动触发全量重建
-- **成本监控**: OpenAI API 用量 (GPT-4o per-token billing)
-
----
-
-## 9. Edge Cases & Security
-
-### 9.1 Anonymous Users & Message Storage
-
-**Problem:** `messages.sender_id` and `support_tickets.patient_id` are NOT NULL FK to `users`.
-
-**Solution:**
-- Create a well-known **system bot user** record (e.g., UUID `00000000-0000-0000-0000-000000000001`, role `SYSTEM`) for AI-generated messages
-- Anonymous users: on first message, create a **guest user** record using `sessionId` as identifier. If escalation happens, the `EscalationForm` collects contact info to update the guest user record
-- This avoids schema changes to existing NOT NULL constraints
-
-### 9.2 Rate Limiting & Abuse Prevention
-
-`/chatbot/chat` is a public endpoint proxying to a paid LLM. Required protections:
-
-- **Per-session rate limit:** max 30 messages/minute
-- **Per-IP rate limit:** max 60 messages/minute
-- **Max message length:** 2000 characters
-- **Max conversation length:** 100 messages (after which suggest escalation)
-- Implement via Hono middleware (consistent with existing rate limiting patterns)
-
-### 9.3 Authentication Strategy
-
-- `POST /api/v2/chatbot/chat` — **public** (supports both auth and anon users)
-- `GET /api/v2/chatbot/history/{difyConversationId}` — **public** (scoped by difyConversationId or sessionId)
-- `POST /api/v2/chatbot/escalate` — **public** (requires contactInfo for anon users)
-- `POST /api/v2/chatbot/sync` — **admin-only** (existing auth middleware)
-
-These public endpoints follow the same pattern as `patient-public.routes.ts`.
-
-### 9.4 Streaming Response Format (SSE)
-
-```
-event: message
-data: {"chunk": "Hello", "difyConversationId": "abc123"}
-
-event: message
-data: {"chunk": " how", "difyConversationId": "abc123"}
-
-event: done
-data: {"difyConversationId": "abc123", "canAnswer": true, "fullResponse": "Hello how can I help?"}
-
-// Error case:
-event: error
-data: {"code": "DIFY_UNAVAILABLE", "message": "AI service temporarily unavailable"}
-```
-
-- First chunk includes `difyConversationId` — frontend stores it in `localStorage` for session continuity
-- `done` event includes `canAnswer` flag — frontend uses this to trigger escalation flow
-- Connection timeout: 60 seconds
-
-### 9.5 Multi-Hospital Context
-
-The two patient-facing sites serve different hospital types. The widget passes context:
-
-- `DifyChatWidget` adds a `hospitalType` prop (`COSMETIC` | `REGULAR`)
-- `/chatbot/chat` request includes `hospitalType` field
-- CRM proxy passes `hospitalType` as a Dify conversation variable
-- Dify Chatflow uses this variable to filter which FAQ documents are relevant (metadata filtering in Knowledge Retrieval node)
-
-### 9.6 Package Sync — Only Published
-
-- Only `PUBLISHED` packages are included in Dify documents
-- When the last published package of a type is unpublished, the document is regenerated as empty (Dify handles empty documents gracefully)
-
----
-
-## 10. Database Migrations Required
-
-All migrations in a single file: `XXX_dify_integration.sql`
-
-1. **ALTER TYPE** `conversation_category` ADD VALUE `'AI_CHATBOT'`
-2. **ALTER TYPE** `ticket_type` ADD VALUE `'AI_ESCALATION'`
-3. **CREATE TABLE** `dify_conversation_mappings` (per Section 5.2, with UNIQUE on both `dify_conversation_id` and `conversation_id`)
-4. **CREATE TABLE** `dify_document_mappings` (per Section 5.2)
-5. **INSERT** system bot user record (`id: 00000000-0000-0000-0000-000000000001`, role: SYSTEM)
-
----
-
-## 11. Admin Sync Endpoints (Appendix to Section 5.1)
-
-#### `POST /api/v2/chatbot/sync` (Admin-only)
-
-Trigger full sync of all FAQ + Package documents to Dify.
-
-#### `POST /api/v2/chatbot/sync/faq-categories/{categoryId}` (Admin-only)
-
-Trigger sync of a single FAQ category document.
-
-#### `POST /api/v2/chatbot/sync/package-types/{type}` (Admin-only)
-
-Trigger sync of a single package type document.
+1. 匿名升级时，是否允许没有 email。若不允许，前端升级表单应强制 email。
+2. 升级后是否需要自动创建人工 `conversation`，还是先只建 `support_ticket`。
+3. FAQ 医院级分类命名是否允许与全局分类重名。若允许，必须坚持 scoped `entity_key`。

@@ -7,12 +7,13 @@ import {
   SearchInput,
   EmptyState,
   LoadingSpinner,
+  ConfirmDialog,
   type Column,
 } from '@medical-crm/ui';
-import { Package, Pencil, Globe, EyeOff } from 'lucide-react';
+import { Package, Pencil, Globe, EyeOff, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePackages } from '@/queries/use-packages';
-import { publishPackage, unpublishPackage } from '@/actions/package-actions';
+import { deletePackage, publishPackage, unpublishPackage } from '@/actions/package-actions';
 import { PackageFormModal, type PackageRow } from './package-form-modal';
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -91,10 +92,12 @@ function RowActions({
   pkg,
   onEdit,
   onRefresh,
+  onDelete,
 }: {
   pkg: PackageRow;
   onEdit: (pkg: PackageRow) => void;
   onRefresh: () => void;
+  onDelete: (pkg: PackageRow) => void;
 }) {
   const [isPending, startTransition] = useTransition();
   const isPublished = pkg.status === 'PUBLISHED';
@@ -135,6 +138,13 @@ function RowActions({
       >
         {isPublished ? <EyeOff size={14} /> : <Globe size={14} />}
       </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(pkg); }}
+        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+        title="Delete"
+      >
+        <Trash2 size={14} />
+      </button>
     </div>
   );
 }
@@ -148,6 +158,9 @@ export function PackagesList() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editPkg, setEditPkg] = useState<PackageRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PackageRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const queryClient = useQueryClient();
 
   const filters: Record<string, string> = { page: String(page), limit: '20' };
@@ -183,6 +196,21 @@ export function PackagesList() {
   function handleRefresh() {
     void queryClient.invalidateQueries({ queryKey: ['packages'] });
     void refetch();
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePackage(deleteTarget.id);
+      setDeleteTarget(null);
+      handleRefresh();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete package');
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   const columns: Column<PackageRow>[] = [
@@ -230,7 +258,7 @@ export function PackagesList() {
       key: 'actions',
       header: '',
       render: (row) => (
-        <RowActions pkg={row} onEdit={handleEdit} onRefresh={handleRefresh} />
+        <RowActions pkg={row} onEdit={handleEdit} onRefresh={handleRefresh} onDelete={setDeleteTarget} />
       ),
       className: 'w-20',
     },
@@ -246,6 +274,11 @@ export function PackagesList() {
 
   return (
     <div className="space-y-4">
+      {deleteError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {deleteError}
+        </div>
+      )}
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[200px] max-w-sm">
@@ -307,6 +340,19 @@ export function PackagesList() {
         onClose={() => setModalOpen(false)}
         onSuccess={handleRefresh}
         editPackage={editPkg}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Package"
+        message={`Are you sure you want to delete "${deleteTarget?.nameEn ?? 'this package'}"?`}
+        confirmLabel={isDeleting ? 'Deleting…' : 'Delete'}
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => {
+          if (isDeleting) return;
+          setDeleteTarget(null);
+        }}
       />
     </div>
   );

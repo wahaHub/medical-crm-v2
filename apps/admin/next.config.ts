@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@medical-crm/ui', '@medical-crm/i18n', '@medical-crm/config'],
   // Point to the monorepo root so Next.js traces dependencies correctly
   outputFileTracingRoot: resolve(__dirname, '../../'),
+  devIndicators: false,
 };
 
 export default nextConfig;

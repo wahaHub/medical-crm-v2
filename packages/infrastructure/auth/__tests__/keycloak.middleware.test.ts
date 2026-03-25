@@ -7,6 +7,15 @@ vi.mock('jose', () => ({
   jwtVerify: vi.fn(),
 }));
 
+const crmDbMock = {
+  select: vi.fn(),
+  update: vi.fn(),
+};
+
+vi.mock('../../database/crm-client.js', () => ({
+  getCrmDb: () => crmDbMock,
+}));
+
 // Mock config
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: () => ({
@@ -15,11 +24,31 @@ vi.mock('@medical-crm/config', () => ({
   }),
 }));
 
+function mockCrmIdentity(identity: {
+  id: string;
+  hospitalId: string | null;
+  keycloakUserId: string | null;
+}) {
+  crmDbMock.select.mockImplementation(() => ({
+    from: () => ({
+      where: () => ({
+        limit: vi.fn().mockResolvedValue([identity]),
+      }),
+    }),
+  }));
+  crmDbMock.update.mockImplementation(() => ({
+    set: () => ({
+      where: vi.fn().mockResolvedValue(undefined),
+    }),
+  }));
+}
+
 describe('authMiddleware', () => {
   let app: Hono;
 
   beforeEach(async () => {
     vi.resetModules();
+    vi.clearAllMocks();
     const { jwtVerify } = await import('jose');
     (jwtVerify as ReturnType<typeof vi.fn>).mockResolvedValue({
       payload: {
@@ -29,6 +58,12 @@ describe('authMiddleware', () => {
         realm_access: { roles: ['hospital'] },
         hospital_id: 'hospital-456',
       },
+    });
+
+    mockCrmIdentity({
+      id: 'crm-user-123',
+      hospitalId: 'hospital-456',
+      keycloakUserId: 'user-123',
     });
 
     const { authMiddleware } = await import('../keycloak.middleware');
@@ -59,11 +94,44 @@ describe('authMiddleware', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({
-      userId: 'user-123',
+      userId: 'crm-user-123',
       email: 'test@example.com',
       roles: ['hospital'],
       hospitalId: 'hospital-456',
     });
+  });
+
+  it('falls back to email lookup and backfills keycloak user id', async () => {
+    crmDbMock.select
+      .mockImplementationOnce(() => ({
+        from: () => ({
+          where: () => ({
+            limit: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+      }))
+      .mockImplementationOnce(() => ({
+        from: () => ({
+          where: () => ({
+            limit: vi.fn().mockResolvedValue([
+              {
+                id: 'crm-user-456',
+                hospitalId: 'hospital-456',
+                keycloakUserId: null,
+              },
+            ]),
+          }),
+        }),
+      }));
+
+    const res = await app.request('/test', {
+      headers: { Authorization: 'Bearer valid-token' },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.userId).toBe('crm-user-456');
+    expect(crmDbMock.update).toHaveBeenCalledOnce();
   });
 
   it('returns 401 for invalid JWT', async () => {
@@ -80,6 +148,12 @@ describe('authMiddleware', () => {
 describe('requireRole', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
+    mockCrmIdentity({
+      id: 'crm-user-role',
+      hospitalId: 'hospital-456',
+      keycloakUserId: 'u1',
+    });
   });
 
   it('allows matching role', async () => {
@@ -132,6 +206,12 @@ describe('requireRole', () => {
 describe('requireHospital', () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
+    mockCrmIdentity({
+      id: 'crm-user-admin',
+      hospitalId: null,
+      keycloakUserId: 'u1',
+    });
   });
 
   it('rejects user without hospitalId', async () => {

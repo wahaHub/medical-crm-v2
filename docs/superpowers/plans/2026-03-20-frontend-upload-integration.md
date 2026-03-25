@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Wire the existing backend `MediaUploadService` (14 policies, 8 endpoints) into 5 frontend integration points using a shared `useMediaUpload` hook.
+**Goal:** Wire the existing backend `MediaUploadService` (14 policies, 8 endpoints) into the planned frontend integration points using a shared `useMediaUpload` hook.
 
-**Architecture:** Shared `useMediaUpload` hook in `@medical-crm/ui` manages the upload-init → PUT → storageKey flow. Each portal (admin/hospital) has server actions that call the backend upload-init endpoints. Components call the hook with the appropriate server action as `initFn`.
+**Architecture:** Shared `useMediaUpload` hook in `@medical-crm/ui` manages the upload-init → PUT → storageKey flow. Each portal (admin/hospital) has server actions that call the backend upload-init endpoints. Components call the hook with the appropriate server action as `initFn`. Exception: Hospital Materials cannot persist raw `storageKey` values into today's URL-shaped CRUD model; that chunk must stop at frontend upload-state integration unless the companion backend contract patch is already merged.
 
 **Tech Stack:** React 18, Next.js 15 (App Router), TanStack Query, Tailwind CSS, Vitest
 
@@ -466,7 +466,9 @@ git commit -m "feat(admin): enable file upload in messages conversation view"
 
 ---
 
-## Chunk 3: Hospital Materials — Presigned Upload
+## Chunk 3: Hospital Materials — Presigned Upload Preparation
+
+> **Important:** This chunk is only partially frontend-owned. The current materials CRUD/read model is still URL-shaped (`heroImage`, `imageUrl`, `images[].url`, `videoUrl`). Do not persist raw `storageKey` values into those fields. If the companion backend contract patch is not merged yet, stop after wiring upload init + transient preview state and record the blocker.
 
 ### Task 4: Add uploadMaterialFile server action
 
@@ -511,147 +513,49 @@ git commit -m "feat(hospital): add uploadMaterialFile server action for material
 **Files:**
 - Modify: `apps/hospital/src/components/materials-tabs.tsx:82-180`
 
-- [ ] **Step 1: Update ImageUploadWidget props — replace `onFileSelect` with `onUpload`**
+- [ ] **Step 1: Change `ImageUploadWidget` to return transient uploaded state, not a URL string**
 
-Replace the `ImageUploadWidget` function (lines 82-180) with:
+Refactor `ImageUploadWidget` so `onUpload` returns uploaded metadata, not a raw `storageKey` string:
 
 ```typescript
-function ImageUploadWidget({
-  value,
-  onChange,
-  onUpload,
-  label = 'Image',
-  placeholder = 'https://... or click Upload',
-  previewClassName = 'h-40 w-full',
-  compact = false,
-}: {
-  value: string;
-  onChange: (url: string) => void;
-  onUpload?: (file: File) => Promise<string>;
-  label?: string;
-  placeholder?: string;
-  previewClassName?: string;
-  compact?: boolean;
-}) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (onUpload) {
-      // Show local preview immediately
-      const previewUrl = URL.createObjectURL(file);
-      onChange(previewUrl);
-      // Upload in background, replace with storageKey when done
-      setUploading(true);
-      try {
-        const storageKey = await onUpload(file);
-        onChange(storageKey);
-      } catch (err) {
-        console.error('Upload failed:', err);
-        onChange(''); // clear preview on failure
-      } finally {
-        setUploading(false);
-      }
-    } else {
-      onChange(await readFileAsDataUrl(file));
-    }
-    e.target.value = '';
+interface UploadedMaterial {
+  asset: {
+    storageKey: string;
+    fileName: string;
+    mimeType: string;
+    fileSize: number;
   };
-
-  const inputClass =
-    'w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500';
-
-  if (compact) {
-    return (
-      <div>
-        <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
-        <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
-        <div className="flex items-start gap-3">
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors cursor-pointer overflow-hidden shrink-0"
-          >
-            {value ? (
-              <img src={value} alt={label} className="w-full h-full object-cover" />
-            ) : uploading ? (
-              <span className="text-[10px] font-medium">Uploading…</span>
-            ) : (
-              <>
-                <Upload size={20} className="mb-1" />
-                <span className="text-[10px] font-medium">Upload</span>
-              </>
-            )}
-          </div>
-          <div className="flex-1 space-y-2">
-            <input
-              type="text"
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              className={inputClass}
-              placeholder={placeholder}
-              disabled={uploading}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors disabled:opacity-50"
-            >
-              <Upload size={12} /> {uploading ? 'Uploading…' : 'Choose File'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Standard mode
-  return (
-    <div>
-      <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
-      <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className={`flex-1 ${inputClass}`}
-            placeholder={placeholder}
-            disabled={uploading}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors shrink-0 disabled:opacity-50"
-          >
-            <Upload size={14} /> {uploading ? 'Uploading…' : 'Upload'}
-          </button>
-        </div>
-        {value && (
-          <div className={`rounded-lg overflow-hidden border border-slate-200 ${previewClassName}`}>
-            <img src={value} alt={label} className="h-full w-full object-cover" />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  previewUrl: string;
 }
 ```
 
-- [ ] **Step 2: Run typecheck — expect errors from callers still using `onFileSelect`**
+Use an API like:
+
+```typescript
+onUpload?: (file: File) => Promise<UploadedMaterial>;
+onChange: (value: string) => void; // existing URL/manual input support
+```
+
+Rules:
+- keep showing `URL.createObjectURL(file)` as the immediate preview
+- do not call `onChange(storageKey)`
+- do not replace the displayed preview with a raw `storageKey`
+- keep the existing manual URL input path for non-upload callers
+
+- [ ] **Step 2: Add local loading/error UI**
+
+Keep local `uploading` UI in the widget, but surface failures via the parent `useMediaUpload` error state rather than silently clearing the field.
+
+- [ ] **Step 3: Run typecheck after all widget callers are migrated**
 
 Run: `cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2 && pnpm --filter hospital run typecheck`
-Expected: Errors at callers using the old `onFileSelect` prop (this is expected; we fix them next)
+Expected: PASS after Task 6 is complete
 
-- [ ] **Step 3: Commit widget changes**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add apps/hospital/src/components/materials-tabs.tsx
-git commit -m "feat(hospital): update ImageUploadWidget to support presigned upload via onUpload prop"
+git commit -m "refactor(hospital): update materials upload widgets for transient uploaded state"
 ```
 
 ### Task 6: Wire material forms to use presigned upload
@@ -659,270 +563,91 @@ git commit -m "feat(hospital): update ImageUploadWidget to support presigned upl
 **Files:**
 - Modify: `apps/hospital/src/components/materials-tabs.tsx` — multiple form sections
 
-This task updates all `ImageUploadWidget` callers and `readFileAsDataUrl` usages in material forms to use `uploadMaterialFile`. The pattern is the same for each: pass an `onUpload` prop that calls `uploadMaterialFile(materialKind, ...)`, uploads to presigned URL, and returns the `storageKey`.
+- [ ] **Step 1: Import `uploadMaterialFile` and `useMediaUpload`**
 
-**Important — storageKey vs display URL:** Beauty hospital materials use a public R2 bucket. The `makeMaterialUploader` returns a raw `storageKey` (e.g. `crm/dev/materials-beauty/...`). For beauty hospitals, the display URL is `${R2_MATERIALS_BEAUTY_PUBLIC_URL}/${storageKey}`. For regular hospitals, the backend returns CloudFront URLs. The existing `ImageUploadWidget` shows `URL.createObjectURL(file)` as immediate preview during upload, then the `onChange` callback receives the `storageKey`. The form stores this `storageKey` and the save handler submits it to the backend CRUD endpoint, which already accepts string values for image fields. The read path (when loading existing materials) returns resolved URLs from the backend mapper — no frontend URL resolution needed.
+At the top of `materials-tabs.tsx`, add `uploadMaterialFile` to the actions import and `useMediaUpload` to the shared UI imports.
 
-- [ ] **Step 1: Import uploadMaterialFile and useMediaUpload**
+- [ ] **Step 2: Replace the bespoke uploader with the shared hook**
 
-At the top of `materials-tabs.tsx`, add to the import from `@/actions/materials-actions`:
-
-```typescript
-import {
-  updateHospitalInfo,
-  createProcedure,
-  updateProcedure,
-  deleteProcedure,
-  createSurgeon,
-  updateSurgeon,
-  deleteSurgeon,
-  createBeforeAfterCase,
-  updateBeforeAfterCase,
-  deleteBeforeAfterCase,
-  uploadMaterialFile,
-} from '@/actions/materials-actions';
-```
-
-- [ ] **Step 2: Create a reusable `makeMaterialUploader` helper inside the file**
-
-Add after the `readFileAsDataUrl` function (around line 79):
+Do **not** add a `makeMaterialUploader` helper that performs its own `fetch PUT`. Instead, use the shared hook in `materials-tabs.tsx`:
 
 ```typescript
-/**
- * Creates an onUpload handler for ImageUploadWidget that calls the materials upload endpoint.
- * Returns a storageKey on success.
- */
-function makeMaterialUploader(materialKind: string) {
-  return async (file: File): Promise<string> => {
-    const result = await uploadMaterialFile(materialKind, {
-      fileName: file.name,
-      fileSize: file.size,
-      mimeType: file.type || 'image/jpeg',
-    });
-    // PUT file to presigned URL
-    const putRes = await fetch(result.upload.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'image/jpeg' },
-      body: file,
-    });
-    if (!putRes.ok) throw new Error(`Upload failed for "${file.name}"`);
-    return result.asset.storageKey;
+const { upload, isUploading, error: uploadError } = useMediaUpload();
+
+async function uploadOne(
+  file: File,
+  materialKind: string,
+): Promise<UploadedMaterial> {
+  const assets = await upload([file], (params) => uploadMaterialFile(materialKind, params));
+  const asset = assets[0];
+  if (!asset) throw new Error(`Upload failed for "${file.name}"`);
+  return {
+    asset,
+    previewUrl: URL.createObjectURL(file),
   };
 }
 ```
 
-- [ ] **Step 3: Update HospitalInfoTab — hero image**
+- [ ] **Step 3: Update supported callers to keep `{ previewUrl, asset }` in local edit state**
 
-Find the `ImageUploadWidget` usage for hero image (around line 1290):
+Apply this pattern to:
+- hero image: `materialKind: 'hero'`
+- gallery images: `materialKind: 'gallery'`
+- department images: reuse `materialKind: 'gallery'`
+- equipment images: `materialKind: 'equipment'`
+- surgeon photo: `materialKind: 'surgeon'`
+- before/after case media: `materialKind: 'case'`
+- cosmetic-hospital promotional videos: `materialKind: 'hospital_video'`
+- cosmetic-hospital testimonial videos: `materialKind: 'testimonial_video'`
 
-```tsx
-// Before:
-<ImageUploadWidget
-  value={form.heroImage ?? ''}
-  onChange={(url) => setForm({ ...form, heroImage: url })}
-  label="Hero Image"
-  placeholder="https://... or click Upload"
-  previewClassName="h-40 w-full"
-/>
+Rules:
+- show `previewUrl` immediately in the editor
+- keep uploaded metadata in local component state
+- do **not** replace preview state with `storageKey`
+- do **not** set `img/video src` to a raw `storageKey`
 
-// After:
-<ImageUploadWidget
-  value={form.heroImage ?? ''}
-  onChange={(url) => setForm({ ...form, heroImage: url })}
-  onUpload={makeMaterialUploader('hero')}
-  label="Hero Image"
-  placeholder="https://... or click Upload"
-  previewClassName="h-40 w-full"
-/>
-```
+- [ ] **Step 4: Remove old `readFileAsDataUrl()` usage only for migrated callers**
 
-- [ ] **Step 4: Update SurgeonModal — surgeon photo (line 3163)**
+After the supported callers above are migrated, remove obsolete `readFileAsDataUrl()` branches for those flows. Keep any fallback code that still has a live caller.
 
-Find the `ImageUploadWidget` usage for surgeon photo (line 3163, inside `SurgeonModal`):
+- [ ] **Step 5: Render upload errors in the materials UI**
 
-```tsx
-// Before:
-<ImageUploadWidget
-  value={imageUrl}
-  onChange={setImageUrl}
-  label="Profile Photo"
-  placeholder="https://... or click Upload"
-  compact
-/>
+Add a visible error area near the upload controls that renders `uploadError`, rather than only logging failures.
 
-// After:
-<ImageUploadWidget
-  value={imageUrl}
-  onChange={setImageUrl}
-  onUpload={makeMaterialUploader('surgeon')}
-  label="Profile Photo"
-  placeholder="https://... or click Upload"
-  compact
-/>
-```
+- [ ] **Step 6: Verify backend persistence support exists before changing submit payloads**
 
-- [ ] **Step 4b: Update equipment image widget (line 2116)**
+Required backend capabilities:
+- save payload no longer treats uploaded assets as plain URL strings
+- read payload resolves usable image/video URLs after reload
 
-Find the `ImageUploadWidget` for equipment images (line 2116):
+If that backend patch is **not** present:
+- stop after upload-state integration
+- record the blocker
+- do **not** write raw `storageKey` values into `heroImage`, `imageUrl`, `images[].url`, `videoUrl`, `departmentImages[...]`, or similar URL fields
 
-```tsx
-// Before:
-<ImageUploadWidget
-  value={equip.imageUrl}
-  onChange={(url) => { ... }}
-  label="Equipment Image"
-  ...
-/>
+If that backend patch **is** present:
+- map local uploaded assets into the new materials payload shape
+- update save handlers for hero/gallery/surgeon/case/video/testimonial/department/equipment
+- verify reloaded pages render server-resolved URLs rather than stale object URLs
 
-// After — add onUpload:
-<ImageUploadWidget
-  value={equip.imageUrl}
-  onChange={(url) => { ... }}
-  onUpload={makeMaterialUploader('gallery')}
-  label="Equipment Image"
-  ...
-/>
-```
-
-- [ ] **Step 5: Update HospitalInfoTab — gallery photos**
-
-Find the `handlePhotoSelect` function (line 1176) that uses `readFileAsDataUrl` + `setPendingPhotos`. The current flow stores `{ previewUrl, file }` in `pendingPhotos` state and later processes them on save. Replace with presigned upload that still uses `pendingPhotos` for preview but uploads immediately:
-
-```typescript
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    const uploader = makeMaterialUploader('gallery');
-    for (const file of Array.from(files)) {
-      const previewUrl = URL.createObjectURL(file);
-      // Add to pendingPhotos for preview (keep existing UX pattern)
-      setPendingPhotos((prev) => [...prev, { previewUrl, file }]);
-      try {
-        const storageKey = await uploader(file);
-        // Replace the preview URL with storageKey in pendingPhotos
-        setPendingPhotos((prev) =>
-          prev.map((p) => p.previewUrl === previewUrl ? { ...p, previewUrl: storageKey, file } : p),
-        );
-      } catch (err) {
-        console.error('Gallery upload failed:', err);
-        // Remove failed upload from pendingPhotos
-        setPendingPhotos((prev) => prev.filter((p) => p.previewUrl !== previewUrl));
-      }
-    }
-    e.target.value = '';
-  };
-```
-
-Note: The save handler that processes `pendingPhotos` will now receive `storageKey` strings instead of data URLs in the `previewUrl` field. The implementer must verify the save flow and adjust how `pendingPhotos` are serialized into the form's gallery data on submit — storageKeys should be stored directly rather than being treated as image URLs.
-
-- [ ] **Step 6: Update BeforeAfterCaseModal — case images**
-
-Find `addImagesFromFiles` (around line 3421) that uses `readFileAsDataUrl`. Replace:
-
-```typescript
-  const addImagesFromFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const uploader = makeMaterialUploader('case');
-    for (const file of Array.from(files)) {
-      try {
-        const storageKey = await uploader(file);
-        setImageUrls((prev) => [...prev, storageKey]);
-      } catch (err) {
-        console.error('Case image upload failed:', err);
-      }
-    }
-  };
-```
-
-- [ ] **Step 7: Update remaining `readFileAsDataUrl` usages (3 additional call sites)**
-
-There are 3 more `readFileAsDataUrl` calls that must be replaced:
-
-**Line 1434 — Promotional videos (`VideoUploadWidget` onAdd callback):**
-Currently uses `readFileAsDataUrl(file)` to create a preview URL for video, stored in `pendingVideos` map. Replace with:
-```typescript
-onAdd={(file) => {
-  const previewUrl = URL.createObjectURL(file);
-  setPendingVideos((prev) => new Map(prev).set(previewUrl, file));
-  setPromotionalVideos((prev) => [...prev, previewUrl]);
-  // Upload in background
-  void makeMaterialUploader('hospital_video')(file).then((storageKey) => {
-    setPendingVideos((prev) => { const m = new Map(prev); m.delete(previewUrl); m.set(storageKey, file); return m; });
-    setPromotionalVideos((prev) => prev.map((v) => v === previewUrl ? storageKey : v));
-  }).catch((err) => console.error('Video upload failed:', err));
-}}
-```
-
-**Line 1463 — Testimonial video upload:**
-Currently uses `readFileAsDataUrl(file)` for testimonial video preview. Replace with:
-```typescript
-onChange={(e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const previewUrl = URL.createObjectURL(file);
-  setPendingTestimonial({
-    previewUrl,
-    file,
-    patientName: '',
-    patientCountry: '',
-    procedureName: '',
-  });
-  setIsAddingTestimonial(true);
-  // Upload in background
-  void makeMaterialUploader('testimonial_video')(file).then((storageKey) => {
-    setPendingTestimonial((prev) => prev ? { ...prev, previewUrl: storageKey } : prev);
-  }).catch((err) => console.error('Testimonial upload failed:', err));
-  e.target.value = '';
-}}
-```
-
-**Line 1898 — Department image upload:**
-Currently uses `readFileAsDataUrl(file)` for department images. Replace with:
-```typescript
-onChange={(e) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    const previewUrl = URL.createObjectURL(file);
-    setPendingDeptImages((prev) => {
-      const m = new Map(prev);
-      m.set(deptValue, { previewUrl, file });
-      return m;
-    });
-    setDeptImages((prev) => ({ ...prev, [deptValue]: previewUrl }));
-    // Upload in background
-    void makeMaterialUploader('gallery')(file).then((storageKey) => {
-      setPendingDeptImages((prev) => {
-        const m = new Map(prev);
-        m.set(deptValue, { previewUrl: storageKey, file });
-        return m;
-      });
-      setDeptImages((prev) => ({ ...prev, [deptValue]: storageKey }));
-    }).catch((err) => console.error('Dept image upload failed:', err));
-  }
-  e.target.value = '';
-}}
-```
-
-Note: All replacements use `URL.createObjectURL` for immediate preview and `makeMaterialUploader` for background upload. The `materialKind` values must match what the backend `resolveMaterialsPolicyId` expects.
-
-- [ ] **Step 8: Run typecheck**
+- [ ] **Step 7: Run typecheck**
 
 Run: `cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2 && pnpm --filter hospital run typecheck`
 Expected: PASS
 
-- [ ] **Step 9: Manual test**
+- [ ] **Step 8: Manual test**
 
 Open http://localhost:3003/materials, verify:
-1. Hospital info tab: hero image upload works (shows preview, then saves storageKey)
-2. Surgeons tab: surgeon photo upload works
-3. Before/After tab: case image upload works
-4. Gallery images upload works
+1. Hero / gallery / surgeon / case uploads show immediate preview
+2. Cosmetic video uploads use presigned upload rather than data URLs
+3. No UI attempts to render a raw `storageKey` as `img` or `video` source
+4. If backend contract patch is merged: saved materials still render after reload
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add apps/hospital/src/components/materials-tabs.tsx
-git commit -m "feat(hospital): wire materials forms to use presigned upload via MediaUploadService"
+git commit -m "feat(hospital): prepare materials UI for presigned uploads"
 ```
 
 ---
@@ -1468,13 +1193,14 @@ git commit -m "feat(admin): add attachment upload to FAQ create/edit modal"
 
 **Files:**
 - Modify: `apps/hospital/src/components/faq-list.tsx:256-452`
+- Modify: `apps/hospital/src/lib/api-types.ts`
 
 - [ ] **Step 1: Add imports**
 
 Update imports at the top of `faq-list.tsx`:
 
 ```typescript
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Edit2, Trash2, X, Paperclip, FileText, Image as ImageIcon } from 'lucide-react';
 import { useMediaUpload } from '@medical-crm/ui';
@@ -1483,6 +1209,8 @@ import { createFaqItem, updateFaqItem, deleteFaqItem } from '@/actions/faq-actio
 import { uploadFaqAttachment } from '@/actions/faq-upload-actions';
 import type { FaqItem } from '@/lib/api-types';
 ```
+
+Add `attachments` to `FaqItem` in `apps/hospital/src/lib/api-types.ts` so the modal does not rely on ad hoc casting.
 
 - [ ] **Step 2: Add attachment type and state in FaqModal**
 
@@ -1496,15 +1224,18 @@ Inside `FaqModal` (around line 266), after the existing state declarations:
     fileSize: number;
   }
 
-  const [attachments, setAttachments] = useState<FaqAttachment[]>(
-    (faq as FaqItem & { attachments?: FaqAttachment[] })?.attachments ?? [],
-  );
+  const [attachments, setAttachments] = useState<FaqAttachment[]>(faq?.attachments ?? []);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const { upload, isUploading, error: uploadError } = useMediaUpload({
     allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
     maxFileSize: 10 * 1024 * 1024,
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setAttachments(faq?.attachments ?? []);
+    setPendingFiles([]);
+  }, [faq]);
 
   async function handleAttachmentUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -1687,7 +1418,7 @@ Open http://localhost:3003/chatbot-faq (hospital portal), verify:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/hospital/src/components/faq-list.tsx
+git add apps/hospital/src/components/faq-list.tsx apps/hospital/src/lib/api-types.ts
 git commit -m "feat(hospital): add attachment upload to FAQ create/edit modal"
 ```
 
@@ -1710,5 +1441,5 @@ Expected: All tests pass including new useMediaUpload tests
 - [ ] **Step 4: Final commit**
 
 ```bash
-git commit --allow-empty -m "chore: frontend upload integration complete — all 5 integration points wired"
+git commit --allow-empty -m "chore: verify frontend upload integration plan checkpoints"
 ```

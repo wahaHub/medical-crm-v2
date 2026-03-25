@@ -4,6 +4,7 @@ export interface HospitalDTO {
   id: string;
   name: string;
   nameEn: string | null;
+  hasRegisteredUser?: boolean;
   address: string | null;
   city: string | null;
   phone: string | null;

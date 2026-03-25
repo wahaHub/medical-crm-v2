@@ -13,13 +13,16 @@ interface RoleRepresentation {
 export class KeycloakAdminService implements IKeycloakAdminService {
   private token: string | null = null;
   private tokenExpiry = 0;
+  private readonly normalizedBaseUrl: string;
 
   constructor(
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly realm: string,
     private readonly adminUsername: string,
     private readonly adminPassword: string,
-  ) {}
+  ) {
+    this.normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+  }
 
   private async getAdminToken(): Promise<string> {
     const now = Date.now();
@@ -27,7 +30,11 @@ export class KeycloakAdminService implements IKeycloakAdminService {
       return this.token;
     }
 
-    const url = `${this.baseUrl}/realms/master/protocol/openid-connect/token`;
+    if (!this.normalizedBaseUrl) {
+      throw new Error('Keycloak admin base URL is not configured');
+    }
+
+    const url = `${this.normalizedBaseUrl}/realms/master/protocol/openid-connect/token`;
     const body = new URLSearchParams({
       grant_type: 'password',
       client_id: 'admin-cli',
@@ -59,7 +66,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
     hospitalId: string,
   ): Promise<string> {
     const token = await this.getAdminToken();
-    const url = `${this.baseUrl}/admin/realms/${this.realm}/users`;
+    const url = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/users`;
 
     const res = await fetch(url, {
       method: 'POST',
@@ -71,6 +78,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
         username,
         email,
         enabled: true,
+        emailVerified: true,
         attributes: {
           hospital_name: [hospitalName],
           hospital_id: [hospitalId],
@@ -97,7 +105,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
 
   async setPassword(keycloakUserId: string, password: string): Promise<void> {
     const token = await this.getAdminToken();
-    const url = `${this.baseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}/reset-password`;
+    const url = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}/reset-password`;
 
     const res = await fetch(url, {
       method: 'PUT',
@@ -121,7 +129,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
     const token = await this.getAdminToken();
 
     // Get available realm roles
-    const rolesUrl = `${this.baseUrl}/admin/realms/${this.realm}/roles`;
+    const rolesUrl = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/roles`;
     const rolesRes = await fetch(rolesUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -137,7 +145,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
     }
 
     // Assign role to user
-    const assignUrl = `${this.baseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}/role-mappings/realm`;
+    const assignUrl = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}/role-mappings/realm`;
     const assignRes = await fetch(assignUrl, {
       method: 'POST',
       headers: {
@@ -154,7 +162,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
 
   async deleteUser(keycloakUserId: string): Promise<void> {
     const token = await this.getAdminToken();
-    const url = `${this.baseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}`;
+    const url = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}`;
 
     const res = await fetch(url, {
       method: 'DELETE',
@@ -169,7 +177,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
   async checkUsernameExists(username: string): Promise<boolean> {
     const token = await this.getAdminToken();
     const params = new URLSearchParams({ username, exact: 'true' });
-    const url = `${this.baseUrl}/admin/realms/${this.realm}/users?${params.toString()}`;
+    const url = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/users?${params.toString()}`;
 
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -186,7 +194,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
   async checkEmailExists(email: string): Promise<boolean> {
     const token = await this.getAdminToken();
     const params = new URLSearchParams({ email, exact: 'true' });
-    const url = `${this.baseUrl}/admin/realms/${this.realm}/users?${params.toString()}`;
+    const url = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/users?${params.toString()}`;
 
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -202,7 +210,7 @@ export class KeycloakAdminService implements IKeycloakAdminService {
 
   async updateUserEmail(keycloakUserId: string, email: string): Promise<void> {
     const token = await this.getAdminToken();
-    const url = `${this.baseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}`;
+    const url = `${this.normalizedBaseUrl}/admin/realms/${this.realm}/users/${keycloakUserId}`;
 
     const res = await fetch(url, {
       method: 'PUT',
@@ -219,7 +227,11 @@ export class KeycloakAdminService implements IKeycloakAdminService {
   }
 
   async verifyPassword(username: string, password: string, clientId: string, clientSecret?: string): Promise<boolean> {
-    const url = `${this.baseUrl}/realms/${this.realm}/protocol/openid-connect/token`;
+    if (!this.normalizedBaseUrl) {
+      throw new Error('Keycloak admin base URL is not configured');
+    }
+
+    const url = `${this.normalizedBaseUrl}/realms/${this.realm}/protocol/openid-connect/token`;
     const body = new URLSearchParams({
       grant_type: 'password',
       client_id: clientId,

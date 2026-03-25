@@ -1,20 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   DataTable,
   StatusBadge,
   SearchInput,
   EmptyState,
   LoadingSpinner,
+  ConfirmDialog,
   type Column,
 } from '@medical-crm/ui';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useQuestionTemplates, useQuestionnaireResponses } from '@/queries/use-question-collectors';
+import { useQuestionTemplates } from '@/queries/use-question-collectors';
+import { deleteTemplate } from '@/actions/qc-actions';
 import { QcTemplateForm, type QcTemplateRow } from './qc-template-form';
 
-// ── Types ─────────────────────────────────────────────────────────────
+type HospitalSection = 'REGULAR' | 'COSMETIC';
 
 interface PaginatedLike<T> {
   data?: T[];
@@ -39,16 +41,67 @@ function unwrapPagination(raw: unknown): { total: number; page: number; limit: n
   return { total: 0, page: 1, limit: 20 };
 }
 
-// ── Constants ────────────────────────────────────────────────────────
+interface TemplateMeta {
+  disease: string;
+  section: HospitalSection;
+  isDefault: boolean;
+  stepCount: number;
+  questionCount: number;
+}
 
-const CATEGORY_OPTIONS = [
-  { value: '', label: 'All Categories' },
+function extractTemplateMeta(template: QcTemplateRow): TemplateMeta {
+  const raw = template.questions;
+  const procedureSection: HospitalSection = template.procedureTypes?.includes('COSMETIC')
+    ? 'COSMETIC'
+    : 'REGULAR';
+
+  if (raw && typeof raw === 'object') {
+    const editor = raw as {
+      disease?: unknown;
+      isDefault?: unknown;
+      hospitalSection?: unknown;
+      steps?: Array<{ questions?: unknown[] }>;
+    };
+    const isDefault = editor.isDefault === true || template.category === 'DEFAULT';
+    const disease =
+      isDefault
+        ? 'DEFAULT'
+        : (typeof editor.disease === 'string' && editor.disease.trim()) || template.category || 'UNSPECIFIED';
+    const section =
+      editor.hospitalSection === 'COSMETIC' || editor.hospitalSection === 'REGULAR'
+        ? editor.hospitalSection
+        : procedureSection;
+    const stepCount = Array.isArray(editor.steps) ? editor.steps.length : 0;
+    const questionCount = Array.isArray(editor.steps)
+      ? editor.steps.reduce((sum, step) => sum + (Array.isArray(step.questions) ? step.questions.length : 0), 0)
+      : 0;
+
+    return { disease, section, isDefault, stepCount, questionCount };
+  }
+
+  if (Array.isArray(raw)) {
+    return {
+      disease: template.category === 'DEFAULT' ? 'DEFAULT' : template.category || 'UNSPECIFIED',
+      section: procedureSection,
+      isDefault: template.category === 'DEFAULT',
+      stepCount: 1,
+      questionCount: raw.length,
+    };
+  }
+
+  return {
+    disease: template.category === 'DEFAULT' ? 'DEFAULT' : template.category || 'UNSPECIFIED',
+    section: procedureSection,
+    isDefault: template.category === 'DEFAULT',
+    stepCount: 0,
+    questionCount: 0,
+  };
+}
+
+const SECTION_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'All Sections' },
+  { value: 'REGULAR', label: 'Regular' },
   { value: 'COSMETIC', label: 'Cosmetic' },
-  { value: 'DENTAL', label: 'Dental' },
-  { value: 'ORTHOPEDIC', label: 'Orthopedic' },
-  { value: 'CARDIOLOGY', label: 'Cardiology' },
-  { value: 'ONCOLOGY', label: 'Oncology' },
-  { value: 'GENERAL', label: 'General' },
 ];
 
 const ACTIVE_OPTIONS = [
@@ -62,6 +115,16 @@ const ACTIVE_COLORS: Record<string, string> = {
   Inactive: 'bg-slate-100 text-slate-500',
 };
 
+const SCOPE_COLORS: Record<string, string> = {
+  Default: 'bg-purple-50 text-purple-700',
+  Disease: 'bg-cyan-50 text-cyan-700',
+};
+
+const SECTION_COLORS: Record<string, string> = {
+  REGULAR: 'bg-indigo-50 text-indigo-700',
+  COSMETIC: 'bg-rose-50 text-rose-700',
+};
+
 function formatDate(dateStr: string) {
   if (!dateStr) return '';
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -71,78 +134,14 @@ function formatDate(dateStr: string) {
   });
 }
 
-// ── Responses Drawer ───────────────────────────────────────────────────
-
-function ResponsesDrawer({
-  templateId,
-  onClose,
-}: {
-  templateId: string;
-  onClose: () => void;
-}) {
-  const { data: raw, isLoading } = useQuestionnaireResponses({ templateId, limit: '20', page: '1' });
-  const responses = unwrapList<{ id: string; completionStatus: string; createdAt: string; caseId?: string }>(raw);
-
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md bg-white shadow-xl flex flex-col">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-sm font-semibold text-slate-800">Questionnaire Responses</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 text-lg leading-none"
-          >
-            ×
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          {isLoading ? (
-            <div className="flex justify-center py-8"><LoadingSpinner /></div>
-          ) : responses.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-8">No responses found for this template.</p>
-          ) : (
-            <div className="space-y-3">
-              {responses.map((r) => (
-                <div key={r.id} className="rounded-lg border border-slate-200 px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-mono text-xs text-slate-500">{r.id.slice(0, 8)}…</span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        r.completionStatus === 'COMPLETED'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : r.completionStatus === 'IN_PROGRESS'
-                          ? 'bg-amber-50 text-amber-700'
-                          : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {r.completionStatus}
-                    </span>
-                  </div>
-                  {r.caseId && (
-                    <p className="text-xs text-slate-400">Case: {r.caseId.slice(0, 8)}…</p>
-                  )}
-                  <p className="text-xs text-slate-400 mt-1">{formatDate(r.createdAt)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Row Actions ───────────────────────────────────────────────────────
-
 function RowActions({
   template,
   onEdit,
-  onViewResponses,
+  onDelete,
 }: {
   template: QcTemplateRow;
   onEdit: (t: QcTemplateRow) => void;
-  onViewResponses: (id: string) => void;
+  onDelete: (t: QcTemplateRow) => void;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -153,44 +152,63 @@ function RowActions({
         Edit
       </button>
       <button
-        onClick={(e) => { e.stopPropagation(); onViewResponses(template.id); }}
-        className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onDelete(template); }}
+        className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+        title="Delete"
       >
-        Responses
+        <Trash2 size={14} />
       </button>
     </div>
   );
 }
 
-// ── Main Component ───────────────────────────────────────────────────
-
 export function QcTemplatesList() {
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
+  const [disease, setDisease] = useState('');
+  const [section, setSection] = useState('');
   const [isActive, setIsActive] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editTemplate, setEditTemplate] = useState<QcTemplateRow | null>(null);
-  const [responsesTemplateId, setResponsesTemplateId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<QcTemplateRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const queryClient = useQueryClient();
 
   const filters: Record<string, string> = { page: String(page), limit: '20' };
-  if (category) filters['category'] = category;
+  if (disease) filters['category'] = disease;
   if (isActive) filters['isActive'] = isActive;
 
   const { data: raw, isLoading, refetch } = useQuestionTemplates(filters);
   const templates = unwrapList<QcTemplateRow>(raw);
   const pagination = unwrapPagination(raw);
 
+  const diseaseOptions = useMemo(() => {
+    const unique = new Set<string>();
+    for (const template of templates) {
+      unique.add(extractTemplateMeta(template).disease);
+    }
+    return [
+      { value: '', label: 'All Diseases' },
+      ...Array.from(unique).sort().map((v) => ({ value: v, label: v })),
+    ];
+  }, [templates]);
+
   const filtered = search
-    ? templates.filter((t) => {
+    ? templates.filter((template) => {
+        const meta = extractTemplateMeta(template);
         const q = search.toLowerCase();
-        return (
-          t.templateName.toLowerCase().includes(q) ||
-          t.category.toLowerCase().includes(q)
-        );
+        const matchSearch =
+          template.templateName.toLowerCase().includes(q) ||
+          meta.disease.toLowerCase().includes(q) ||
+          meta.section.toLowerCase().includes(q);
+        const matchSection = !section || meta.section === section;
+        return matchSearch && matchSection;
       })
-    : templates;
+    : templates.filter((template) => {
+        const meta = extractTemplateMeta(template);
+        return !section || meta.section === section;
+      });
 
   function handleEdit(t: QcTemplateRow) {
     setEditTemplate(t);
@@ -207,6 +225,21 @@ export function QcTemplatesList() {
     void refetch();
   }
 
+  async function handleDeleteConfirm() {
+    if (!deleteTarget || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteTemplate(deleteTarget.id);
+      setDeleteTarget(null);
+      handleRefresh();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete template');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   const columns: Column<QcTemplateRow>[] = [
     {
       key: 'templateName',
@@ -217,19 +250,44 @@ export function QcTemplatesList() {
     },
     {
       key: 'category',
-      header: 'Category',
+      header: 'Disease',
       render: (row) => (
         <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
-          {row.category}
+          {extractTemplateMeta(row).disease}
         </span>
       ),
     },
     {
-      key: 'version',
-      header: 'Version',
+      key: 'section',
+      header: 'Section',
       render: (row) => (
-        <span className="text-sm text-slate-500">v{row.version ?? 1}</span>
+        <StatusBadge
+          status={extractTemplateMeta(row).section}
+          colorMap={SECTION_COLORS}
+        />
       ),
+    },
+    {
+      key: 'scope',
+      header: 'Scope',
+      render: (row) => (
+        <StatusBadge
+          status={extractTemplateMeta(row).isDefault ? 'Default' : 'Disease'}
+          colorMap={SCOPE_COLORS}
+        />
+      ),
+    },
+    {
+      key: 'structure',
+      header: 'Structure',
+      render: (row) => {
+        const meta = extractTemplateMeta(row);
+        return (
+          <span className="text-sm text-slate-500">
+            {meta.stepCount} step{meta.stepCount !== 1 ? 's' : ''} / {meta.questionCount} question{meta.questionCount !== 1 ? 's' : ''}
+          </span>
+        );
+      },
     },
     {
       key: 'isActive',
@@ -242,10 +300,12 @@ export function QcTemplatesList() {
       ),
     },
     {
-      key: 'createdAt',
-      header: 'Created',
+      key: 'updatedAt',
+      header: 'Updated',
       render: (row) => (
-        <span className="text-sm text-slate-500">{formatDate(row.createdAt)}</span>
+        <span className="text-sm text-slate-500">
+          {formatDate(row.updatedAt ?? row.createdAt)}
+        </span>
       ),
     },
     {
@@ -255,10 +315,10 @@ export function QcTemplatesList() {
         <RowActions
           template={row}
           onEdit={handleEdit}
-          onViewResponses={(id) => setResponsesTemplateId(id)}
+          onDelete={setDeleteTarget}
         />
       ),
-      className: 'w-32',
+      className: 'w-20',
     },
   ];
 
@@ -272,21 +332,35 @@ export function QcTemplatesList() {
 
   return (
     <div className="space-y-4">
+      {deleteError && (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {deleteError}
+        </div>
+      )}
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[200px] max-w-sm">
           <SearchInput
             value={search}
             onChange={setSearch}
-            placeholder="Search templates…"
+            placeholder="Search template / disease…"
           />
         </div>
         <select
-          value={category}
-          onChange={(e) => { setCategory(e.target.value); setPage(1); }}
+          value={disease}
+          onChange={(e) => { setDisease(e.target.value); setPage(1); }}
           className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
         >
-          {CATEGORY_OPTIONS.map((opt) => (
+          {diseaseOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <select
+          value={section}
+          onChange={(e) => setSection(e.target.value)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+        >
+          {SECTION_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
@@ -335,13 +409,18 @@ export function QcTemplatesList() {
         editTemplate={editTemplate}
       />
 
-      {/* Responses Drawer */}
-      {responsesTemplateId && (
-        <ResponsesDrawer
-          templateId={responsesTemplateId}
-          onClose={() => setResponsesTemplateId(null)}
-        />
-      )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Template"
+        message={`Are you sure you want to delete "${deleteTarget?.templateName ?? 'this template'}"?`}
+        confirmLabel={isDeleting ? 'Deleting…' : 'Delete'}
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => {
+          if (isDeleting) return;
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

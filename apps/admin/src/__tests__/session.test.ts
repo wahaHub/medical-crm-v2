@@ -133,6 +133,37 @@ describe('admin auth — login route', () => {
     expect(currentSession.refresh_token).toBe('refresh-token');
   });
 
+  it('clears stale id_token and code_verifier when password login succeeds', async () => {
+    createSession({
+      id_token: 'stale-id-token',
+      code_verifier: 'stale-code-verifier',
+    });
+    const adminToken = makeJwt({
+      sub: 'admin-sub',
+      email: 'admin@medicaltourismchina.health',
+      realm_access: { roles: ['admin'] },
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        access_token: adminToken,
+        refresh_token: 'refresh-token',
+        id_token: 'fresh-id-token',
+        expires_in: 300,
+        refresh_expires_in: 1800,
+        token_type: 'Bearer',
+        scope: 'openid email profile',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const { POST } = await import('@/app/api/auth/login/route');
+    const response = await POST(makeLoginRequest({ username: 'admin', password: 'pw' }));
+
+    expect(response.status).toBe(200);
+    expect(currentSession.id_token).toBeUndefined();
+    expect(currentSession.code_verifier).toBeUndefined();
+  });
+
   it('sets hospital cookie and redirects to hospital origin for hospital role', async () => {
     const hospitalToken = makeJwt({
       sub: 'hospital-sub',

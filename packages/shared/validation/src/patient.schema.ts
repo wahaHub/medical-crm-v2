@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const initOnboardingSchema = z.object({
   email: z.string().email().max(255),
   name: z.string().min(1).max(100),
-  phone: z.string().min(5).max(20),
+  phone: z.string().trim().min(5).max(20).optional(),
   preferredLanguage: z.string().min(2).max(10).default('en'),
   procedureId: z.string().uuid().optional(),
   destination: z.string().max(100).optional(),
@@ -14,7 +14,7 @@ export const initOnboardingSchema = z.object({
 
 // POST /api/patient/match-hospitals
 export const matchHospitalsSchema = z.object({
-  procedureId: z.string().uuid().optional(),
+  procedureId: z.string().optional(),
   procedureName: z.string().optional(),
   destination: z.string().max(100).optional(),
   category: z.enum(['face', 'body', 'non-surgical']).optional(),

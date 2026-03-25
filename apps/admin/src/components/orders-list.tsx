@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import {
   StatusBadge,
   SearchInput,
@@ -9,6 +9,8 @@ import {
 } from '@medical-crm/ui';
 import { ShoppingCart } from 'lucide-react';
 import { useOrders } from '@/queries/use-orders';
+import { usePackageNameMap } from '@/queries/use-package-names';
+import { CaseOrderDetailRow, type CaseOrderItem } from '@/components/tabs/case-orders-tab';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -116,53 +118,6 @@ function formatDate(dateStr: string) {
   });
 }
 
-// ── Expanded Row Detail ───────────────────────────────────────────────
-
-function OrderDetailRow({ order }: { order: OrderRow }) {
-  return (
-    <tr className="bg-slate-50 border-b border-slate-200">
-      <td colSpan={6} className="px-6 py-4">
-        <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-          <div>
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Order ID</p>
-            <p className="font-mono text-xs text-slate-700">{order.id.slice(0, 12)}…</p>
-          </div>
-          {order.caseId && (
-            <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Linked Case</p>
-              <p className="font-mono text-xs text-indigo-600">{order.caseId.slice(0, 8)}…</p>
-            </div>
-          )}
-          {order.patientId && (
-            <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Patient ID</p>
-              <p className="font-mono text-xs text-slate-700">{order.patientId.slice(0, 8)}…</p>
-            </div>
-          )}
-          {order.packageId && (
-            <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Package ID</p>
-              <p className="font-mono text-xs text-slate-700">{order.packageId.slice(0, 8)}…</p>
-            </div>
-          )}
-          {order.paymentReference && (
-            <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Payment Reference</p>
-              <p className="font-mono text-xs text-slate-700">{order.paymentReference}</p>
-            </div>
-          )}
-          {order.paidAt && (
-            <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Paid At</p>
-              <p className="text-xs text-slate-700">{formatDate(order.paidAt)}</p>
-            </div>
-          )}
-        </div>
-      </td>
-    </tr>
-  );
-}
-
 // ── Main Component ───────────────────────────────────────────────────
 
 export function OrdersList() {
@@ -179,6 +134,7 @@ export function OrdersList() {
   const { data: raw, isLoading } = useOrders(filters);
   const orders = unwrapList<OrderRow>(raw);
   const pagination = unwrapPagination(raw);
+  const { nameMap: packageNameMap } = usePackageNameMap(orders.map((order) => order.packageId));
 
   // Client-side search filter (by order number or amount)
   const filtered = search
@@ -311,9 +267,8 @@ export function OrdersList() {
             </thead>
             <tbody>
               {filtered.map((row) => (
-                <>
+                <Fragment key={row.id}>
                   <tr
-                    key={row.id}
                     onClick={() => handleRowClick(row)}
                     className="border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50"
                   >
@@ -323,8 +278,20 @@ export function OrdersList() {
                       </td>
                     ))}
                   </tr>
-                  {expandedId === row.id && <OrderDetailRow key={`${row.id}-detail`} order={row} />}
-                </>
+                  {expandedId === row.id && (
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <td colSpan={6} className="px-0 py-0">
+                        <CaseOrderDetailRow
+                          order={{
+                            ...row,
+                            packageId: row.packageId ?? undefined,
+                          } as CaseOrderItem}
+                          packageName={row.packageId ? packageNameMap[row.packageId] : undefined}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

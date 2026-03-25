@@ -7,6 +7,8 @@ export interface CaseDTO {
   patientName: string;
   patientCountry: string | null;
   patientLanguage: string;
+  patientEmail: string | null;
+  patientPhone: string | null;
   assignedHospitalId: string | null;
   hospitalName: string | null;
   primaryDiagnosis: string | null;

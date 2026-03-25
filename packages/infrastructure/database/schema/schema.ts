@@ -78,6 +78,7 @@ export const users = pgTable("users", {
 	lastLoginAt: timestamp("last_login_at", { precision: 6, mode: 'string' }),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	keycloakUserId: varchar("keycloak_user_id", { length: 100 }),
 	patientCode: varchar("patient_code", { length: 20 }),
 	country: varchar({ length: 100 }),
 	preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh').notNull(),
@@ -789,14 +790,16 @@ export const chatbotFaqCategories = pgTable("chatbot_faq_categories", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	name: varchar({ length: 100 }).notNull(),
 	hospitalType: varchar("hospital_type", { length: 20 }).notNull(),
+	hospitalId: uuid("hospital_id"),
 	sortOrder: integer("sort_order").default(0).notNull(),
 	isActive: boolean("is_active").default(true).notNull(),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
 }, (table) => [
-	unique("chatbot_faq_categories_name_hospital_type_key").on(table.name, table.hospitalType),
+	unique("chatbot_faq_categories_name_hospital_type_hospital_id_key").on(table.name, table.hospitalType, table.hospitalId),
 	index("chatbot_faq_categories_hospital_type_idx").using("btree", table.hospitalType.asc().nullsLast()),
 	index("chatbot_faq_categories_is_active_idx").using("btree", table.isActive.asc().nullsLast()),
+	index("chatbot_faq_categories_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast()),
 ]);
 
 export const emailTemplates = pgTable("email_templates", {
@@ -808,6 +811,7 @@ export const emailTemplates = pgTable("email_templates", {
 	body: text().notNull(),
 	variables: jsonb().default([]),
 	status: varchar({ length: 20 }).default('draft').notNull(),
+	attachments: jsonb().default([]),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
 	deletedAt: timestamp("deleted_at", { precision: 6, mode: 'string' }),

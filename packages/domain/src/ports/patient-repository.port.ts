@@ -10,7 +10,7 @@ export interface IPatientRepository {
   createTempPatient(input: {
     email: string;
     name: string;
-    phone: string;
+    phone?: string;
     preferredLanguage: string;
   }): Promise<PatientBasicInfo>;
   updatePasswordHash(userId: string, hash: string): Promise<void>;

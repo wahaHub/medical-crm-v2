@@ -21,9 +21,13 @@ export interface CaseSummary {
   treatmentStage: string | null;
   patientCountry?: string | null;
   patientLanguage?: string | null;
+  patientEmail?: string | null;
+  patientPhone?: string | null;
   primaryDiagnosis?: string | null;
   riskLevel?: string | null;
   aiSummary?: string | null;
+  assignedHospitalId?: string | null;
+  hospitalName?: string | null;
   createdAt: string;
 }
 
@@ -34,6 +38,7 @@ export interface CaseStats {
 
 export interface HospitalSummary {
   id: string; name: string; nameEn: string | null; type: string; status: string;
+  hasRegisteredUser?: boolean;
   specialties: string[] | null; email: string | null; phone: string | null;
   address: string | null; city: string | null; createdAt: string;
 }

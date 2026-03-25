@@ -133,4 +133,55 @@ app.openapi(deleteEmailTemplateRoute, async (c) => {
   return c.body(null, 204);
 });
 
+// ---------------------------------------------------------------------------
+// 6. POST /api/v2/email-templates/{id}/upload — Get presigned upload URL
+// ---------------------------------------------------------------------------
+const uploadAttachmentRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/email-templates/{id}/upload',
+  request: {
+    params: idParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            fileName: z.string().min(1),
+            fileSize: z.number().int().positive(),
+            mimeType: z.string().min(1),
+          }),
+        },
+      },
+      required: true,
+    },
+  },
+  responses: { 200: { description: 'Presigned upload URL' } },
+});
+
+app.openapi(uploadAttachmentRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const template = await svc.getEmailTemplate.execute(id, actor);
+  if (!template) {
+    return c.json({ error: 'Template not found' }, 404);
+  }
+
+  const result = await svc.mediaUpload.createUploadIntent({
+    policyId: 'email_template_attachment',
+    ownerType: 'email_template',
+    ownerId: id,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  return c.json({
+    uploadUrl: result.uploadUrl,
+    storageKey: result.storageKey,
+    expiresIn: result.expiresIn,
+    asset: result.asset,
+  }, 200);
+});
+
 export default app;

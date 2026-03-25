@@ -23,7 +23,9 @@ export class SendQuoteUseCase {
     // Update CHC: transition to QUOTED, set firstReplyAt if not set
     const chc = await this.chcRepo.findByCaseAndHospital(quote.caseId, quote.hospitalId);
     if (chc) {
-      chc.transitionSubStatus('QUOTED');
+      if (chc.subStatus !== 'QUOTED') {
+        chc.transitionSubStatus('QUOTED');
+      }
       chc.quoteId = quote.id;
       if (!chc.firstReplyAt) chc.firstReplyAt = new Date();
       await this.chcRepo.save(chc);

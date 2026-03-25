@@ -46,7 +46,15 @@ export class CreateHospitalUseCase {
     });
 
     const saved = await this.hospitalRepo.save(entity);
-    await this.syncService.syncToSupabase(saved);
+    console.log(`[CreateHospital] Saved hospital ${saved.id} (type=${saved.type}), syncing to Supabase...`);
+    try {
+      await this.syncService.syncToSupabase(saved);
+      console.log(`[CreateHospital] Sync to Supabase succeeded for hospital ${saved.id}`);
+    } catch (syncErr) {
+      console.error(`[CreateHospital] Sync to Supabase FAILED for hospital ${saved.id}:`, syncErr);
+      // Re-throw so the caller knows sync failed
+      throw syncErr;
+    }
     return toHospitalDTO(saved);
   }
 }

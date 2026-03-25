@@ -13,7 +13,9 @@ export interface MaterialsHospitalInfo {
   name: string;
   slug: string;
   heroImage: string | null;
+  heroImageStorageKey?: string | null;
   photos: string[];
+  photoStorageKeys?: Array<string | null>;
   highlights: Array<{ icon: string; text: string }>;
   // Extended fields — matches CRM v1 HospitalInfo shape
   nameEn?: string;
@@ -51,7 +53,9 @@ export interface MaterialsHospitalInfo {
     patientCountry?: string;
     procedureName?: string;
     videoUrl: string;
+    videoStorageKey?: string | null;
     thumbnailUrl?: string;
+    thumbnailStorageKey?: string | null;
     duration?: string;
     uploadedAt?: string;
   }>;
@@ -63,7 +67,7 @@ export interface MaterialsHospitalInfo {
   tier?: string;
   ownershipType?: string;
   clinicalCapabilities?: string[];
-  equipment?: Array<{ name: string; image_url?: string; description?: string }>;
+  equipment?: Array<{ name: string; image_url?: string; imageStorageKey?: string | null; description?: string }>;
   gallery?: Array<{ url: string; alt: string; type: string }>;
   coreSpecialties?: Array<{ name: string; slug: string; image_url?: string; description: string; technologies: string[] }>;
   overview?: string;
@@ -73,10 +77,12 @@ export interface MaterialsHospitalInfo {
   departments?: string[];
   departmentDescriptions?: Record<string, string>;
   departmentImages?: Record<string, string>;
+  departmentImageStorageKeys?: Record<string, string>;
   departmentKeyServices?: Record<string, string[]>;
   departmentStats?: Record<string, { specialists?: number; annualPatients?: number }>;
   operatingHours?: string;
   promotionalVideos?: string[];
+  promotionalVideoStorageKeys?: Array<string | null>;
 }
 
 export interface MaterialsProcedure {

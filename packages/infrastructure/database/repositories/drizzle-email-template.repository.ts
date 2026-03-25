@@ -1,5 +1,5 @@
 import { eq, and, sql, count, isNull } from 'drizzle-orm';
-import type { IEmailTemplateRepository, EmailTemplateListQuery } from '@medical-crm/domain';
+import type { IEmailTemplateRepository, EmailTemplateListQuery, EmailTemplateAttachment } from '@medical-crm/domain';
 import { EmailTemplate } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { emailTemplates } from '../schema/index.js';
@@ -68,6 +68,7 @@ export class DrizzleEmailTemplateRepository implements IEmailTemplateRepository 
       body: entity.body,
       variables: entity.variables,
       status: entity.status,
+      attachments: entity.attachments,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: now,
       deletedAt: entity.deletedAt ? entity.deletedAt.toISOString() : null,
@@ -85,6 +86,7 @@ export class DrizzleEmailTemplateRepository implements IEmailTemplateRepository 
           body: values.body,
           variables: values.variables,
           status: values.status,
+          attachments: values.attachments,
           updatedAt: now,
           deletedAt: values.deletedAt,
         },
@@ -112,6 +114,7 @@ export class DrizzleEmailTemplateRepository implements IEmailTemplateRepository 
       body: row.body,
       variables: Array.isArray(row.variables) ? (row.variables as string[]) : [],
       status: row.status,
+      attachments: Array.isArray(row.attachments) ? (row.attachments as EmailTemplateAttachment[]) : [],
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
       deletedAt: row.deletedAt ? new Date(row.deletedAt) : null,

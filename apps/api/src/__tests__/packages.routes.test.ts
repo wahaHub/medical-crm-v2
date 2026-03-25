@@ -9,6 +9,7 @@ const mockServices = {
   listPackages: { execute: vi.fn() },
   getPackage: { execute: vi.fn() },
   updatePackage: { execute: vi.fn() },
+  deletePackage: { execute: vi.fn() },
   publishPackage: { execute: vi.fn() },
   unpublishPackage: { execute: vi.fn() },
 };
@@ -160,6 +161,22 @@ describe('Packages routes', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.nameEn).toBe('Updated');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // DELETE /api/v2/packages/{id} — DeletePackage
+  // -----------------------------------------------------------------------
+  describe('DELETE /api/v2/packages/{id}', () => {
+    it('returns 204 on success', async () => {
+      mockServices.deletePackage.execute.mockResolvedValue(undefined);
+
+      const res = await app.request(`/api/v2/packages/${VALID_UUID}`, {
+        method: 'DELETE',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.deletePackage.execute).toHaveBeenCalledOnce();
     });
   });
 

@@ -1,4 +1,4 @@
-import { eq, and, sql, count, ilike, or } from 'drizzle-orm';
+import { eq, and, sql, count, ilike, or, isNull } from 'drizzle-orm';
 import type {
   IChatbotFaqRepository,
   ChatbotFaqListQuery,
@@ -131,6 +131,15 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     if (query.isActive !== undefined) {
       conditions.push(eq(chatbotFaqCategories.isActive, query.isActive));
     }
+    if (query.hospitalId !== undefined) {
+      if (query.hospitalId === null) {
+        conditions.push(
+          isNull(chatbotFaqCategories.hospitalId) as ReturnType<typeof eq>,
+        );
+      } else {
+        conditions.push(eq(chatbotFaqCategories.hospitalId, query.hospitalId));
+      }
+    }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const rows = await this.db
@@ -143,6 +152,19 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
         sql`${chatbotFaqCategories.name} ASC`,
       );
 
+    // Count questions per category, scoped by hospitalId if present in query
+    const countConditions: ReturnType<typeof eq>[] = [];
+    if (query.hospitalId !== undefined) {
+      if (query.hospitalId === null) {
+        countConditions.push(
+          sql`${chatbotFaqItems.hospitalId} IS NULL` as unknown as ReturnType<typeof eq>,
+        );
+      } else {
+        countConditions.push(eq(chatbotFaqItems.hospitalId, query.hospitalId));
+      }
+    }
+
+    const countWhere = countConditions.length > 0 ? and(...countConditions) : undefined;
     const countRows = await this.db
       .select({
         category: chatbotFaqItems.category,
@@ -150,6 +172,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
         total: count(),
       })
       .from(chatbotFaqItems)
+      .where(countWhere)
       .groupBy(chatbotFaqItems.category, chatbotFaqItems.hospitalType);
 
     const countMap = new Map(
@@ -160,6 +183,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       id: row.id,
       name: row.name,
       hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      hospitalId: row.hospitalId ?? null,
       sortOrder: row.sortOrder,
       isActive: row.isActive,
       questionCount: countMap.get(`${row.name}::${row.hospitalType}`) ?? 0,
@@ -183,12 +207,14 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     const questionCount = await this.countItemsForCategory(
       row.name,
       row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      row.hospitalId ?? null,
     );
 
     return {
       id: row.id,
       name: row.name,
       hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      hospitalId: row.hospitalId ?? null,
       sortOrder: row.sortOrder,
       isActive: row.isActive,
       questionCount,
@@ -200,6 +226,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
   async createCategory(input: {
     name: string;
     hospitalType: 'REGULAR' | 'COSMETIC';
+    hospitalId?: string | null;
     sortOrder?: number;
     isActive?: boolean;
   }): Promise<ChatbotFaqCategory> {
@@ -209,12 +236,13 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       .values({
         name: input.name,
         hospitalType: input.hospitalType,
+        hospitalId: input.hospitalId ?? null,
         sortOrder: input.sortOrder ?? 0,
         isActive: input.isActive ?? true,
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: [chatbotFaqCategories.name, chatbotFaqCategories.hospitalType],
+        target: [chatbotFaqCategories.name, chatbotFaqCategories.hospitalType, chatbotFaqCategories.hospitalId],
         set: {
           sortOrder: input.sortOrder ?? 0,
           isActive: input.isActive ?? true,
@@ -228,6 +256,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       id: row.id,
       name: row.name,
       hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      hospitalId: row.hospitalId ?? null,
       sortOrder: row.sortOrder,
       isActive: row.isActive,
       questionCount: 0,
@@ -236,16 +265,30 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     };
   }
 
-  async countItemsForCategory(name: string, hospitalType: 'REGULAR' | 'COSMETIC'): Promise<number> {
+  async countItemsForCategory(
+    name: string,
+    hospitalType: 'REGULAR' | 'COSMETIC',
+    hospitalId?: string | null,
+  ): Promise<number> {
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(chatbotFaqItems.category, name),
+      eq(chatbotFaqItems.hospitalType, hospitalType),
+    ];
+
+    if (hospitalId !== undefined) {
+      if (hospitalId === null) {
+        conditions.push(
+          sql`${chatbotFaqItems.hospitalId} IS NULL` as unknown as ReturnType<typeof eq>,
+        );
+      } else {
+        conditions.push(eq(chatbotFaqItems.hospitalId, hospitalId));
+      }
+    }
+
     const rows = await this.db
       .select({ total: count() })
       .from(chatbotFaqItems)
-      .where(
-        and(
-          eq(chatbotFaqItems.category, name),
-          eq(chatbotFaqItems.hospitalType, hospitalType),
-        ),
-      );
+      .where(and(...conditions));
 
     return Number(rows[0]?.total ?? 0);
   }

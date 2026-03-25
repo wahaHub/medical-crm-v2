@@ -7,6 +7,7 @@ export async function createConsultation(data: {
   caseId: string;
   scheduledAt: string;
   durationMinutes?: number;
+  aiTranslation?: boolean;
   notes?: string;
 }) {
   const result = await apiClient('/api/v2/consultations', {
@@ -15,6 +16,8 @@ export async function createConsultation(data: {
   });
   revalidatePath('/consultations');
   revalidatePath('/dashboard');
+  revalidatePath('/cases');
+  revalidatePath(`/cases/${data.caseId}`);
   return result;
 }
 

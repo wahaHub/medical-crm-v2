@@ -1,4 +1,4 @@
-import type { IEmailTemplateRepository } from '@medical-crm/domain';
+import type { IEmailTemplateRepository, EmailTemplateAttachment } from '@medical-crm/domain';
 import { EmailTemplate } from '@medical-crm/domain';
 import { generateId, ForbiddenError } from '@medical-crm/utils';
 import type { EmailTemplateDTO } from '../../dtos/email-template.dto.js';
@@ -12,6 +12,7 @@ export interface CreateEmailTemplateInput {
   body: string;
   variables?: string[];
   status?: string;
+  attachments?: EmailTemplateAttachment[];
 }
 
 export class CreateEmailTemplateUseCase {
@@ -38,6 +39,7 @@ export class CreateEmailTemplateUseCase {
       body: input.body,
       variables: input.variables ?? [],
       status: input.status ?? 'draft',
+      attachments: input.attachments ?? [],
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,

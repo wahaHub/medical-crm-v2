@@ -180,6 +180,7 @@ export { CreatePackageUseCase } from './use-cases/packages/create-package.use-ca
 export type { CreatePackageInput } from './use-cases/packages/create-package.use-case.js';
 export { UpdatePackageUseCase } from './use-cases/packages/update-package.use-case.js';
 export type { UpdatePackageInput } from './use-cases/packages/update-package.use-case.js';
+export { DeletePackageUseCase } from './use-cases/packages/delete-package.use-case.js';
 export { PublishPackageUseCase } from './use-cases/packages/publish-package.use-case.js';
 export { UnpublishPackageUseCase } from './use-cases/packages/unpublish-package.use-case.js';
 export { ListPackagesUseCase } from './use-cases/packages/list-packages.use-case.js';
@@ -224,6 +225,7 @@ export { CreateTemplateUseCase } from './use-cases/question-collector/create-tem
 export type { CreateTemplateInput } from './use-cases/question-collector/create-template.use-case.js';
 export { UpdateTemplateUseCase } from './use-cases/question-collector/update-template.use-case.js';
 export type { UpdateTemplateInput } from './use-cases/question-collector/update-template.use-case.js';
+export { DeleteTemplateUseCase } from './use-cases/question-collector/delete-template.use-case.js';
 export { ListTemplatesUseCase } from './use-cases/question-collector/list-templates.use-case.js';
 export { GetTemplateUseCase } from './use-cases/question-collector/get-template.use-case.js';
 export type { GetTemplateResult } from './use-cases/question-collector/get-template.use-case.js';
@@ -312,7 +314,7 @@ export type { IntakeTemplate, IntakeQuestion } from './use-cases/patient-intake/
 export { SubmitIntakeUseCase } from './use-cases/patient-intake/submit-intake.use-case.js';
 
 // DTOs — Chatbot FAQ
-export type { ChatbotFaqItemDTO } from './dtos/chatbot-faq.dto.js';
+export type { ChatbotFaqItemDTO, ChatbotFaqCategoryDTO } from './dtos/chatbot-faq.dto.js';
 
 // Mappers — Chatbot FAQ
 export { toChatbotFaqItemDTO } from './mappers/chatbot-faq.mapper.js';
@@ -325,6 +327,10 @@ export { GetFaqItemUseCase } from './use-cases/chatbot-faq/get-faq-item.use-case
 export { UpdateFaqItemUseCase } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export type { UpdateFaqItemInput } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export { DeleteFaqItemUseCase } from './use-cases/chatbot-faq/delete-faq-item.use-case.js';
+export { ListFaqCategoriesUseCase } from './use-cases/chatbot-faq/list-faq-categories.use-case.js';
+export { CreateFaqCategoryUseCase } from './use-cases/chatbot-faq/create-faq-category.use-case.js';
+export type { CreateFaqCategoryInput } from './use-cases/chatbot-faq/create-faq-category.use-case.js';
+export { DeleteFaqCategoryUseCase } from './use-cases/chatbot-faq/delete-faq-category.use-case.js';
 
 // DTOs — Email Template
 export type { EmailTemplateDTO } from './dtos/email-template.dto.js';

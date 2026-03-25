@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   IMaterialsRepository,
+  IStorageService,
   MaterialsHospitalInfo,
   MaterialsProcedure,
   MaterialsSurgeon,
@@ -14,6 +15,7 @@ import {
   slugifyProcedureName,
   shouldIgnoreCaseMediaError,
 } from '../services/materials-compat.js';
+import { resolveMediaRef, resolveMediaRefs } from '../services/materials-media.js';
 
 /**
  * China Medical Supabase implementation of IMaterialsRepository.
@@ -21,17 +23,42 @@ import {
  * Maps between domain types and China Medical Supabase tables:
  * - hospitals + hospital_i18n -> MaterialsHospitalInfo
  * - surgeons -> MaterialsSurgeon
- * - procedure_cases + case_images -> MaterialsBeforeAfterCase
+ * - procedure_cases + case_media -> MaterialsBeforeAfterCase
  *
  * NOTE: Regular hospitals do NOT have hospital_procedures/procedures tables.
  * Procedures are stored directly in procedure_cases.procedure_name.
  */
 export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
-  constructor(private readonly supabase: SupabaseClient) {}
+  constructor(
+    private readonly supabase: SupabaseClient,
+    private readonly storage?: IStorageService,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // Hospital Info
   // ---------------------------------------------------------------------------
+
+  private async resolveSurgeon(row: {
+    id: string;
+    hospital_id?: string | null;
+    name: string;
+    title?: string | null;
+    image_url?: string | null;
+    experience_years?: number | null;
+    specialties?: string[] | null;
+    languages?: string[] | null;
+    education?: string[] | null;
+    certifications?: string[] | null;
+    bio?: Record<string, unknown> | null;
+    images?: Record<string, unknown> | null;
+  }, hospitalId: string): Promise<MaterialsSurgeon> {
+    const surgeon = mapSurgeonRowToMaterialsSurgeon(row, hospitalId);
+    const resolvedImage = await resolveMediaRef(surgeon.imageUrl, this.storage);
+    return {
+      ...surgeon,
+      imageUrl: resolvedImage.url || null,
+    };
+  }
 
   async getHospitalInfo(hospitalId: string): Promise<MaterialsHospitalInfo | null> {
     const { data: hospital, error } = await this.supabase
@@ -45,17 +72,20 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       throw error;
     }
 
-    // Get i18n data (all columns)
-    const { data: i18nRows } = await this.supabase
-      .from('hospital_i18n')
-      .select('*')
-      .eq('hospital_id', hospitalId);
+    // Get i18n data and nearby attractions
+    const [i18nResult, nearbyResult] = await Promise.all([
+      this.supabase.from('hospital_i18n').select('*').eq('hospital_id', hospitalId),
+      this.supabase.from('hospital_nearby_attractions').select('*').eq('hospital_id', hospitalId).order('sort_order', { ascending: true }),
+    ]);
+    const i18nRows = i18nResult.data;
+    const nearbyAttractions = nearbyResult.data ?? [];
 
     const zhRow = (i18nRows ?? []).find((r: Record<string, unknown>) => r.locale === 'zh') as Record<string, unknown> | undefined;
     const enRow = (i18nRows ?? []).find((r: Record<string, unknown>) => r.locale === 'en') as Record<string, unknown> | undefined;
     const nameRow = zhRow ?? enRow;
+    const facilitiesInfo = ((zhRow?.facilities_info ?? enRow?.facilities_info) as Record<string, unknown> | undefined) ?? {};
 
-    const photos = (hospital.gallery as Array<{ url: string }> | null)?.map(
+    const rawPhotos = (hospital.gallery as Array<{ url: string }> | null)?.map(
       (g: { url: string }) => g.url,
     ) ?? [];
 
@@ -75,14 +105,14 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       .map((d) => (d.department_code || d.department_slug) as string)
       .filter((d): d is string => typeof d === 'string' && d.length > 0);
     const departmentDescriptions: Record<string, string> = {};
-    const departmentImages: Record<string, string> = {};
+    const rawDepartmentImages: Record<string, string> = {};
     const departmentKeyServices: Record<string, string[]> = {};
     const departmentStats: Record<string, { specialists?: number; annualPatients?: number }> = {};
     for (const d of departmentsInfo) {
       const code = (d.department_code || d.department_slug) as string;
       if (!code) continue;
       if (typeof d.description === 'string') departmentDescriptions[code] = d.description;
-      if (typeof d.image_url === 'string') departmentImages[code] = d.image_url;
+      if (typeof d.image_url === 'string') rawDepartmentImages[code] = d.image_url;
       if (Array.isArray(d.key_services)) departmentKeyServices[code] = d.key_services as string[];
       if (d.specialists !== undefined || d.annual_patients !== undefined) {
         departmentStats[code] = {
@@ -91,14 +121,51 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         };
       }
     }
+    const heroImage = await resolveMediaRef(hospital.hero_image_url ?? null, this.storage);
+    const photos = await resolveMediaRefs(rawPhotos, this.storage);
+    const departmentImageEntries = await resolveMediaRefs(Object.values(rawDepartmentImages), this.storage);
+    const departmentImages: Record<string, string> = {};
+    const departmentImageStorageKeys: Record<string, string> = {};
+    Object.keys(rawDepartmentImages).forEach((code, index) => {
+      const resolved = departmentImageEntries[index];
+      if (!resolved || !resolved.url) return;
+      departmentImages[code] = resolved.url;
+      if (resolved.storageKey) departmentImageStorageKeys[code] = resolved.storageKey;
+    });
+    const rawEquipment = (hospital.equipment as MaterialsHospitalInfo['equipment']) ?? [];
+    const equipmentImageEntries = await resolveMediaRefs(
+      rawEquipment.map((item) => item.image_url),
+      this.storage,
+    );
+    const rawPromotionalVideos = (
+      (facilitiesInfo['promotionalVideos'] as string[] | undefined)
+      ?? ((hospital as Record<string, unknown>)['promotional_videos'] as string[] | undefined)
+      ?? []
+    );
+    const promotionalVideos = await resolveMediaRefs(rawPromotionalVideos, this.storage);
+    const rawVideoTestimonials = (
+      (facilitiesInfo['videoTestimonials'] as MaterialsHospitalInfo['videoTestimonials'] | undefined)
+      ?? ((hospital as Record<string, unknown>)['video_testimonials'] as MaterialsHospitalInfo['videoTestimonials'] | undefined)
+      ?? []
+    );
+    const testimonialVideoUrls = await resolveMediaRefs(
+      rawVideoTestimonials.map((item) => item.videoUrl),
+      this.storage,
+    );
+    const testimonialThumbnailUrls = await resolveMediaRefs(
+      rawVideoTestimonials.map((item) => item.thumbnailUrl),
+      this.storage,
+    );
 
     return {
       id: hospital.id,
       name: (nameRow?.display_name ?? nameRow?.name ?? '') as string,
       nameEn: (enRow?.display_name ?? enRow?.name ?? zhRow?.name ?? '') as string,
       slug: hospital.slug,
-      heroImage: hospital.hero_image_url ?? null,
-      photos,
+      heroImage: heroImage.url || null,
+      heroImageStorageKey: heroImage.storageKey,
+      photos: photos.map((item) => item.url),
+      photoStorageKeys: photos.map((item) => item.storageKey),
       highlights: [],
       yearEstablished: hospital.established_year ?? undefined,
       totalPatients: hospital.patients_served_annually ?? undefined,
@@ -110,9 +177,11 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       isActive: hospital.is_active,
       paymentMethods: hospital.payment_methods ?? [],
       address: hospital.address ?? undefined,
-      phone: undefined,
+      phone: hospital.phone ?? undefined,
       email: hospital.admin_email ?? undefined,
       website: hospital.official_website ?? undefined,
+      hours: (facilitiesInfo['operatingHours'] as string | undefined) ?? (facilitiesInfo['hours'] as string | undefined) ?? undefined,
+      operatingHours: (facilitiesInfo['operatingHours'] as string | undefined) ?? (facilitiesInfo['hours'] as string | undefined) ?? undefined,
       latitude: hospital.latitude ?? undefined,
       longitude: hospital.longitude ?? undefined,
       certifications,
@@ -122,8 +191,12 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       airportServices: hospital.airport_services ?? [],
       followUpCare: hospital.followup_care ?? [],
       amenities: hospital.amenities ?? [],
-      nearbyAttractions: [],
-      videoTestimonials: hospital.video_testimonials ?? [],
+      nearbyAttractions: (nearbyAttractions ?? []).map((a: Record<string, unknown>) => ({
+        id: String(a.id ?? ''),
+        name: String(a.name_zh ?? a.name ?? ''),
+        nameEn: String(a.name ?? ''),
+        distance: String(a.distance ?? ''),
+      })),
       // Regular hospital specific fields
       city: hospital.city,
       district: hospital.district,
@@ -132,7 +205,11 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       tier: (zhRow?.tier as string) ?? (enRow?.tier as string) ?? undefined,
       ownershipType: (zhRow?.ownership_type as string) ?? (enRow?.ownership_type as string) ?? undefined,
       clinicalCapabilities: hospital.clinical_capabilities ?? undefined,
-      equipment: hospital.equipment ?? undefined,
+      equipment: rawEquipment.map((item, index) => ({
+        ...item,
+        image_url: equipmentImageEntries[index]?.url || item.image_url,
+        imageStorageKey: equipmentImageEntries[index]?.storageKey ?? null,
+      })),
       gallery: hospital.gallery ?? undefined,
       coreSpecialties: (zhRow?.core_specialties ?? enRow?.core_specialties) as MaterialsHospitalInfo['coreSpecialties'],
       overview: (zhRow?.overview as string) ?? undefined,
@@ -142,8 +219,18 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       departments,
       departmentDescriptions,
       departmentImages,
+      departmentImageStorageKeys,
       departmentKeyServices,
       departmentStats,
+      promotionalVideos: promotionalVideos.map((item) => item.url),
+      promotionalVideoStorageKeys: promotionalVideos.map((item) => item.storageKey),
+      videoTestimonials: rawVideoTestimonials.map((item, index) => ({
+        ...item,
+        videoUrl: testimonialVideoUrls[index]?.url ?? item.videoUrl,
+        videoStorageKey: testimonialVideoUrls[index]?.storageKey ?? null,
+        thumbnailUrl: testimonialThumbnailUrls[index]?.url || item.thumbnailUrl,
+        thumbnailStorageKey: testimonialThumbnailUrls[index]?.storageKey ?? null,
+      })),
     };
   }
 
@@ -173,8 +260,9 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     if (updates.clinicalCapabilities !== undefined) hospitalUpdates['clinical_capabilities'] = updates.clinicalCapabilities;
     if (updates.equipment !== undefined) hospitalUpdates['equipment'] = updates.equipment;
     if (updates.certifications !== undefined) hospitalUpdates['certifications'] = updates.certifications;
-    if (updates.videoTestimonials !== undefined) hospitalUpdates['video_testimonials'] = updates.videoTestimonials;
     if (updates.website !== undefined) hospitalUpdates['official_website'] = updates.website;
+    if (updates.phone !== undefined) hospitalUpdates['phone'] = updates.phone;
+    if (updates.email !== undefined) hospitalUpdates['admin_email'] = updates.email;
     if (updates.isActive !== undefined) hospitalUpdates['is_active'] = updates.isActive;
 
     if (Object.keys(hospitalUpdates).length > 0) {
@@ -186,6 +274,28 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     // 2. Update i18n tables (zh + en)
     const zhUpdates: Record<string, unknown> = {};
     const enUpdates: Record<string, unknown> = {};
+    let existingZhFacilitiesInfo: Record<string, unknown> = {};
+    let existingEnFacilitiesInfo: Record<string, unknown> = {};
+
+    if (
+      updates.promotionalVideos !== undefined
+      || updates.videoTestimonials !== undefined
+      || updates.operatingHours !== undefined
+      || updates.hours !== undefined
+    ) {
+      const { data: existingI18nRows, error: existingI18nError } = await this.supabase
+        .from('hospital_i18n')
+        .select('locale, facilities_info')
+        .eq('hospital_id', hospitalId)
+        .in('locale', ['zh', 'en']);
+
+      if (existingI18nError) throw existingI18nError;
+
+      const existingZhRow = (existingI18nRows ?? []).find((row: Record<string, unknown>) => row.locale === 'zh') as Record<string, unknown> | undefined;
+      const existingEnRow = (existingI18nRows ?? []).find((row: Record<string, unknown>) => row.locale === 'en') as Record<string, unknown> | undefined;
+      existingZhFacilitiesInfo = (existingZhRow?.facilities_info as Record<string, unknown> | undefined) ?? {};
+      existingEnFacilitiesInfo = (existingEnRow?.facilities_info as Record<string, unknown> | undefined) ?? {};
+    }
 
     if (updates.name !== undefined) { zhUpdates['name'] = updates.name; zhUpdates['display_name'] = updates.name; }
     if (updates.nameEn !== undefined) { enUpdates['name'] = updates.nameEn; enUpdates['display_name'] = updates.nameEn; }
@@ -201,6 +311,26 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     if (updates.tagline !== undefined) zhUpdates['value_proposition'] = updates.tagline;
     if (updates.taglineEn !== undefined) enUpdates['value_proposition'] = updates.taglineEn;
     if (updates.coreSpecialties !== undefined) { zhUpdates['core_specialties'] = updates.coreSpecialties; enUpdates['core_specialties'] = updates.coreSpecialties; }
+    if (
+      updates.promotionalVideos !== undefined
+      || updates.videoTestimonials !== undefined
+      || updates.operatingHours !== undefined
+      || updates.hours !== undefined
+    ) {
+      const nextOperatingHours = updates.operatingHours ?? updates.hours;
+      zhUpdates['facilities_info'] = {
+        ...existingZhFacilitiesInfo,
+        ...(updates.promotionalVideos !== undefined ? { promotionalVideos: updates.promotionalVideos } : {}),
+        ...(updates.videoTestimonials !== undefined ? { videoTestimonials: updates.videoTestimonials } : {}),
+        ...(nextOperatingHours !== undefined ? { operatingHours: nextOperatingHours } : {}),
+      };
+      enUpdates['facilities_info'] = {
+        ...existingEnFacilitiesInfo,
+        ...(updates.promotionalVideos !== undefined ? { promotionalVideos: updates.promotionalVideos } : {}),
+        ...(updates.videoTestimonials !== undefined ? { videoTestimonials: updates.videoTestimonials } : {}),
+        ...(nextOperatingHours !== undefined ? { operatingHours: nextOperatingHours } : {}),
+      };
+    }
 
     // Handle departments_info
     if (updates.departments !== undefined || updates.departmentDescriptions !== undefined ||
@@ -225,19 +355,51 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     }
 
     if (Object.keys(zhUpdates).length > 0) {
-      await this.supabase.from('hospital_i18n').upsert(
+      const { error } = await this.supabase.from('hospital_i18n').upsert(
         { hospital_id: hospitalId, locale: 'zh', ...zhUpdates },
         { onConflict: 'hospital_id,locale' },
       );
+      if (error) throw error;
     }
     if (Object.keys(enUpdates).length > 0) {
-      await this.supabase.from('hospital_i18n').upsert(
+      const { error } = await this.supabase.from('hospital_i18n').upsert(
         { hospital_id: hospitalId, locale: 'en', ...enUpdates },
         { onConflict: 'hospital_id,locale' },
       );
+      if (error) throw error;
     }
 
-    // 3. Return refreshed data
+    // 3. Update nearby attractions
+    if (updates.nearbyAttractions !== undefined) {
+      const { error: deleteError } = await this.supabase
+        .from('hospital_nearby_attractions')
+        .delete()
+        .eq('hospital_id', hospitalId);
+      if (deleteError) throw deleteError;
+
+      const nextAttractions = updates.nearbyAttractions
+        .map((a) => ({
+          ...a,
+          name: a.name?.trim() ?? '',
+          nameEn: a.nameEn?.trim() ?? undefined,
+          distance: a.distance?.trim() ?? '',
+        }))
+        .filter((a) => a.name.length > 0 && a.distance.length > 0);
+
+      if (nextAttractions.length > 0) {
+        const rows = nextAttractions.map((a, idx) => ({
+          hospital_id: hospitalId,
+          name: a.nameEn || a.name || '',
+          name_zh: a.name || null,
+          distance: a.distance || '',
+          sort_order: idx + 1,
+        }));
+        const { error: insertError } = await this.supabase.from('hospital_nearby_attractions').insert(rows);
+        if (insertError) throw insertError;
+      }
+    }
+
+    // 4. Return refreshed data
     const result = await this.getHospitalInfo(hospitalId);
     if (!result) throw new NotFoundError(`Hospital ${hospitalId} not found`);
     return result;
@@ -276,7 +438,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
 
     if (error) throw error;
 
-    return (data ?? []).map((row) => mapSurgeonRowToMaterialsSurgeon(row, hospitalId));
+    return Promise.all((data ?? []).map((row) => this.resolveSurgeon(row, hospitalId)));
   }
 
   async createSurgeon(data: Omit<MaterialsSurgeon, 'id'>): Promise<MaterialsSurgeon> {
@@ -294,7 +456,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
 
     if (error) throw error;
 
-    return mapSurgeonRowToMaterialsSurgeon(row!, data.hospitalId);
+    return this.resolveSurgeon(row!, data.hospitalId);
   }
 
   async updateSurgeon(id: string, hospitalId: string, updates: Partial<MaterialsSurgeon>): Promise<MaterialsSurgeon> {
@@ -331,7 +493,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     }
     if (!row) throw new NotFoundError(`Surgeon ${id} not found for hospital ${hospitalId}`);
 
-    return mapSurgeonRowToMaterialsSurgeon(row, hospitalId);
+    return this.resolveSurgeon(row, hospitalId);
   }
 
   async deleteSurgeon(id: string, hospitalId: string): Promise<void> {
@@ -428,17 +590,18 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
 
     if (error) throw error;
 
-    // Insert case images
+    // Regular hospitals store case photos in case_media, not case_images.
     if (data.images.length > 0) {
-      const imageRows = data.images.map((img, idx) => ({
+      const mediaRows = data.images.map((img, idx) => ({
         case_id: row!.id,
-        image_url: img.url,
+        media_url: img.url,
+        media_type: 'image',
         sort_order: idx,
       }));
 
       const { error: imgError } = await this.supabase
-        .from('case_images')
-        .insert(imageRows);
+        .from('case_media')
+        .insert(mediaRows);
 
       if (imgError) throw imgError;
     }
@@ -474,17 +637,24 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     }
     if (!row) throw new NotFoundError(`Before/After case ${id} not found for hospital ${hospitalId}`);
 
-    // If images are provided, replace all existing images
+    // If images are provided, replace all existing media images.
     if (updates.images !== undefined) {
-      await this.supabase.from('case_images').delete().eq('case_id', id);
+      const { error: deleteMediaError } = await this.supabase
+        .from('case_media')
+        .delete()
+        .eq('case_id', id);
+      if (deleteMediaError && !shouldIgnoreCaseMediaError(deleteMediaError)) {
+        throw deleteMediaError;
+      }
 
       if (updates.images.length > 0) {
-        const imageRows = updates.images.map((img, idx) => ({
+        const mediaRows = updates.images.map((img, idx) => ({
           case_id: id,
-          image_url: img.url,
+          media_url: img.url,
+          media_type: 'image',
           sort_order: idx,
         }));
-        const { error: imgError } = await this.supabase.from('case_images').insert(imageRows);
+        const { error: imgError } = await this.supabase.from('case_media').insert(mediaRows);
         if (imgError) throw imgError;
       }
 
@@ -500,15 +670,19 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     if (updates.images !== undefined) {
       images = updates.images;
     } else {
-      const { data: imgData } = await this.supabase
-        .from('case_images')
-        .select('image_url, sort_order')
+      const { data: mediaData, error: mediaError } = await this.supabase
+        .from('case_media')
+        .select('media_url, media_type, sort_order')
         .eq('case_id', id)
         .order('sort_order', { ascending: true });
+      if (mediaError && !shouldIgnoreCaseMediaError(mediaError)) throw mediaError;
 
-      images = (imgData ?? []).map((img) => ({
-        url: img.image_url,
-      }));
+      images = (mediaData ?? [])
+        .filter((item) => (item.media_type ?? '').toLowerCase() === 'image')
+        .map((item) => ({
+          url: item.media_url ?? '',
+        }))
+        .filter((item) => item.url.length > 0);
     }
 
     return {
@@ -531,7 +705,13 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
 
     if (!existing) throw new NotFoundError(`Before/After case ${id} not found for hospital ${hospitalId}`);
 
-    await this.supabase.from('case_images').delete().eq('case_id', id);
+    const { error: deleteMediaError } = await this.supabase
+      .from('case_media')
+      .delete()
+      .eq('case_id', id);
+    if (deleteMediaError && !shouldIgnoreCaseMediaError(deleteMediaError)) {
+      throw deleteMediaError;
+    }
 
     const { error } = await this.supabase
       .from('procedure_cases')

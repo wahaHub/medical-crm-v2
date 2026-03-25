@@ -4,6 +4,11 @@ import { AuthProvider } from '@/lib/auth-context';
 import { QueryProvider } from '@/lib/query-provider';
 import { AdminShell } from '@/components/admin-shell';
 import { extractUserFromToken } from '@/lib/keycloak-client';
+import { apiFetch } from '@/lib/api-fetch';
+
+interface UserProfileResponse {
+  preferredLanguage?: string;
+}
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -17,10 +22,16 @@ export default async function PortalLayout({ children }: { children: React.React
     redirect('/auth/login');
   }
 
+  const profileRes = await apiFetch('/api/v2/users/me');
+  const profile = profileRes.ok
+    ? await profileRes.json() as UserProfileResponse
+    : null;
+
   const user = {
     id: keycloakUser.sub,
     email: keycloakUser.email ?? '',
     roles: keycloakUser.roles,
+    preferredLanguage: profile?.preferredLanguage,
   };
 
   const isAdmin = user.roles.some((role) => role.toLowerCase() === 'admin');

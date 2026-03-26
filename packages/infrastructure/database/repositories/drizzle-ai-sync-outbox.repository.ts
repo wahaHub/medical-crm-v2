@@ -1,4 +1,4 @@
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { IAiSyncOutboxRepository } from '@medical-crm/domain';
 import { AiSyncOutbox } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
@@ -30,10 +30,17 @@ export class DrizzleAiSyncOutboxRepository implements IAiSyncOutboxRepository {
 
   async claimBatch(limit: number, tx?: unknown): Promise<AiSyncOutbox[]> {
     const db = (tx as CrmDb) ?? this.db;
+    const nowIso = new Date().toISOString();
     const rows = await db
       .select()
       .from(aiSyncOutbox)
-      .where(eq(aiSyncOutbox.status, 'PENDING'))
+      .where(and(
+        eq(aiSyncOutbox.status, 'PENDING'),
+        or(
+          isNull(aiSyncOutbox.nextRetryAt),
+          lte(aiSyncOutbox.nextRetryAt, nowIso),
+        ),
+      ))
       .orderBy(asc(aiSyncOutbox.createdAt))
       .limit(limit);
 
@@ -70,6 +77,14 @@ export class DrizzleAiSyncOutboxRepository implements IAiSyncOutboxRepository {
         attempts: sql`${aiSyncOutbox.attempts} + 1`,
         updatedAt: new Date().toISOString(),
       })
+      .where(eq(aiSyncOutbox.id, id));
+  }
+
+  async markFailed(id: string, tx?: unknown): Promise<void> {
+    const db = (tx as CrmDb) ?? this.db;
+    await db
+      .update(aiSyncOutbox)
+      .set({ status: 'FAILED', updatedAt: new Date().toISOString() })
       .where(eq(aiSyncOutbox.id, id));
   }
 

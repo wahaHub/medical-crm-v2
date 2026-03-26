@@ -1,9 +1,13 @@
 import type { IPackageRepository } from '@medical-crm/domain';
 import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
+import type { AiSyncTaskService } from '../../services/ai-sync-task.service.js';
 
 export class DeletePackageUseCase {
-  constructor(private readonly packageRepo: IPackageRepository) {}
+  constructor(
+    private readonly packageRepo: IPackageRepository,
+    private readonly aiSyncTaskService: AiSyncTaskService,
+  ) {}
 
   async execute(id: string, actor: Actor): Promise<void> {
     if (actor.role !== 'ADMIN') {
@@ -16,5 +20,8 @@ export class DeletePackageUseCase {
     }
 
     await this.packageRepo.delete(id);
+    await this.aiSyncTaskService.enqueuePackageDelete({
+      packageId: entity.id,
+    });
   }
 }

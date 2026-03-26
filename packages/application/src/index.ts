@@ -2,6 +2,16 @@
 export type { Actor, Session } from './types/actor.js';
 export { toActor } from './types/actor.js';
 
+// Services
+export { TranslationTaskService } from './services/translation-task.service.js';
+export {
+  AiSyncTaskService,
+  buildFaqEntityKey,
+  buildPackageEntityKey,
+  renderFaqSyncDocument,
+  renderPackageSyncDocument,
+} from './services/ai-sync-task.service.js';
+
 // DTOs
 export type { CaseDTO, HospitalCaseDetailDTO, CaseStatsDTO } from './dtos/case.dto.js';
 export type { DocumentDTO, DocumentWithUrlDTO } from './dtos/document.dto.js';
@@ -90,6 +100,13 @@ export { RegenerateSummaryUseCase } from './use-cases/messages/regenerate-summar
 export { RetranslateMessageUseCase } from './use-cases/messages/retranslate-message.use-case.js';
 export { ProcessMessageTasksUseCase } from './use-cases/messages/process-message-tasks.use-case.js';
 export type { ProcessMessageTasksResult } from './use-cases/messages/process-message-tasks.use-case.js';
+
+// Use Cases — AI Sync
+export { ProcessAiSyncOutboxUseCase } from './use-cases/ai-sync/process-ai-sync-outbox.use-case.js';
+export type {
+  ProcessAiSyncOutboxResult,
+  AiSyncDocumentGateway,
+} from './use-cases/ai-sync/process-ai-sync-outbox.use-case.js';
 
 // Use Cases — Consultations
 export { CreateConsultationUseCase } from './use-cases/consultations/create-consultation.use-case.js';
@@ -354,9 +371,6 @@ export { UpdateProfileUseCase } from './use-cases/users/update-profile.use-case.
 export type { UpdateProfileInput } from './use-cases/users/update-profile.use-case.js';
 export { ChangePasswordUseCase } from './use-cases/users/change-password.use-case.js';
 export type { ChangePasswordInput } from './use-cases/users/change-password.use-case.js';
-
-// Services — Translation
-export { TranslationTaskService } from './services/translation-task.service.js';
 
 // Use Cases — Translations
 export { ProcessTranslationTasksUseCase } from './use-cases/translations/process-translation-tasks.use-case.js';

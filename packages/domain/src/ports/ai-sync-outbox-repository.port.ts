@@ -5,4 +5,5 @@ export interface IAiSyncOutboxRepository {
   claimBatch(limit: number, tx?: unknown): Promise<AiSyncOutbox[]>;
   markDone(id: string, tx?: unknown): Promise<void>;
   markRetry(id: string, nextRetryAt: Date, tx?: unknown): Promise<void>;
+  markFailed(id: string, tx?: unknown): Promise<void>;
 }

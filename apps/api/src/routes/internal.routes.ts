@@ -45,4 +45,22 @@ app.openapi(processTranslationTasksRoute, async (c) => {
   return c.json(result, 200);
 });
 
+const processAiSyncOutboxRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/internal/process-ai-sync-outbox',
+  responses: { 200: { description: 'AI sync outbox processed' } },
+});
+
+app.openapi(processAiSyncOutboxRoute, async (c) => {
+  const secret = c.req.header('X-Internal-Secret');
+  const { INTERNAL_API_SECRET } = getServerEnv();
+  if (!secret || secret !== INTERNAL_API_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const svc = getServices();
+  const result = await svc.processAiSyncOutbox.execute();
+  return c.json(result, 200);
+});
+
 export default app;

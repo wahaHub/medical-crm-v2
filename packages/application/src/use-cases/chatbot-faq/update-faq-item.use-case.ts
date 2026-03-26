@@ -4,6 +4,7 @@ import type { ChatbotFaqItemDTO } from '../../dtos/chatbot-faq.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toChatbotFaqItemDTO } from '../../mappers/chatbot-faq.mapper.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
+import type { AiSyncTaskService } from '../../services/ai-sync-task.service.js';
 
 export interface UpdateFaqItemInput {
   category?: string;
@@ -20,6 +21,7 @@ export class UpdateFaqItemUseCase {
   constructor(
     private readonly faqRepo: IChatbotFaqRepository,
     private readonly translationTaskService: TranslationTaskService,
+    private readonly aiSyncTaskService: AiSyncTaskService,
   ) {}
 
   async execute(id: string, input: UpdateFaqItemInput, actor: Actor): Promise<ChatbotFaqItemDTO> {
@@ -60,6 +62,21 @@ export class UpdateFaqItemUseCase {
         fieldsToTranslate,
       });
     }
+
+    await this.aiSyncTaskService.enqueueFaqUpsert({
+      faqId: saved.id,
+      category: saved.category,
+      question: saved.question,
+      answer: saved.answer,
+      hospitalType: saved.hospitalType,
+      hospitalId: saved.hospitalId,
+      keywords: saved.keywords,
+      attachments: saved.attachments.map((attachment) => ({
+        fileName: attachment.fileName,
+        storageKey: attachment.storageKey,
+      })),
+      isActive: saved.isActive,
+    });
 
     return toChatbotFaqItemDTO(saved);
   }

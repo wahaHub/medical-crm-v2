@@ -7,6 +7,8 @@ import type {
   IStorageService,
   IAiChatSessionRepository,
   IAiChatMessageRepository,
+  IAiSyncOutboxRepository,
+  IDifyDocumentMappingRepository,
 } from '@medical-crm/domain';
 import { CaseAssignmentService, PatientAuthService } from '@medical-crm/domain';
 import {
@@ -48,6 +50,7 @@ import {
   RegenerateSummaryUseCase,
   RetranslateMessageUseCase,
   ProcessMessageTasksUseCase,
+  ProcessAiSyncOutboxUseCase,
   CreateConsultationUseCase,
   GetConsultationUseCase,
   ListConsultationsUseCase,
@@ -175,6 +178,7 @@ import {
   ProcessTranslationTasksUseCase,
   RetryTranslationUseCase,
   GetTranslationStatusUseCase,
+  AiSyncTaskService,
 } from '@medical-crm/application';
 import type { IMagicLinkEmailService } from '@medical-crm/application';
 import {
@@ -208,6 +212,8 @@ import {
   DrizzleTranslationTaskRepository,
   DrizzleAiChatSessionRepository,
   DrizzleAiChatMessageRepository,
+  DrizzleAiSyncOutboxRepository,
+  DrizzleDifyDocumentMappingRepository,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { R2StorageAdapter } from '@medical-crm/infrastructure/storage/r2';
@@ -250,6 +256,8 @@ interface AppServices {
   patientRepo: IPatientRepository;
   aiChatSessionRepo: IAiChatSessionRepository;
   aiChatMessageRepo: IAiChatMessageRepository;
+  aiSyncOutboxRepo: IAiSyncOutboxRepository;
+  difyDocumentMappingRepo: IDifyDocumentMappingRepository;
   storage: IStorageService;
   mediaUpload: MediaUploadService;
   difyApi: DifyApiClientService;
@@ -451,6 +459,7 @@ interface AppServices {
 
   // use cases — translations
   processTranslationTasks: ProcessTranslationTasksUseCase;
+  processAiSyncOutbox: ProcessAiSyncOutboxUseCase;
   retryTranslation: RetryTranslationUseCase;
   getTranslationStatus: GetTranslationStatusUseCase;
 
@@ -584,6 +593,8 @@ export function getServices(): AppServices {
     const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
     const aiChatSessionRepo = new DrizzleAiChatSessionRepository(crmDb);
     const aiChatMessageRepo = new DrizzleAiChatMessageRepository(crmDb);
+    const aiSyncOutboxRepo = new DrizzleAiSyncOutboxRepository(crmDb);
+    const difyDocumentMappingRepo = new DrizzleDifyDocumentMappingRepository(crmDb);
     // Materials: route to correct Supabase based on hospital type (COSMETIC → Main, REGULAR → China)
     const cosmeticMaterialsRepo = new SupabaseMaterialsRepository(mainSupabase, routedStorageService);
     const regularMaterialsRepo = new ChinaMedicalMaterialsRepository(chinaSupabase, routedStorageService);
@@ -640,6 +651,7 @@ export function getServices(): AppServices {
     const idempotencyGuard = new IdempotencyGuard(crmDb);
     const translationTaskRepo = new DrizzleTranslationTaskRepository(crmDb);
     const translationTaskService = new TranslationTaskService(translationTaskRepo);
+    const aiSyncTaskService = new AiSyncTaskService(aiSyncOutboxRepo);
     const batchTranslationService = new OpenAIBatchTranslationService(process.env['OPENAI_API_KEY'] ?? '');
     const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase);
 
@@ -647,7 +659,7 @@ export function getServices(): AppServices {
 
     _services = {
       crmDb, mainSupabase, chinaSupabase,
-      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, aiChatSessionRepo, aiChatMessageRepo,
+      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,
@@ -733,9 +745,9 @@ export function getServices(): AppServices {
 
       createPackage: new CreatePackageUseCase(packageRepo),
       updatePackage: new UpdatePackageUseCase(packageRepo),
-      deletePackage: new DeletePackageUseCase(packageRepo),
-      publishPackage: new PublishPackageUseCase(packageRepo),
-      unpublishPackage: new UnpublishPackageUseCase(packageRepo),
+      deletePackage: new DeletePackageUseCase(packageRepo, aiSyncTaskService),
+      publishPackage: new PublishPackageUseCase(packageRepo, aiSyncTaskService),
+      unpublishPackage: new UnpublishPackageUseCase(packageRepo, aiSyncTaskService),
       listPackages: new ListPackagesUseCase(packageRepo),
       getPackage: new GetPackageUseCase(packageRepo),
 
@@ -804,14 +816,14 @@ export function getServices(): AppServices {
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
       setPassword: new SetPasswordUseCase(patientRepo),
 
-      createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService),
+      createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),
       listFaqItems: new ListFaqItemsUseCase(faqRepo, routedStorageService),
       listFaqCategories: new ListFaqCategoriesUseCase(faqRepo),
       createFaqCategory: new CreateFaqCategoryUseCase(faqRepo, translationTaskService),
       deleteFaqCategory: new DeleteFaqCategoryUseCase(faqRepo),
       getFaqItem: new GetFaqItemUseCase(faqRepo, routedStorageService),
-      updateFaqItem: new UpdateFaqItemUseCase(faqRepo, translationTaskService),
-      deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),
+      updateFaqItem: new UpdateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),
+      deleteFaqItem: new DeleteFaqItemUseCase(faqRepo, aiSyncTaskService),
 
       createEmailTemplate: new CreateEmailTemplateUseCase(emailTemplateRepo),
       listEmailTemplates: new ListEmailTemplatesUseCase(emailTemplateRepo, routedStorageService),
@@ -828,6 +840,7 @@ export function getServices(): AppServices {
       ),
 
       processTranslationTasks: new ProcessTranslationTasksUseCase(translationTaskRepo, batchTranslationService, translationWritebackService),
+      processAiSyncOutbox: new ProcessAiSyncOutboxUseCase(aiSyncOutboxRepo, difyDocumentMappingRepo, difyApiClient),
       retryTranslation: new RetryTranslationUseCase(translationTaskRepo),
       getTranslationStatus: new GetTranslationStatusUseCase(translationTaskRepo),
 

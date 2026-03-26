@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ---------------------------------------------------------------------------
 const mockServices = {
   processMessageTasks: { execute: vi.fn() },
+  processTranslationTasks: { execute: vi.fn() },
+  processAiSyncOutbox: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -67,6 +69,42 @@ describe('Internal routes', () => {
 
       expect(res.status).toBe(401);
       expect(mockServices.processMessageTasks.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/v2/internal/process-ai-sync-outbox', () => {
+    it('returns 200 with valid secret', async () => {
+      const result = { processed: 2, retried: 1, failed: 0, skipped: 0 };
+      mockServices.processAiSyncOutbox.execute.mockResolvedValue(result);
+
+      const res = await app.request('/api/v2/internal/process-ai-sync-outbox', {
+        method: 'POST',
+        headers: { 'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long' },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual(result);
+      expect(mockServices.processAiSyncOutbox.execute).toHaveBeenCalledOnce();
+    });
+
+    it('returns 401 without header', async () => {
+      const res = await app.request('/api/v2/internal/process-ai-sync-outbox', {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(401);
+      expect(mockServices.processAiSyncOutbox.execute).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 with wrong secret', async () => {
+      const res = await app.request('/api/v2/internal/process-ai-sync-outbox', {
+        method: 'POST',
+        headers: { 'X-Internal-Secret': 'wrong-secret' },
+      });
+
+      expect(res.status).toBe(401);
+      expect(mockServices.processAiSyncOutbox.execute).not.toHaveBeenCalled();
     });
   });
 });

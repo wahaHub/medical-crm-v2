@@ -1,0 +1,171 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DifyApiClientService } from '../../services/dify-api-client.service.js';
+
+function mockResponse(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as unknown as Response;
+}
+
+describe('DifyApiClientService', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let service: DifyApiClientService;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    service = new DifyApiClientService('https://dify.test/', 'test-api-key', 1_000);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  describe('createChatMessage', () => {
+    it('posts a blocking chat message with the expected payload', async () => {
+      fetchMock.mockResolvedValueOnce(
+        mockResponse(200, {
+          answer: 'Hello',
+          conversation_id: 'conv-1',
+        }),
+      );
+
+      await service.createChatMessage({
+        inputs: { foo: 'bar' },
+        query: 'What is the status?',
+        user: 'user-123',
+        conversationId: 'conv-456',
+      });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://dify.test/chat-messages');
+      expect(init?.method).toBe('POST');
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer test-api-key',
+        'Content-Type': 'application/json',
+      });
+
+      const body = JSON.parse(init?.body as string) as {
+        inputs: Record<string, unknown>;
+        query: string;
+        user: string;
+        response_mode: string;
+        conversation_id: string;
+      };
+      expect(body).toEqual({
+        inputs: { foo: 'bar' },
+        query: 'What is the status?',
+        user: 'user-123',
+        response_mode: 'blocking',
+        conversation_id: 'conv-456',
+      });
+    });
+
+    it('surfaces Dify error messages from non-2xx responses', async () => {
+      fetchMock.mockResolvedValueOnce(
+        mockResponse(400, {
+          message: 'Invalid conversation id',
+        }),
+      );
+
+      await expect(
+        service.createChatMessage({
+          query: 'Hello',
+          user: 'user-123',
+        }),
+      ).rejects.toThrow('Invalid conversation id');
+    });
+  });
+
+  describe('createDocumentByText', () => {
+    it.each([
+      {
+        name: 'top-level document_id',
+        payload: { document_id: 'doc-1' },
+        expectedId: 'doc-1',
+      },
+      {
+        name: 'nested data.document_id',
+        payload: { data: { document_id: 'doc-2' } },
+        expectedId: 'doc-2',
+      },
+      {
+        name: 'nested data.document_ids[0]',
+        payload: { data: { document_ids: ['doc-3', 'doc-4'] } },
+        expectedId: 'doc-3',
+      },
+    ])('extracts document id from $name', async ({ payload, expectedId }) => {
+      fetchMock.mockResolvedValueOnce(mockResponse(200, payload));
+
+      await expect(
+        service.createDocumentByText({
+          datasetId: 'dataset-1',
+          name: 'Knowledge Base',
+          text: 'Hello world',
+        }),
+      ).resolves.toEqual({ documentId: expectedId });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://dify.test/datasets/dataset-1/document/create_by_text');
+      expect(init?.method).toBe('POST');
+      expect(JSON.parse(init?.body as string)).toEqual({
+        name: 'Knowledge Base',
+        text: 'Hello world',
+      });
+    });
+
+    it('throws when no document id is returned', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse(200, { data: {} }));
+
+      await expect(
+        service.createDocumentByText({
+          datasetId: 'dataset-1',
+          name: 'Knowledge Base',
+          text: 'Hello world',
+        }),
+      ).rejects.toThrow('Dify create document response did not include document id');
+    });
+  });
+
+  describe('updateDocumentByText', () => {
+    it('posts to the expected update endpoint', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse(200, { result: 'ok' }));
+
+      await service.updateDocumentByText({
+        datasetId: 'dataset-1',
+        documentId: 'doc-9',
+        name: 'Updated title',
+        text: 'Updated text',
+      });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://dify.test/datasets/dataset-1/documents/doc-9/update_by_text');
+      expect(init?.method).toBe('POST');
+      expect(JSON.parse(init?.body as string)).toEqual({
+        name: 'Updated title',
+        text: 'Updated text',
+      });
+    });
+  });
+
+  describe('deleteDocument', () => {
+    it('sends a DELETE request to the document endpoint', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse(204, {}));
+
+      await service.deleteDocument({
+        datasetId: 'dataset-1',
+        documentId: 'doc-9',
+      });
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://dify.test/datasets/dataset-1/documents/doc-9');
+      expect(init?.method).toBe('DELETE');
+    });
+  });
+});

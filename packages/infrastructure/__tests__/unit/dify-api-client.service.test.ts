@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DifyApiClientService } from '../../services/dify-api-client.service.js';
 
 function mockResponse(status: number, body: unknown): Response {
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
   return {
     ok: status >= 200 && status < 300,
     status,
+    text: async () => text,
     json: async () => body,
   } as unknown as Response;
 }
@@ -78,6 +80,32 @@ describe('DifyApiClientService', () => {
         }),
       ).rejects.toThrow('Invalid conversation id');
     });
+
+    it('defaults inputs to an empty object and omits conversation_id when absent', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse(200, { answer: 'Hello' }));
+
+      await service.createChatMessage({
+        query: 'Hello',
+        user: 'user-123',
+      });
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://dify.test/chat-messages');
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer test-api-key',
+        'Content-Type': 'application/json',
+      });
+
+      const body = JSON.parse(init?.body as string) as {
+        inputs: Record<string, unknown>;
+        query: string;
+        user: string;
+        response_mode: string;
+        conversation_id?: string;
+      };
+      expect(body.inputs).toEqual({});
+      expect(body).not.toHaveProperty('conversation_id');
+    });
   });
 
   describe('createDocumentByText', () => {
@@ -112,6 +140,10 @@ describe('DifyApiClientService', () => {
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('https://dify.test/datasets/dataset-1/document/create_by_text');
       expect(init?.method).toBe('POST');
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer test-api-key',
+        'Content-Type': 'application/json',
+      });
       expect(JSON.parse(init?.body as string)).toEqual({
         name: 'Knowledge Base',
         text: 'Hello world',
@@ -146,6 +178,10 @@ describe('DifyApiClientService', () => {
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('https://dify.test/datasets/dataset-1/documents/doc-9/update_by_text');
       expect(init?.method).toBe('POST');
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer test-api-key',
+        'Content-Type': 'application/json',
+      });
       expect(JSON.parse(init?.body as string)).toEqual({
         name: 'Updated title',
         text: 'Updated text',
@@ -155,7 +191,7 @@ describe('DifyApiClientService', () => {
 
   describe('deleteDocument', () => {
     it('sends a DELETE request to the document endpoint', async () => {
-      fetchMock.mockResolvedValueOnce(mockResponse(204, {}));
+      fetchMock.mockResolvedValueOnce(mockResponse(204, ''));
 
       await service.deleteDocument({
         datasetId: 'dataset-1',
@@ -166,6 +202,10 @@ describe('DifyApiClientService', () => {
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe('https://dify.test/datasets/dataset-1/documents/doc-9');
       expect(init?.method).toBe('DELETE');
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer test-api-key',
+        'Content-Type': 'application/json',
+      });
     });
   });
 });

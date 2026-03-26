@@ -114,7 +114,7 @@ export class DifyApiClientService {
         signal: controller.signal,
       });
 
-      const payload = await response.json() as Record<string, unknown> | { message?: string };
+      const payload = await readJsonResponse(response);
       if (!response.ok) {
         const message = 'message' in payload && typeof payload.message === 'string'
           ? payload.message
@@ -143,4 +143,13 @@ function readDocumentId(payload: Record<string, unknown>): string | null {
   }
 
   return null;
+}
+
+async function readJsonResponse(response: Response): Promise<Record<string, unknown> | { message?: string }> {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+
+  return JSON.parse(text) as Record<string, unknown> | { message?: string };
 }

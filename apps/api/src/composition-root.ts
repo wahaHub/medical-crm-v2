@@ -169,6 +169,10 @@ import {
   GetProfileUseCase,
   UpdateProfileUseCase,
   ChangePasswordUseCase,
+  TranslationTaskService,
+  ProcessTranslationTasksUseCase,
+  RetryTranslationUseCase,
+  GetTranslationStatusUseCase,
 } from '@medical-crm/application';
 import type { IMagicLinkEmailService } from '@medical-crm/application';
 import {
@@ -199,6 +203,7 @@ import {
   DrizzleChatbotFaqRepository,
   DrizzleEmailTemplateRepository,
   DrizzleTransactionRunner,
+  DrizzleTranslationTaskRepository,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { R2StorageAdapter } from '@medical-crm/infrastructure/storage/r2';
@@ -221,7 +226,7 @@ import {
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, OpenAIBatchTranslationService, TranslationWritebackService } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
 import { ChinaMedicalMaterialsRepository } from '@medical-crm/infrastructure/supabase-china/materials';
 import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
@@ -436,6 +441,11 @@ interface AppServices {
   updateProfile: UpdateProfileUseCase;
   changePassword: ChangePasswordUseCase;
 
+  // use cases — translations
+  processTranslationTasks: ProcessTranslationTasksUseCase;
+  retryTranslation: RetryTranslationUseCase;
+  getTranslationStatus: GetTranslationStatusUseCase;
+
   // use cases — materials
   getHospitalInfo: GetHospitalInfoUseCase;
   getProcedures: GetProceduresUseCase;
@@ -613,6 +623,10 @@ export function getServices(): AppServices {
     const emailTemplateRepo = new DrizzleEmailTemplateRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
     const idempotencyGuard = new IdempotencyGuard(crmDb);
+    const translationTaskRepo = new DrizzleTranslationTaskRepository(crmDb);
+    const translationTaskService = new TranslationTaskService(translationTaskRepo);
+    const batchTranslationService = new OpenAIBatchTranslationService(process.env['OPENAI_API_KEY'] ?? '');
+    const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase);
 
     const listCases = new ListCasesUseCase(caseRepo);
 
@@ -664,10 +678,10 @@ export function getServices(): AppServices {
       retranslateMessage: new RetranslateMessageUseCase(messageRepo, translationService),
       processMessageTasks: new ProcessMessageTasksUseCase(messageTaskRepo, messageRepo, translationService),
 
-      createConsultation: new CreateConsultationUseCase(consultationRepo, caseRepo),
+      createConsultation: new CreateConsultationUseCase(consultationRepo, caseRepo, translationTaskService),
       getConsultation: new GetConsultationUseCase(consultationRepo),
       listConsultations: new ListConsultationsUseCase(consultationRepo),
-      updateConsultation: new UpdateConsultationUseCase(consultationRepo),
+      updateConsultation: new UpdateConsultationUseCase(consultationRepo, translationTaskService),
       updateConsultationStatus: new UpdateConsultationStatusUseCase(consultationRepo),
       getConsultationTranscript: new GetConsultationTranscriptUseCase(consultationRepo, transcriptRepo),
       getConsultationStats: new GetConsultationStatsUseCase(consultationRepo),
@@ -693,11 +707,11 @@ export function getServices(): AppServices {
       rejectQuote: new RejectQuoteUseCase(quoteRepo, chcRepo),
       adminResetAssignment: new AdminResetAssignmentUseCase(chcRepo, caseRepo, txRunner),
 
-      createTicket: new CreateTicketUseCase(ticketRepo),
+      createTicket: new CreateTicketUseCase(ticketRepo, translationTaskService),
       listTickets: new ListTicketsUseCase(ticketRepo),
       getTicket: new GetTicketUseCase(ticketRepo, ticketReplyRepo),
       assignTicket: new AssignTicketUseCase(ticketRepo),
-      replyToTicket: new ReplyToTicketUseCase(ticketRepo, ticketReplyRepo),
+      replyToTicket: new ReplyToTicketUseCase(ticketRepo, ticketReplyRepo, translationTaskService),
       updateTicketStatus: new UpdateTicketStatusUseCase(ticketRepo),
       closeTicket: new CloseTicketUseCase(ticketRepo),
 
@@ -723,12 +737,12 @@ export function getServices(): AppServices {
       createPaymentIntent: new CreatePaymentIntentUseCase(orderRepo),
       requestRefund: new RequestRefundUseCase(orderRepo),
 
-      createTemplate: new CreateTemplateUseCase(qcRepo),
-      updateTemplate: new UpdateTemplateUseCase(qcRepo),
+      createTemplate: new CreateTemplateUseCase(qcRepo, translationTaskService),
+      updateTemplate: new UpdateTemplateUseCase(qcRepo, translationTaskService),
       deleteTemplate: new DeleteTemplateUseCase(qcRepo),
       listTemplates: new ListTemplatesUseCase(qcRepo),
       getTemplate: new GetTemplateUseCase(qcRepo, caseRepo),
-      submitQCResponse: new SubmitResponseUseCase(qcRepo, caseRepo),
+      submitQCResponse: new SubmitResponseUseCase(qcRepo, caseRepo, translationTaskService),
       saveQCResponseDraft: new SaveResponseDraftUseCase(qcRepo, caseRepo),
       getQCResponse: new GetQCResponseUseCase(qcRepo, caseRepo),
       listQCResponses: new ListQCResponsesUseCase(qcRepo),
@@ -774,13 +788,13 @@ export function getServices(): AppServices {
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
       setPassword: new SetPasswordUseCase(patientRepo),
 
-      createFaqItem: new CreateFaqItemUseCase(faqRepo),
+      createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService),
       listFaqItems: new ListFaqItemsUseCase(faqRepo, routedStorageService),
       listFaqCategories: new ListFaqCategoriesUseCase(faqRepo),
-      createFaqCategory: new CreateFaqCategoryUseCase(faqRepo),
+      createFaqCategory: new CreateFaqCategoryUseCase(faqRepo, translationTaskService),
       deleteFaqCategory: new DeleteFaqCategoryUseCase(faqRepo),
       getFaqItem: new GetFaqItemUseCase(faqRepo, routedStorageService),
-      updateFaqItem: new UpdateFaqItemUseCase(faqRepo),
+      updateFaqItem: new UpdateFaqItemUseCase(faqRepo, translationTaskService),
       deleteFaqItem: new DeleteFaqItemUseCase(faqRepo),
 
       createEmailTemplate: new CreateEmailTemplateUseCase(emailTemplateRepo),
@@ -797,19 +811,23 @@ export function getServices(): AppServices {
         process.env['KEYCLOAK_CLIENT_SECRET'],
       ),
 
+      processTranslationTasks: new ProcessTranslationTasksUseCase(translationTaskRepo, batchTranslationService, translationWritebackService),
+      retryTranslation: new RetryTranslationUseCase(translationTaskRepo),
+      getTranslationStatus: new GetTranslationStatusUseCase(translationTaskRepo),
+
       getHospitalInfo: new GetHospitalInfoUseCase(materialsRepo),
       getProcedures: new GetProceduresUseCase(materialsRepo),
       getSurgeons: new GetSurgeonsUseCase(materialsRepo),
       getBeforeAfterCases: new GetBeforeAfterCasesUseCase(materialsRepo),
-      updateHospitalInfo: new UpdateHospitalInfoUseCase(materialsRepo),
+      updateHospitalInfo: new UpdateHospitalInfoUseCase(materialsRepo, resolveHospitalType, translationTaskService),
       createProcedure: new CreateProcedureUseCase(materialsRepo),
       updateProcedure: new UpdateProcedureUseCase(materialsRepo),
       deleteProcedure: new DeleteProcedureUseCase(materialsRepo),
-      createSurgeon: new CreateSurgeonUseCase(materialsRepo),
-      updateSurgeon: new UpdateSurgeonUseCase(materialsRepo),
+      createSurgeon: new CreateSurgeonUseCase(materialsRepo, resolveHospitalType, translationTaskService),
+      updateSurgeon: new UpdateSurgeonUseCase(materialsRepo, resolveHospitalType, translationTaskService),
       deleteSurgeon: new DeleteSurgeonUseCase(materialsRepo),
-      createBeforeAfterCase: new CreateBeforeAfterCaseUseCase(materialsRepo),
-      updateBeforeAfterCase: new UpdateBeforeAfterCaseUseCase(materialsRepo),
+      createBeforeAfterCase: new CreateBeforeAfterCaseUseCase(materialsRepo, resolveHospitalType, translationTaskService),
+      updateBeforeAfterCase: new UpdateBeforeAfterCaseUseCase(materialsRepo, resolveHospitalType, translationTaskService),
       deleteBeforeAfterCase: new DeleteBeforeAfterCaseUseCase(materialsRepo),
     };
   }

@@ -480,7 +480,7 @@ export const caseHospitalContacts = pgTable("case_hospital_contacts", {
 ]);
 
 // Phase 2 M3: Support Tickets
-export const ticketType = pgEnum("TicketType", ['ACCOUNT_ISSUES', 'PAYMENT_PROBLEMS', 'HOSPITAL_COMMUNICATION', 'DOCUMENT_HELP', 'VISA_TRAVEL', 'GENERAL_QUESTIONS', 'FEEDBACK'])
+export const ticketType = pgEnum("TicketType", ['ACCOUNT_ISSUES', 'PAYMENT_PROBLEMS', 'HOSPITAL_COMMUNICATION', 'DOCUMENT_HELP', 'VISA_TRAVEL', 'GENERAL_QUESTIONS', 'FEEDBACK', 'AI_ESCALATION'])
 export const ticketPriority = pgEnum("TicketPriority", ['HIGH', 'MEDIUM', 'LOW'])
 export const ticketStatus = pgEnum("TicketStatus", ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_INFO', 'RESOLVED', 'CLOSED'])
 export const ticketReplyRole = pgEnum("TicketReplyRole", ['ADMIN', 'PATIENT'])
@@ -521,6 +521,69 @@ export const supportTicketReplies = pgTable("support_ticket_replies", {
 	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	index("idx_ticket_replies_ticket").using("btree", table.ticketId.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
+]);
+
+export const aiChatSessions = pgTable("ai_chat_sessions", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	sessionId: varchar("session_id", { length: 255 }).notNull(),
+	sessionSecretHash: varchar("session_secret_hash", { length: 255 }),
+	difyConversationId: varchar("dify_conversation_id", { length: 255 }),
+	patientId: uuid("patient_id").references(() => users.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+	hospitalType: hospitalType("hospital_type").notNull(),
+	status: varchar({ length: 20 }).default('ACTIVE').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("ai_chat_sessions_session_id_key").using("btree", table.sessionId.asc().nullsLast().op("text_ops")),
+	index("ai_chat_sessions_session_id_idx").using("btree", table.sessionId.asc().nullsLast().op("text_ops")),
+	index("ai_chat_sessions_dify_conversation_id_idx").using("btree", table.difyConversationId.asc().nullsLast().op("text_ops")),
+	index("ai_chat_sessions_patient_id_idx").using("btree", table.patientId.asc().nullsLast().op("uuid_ops")),
+]);
+
+export const aiChatMessages = pgTable("ai_chat_messages", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	sessionId: uuid("session_id").notNull().references(() => aiChatSessions.id, { onDelete: 'cascade' }),
+	role: varchar({ length: 20 }).notNull(),
+	content: text().notNull(),
+	intent: varchar({ length: 20 }),
+	riskLevel: varchar("risk_level", { length: 20 }),
+	canAnswer: boolean("can_answer"),
+	nextAction: varchar("next_action", { length: 50 }),
+	citations: jsonb().default([]).notNull(),
+	metadata: jsonb().default({}).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("ai_chat_messages_session_id_idx").using("btree", table.sessionId.asc().nullsLast().op("uuid_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
+]);
+
+export const difyDocumentMappings = pgTable("dify_document_mappings", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	entityType: varchar("entity_type", { length: 50 }).notNull(),
+	entityKey: varchar("entity_key", { length: 255 }).notNull(),
+	difyDatasetId: varchar("dify_dataset_id", { length: 255 }).notNull(),
+	difyDocumentId: varchar("dify_document_id", { length: 255 }).notNull(),
+	lastSyncedAt: timestamp("last_synced_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("dify_document_mappings_entity_key_unique").using("btree", table.entityType.asc().nullsLast().op("text_ops"), table.entityKey.asc().nullsLast().op("text_ops")),
+	index("dify_document_mappings_dataset_doc_idx").using("btree", table.difyDatasetId.asc().nullsLast().op("text_ops"), table.difyDocumentId.asc().nullsLast().op("text_ops")),
+]);
+
+export const aiSyncOutbox = pgTable("ai_sync_outbox", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	entityType: varchar("entity_type", { length: 50 }).notNull(),
+	entityKey: varchar("entity_key", { length: 255 }).notNull(),
+	action: varchar({ length: 20 }).notNull(),
+	attempts: integer().default(0).notNull(),
+	nextRetryAt: timestamp("next_retry_at", { withTimezone: true, mode: 'string' }),
+	status: varchar({ length: 20 }).default('PENDING').notNull(),
+	payload: jsonb().default({}).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("ai_sync_outbox_pending_idx").using("btree", table.status.asc().nullsLast().op("text_ops"), table.nextRetryAt.asc().nullsLast().op("timestamptz_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("ai_sync_outbox_entity_idx").using("btree", table.entityType.asc().nullsLast().op("text_ops"), table.entityKey.asc().nullsLast().op("text_ops")),
 ]);
 
 export const caseEvents = pgTable("case_events", {

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const ticketTypeSchema = z.enum([
   'ACCOUNT_ISSUES', 'PAYMENT_PROBLEMS', 'HOSPITAL_COMMUNICATION',
-  'DOCUMENT_HELP', 'VISA_TRAVEL', 'GENERAL_QUESTIONS', 'FEEDBACK',
+  'DOCUMENT_HELP', 'VISA_TRAVEL', 'GENERAL_QUESTIONS', 'FEEDBACK', 'AI_ESCALATION',
 ]);
 
 export const ticketPrioritySchema = z.enum(['HIGH', 'MEDIUM', 'LOW']);

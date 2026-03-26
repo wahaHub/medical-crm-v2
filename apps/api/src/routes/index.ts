@@ -21,6 +21,7 @@ import chatbotFaqRoutes from './chatbot-faq.routes.js';
 import userSettingsRoutes from './user-settings.routes.js';
 import emailTemplateRoutes from './email-template.routes.js';
 import translationsRoutes from './translations.routes.js';
+import chatbotRoutes from './chatbot.routes.js';
 
 const router = new OpenAPIHono();
 router.route('/', caseRoutes);
@@ -45,5 +46,6 @@ router.route('/', chatbotFaqRoutes);
 router.route('/', userSettingsRoutes);
 router.route('/', emailTemplateRoutes);
 router.route('/', translationsRoutes);
+router.route('/', chatbotRoutes);
 
 export default router;

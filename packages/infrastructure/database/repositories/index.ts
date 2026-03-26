@@ -25,4 +25,8 @@ export { DrizzleBookingRequestRepository } from './drizzle-booking-request.repos
 export { DrizzleChatbotFaqRepository } from './drizzle-chatbot-faq.repository.js';
 export { DrizzleEmailTemplateRepository } from './drizzle-email-template.repository.js';
 export { DrizzleTranslationTaskRepository } from './drizzle-translation-task.repository.js';
+export { DrizzleAiChatSessionRepository } from './drizzle-ai-chat-session.repository.js';
+export { DrizzleAiChatMessageRepository } from './drizzle-ai-chat-message.repository.js';
+export { DrizzleDifyDocumentMappingRepository } from './drizzle-dify-document-mapping.repository.js';
+export { DrizzleAiSyncOutboxRepository } from './drizzle-ai-sync-outbox.repository.js';
 export { DrizzleTransactionRunner } from '../transaction-runner.js';

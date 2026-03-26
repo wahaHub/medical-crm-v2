@@ -8,3 +8,4 @@ export { StubEmailService } from './stub-email.service.js';
 export { SmtpEmailService } from './smtp-email.service.js';
 export { ResendEmailService } from './resend-email.service.js';
 export { TranslationWritebackService } from './translation-writeback.service.js';
+export { DifyApiClientService } from './dify-api-client.service.js';

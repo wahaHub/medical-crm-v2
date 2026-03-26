@@ -5,6 +5,8 @@ import type {
   IHospitalRepository,
   IPatientRepository,
   IStorageService,
+  IAiChatSessionRepository,
+  IAiChatMessageRepository,
 } from '@medical-crm/domain';
 import { CaseAssignmentService, PatientAuthService } from '@medical-crm/domain';
 import {
@@ -204,6 +206,8 @@ import {
   DrizzleEmailTemplateRepository,
   DrizzleTransactionRunner,
   DrizzleTranslationTaskRepository,
+  DrizzleAiChatSessionRepository,
+  DrizzleAiChatMessageRepository,
 } from '@medical-crm/infrastructure/repositories';
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { R2StorageAdapter } from '@medical-crm/infrastructure/storage/r2';
@@ -216,6 +220,7 @@ import {
   messageAttachmentPolicy,
   packageImagePolicy,
   caseDocumentPolicy,
+  chatbotRequestDocsPolicy,
   ticketReplyAttachmentPolicy,
   faqAttachmentPolicy,
   consultationRecordingPolicy,
@@ -226,7 +231,7 @@ import {
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, OpenAIBatchTranslationService, TranslationWritebackService } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, OpenAIBatchTranslationService, TranslationWritebackService, DifyApiClientService } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
 import { ChinaMedicalMaterialsRepository } from '@medical-crm/infrastructure/supabase-china/materials';
 import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
@@ -243,8 +248,11 @@ interface AppServices {
   progressRepo: ICaseProgressRepository;
   hospitalRepo: IHospitalRepository;
   patientRepo: IPatientRepository;
+  aiChatSessionRepo: IAiChatSessionRepository;
+  aiChatMessageRepo: IAiChatMessageRepository;
   storage: IStorageService;
   mediaUpload: MediaUploadService;
+  difyApi: DifyApiClientService;
   resolveHospitalType: (hospitalId: string) => Promise<'COSMETIC' | 'REGULAR'>;
 
   // use cases — cases
@@ -543,6 +551,7 @@ export function getServices(): AppServices {
       messageAttachmentPolicy,
       packageImagePolicy,
       caseDocumentPolicy,
+      chatbotRequestDocsPolicy,
       ticketReplyAttachmentPolicy,
       faqAttachmentPolicy,
       consultationRecordingPolicy,
@@ -552,6 +561,10 @@ export function getServices(): AppServices {
     ]);
 
     const mediaUploadService = new MediaUploadService(uploadPolicyRegistry, storageAdapterRegistry);
+    const difyApiClient = new DifyApiClientService(
+      process.env['DIFY_API_BASE_URL'] ?? 'https://api.dify.ai/v1',
+      process.env['DIFY_API_KEY'] ?? '',
+    );
 
     // Domain services
     const assignmentService = new CaseAssignmentService();
@@ -569,6 +582,8 @@ export function getServices(): AppServices {
     const translationService = new OpenAITranslationService(process.env['OPENAI_API_KEY'] ?? '');
     const consultationRepo = new DrizzleConsultationRepository(crmDb);
     const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
+    const aiChatSessionRepo = new DrizzleAiChatSessionRepository(crmDb);
+    const aiChatMessageRepo = new DrizzleAiChatMessageRepository(crmDb);
     // Materials: route to correct Supabase based on hospital type (COSMETIC → Main, REGULAR → China)
     const cosmeticMaterialsRepo = new SupabaseMaterialsRepository(mainSupabase, routedStorageService);
     const regularMaterialsRepo = new ChinaMedicalMaterialsRepository(chinaSupabase, routedStorageService);
@@ -632,9 +647,10 @@ export function getServices(): AppServices {
 
     _services = {
       crmDb, mainSupabase, chinaSupabase,
-      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo,
+      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, aiChatSessionRepo, aiChatMessageRepo,
       storage: routedStorageService,
       mediaUpload: mediaUploadService,
+      difyApi: difyApiClient,
       resolveHospitalType,
 
       createCase: new CreateCaseUseCase(caseRepo),

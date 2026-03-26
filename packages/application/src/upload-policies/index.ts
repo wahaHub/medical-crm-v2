@@ -3,6 +3,7 @@ export { resolveMaterialsPolicyId } from './policy-resolver.js';
 export { messageAttachmentPolicy } from './message-attachment.policy.js';
 export { packageImagePolicy } from './package-image.policy.js';
 export { caseDocumentPolicy } from './case-document.policy.js';
+export { chatbotRequestDocsPolicy } from './chatbot-request-docs.policy.js';
 export { ticketReplyAttachmentPolicy } from './ticket-reply-attachment.policy.js';
 export { faqAttachmentPolicy } from './faq-attachment.policy.js';
 export { consultationRecordingPolicy } from './consultation-recording.policy.js';

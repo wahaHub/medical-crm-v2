@@ -132,6 +132,8 @@ export type { ICaseEventRepository, CaseEventListOptions } from './ports/case-ev
 // Phase 2 M3: Support Ticket Enums
 export type {
   TicketType, TicketPriority, TicketStatus, TicketReplyRole,
+  AiChatSessionStatus, AiChatRole, AiChatIntent, AiChatRiskLevel, AiChatNextAction,
+  AiSyncAction, AiSyncStatus,
 } from './enums/index.js';
 
 // Phase 2 M3: State machines
@@ -145,10 +147,22 @@ export { SupportTicket } from './entities/support-ticket.entity.js';
 export type { SupportTicketProps } from './entities/support-ticket.entity.js';
 export { SupportTicketReply } from './entities/support-ticket-reply.entity.js';
 export type { SupportTicketReplyProps } from './entities/support-ticket-reply.entity.js';
+export { AiChatSession } from './entities/ai-chat-session.entity.js';
+export type { AiChatSessionProps } from './entities/ai-chat-session.entity.js';
+export { AiChatMessage } from './entities/ai-chat-message.entity.js';
+export type { AiChatMessageProps, AiChatCitation } from './entities/ai-chat-message.entity.js';
+export { DifyDocumentMapping } from './entities/dify-document-mapping.entity.js';
+export type { DifyDocumentMappingProps } from './entities/dify-document-mapping.entity.js';
+export { AiSyncOutbox } from './entities/ai-sync-outbox.entity.js';
+export type { AiSyncOutboxProps } from './entities/ai-sync-outbox.entity.js';
 
 // Phase 2 M3: Ports
 export type { ISupportTicketRepository, TicketListQuery } from './ports/support-ticket-repository.port.js';
 export type { ISupportTicketReplyRepository } from './ports/support-ticket-reply-repository.port.js';
+export type { IAiChatSessionRepository } from './ports/ai-chat-session-repository.port.js';
+export type { IAiChatMessageRepository } from './ports/ai-chat-message-repository.port.js';
+export type { IDifyDocumentMappingRepository } from './ports/dify-document-mapping-repository.port.js';
+export type { IAiSyncOutboxRepository } from './ports/ai-sync-outbox-repository.port.js';
 
 // Phase 2 M4: Orders + Packages Enums
 export type { PackageType, PackageStatus, OrderType, OrderStatus } from './enums/index.js';

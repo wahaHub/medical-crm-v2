@@ -59,10 +59,17 @@ export type CaseEventType =
 export type ActorType = 'PATIENT' | 'HOSPITAL' | 'ADMIN' | 'SYSTEM';
 
 // Phase 2 M3: Support Tickets
-export type TicketType = 'ACCOUNT_ISSUES' | 'PAYMENT_PROBLEMS' | 'HOSPITAL_COMMUNICATION' | 'DOCUMENT_HELP' | 'VISA_TRAVEL' | 'GENERAL_QUESTIONS' | 'FEEDBACK';
+export type TicketType = 'ACCOUNT_ISSUES' | 'PAYMENT_PROBLEMS' | 'HOSPITAL_COMMUNICATION' | 'DOCUMENT_HELP' | 'VISA_TRAVEL' | 'GENERAL_QUESTIONS' | 'FEEDBACK' | 'AI_ESCALATION';
 export type TicketPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 export type TicketStatus = 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'PENDING_INFO' | 'RESOLVED' | 'CLOSED';
 export type TicketReplyRole = 'ADMIN' | 'PATIENT';
+export type AiChatSessionStatus = 'ACTIVE' | 'ESCALATED' | 'CLOSED';
+export type AiChatRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
+export type AiChatIntent = 'FAQ' | 'CONSULT' | 'UNKNOWN' | 'SAFETY';
+export type AiChatRiskLevel = 'NORMAL' | 'SENSITIVE' | 'CRISIS';
+export type AiChatNextAction = 'ANSWER' | 'CONSULT_CONVERSION' | 'CREATE_CASE' | 'REQUEST_DOCS' | 'ESCALATE' | 'SAFETY';
+export type AiSyncAction = 'UPSERT' | 'DELETE';
+export type AiSyncStatus = 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
 
 // Phase 2 M4: Orders + Packages
 export type PackageType =

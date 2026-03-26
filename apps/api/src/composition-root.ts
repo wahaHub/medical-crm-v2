@@ -50,6 +50,7 @@ import {
   RegenerateSummaryUseCase,
   RetranslateMessageUseCase,
   ProcessMessageTasksUseCase,
+  BootstrapAiSyncUseCase,
   ProcessAiSyncOutboxUseCase,
   CreateConsultationUseCase,
   GetConsultationUseCase,
@@ -308,6 +309,7 @@ interface AppServices {
   regenerateSummary: RegenerateSummaryUseCase;
   retranslateMessage: RetranslateMessageUseCase;
   processMessageTasks: ProcessMessageTasksUseCase;
+  bootstrapAiSync: BootstrapAiSyncUseCase;
 
   // use cases — consultations
   createConsultation: CreateConsultationUseCase;
@@ -840,6 +842,7 @@ export function getServices(): AppServices {
       ),
 
       processTranslationTasks: new ProcessTranslationTasksUseCase(translationTaskRepo, batchTranslationService, translationWritebackService),
+      bootstrapAiSync: new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService),
       processAiSyncOutbox: new ProcessAiSyncOutboxUseCase(aiSyncOutboxRepo, difyDocumentMappingRepo, difyApiClient),
       retryTranslation: new RetryTranslationUseCase(translationTaskRepo),
       getTranslationStatus: new GetTranslationStatusUseCase(translationTaskRepo),

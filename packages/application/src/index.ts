@@ -102,6 +102,8 @@ export { ProcessMessageTasksUseCase } from './use-cases/messages/process-message
 export type { ProcessMessageTasksResult } from './use-cases/messages/process-message-tasks.use-case.js';
 
 // Use Cases — AI Sync
+export { BootstrapAiSyncUseCase } from './use-cases/ai-sync/bootstrap-ai-sync.use-case.js';
+export type { BootstrapAiSyncResult } from './use-cases/ai-sync/bootstrap-ai-sync.use-case.js';
 export { ProcessAiSyncOutboxUseCase } from './use-cases/ai-sync/process-ai-sync-outbox.use-case.js';
 export type {
   ProcessAiSyncOutboxResult,

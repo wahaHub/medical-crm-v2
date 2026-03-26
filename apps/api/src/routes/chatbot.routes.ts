@@ -4,6 +4,8 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { AiChatCitation, AiChatSession } from '@medical-crm/domain';
 import { AiChatMessage, AiChatSession as AiChatSessionEntity } from '@medical-crm/domain';
+import { toActor } from '@medical-crm/application';
+import type { Session } from '@medical-crm/infrastructure/auth';
 import {
   chatbotChatSchema,
   chatbotConvertSchema,
@@ -159,6 +161,26 @@ app.openapi(sendChatRoute, async (c) => {
       assistantMessageId: assistantMessage.id,
     },
   }, 200);
+});
+
+const bootstrapChatbotSyncRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/chatbot/sync',
+  responses: {
+    200: { description: 'FAQ and package full sync jobs enqueued' },
+    403: { description: 'Admin only' },
+  },
+});
+
+app.openapi(bootstrapChatbotSyncRoute, async (c) => {
+  const actor = toActor(c.get('session') as Session);
+  if (actor.role !== 'ADMIN') {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  const svc = getServices();
+  const result = await svc.bootstrapAiSync.execute(actor);
+  return c.json(result, 200);
 });
 
 const convertChatRoute = createRoute({

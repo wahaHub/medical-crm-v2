@@ -31,10 +31,11 @@ export class AiSyncTaskService {
   constructor(private readonly outboxRepo: IAiSyncOutboxRepository) {}
 
   async enqueueFaqUpsert(payload: FaqSyncPayload): Promise<void> {
+    const shouldSyncToSharedDataset = payload.hospitalId === null;
     await this.enqueue({
       entityType: 'chatbot_faq_item',
       entityKey: buildFaqEntityKey(payload.faqId),
-      action: payload.isActive ? 'UPSERT' : 'DELETE',
+      action: payload.isActive && shouldSyncToSharedDataset ? 'UPSERT' : 'DELETE',
       payload,
     });
   }

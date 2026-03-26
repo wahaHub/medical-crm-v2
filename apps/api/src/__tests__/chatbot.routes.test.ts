@@ -38,6 +38,9 @@ const mockServices = {
   createTicket: {
     execute: vi.fn(),
   },
+  bootstrapAiSync: {
+    execute: vi.fn(),
+  },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -45,6 +48,16 @@ vi.mock('../composition-root.js', () => ({
 }));
 
 const app = new OpenAPIHono();
+let currentSession = {
+  userId: 'admin-1',
+  email: 'admin@test.com',
+  roles: ['ADMIN'],
+  hospitalId: null,
+};
+app.use('/api/v2/*', async (c, next) => {
+  c.set('session', currentSession);
+  await next();
+});
 app.route('/', chatbotRoutes);
 
 const NOW = new Date('2026-03-26T10:00:00.000Z');
@@ -85,6 +98,12 @@ describe('Chatbot routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env['DIFY_API_KEY'] = 'test-dify-key';
+    currentSession = {
+      userId: 'admin-1',
+      email: 'admin@test.com',
+      roles: ['ADMIN'],
+      hospitalId: null,
+    };
     mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
     mockServices.aiChatMessageRepo.create.mockImplementation(async (entity: unknown) => entity);
     mockServices.patientAuthService.createSessionToken.mockResolvedValue('patient-token');
@@ -198,5 +217,40 @@ describe('Chatbot routes', () => {
     expect(json.alreadyExists).toBe(true);
     expect(mockServices.initOnboarding.execute).not.toHaveBeenCalled();
     expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
+  });
+
+  it('POST /api/v2/chatbot/sync is admin-only and returns the bootstrap enqueue summary', async () => {
+    mockServices.bootstrapAiSync.execute.mockResolvedValue({
+      faqEnqueued: 12,
+      packageEnqueued: 4,
+    });
+
+    const res = await app.request('/api/v2/chatbot/sync', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toEqual({
+      faqEnqueued: 12,
+      packageEnqueued: 4,
+    });
+    expect(mockServices.bootstrapAiSync.execute).toHaveBeenCalledOnce();
+  });
+
+  it('POST /api/v2/chatbot/sync rejects non-admin users', async () => {
+    currentSession = {
+      userId: 'hospital-1',
+      email: 'hospital@test.com',
+      roles: ['HOSPITAL'],
+      hospitalId: 'hospital-123',
+    };
+
+    const res = await app.request('/api/v2/chatbot/sync', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(403);
+    expect(mockServices.bootstrapAiSync.execute).not.toHaveBeenCalled();
   });
 });

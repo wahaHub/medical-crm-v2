@@ -8,3 +8,4 @@ dist/
 coverage/
 BabelDOC/
 dify/
+.worktrees/

@@ -255,18 +255,19 @@ describe('Chatbot routes', () => {
       sessionSecretHash: secretHash,
       patientId: 'patient-1',
     }));
+    // Repository contract is newest-first (DESC); the route should reverse into chronological order.
     mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
-      makeMessage({
-        id: 'msg-old',
-        role: 'USER',
-        content: 'First question',
-        createdAt: new Date('2026-03-26T09:00:00.000Z'),
-      }),
       makeMessage({
         id: 'msg-new',
         role: 'ASSISTANT',
         content: 'Latest answer',
         createdAt: new Date('2026-03-26T09:05:00.000Z'),
+      }),
+      makeMessage({
+        id: 'msg-old',
+        role: 'USER',
+        content: 'First question',
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
       }),
     ]);
 
@@ -287,8 +288,8 @@ describe('Chatbot routes', () => {
       createdAt: NOW.toISOString(),
       updatedAt: NOW.toISOString(),
     });
-    expect(json.messages.map((message) => message.id)).toEqual(['msg-new', 'msg-old']);
-    expect(json.messages.map((message) => message.content)).toEqual(['Latest answer', 'First question']);
+    expect(json.messages.map((message) => message.id)).toEqual(['msg-old', 'msg-new']);
+    expect(json.messages.map((message) => message.content)).toEqual(['First question', 'Latest answer']);
     expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
   });
 
@@ -436,6 +437,59 @@ describe('Chatbot routes', () => {
       alreadyExists: false,
     });
     expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
+    expect(mockServices.aiChatSessionRepo.updateStatus).toHaveBeenCalledWith('session-1', 'ESCALATED');
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenCalledOnce();
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'SYSTEM',
+      nextAction: 'ESCALATE',
+      metadata: expect.objectContaining({
+        workflow: expect.objectContaining({
+          kind: 'ESCALATE',
+          patientId: 'patient-2',
+          caseId: 'case-2',
+          ticketId: 'ticket-2',
+        }),
+      }),
+    }));
+  });
+
+  it('POST /api/v2/chatbot/escalate repairs stale ESCALATED state without creating a duplicate ticket', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+      status: 'ACTIVE',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeEscalationMessage(),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/escalate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotEscalateResponseSchema.parse(await res.json());
+    expect(json).toEqual({
+      sessionId: 'session-1',
+      patientId: 'patient-1',
+      caseId: 'case-1',
+      ticketId: 'ticket-1',
+      alreadyExists: true,
+    });
+    expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
     expect(mockServices.aiChatSessionRepo.updateStatus).toHaveBeenCalledWith('session-1', 'ESCALATED');
   });
 

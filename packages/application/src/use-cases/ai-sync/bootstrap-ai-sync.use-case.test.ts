@@ -18,44 +18,24 @@ describe('BootstrapAiSyncUseCase', () => {
     hospitalId: null,
   };
 
-  const faqRepo = {
-    findById: vi.fn(),
-    findAll: vi.fn(),
-    listCategories: vi.fn(),
-    findCategoryById: vi.fn(),
-    createCategory: vi.fn(),
-    countItemsForCategory: vi.fn(),
-    save: vi.fn(),
-    delete: vi.fn(),
-    deleteCategory: vi.fn(),
-  };
-
-  const packageRepo = {
-    findById: vi.fn(),
-    findAll: vi.fn(),
-    save: vi.fn(),
-    delete: vi.fn(),
-  };
-
-  const aiSyncTaskService = {
-    enqueueFaqUpsert: vi.fn(),
-    enqueueFaqDelete: vi.fn(),
-    enqueuePackageUpsert: vi.fn(),
-    enqueuePackageDelete: vi.fn(),
-  } as unknown as AiSyncTaskService;
+  let faqRepo: ReturnType<typeof createMockFaqRepo>;
+  let packageRepo: ReturnType<typeof createMockPackageRepo>;
+  let aiSyncTaskService: MockAiSyncTaskService;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    faqRepo = createMockFaqRepo();
+    packageRepo = createMockPackageRepo();
+    aiSyncTaskService = createMockAiSyncTaskService();
   });
 
   it('rejects non-admin actors', async () => {
-    const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService);
+    const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService as unknown as AiSyncTaskService);
 
     await expect(useCase.execute(patientActor)).rejects.toThrow('Admin only');
   });
 
   it('enqueues FAQ sync for both hospital types, paginates through all pages, and only queries global active FAQs', async () => {
-    const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService);
+    const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService as unknown as AiSyncTaskService);
 
     faqRepo.findAll.mockImplementation((query: { page: number; hospitalType?: string }) => {
       if (query.hospitalType === 'COSMETIC' && query.page === 1) {
@@ -149,7 +129,7 @@ describe('BootstrapAiSyncUseCase', () => {
   });
 
   it('queries only published packages, paginates through all pages, and returns the matching summary totals', async () => {
-    const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService);
+    const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService as unknown as AiSyncTaskService);
 
     faqRepo.findAll.mockImplementation(() => Promise.resolve({ data: [], total: 0 }));
     packageRepo.findAll.mockImplementation((query: { page: number; status?: string }) => {
@@ -196,7 +176,82 @@ describe('BootstrapAiSyncUseCase', () => {
       }),
     );
   });
+
+  it('returns summary totals that match the actual combined FAQ and package enqueues in one execution', async () => {
+    const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService as unknown as AiSyncTaskService);
+
+    faqRepo.findAll.mockImplementation((query: { page: number; hospitalType?: string }) => {
+      if (query.hospitalType === 'COSMETIC' && query.page === 1) {
+        return Promise.resolve({ data: buildFaqPage('cosmetic', 2), total: 2 });
+      }
+      if (query.hospitalType === 'REGULAR' && query.page === 1) {
+        return Promise.resolve({ data: buildFaqPage('regular', 1), total: 1 });
+      }
+      throw new Error(`Unexpected FAQ query: ${JSON.stringify(query)}`);
+    });
+
+    packageRepo.findAll.mockImplementation((query: { page: number; status?: string }) => {
+      if (query.status !== 'PUBLISHED') {
+        throw new Error(`Unexpected package status query: ${JSON.stringify(query)}`);
+      }
+      if (query.page === 1) {
+        return Promise.resolve({ data: buildPackagePage(2), total: 2 });
+      }
+      throw new Error(`Unexpected package query: ${JSON.stringify(query)}`);
+    });
+
+    const result = await useCase.execute(adminActor);
+
+    expect(result).toEqual({ faqEnqueued: 3, packageEnqueued: 2 });
+    expect(aiSyncTaskService.enqueueFaqUpsert).toHaveBeenCalledTimes(3);
+    expect(aiSyncTaskService.enqueuePackageUpsert).toHaveBeenCalledTimes(2);
+    expect(
+      aiSyncTaskService.enqueueFaqUpsert.mock.calls.map(([payload]) => (payload as { faqId: string }).faqId),
+    ).toEqual(['cosmetic-faq-1', 'cosmetic-faq-2', 'regular-faq-1']);
+    expect(
+      aiSyncTaskService.enqueuePackageUpsert.mock.calls.map(([payload]) => (payload as { packageId: string }).packageId),
+    ).toEqual(['package-1', 'package-2']);
+  });
 });
+
+function createMockFaqRepo() {
+  return {
+    findById: vi.fn(),
+    findAll: vi.fn(),
+    listCategories: vi.fn(),
+    findCategoryById: vi.fn(),
+    createCategory: vi.fn(),
+    countItemsForCategory: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+    deleteCategory: vi.fn(),
+  };
+}
+
+function createMockPackageRepo() {
+  return {
+    findById: vi.fn(),
+    findAll: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  };
+}
+
+type MockAiSyncTaskService = {
+  enqueueFaqUpsert: ReturnType<typeof vi.fn>;
+  enqueueFaqDelete: ReturnType<typeof vi.fn>;
+  enqueuePackageUpsert: ReturnType<typeof vi.fn>;
+  enqueuePackageDelete: ReturnType<typeof vi.fn>;
+};
+
+function createMockAiSyncTaskService(): MockAiSyncTaskService {
+  return {
+    enqueueFaqUpsert: vi.fn(),
+    enqueueFaqDelete: vi.fn(),
+    enqueuePackageUpsert: vi.fn(),
+    enqueuePackageDelete: vi.fn(),
+  };
+}
 
 function buildFaqPage(prefix: 'cosmetic' | 'regular', count: number, start = 1) {
   return Array.from({ length: count }, (_, index) => {

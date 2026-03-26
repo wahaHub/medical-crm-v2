@@ -13,6 +13,7 @@ export interface SupportTicketDTO {
   slaDeadline: string | null;
   resolutionNote: string | null;
   resolvedAt: string | null;
+  translations: Record<string, Record<string, unknown>>;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -26,5 +27,6 @@ export interface SupportTicketReplyDTO {
   content: string;
   isInternalNote: boolean;
   attachments: unknown;
+  translations: Record<string, Record<string, unknown>>;
   createdAt: string;
 }

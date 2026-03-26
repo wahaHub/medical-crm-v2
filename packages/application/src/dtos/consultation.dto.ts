@@ -24,6 +24,7 @@ export interface ConsultationDTO {
   aiSummary: unknown | null;
   aiSummaryCreatedAt: string | null;
   aiSummaryStatus: AISummaryStatus;
+  translations: Record<string, Record<string, unknown>>;
   createdAt: string;
   updatedAt: string;
 }

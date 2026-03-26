@@ -7,6 +7,7 @@ export interface QCTemplateProps {
   version: number;
   isActive: boolean;
   createdBy: string | null;
+  translations?: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +21,7 @@ export class QCTemplate {
   version: number;
   isActive: boolean;
   createdBy: string | null;
+  translations: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 
@@ -32,6 +34,7 @@ export class QCTemplate {
     this.version = props.version;
     this.isActive = props.isActive;
     this.createdBy = props.createdBy;
+    this.translations = props.translations ?? {};
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

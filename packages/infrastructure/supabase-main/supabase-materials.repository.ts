@@ -60,6 +60,27 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     };
   }
 
+  private buildHospitalTranslations(
+    rows: Array<Record<string, unknown>> | null | undefined,
+  ): Record<string, Record<string, unknown>> {
+    const translations: Record<string, Record<string, unknown>> = {};
+
+    for (const row of rows ?? []) {
+      const languageCode = row.language_code;
+      if (typeof languageCode !== 'string' || languageCode.length === 0) continue;
+
+      const fields: Record<string, unknown> = {};
+      if (row.tagline !== undefined && row.tagline !== null) fields.tagline = row.tagline;
+      if (row.description !== undefined && row.description !== null) fields.description = row.description;
+
+      if (Object.keys(fields).length > 0) {
+        translations[languageCode] = fields;
+      }
+    }
+
+    return translations;
+  }
+
   async getHospitalInfo(hospitalId: string): Promise<MaterialsHospitalInfo | null> {
     const { data, error } = await this.supabase
       .from('hospitals')
@@ -77,9 +98,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       this.supabase
         .from('hospital_translations')
         .select('*')
-        .eq('hospital_id', data.id)
-        .eq('language_code', 'en')
-        .single(),
+        .eq('hospital_id', data.id),
       this.supabase
         .from('hospital_location')
         .select('*')
@@ -92,9 +111,12 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         .order('sort_order', { ascending: true }),
     ]);
 
-    const translation = translationResult.status === 'fulfilled' && !translationResult.value.error
-      ? translationResult.value.data
-      : null;
+    const translationRows = translationResult.status === 'fulfilled' && !translationResult.value.error
+      ? (translationResult.value.data as Array<Record<string, unknown>> | null) ?? []
+      : [];
+    const translationZh = translationRows.find((row) => row.language_code === 'zh') ?? null;
+    const translationEn = translationRows.find((row) => row.language_code === 'en') ?? null;
+    const primaryTranslation = translationZh ?? translationEn ?? translationRows[0] ?? null;
     const location = locationResult.status === 'fulfilled' && !locationResult.value.error
       ? locationResult.value.data
       : null;
@@ -140,10 +162,10 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       highlights: data.highlights ?? [],
       yearEstablished: data.year_established ?? undefined,
       totalPatients: data.total_patients ?? undefined,
-      tagline: translation?.tagline ?? undefined,
-      taglineEn: translation?.tagline ?? undefined,
-      description: translation?.description ?? undefined,
-      descriptionEn: translation?.description ?? undefined,
+      tagline: (translationZh?.tagline as string | undefined) ?? (primaryTranslation?.tagline as string | undefined),
+      taglineEn: (translationEn?.tagline as string | undefined) ?? (primaryTranslation?.tagline as string | undefined),
+      description: (translationZh?.description as string | undefined) ?? (primaryTranslation?.description as string | undefined),
+      descriptionEn: (translationEn?.description as string | undefined) ?? (primaryTranslation?.description as string | undefined),
       status: data.is_active ? 'published' : 'draft',
       isActive: data.is_active ?? false,
       paymentMethods: data.payment_methods ?? [],
@@ -185,6 +207,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         thumbnailUrl: testimonialThumbnailUrls[index]?.url || item.thumbnailUrl,
         thumbnailStorageKey: testimonialThumbnailUrls[index]?.storageKey ?? null,
       })),
+      translations: this.buildHospitalTranslations(translationRows),
     };
   }
 
@@ -483,7 +506,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   async listSurgeons(hospitalId: string): Promise<MaterialsSurgeon[]> {
     const { data, error } = await this.supabase
       .from('surgeons')
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images, translations')
       .eq('hospital_id', hospitalId);
 
     if (error) throw error;
@@ -501,7 +524,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         procedures_count: {},
         translations: {},
       })
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images, translations')
       .single();
 
     if (error) throw error;
@@ -534,7 +557,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       .update(updateData)
       .eq('id', id)
       .eq('hospital_id', hospitalId)
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images, translations')
       .single();
 
     if (error) {
@@ -563,7 +586,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
   async listBeforeAfterCases(hospitalId: string): Promise<MaterialsBeforeAfterCase[]> {
     const { data, error } = await this.supabase
       .from('procedure_cases')
-      .select('id, hospital_id, procedure_id, case_number, provider_name, description')
+      .select('id, hospital_id, procedure_id, case_number, provider_name, description, translations')
       .eq('hospital_id', hospitalId)
       .order('sort_order', { ascending: true });
 
@@ -622,6 +645,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         procedureName,
         surgeonName: row.provider_name as string | null,
         description: row.description as string | null,
+        translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
         images: mapCaseAssetsToImages({
           caseRow: row,
           caseImages: caseImagesById.get(row.id as string) ?? [],
@@ -670,8 +694,9 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
         case_number: caseNumber,
         image_count: data.images.length,
         sort_order: 0,
+        translations: {},
       })
-      .select('id, hospital_id, provider_name, description')
+      .select('id, hospital_id, provider_name, description, translations')
       .single();
 
     if (error) throw error;
@@ -698,6 +723,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       surgeonName: row!.provider_name,
       description: row!.description,
       images: data.images,
+      translations: (row!.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }
 
@@ -733,7 +759,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       .update(updateData)
       .eq('id', id)
       .eq('hospital_id', hospitalId)
-      .select('id, hospital_id, procedure_id, provider_name, description, procedures(procedure_name)')
+      .select('id, hospital_id, procedure_id, provider_name, description, translations, procedures(procedure_name)')
       .single();
 
     if (error) {
@@ -797,6 +823,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       surgeonName: row.provider_name,
       description: row.description,
       images,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }
 

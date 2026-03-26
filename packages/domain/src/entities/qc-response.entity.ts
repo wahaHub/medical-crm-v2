@@ -10,6 +10,7 @@ export interface QCResponseProps {
   riskFlags: string[];
   completionStatus: QCCompletionStatus;
   submittedAt: Date | null;
+  translations?: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +25,7 @@ export class QCResponse {
   riskFlags: string[];
   completionStatus: QCCompletionStatus;
   submittedAt: Date | null;
+  translations: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 
@@ -37,6 +39,7 @@ export class QCResponse {
     this.riskFlags = props.riskFlags;
     this.completionStatus = props.completionStatus;
     this.submittedAt = props.submittedAt;
+    this.translations = props.translations ?? {};
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

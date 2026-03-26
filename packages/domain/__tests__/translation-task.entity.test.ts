@@ -145,9 +145,9 @@ describe('TranslationTask entity', () => {
     });
 
     it('has translatableFields for known entity types', () => {
-      expect(TRANSLATION_CONFIG.translatableFields.hospital).toBeDefined();
-      expect(TRANSLATION_CONFIG.translatableFields.message).toBeDefined();
-      expect(TRANSLATION_CONFIG.translatableFields.case).toBeDefined();
+      expect(TRANSLATION_CONFIG.translatableFields.support_ticket).toBeDefined();
+      expect(TRANSLATION_CONFIG.translatableFields.chatbot_faq_item).toBeDefined();
+      expect(TRANSLATION_CONFIG.translatableFields.procedure_case).toBeDefined();
     });
   });
 });

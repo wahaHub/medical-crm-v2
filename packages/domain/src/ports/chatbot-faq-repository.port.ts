@@ -18,6 +18,7 @@ export interface ChatbotFaqCategory {
   sortOrder: number;
   isActive: boolean;
   questionCount: number;
+  translations: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 }

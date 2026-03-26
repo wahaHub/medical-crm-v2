@@ -24,6 +24,7 @@ interface SurgeonRowLike {
   certifications?: string[] | null;
   bio?: SurgeonBio;
   images?: SurgeonImages;
+  translations?: Record<string, Record<string, unknown>> | null;
 }
 
 type SurgeonMutationInput = Partial<Omit<MaterialsSurgeon, 'id' | 'hospitalId'>>;
@@ -96,6 +97,7 @@ export function mapSurgeonRowToMaterialsSurgeon(
     expertise: row.bio?.expertise ?? null,
     philosophy: row.bio?.philosophy ?? null,
     achievements: row.bio?.achievements ?? [],
+    translations: row.translations ?? {},
   };
 }
 

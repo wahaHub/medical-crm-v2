@@ -25,6 +25,12 @@ export const addProgressSchema = z.discriminatedUnion('type', [
     reason: z.string().optional(),
   }),
   z.object({
+    type: z.literal('NOTE'),
+    note: z.string().trim().optional(),
+    attachmentNames: z.array(z.string().min(1)).optional(),
+    documentIds: z.array(z.string().uuid()).optional(),
+  }),
+  z.object({
     type: z.literal('DOCUMENT_UPLOAD'),
     documentId: z.string().uuid(),
   }),

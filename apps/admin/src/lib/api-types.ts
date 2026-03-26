@@ -31,6 +31,16 @@ export interface CaseSummary {
   createdAt: string;
 }
 
+export interface CaseProgressItem {
+  id: string;
+  title: string;
+  description: string | null;
+  progressType: string;
+  metadata: Record<string, unknown> | null;
+  recordedAt: string;
+  recordedById: string | null;
+}
+
 export interface CaseStats {
   total: number; unassigned: number; assigned: number; inTreatment: number;
   postTreatment: number; completed: number; followUp: number;

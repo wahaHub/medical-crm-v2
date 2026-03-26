@@ -4,6 +4,7 @@ export interface QCTemplateDTO {
   category: string;
   procedureTypes: string[];
   questions: unknown;
+  translations: Record<string, Record<string, unknown>>;
   version: number;
   isActive: boolean;
   createdBy: string | null;
@@ -20,6 +21,7 @@ export interface QCResponseDTO {
   extractedData: unknown | null;
   riskFlags: string[];
   completionStatus: string;
+  translations: Record<string, Record<string, unknown>>;
   submittedAt: string | null;
   createdAt: string;
   updatedAt: string;

@@ -288,6 +288,7 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
       version: row.version,
       isActive: row.isActive,
       createdBy: row.createdBy ?? null,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });
@@ -304,6 +305,7 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
       riskFlags: (row.riskFlags as string[]) ?? [],
       completionStatus: row.completionStatus as import('@medical-crm/domain').QCCompletionStatus,
       submittedAt: row.submittedAt ? new Date(row.submittedAt) : null,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });

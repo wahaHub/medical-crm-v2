@@ -7,11 +7,74 @@
 
 ## Overview
 
-Fully integrate the china-medical-journeys patient dashboard with the CRM v2 backend. Replace the existing Supabase Auth + legacy API setup with CRM v2's patient auth system and API endpoints. The dashboard will have 7 tabs: Home, Support Tickets, Messages, Quotes, Journey, AI Summary, Orders.
+Fully integrate the china-medical-journeys patient frontend with the CRM v2 backend. The target product model is intentionally converged with Medora Health Beauty:
+
+- both websites use a **marketing-site floating Chat Widget** as the primary patient entry point
+- both websites follow **case-first onboarding**
+- both websites open a larger **Patient Message Panel** after hospital selection
+- both websites use the same CRM v2 patient auth, messaging, quote, intake, and dashboard contracts behind different visual branding
+
+Replace the existing Supabase Auth + legacy API setup with CRM v2's patient auth system and API endpoints. The dashboard will have 7 tabs: Home, Support Tickets, Messages, Quotes, Journey, AI Summary, Orders, but the dashboard is only one part of the patient journey. The floating widget + message panel entry flow is first-class scope, not an optional add-on.
+
+## Current Baseline Reality Check
+
+This integration is directionally aligned with CRM v2, but the current backend baseline is mixed:
+
+- **Already exists and is reusable**: patient cookie auth, `/api/patient/me`, onboarding init, magic link verify, basic conversations, patient quote actions, WebSocket channels, generic ticket/order/journey domain use cases
+- **Exists but contract is too narrow**: patient messages are text-only, patient case detail DTO does not include journey/milestones/patient-facing AI summary aggregate, intake validation only supports `string | string[]`
+- **Exists as stub and must be replaced**: `GET /api/patient/intake/:caseId/template`, `POST /api/patient/intake/:caseId`
+- **Still needs new routes**: patient tickets routes, patient orders routes, intake upload route, patient draft-save route, guest-session restore route, optional patient password-login route
+
+The implementation plan below is written against that real baseline, not against the earlier aspirational patient-dashboard spec.
 
 ## Architecture Decision
 
 **Approach: BFF Proxy (方案 A)** — CRM v2's existing `/api/patient/*` route group serves as the patient API gateway. New patient-specific endpoints are added to CRM v2. The frontend proxies all calls through BFF (Vite dev proxy + production Nginx/serverless).
+
+## Unified Marketing Entry Experience
+
+Both websites must use the same patient-entry pattern:
+
+1. Visitor opens the floating chat bubble from the marketing site.
+2. The first expanded state shows:
+   - a **structured onboarding widget** that collects the agreed 5 base patient fields
+   - a companion assistant-style opening message such as `What can I help you with?`
+3. The visitor's free-text answer is stored as part of the patient request context, not just UI-only copy.
+4. Once the onboarding widget is submitted, CRM v2 creates or reuses a patient, creates a case immediately, and starts a patient session.
+5. After hospital selection, the small bubble is no longer the main chat surface; the product opens a larger `PatientMessagePanel` for ongoing multi-hospital communication.
+
+This means the floating widget is not a disposable landing-page toy. It is the top of the same patient journey that continues into conversations, quotes, intake, and dashboard pages.
+
+### Widget First-Open State
+
+The first-open chat state should be modeled as a hybrid surface, not as a plain chatbot transcript:
+
+- **Primary block**: a compact onboarding widget/form with the 5 agreed base fields
+- **Companion message**: an assistant-style prompt such as `What can I help you with?`
+- **Free-text input**: optional but strongly preferred; if the visitor types a request, it should be persisted as the first patient intent/message
+
+The form widget and the opening assistant message should appear together in the same floating window so the user immediately understands both:
+
+- what information is required to start matching
+- that they can also describe their concern in natural language
+
+## Guest Persistence & Return Behavior
+
+Patient conversation history must persist even before explicit login/password setup.
+
+### Persistence Rules
+
+1. **Immediately after onboarding submit**, backend creates the patient, case, and `patient_session` cookie. This already gives the visitor a real patient identity without forcing email verification first.
+2. **Same-browser return** must work even if the active auth cookie is gone. Frontend stores an opaque `visitorKey` / `guestSessionId` in browser storage. This key is not an auth token; it is only a restore handle.
+3. **Restore flow**: frontend calls a dedicated restore endpoint (recommended: `POST /api/patient/session/restore`) with the opaque restore handle. Backend can then:
+   - re-bind the browser to the existing patient if the restore handle is valid
+   - re-issue a fresh `patient_session` cookie
+   - return the active case / conversation bootstrap data
+4. **Cross-device or cleared-browser return** falls back to email magic link. The same patient and case history must be restored after token verification.
+
+### Important Constraint
+
+Chat history may not live only in component state, only in localStorage, or only in an anonymous front-end transcript cache. Once the visitor finishes the onboarding widget, all subsequent messaging history must be stored against the real CRM patient / case / conversation records.
 
 ## Authentication
 
@@ -19,11 +82,12 @@ Fully integrate the china-medical-journeys patient dashboard with the CRM v2 bac
 
 Per the existing spec (`2026-03-17-patient-dashboard-chatwidget-design.md`), the patient auth system is:
 
-1. **Onboarding init**: Visitor submits name + email + phone → `POST /api/patient/onboarding/init` → backend creates patient + Case + sets `patient_session` httpOnly cookie (JWT, 24h)
+1. **Onboarding init**: Visitor submits the widget fields plus optional free-text request context → `POST /api/patient/onboarding/init` → backend creates patient + Case + sets `patient_session` httpOnly cookie (JWT, 24h)
 2. **Immediate access**: After onboarding, user is logged in — no email verification required for initial session
-3. **Magic link**: Email sent for return visits — click link → `POST /api/patient/verify-token` → new session cookie
-4. **Optional password**: User can set password via `POST /api/patient/set-password` for email + password login
-5. **Dedicated middleware**: `patientAuthMiddleware` validates `patient_session` cookie, completely separate from Keycloak
+3. **Guest restore**: Returning same-browser visitors can restore their session/history through a restore handle without a formal login screen
+4. **Magic link**: Email sent for return visits when restore is unavailable — click link → `POST /api/patient/verify-token` → new session cookie
+5. **Optional password**: User can set password via `POST /api/patient/set-password` for email + password login
+6. **Dedicated middleware**: `patientAuthMiddleware` validates `patient_session` cookie, completely separate from Keycloak
 
 ### Auth Migration (Frontend)
 
@@ -39,10 +103,11 @@ Per the existing spec (`2026-03-17-patient-dashboard-chatwidget-design.md`), the
 | httpOnly cookie (prevents XSS token theft) | Existing |
 | JWT 24h expiry | Existing |
 | BFF proxy hides backend URL | Existing |
-| Rate limiting (magic link 3/hr, onboarding 5/IP/hr) | Existing |
+| Rate limiting | Existing, but current onboarding implementation is `20/hour` in production, not `5/IP/hour`; align doc and code before ship |
 | Turnstile CAPTCHA on onboarding | Existing |
 | `Secure` + `SameSite=Lax` cookie flags | Existing (`Lax` required — `Strict` would break magic link redirects from email) |
-| Magic link token one-time use | Verify implementation |
+| Opaque guest restore handle (non-auth token) | New requirement |
+| Magic link token one-time use | **Missing** in current implementation; JWT verify exists, but no server-side one-time-use tracking |
 | Strong JWT secret in production | Verify (dev uses placeholder) |
 | Ownership check on all patient queries | Verify per endpoint |
 
@@ -63,6 +128,17 @@ Per the existing spec (`2026-03-17-patient-dashboard-chatwidget-design.md`), the
 Additional routes:
 - `/dashboard/intake/:caseId` — Dynamic questionnaire form
 - `/dashboard/account` — Account settings (retained)
+- `/dashboard/cases/:caseId` — Optional deep-link detail view retained for Medora-style case drill-down
+
+### Retained Page Semantics From Medora
+
+To keep the shared product model compatible with both Medora and China Medical Journeys, the following semantics are retained even if the exact UI differs:
+
+- **Home action-items banner** remains valid: quote ready, intake required, quote expiring, reply waiting
+- **Empty-state CTA** on Home / Quotes / Messages should point back to the floating widget or intake start flow, not to a dead-end login page
+- **Per-case detail deep link** can remain as a companion route for users who think in terms of a single case thread
+- **PatientMessagePanel** remains the preferred high-focus messaging surface launched from the floating widget, even if `/dashboard/messages` also exists
+- **Marketing site shell separation** remains valid for Medora-style sites: dashboard pages can sit outside the public header/footer while the floating widget still exists globally
 
 ### Data Grouping
 
@@ -154,9 +230,36 @@ IntakePage
 
 ### Intake Backend Changes
 
-- `GET /api/patient/intake/:caseId/template` — returns default Question Collector template, with hospital customization if case has assigned hospital (replaces current stub)
-- `POST /api/patient/intake/:caseId` — submit responses (existing route, needs real implementation connecting to Question Collector)
-- `PATCH /api/patient/intake/:caseId` — save draft (**new route**, does not exist yet)
+- `GET /api/patient/intake/:caseId/template` — currently a stub; replace with Question Collector-backed template resolution:
+  - resolve default template
+  - merge hospital customization if case has assigned hospital
+  - return existing draft/submitted response if present
+- `POST /api/patient/intake/:caseId` — currently a stub; replace with Question Collector persistence instead of the current placeholder logger
+- `PATCH /api/patient/intake/:caseId` — **new patient route** for draft save; can reuse existing `SaveResponseDraftUseCase`, but needs a patient-facing HTTP route and request contract
+
+### Intake Contract Decision
+
+The current patient intake route shape is **not reusable as-is** because it only accepts:
+
+```typescript
+{
+  responses: Array<{
+    questionId: string;
+    answer: string | string[];
+  }>
+}
+```
+
+That shape cannot carry file uploads, nested list items, or conditional structured answers. For the CRM integration, patient intake should converge to a QC-style payload:
+
+```typescript
+{
+  templateId: string;
+  responses: QCResponsePayload;
+}
+```
+
+This means the patient validation schema, patient route handler, and patient intake use case must be redesigned together rather than incrementally patched.
 
 ### QCResponsePayload Type Extension
 
@@ -213,8 +316,9 @@ Reuses CRM v2's existing `WsManager`:
 
 ### Backend Changes
 
-- `GET /api/patient/conversations` — add `unreadCount` to response
-- `ws://.../ws/patient/notifications` — cross-conversation unread push channel (new)
+- `GET /api/patient/conversations` — add `unreadCount` to response DTO
+- `ws://.../ws/patient/notifications` — channel already exists; wire unread broadcast production logic and frontend consumption
+- `POST /api/patient/conversations/:convId/messages` — extend contract if patient file/image messages are required; current patient route only supports plain text
 
 ## Support Tickets
 
@@ -243,10 +347,15 @@ Attachments use existing `ticket_reply_attachment` upload policy.
 
 ### Ticket Ownership & Authorization
 
-- All patient ticket endpoints filter by `createdBy = session.userId` — patients can only see their own tickets
+- All patient ticket endpoints filter by `patientId = session.userId` — patients can only see their own tickets
 - `GET /api/patient/tickets/:id` filters replies: `isInternalNote = false` (admin-only notes hidden)
-- Patient actor construction: `{ id: session.userId, role: 'PATIENT' }` — passed to use cases
-- New patient-specific use cases needed: `CreatePatientTicket`, `ListPatientTickets`, `GetPatientTicketDetail`, `PatientReplyToTicket` — these wrap existing domain logic with patient ownership enforcement
+- Patient actor construction: `{ userId: session.userId, role: 'PATIENT' }` — passed to existing generic ticket use cases
+- **No new patient-specific ticket use cases required by default**:
+  - reuse `CreateTicketUseCase`
+  - reuse `ListTicketsUseCase`
+  - reuse `GetTicketUseCase`
+  - reuse `ReplyToTicketUseCase`
+- What actually needs to be added is the patient route layer plus optional attachment upload-init route for ticket replies
 - Patients can create tickets with or without a `caseId` (general account issues don't need a case)
 
 ## Quotes
@@ -297,7 +406,11 @@ OrdersPage
 
 ### Backend Requirements
 
-New use cases needed: `ListPatientOrders`, `GetPatientOrderDetail` — filter by patient ownership. These require a new `DrizzleOrderRepository` (or extending existing repo) with patient-scoped queries. Orders are **read-only** for patients — no create/update/cancel endpoints.
+Orders are **read-only** for patients at the route layer. Existing generic order use cases already support patient ownership filtering through `actor.role === 'PATIENT'`. Therefore:
+
+- no patient-specific order use case is required by default
+- no new order repository is required by default if `patientId` filtering continues to work through the existing repository query path
+- what is required is a patient route layer exposing read-only list/detail endpoints
 
 ## Journey
 
@@ -313,7 +426,16 @@ JourneyPage
 
 ### Backend
 
-No new endpoints. Extend `GET /api/patient/cases/:id` response DTO to include `journey` (JSONB) and `milestones` (array) fields.
+Do **not** assume current `GET /api/patient/cases/:id` can absorb this cleanly without DTO redesign. Current patient case detail returns a narrow `CaseDTO`.
+
+Preferred options:
+
+1. **Preferred**: add dedicated patient journey endpoints
+   - `GET /api/patient/cases/:id/journey`
+   - `GET /api/patient/cases/:id/milestones`
+2. **Alternative**: introduce a new patient aggregate DTO for case detail and explicitly version/expand the route response
+
+Either approach is acceptable, but the design must explicitly choose one. This spec prefers **dedicated patient journey endpoints** to avoid silently overloading the existing case detail contract.
 
 ## AI Summary
 
@@ -331,7 +453,18 @@ AiSummaryPage
 
 ### Backend
 
-No new endpoints. Read from `GET /api/patient/cases/:id` `aiSummary` field. Only show content where `isVisibleToPatient` is true.
+Current patient case DTO only exposes a single flat `aiSummary: string | null`; it does **not** expose:
+
+- bilingual `{ zh, en }`
+- patient visibility metadata
+- summary status timestamps suitable for the UI above
+
+Preferred options:
+
+1. **Preferred**: add `GET /api/patient/cases/:id/ai-summary`
+2. **Alternative**: include a new `patientAiSummary` object in a redesigned patient case aggregate DTO
+
+This spec prefers a **dedicated patient AI summary endpoint** unless the team is already committed to a broader patient case aggregate response.
 
 ## Frontend Architecture
 
@@ -379,46 +512,76 @@ hooks/
 Replace existing login with magic link flow:
 1. Enter email → `POST /api/patient/magic-link`
 2. Click email link → `POST /api/patient/verify-token` → cookie set → redirect to dashboard
-3. If password set → email + password login (needs new `POST /api/patient/login` endpoint)
+3. If password set → email + password login (optional phase-2; needs new `POST /api/patient/login` endpoint)
+
+### Migration Scope Clarification
+
+`china-medical-journeys` currently has deeper Supabase coupling than just auth:
+
+- `AuthContext`
+- API config that injects Supabase bearer tokens
+- dashboard data services shaped around legacy endpoints
+- case intake flows that create/authenticate users via Supabase
+
+So this is a **patient frontend re-platforming**, not only an auth swap. The implementation plan should treat:
+
+- auth/session migration
+- API client migration
+- dashboard route/data migration
+- legacy case-intake flow replacement
+
+as separate deliverables.
 
 ## New Backend Endpoints Summary
 
 | # | Method | Path | Description |
 |---|--------|------|-------------|
-| 1 | GET | `/api/patient/tickets` | Patient's ticket list |
-| 2 | POST | `/api/patient/tickets` | Create ticket |
-| 3 | GET | `/api/patient/tickets/:id` | Ticket detail (internal notes filtered) |
-| 4 | POST | `/api/patient/tickets/:id/reply` | Reply to ticket |
-| 5 | GET | `/api/patient/orders` | Patient's order list |
-| 6 | GET | `/api/patient/orders/:id` | Order detail |
-| 7 | POST | `/api/patient/intake/:caseId/upload` | Questionnaire file upload (presigned URL) |
-| 8 | GET | `/api/patient/intake/:caseId/template` | Question Collector template (default + hospital customization) |
-| 9 | PATCH | `/api/patient/intake/:caseId` | Save intake draft |
-| 10 | POST | `/api/patient/login` | Email + password login (rate limited: 5 attempts/email/15min) |
+| 1 | POST | `/api/patient/session/restore` | Restore same-browser guest patient session/history |
+| 2 | GET | `/api/patient/tickets` | Patient's ticket list |
+| 3 | POST | `/api/patient/tickets` | Create ticket |
+| 4 | GET | `/api/patient/tickets/:id` | Ticket detail (internal notes filtered) |
+| 5 | POST | `/api/patient/tickets/:id/reply` | Reply to ticket |
+| 6 | GET | `/api/patient/orders` | Patient's order list |
+| 7 | GET | `/api/patient/orders/:id` | Order detail |
+| 8 | POST | `/api/patient/intake/:caseId/upload` | Questionnaire file upload (presigned URL) |
+| 9 | GET | `/api/patient/intake/:caseId/template` | Question Collector template (default + hospital customization) |
+| 10 | PATCH | `/api/patient/intake/:caseId` | Save intake draft |
+| 11 | POST | `/api/patient/login` | Email + password login, optional phase-2 |
+| 12 | GET | `/api/patient/cases/:id/journey` | Patient-visible journey payload |
+| 13 | GET | `/api/patient/cases/:id/milestones` | Patient-visible milestones |
+| 14 | GET | `/api/patient/cases/:id/ai-summary` | Patient-facing AI summary aggregate |
 
 ### Existing Endpoints to Extend
 
 | Endpoint | Change |
 |----------|--------|
-| `GET /api/patient/cases/:id` | DTO adds `journey`, `milestones`, `aiSummary` fields |
+| `GET /api/patient/cases/:id` | If the team rejects dedicated aggregate endpoints, this route must move to a new expanded patient DTO instead of silently changing the old shape |
 | `GET /api/patient/conversations` | Add `unreadCount` to response |
+| `POST /api/patient/conversations/:convId/messages` | If attachments are in scope, extend beyond text-only payload |
 
 ### Existing Endpoints Reused As-Is
 
 - `GET /api/patient/cases` — case list
 - `GET /api/patient/conversations/:convId/messages` — message list
-- `POST /api/patient/conversations/:convId/messages` — send message
 - `GET /api/patient/cases/:id/quote` — quotes for case
 - `POST /api/patient/cases/:id/quote/accept` — accept quote
 - `POST /api/patient/cases/:id/quote/reject` — reject quote
-- `POST /api/patient/intake/:caseId` — submit intake
+
+### Existing Routes That Are Present But Not Production-Ready For This Integration
+
+- `GET /api/patient/intake/:caseId/template` — currently stub-backed
+- `POST /api/patient/intake/:caseId` — currently stub-backed
+- `POST /api/patient/conversations/:convId/messages` — currently text-only
 
 ### New Backend Infrastructure
 
 - `intake_document` upload policy in `UploadPolicyRegistry`
 - `QCQuestionType` extended: `file_upload`, `dynamic_list`, `yes_no_conditional`
 - `QCTemplateQuestion` extended: `accept`, `maxFiles`, `maxFileSizeMB`, `listFields`, `conditionalFields`
-- WebSocket notification channel: `ws://.../ws/patient/notifications` (already partially implemented in patient-ws.ts, needs completion)
+- patient intake request/response contract redesign around `templateId + QCResponsePayload`
+- opaque guest restore handle storage + lookup
+- magic-link one-time-use persistence if email login links must be single-use
+- WebSocket notification channel: `ws://.../ws/patient/notifications` exists; unread broadcast behavior and frontend wiring need completion
 
 ## Pagination
 
@@ -438,6 +601,7 @@ All list endpoints use offset pagination consistent with existing CRM v2 pattern
 | WebSocket reconnect fails permanently (>5min) | Stay on REST polling (5s), show "Limited connectivity" banner |
 | Draft save conflict (concurrent edits) | Last-write-wins; frontend shows "Saved" timestamp so user knows |
 | Session cookie expired (24h) | API returns 401 → frontend shows "Session expired" modal → magic link re-login |
+| Same-browser guest returns with expired cookie | Frontend attempts restore handle flow before showing login |
 | Patient has no conversation yet | Messages page shows empty state with info about when conversations are created |
 | Quote already accepted/rejected | Buttons disabled with status badge; actions are final |
 
@@ -448,3 +612,34 @@ All list endpoints use offset pagination consistent with existing CRM v2 pattern
 - Typing indicators and presence
 - Online consultation booking (video calls)
 - Stripe payment flow in patient dashboard (orders are read-only for now)
+
+## Recommended Delivery Phases
+
+### Phase 1 — Auth + Core Dashboard Migration
+
+- ship floating Chat Widget + first-open hybrid widget/message state
+- ship PatientMessagePanel as the main post-selection chat surface
+- replace Supabase auth/session usage with CRM patient cookie session
+- add guest restore flow for same-browser return visits
+- migrate login/logout/me flow
+- migrate quotes, conversations, and basic dashboard home
+- keep messages text-only
+
+### Phase 2 — Tickets + Orders + Journey
+
+- add patient ticket routes
+- add patient order routes
+- add dedicated journey/milestones endpoints and UI
+
+### Phase 3 — Dynamic Intake Rebuild
+
+- replace intake stub with QC-backed template resolution
+- redesign patient intake contract
+- add draft-save route
+- add `intake_document` upload flow
+
+### Phase 4 — Patient AI Summary + Optional Password Login
+
+- add patient-facing AI summary endpoint/aggregate
+- add optional email/password login
+- add magic-link one-time-use hardening

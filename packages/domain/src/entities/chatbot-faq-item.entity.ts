@@ -16,6 +16,7 @@ export interface ChatbotFaqItemProps {
   isActive: boolean;
   hospitalId: string | null;
   attachments: FaqAttachment[];
+  translations?: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +32,7 @@ export class ChatbotFaqItem {
   isActive: boolean;
   hospitalId: string | null;
   attachments: FaqAttachment[];
+  translations: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 
@@ -45,6 +47,7 @@ export class ChatbotFaqItem {
     this.isActive = props.isActive;
     this.hospitalId = props.hospitalId;
     this.attachments = props.attachments;
+    this.translations = props.translations ?? {};
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

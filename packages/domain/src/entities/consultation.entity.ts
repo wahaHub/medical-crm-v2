@@ -26,6 +26,7 @@ export interface ConsultationProps {
   aiSummary: unknown | null;
   aiSummaryCreatedAt: Date | null;
   aiSummaryStatus: AISummaryStatus;
+  translations?: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -62,6 +63,7 @@ export class Consultation {
   aiSummary: unknown | null;
   aiSummaryCreatedAt: Date | null;
   aiSummaryStatus: AISummaryStatus;
+  translations: Record<string, Record<string, unknown>>;
   createdAt: Date;
   updatedAt: Date;
 
@@ -89,6 +91,7 @@ export class Consultation {
     this.aiSummary = props.aiSummary;
     this.aiSummaryCreatedAt = props.aiSummaryCreatedAt;
     this.aiSummaryStatus = props.aiSummaryStatus;
+    this.translations = props.translations ?? {};
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

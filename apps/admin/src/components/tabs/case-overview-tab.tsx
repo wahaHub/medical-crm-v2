@@ -1,27 +1,12 @@
 'use client';
 
-import { useState, useTransition, useRef } from 'react';
-import { Card, CardHeader, CardTitle, StatusBadge, Button, DataTable, EmptyState, type Column } from '@medical-crm/ui';
-import { FileText, Upload, Trash2, Eye, Download } from 'lucide-react';
-import { useCaseDocuments } from '@/queries/use-cases';
-import { updateCaseStatus, updateCaseStage, uploadDocument, deleteDocument } from '@/actions/case-actions';
-import type { CaseSummary } from '@/lib/api-types';
-
-// ── Constants ────────────────────────────────────────────────────────
-
-const ASSIGNMENT_STATUS_OPTIONS = [
-  'UNASSIGNED',
-  'ASSIGNED',
-];
-
-const TREATMENT_STAGE_OPTIONS = [
-  'CONFIRMED',
-  'IN_TREATMENT',
-  'POST_TREATMENT',
-  'COMPLETED',
-  'FOLLOW_UP',
-];
-const FIRST_TREATMENT_STAGE = 'CONFIRMED';
+import { useMemo, useRef, useState, useTransition } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Card, CardHeader, CardTitle, StatusBadge, Button, DataTable, EmptyState, useMediaUpload, type Column } from '@medical-crm/ui';
+import { FileText, Upload, Trash2, Eye, Download, Paperclip, X } from 'lucide-react';
+import { useCaseDocuments, useCaseProgress } from '@/queries/use-cases';
+import { addCaseNote, initCaseDocumentUpload, deleteDocument } from '@/actions/case-actions';
+import type { CaseProgressItem, CaseSummary } from '@/lib/api-types';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -107,63 +92,107 @@ function AssignedHospitalCard({ caseData }: { caseData: CaseSummary }) {
   );
 }
 
-// ── Status Actions Card ──────────────────────────────────────────────
+function isAdminNote(progress: CaseProgressItem): boolean {
+  const kind = progress.metadata && typeof progress.metadata === 'object'
+    ? (progress.metadata['kind'] as string | undefined)
+    : undefined;
+  return progress.progressType === 'MESSAGE' && kind === 'admin_note';
+}
 
-function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
+function getNoteAttachmentNames(progress: CaseProgressItem): string[] {
+  const value = progress.metadata && typeof progress.metadata === 'object'
+    ? progress.metadata['attachmentNames']
+    : null;
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
+}
+
+// ── Notes Card ───────────────────────────────────────────────────────
+
+function AdminNotesCard({ caseData }: { caseData: CaseSummary }) {
+  const queryClient = useQueryClient();
+  const { data: progressRaw, isLoading, refetch } = useCaseProgress(caseData.id);
   const [isPending, startTransition] = useTransition();
-  const [selectedAssignmentStatus, setSelectedAssignmentStatus] = useState(caseData.assignmentStatus);
-  const [selectedStage, setSelectedStage] = useState(caseData.treatmentStage ?? FIRST_TREATMENT_STAGE);
+  const [draftNote, setDraftNote] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    upload,
+    isUploading,
+    error: uploadError,
+    clearError: clearUploadError,
+  } = useMediaUpload({
+    allowedMimeTypes: [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/dicom',
+    ],
+    maxFileSize: 25 * 1024 * 1024,
+  });
 
-  function handleStatusUpdate() {
-    setError(null);
-    setSuccess(null);
-    startTransition(async () => {
-      try {
-        await updateCaseStatus(caseData.id, selectedAssignmentStatus);
-        setSuccess('Status updated successfully');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update status');
-      }
-    });
-  }
+  const notes = useMemo(
+    () => ((progressRaw as CaseProgressItem[] | undefined) ?? []).filter(isAdminNote),
+    [progressRaw],
+  );
+  const displayError = error ?? uploadError;
 
-  function handleStageAdvance() {
-    setError(null);
-    setSuccess(null);
-    const currentIdx = TREATMENT_STAGE_OPTIONS.indexOf(selectedStage);
-    const nextStage = currentIdx >= 0 && currentIdx < TREATMENT_STAGE_OPTIONS.length - 1
-      ? (TREATMENT_STAGE_OPTIONS[currentIdx + 1] ?? null)
-      : null;
-
-    if (!nextStage) {
-      setError('Already at final stage');
+  function handleAddNote() {
+    const note = draftNote.trim();
+    if (!note && selectedFiles.length === 0) {
+      setError('Add note text or attach at least one file');
+      setSuccess(null);
       return;
     }
 
+    setError(null);
+    setSuccess(null);
+    clearUploadError();
+
     startTransition(async () => {
       try {
-        await updateCaseStage(caseData.id, nextStage);
-        setSelectedStage(nextStage);
-        setSuccess(`Stage advanced to ${nextStage.replace(/_/g, ' ')}`);
+        let attachmentNames: string[] = [];
+        if (selectedFiles.length > 0) {
+          const assets = await upload(selectedFiles, (params) => initCaseDocumentUpload(caseData.id, params));
+          if (assets.length !== selectedFiles.length) {
+            return;
+          }
+          attachmentNames = assets.map((asset) => asset.fileName);
+        }
+
+        await addCaseNote(caseData.id, {
+          note: note || undefined,
+          attachmentNames,
+        });
+        setDraftNote('');
+        setSelectedFiles([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setSuccess(attachmentNames.length > 0 ? 'Note and attachment saved' : 'Note added');
+        await refetch();
+        await queryClient.invalidateQueries({ queryKey: ['cases', caseData.id, 'progress'] });
+        await queryClient.invalidateQueries({ queryKey: ['cases', caseData.id, 'documents'] });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to advance stage');
+        setError(err instanceof Error ? err.message : 'Failed to add note');
       }
     });
   }
-
-  const currentStageIdx = TREATMENT_STAGE_OPTIONS.indexOf(selectedStage);
-  const isLastStage = currentStageIdx >= TREATMENT_STAGE_OPTIONS.length - 1;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Status Actions</CardTitle>
+        <div>
+          <CardTitle>Admin Notes</CardTitle>
+          <p className="mt-1 text-sm text-slate-500">
+            Append-only internal notes for this case. New entries are added to the timeline and do not overwrite older notes.
+          </p>
+        </div>
       </CardHeader>
-      {error && (
+      {displayError && (
         <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
+          {displayError}
         </div>
       )}
       {success && (
@@ -172,45 +201,96 @@ function StatusActionsCard({ caseData }: { caseData: CaseSummary }) {
         </div>
       )}
       <div className="space-y-4">
-        {/* Stage advance */}
-        <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <div>
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">Treatment Stage</p>
-            <p className="text-sm font-semibold text-slate-800">
-              {selectedStage ? selectedStage.replace(/_/g, ' ') : '—'}
-            </p>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <textarea
+            value={draftNote}
+            onChange={(e) => setDraftNote(e.target.value)}
+            placeholder="Add a new case note. This will append to the existing note history."
+            className="min-h-28 w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            disabled={isPending || isUploading}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              clearUploadError();
+              setSelectedFiles(Array.from(e.target.files ?? []));
+            }}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isPending || isUploading}>
+              <Paperclip size={14} className="mr-1.5" />
+              Attach File
+            </Button>
+            {selectedFiles.length > 0 && (
+              <span className="text-xs text-slate-500">
+                {selectedFiles.length} file{selectedFiles.length === 1 ? '' : 's'} selected
+              </span>
+            )}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleStageAdvance}
-            disabled={isPending || isLastStage}
-          >
-            {isLastStage ? 'Final Stage' : 'Advance Stage →'}
-          </Button>
+          {selectedFiles.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {selectedFiles.map((file) => (
+                <span key={`${file.name}-${file.size}-${file.lastModified}`} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600">
+                  {file.name}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFiles((current) => current.filter((item) => item !== file))}
+                    className="text-slate-400 transition-colors hover:text-rose-500"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              Best for admin observations, follow-up reminders, internal coordination notes, and note attachments.
+            </p>
+            <Button variant="default" size="sm" onClick={handleAddNote} disabled={isPending || isUploading || (!draftNote.trim() && selectedFiles.length === 0)}>
+              {isUploading ? 'Uploading files…' : isPending ? 'Saving…' : selectedFiles.length > 0 ? 'Save Note & Files' : 'Append Note'}
+            </Button>
+          </div>
         </div>
 
-        {/* Status dropdown */}
-        <div className="flex items-center gap-3">
-          <select
-            value={selectedAssignmentStatus}
-            onChange={(e) => setSelectedAssignmentStatus(e.target.value)}
-            disabled={isPending}
-            className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-          >
-            {ASSIGNMENT_STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          </div>
+        ) : notes.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-400">
+            No notes yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {notes.map((note) => (
+              <div key={note.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">{note.title || 'Admin note'}</p>
+                  <span className="text-xs text-slate-400">
+                    {new Date(note.recordedAt).toLocaleString()}
+                  </span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                  {note.description ?? '—'}
+                </p>
+                {getNoteAttachmentNames(note).length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {getNoteAttachmentNames(note).map((fileName) => (
+                      <span key={`${note.id}-${fileName}`} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                        <Paperclip size={11} />
+                        {fileName}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
-          </select>
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleStatusUpdate}
-            disabled={isPending || selectedAssignmentStatus === caseData.assignmentStatus}
-          >
-            {isPending ? 'Saving…' : 'Update Status'}
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -224,18 +304,37 @@ function DocumentsCard({ caseId }: { caseId: string }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    upload,
+    isUploading,
+    error: uploadError,
+    clearError: clearUploadError,
+  } = useMediaUpload({
+    allowedMimeTypes: [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/dicom',
+    ],
+    maxFileSize: 25 * 1024 * 1024,
+  });
+  const displayError = error ?? uploadError;
 
   function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setError(null);
-    const formData = new FormData();
-    formData.append('file', file);
+    clearUploadError();
 
     startTransition(async () => {
       try {
-        await uploadDocument(caseId, formData);
+        const assets = await upload([file], (params) => initCaseDocumentUpload(caseId, params));
+        if (assets.length !== 1) {
+          return;
+        }
         await refetch();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to upload document');
@@ -344,17 +443,17 @@ function DocumentsCard({ caseId }: { caseId: string }) {
             variant="outline"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isPending}
+            disabled={isPending || isUploading}
           >
             <Upload size={14} className="mr-1.5" />
-            {isPending ? 'Uploading…' : 'Upload'}
+            {isUploading ? 'Uploading…' : isPending ? 'Saving…' : 'Upload'}
           </Button>
         </div>
       </CardHeader>
 
-      {error && (
+      {displayError && (
         <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {error}
+          {displayError}
         </div>
       )}
 
@@ -391,7 +490,7 @@ export function CaseOverviewTab({ caseData }: CaseOverviewTabProps) {
     <div className="space-y-6">
       <PatientInfoCard caseData={caseData} />
       <AssignedHospitalCard caseData={caseData} />
-      <StatusActionsCard caseData={caseData} />
+      <AdminNotesCard caseData={caseData} />
       <DocumentsCard caseId={caseData.id} />
     </div>
   );

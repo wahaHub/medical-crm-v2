@@ -17,6 +17,7 @@ export interface ChatbotFaqItemDTO {
   isActive: boolean;
   hospitalId: string | null;
   attachments: FaqAttachmentDTO[];
+  translations: Record<string, Record<string, unknown>>;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,6 +30,7 @@ export interface ChatbotFaqCategoryDTO {
   sortOrder: number;
   isActive: boolean;
   questionCount: number;
+  translations: Record<string, Record<string, unknown>>;
   createdAt: string;
   updatedAt: string;
 }

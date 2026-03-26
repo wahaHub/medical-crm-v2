@@ -187,6 +187,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       sortOrder: row.sortOrder,
       isActive: row.isActive,
       questionCount: countMap.get(`${row.name}::${row.hospitalType}`) ?? 0,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     }));
@@ -218,6 +219,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       sortOrder: row.sortOrder,
       isActive: row.isActive,
       questionCount,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     };
@@ -260,6 +262,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       sortOrder: row.sortOrder,
       isActive: row.isActive,
       questionCount: 0,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     };
@@ -319,6 +322,7 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
       attachments: Array.isArray(row.attachments)
         ? (row.attachments as Array<{ storageKey: string; fileName: string; mimeType: string; fileSize: number }>)
         : [],
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });

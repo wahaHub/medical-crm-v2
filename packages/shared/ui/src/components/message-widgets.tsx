@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { cn } from '../lib/cn';
 
 export interface MessageConversationSidebarItem {
@@ -279,6 +279,7 @@ export function MessageNewConversationModal({
 
 export interface MessageCaseDetailPanelProps {
   caseId?: string | null;
+  caseNumber?: string | null;
   category?: string | null;
   participantRole?: string | null;
   participantName?: string | null;
@@ -286,10 +287,14 @@ export interface MessageCaseDetailPanelProps {
   patientCode?: string | null;
   patientAge?: number | null;
   patientGender?: string | null;
+  patientLanguage?: string | null;
   caseStatus?: string | null;
   diagnosis?: string | null;
   documentCount?: number | null;
   messageCount?: number | null;
+  conversationTitle?: string | null;
+  caseLinkHref?: string | null;
+  caseLinkLabel?: string;
 }
 
 function getInitials(value: string): string {
@@ -303,6 +308,7 @@ function getInitials(value: string): string {
 
 export function MessageCaseDetailPanel({
   caseId,
+  caseNumber,
   category,
   participantRole,
   participantName,
@@ -310,125 +316,148 @@ export function MessageCaseDetailPanel({
   patientCode,
   patientAge,
   patientGender,
+  patientLanguage,
   caseStatus,
   diagnosis,
   documentCount,
   messageCount,
+  conversationTitle,
+  caseLinkHref,
+  caseLinkLabel = 'View Full Case Details',
 }: MessageCaseDetailPanelProps) {
   const hasPatientAge = patientAge !== null && patientAge !== undefined;
   const hasDocumentCount = documentCount !== null && documentCount !== undefined;
   const hasMessageCount = messageCount !== null && messageCount !== undefined;
   const displayName = participantName?.trim() || 'Unknown Participant';
-  const showHospitalStyle =
-    !!participantName ||
-    !!patientCode ||
-    hasPatientAge ||
-    !!patientGender ||
-    !!caseStatus ||
-    !!diagnosis ||
-    hasDocumentCount ||
-    hasMessageCount;
-
-  if (showHospitalStyle) {
-    return (
-      <div className="w-64 bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-5 space-y-4 shrink-0">
-        <div className="text-center pb-4 border-b border-slate-100">
-          <div className="flex h-14 w-14 mx-auto mb-2 shrink-0 items-center justify-center rounded-full text-lg font-bold ring-4 ring-indigo-50 bg-indigo-100 text-indigo-600">
-            {getInitials(displayName)}
-          </div>
-          <h3 className="font-bold text-slate-800">{displayName}</h3>
-          {patientCode && <p className="text-xs text-slate-500">Code: {patientCode}</p>}
-          {(patientGender || hasPatientAge) && (
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-md">
-                {(patientGender ?? '-')} / {patientAge ?? '-'}y
-              </span>
-            </div>
+  return (
+    <div className="overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-sm">
+      <div className="border-b border-slate-100 px-6 py-6 text-center">
+        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-tr from-cyan-400 to-blue-500 text-xl font-bold text-white shadow-lg shadow-cyan-200/50">
+          {getInitials(displayName)}
+        </div>
+        <h3 className="text-lg font-semibold text-slate-900">{displayName}</h3>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          {caseNumber && (
+            <span className="rounded bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500 border border-slate-200">
+              {caseNumber}
+            </span>
+          )}
+          {category && (
+            <span className="rounded border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
+              {category === 'ADMIN_HOSPITAL' ? 'Admin' : category === 'ADMIN_PATIENT' ? 'Patient' : category.replace(/_/g, ' / ')}
+            </span>
           )}
         </div>
+      </div>
 
-        {caseStatus && (
-          <div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Case Status</h4>
-            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-              {caseStatus.replace(/_/g, ' ')}
-            </span>
-          </div>
+      <div className="space-y-5 px-6 py-5">
+        {conversationTitle && (
+          <DetailBlock label="Conversation">
+            <p className="text-sm text-slate-700">{conversationTitle}</p>
+          </DetailBlock>
+        )}
+
+        {patientCode && (
+          <DetailBlock label="Patient Code">
+            <ValueCard value={patientCode} />
+          </DetailBlock>
         )}
 
         {diagnosis && (
-          <div>
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Diagnosis</h4>
-            <p className="text-sm text-slate-700">{diagnosis}</p>
-          </div>
+          <DetailBlock label="Primary Diagnosis">
+            <ValueCard value={diagnosis} />
+          </DetailBlock>
         )}
 
-        <div>
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Stats</h4>
-          {hasDocumentCount && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Documents</span>
-              <span className="font-semibold text-indigo-600">{documentCount}</span>
-            </div>
-          )}
-          {hasMessageCount && (
-            <div className="flex items-center justify-between text-sm mt-1">
-              <span className="text-slate-500">Messages</span>
-              <span className="font-semibold text-indigo-600">{messageCount}</span>
-            </div>
-          )}
-          {!hasDocumentCount && !hasMessageCount && (
-            <p className="text-xs text-slate-400">No metrics available.</p>
-          )}
-        </div>
+        {patientLanguage && (
+          <DetailBlock label="Language">
+            <p className="text-sm font-medium text-slate-700">{formatLanguageLabel(patientLanguage)}</p>
+          </DetailBlock>
+        )}
 
-        {(caseId || category || participantRole || hospitalId) && (
-          <div className="pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-500">
-            {caseId && <p className="font-mono">Case: {caseId}</p>}
-            {category && <p>Category: {category.replace(/_/g, ' / ')}</p>}
+        {(patientGender || hasPatientAge) && (
+          <DetailBlock label="Profile">
+            <p className="text-sm font-medium text-slate-700">
+              {[patientGender, hasPatientAge ? `${patientAge}y` : null].filter(Boolean).join(' / ')}
+            </p>
+          </DetailBlock>
+        )}
+
+        {caseStatus && (
+          <DetailBlock label="Case Status">
+            <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              {caseStatus.replace(/_/g, ' ')}
+            </span>
+          </DetailBlock>
+        )}
+
+        {(hasDocumentCount || hasMessageCount) && (
+          <DetailBlock label="Stats">
+            <div className="space-y-1.5">
+              {hasDocumentCount && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Documents</span>
+                  <span className="font-semibold text-blue-600">{documentCount}</span>
+                </div>
+              )}
+              {hasMessageCount && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Messages</span>
+                  <span className="font-semibold text-blue-600">{messageCount}</span>
+                </div>
+              )}
+            </div>
+          </DetailBlock>
+        )}
+
+        {(caseId || participantRole || hospitalId) && (
+          <div className="space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
             {participantRole && <p>Role: {participantRole}</p>}
+            {caseId && <p className="font-mono">Case: {caseId}</p>}
             {hospitalId && <p className="font-mono">Hospital: {hospitalId}</p>}
           </div>
         )}
-      </div>
-    );
-  }
 
-  return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-slate-700">Case Details</h3>
-      <div className="space-y-3 text-xs text-slate-600">
-        {caseId && (
-          <div>
-            <span className="mb-1 block text-slate-400">Linked Case</span>
-            <span className="font-mono text-indigo-600">{caseId}</span>
-          </div>
-        )}
-        {category && (
-          <div>
-            <span className="mb-1 block text-slate-400">Category</span>
-            <span>{category.replace(/_/g, ' / ')}</span>
-          </div>
-        )}
-        {participantRole && (
-          <div>
-            <span className="mb-1 block text-slate-400">Participant Role</span>
-            <span>{participantRole}</span>
-          </div>
-        )}
-        {participantName && (
-          <div>
-            <span className="mb-1 block text-slate-400">Participant</span>
-            <span>{participantName}</span>
-          </div>
-        )}
-        {hospitalId && (
-          <div>
-            <span className="mb-1 block text-slate-400">Hospital ID</span>
-            <span className="font-mono">{hospitalId}</span>
-          </div>
+        {caseLinkHref && (
+          <a
+            href={caseLinkHref}
+            className="flex items-center justify-center rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50"
+          >
+            {caseLinkLabel}
+          </a>
         )}
       </div>
     </div>
   );
+}
+
+function DetailBlock({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ValueCard({ value }: { value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+      <p className="text-sm font-medium text-slate-700">{value}</p>
+    </div>
+  );
+}
+
+function formatLanguageLabel(language: string): string {
+  const value = language.trim().toLowerCase();
+  if (value === 'zh') return 'Chinese';
+  if (value === 'en') return 'English';
+  if (value === 'es') return 'Spanish';
+  if (value === 'ja') return 'Japanese';
+  if (value === 'ko') return 'Korean';
+  if (value === 'fr') return 'French';
+  if (value === 'de') return 'German';
+  return language;
 }

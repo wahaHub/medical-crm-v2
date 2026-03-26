@@ -13,6 +13,7 @@ export type AddProgressInput =
   | { type: 'PHONE_CALL'; caseId: string; callResult?: string;
       summary?: string; duration?: number; nextFollowUp?: string; }
   | { type: 'STATUS_CHANGE'; caseId: string; reason?: string; }
+  | { type: 'NOTE'; caseId: string; note?: string; attachmentNames?: string[]; documentIds?: string[]; }
   | { type: 'DOCUMENT_UPLOAD'; caseId: string; documentId: string; };
 
 export class AddCaseProgressUseCase {
@@ -75,6 +76,17 @@ export class AddCaseProgressUseCase {
           title: 'Status changed',
           description: null,
           metadata: { kind: 'status_change', reason: input.reason },
+        };
+      case 'NOTE':
+        return {
+          progressType: 'MESSAGE' as const,
+          title: (input.attachmentNames?.length ?? 0) > 0 ? 'Admin note with attachment' : 'Admin note',
+          description: input.note?.trim() || null,
+          metadata: {
+            kind: 'admin_note',
+            attachmentNames: input.attachmentNames ?? [],
+            documentIds: input.documentIds ?? [],
+          },
         };
       case 'DOCUMENT_UPLOAD':
         return {

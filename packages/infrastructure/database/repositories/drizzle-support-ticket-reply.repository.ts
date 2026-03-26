@@ -46,6 +46,7 @@ export class DrizzleSupportTicketReplyRepository implements ISupportTicketReplyR
       content: row.content,
       isInternalNote: row.isInternalNote,
       attachments: row.attachments ?? null,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
     });
   }

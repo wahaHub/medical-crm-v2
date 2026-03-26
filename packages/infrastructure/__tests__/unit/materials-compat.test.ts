@@ -46,6 +46,7 @@ describe('materials compatibility helpers', () => {
       expertise: 'Expertise',
       philosophy: 'Philosophy',
       achievements: ['Achievement'],
+      translations: {},
     });
   });
 

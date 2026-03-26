@@ -60,6 +60,36 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     };
   }
 
+  private buildHospitalTranslations(
+    rows: Array<Record<string, unknown>> | null | undefined,
+  ): Record<string, Record<string, unknown>> {
+    const translations: Record<string, Record<string, unknown>> = {};
+
+    for (const row of rows ?? []) {
+      const locale = row.locale;
+      if (typeof locale !== 'string' || locale.length === 0) continue;
+
+      const fields: Record<string, unknown> = {};
+      if (row.name !== undefined && row.name !== null) fields.name = row.name;
+      if (row.display_name !== undefined && row.display_name !== null) fields.display_name = row.display_name;
+      if (row.value_proposition !== undefined && row.value_proposition !== null) fields.tagline = row.value_proposition;
+      if (row.short_description !== undefined && row.short_description !== null) fields.description = row.short_description;
+      if (row.overview !== undefined && row.overview !== null) fields.overview = row.overview;
+      if (row.full_description !== undefined && row.full_description !== null) fields.full_description = row.full_description;
+      if (row.hospital_type !== undefined && row.hospital_type !== null) fields.hospital_type = row.hospital_type;
+      if (row.tier !== undefined && row.tier !== null) fields.tier = row.tier;
+      if (row.ownership_type !== undefined && row.ownership_type !== null) fields.ownership_type = row.ownership_type;
+      if (row.core_specialties !== undefined && row.core_specialties !== null) fields.core_specialties = row.core_specialties;
+      if (row.departments_info !== undefined && row.departments_info !== null) fields.departments_info = row.departments_info;
+
+      if (Object.keys(fields).length > 0) {
+        translations[locale] = fields;
+      }
+    }
+
+    return translations;
+  }
+
   async getHospitalInfo(hospitalId: string): Promise<MaterialsHospitalInfo | null> {
     const { data: hospital, error } = await this.supabase
       .from('hospitals')
@@ -231,6 +261,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         thumbnailUrl: testimonialThumbnailUrls[index]?.url || item.thumbnailUrl,
         thumbnailStorageKey: testimonialThumbnailUrls[index]?.storageKey ?? null,
       })),
+      translations: this.buildHospitalTranslations(i18nRows as Array<Record<string, unknown>> | null | undefined),
     };
   }
 
@@ -433,7 +464,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
   async listSurgeons(hospitalId: string): Promise<MaterialsSurgeon[]> {
     const { data, error } = await this.supabase
       .from('surgeons')
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images, translations')
       .eq('hospital_id', hospitalId);
 
     if (error) throw error;
@@ -451,7 +482,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         procedures_count: {},
         translations: {},
       })
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images, translations')
       .single();
 
     if (error) throw error;
@@ -484,7 +515,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       .update(updateData)
       .eq('id', id)
       .eq('hospital_id', hospitalId)
-      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images')
+      .select('id, hospital_id, name, title, image_url, experience_years, specialties, languages, education, certifications, bio, images, translations')
       .single();
 
     if (error) {
@@ -513,7 +544,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
   async listBeforeAfterCases(hospitalId: string): Promise<MaterialsBeforeAfterCase[]> {
     const { data, error } = await this.supabase
       .from('procedure_cases')
-      .select('id, hospital_id, procedure_name, case_number, provider_name, description')
+      .select('id, hospital_id, procedure_name, case_number, provider_name, description, translations')
       .eq('hospital_id', hospitalId)
       .order('sort_order', { ascending: true });
 
@@ -559,6 +590,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         procedureName,
         surgeonName: row.provider_name as string | null,
         description: row.description as string | null,
+        translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
         images: mapCaseAssetsToImages({
           caseRow: row,
           caseImages: caseImagesById.get(row.id as string) ?? [],
@@ -584,8 +616,9 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         case_number: caseNumber,
         image_count: data.images.length,
         sort_order: 0,
+        translations: {},
       })
-      .select('id, hospital_id, procedure_name, provider_name, description')
+      .select('id, hospital_id, procedure_name, provider_name, description, translations')
       .single();
 
     if (error) throw error;
@@ -613,6 +646,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       surgeonName: row!.provider_name,
       description: row!.description,
       images: data.images,
+      translations: (row!.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }
 
@@ -628,7 +662,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       .update(updateData)
       .eq('id', id)
       .eq('hospital_id', hospitalId)
-      .select('id, hospital_id, procedure_name, provider_name, description')
+      .select('id, hospital_id, procedure_name, provider_name, description, translations')
       .single();
 
     if (error) {
@@ -692,6 +726,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       surgeonName: row.provider_name,
       description: row.description,
       images,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }
 

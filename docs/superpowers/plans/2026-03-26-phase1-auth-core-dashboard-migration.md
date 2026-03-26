@@ -1,10 +1,37 @@
-# Phase 1: Auth + Core Dashboard Migration — Implementation Plan
+# Phase 1: Chat Entry + Auth + Core Dashboard Migration — Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Supabase Auth with CRM v2 patient cookie session in china-medical-journeys, migrate dashboard to new 7-tab layout, and wire up Quotes + Messages (text-only) pages.
+**Goal:** Introduce CRM v2 patient cookie session for the patient frontend in china-medical-journeys, ship the shared floating Chat Widget + case-first onboarding + PatientMessagePanel flow, and migrate dashboard routes to the new 7-tab shell without breaking the existing hospital portal or unrelated Supabase-backed flows.
 
-**Architecture:** Frontend-first migration. CRM v2 backend already has all needed patient endpoints for Phase 1. Frontend replaces Supabase auth with cookie-based session (`patient_session` httpOnly cookie), adds Vite BFF proxy, and rebuilds dashboard with new tab structure. Messages stay text-only in Phase 1.
+**Architecture:** Frontend-first migration. CRM v2 backend is sufficient for a limited Phase 1, but Phase 1 must stay additive:
+- floating marketing-site Chat Widget is in scope, not deferred
+- first-open widget state is hybrid: structured onboarding form + assistant-style opening message
+- case is created early and patient messaging history must persist even before explicit login/password setup
+- PatientMessagePanel is the primary post-selection messaging surface
+- patient dashboard routes move to CRM v2 cookie auth
+- hospital portal login and Medplum flow remain untouched
+- existing Supabase-backed non-dashboard flows remain in place until later phases
+- Messages stay text-only in Phase 1
+
+## Phase 1 Guardrails
+
+- Do **not** repurpose `/login` for patients. It is already used by the hospital/Medplum login flow.
+- Do **not** delete `supabaseClient`, `AuthContext`, or Supabase packages in Phase 1. Other pages and services still depend on them.
+- Do **not** assume magic-link verification happens on the login page. Current CRM v2 email links target `/dashboard?token=...`.
+- Do **not** force returning same-browser patients through login if a valid guest restore handle can resume their CRM session/history.
+- Do **not** count Journey / AI Summary / Orders as delivered in Phase 1. Their tabs may exist as placeholders, but the working Phase 1 scope is Home + Quotes + Messages.
+
+## Phase 1 Product Deliverables
+
+- Global floating Chat Widget on the marketing site
+- First-open chat state with:
+  - one onboarding widget/form for the agreed 5 base fields
+  - one assistant opening message such as `What can I help you with?`
+- Case-first onboarding submit that creates/reuses patient + case + session
+- Same-browser guest return restore flow so message history is recoverable even before formal login/password setup
+- Large `PatientMessagePanel` for post-selection multi-hospital chat
+- Dashboard shell + Home + Quotes + Messages (text-only)
 
 **Tech Stack:** React 18, Vite 5, Tailwind CSS, React Query 5, React Router 6, CRM v2 Hono API (cookie auth)
 
@@ -29,7 +56,12 @@
 | `$FE/src/hooks/useQuotes.ts` | React Query hook for quotes |
 | `$FE/src/hooks/useMessages.ts` | React Query hook for conversations + messages |
 | `$FE/src/hooks/useWebSocket.ts` | WebSocket connection manager hook |
-| `$FE/src/pages/PatientLoginPage.tsx` | Magic link login form |
+| `$FE/src/hooks/useGuestSessionRestore.ts` | Same-browser guest restore bootstrap |
+| `$FE/src/pages/PatientLoginPage.tsx` | Patient magic link request/login page |
+| `$FE/src/components/chat/ChatWidget.tsx` | Global floating patient entry widget |
+| `$FE/src/components/chat/PatientEntryWindow.tsx` | First-open widget container with onboarding form + opening message |
+| `$FE/src/components/chat/PatientEntryForm.tsx` | Structured onboarding widget (5 base fields) |
+| `$FE/src/components/messaging/PatientMessagePanel.tsx` | Large post-selection multi-hospital message surface |
 | `$FE/src/components/dashboard/MessagesPage.tsx` | Conversation list + chat view (text-only) |
 | `$FE/src/components/dashboard/QuotesPage.tsx` | Quotes grouped by case |
 | `$FE/src/components/dashboard/ConversationList.tsx` | Left panel: conversation list with preview |
@@ -43,27 +75,28 @@
 | File | Change |
 |------|--------|
 | `$FE/src/types/patient.ts` | Shared patient types (PatientUser, PatientCase, etc.) |
-| `$FE/src/components/auth/ProtectedRoute.tsx` | Auth guard — redirects to `/login` if not authenticated |
+| `$FE/src/components/auth/ProtectedRoute.tsx` | Update existing guard or add patient-specific guard without breaking Medplum usage |
+| `$FE/src/components/ChatWidget.tsx` | Replace legacy chatbot behavior with patient entry behavior if legacy widget exists |
 
 ### Modified Files (Frontend)
 
 | File | Change |
 |------|--------|
 | `$FE/vite.config.ts` | Add proxy: `/api/patient` + `/ws` → CRM v2 API server |
-| `$FE/src/App.tsx` | Replace `AuthProvider` with `PatientAuthProvider`, update dashboard routes |
+| `$FE/src/App.tsx` | Add patient dashboard auth wiring, render floating Chat Widget globally, mount PatientMessagePanel outside dashboard shell |
 | `$FE/src/pages/Dashboard.tsx` | New 7-tab sidebar (Home, Tickets, Messages, Quotes, Journey, AI Summary, Orders) |
 | `$FE/src/components/dashboard/DashboardHome.tsx` | Replace `useAuth()` with `usePatientAuth()`, replace API calls |
-| `$FE/package.json` | Remove `@supabase/supabase-js`, `@supabase/auth-ui-react`, `@supabase/auth-ui-shared` |
+| `$FE/package.json` | Keep Supabase deps in Phase 1; cleanup belongs to a later migration phase |
 
-### Deleted Files (Frontend)
+### Deferred Cleanup (Not in Phase 1)
 
 | File | Reason |
 |------|--------|
-| `$FE/src/config/supabaseClient.ts` | Replaced by cookie session |
-| `$FE/src/contexts/AuthContext.tsx` | Replaced by `PatientAuthContext.tsx` |
-| `$FE/src/pages/AuthPage.tsx` | Replaced by `PatientLoginPage.tsx` |
-| `$FE/src/pages/AuthCallback.tsx` | No longer needed (cookie auth, no OAuth redirect) |
-| `$FE/src/services/api/user.ts` | Replaced by `/api/patient/me` via `crmApiClient` |
+| `$FE/src/config/supabaseClient.ts` | Still required by non-dashboard flows in Phase 1 |
+| `$FE/src/contexts/AuthContext.tsx` | Still required by non-dashboard/public flows in Phase 1 |
+| `$FE/src/pages/AuthPage.tsx` | Can only be removed after all remaining callers are migrated |
+| `$FE/src/pages/AuthCallback.tsx` | Can only be removed after all remaining callers are migrated |
+| `$FE/src/services/api/user.ts` | Can be removed only if no remaining imports after dashboard migration |
 
 ### Untouched Files (Keep for Hospital Portal)
 
@@ -72,6 +105,56 @@
 | `$FE/src/hooks/useAuth.ts` | Medplum auth for hospital portal — **do NOT modify** |
 | `$FE/src/pages/Login.tsx` | Medplum login for hospital portal — **do NOT modify** |
 | `$FE/src/lib/medplum.ts` | Hospital portal infrastructure — **do NOT modify** |
+| `$FE/src/config/supabaseClient.ts` | Still required by legacy flows — **do NOT delete yet** |
+| `$FE/src/contexts/AuthContext.tsx` | Still required by legacy flows — **do NOT delete yet** |
+
+---
+
+## Chunk 0: Patient Entry Shell + Guest Restore
+
+### Task 0: Add Floating Widget, Guest Restore, and PatientMessagePanel
+
+**Files:**
+- Create: `$FE/src/hooks/useGuestSessionRestore.ts`
+- Create: `$FE/src/components/chat/ChatWidget.tsx`
+- Create: `$FE/src/components/chat/PatientEntryWindow.tsx`
+- Create: `$FE/src/components/chat/PatientEntryForm.tsx`
+- Create: `$FE/src/components/messaging/PatientMessagePanel.tsx`
+- Modify: `$FE/src/App.tsx`
+
+- [ ] **Step 1: Add guest restore bootstrap**
+
+On app start or when the widget opens, attempt restore in this order:
+
+1. existing CRM patient cookie session via `/api/patient/me`
+2. same-browser opaque restore handle via a dedicated restore call
+3. only then fall back to patient login / magic link
+
+The restore handle is not an auth token and must not be treated as a bearer credential. It only lets CRM v2 re-issue a proper cookie session for the same browser.
+
+- [ ] **Step 2: Implement first-open hybrid widget state**
+
+The initial expanded widget state must render both:
+
+- a compact structured onboarding form for the agreed 5 base fields
+- an assistant-style opening message such as `What can I help you with?`
+
+If the visitor provides free text, persist it as patient request context and carry it into case / conversation bootstrap.
+
+- [ ] **Step 3: Open large PatientMessagePanel after hospital selection**
+
+Do not keep long-form conversation inside the tiny floating bubble. After selection succeeds:
+
+- close or minimize the small widget
+- open the large `PatientMessagePanel`
+- hydrate the existing patient conversations from CRM v2
+
+- [ ] **Step 4: Render the patient entry shell globally**
+
+`App.tsx` should mount:
+
+- the floating `ChatWidget` on marketing/public pages
+- the `PatientMessagePanel` outside the dashboard route tree so it can be opened from both marketing pages and dashboard pages
 
 ---
 
@@ -253,7 +336,7 @@ export interface PaginatedResponse<T> {
 
 - [ ] **Step 1: Create PatientAuthContext**
 
-This context manages patient auth state using the CRM v2 cookie session. On mount, it calls `GET /api/patient/me` to check if the session cookie is valid. Provides `login`, `logout`, and `requestMagicLink` functions.
+This context manages patient auth state using the CRM v2 cookie session. On mount, it calls `GET /api/patient/me` to check if the session cookie is valid. Keep it separate from the existing Supabase `AuthContext` during Phase 1.
 
 ```typescript
 // src/contexts/PatientAuthContext.tsx
@@ -358,17 +441,22 @@ git commit -m "feat: add PatientAuthContext with cookie session + usePatientMe h
 **Files:**
 - Create: `$FE/src/pages/PatientLoginPage.tsx`
 
-- [ ] **Step 1: Create magic link login page**
+- [ ] **Step 1: Create patient magic link request page**
 
-Two-state form: (1) enter email → request magic link, (2) show "check your email" confirmation. Also handles magic link token verification when arriving from email link.
+Two-state form: (1) enter email → request magic link, (2) show "check your email" confirmation.
+
+Important routing note:
+
+- current CRM v2 magic-link email targets `/dashboard?token=...`, not the login page
+- therefore token verification must happen on a dashboard entry route that runs before redirecting unauthenticated users away
+- this page handles requesting a link; it must not be the only token-consumption point
 
 ```typescript
 // src/pages/PatientLoginPage.tsx
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { usePatientAuthContext } from '@/contexts/PatientAuthContext';
 import { crmApi } from '@/services/api/crmApiClient';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -379,34 +467,13 @@ export default function PatientLoginPage() {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [verifying, setVerifying] = useState(false);
-
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const queryClient = useQueryClient();
   const { isAuthenticated } = usePatientAuthContext();
 
   // If already logged in, redirect to dashboard
   useEffect(() => {
     if (isAuthenticated) navigate('/dashboard', { replace: true });
   }, [isAuthenticated, navigate]);
-
-  // Handle magic link token from email
-  useEffect(() => {
-    const token = searchParams.get('token');
-    if (!token) return;
-
-    setVerifying(true);
-    crmApi.post('/verify-token', { token })
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['patient', 'me'] });
-        navigate('/dashboard', { replace: true });
-      })
-      .catch(() => {
-        setError('This link has expired or is invalid. Please request a new one.');
-        setVerifying(false);
-      });
-  }, [searchParams, navigate, queryClient]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -421,19 +488,6 @@ export default function PatientLoginPage() {
       setLoading(false);
     }
   };
-
-  if (verifying) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Verifying your login link...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   if (sent) {
     return (
@@ -494,6 +548,18 @@ export default function PatientLoginPage() {
 }
 ```
 
+- [ ] **Step 1.5: Add dashboard token bootstrap**
+
+Because CRM v2 currently emails links to `/dashboard?token=...`, add a lightweight token bootstrap component or route-level effect that:
+
+- reads `token` from `/dashboard?token=...`
+- calls `POST /api/patient/verify-token`
+- invalidates `['patient', 'me']`
+- strips the token from the URL
+- only then renders or redirects into the protected dashboard
+
+This bootstrap must run before the patient auth guard redirects to the patient login page.
+
 - [ ] **Step 2: Commit**
 ```bash
 git add src/pages/PatientLoginPage.tsx
@@ -502,69 +568,68 @@ git commit -m "feat: add PatientLoginPage with magic link flow"
 
 ---
 
-### Task 5: Wire Auth into App.tsx + Remove Supabase
+### Task 5: Wire Patient Auth into App.tsx Without Breaking Existing Auth
 
 **Files:**
 - Modify: `$FE/src/App.tsx`
-- Delete: `$FE/src/config/supabaseClient.ts`
-- Delete: `$FE/src/contexts/AuthContext.tsx`
-- Delete: `$FE/src/pages/AuthPage.tsx`
-- Delete: `$FE/src/pages/AuthCallback.tsx`
-- Delete: `$FE/src/services/api/user.ts`
 - Modify: `$FE/package.json`
 
 - [ ] **Step 1: Update App.tsx**
 
-Replace `AuthProvider` (Supabase) with `PatientAuthProvider`. Update routes:
-- Remove `/auth` and `/auth/callback` routes
-- Add `/login` route pointing to `PatientLoginPage`
-- Keep all existing public routes unchanged
-- Keep hospital routes unchanged (Medplum auth is separate)
+Do not replace the existing global auth wiring wholesale in Phase 1. Instead, layer patient auth into the patient dashboard route group while leaving existing hospital/public auth wiring in place.
+
+Update routes:
+- keep `/login` pointing to the existing Medplum login page
+- add a patient-specific login route such as `/patient-login`
+- keep existing public routes unchanged
+- keep hospital routes unchanged
+- add a dashboard token bootstrap entry that can consume `?token=` before auth redirect
 
 Key changes in `App.tsx`:
 ```typescript
-// Remove:
-import { AuthProvider } from '@/contexts/AuthContext';
 // Add:
 import { PatientAuthProvider } from '@/contexts/PatientAuthContext';
 
-// In the provider tree, replace <AuthProvider> with <PatientAuthProvider>
+// Do not remove the existing auth provider tree globally in Phase 1.
+// Mount <PatientAuthProvider> around the patient dashboard route group
+// or at app level only if it does not replace legacy auth context behavior.
 
-// Routes — remove:
-<Route path="/auth" element={<AuthPage />} />
-<Route path="/auth/callback" element={<AuthCallback />} />
-// Routes — add:
-<Route path="/login" element={<PatientLoginPage />} />
+// Keep:
+<Route path="/login" element={<LoginPage />} />
+// Add:
+<Route path="/patient-login" element={<PatientLoginPage />} />
 ```
 
-- [ ] **Step 2: Delete Supabase files**
+- [ ] **Step 2: Keep legacy auth files in Phase 1**
 
-```bash
-rm src/config/supabaseClient.ts
-rm src/contexts/AuthContext.tsx
-rm src/pages/AuthPage.tsx
-rm src/pages/AuthCallback.tsx
-rm src/services/api/user.ts
-```
+Do not delete these files yet:
 
-- [ ] **Step 3: Remove Supabase dependencies**
+- `src/config/supabaseClient.ts`
+- `src/contexts/AuthContext.tsx`
+- `src/pages/AuthPage.tsx`
+- `src/pages/AuthCallback.tsx`
 
-```bash
-npm uninstall @supabase/supabase-js @supabase/auth-ui-react @supabase/auth-ui-shared
-```
+Only remove a file when `rg` confirms there are no remaining imports and the owning flow has been migrated.
+
+- [ ] **Step 3: Do not remove Supabase dependencies in Phase 1**
+
+Current repository still has non-dashboard dependencies on Supabase. Package removal belongs to a later cleanup phase after those flows are migrated.
 
 - [ ] **Step 4: Fix all import errors**
 
-Search for any remaining imports of deleted files and update:
-- `import { useAuth } from '@/contexts/AuthContext'` → `import { usePatientAuthContext } from '@/contexts/PatientAuthContext'`
-- `import { supabase } from '@/config/supabaseClient'` → remove
-- `import apiService from '@/services/api/user'` → use `crmApi` instead
+Update only the files inside the patient dashboard route group that are part of Phase 1:
+- `Dashboard.tsx`
+- `DashboardHome.tsx`
+- new Quotes/Messages pages
+- patient dashboard guard/bootstrap files
+
+Do not bulk-rewrite all `useAuth` / `supabase` imports across the app in Phase 1.
 
 Run: `npx tsc --noEmit` to find all broken imports.
 
 - [ ] **Step 5: Update services/api/config.ts**
 
-Remove Supabase auth header injection. The cookie-based auth doesn't need manual headers.
+Remove Supabase auth header injection for shared public API helpers only if that change is confirmed safe for remaining legacy flows.
 
 ```typescript
 // src/services/api/config.ts — simplified
@@ -578,13 +643,7 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
 }
 ```
 
-Also clean up `.env.local` — remove Supabase variables that are no longer used:
-```bash
-# Remove these from .env.local:
-# VITE_SUPABASE_URL=...
-# VITE_SUPABASE_ANON_KEY=...
-# VITE_USE_SUPABASE_AUTH=...
-```
+Do not remove Supabase env vars in Phase 1.
 
 - [ ] **Step 6: Verify app compiles**
 
@@ -594,21 +653,27 @@ Expected: 0 errors
 - [ ] **Step 7: Commit**
 ```bash
 git add -A
-git commit -m "feat: replace Supabase auth with PatientAuthContext cookie session"
+git commit -m "feat: add patient dashboard auth wiring with CRM cookie session"
 ```
 
 ---
 
 ## Chunk 2: Dashboard Layout + Home Migration
 
-### Task 6: Create ProtectedRoute Guard
+### Task 6: Add Patient Dashboard Guard
 
 **Files:**
-- Create: `$FE/src/components/auth/ProtectedRoute.tsx`
+- Modify existing: `$FE/src/components/auth/ProtectedRoute.tsx` or create separate `$FE/src/components/auth/PatientProtectedRoute.tsx`
 
-- [ ] **Step 1: Create ProtectedRoute component**
+- [ ] **Step 1: Create or adapt a patient-specific guard**
 
-Wraps all `/dashboard/*` routes. Redirects to `/login` if not authenticated.
+Wraps patient dashboard routes. Redirects to `/patient-login` if not authenticated.
+
+Important:
+
+- there is already an existing `ProtectedRoute.tsx` in the repo
+- do not silently repurpose that component if it is also used by the hospital/Medplum flow
+- prefer a dedicated `PatientProtectedRoute` if separation is cleaner
 
 ```typescript
 // src/components/auth/ProtectedRoute.tsx
@@ -628,7 +693,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/patient-login" replace />;
   }
 
   return <>{children}</>;
@@ -638,7 +703,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 - [ ] **Step 2: Commit**
 ```bash
 git add src/components/auth/ProtectedRoute.tsx
-git commit -m "feat: add ProtectedRoute guard for dashboard routes"
+git commit -m "feat: add patient dashboard auth guard"
 ```
 
 ---
@@ -651,6 +716,12 @@ git commit -m "feat: add ProtectedRoute guard for dashboard routes"
 - [ ] **Step 1: Update menu items**
 
 Replace existing 6 tabs with new 7 tabs. Keep the sidebar layout pattern but update items.
+
+Phase 1 delivery note:
+
+- Home, Messages, Quotes are implemented
+- Tickets, Journey, AI Summary, Orders may be placeholders in Phase 1
+- do not represent placeholder tabs as completed backend integrations
 
 ```typescript
 // Dashboard.tsx — new menu items
@@ -721,7 +792,7 @@ export default function Dashboard() {
 
 // Dashboard needs usePatientAuthContext for logout:
 // const { logout } = usePatientAuthContext();
-// const handleLogout = async () => { await logout(); navigate('/login'); };
+// const handleLogout = async () => { await logout(); navigate('/patient-login'); };
 ```
 
 - [ ] **Step 2: Update App.tsx routes for nested dashboard**
@@ -788,14 +859,14 @@ export function usePatientCases() {
 
 - [ ] **Step 2: Rewrite DashboardHome to use new hooks**
 
-Replace the old `useAuth()` + `apiService.getDashboardData()` calls with `usePatientAuthContext()` + `usePatientCases()`.
+Replace the old patient-dashboard data fetch with `usePatientAuthContext()` + `usePatientCases()` for the patient dashboard route only.
 
 Key changes:
 - Replace: `const { user, isAuthenticated } = useAuth()` → `const { user, isAuthenticated } = usePatientAuthContext()`
 - Replace: `apiService.getDashboardData(user.id)` → `usePatientCases()` hook
 - Keep: Case list rendering, status badges, locale support
 - Remove: Direct Supabase session checks
-- Add: Redirect to `/login` if not authenticated
+- Add: Redirect to `/patient-login` if not authenticated
 
 ```typescript
 // DashboardHome.tsx — top of component
@@ -805,7 +876,7 @@ const { data: cases, isLoading: casesLoading } = usePatientCases();
 
 useEffect(() => {
   if (!authLoading && !isAuthenticated) {
-    navigate('/login', { replace: true });
+    navigate('/patient-login', { replace: true });
   }
 }, [authLoading, isAuthenticated, navigate]);
 
@@ -860,8 +931,8 @@ export interface Quote {
   createdAt: string;
 }
 
-// NOTE: Backend may return paginated { data, total } or flat array.
-// Verify against GET /api/patient/cases/:id/quote response during integration.
+  // NOTE: Verify the real DTO against CRM v2 before final UI polish.
+  // Do not hardcode fields that are not actually present in the backend response.
 export const quotesApi = {
   listForCase: async (caseId: string): Promise<Quote[]> => {
     const res = await crmApi.get<Quote[] | { data: Quote[] }>(`/cases/${caseId}/quote`);
@@ -1171,9 +1242,8 @@ export interface Message {
   createdAt: string;
 }
 
-// NOTE: The actual DTO shape from CRM v2 may differ slightly.
-// Verify against GET /api/patient/conversations response during integration.
-// The Conversation interface above is a best-guess from the backend's toConversationDTO mapper.
+// NOTE: The actual DTO shape from CRM v2 is narrower than the ideal UI shape.
+// Avoid assuming fields like hospitalName unless the backend mapper really provides them.
 
 export const messagesApi = {
   listConversations: () =>
@@ -1247,7 +1317,13 @@ git commit -m "feat: add messages API service + React Query hooks"
 
 - [ ] **Step 1: Create WebSocket manager hook**
 
-Manages a single WebSocket connection per conversation. Auto-reconnects with exponential backoff. Falls back to polling when disconnected.
+Manages a single WebSocket connection per conversation. Auto-reconnects with exponential backoff.
+
+Phase 1 simplification:
+
+- WebSocket live updates are in scope
+- explicit polling fallback can be added later if needed
+- unread cross-conversation notification channel is not required to declare Phase 1 complete
 
 ```typescript
 // src/hooks/useWebSocket.ts
@@ -1656,10 +1732,11 @@ Expected: No new lint errors introduced.
 
 1. Start CRM v2 API: `cd $BE && pnpm dev`
 2. Start frontend: `cd $FE && npm run dev`
-3. Navigate to `http://localhost:3000/login` → enter email → check magic link flow
-4. Navigate to `/dashboard` → verify 7-tab sidebar
-5. Navigate to `/dashboard/quotes` → verify quotes grouped by case
-6. Navigate to `/dashboard/messages` → verify conversation list + chat
+3. Navigate to `http://localhost:3000/patient-login` → enter email → check magic link request flow
+4. Open a CRM v2 magic-link email targeting `/dashboard?token=...` → verify token bootstrap sets cookie and enters dashboard
+5. Navigate to `/dashboard` → verify 7-tab sidebar
+6. Navigate to `/dashboard/quotes` → verify quotes grouped by case
+7. Navigate to `/dashboard/messages` → verify conversation list + chat
 
 - [ ] **Step 5: Final commit if any fixes needed**
 

@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import {
   MessageSquare,
   Mail,
@@ -18,8 +17,6 @@ import {
   MessageSquarePlus,
   ShieldAlert,
   FolderOpen,
-  ExternalLink,
-  Globe,
   Info,
 } from 'lucide-react';
 import {
@@ -29,6 +26,7 @@ import {
   type ChatMessage,
   Button,
   EmptyState,
+  MessageCaseDetailPanel,
   Modal,
   PdfPreview,
 } from '@medical-crm/ui';
@@ -736,110 +734,31 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 
         {/* Right Sidebar: Case / Patient Info */}
         {selectedId && selectedConvo && showInfoPanel && (
-          <div className="w-[280px] border-l border-slate-200/50 flex flex-col shrink-0 overflow-y-auto bg-white">
-            {/* Header with avatar */}
-            <div className="p-6 flex flex-col items-center text-center border-b border-slate-100">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-400 to-blue-500 flex items-center justify-center text-white text-2xl font-bold mb-3 shadow-lg shadow-cyan-200/50">
-                {getInitials(caseDetail?.patient?.name ?? selectedConvo.patientName ?? 'U')}
-              </div>
-              <h3 className="font-semibold text-slate-900 text-lg">
-                {caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? 'Unknown'}
-              </h3>
-              {selectedConvo.caseId && caseDetail?.caseNumber && (
-                <span className="mt-1 text-[10px] font-medium px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-500">
-                  {caseDetail.caseNumber}
-                </span>
-              )}
-              {selectedConvo.category && (
-                <span className="mt-1.5 text-xs font-medium px-2 py-0.5 rounded border border-slate-200 text-slate-500">
-                  {selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : 'Patient'}
-                </span>
-              )}
-            </div>
-
-            {/* Details */}
-            <div className="flex-1 p-6 space-y-5">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                  Conversation
-                </div>
-                <div className="text-sm text-slate-700">{selectedConvo.title ?? 'General'}</div>
-              </div>
-
-              {selectedConvo.category !== 'ADMIN_HOSPITAL' && (
-                <>
-                  {/* Patient Name */}
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                      Patient Name
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      <p className="text-sm text-slate-700 font-medium">
-                        {caseDetail?.patient?.name ?? selectedConvo.patientName ?? '\u2014'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Patient Code */}
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                      Patient Code
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      <p className="text-sm text-slate-700 font-medium">
-                        {caseDetail?.patient?.code ?? '\u2014'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Primary Diagnosis */}
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                      Primary Diagnosis
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      <p className="text-sm text-slate-700 font-medium">
-                        {caseDetail?.medicalCondition?.primaryDiagnosis ?? '\u2014'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Language */}
-                  <div>
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                      Language
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Globe size={14} className="text-blue-500" />
-                      <span className="text-sm text-slate-700 font-medium">
-                        {caseDetail?.patient?.language
-                          ? caseDetail.patient.language === 'zh'
-                            ? 'Chinese'
-                            : caseDetail.patient.language === 'en'
-                              ? 'English'
-                              : caseDetail.patient.language === 'es'
-                                ? 'Spanish'
-                                : caseDetail.patient.language
-                          : '\u2014'}
-                      </span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* View Full Case Details link (Issue 3) */}
-            {selectedConvo.caseId && (
-              <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-                <Link
-                  href={`/cases/${selectedConvo.caseId}`}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 rounded-lg shadow-sm text-sm font-medium transition-colors"
-                >
-                  <ExternalLink size={14} />
-                  View Full Case Details
-                </Link>
-              </div>
-            )}
+          <div className="w-[280px] border-l border-slate-200/50 shrink-0 overflow-y-auto bg-white p-4">
+            <MessageCaseDetailPanel
+              caseId={selectedConvo.caseId ?? null}
+              caseNumber={caseDetail?.caseNumber ?? null}
+              category={selectedConvo.category ?? null}
+              participantRole={selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : 'Patient'}
+              participantName={caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? null}
+              patientCode={caseDetail?.patient?.code ?? null}
+              patientAge={caseDetail?.patient?.age ?? null}
+              patientGender={
+                caseDetail?.patient?.gender === 'MALE'
+                  ? 'M'
+                  : caseDetail?.patient?.gender === 'FEMALE'
+                    ? 'F'
+                    : caseDetail?.patient?.gender ?? null
+              }
+              patientLanguage={caseDetail?.patient?.language ?? null}
+              caseStatus={caseDetail?.displayStatus ?? null}
+              diagnosis={caseDetail?.medicalCondition?.primaryDiagnosis ?? null}
+              documentCount={caseDetail?.documents?.length ?? null}
+              messageCount={caseDetail?.totalMessages ?? messages.length}
+              conversationTitle={selectedConvo.title ?? 'General'}
+              caseLinkHref={selectedConvo.caseId ? `/cases/${selectedConvo.caseId}` : null}
+              caseLinkLabel="View Full Case Details"
+            />
           </div>
         )}
       </div>

@@ -35,7 +35,7 @@ export class CreateBeforeAfterCaseUseCase {
 
     await this.translationTaskService.enqueue({
       sourceDb,
-      entityType: 'before_after_case',
+      entityType: 'procedure_case',
       entityId: saved.id,
       fieldsToTranslate: {
         description: saved.description,

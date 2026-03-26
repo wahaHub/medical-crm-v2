@@ -18,6 +18,7 @@ export interface SupportTicketProps {
   slaDeadline: Date | null;
   resolutionNote: string | null;
   resolvedAt: Date | null;
+  translations?: Record<string, Record<string, unknown>>;
   version: number;
   createdAt: Date;
   updatedAt: Date;
@@ -38,6 +39,7 @@ export class SupportTicket {
   slaDeadline: Date | null;
   resolutionNote: string | null;
   resolvedAt: Date | null;
+  translations: Record<string, Record<string, unknown>>;
   version: number;
   createdAt: Date;
   updatedAt: Date;
@@ -57,6 +59,7 @@ export class SupportTicket {
     this.slaDeadline = props.slaDeadline;
     this.resolutionNote = props.resolutionNote;
     this.resolvedAt = props.resolvedAt;
+    this.translations = props.translations ?? {};
     this.version = props.version;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;

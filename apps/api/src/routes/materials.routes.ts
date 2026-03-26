@@ -138,7 +138,11 @@ app.openapi(updateHospitalInfoRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
-  const result = await svc.updateHospitalInfo.execute(hospitalId, body, actor);
+  const result = await svc.updateHospitalInfo.execute(
+    hospitalId,
+    body as import('@medical-crm/application').UpdateHospitalInfoInput,
+    actor,
+  );
   return c.json(result, 200);
 });
 

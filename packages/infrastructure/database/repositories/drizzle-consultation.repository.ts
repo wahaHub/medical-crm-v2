@@ -193,6 +193,7 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
       aiSummary: row.aiSummary ?? null,
       aiSummaryCreatedAt: row.aiSummaryCreatedAt ? new Date(row.aiSummaryCreatedAt) : null,
       aiSummaryStatus: row.aiSummaryStatus as import('@medical-crm/domain').AISummaryStatus,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });

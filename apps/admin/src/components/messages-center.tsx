@@ -19,7 +19,7 @@ import { MessageSquare, Check, X, Search, FolderOpen, Building2, User } from 'lu
 import { useAuth } from '@/lib/auth-context';
 import { useConversations, useMessages } from '@/queries/use-conversations';
 import { useHospitals, useHospitalCases } from '@/queries/use-hospitals';
-import { useCases } from '@/queries/use-cases';
+import { useCase, useCaseDocuments, useCases } from '@/queries/use-cases';
 import type { PaginatedResponse, HospitalSummary, CaseSummary } from '@/lib/api-types';
 import {
   sendMessage,
@@ -320,13 +320,25 @@ function ModerationNotice({
 // ── Case Info Sidebar ────────────────────────────────────────────────
 
 function CaseInfoSidebar({ conversation }: { conversation: ApiConversation }) {
+  const { data: caseRaw } = useCase(conversation.caseId ?? '');
+  const { data: documentsRaw } = useCaseDocuments(conversation.caseId ?? '');
+  const caseData = caseRaw as CaseSummary | undefined;
+  const documents = (documentsRaw as Array<{ id: string }> | undefined) ?? [];
+
   return (
     <MessageCaseDetailPanel
       caseId={conversation.caseId ?? null}
+      caseNumber={caseData?.caseNumber ?? null}
       category={conversation.category ?? null}
       participantRole={conversation.participantRole ? toRoleLabel(conversation.participantRole) : null}
-      participantName={conversation.participantName ?? null}
+      participantName={caseData?.patientName ?? conversation.participantName ?? null}
       hospitalId={conversation.hospitalId ?? null}
+      patientLanguage={caseData?.patientLanguage ?? null}
+      caseStatus={caseData?.status ?? null}
+      diagnosis={caseData?.primaryDiagnosis ?? null}
+      documentCount={conversation.caseId ? documents.length : null}
+      conversationTitle={conversation.title ?? null}
+      caseLinkHref={conversation.caseId ? `/cases/${conversation.caseId}` : null}
     />
   );
 }

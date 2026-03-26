@@ -48,27 +48,51 @@ export async function updateCaseStage(caseId: string, stage: string) {
   return res.json();
 }
 
-export async function uploadDocument(caseId: string, formData: FormData) {
-  const session = await import('@/lib/session').then((m) => m.getSession());
-  if (!session?.access_token) {
-    throw new Error('Unauthorized');
-  }
-
-  const API_URL = process.env.API_URL ?? 'http://localhost:3001';
-  const res = await fetch(`${API_URL}/api/v2/cases/${caseId}/documents`, {
+export async function addCaseNote(
+  caseId: string,
+  input: {
+    note?: string;
+    attachmentNames?: string[];
+    documentIds?: string[];
+  },
+) {
+  const res = await apiFetch(`/api/v2/cases/${caseId}/progress`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: formData,
+    body: JSON.stringify({ type: 'NOTE', ...input }),
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to upload document');
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? 'Failed to add case note');
   }
 
   revalidatePath(`/cases/${caseId}`);
+  return res.json();
+}
+
+export async function initCaseDocumentUpload(
+  caseId: string,
+  params: { fileName: string; fileSize: number; mimeType: string },
+): Promise<{
+  upload: { uploadUrl: string; storageKey: string; expiresIn: number };
+  asset: { storageKey: string; fileName: string; mimeType: string; fileSize: number };
+  documentId: string;
+}> {
+  const res = await apiFetch(`/api/v2/cases/${caseId}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({
+      ...params,
+      documentType: 'OTHER',
+      sensitivity: 'PHI_HIGH',
+      language: 'en',
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? 'Failed to initialize document upload');
+  }
+
   return res.json();
 }
 

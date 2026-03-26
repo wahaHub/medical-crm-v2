@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryFetch } from '@/lib/query-fetch';
-import type { PaginatedResponse, CaseSummary, CaseStats } from '@/lib/api-types';
+import type { PaginatedResponse, CaseSummary, CaseStats, CaseProgressItem } from '@/lib/api-types';
 
 export function useCases(filters: Record<string, string>) {
   return useQuery({
@@ -29,6 +29,14 @@ export function useCaseDocuments(caseId: string) {
   return useQuery({
     queryKey: ['cases', caseId, 'documents'],
     queryFn: () => queryFetch(`/api/cases/${caseId}/documents`),
+    enabled: !!caseId,
+  });
+}
+
+export function useCaseProgress(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'progress'],
+    queryFn: () => queryFetch<CaseProgressItem[]>(`/api/cases/${caseId}/progress`),
     enabled: !!caseId,
   });
 }

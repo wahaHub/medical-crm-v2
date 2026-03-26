@@ -182,6 +182,7 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
       slaDeadline: row.slaDeadline ? new Date(row.slaDeadline) : null,
       resolutionNote: row.resolutionNote ?? null,
       resolvedAt: row.resolvedAt ? new Date(row.resolvedAt) : null,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
       version: row.version,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),

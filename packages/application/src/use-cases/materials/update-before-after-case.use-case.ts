@@ -29,11 +29,11 @@ export class UpdateBeforeAfterCaseUseCase {
 
     await this.translationTaskService.enqueue({
       sourceDb,
-      entityType: 'before_after_case',
+      entityType: 'procedure_case',
       entityId: caseId,
       fieldsToTranslate: {
-        description: input.description ?? saved.description,
-        provider_name: input.surgeonName ?? saved.surgeonName,
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.surgeonName !== undefined ? { provider_name: input.surgeonName } : {}),
       },
     });
 

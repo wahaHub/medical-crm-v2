@@ -192,15 +192,11 @@ export class TranslationWritebackService {
         updated_at: new Date().toISOString(),
       };
 
-      // Apply the same field-mapping rules as updateHospitalInfo
+      // Apply the same field-mapping rules as updateHospitalInfo.
       if (translatedFields['tagline'] !== undefined) row['tagline'] = translatedFields['tagline'];
       if (translatedFields['description'] !== undefined) row['description'] = translatedFields['description'];
 
-      // Pass through any additional known translation columns
-      const extraColumns = ['highlights', 'highlights_text', 'meta_title', 'meta_description'];
-      for (const col of extraColumns) {
-        if (translatedFields[col] !== undefined) row[col] = translatedFields[col];
-      }
+      if (!('tagline' in row) && !('description' in row)) continue;
 
       const { error } = await this.beautySupabase
         .from('hospital_translations')
@@ -341,6 +337,10 @@ export class TranslationWritebackService {
           row['overview'] = translatedFields['description'];
         }
       }
+      if (translatedFields['fullDescription'] !== undefined) row['full_description'] = translatedFields['fullDescription'];
+      if (translatedFields['hospitalType'] !== undefined) row['hospital_type'] = translatedFields['hospitalType'];
+      if (translatedFields['ownershipType'] !== undefined) row['ownership_type'] = translatedFields['ownershipType'];
+      if (translatedFields['coreSpecialties'] !== undefined) row['core_specialties'] = translatedFields['coreSpecialties'];
       if (translatedFields['short_description'] !== undefined) row['short_description'] = translatedFields['short_description'];
       if (translatedFields['overview'] !== undefined) row['overview'] = translatedFields['overview'];
       if (translatedFields['full_description'] !== undefined) row['full_description'] = translatedFields['full_description'];
@@ -368,9 +368,14 @@ export class TranslationWritebackService {
       }
 
       // departments_info: if translated fields contain structured department data
+      if (translatedFields['departmentsInfo'] !== undefined) {
+        row['departments_info'] = translatedFields['departmentsInfo'];
+      }
       if (translatedFields['departments_info'] !== undefined) {
         row['departments_info'] = translatedFields['departments_info'];
       }
+
+      if (Object.keys(row).length === 3) continue;
 
       const { error } = await this.chinaSupabase
         .from('hospital_i18n')

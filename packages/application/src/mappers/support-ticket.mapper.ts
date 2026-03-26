@@ -17,6 +17,7 @@ export function toSupportTicketDTO(entity: SupportTicket): SupportTicketDTO {
     slaDeadline: entity.slaDeadline?.toISOString() ?? null,
     resolutionNote: entity.resolutionNote,
     resolvedAt: entity.resolvedAt?.toISOString() ?? null,
+    translations: entity.translations,
     version: entity.version,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
@@ -32,6 +33,7 @@ export function toSupportTicketReplyDTO(entity: SupportTicketReply): SupportTick
     content: entity.content,
     isInternalNote: entity.isInternalNote,
     attachments: entity.attachments,
+    translations: entity.translations,
     createdAt: entity.createdAt.toISOString(),
   };
 }

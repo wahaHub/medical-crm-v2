@@ -83,6 +83,7 @@ export interface MaterialsHospitalInfo {
   operatingHours?: string;
   promotionalVideos?: string[];
   promotionalVideoStorageKeys?: Array<string | null>;
+  translations?: Record<string, Record<string, unknown>>;
 }
 
 export interface MaterialsProcedure {
@@ -112,6 +113,7 @@ export interface MaterialsSurgeon {
   expertise: string | null;
   philosophy: string | null;
   achievements: string[];
+  translations?: Record<string, Record<string, unknown>>;
 }
 
 export interface MaterialsBeforeAfterCase {
@@ -121,6 +123,7 @@ export interface MaterialsBeforeAfterCase {
   surgeonName: string | null;
   description: string | null;
   images: Array<{ url: string }>;
+  translations?: Record<string, Record<string, unknown>>;
 }
 
 export interface IMaterialsRepository {

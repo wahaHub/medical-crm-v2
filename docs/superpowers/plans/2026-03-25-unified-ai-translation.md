@@ -1,1883 +1,515 @@
 # Unified AI Translation System Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Goal:** Ship async multilingual AI translation for Support Tickets, Consultations, FAQ, Question Collectors, and Materials, using the design in `docs/superpowers/specs/2026-03-25-unified-ai-translation-design.md`.
 
-**Goal:** Ship async multi-language AI translation for Support Tickets, Consultations, FAQ, Question Collectors, and Materials — using a JSONB + task-queue architecture across CRM DB and two Supabase instances.
+**Important boundary:** This plan intentionally does **not** implement:
 
-**Architecture:** Extend the existing `translation_tasks` table with `source_db`, `fields_to_translate`, and `target_languages` columns. A new `ProcessTranslationTasksUseCase` worker pulls tasks atomically, calls OpenAI GPT-4o for batch translation (auto-detect source language, translate into 9 target languages), and writes results back to the correct DB via a `TranslationWritebackService`. Each module's create/update use cases enqueue translation tasks after persisting entities.
+- consultation transcript multi-locale storage
+- beauty shared `procedures` catalog translation
+- full legacy medical-intake migration from `cases` to QC
 
-**Tech Stack:** Hono API, Drizzle ORM, OpenAI GPT-4o (JSON mode), PostgreSQL JSONB, Supabase clients
-
-**Spec:** `docs/superpowers/specs/2026-03-25-unified-ai-translation-design.md`
-
----
-
-## File Structure
-
-### Domain Layer (`packages/domain/src/`)
-
-| File | Responsibility |
-|------|----------------|
-| `enums/translation.config.ts` | **CREATE** — Supported languages, default targets, translatable field map, retry config |
-| `ports/batch-translation-service.port.ts` | **CREATE** — `IBatchTranslationService` interface |
-| `ports/translation-task-repository.port.ts` | **CREATE** — `ITranslationTaskRepository` interface (enqueue, pull, retry, status) |
-| `entities/translation-task.entity.ts` | **CREATE** — `TranslationTask` entity with status/retry logic |
-| `enums/index.ts` | **MODIFY** — Add `TranslationTaskStatus`, `SourceDb` types |
-
-### Application Layer (`packages/application/src/`)
-
-| File | Responsibility |
-|------|----------------|
-| `services/translation-task.service.ts` | **CREATE** — Enqueue logic with deduplication, field extraction, changed-field merge |
-| `use-cases/translations/process-translation-tasks.use-case.ts` | **CREATE** — Worker: atomic pull → translate → writeback |
-| `use-cases/translations/retry-translation.use-case.ts` | **CREATE** — Manual retry: reset status + retry count |
-| `use-cases/translations/get-translation-status.use-case.ts` | **CREATE** — Query task status by (sourceDb, entityType, entityId) |
-| `use-cases/tickets/create-ticket.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/tickets/reply-to-ticket.use-case.ts` | **MODIFY** — Enqueue translation for non-internal replies |
-| `use-cases/consultations/create-consultation.use-case.ts` | **MODIFY** — Enqueue translation when notes present |
-| `use-cases/consultations/update-consultation.use-case.ts` | **MODIFY** — Enqueue translation when notes changed |
-| `use-cases/chatbot-faq/create-faq-item.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/chatbot-faq/update-faq-item.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/chatbot-faq/create-faq-category.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/question-collector/create-template.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/question-collector/update-template.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/question-collector/submit-response.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/materials/update-hospital-info.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/materials/create-surgeon.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/materials/update-surgeon.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/materials/create-before-after-case.use-case.ts` | **MODIFY** — Enqueue translation after save |
-| `use-cases/materials/update-before-after-case.use-case.ts` | **MODIFY** — Enqueue translation after save |
-
-### Infrastructure Layer (`packages/infrastructure/`)
-
-| File | Responsibility |
-|------|----------------|
-| `database/schema/schema.ts` | **MODIFY** — Add `translations` columns to 7 CRM tables, extend `translation_tasks` |
-| `database/repositories/drizzle-translation-task.repository.ts` | **CREATE** — Atomic pull, enqueue/upsert, retry, status query |
-| `services/openai-batch-translation.service.ts` | **CREATE** — GPT-4o JSON mode batch translation |
-| `services/translation-writeback.service.ts` | **CREATE** — Routes writeback to CRM/Beauty/China |
-
-### API Layer (`apps/api/src/`)
-
-| File | Responsibility |
-|------|----------------|
-| `routes/translations.routes.ts` | **CREATE** — `/retry`, `/status` endpoints |
-| `routes/internal.routes.ts` | **MODIFY** — Add `/process-translation-tasks` worker endpoint |
-| `composition-root.ts` | **MODIFY** — Wire new repos, services, use cases |
-
-### Supabase Migrations
-
-| File | Responsibility |
-|------|----------------|
-| `packages/infrastructure/supabase-main/migrations/001_add_procedure_cases_translations.sql` | **CREATE** — Add `translations jsonb` to `procedure_cases` (Beauty) |
-| `packages/infrastructure/supabase-china/migrations/001_add_procedure_cases_translations.sql` | **CREATE** — Add `translations jsonb` to `procedure_cases` (China) |
+This plan is written to match the current repository structure and current DTO / use-case contracts.
 
 ---
 
-## Chunk 1: Foundation — Domain Types, Config, Schema
+## Implementation Principles
 
-### Task 1: Add translation enums and config
+1. `translation_tasks` identity is `(source_db, entity_type, entity_id)`.
+2. QC translation starts only after QC payload shape is canonicalized.
+3. Materials hospital-info writeback must reuse the existing Beauty / China field-mapping rules, not a generic locale-row upsert.
+4. Do not add automatic commits to the implementation flow. The repo may be dirty.
+5. Treat partial unique index support in `translation_tasks` as intentional SQL-level behavior; do not assume Drizzle schema can perfectly model it.
 
-**Files:**
-- Create: `packages/domain/src/enums/translation.ts`
-- Create: `packages/domain/src/enums/translation.config.ts`
-- Modify: `packages/domain/src/enums/index.ts`
+---
 
-- [ ] **Step 1: Create translation enums**
+## Deliverables
+
+### CRM DB
+
+- extend `translation_tasks`
+- add `translations jsonb` to:
+  - `support_tickets`
+  - `support_ticket_replies`
+  - `consultations`
+  - `question_collector_templates`
+  - `question_collector_responses`
+  - `chatbot_faq_items`
+  - `chatbot_faq_categories`
+
+### Supabase
+
+- add `translations jsonb` to `procedure_cases` in both Beauty and China Supabase
+
+### Backend
+
+- add translation task domain types and ports
+- add translation-task repository
+- add batch translation service
+- add translation writeback service
+- add enqueue / retry / status / worker use cases
+- wire module create/update flows to enqueue translation tasks
+- add translation management routes and internal worker route
+
+---
+
+## Execution Order
+
+## Chunk 1: Foundation
+
+### Task 1: Add domain translation types and config
+
+Create:
+
+- `packages/domain/src/enums/translation.ts`
+- `packages/domain/src/enums/translation.config.ts`
+- `packages/domain/src/entities/translation-task.entity.ts`
+- `packages/domain/src/ports/translation-task-repository.port.ts`
+- `packages/domain/src/ports/batch-translation-service.port.ts`
+
+Update:
+
+- `packages/domain/src/enums/index.ts`
+- `packages/domain/src/index.ts`
+
+Requirements:
+
+- add `TranslationTaskStatus`, `SourceDb`, `SupportedLanguage`
+- add `TRANSLATION_CONFIG`
+- add `TranslationTask` entity with:
+  - `markProcessing()`
+  - `markCompleted(detectedLanguage)`
+  - `markFailedOrRetry(error)`
+  - `resetForRetry()`
+
+### Task 2: Canonicalize QC payload shape before translation work
+
+Current problem:
+
+- `question_collector_templates.questions` is `unknown`
+- `question_collector_responses.responses` is `unknown`
+
+Before implementing QC translation, define a stable shape in application/domain code.
+
+Minimum target shape:
 
 ```ts
-// packages/domain/src/enums/translation.ts
-export type TranslationTaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
-export type SourceDb = 'crm' | 'supabase_beauty' | 'supabase_china';
-export type SupportedLanguage = 'zh' | 'en' | 'ru' | 'fr' | 'es' | 'de' | 'ar' | 'id' | 'vi';
-```
-
-- [ ] **Step 2: Create translation config (in enums/ directory alongside translation.ts)**
-
-```ts
-// packages/domain/src/enums/translation.config.ts
-import type { SupportedLanguage } from './translation.js';
-
-export const TRANSLATION_CONFIG = {
-  supportedLanguages: ['zh', 'en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as const satisfies readonly SupportedLanguage[],
-  defaultTargetLanguages: ['zh', 'en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as const,
-  translatableFields: {
-    support_ticket: ['subject', 'description'],
-    support_ticket_reply: ['content'],
-    consultation: ['notes'],
-    qc_template: ['templateName', 'questions.*.label', 'questions.*.placeholder', 'questions.*.options'],
-    qc_response: ['responses.*'],
-    chatbot_faq_item: ['question', 'answer'],
-    chatbot_faq_category: ['name'],
-    surgeon: ['title', 'bio.intro', 'bio.expertise', 'bio.philosophy', 'bio.achievements', 'specialties', 'education', 'certifications'],
-    hospital_beauty: ['tagline', 'description', 'highlights'],
-    hospital_china: ['display_name', 'name', 'hospital_type', 'tier', 'ownership_type', 'short_description', 'overview', 'full_description', 'value_proposition', 'core_specialties', 'departments_info', 'facilities_info'],
-    procedure_case: ['description', 'provider_name'],
-  },
-  retry: { maxRetries: 3 },
-} as const;
-```
-
-- [ ] **Step 3: Re-export from enums/index.ts**
-
-Add to `packages/domain/src/enums/index.ts`:
-
-```ts
-export * from './translation.js';
-export { TRANSLATION_CONFIG } from './translation.config.js';
-```
-
-- [ ] **Step 3b: Export from domain package index**
-
-Add to `packages/domain/src/index.ts`:
-
-```ts
-export { TRANSLATION_CONFIG } from './enums/translation.config.js';
-```
-
-- [ ] **Step 4: Verify typecheck passes**
-
-Run: `cd packages/domain && npx tsc --noEmit`
-Expected: No errors
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add packages/domain/src/enums/translation.ts packages/domain/src/config/translation.config.ts packages/domain/src/enums/index.ts
-git commit -m "feat(domain): add translation enums and config"
-```
-
-### Task 2: Create TranslationTask entity
-
-**Files:**
-- Create: `packages/domain/src/entities/translation-task.entity.ts`
-
-- [ ] **Step 1: Write the entity**
-
-```ts
-// packages/domain/src/entities/translation-task.entity.ts
-import type { TranslationTaskStatus, SourceDb } from '../enums/translation.js';
-import { TRANSLATION_CONFIG } from '../enums/translation.config.js';
-
-export interface TranslationTaskProps {
+type QCTemplateQuestion = {
   id: string;
-  sourceDb: SourceDb;
-  entityType: string;
-  entityId: string;
-  hospitalType: string | null;
-  fieldsToTranslate: Record<string, unknown>;
-  targetLanguages: string[];
-  sourceLanguage: string | null;
-  targetLanguage: string | null; // legacy, nullable
-  detectedLanguage: string | null;
-  status: TranslationTaskStatus;
-  errorMessage: string | null;
-  retryCount: number;
-  createdAt: Date;
-  startedAt: Date | null;
-  completedAt: Date | null;
-}
+  type: 'text' | 'textarea' | 'select' | 'multiselect' | 'checkbox' | 'date';
+  label: string;
+  placeholder?: string;
+  options?: string[];
+};
 
-export class TranslationTask {
-  readonly id: string;
-  readonly sourceDb: SourceDb;
-  readonly entityType: string;
-  readonly entityId: string;
-  hospitalType: string | null;
-  fieldsToTranslate: Record<string, unknown>;
-  targetLanguages: string[];
-  sourceLanguage: string | null;
-  targetLanguage: string | null;
-  detectedLanguage: string | null;
-  status: TranslationTaskStatus;
-  errorMessage: string | null;
-  retryCount: number;
-  createdAt: Date;
-  startedAt: Date | null;
-  completedAt: Date | null;
-
-  constructor(props: TranslationTaskProps) {
-    this.id = props.id;
-    this.sourceDb = props.sourceDb;
-    this.entityType = props.entityType;
-    this.entityId = props.entityId;
-    this.hospitalType = props.hospitalType;
-    this.fieldsToTranslate = props.fieldsToTranslate;
-    this.targetLanguages = props.targetLanguages;
-    this.sourceLanguage = props.sourceLanguage;
-    this.targetLanguage = props.targetLanguage;
-    this.detectedLanguage = props.detectedLanguage;
-    this.status = props.status;
-    this.errorMessage = props.errorMessage;
-    this.retryCount = props.retryCount;
-    this.createdAt = props.createdAt;
-    this.startedAt = props.startedAt;
-    this.completedAt = props.completedAt;
-  }
-
-  markProcessing(): void {
-    this.status = 'processing';
-    this.startedAt = new Date();
-  }
-
-  markCompleted(detectedLanguage: string): void {
-    this.status = 'completed';
-    this.detectedLanguage = detectedLanguage;
-    this.completedAt = new Date();
-  }
-
-  markFailedOrRetry(error: string): void {
-    this.errorMessage = error;
-    this.retryCount += 1;
-    if (this.retryCount >= TRANSLATION_CONFIG.retry.maxRetries) {
-      this.status = 'failed';
-    } else {
-      this.status = 'pending';
-    }
-  }
-
-  resetForRetry(): void {
-    this.status = 'pending';
-    this.retryCount = 0;
-    this.errorMessage = null;
-    this.startedAt = null;
-    this.completedAt = null;
-  }
-}
+type QCResponsePayload = Record<string, string | string[] | null>;
 ```
 
-- [ ] **Step 2: Export from domain index**
+Requirements:
 
-Ensure `packages/domain/src/index.ts` (or wherever entities are re-exported) includes `TranslationTask`.
+- centralize normalization helpers for template questions and response payloads
+- use those helpers when enqueueing QC translation tasks
+- do not cast raw `unknown` payloads directly into translation input
 
-- [ ] **Step 3: Verify typecheck**
+### Task 3: Extend CRM schema
 
-Run: `cd packages/domain && npx tsc --noEmit`
+Modify:
 
-- [ ] **Step 4: Commit**
+- `packages/infrastructure/database/schema/schema.ts`
 
-```bash
-git add packages/domain/src/entities/translation-task.entity.ts
-git commit -m "feat(domain): add TranslationTask entity"
-```
+Add to `translation_tasks`:
 
-### Task 3: Create domain ports
+- `source_db`
+- `fields_to_translate`
+- `target_languages`
+- `detected_language`
 
-**Files:**
-- Create: `packages/domain/src/ports/translation-task-repository.port.ts`
-- Create: `packages/domain/src/ports/batch-translation-service.port.ts`
+Relax:
 
-- [ ] **Step 1: Create ITranslationTaskRepository port**
+- `hospital_type` nullable
+- `target_language` nullable
 
-```ts
-// packages/domain/src/ports/translation-task-repository.port.ts
-import type { TranslationTask } from '../entities/translation-task.entity.js';
-import type { SourceDb } from '../enums/translation.js';
+Add `translations jsonb` to the 7 CRM tables listed above.
 
-export interface EnqueueTranslationInput {
-  sourceDb: SourceDb;
-  entityType: string;
-  entityId: string;
-  hospitalType?: string | null;
-  fieldsToTranslate: Record<string, unknown>;
-  targetLanguages?: string[];
-}
+### Task 4: Add hand-written CRM migration
 
-export interface ITranslationTaskRepository {
-  /** Upsert: if pending/processing task exists for same (sourceDb, entityType, entityId), update fields; else insert. */
-  upsert(input: EnqueueTranslationInput): Promise<TranslationTask>;
-  /** Atomic pull: SELECT ... FOR UPDATE SKIP LOCKED */
-  pullPending(limit: number): Promise<TranslationTask[]>;
-  markProcessing(taskId: string): Promise<void>;
-  markCompleted(taskId: string, detectedLanguage: string): Promise<void>;
-  markFailedOrRetry(taskId: string, error: string, retryCount: number): Promise<void>;
-  resetForRetry(sourceDb: SourceDb, entityType: string, entityId: string): Promise<void>;
-  findByEntity(sourceDb: SourceDb, entityType: string, entityId: string): Promise<TranslationTask | null>;
-}
-```
+Create the next numbered migration after `023_*`.
 
-- [ ] **Step 2: Create IBatchTranslationService port**
+Suggested file name:
 
-```ts
-// packages/domain/src/ports/batch-translation-service.port.ts
-export interface BatchTranslateRequest {
-  fields: Record<string, unknown>;
-  targetLanguages: string[];
-}
+- `packages/infrastructure/database/migrations/024_unified_translation.sql`
 
-export interface BatchTranslateResult {
-  detectedLanguage: string;
-  translations: Record<string, Record<string, unknown>>;
-}
+Requirements:
 
-export interface IBatchTranslationService {
-  translateBatch(request: BatchTranslateRequest): Promise<BatchTranslateResult>;
-}
-```
-
-- [ ] **Step 3: Export ports from domain**
-
-Ensure both ports are re-exported from `packages/domain/src/index.ts`.
-
-- [ ] **Step 4: Verify typecheck**
-
-Run: `cd packages/domain && npx tsc --noEmit`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add packages/domain/src/ports/translation-task-repository.port.ts packages/domain/src/ports/batch-translation-service.port.ts
-git commit -m "feat(domain): add translation task repository and batch translation ports"
-```
-
-### Task 4: CRM DB schema migration — extend translation_tasks + add translations columns
-
-**Files:**
-- Modify: `packages/infrastructure/database/schema/schema.ts`
-
-- [ ] **Step 1: Extend `translationTasks` table definition in schema.ts**
-
-Find the existing `translationTasks` table definition and add the new columns:
-
-```ts
-// Add these columns to the existing translationTasks pgTable definition:
-sourceDb: text("source_db").default('crm').notNull(),
-fieldsToTranslate: jsonb("fields_to_translate").default({}).notNull(),
-targetLanguages: text("target_languages").array().default([]).notNull(),
-detectedLanguage: varchar("detected_language", { length: 10 }),
-```
-
-Also modify `hospitalType` and `targetLanguage` — remove `.notNull()` from both (they should be nullable now).
-
-Update the unique constraint: replace the old `unique("translation_tasks_hospital_type_entity_type_entity_id_sourc_key")` with a new partial unique index:
-
-```ts
-// Remove old:
-// unique("translation_tasks_hospital_type_entity_type_entity_id_sourc_key").on(...)
-
-// Add new partial unique index (will need raw SQL in migration):
-index("translation_tasks_entity_dedup").using("btree", table.sourceDb.asc(), table.entityType.asc(), table.entityId.asc()),
-```
-
-- [ ] **Step 2: Add `translations jsonb` column to 7 CRM tables**
-
-Add to each table's pgTable definition:
-
-```ts
-// support_tickets
-translations: jsonb().default({}).notNull(),
-
-// support_ticket_replies
-translations: jsonb().default({}).notNull(),
-
-// consultations
-translations: jsonb().default({}).notNull(),
-
-// question_collector_templates
-translations: jsonb().default({}).notNull(),
-
-// question_collector_responses
-translations: jsonb().default({}).notNull(),
-
-// chatbot_faq_items
-translations: jsonb().default({}).notNull(),
-
-// chatbot_faq_categories
-translations: jsonb().default({}).notNull(),
-```
-
-- [ ] **Step 3: Write hand-numbered CRM migration file**
-
-Create `packages/infrastructure/database/migrations/0024_unified_translation.sql` (check the latest migration number and increment):
+- extend `translation_tasks`
+- add CRM `translations` columns
+- create partial unique index:
 
 ```sql
--- Extend translation_tasks
-ALTER TABLE translation_tasks
-  ADD COLUMN IF NOT EXISTS source_db VARCHAR(32) NOT NULL DEFAULT 'crm',
-  ADD COLUMN IF NOT EXISTS fields_to_translate JSONB NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS target_languages TEXT[] NOT NULL DEFAULT '{}'::text[],
-  ADD COLUMN IF NOT EXISTS detected_language VARCHAR(10);
-
-ALTER TABLE translation_tasks ALTER COLUMN hospital_type DROP NOT NULL;
-ALTER TABLE translation_tasks ALTER COLUMN target_language DROP NOT NULL;
-
-DROP INDEX IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
 CREATE UNIQUE INDEX translation_tasks_entity_dedup
   ON translation_tasks (source_db, entity_type, entity_id)
   WHERE status IN ('pending', 'processing');
-
--- Add translations jsonb to CRM tables
-ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE support_ticket_replies ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE consultations ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE question_collector_templates ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE question_collector_responses ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE chatbot_faq_items ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE chatbot_faq_categories ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
 ```
 
-- [ ] **Step 4: Run the migration and regenerate Drizzle schema**
+Important:
 
-Run: `cd packages/infrastructure && npx drizzle-kit generate`
+- update `schema.ts` manually
+- write the SQL migration manually
+- do **not** rely on `drizzle-kit generate` to "regenerate schema.ts from live DB"
 
-This regenerates the TypeScript schema from the live DB. Verify the new columns appear in `schema.ts`.
+### Task 5: Add Supabase migrations
 
-- [ ] **Step 5: Verify typecheck**
+Create:
 
-Run: `cd packages/infrastructure && npx tsc --noEmit`
+- `packages/infrastructure/supabase-main/migrations/001_add_procedure_cases_translations.sql`
+- `packages/infrastructure/supabase-china/migrations/001_add_procedure_cases_translations.sql`
 
-- [ ] **Step 6: Commit**
-
-```bash
-git add packages/infrastructure/database/schema/ packages/infrastructure/database/migrations/
-git commit -m "feat(schema): extend translation_tasks + add translations jsonb to 7 CRM tables"
-```
-
-### Task 5: Supabase migrations — add translations to procedure_cases
-
-**Files:**
-- Create: `packages/infrastructure/supabase-main/migrations/001_add_procedure_cases_translations.sql`
-- Create: `packages/infrastructure/supabase-china/migrations/001_add_procedure_cases_translations.sql`
-
-> **Note:** These SQL files must be applied manually to each Supabase instance (via Supabase Dashboard SQL editor or `supabase db push`). They are not auto-applied like Drizzle migrations.
-
-- [ ] **Step 1: Write Beauty Supabase migration**
+Each adds:
 
 ```sql
--- packages/infrastructure/supabase-main/migrations/001_add_procedure_cases_translations.sql
 ALTER TABLE procedure_cases
   ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-
-COMMENT ON COLUMN procedure_cases.translations IS 'Multi-language translations: {"en": {"description": "...", "provider_name": "..."}, ...}';
-```
-
-- [ ] **Step 2: Write China Medical Supabase migration (identical SQL)**
-
-```sql
--- packages/infrastructure/supabase-china/migrations/001_add_procedure_cases_translations.sql
-ALTER TABLE procedure_cases
-  ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-
-COMMENT ON COLUMN procedure_cases.translations IS 'Multi-language translations: {"en": {"description": "...", "provider_name": "..."}, ...}';
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add packages/infrastructure/supabase-main/migrations/ packages/infrastructure/supabase-china/migrations/
-git commit -m "feat(supabase): add translations jsonb to procedure_cases for both instances"
 ```
 
 ---
 
-## Chunk 2: Core Infrastructure — Repository, OpenAI Service, Writeback
+## Chunk 2: Core Infrastructure
 
-### Task 6: Implement DrizzleTranslationTaskRepository
+### Task 6: Implement `DrizzleTranslationTaskRepository`
 
-**Files:**
-- Create: `packages/infrastructure/database/repositories/drizzle-translation-task.repository.ts`
-- Create: `packages/domain/__tests__/translation-task.entity.test.ts`
+Create:
 
-- [ ] **Step 1: Write unit test for TranslationTask entity**
+- `packages/infrastructure/database/repositories/drizzle-translation-task.repository.ts`
 
-```ts
-// packages/domain/__tests__/translation-task.entity.test.ts
-import { describe, it, expect } from 'vitest';
-import { TranslationTask } from '../src/entities/translation-task.entity.js';
+Responsibilities:
 
-function makeTask(overrides: Partial<import('../src/entities/translation-task.entity.js').TranslationTaskProps> = {}) {
-  return new TranslationTask({
-    id: 'task-1',
-    sourceDb: 'crm',
-    entityType: 'support_ticket',
-    entityId: 'entity-1',
-    hospitalType: null,
-    fieldsToTranslate: { subject: 'Hello' },
-    targetLanguages: ['zh', 'en'],
-    sourceLanguage: null,
-    targetLanguage: null,
-    detectedLanguage: null,
-    status: 'pending',
-    errorMessage: null,
-    retryCount: 0,
-    createdAt: new Date(),
-    startedAt: null,
-    completedAt: null,
-    ...overrides,
-  });
-}
+- `upsert(input)`
+- `pullPending(limit)` with atomic claim
+- `markCompleted`
+- `markFailedOrRetry`
+- `resetForRetry`
+- `findByEntity`
 
-describe('TranslationTask', () => {
-  it('markProcessing sets status and startedAt', () => {
-    const task = makeTask();
-    task.markProcessing();
-    expect(task.status).toBe('processing');
-    expect(task.startedAt).toBeInstanceOf(Date);
-  });
+Implementation notes:
 
-  it('markCompleted sets status, detectedLanguage, completedAt', () => {
-    const task = makeTask({ status: 'processing' });
-    task.markCompleted('zh');
-    expect(task.status).toBe('completed');
-    expect(task.detectedLanguage).toBe('zh');
-    expect(task.completedAt).toBeInstanceOf(Date);
-  });
+- it is acceptable to use raw SQL for atomic pull / partial-index upsert
+- if `ON CONFLICT` on the partial unique index becomes awkward, use a transaction:
+  - lock existing pending/processing task for entity
+  - update merged fields if found
+  - otherwise insert
 
-  it('markFailedOrRetry increments retryCount and stays pending when under max', () => {
-    const task = makeTask({ retryCount: 0 });
-    task.markFailedOrRetry('timeout');
-    expect(task.retryCount).toBe(1);
-    expect(task.status).toBe('pending');
-    expect(task.errorMessage).toBe('timeout');
-  });
+### Task 7: Implement batch translation service
 
-  it('markFailedOrRetry sets failed when retryCount reaches max', () => {
-    const task = makeTask({ retryCount: 2 });
-    task.markFailedOrRetry('timeout');
-    expect(task.retryCount).toBe(3);
-    expect(task.status).toBe('failed');
-  });
+Create:
 
-  it('resetForRetry clears status and retryCount', () => {
-    const task = makeTask({ status: 'failed', retryCount: 3, errorMessage: 'err' });
-    task.resetForRetry();
-    expect(task.status).toBe('pending');
-    expect(task.retryCount).toBe(0);
-    expect(task.errorMessage).toBeNull();
-  });
-});
-```
+- `packages/infrastructure/services/openai-batch-translation.service.ts`
 
-- [ ] **Step 2: Run test to verify it passes**
+Responsibilities:
 
-Run: `cd packages/domain && npx vitest run __tests__/translation-task.entity.test.ts`
-Expected: All 5 tests PASS
+- call GPT-4o in JSON mode
+- detect source language
+- translate nested fields while preserving structure
+- skip empty / null values
 
-- [ ] **Step 3: Write DrizzleTranslationTaskRepository**
+Do not modify the existing inline message translation service. This is a separate service.
 
-```ts
-// packages/infrastructure/database/repositories/drizzle-translation-task.repository.ts
-import { eq, and, sql, inArray } from 'drizzle-orm';
-import type { ITranslationTaskRepository, EnqueueTranslationInput } from '@medical-crm/domain';
-import { TranslationTask } from '@medical-crm/domain';
-import { TRANSLATION_CONFIG } from '@medical-crm/domain';
-import type { CrmDb } from '../crm-client.js';
-import { translationTasks } from '../schema/index.js';
-import { generateId } from '@medical-crm/utils';
+### Task 8: Implement `TranslationWritebackService`
 
-export class DrizzleTranslationTaskRepository implements ITranslationTaskRepository {
-  constructor(private readonly db: CrmDb) {}
+Create:
 
-  async upsert(input: EnqueueTranslationInput): Promise<TranslationTask> {
-    const now = new Date().toISOString();
-    const targetLangs = input.targetLanguages ?? [...TRANSLATION_CONFIG.defaultTargetLanguages];
-    const id = generateId();
+- `packages/infrastructure/services/translation-writeback.service.ts`
 
-    // Drizzle cannot reference partial unique indexes in onConflictDoUpdate,
-    // so we use raw SQL with INSERT ... ON CONFLICT on the partial index.
-    const rows = await this.db.execute(sql`
-      INSERT INTO translation_tasks (
-        id, source_db, entity_type, entity_id, hospital_type,
-        fields_to_translate, target_languages, source_language, target_language,
-        status, error_message, retry_count, created_at
-      ) VALUES (
-        ${id}, ${input.sourceDb}, ${input.entityType}, ${input.entityId},
-        ${input.hospitalType ?? null},
-        ${JSON.stringify(input.fieldsToTranslate)}::jsonb,
-        ${sql.raw(`ARRAY[${targetLangs.map(l => `'${l}'`).join(',')}]::text[]`)},
-        NULL, NULL, 'pending', NULL, 0, ${now}
-      )
-      ON CONFLICT (source_db, entity_type, entity_id) WHERE status IN ('pending', 'processing')
-      DO UPDATE SET
-        fields_to_translate = EXCLUDED.fields_to_translate,
-        target_languages = EXCLUDED.target_languages,
-        status = 'pending'
-      RETURNING *
-    `);
+Responsibilities by source DB:
 
-    return this.rowToEntity((rows.rows as any[])[0]);
-  }
+- `crm`
+  - merge into entity `translations jsonb`
+- `supabase_beauty`
+  - surgeons -> merge `surgeons.translations`
+  - procedure cases -> merge `procedure_cases.translations`
+  - hospital info -> use Beauty-specific field mapping logic
+- `supabase_china`
+  - surgeons -> merge `surgeons.translations`
+  - procedure cases -> merge `procedure_cases.translations`
+  - hospital info -> use China-specific field mapping logic
 
-  async pullPending(limit: number): Promise<TranslationTask[]> {
-    // Atomic pull using FOR UPDATE SKIP LOCKED via raw SQL
-    const rows = await this.db.execute(sql`
-      UPDATE translation_tasks
-      SET status = 'processing', started_at = NOW()
-      WHERE id IN (
-        SELECT id FROM translation_tasks
-        WHERE status = 'pending'
-        ORDER BY created_at ASC
-        FOR UPDATE SKIP LOCKED
-        LIMIT ${limit}
-      )
-      RETURNING *
-    `);
+Important:
 
-    return (rows.rows as Array<typeof translationTasks.$inferSelect>).map(r => this.rowToEntity(r));
-  }
+- do **not** implement a generic `hospital_info` upsert like `{ hospital_id, locale, ...fields }`
+- instead reuse the existing repository field rules:
+  - Beauty maps selected fields into `hospital_translations`
+  - China maps selected fields into `hospital_i18n`, including `facilities_info` / `departments_info` merge behavior
 
-  async markProcessing(taskId: string): Promise<void> {
-    await this.db
-      .update(translationTasks)
-      .set({ status: 'processing', startedAt: new Date().toISOString() })
-      .where(eq(translationTasks.id, taskId));
-  }
+Recommended structure:
 
-  async markCompleted(taskId: string, detectedLanguage: string): Promise<void> {
-    await this.db
-      .update(translationTasks)
-      .set({
-        status: 'completed',
-        detectedLanguage,
-        completedAt: new Date().toISOString(),
-      })
-      .where(eq(translationTasks.id, taskId));
-  }
+- private `crmWriteback(task, result)`
+- private `beautyWriteback(task, result)`
+- private `chinaWriteback(task, result)`
+- private helpers per entity type
 
-  async markFailedOrRetry(taskId: string, error: string, retryCount: number): Promise<void> {
-    const maxRetries = TRANSLATION_CONFIG.retry.maxRetries;
-    const newRetryCount = retryCount + 1;
-    const newStatus = newRetryCount >= maxRetries ? 'failed' : 'pending';
+---
 
-    await this.db
-      .update(translationTasks)
-      .set({
-        status: newStatus,
-        errorMessage: error,
-        retryCount: newRetryCount,
-      })
-      .where(eq(translationTasks.id, taskId));
-  }
+## Chunk 3: Application Layer
 
-  async resetForRetry(sourceDb: string, entityType: string, entityId: string): Promise<void> {
-    await this.db
-      .update(translationTasks)
-      .set({
-        status: 'pending',
-        retryCount: 0,
-        errorMessage: null,
-        startedAt: null,
-        completedAt: null,
-      })
-      .where(
-        and(
-          eq(translationTasks.sourceDb, sourceDb),
-          eq(translationTasks.entityType, entityType),
-          eq(translationTasks.entityId, entityId),
-          eq(translationTasks.status, 'failed'),
-        ),
-      );
-  }
+### Task 9: Implement `TranslationTaskService`
 
-  async findByEntity(sourceDb: string, entityType: string, entityId: string): Promise<TranslationTask | null> {
-    const [row] = await this.db
-      .select()
-      .from(translationTasks)
-      .where(
-        and(
-          eq(translationTasks.sourceDb, sourceDb),
-          eq(translationTasks.entityType, entityType),
-          eq(translationTasks.entityId, entityId),
-        ),
-      )
-      .orderBy(sql`${translationTasks.createdAt} DESC`)
-      .limit(1);
+Create:
 
-    return row ? this.rowToEntity(row) : null;
-  }
+- `packages/application/src/services/translation-task.service.ts`
 
-  private rowToEntity(row: any): TranslationTask {
-    return new TranslationTask({
-      id: row.id,
-      sourceDb: row.source_db ?? row.sourceDb,
-      entityType: row.entity_type ?? row.entityType,
-      entityId: row.entity_id ?? row.entityId,
-      hospitalType: row.hospital_type ?? row.hospitalType ?? null,
-      fieldsToTranslate: (row.fields_to_translate ?? row.fieldsToTranslate ?? {}) as Record<string, unknown>,
-      targetLanguages: (row.target_languages ?? row.targetLanguages ?? []) as string[],
-      sourceLanguage: row.source_language ?? row.sourceLanguage ?? null,
-      targetLanguage: row.target_language ?? row.targetLanguage ?? null,
-      detectedLanguage: row.detected_language ?? row.detectedLanguage ?? null,
-      status: row.status as import('@medical-crm/domain').TranslationTaskStatus,
-      errorMessage: row.error_message ?? row.errorMessage ?? null,
-      retryCount: row.retry_count ?? row.retryCount ?? 0,
-      createdAt: new Date(row.created_at ?? row.createdAt),
-      startedAt: row.started_at ?? row.startedAt ? new Date(row.started_at ?? row.startedAt) : null,
-      completedAt: row.completed_at ?? row.completedAt ? new Date(row.completed_at ?? row.completedAt) : null,
-    });
-  }
-}
-```
+Responsibilities:
 
-- [ ] **Step 4: Verify typecheck**
+- enqueue translation task
+- merge changed fields into existing pending/processing task
+- default target languages from `TRANSLATION_CONFIG`
+- filter out empty values
 
-Run: `cd packages/infrastructure && npx tsc --noEmit`
+### Task 10: Implement translation worker use case
 
-- [ ] **Step 5: Commit**
+Create:
 
-```bash
-git add packages/domain/__tests__/translation-task.entity.test.ts packages/infrastructure/database/repositories/drizzle-translation-task.repository.ts
-git commit -m "feat(infra): add DrizzleTranslationTaskRepository with atomic pull"
-```
+- `packages/application/src/use-cases/translations/process-translation-tasks.use-case.ts`
 
-### Task 7: Implement OpenAI batch translation service
+Responsibilities:
 
-**Files:**
-- Create: `packages/infrastructure/services/openai-batch-translation.service.ts`
-- Create: `packages/infrastructure/__tests__/openai-batch-translation.service.test.ts`
+- pull pending tasks
+- call batch translation service
+- remove detected source language from target writeback set if present
+- delegate to `TranslationWritebackService`
+- mark completed or failed/retry
 
-- [ ] **Step 1: Write unit test with mocked OpenAI**
+### Task 11: Implement retry / status use cases
 
-```ts
-// packages/infrastructure/__tests__/openai-batch-translation.service.test.ts
-import { describe, it, expect, vi } from 'vitest';
-import { OpenAIBatchTranslationService } from '../services/openai-batch-translation.service.js';
+Create:
 
-describe('OpenAIBatchTranslationService', () => {
-  it('calls OpenAI with correct prompt and returns parsed result', async () => {
-    const mockResponse = {
-      detected_language: 'zh',
-      translations: {
-        en: { subject: 'Hello', description: 'World' },
-        ru: { subject: 'Привет', description: 'Мир' },
-      },
-    };
+- `packages/application/src/use-cases/translations/retry-translation.use-case.ts`
+- `packages/application/src/use-cases/translations/get-translation-status.use-case.ts`
 
-    const mockClient = {
-      chat: {
-        completions: {
-          create: vi.fn().mockResolvedValue({
-            choices: [{ message: { content: JSON.stringify(mockResponse) } }],
-          }),
-        },
-      },
-    };
+Both must query by:
 
-    const service = new OpenAIBatchTranslationService('fake-key');
-    // @ts-expect-error — inject mock client
-    service['client'] = mockClient;
+- `sourceDb`
+- `entityType`
+- `entityId`
 
-    const result = await service.translateBatch({
-      fields: { subject: '你好', description: '世界' },
-      targetLanguages: ['en', 'ru'],
-    });
+---
 
-    expect(result.detectedLanguage).toBe('zh');
-    expect(result.translations.en).toEqual({ subject: 'Hello', description: 'World' });
-    expect(result.translations.ru).toEqual({ subject: 'Привет', description: 'Мир' });
-    expect(mockClient.chat.completions.create).toHaveBeenCalledOnce();
-  });
-});
-```
+## Chunk 4: Module Integration
 
-- [ ] **Step 2: Run test to verify it fails**
+### Task 12: Support Tickets
 
-Run: `cd packages/infrastructure && npx vitest run __tests__/openai-batch-translation.service.test.ts`
-Expected: FAIL (service not created yet)
+Modify:
 
-- [ ] **Step 3: Write the service**
+- `packages/application/src/use-cases/tickets/create-ticket.use-case.ts`
+- `packages/application/src/use-cases/tickets/reply-to-ticket.use-case.ts`
 
-```ts
-// packages/infrastructure/services/openai-batch-translation.service.ts
-import OpenAI from 'openai';
-import type { IBatchTranslationService, BatchTranslateRequest, BatchTranslateResult } from '@medical-crm/domain';
-
-export class OpenAIBatchTranslationService implements IBatchTranslationService {
-  private readonly client: OpenAI;
-
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
-  }
-
-  async translateBatch(request: BatchTranslateRequest): Promise<BatchTranslateResult> {
-    const { fields, targetLanguages } = request;
-
-    const systemPrompt = `You are a professional medical translator.
-Given a JSON object of text fields, do the following:
-1. Auto-detect the source language of the text
-2. Translate ALL fields into each of the requested target languages: ${targetLanguages.join(', ')}
-3. Return a JSON object with this exact structure:
-{
-  "detected_language": "<iso-639-1 code>",
-  "translations": {
-    "<lang>": { <translated fields matching input key names and structure> },
-    ...
-  }
-}
 Rules:
-- Do NOT include the source language in the translations object
-- Preserve JSON structure, arrays, and nesting exactly as given
-- Skip empty or null values (keep them as-is)
-- Use formal medical terminology where appropriate
-- Return ONLY valid JSON, no markdown or explanation`;
 
-    const response = await this.client.chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: JSON.stringify(fields) },
-      ],
-    });
+- enqueue ticket translation after create for `subject`, `description`
+- enqueue reply translation only when `isInternalNote === false`
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Empty response from OpenAI translation');
-    }
+### Task 13: Consultations
 
-    const parsed = JSON.parse(content) as {
-      detected_language: string;
-      translations: Record<string, Record<string, unknown>>;
-    };
+Modify:
 
-    // Remove source language from translations if present
-    const detectedLang = parsed.detected_language;
-    delete parsed.translations[detectedLang];
+- `packages/application/src/use-cases/consultations/create-consultation.use-case.ts`
+- `packages/application/src/use-cases/consultations/update-consultation.use-case.ts`
 
-    return {
-      detectedLanguage: detectedLang,
-      translations: parsed.translations,
-    };
-  }
-}
-```
+Rules:
 
-- [ ] **Step 4: Run test to verify it passes**
+- enqueue only `notes`
+- do not add transcript translation work in V1
 
-Run: `cd packages/infrastructure && npx vitest run __tests__/openai-batch-translation.service.test.ts`
-Expected: PASS
+### Task 14: FAQ
 
-- [ ] **Step 5: Export from infrastructure services index**
+Modify:
 
-Add to `packages/infrastructure/services/index.ts`:
+- `packages/application/src/use-cases/chatbot-faq/create-faq-item.use-case.ts`
+- `packages/application/src/use-cases/chatbot-faq/update-faq-item.use-case.ts`
+- `packages/application/src/use-cases/chatbot-faq/create-faq-category.use-case.ts`
 
-```ts
-export { OpenAIBatchTranslationService } from './openai-batch-translation.service.js';
-```
+Rules:
 
-- [ ] **Step 6: Commit**
+- FAQ item -> enqueue `question`, `answer`
+- FAQ category -> enqueue `name`
+- if category rename/update use case is introduced later, hook translation there too
 
-```bash
-git add packages/infrastructure/services/openai-batch-translation.service.ts packages/infrastructure/__tests__/openai-batch-translation.service.test.ts packages/infrastructure/services/index.ts
-git commit -m "feat(infra): add OpenAIBatchTranslationService with GPT-4o JSON mode"
-```
+### Task 15: Question Collectors
 
-### Task 8: Implement TranslationWritebackService
+Modify:
 
-**Files:**
-- Create: `packages/infrastructure/services/translation-writeback.service.ts`
+- `packages/application/src/use-cases/question-collector/create-template.use-case.ts`
+- `packages/application/src/use-cases/question-collector/update-template.use-case.ts`
+- `packages/application/src/use-cases/question-collector/submit-response.use-case.ts`
 
-- [ ] **Step 1: Write the writeback service**
+Rules:
 
-```ts
-// packages/infrastructure/services/translation-writeback.service.ts
-import { eq, sql } from 'drizzle-orm';
-import type { CrmDb } from '../database/crm-client.js';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { TranslationTask } from '@medical-crm/domain';
-import type { BatchTranslateResult } from '@medical-crm/domain';
-import {
-  supportTickets,
-  supportTicketReplies,
-  consultations,
-  questionCollectorTemplates,
-  questionCollectorResponses,
-  chatbotFaqItems,
-  chatbotFaqCategories,
-} from '../database/schema/index.js';
+- template enqueue payload must use normalized question shape
+- response enqueue payload must use normalized response shape
+- do not pass raw `unknown` payloads straight through
 
-const CRM_TABLE_MAP: Record<string, any> = {
-  support_ticket: supportTickets,
-  support_ticket_reply: supportTicketReplies,
-  consultation: consultations,
-  qc_template: questionCollectorTemplates,
-  qc_response: questionCollectorResponses,
-  chatbot_faq_item: chatbotFaqItems,
-  chatbot_faq_category: chatbotFaqCategories,
-};
+### Task 16: Materials
 
-export class TranslationWritebackService {
-  constructor(
-    private readonly crmDb: CrmDb,
-    private readonly beautySupabase: SupabaseClient,
-    private readonly chinaSupabase: SupabaseClient,
-  ) {}
+Modify:
 
-  async writeback(task: TranslationTask, result: BatchTranslateResult): Promise<void> {
-    switch (task.sourceDb) {
-      case 'crm':
-        await this.crmWriteback(task, result);
-        break;
-      case 'supabase_beauty':
-        await this.supabaseWriteback(this.beautySupabase, task, result);
-        break;
-      case 'supabase_china':
-        await this.supabaseWriteback(this.chinaSupabase, task, result);
-        break;
-    }
-  }
+- `packages/application/src/use-cases/materials/update-hospital-info.use-case.ts`
+- `packages/application/src/use-cases/materials/create-surgeon.use-case.ts`
+- `packages/application/src/use-cases/materials/update-surgeon.use-case.ts`
+- `packages/application/src/use-cases/materials/create-before-after-case.use-case.ts`
+- `packages/application/src/use-cases/materials/update-before-after-case.use-case.ts`
 
-  private async crmWriteback(task: TranslationTask, result: BatchTranslateResult): Promise<void> {
-    const table = CRM_TABLE_MAP[task.entityType];
-    if (!table) throw new Error(`Unknown CRM entity type: ${task.entityType}`);
+Critical constraint:
 
-    // Merge new translations with existing
-    await this.crmDb
-      .update(table)
-      .set({
-        translations: sql`COALESCE(${table.translations}, '{}'::jsonb) || ${JSON.stringify(result.translations)}::jsonb`,
-      })
-      .where(eq(table.id, task.entityId));
-  }
+The current use-case inputs are not identical to the final translation fields.
 
-  private async supabaseWriteback(
-    client: SupabaseClient,
-    task: TranslationTask,
-    result: BatchTranslateResult,
-  ): Promise<void> {
-    switch (task.entityType) {
-      case 'surgeon':
-        await this.writebackSurgeon(client, task.entityId, result);
-        break;
-      case 'procedure_case':
-        await this.writebackProcedureCase(client, task.entityId, result);
-        break;
-      case 'hospital_info':
-        await this.writebackHospitalInfo(client, task, result);
-        break;
-      default:
-        throw new Error(`Unknown Supabase entity type: ${task.entityType}`);
-    }
-  }
+Examples:
 
-  private async writebackSurgeon(
-    client: SupabaseClient,
-    surgeonId: string,
-    result: BatchTranslateResult,
-  ): Promise<void> {
-    // Read existing translations
-    const { data: surgeon } = await client
-      .from('surgeons')
-      .select('translations')
-      .eq('id', surgeonId)
-      .single();
+- hospital info use case currently exposes `heroImage`, `photos`, `highlights`
+- surgeon use cases expose `intro`, `expertise`, `philosophy`, `achievements`, not `bio`
+- before/after case uses `surgeonName`, not `providerName`
 
-    const existing = (surgeon?.translations ?? {}) as Record<string, unknown>;
-    const merged = { ...existing, ...result.translations };
+So implementation must:
 
-    await client
-      .from('surgeons')
-      .update({ translations: merged })
-      .eq('id', surgeonId);
-  }
+- use the actual current input / saved entity field names
+- build translation payloads from real saved data, not from assumed future DTOs
 
-  private async writebackProcedureCase(
-    client: SupabaseClient,
-    caseId: string,
-    result: BatchTranslateResult,
-  ): Promise<void> {
-    const { data: existing } = await client
-      .from('procedure_cases')
-      .select('translations')
-      .eq('id', caseId)
-      .single();
+Recommended approach:
 
-    const merged = { ...(existing?.translations ?? {}), ...result.translations };
+1. after save, derive `sourceDb` from the materials repository flavor or injected context
+2. build translation payload from the saved entity
+3. enqueue only fields that are actually present in that module today
 
-    await client
-      .from('procedure_cases')
-      .update({ translations: merged })
-      .eq('id', caseId);
-  }
+V1 materials payloads:
 
-  private async writebackHospitalInfo(
-    client: SupabaseClient,
-    task: TranslationTask,
-    result: BatchTranslateResult,
-  ): Promise<void> {
-    // Determine which table to use based on sourceDb
-    const tableName = task.sourceDb === 'supabase_beauty'
-      ? 'hospital_translations'
-      : 'hospital_i18n';
+- hospital info:
+  - Beauty: `highlights` only unless the use case/API is expanded to expose tagline/description
+  - China: only fields that the current mutation path already persists safely
+- surgeon:
+  - `title`
+  - `intro`
+  - `expertise`
+  - `philosophy`
+  - `achievements`
+  - `specialties`
+  - `education`
+  - `certifications`
+- before/after case:
+  - `description`
+  - `provider_name` mapped from saved `surgeonName`
 
-    for (const [lang, fields] of Object.entries(result.translations)) {
-      if (tableName === 'hospital_translations') {
-        // Beauty: upsert into hospital_translations
-        await client
-          .from(tableName)
-          .upsert(
-            { hospital_id: task.entityId, language_code: lang, ...fields },
-            { onConflict: 'hospital_id,language_code' },
-          );
-      } else {
-        // China: upsert into hospital_i18n
-        await client
-          .from(tableName)
-          .upsert(
-            { hospital_id: task.entityId, locale: lang, ...fields },
-            { onConflict: 'hospital_id,locale' },
-          );
-      }
-    }
-  }
-}
-```
-
-- [ ] **Step 2: Verify typecheck**
-
-Run: `cd packages/infrastructure && npx tsc --noEmit`
-
-- [ ] **Step 3: Export from infrastructure services and repositories indexes**
-
-Add to `packages/infrastructure/services/index.ts`:
-
-```ts
-export { TranslationWritebackService } from './translation-writeback.service.js';
-```
-
-Add to `packages/infrastructure/database/repositories/index.ts`:
-
-```ts
-export { DrizzleTranslationTaskRepository } from './drizzle-translation-task.repository.js';
-```
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add packages/infrastructure/services/translation-writeback.service.ts packages/infrastructure/services/index.ts packages/infrastructure/database/repositories/index.ts
-git commit -m "feat(infra): add TranslationWritebackService with CRM/Supabase routing"
-```
+Do not add Beauty procedure translation work in this chunk.
 
 ---
 
-## Chunk 3: Application Layer — Service + Worker Use Cases
+## Chunk 5: API Layer and Wiring
 
-### Task 9: Create TranslationTaskService
+### Task 17: Add translation routes
 
-**Files:**
-- Create: `packages/application/src/services/translation-task.service.ts`
-- Create: `packages/application/__tests__/translation-task.service.test.ts`
+Create:
 
-- [ ] **Step 1: Write unit test**
+- `apps/api/src/routes/translations.routes.ts`
 
-```ts
-// packages/application/__tests__/translation-task.service.test.ts
-import { describe, it, expect, vi } from 'vitest';
-import { TranslationTaskService } from '../src/services/translation-task.service.js';
-import { TranslationTask } from '@medical-crm/domain';
+Routes:
 
-describe('TranslationTaskService', () => {
-  const mockRepo = {
-    upsert: vi.fn(),
-    pullPending: vi.fn(),
-    markProcessing: vi.fn(),
-    markCompleted: vi.fn(),
-    markFailedOrRetry: vi.fn(),
-    resetForRetry: vi.fn(),
-    findByEntity: vi.fn(),
-  };
+- `POST /api/v2/translations/retry`
+- `GET /api/v2/translations/status`
 
-  it('enqueue calls repo.upsert with correct params', async () => {
-    const service = new TranslationTaskService(mockRepo);
-    const task = new TranslationTask({
-      id: 't1', sourceDb: 'crm', entityType: 'support_ticket', entityId: 'e1',
-      hospitalType: null, fieldsToTranslate: { subject: 'Hi' }, targetLanguages: ['en'],
-      sourceLanguage: null, targetLanguage: null, detectedLanguage: null,
-      status: 'pending', errorMessage: null, retryCount: 0,
-      createdAt: new Date(), startedAt: null, completedAt: null,
-    });
-    mockRepo.upsert.mockResolvedValue(task);
+Both must use:
 
-    await service.enqueue({
-      sourceDb: 'crm',
-      entityType: 'support_ticket',
-      entityId: 'e1',
-      fieldsToTranslate: { subject: 'Hi' },
-    });
+- `sourceDb`
+- `entityType`
+- `entityId`
 
-    expect(mockRepo.upsert).toHaveBeenCalledWith({
-      sourceDb: 'crm',
-      entityType: 'support_ticket',
-      entityId: 'e1',
-      fieldsToTranslate: { subject: 'Hi' },
-    });
-  });
-});
-```
+Authorization:
 
-- [ ] **Step 2: Run test to verify it fails**
+- Admin and Hospital only
 
-Run: `cd packages/application && npx vitest run __tests__/translation-task.service.test.ts`
+### Task 18: Add internal worker route
 
-- [ ] **Step 3: Write the service**
+Modify:
 
-```ts
-// packages/application/src/services/translation-task.service.ts
-import type { ITranslationTaskRepository, EnqueueTranslationInput } from '@medical-crm/domain';
+- `apps/api/src/routes/internal.routes.ts`
 
-export class TranslationTaskService {
-  constructor(private readonly taskRepo: ITranslationTaskRepository) {}
+Add:
 
-  async enqueue(input: EnqueueTranslationInput): Promise<void> {
-    // Filter out empty/null fields before enqueuing
-    const filtered: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(input.fieldsToTranslate)) {
-      if (value !== null && value !== undefined && value !== '') {
-        filtered[key] = value;
-      }
-    }
-    if (Object.keys(filtered).length === 0) return;
+- `POST /api/v2/internal/process-translation-tasks`
 
-    await this.taskRepo.upsert({ ...input, fieldsToTranslate: filtered });
-  }
-}
-```
+Pattern should match the existing `process-message-tasks` route:
 
-- [ ] **Step 4: Run test to verify it passes**
+- `X-Internal-Secret`
+- `INTERNAL_API_SECRET`
 
-Run: `cd packages/application && npx vitest run __tests__/translation-task.service.test.ts`
+### Task 19: Register translation routes
 
-- [ ] **Step 5: Commit**
+Modify:
 
-```bash
-git add packages/application/src/services/translation-task.service.ts packages/application/__tests__/translation-task.service.test.ts
-git commit -m "feat(app): add TranslationTaskService with enqueue and field filtering"
-```
+- `apps/api/src/routes/index.ts`
 
-### Task 10: Create ProcessTranslationTasksUseCase
+Mount `translations.routes.ts` like the other route modules.
 
-**Files:**
-- Create: `packages/application/src/use-cases/translations/process-translation-tasks.use-case.ts`
+### Task 20: Wire composition root
 
-- [ ] **Step 1: Write the use case**
+Modify:
 
-```ts
-// packages/application/src/use-cases/translations/process-translation-tasks.use-case.ts
-import type { ITranslationTaskRepository, IBatchTranslationService } from '@medical-crm/domain';
+- `apps/api/src/composition-root.ts`
 
-export interface TranslationWriteback {
-  writeback(task: import('@medical-crm/domain').TranslationTask, result: import('@medical-crm/domain').BatchTranslateResult): Promise<void>;
-}
+Responsibilities:
 
-export interface ProcessTranslationTasksResult {
-  processed: number;
-  failed: number;
-}
+- instantiate `DrizzleTranslationTaskRepository`
+- instantiate `OpenAIBatchTranslationService`
+- instantiate `TranslationWritebackService`
+- instantiate `TranslationTaskService`
+- wire retry / status / worker use cases
+- update constructor injection for modified module use cases
 
-export class ProcessTranslationTasksUseCase {
-  constructor(
-    private readonly taskRepo: ITranslationTaskRepository,
-    private readonly translationService: IBatchTranslationService,
-    private readonly writebackService: TranslationWriteback,
-  ) {}
+Important:
 
-  async execute(batchSize = 5): Promise<ProcessTranslationTasksResult> {
-    const tasks = await this.taskRepo.pullPending(batchSize);
-    let processed = 0;
-    let failed = 0;
-
-    for (const task of tasks) {
-      try {
-        const result = await this.translationService.translateBatch({
-          fields: task.fieldsToTranslate,
-          targetLanguages: task.targetLanguages,
-        });
-
-        await this.writebackService.writeback(task, result);
-        await this.taskRepo.markCompleted(task.id, result.detectedLanguage);
-        processed++;
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-        await this.taskRepo.markFailedOrRetry(task.id, errorMsg, task.retryCount);
-        failed++;
-      }
-    }
-
-    return { processed, failed };
-  }
-}
-```
-
-- [ ] **Step 2: Verify typecheck**
-
-Run: `cd packages/application && npx tsc --noEmit`
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add packages/application/src/use-cases/translations/process-translation-tasks.use-case.ts
-git commit -m "feat(app): add ProcessTranslationTasksUseCase worker"
-```
-
-### Task 11: Create retry and status use cases
-
-**Files:**
-- Create: `packages/application/src/use-cases/translations/retry-translation.use-case.ts`
-- Create: `packages/application/src/use-cases/translations/get-translation-status.use-case.ts`
-
-- [ ] **Step 1: Write retry use case**
-
-```ts
-// packages/application/src/use-cases/translations/retry-translation.use-case.ts
-import type { ITranslationTaskRepository, SourceDb } from '@medical-crm/domain';
-import { ForbiddenError } from '@medical-crm/utils';
-import type { Actor } from '../../types/actor.js';
-
-export interface RetryTranslationInput {
-  sourceDb: SourceDb;
-  entityType: string;
-  entityId: string;
-}
-
-export class RetryTranslationUseCase {
-  constructor(private readonly taskRepo: ITranslationTaskRepository) {}
-
-  async execute(input: RetryTranslationInput, actor: Actor): Promise<void> {
-    if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
-      throw new ForbiddenError('Forbidden');
-    }
-    await this.taskRepo.resetForRetry(input.sourceDb, input.entityType, input.entityId);
-  }
-}
-```
-
-- [ ] **Step 2: Write status use case**
-
-```ts
-// packages/application/src/use-cases/translations/get-translation-status.use-case.ts
-import type { ITranslationTaskRepository, SourceDb } from '@medical-crm/domain';
-import { ForbiddenError } from '@medical-crm/utils';
-import type { Actor } from '../../types/actor.js';
-
-export interface TranslationStatusResult {
-  status: string | null;
-  retryCount: number;
-  errorMessage: string | null;
-  detectedLanguage: string | null;
-}
-
-export class GetTranslationStatusUseCase {
-  constructor(private readonly taskRepo: ITranslationTaskRepository) {}
-
-  async execute(
-    sourceDb: SourceDb,
-    entityType: string,
-    entityId: string,
-    actor: Actor,
-  ): Promise<TranslationStatusResult | null> {
-    if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
-      throw new ForbiddenError('Forbidden');
-    }
-    const task = await this.taskRepo.findByEntity(sourceDb, entityType, entityId);
-    if (!task) return null;
-
-    return {
-      status: task.status,
-      retryCount: task.retryCount,
-      errorMessage: task.errorMessage,
-      detectedLanguage: task.detectedLanguage,
-    };
-  }
-}
-```
-
-- [ ] **Step 3: Verify typecheck**
-
-Run: `cd packages/application && npx tsc --noEmit`
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add packages/application/src/use-cases/translations/
-git commit -m "feat(app): add retry and status translation use cases"
-```
+- materials use cases may need extra context to determine `sourceDb`
+- if `hospitalType` is not available at use-case layer, inject `sourceDb` or a resolver instead of guessing
 
 ---
 
-## Chunk 4: Module Integration — Hook Into Existing Use Cases
+## Verification
 
-### Important: Updating Existing Tests
+### Required checks after each chunk
 
-> **For Tasks 12–16:** Each modified use case that gets a new `translationTaskService` constructor parameter will break its existing unit tests. After modifying each use case, you MUST also update the corresponding test file in `packages/application/__tests__/` (or `packages/domain/__tests__/`) to pass a mock `TranslationTaskService`:
->
-> ```ts
-> const mockTranslationTaskService = { enqueue: vi.fn() };
-> // Pass as the new constructor argument
-> ```
->
-> The test suite must remain green after each task.
+- package-local typecheck for touched package
+- relevant unit tests for new service / repository / use case
 
-### Task 12: Hook translation into Support Tickets
+### Final checks
 
-**Files:**
-- Modify: `packages/application/src/use-cases/tickets/create-ticket.use-case.ts`
-- Modify: `packages/application/src/use-cases/tickets/reply-to-ticket.use-case.ts`
-- Modify: corresponding test files in `packages/application/__tests__/`
+- `npx turbo typecheck`
+- targeted tests for:
+  - translation task entity / repository
+  - batch translation service
+  - translation task service
+  - worker use case
+  - affected module constructor updates
 
-- [ ] **Step 1: Modify CreateTicketUseCase**
+### Manual smoke checks
 
-Add `TranslationTaskService` as a constructor dependency and enqueue after save:
-
-```ts
-// In constructor:
-constructor(
-  private readonly ticketRepo: ISupportTicketRepository,
-  private readonly translationTaskService: TranslationTaskService,
-) {}
-
-// After `const saved = await this.ticketRepo.save(entity);`:
-await this.translationTaskService.enqueue({
-  sourceDb: 'crm',
-  entityType: 'support_ticket',
-  entityId: saved.id,
-  fieldsToTranslate: {
-    subject: input.subject ?? '',
-    description: input.description,
-  },
-});
-```
-
-- [ ] **Step 2: Modify ReplyToTicketUseCase**
-
-Add `TranslationTaskService` and enqueue for non-internal replies:
-
-```ts
-// In constructor:
-constructor(
-  private readonly ticketRepo: ISupportTicketRepository,
-  private readonly replyRepo: ISupportTicketReplyRepository,
-  private readonly translationTaskService: TranslationTaskService,
-) {}
-
-// After `const saved = await this.replyRepo.save(reply);`:
-if (!isInternalNote) {
-  await this.translationTaskService.enqueue({
-    sourceDb: 'crm',
-    entityType: 'support_ticket_reply',
-    entityId: saved.id,
-    fieldsToTranslate: { content: input.content },
-  });
-}
-```
-
-- [ ] **Step 3: Verify typecheck**
-
-Run: `cd packages/application && npx tsc --noEmit`
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add packages/application/src/use-cases/tickets/
-git commit -m "feat(app): hook translation into support ticket create/reply"
-```
-
-### Task 13: Hook translation into Consultations
-
-**Files:**
-- Modify: `packages/application/src/use-cases/consultations/create-consultation.use-case.ts`
-- Modify: `packages/application/src/use-cases/consultations/update-consultation.use-case.ts`
-
-- [ ] **Step 1: Modify CreateConsultationUseCase**
-
-Add `TranslationTaskService` and enqueue when notes present:
-
-```ts
-// In constructor — add translationTaskService parameter
-// After save:
-if (input.notes) {
-  await this.translationTaskService.enqueue({
-    sourceDb: 'crm',
-    entityType: 'consultation',
-    entityId: saved.id,
-    fieldsToTranslate: { notes: input.notes },
-  });
-}
-```
-
-- [ ] **Step 2: Modify UpdateConsultationUseCase**
-
-Enqueue when notes changed:
-
-```ts
-// After save:
-if (input.notes !== undefined) {
-  await this.translationTaskService.enqueue({
-    sourceDb: 'crm',
-    entityType: 'consultation',
-    entityId: saved.id,
-    fieldsToTranslate: { notes: input.notes },
-  });
-}
-```
-
-- [ ] **Step 3: Verify typecheck**
-
-Run: `cd packages/application && npx tsc --noEmit`
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add packages/application/src/use-cases/consultations/
-git commit -m "feat(app): hook translation into consultation create/update"
-```
-
-### Task 14: Hook translation into Chatbot FAQ
-
-**Files:**
-- Modify: `packages/application/src/use-cases/chatbot-faq/create-faq-item.use-case.ts`
-- Modify: `packages/application/src/use-cases/chatbot-faq/update-faq-item.use-case.ts`
-- Modify: `packages/application/src/use-cases/chatbot-faq/create-faq-category.use-case.ts`
-
-- [ ] **Step 1: Modify CreateFaqItemUseCase**
-
-```ts
-// Add translationTaskService to constructor
-// After save:
-await this.translationTaskService.enqueue({
-  sourceDb: 'crm',
-  entityType: 'chatbot_faq_item',
-  entityId: saved.id,
-  fieldsToTranslate: { question: input.question, answer: input.answer },
-});
-```
-
-- [ ] **Step 2: Modify UpdateFaqItemUseCase**
-
-```ts
-// After save — only enqueue if question or answer changed:
-const fieldsToTranslate: Record<string, string> = {};
-if (input.question !== undefined) fieldsToTranslate.question = input.question;
-if (input.answer !== undefined) fieldsToTranslate.answer = input.answer;
-if (Object.keys(fieldsToTranslate).length > 0) {
-  await this.translationTaskService.enqueue({
-    sourceDb: 'crm',
-    entityType: 'chatbot_faq_item',
-    entityId: saved.id,
-    fieldsToTranslate,
-  });
-}
-```
-
-- [ ] **Step 3: Modify CreateFaqCategoryUseCase**
-
-```ts
-// After save:
-await this.translationTaskService.enqueue({
-  sourceDb: 'crm',
-  entityType: 'chatbot_faq_category',
-  entityId: saved.id,
-  fieldsToTranslate: { name: input.name },
-});
-```
-
-- [ ] **Step 4: Verify typecheck**
-
-Run: `cd packages/application && npx tsc --noEmit`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add packages/application/src/use-cases/chatbot-faq/
-git commit -m "feat(app): hook translation into FAQ item/category create/update"
-```
-
-### Task 15: Hook translation into Question Collectors
-
-**Files:**
-- Modify: `packages/application/src/use-cases/question-collector/create-template.use-case.ts`
-- Modify: `packages/application/src/use-cases/question-collector/update-template.use-case.ts`
-- Modify: `packages/application/src/use-cases/question-collector/submit-response.use-case.ts`
-
-- [ ] **Step 1: Modify CreateTemplateUseCase**
-
-```ts
-// Add translationTaskService to constructor
-// After save:
-await this.translationTaskService.enqueue({
-  sourceDb: 'crm',
-  entityType: 'qc_template',
-  entityId: saved.id,
-  fieldsToTranslate: {
-    templateName: input.templateName,
-    questions: input.questions,
-  },
-});
-```
-
-- [ ] **Step 2: Modify UpdateTemplateUseCase**
-
-Find the existing `update-template.use-case.ts`, add `translationTaskService`, and enqueue when templateName or questions changed.
-
-- [ ] **Step 3: Modify SubmitResponseUseCase**
-
-```ts
-// Add translationTaskService to constructor
-// After save:
-await this.translationTaskService.enqueue({
-  sourceDb: 'crm',
-  entityType: 'qc_response',
-  entityId: saved.id,
-  fieldsToTranslate: { responses: input.responses as Record<string, unknown> },
-});
-```
-
-- [ ] **Step 4: Verify typecheck**
-
-Run: `cd packages/application && npx tsc --noEmit`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add packages/application/src/use-cases/question-collector/
-git commit -m "feat(app): hook translation into QC template/response create/update"
-```
-
-### Task 16: Hook translation into Materials use cases
-
-**Files:**
-- Modify: `packages/application/src/use-cases/materials/update-hospital-info.use-case.ts`
-- Modify: `packages/application/src/use-cases/materials/create-surgeon.use-case.ts`
-- Modify: `packages/application/src/use-cases/materials/update-surgeon.use-case.ts`
-- Modify: `packages/application/src/use-cases/materials/create-before-after-case.use-case.ts`
-- Modify: `packages/application/src/use-cases/materials/update-before-after-case.use-case.ts`
-
-- [ ] **Step 1: Add translationTaskService to each use case constructor**
-
-Each materials use case needs a `TranslationTaskService` injected.
-
-- [ ] **Step 2: Determine sourceDb from hospital type**
-
-The materials use cases already have access to hospital type (COSMETIC vs REGULAR). Map to sourceDb:
-
-```ts
-const sourceDb = hospitalType === 'COSMETIC' ? 'supabase_beauty' : 'supabase_china';
-```
-
-- [ ] **Step 3: Enqueue in UpdateHospitalInfoUseCase**
-
-```ts
-// After save:
-await this.translationTaskService.enqueue({
-  sourceDb,
-  entityType: 'hospital_info',
-  entityId: hospitalId,
-  hospitalType: hospitalType ?? null,
-  fieldsToTranslate: {
-    // Extract user-facing text fields from input
-    tagline: input.tagline,
-    description: input.description,
-    // ... other translatable fields based on hospitalType
-  },
-});
-```
-
-- [ ] **Step 4: Enqueue in surgeon create/update**
-
-```ts
-await this.translationTaskService.enqueue({
-  sourceDb,
-  entityType: 'surgeon',
-  entityId: saved.id,
-  fieldsToTranslate: {
-    title: input.title,
-    bio: input.bio,
-    specialties: input.specialties,
-    education: input.education,
-    certifications: input.certifications,
-  },
-});
-```
-
-- [ ] **Step 5: Enqueue in before/after case create/update**
-
-```ts
-await this.translationTaskService.enqueue({
-  sourceDb,
-  entityType: 'procedure_case',
-  entityId: saved.id,
-  fieldsToTranslate: {
-    description: input.description,
-    provider_name: input.providerName,
-  },
-});
-```
-
-- [ ] **Step 6: Verify typecheck**
-
-Run: `cd packages/application && npx tsc --noEmit`
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add packages/application/src/use-cases/materials/
-git commit -m "feat(app): hook translation into materials hospital/surgeon/case use cases"
-```
+1. create support ticket -> translation task appears
+2. create FAQ item -> translation task appears
+3. create QC template -> translation task appears with normalized question payload
+4. process worker endpoint -> translations written back
+5. retry endpoint -> failed task resets correctly
 
 ---
 
-## Chunk 5: API Routes + Wiring + Final Tests
+## Notes for Implementers
 
-### Task 17: Create translation API routes
-
-**Files:**
-- Create: `apps/api/src/routes/translations.routes.ts`
-
-- [ ] **Step 1: Write the route file**
-
-```ts
-// apps/api/src/routes/translations.routes.ts
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { getServices } from '../composition-root.js';
-
-const app = new OpenAPIHono();
-
-// POST /api/v2/translations/retry
-const retryRoute = createRoute({
-  method: 'post',
-  path: '/api/v2/translations/retry',
-  request: {
-    body: {
-      content: {
-        'application/json': {
-          schema: z.object({
-            sourceDb: z.enum(['crm', 'supabase_beauty', 'supabase_china']),
-            entityType: z.string(),
-            entityId: z.string().uuid(),
-          }),
-        },
-      },
-    },
-  },
-  responses: { 200: { description: 'Translation task reset for retry' } },
-});
-
-app.openapi(retryRoute, async (c) => {
-  const body = c.req.valid('json');
-  const actor = c.get('actor');
-  const svc = getServices();
-  await svc.retryTranslation.execute(body, actor);
-  return c.json({ ok: true }, 200);
-});
-
-// GET /api/v2/translations/status
-const statusRoute = createRoute({
-  method: 'get',
-  path: '/api/v2/translations/status',
-  request: {
-    query: z.object({
-      sourceDb: z.enum(['crm', 'supabase_beauty', 'supabase_china']),
-      entityType: z.string(),
-      entityId: z.string().uuid(),
-    }),
-  },
-  responses: { 200: { description: 'Translation status' } },
-});
-
-app.openapi(statusRoute, async (c) => {
-  const { sourceDb, entityType, entityId } = c.req.valid('query');
-  const actor = c.get('actor');
-  const svc = getServices();
-  const result = await svc.getTranslationStatus.execute(sourceDb as any, entityType, entityId, actor);
-  return c.json(result ?? { status: null }, 200);
-});
-
-export default app;
-```
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add apps/api/src/routes/translations.routes.ts
-git commit -m "feat(api): add /translations/retry and /translations/status routes"
-```
-
-### Task 18: Add process-translation-tasks to internal routes
-
-**Files:**
-- Modify: `apps/api/src/routes/internal.routes.ts`
-
-- [ ] **Step 1: Add the worker endpoint**
-
-Add after the existing `process-message-tasks` route:
-
-```ts
-// POST /api/v2/internal/process-translation-tasks
-const processTranslationTasksRoute = createRoute({
-  method: 'post',
-  path: '/api/v2/internal/process-translation-tasks',
-  responses: { 200: { description: 'Translation tasks processed' } },
-});
-
-app.openapi(processTranslationTasksRoute, async (c) => {
-  const secret = c.req.header('X-Internal-Secret');
-  const { INTERNAL_API_SECRET } = getServerEnv();
-  if (!secret || secret !== INTERNAL_API_SECRET) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-
-  const svc = getServices();
-  const result = await svc.processTranslationTasks.execute();
-  return c.json(result, 200);
-});
-```
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add apps/api/src/routes/internal.routes.ts
-git commit -m "feat(api): add /internal/process-translation-tasks worker endpoint"
-```
-
-### Task 19: Register routes in route index
-
-**Files:**
-- Modify: `apps/api/src/routes/index.ts`
-
-- [ ] **Step 1: Import and mount translations routes**
-
-```ts
-import translationsRoutes from './translations.routes.js';
-// Mount after other protected routes:
-app.route('/', translationsRoutes);
-```
-
-- [ ] **Step 2: Commit**
-
-```bash
-git add apps/api/src/routes/index.ts
-git commit -m "feat(api): register translations routes"
-```
-
-### Task 20: Wire everything in composition-root.ts
-
-**Files:**
-- Modify: `apps/api/src/composition-root.ts`
-
-- [ ] **Step 0: Ensure application layer exports exist**
-
-Before wiring, verify these are exported from `packages/application/src/index.ts`:
-
-```ts
-export { TranslationTaskService } from './services/translation-task.service.js';
-export { ProcessTranslationTasksUseCase } from './use-cases/translations/process-translation-tasks.use-case.js';
-export { RetryTranslationUseCase } from './use-cases/translations/retry-translation.use-case.js';
-export { GetTranslationStatusUseCase } from './use-cases/translations/get-translation-status.use-case.js';
-```
-
-- [ ] **Step 1: Add imports in composition-root.ts**
-
-Use the package-level exports (not deep file paths):
-
-```ts
-// From infrastructure (via package.json exports)
-import { DrizzleTranslationTaskRepository } from '@medical-crm/infrastructure/repositories';
-import { OpenAIBatchTranslationService, TranslationWritebackService } from '@medical-crm/infrastructure/services';
-// From application (via package index)
-import {
-  TranslationTaskService,
-  ProcessTranslationTasksUseCase,
-  RetryTranslationUseCase,
-  GetTranslationStatusUseCase,
-} from '@medical-crm/application';
-```
-
-- [ ] **Step 2: Instantiate in getServices()**
-
-```ts
-// After existing repo/service instantiation:
-const translationTaskRepo = new DrizzleTranslationTaskRepository(crmDb);
-const batchTranslationService = new OpenAIBatchTranslationService(process.env['OPENAI_API_KEY'] ?? '');
-const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase);
-const translationTaskService = new TranslationTaskService(translationTaskRepo);
-```
-
-- [ ] **Step 3: Update use case instantiation to inject translationTaskService**
-
-Update all modified use cases to pass `translationTaskService`:
-
-```ts
-// Support tickets
-createTicket: new CreateTicketUseCase(ticketRepo, translationTaskService),
-replyToTicket: new ReplyToTicketUseCase(ticketRepo, replyRepo, translationTaskService),
-
-// Consultations
-createConsultation: new CreateConsultationUseCase(consultationRepo, caseRepo, translationTaskService),
-updateConsultation: new UpdateConsultationUseCase(consultationRepo, translationTaskService),
-
-// FAQ
-createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService),
-updateFaqItem: new UpdateFaqItemUseCase(faqRepo, translationTaskService),
-createFaqCategory: new CreateFaqCategoryUseCase(faqRepo, translationTaskService),
-
-// Question Collectors
-createTemplate: new CreateTemplateUseCase(qcRepo, translationTaskService),
-updateTemplate: new UpdateTemplateUseCase(qcRepo, translationTaskService),
-submitQCResponse: new SubmitResponseUseCase(qcRepo, caseRepo, translationTaskService),
-
-// Materials (these may need different wiring depending on current constructor signatures)
-// ... add translationTaskService to each materials use case
-
-// New use cases
-processTranslationTasks: new ProcessTranslationTasksUseCase(translationTaskRepo, batchTranslationService, translationWritebackService),
-retryTranslation: new RetryTranslationUseCase(translationTaskRepo),
-getTranslationStatus: new GetTranslationStatusUseCase(translationTaskRepo),
-```
-
-- [ ] **Step 4: Add to AppServices interface**
-
-```ts
-processTranslationTasks: ProcessTranslationTasksUseCase;
-retryTranslation: RetryTranslationUseCase;
-getTranslationStatus: GetTranslationStatusUseCase;
-```
-
-- [ ] **Step 5: Verify typecheck**
-
-Run: `npx turbo typecheck`
-Expected: All packages pass
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/api/src/composition-root.ts
-git commit -m "feat(api): wire translation infrastructure in composition root"
-```
-
-### Task 21: Run full test suite
-
-- [ ] **Step 1: Run all unit tests**
-
-Run: `npx turbo test`
-Expected: All tests pass
-
-- [ ] **Step 2: Fix any failures**
-
-Address any test failures from constructor signature changes in existing use case tests.
-
-- [ ] **Step 3: Run full typecheck**
-
-Run: `npx turbo typecheck`
-Expected: All packages pass
-
-- [ ] **Step 4: Final commit**
-
-```bash
-git commit -m "fix: resolve test failures from translation service integration"
-```
+- Keep `message_tasks` completely separate from this work.
+- Do not create transcript translation storage in this implementation.
+- Do not touch Beauty `procedures` translation in this implementation.
+- Do not assume every Drizzle index / constraint can be faithfully represented in `schema.ts`; partial unique index behavior may remain migration-only by design.
+- Prefer reading saved entities for translation payload construction when current input DTOs are incomplete.
 
 ---
 
-## Summary
+## Completion Criteria
 
-| Chunk | Tasks | What It Delivers |
-|-------|-------|-----------------|
-| 1: Foundation | 1-5 | Domain types, config, schema migrations |
-| 2: Core Infrastructure | 6-8 | Task repository, OpenAI batch service, writeback service |
-| 3: Application Layer | 9-11 | Enqueue service, worker use case, retry/status |
-| 4: Module Integration | 12-16 | All 6 modules hooked into translation pipeline |
-| 5: API + Wiring | 17-21 | Routes, composition root, full test pass |
+This implementation is done when:
 
-**Total: 21 tasks, ~80 steps**
-
-Each chunk produces a working, typechecking codebase. The system is fully operational after Chunk 5.
+- translation tasks can be enqueued for the in-scope modules
+- worker processes tasks atomically
+- translations are written back to CRM / Beauty / China correctly
+- retry and status APIs work with `(sourceDb, entityType, entityId)`
+- QC translation uses a canonical payload shape
+- materials hospital-info translation follows existing Beauty / China field-mapping rules instead of generic row upserts

@@ -33,6 +33,7 @@ export function toChatbotFaqItemDTO(
       fileSize: a.fileSize,
       url: resolveAttachmentUrl(a.storageKey, signedUrls),
     })),
+    translations: entity.translations,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   };
@@ -47,6 +48,7 @@ export function toChatbotFaqCategoryDTO(entity: ChatbotFaqCategory): ChatbotFaqC
     sortOrder: entity.sortOrder,
     isActive: entity.isActive,
     questionCount: entity.questionCount,
+    translations: entity.translations,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   };

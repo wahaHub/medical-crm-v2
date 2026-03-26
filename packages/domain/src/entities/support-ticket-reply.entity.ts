@@ -8,6 +8,7 @@ export interface SupportTicketReplyProps {
   content: string;
   isInternalNote: boolean;
   attachments: unknown | null;
+  translations?: Record<string, Record<string, unknown>>;
   createdAt: Date;
 }
 
@@ -19,6 +20,7 @@ export class SupportTicketReply {
   readonly content: string;
   readonly isInternalNote: boolean;
   readonly attachments: unknown | null;
+  readonly translations: Record<string, Record<string, unknown>>;
   readonly createdAt: Date;
 
   constructor(props: SupportTicketReplyProps) {
@@ -29,6 +31,7 @@ export class SupportTicketReply {
     this.content = props.content;
     this.isInternalNote = props.isInternalNote;
     this.attachments = props.attachments;
+    this.translations = props.translations ?? {};
     this.createdAt = props.createdAt;
   }
 }

@@ -26,6 +26,7 @@ export function toConsultationDTO(entity: Consultation): ConsultationDTO {
     aiSummary: entity.aiSummary,
     aiSummaryCreatedAt: entity.aiSummaryCreatedAt ? entity.aiSummaryCreatedAt.toISOString() : null,
     aiSummaryStatus: entity.aiSummaryStatus,
+    translations: entity.translations,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   };

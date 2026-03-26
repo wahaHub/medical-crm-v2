@@ -37,6 +37,11 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleChatbotFaqRepository: vi.fn(() => ({})),
   DrizzleEmailTemplateRepository: vi.fn(() => ({})),
   DrizzleTransactionRunner: vi.fn(() => ({})),
+  DrizzleTranslationTaskRepository: vi.fn(() => ({})),
+  DrizzleAiChatSessionRepository: vi.fn(() => ({})),
+  DrizzleAiChatMessageRepository: vi.fn(() => ({})),
+  DrizzleAiSyncOutboxRepository: vi.fn(() => ({})),
+  DrizzleDifyDocumentMappingRepository: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/infrastructure/storage', () => ({
   SupabaseStorageAdapter: vi.fn(() => ({})),
@@ -61,9 +66,11 @@ vi.mock('@medical-crm/application/upload-policies', () => ({
   messageAttachmentPolicy: {},
   packageImagePolicy: {},
   caseDocumentPolicy: {},
+  chatbotRequestDocsPolicy: {},
   ticketReplyAttachmentPolicy: {},
   faqAttachmentPolicy: {},
   consultationRecordingPolicy: {},
+  emailTemplateAttachmentPolicy: {},
   materialsBeautyPolicies: [],
   materialsRegularPolicies: [],
 }));
@@ -74,6 +81,9 @@ vi.mock('@medical-crm/infrastructure/services', () => ({
   KeycloakAdminService: vi.fn(() => ({})),
   SupabaseHospitalSyncService: vi.fn(() => ({})),
   OpenAITranslationService: vi.fn(() => ({})),
+  OpenAIBatchTranslationService: vi.fn(() => ({})),
+  TranslationWritebackService: vi.fn(() => ({})),
+  DifyApiClientService: vi.fn(() => ({})),
   RoutingMaterialsRepository: vi.fn(() => ({})),
   StubEmailService: vi.fn(() => ({})),
   ResendEmailService: { fromEnv: vi.fn(() => null) },
@@ -130,6 +140,11 @@ vi.mock('@medical-crm/application', () => ({
   RegenerateSummaryUseCase: vi.fn(() => ({})),
   RetranslateMessageUseCase: vi.fn(() => ({})),
   ProcessMessageTasksUseCase: vi.fn(() => ({})),
+  ProcessTranslationTasksUseCase: vi.fn(() => ({})),
+  RetryTranslationUseCase: vi.fn(() => ({})),
+  GetTranslationStatusUseCase: vi.fn(() => ({})),
+  ProcessAiSyncOutboxUseCase: vi.fn(() => ({})),
+  BootstrapAiSyncUseCase: vi.fn(() => ({})),
   // Consultations
   CreateConsultationUseCase: vi.fn(() => ({})),
   GetConsultationUseCase: vi.fn(() => ({})),
@@ -271,6 +286,8 @@ vi.mock('@medical-crm/application', () => ({
   GetProfileUseCase: vi.fn(() => ({})),
   UpdateProfileUseCase: vi.fn(() => ({})),
   ChangePasswordUseCase: vi.fn(() => ({})),
+  TranslationTaskService: vi.fn(() => ({})),
+  AiSyncTaskService: vi.fn(() => ({})),
 }));
 vi.mock('@medical-crm/config', () => ({
   getServerEnv: vi.fn(() => ({

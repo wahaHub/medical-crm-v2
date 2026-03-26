@@ -52,7 +52,9 @@ describe('surgeon materials use cases', () => {
 
   it('passes v1 surgeon profile fields through create surgeon', async () => {
     const repo = makeRepo();
-    const useCase = new CreateSurgeonUseCase(repo);
+    const mockResolveHospitalType = vi.fn().mockResolvedValue('COSMETIC');
+    const mockTranslationTaskService = { enqueue: vi.fn() };
+    const useCase = new CreateSurgeonUseCase(repo, mockResolveHospitalType, mockTranslationTaskService as any);
 
     await useCase.execute('hospital-1', {
       name: 'Dr. Lin',
@@ -82,7 +84,9 @@ describe('surgeon materials use cases', () => {
 
   it('passes v1 surgeon profile fields through update surgeon', async () => {
     const repo = makeRepo();
-    const useCase = new UpdateSurgeonUseCase(repo);
+    const mockResolveHospitalType = vi.fn().mockResolvedValue('COSMETIC');
+    const mockTranslationTaskService = { enqueue: vi.fn() };
+    const useCase = new UpdateSurgeonUseCase(repo, mockResolveHospitalType, mockTranslationTaskService as any);
 
     await useCase.execute('hospital-1', 'surgeon-1', {
       education: ['Harvard Medical School'],

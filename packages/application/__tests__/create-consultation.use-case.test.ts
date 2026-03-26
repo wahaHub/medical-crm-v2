@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CreateConsultationUseCase } from '../src/use-cases/consultations/create-consultation.use-case.js';
+
+const mockTranslationTaskService = { enqueue: vi.fn() };
 import type { IConsultationRepository, ICaseRepository } from '@medical-crm/domain';
 import { Consultation, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
@@ -56,7 +58,7 @@ describe('CreateConsultationUseCase', () => {
       countByFilters: vi.fn(),
     };
 
-    useCase = new CreateConsultationUseCase(mockConsultationRepo, mockCaseRepo);
+    useCase = new CreateConsultationUseCase(mockConsultationRepo, mockCaseRepo, mockTranslationTaskService as any);
   });
 
   it('throws NotFoundError when case does not exist', async () => {

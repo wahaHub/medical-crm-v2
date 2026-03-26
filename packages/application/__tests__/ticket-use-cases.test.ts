@@ -32,6 +32,9 @@ const otherPatientActor: Actor = {
   hospitalId: null,
 };
 
+// ——— Mocks ———
+const mockTranslationTaskService = { enqueue: vi.fn() };
+
 // ——— Factories ———
 function makeMockTicket(overrides: Partial<ConstructorParameters<typeof SupportTicket>[0]> = {}): SupportTicket {
   return new SupportTicket({
@@ -99,7 +102,7 @@ describe('CreateTicketUseCase', () => {
   });
 
   it('creates a ticket successfully', async () => {
-    const uc = new CreateTicketUseCase(ticketRepo);
+    const uc = new CreateTicketUseCase(ticketRepo, mockTranslationTaskService as any);
     const result = await uc.execute({
       type: 'GENERAL_QUESTIONS',
       description: 'I have a question',
@@ -115,7 +118,7 @@ describe('CreateTicketUseCase', () => {
   });
 
   it('allows admin to create tickets', async () => {
-    const uc = new CreateTicketUseCase(ticketRepo);
+    const uc = new CreateTicketUseCase(ticketRepo, mockTranslationTaskService as any);
     const result = await uc.execute({
       type: 'FEEDBACK',
       description: 'Admin ticket',
@@ -126,7 +129,7 @@ describe('CreateTicketUseCase', () => {
   });
 
   it('uses default MEDIUM priority when not specified', async () => {
-    const uc = new CreateTicketUseCase(ticketRepo);
+    const uc = new CreateTicketUseCase(ticketRepo, mockTranslationTaskService as any);
     const result = await uc.execute({
       type: 'GENERAL_QUESTIONS',
       description: 'Some issue',
@@ -293,7 +296,7 @@ describe('ReplyToTicketUseCase', () => {
     const ticket = makeMockTicket({ status: 'ASSIGNED' });
     (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
 
-    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo);
+    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo, mockTranslationTaskService as any);
     const result = await uc.execute('ticket-1', { content: 'Admin reply' }, adminActor);
 
     expect(result.content).toBe('Admin reply');
@@ -305,7 +308,7 @@ describe('ReplyToTicketUseCase', () => {
     const ticket = makeMockTicket({ status: 'PENDING_INFO', patientId: 'patient-1' });
     (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
 
-    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo);
+    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo, mockTranslationTaskService as any);
     await uc.execute('ticket-1', { content: 'Patient response' }, patientActor);
 
     expect(ticket.status).toBe('ASSIGNED');
@@ -316,7 +319,7 @@ describe('ReplyToTicketUseCase', () => {
     const ticket = makeMockTicket({ patientId: 'patient-1' });
     (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
 
-    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo);
+    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo, mockTranslationTaskService as any);
     await expect(
       uc.execute('ticket-1', { content: 'Sneaky' }, otherPatientActor),
     ).rejects.toThrow('Not authorized');
@@ -326,7 +329,7 @@ describe('ReplyToTicketUseCase', () => {
     const ticket = makeMockTicket({ status: 'ASSIGNED', patientId: 'patient-1' });
     (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
 
-    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo);
+    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo, mockTranslationTaskService as any);
     const result = await uc.execute(
       'ticket-1',
       { content: 'Note attempt', isInternalNote: true },
@@ -340,7 +343,7 @@ describe('ReplyToTicketUseCase', () => {
     const ticket = makeMockTicket({ status: 'ASSIGNED' });
     (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
 
-    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo);
+    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo, mockTranslationTaskService as any);
     const result = await uc.execute(
       'ticket-1',
       { content: 'Internal note', isInternalNote: true },

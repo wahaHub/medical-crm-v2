@@ -3,6 +3,7 @@ import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
 
 export interface UpdateConsultationInput {
   scheduledAt?: Date;
@@ -14,7 +15,10 @@ export interface UpdateConsultationInput {
 }
 
 export class UpdateConsultationUseCase {
-  constructor(private readonly consultationRepo: IConsultationRepository) {}
+  constructor(
+    private readonly consultationRepo: IConsultationRepository,
+    private readonly translationTaskService: TranslationTaskService,
+  ) {}
 
   async execute(
     id: string,
@@ -39,6 +43,16 @@ export class UpdateConsultationUseCase {
     entity.updatedAt = new Date();
 
     const saved = await this.consultationRepo.save(entity);
+
+    if (input.notes !== undefined) {
+      await this.translationTaskService.enqueue({
+        sourceDb: 'crm',
+        entityType: 'consultation',
+        entityId: saved.id,
+        fieldsToTranslate: { notes: input.notes },
+      });
+    }
+
     return toConsultationDTO(saved);
   }
 }

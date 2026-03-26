@@ -4,6 +4,7 @@ import { generateId, ForbiddenError } from '@medical-crm/utils';
 import type { ChatbotFaqItemDTO } from '../../dtos/chatbot-faq.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toChatbotFaqItemDTO } from '../../mappers/chatbot-faq.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
 
 export interface CreateFaqItemInput {
   category: string;
@@ -17,7 +18,10 @@ export interface CreateFaqItemInput {
 }
 
 export class CreateFaqItemUseCase {
-  constructor(private readonly faqRepo: IChatbotFaqRepository) {}
+  constructor(
+    private readonly faqRepo: IChatbotFaqRepository,
+    private readonly translationTaskService: TranslationTaskService,
+  ) {}
 
   async execute(input: CreateFaqItemInput, actor: Actor): Promise<ChatbotFaqItemDTO> {
     if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
@@ -43,6 +47,14 @@ export class CreateFaqItemUseCase {
     });
 
     const saved = await this.faqRepo.save(entity);
+
+    await this.translationTaskService.enqueue({
+      sourceDb: 'crm',
+      entityType: 'chatbot_faq_item',
+      entityId: saved.id,
+      fieldsToTranslate: { question: input.question, answer: input.answer },
+    });
+
     return toChatbotFaqItemDTO(saved);
   }
 }

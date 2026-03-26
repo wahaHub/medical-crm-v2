@@ -4,6 +4,8 @@ import { generateId, ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { QCResponseDTO } from '../../dtos/question-collector.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQCResponseDTO } from '../../mappers/question-collector.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
+import { normalizeQCResponses, extractTranslatableQCResponses } from '../../services/qc-normalization.js';
 
 export interface SubmitResponseInput {
   templateId: string;
@@ -16,6 +18,7 @@ export class SubmitResponseUseCase {
   constructor(
     private readonly qcRepo: IQuestionCollectorRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly translationTaskService: TranslationTaskService,
   ) {}
 
   async execute(caseId: string, input: SubmitResponseInput, actor: Actor): Promise<QCResponseDTO> {
@@ -60,6 +63,18 @@ export class SubmitResponseUseCase {
     }
 
     const saved = await this.qcRepo.saveResponse(entity);
+
+    const normalizedResponses = normalizeQCResponses(input.responses);
+    const translatableFields = extractTranslatableQCResponses(normalizedResponses);
+    if (Object.keys(translatableFields).length > 0) {
+      await this.translationTaskService.enqueue({
+        sourceDb: 'crm',
+        entityType: 'qc_response',
+        entityId: saved.id,
+        fieldsToTranslate: translatableFields,
+      });
+    }
+
     return toQCResponseDTO(saved);
   }
 }

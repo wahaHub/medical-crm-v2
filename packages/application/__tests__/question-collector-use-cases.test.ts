@@ -131,6 +131,11 @@ function makeCase(overrides: Partial<ConstructorParameters<typeof Case>[0]> = {}
   });
 }
 
+// ——— Mock TranslationTaskService ———
+function mockTranslationTaskService() {
+  return { enqueue: vi.fn().mockResolvedValue(undefined) };
+}
+
 // ——— Mock repos ———
 function mockQCRepo(): IQuestionCollectorRepository {
   return {
@@ -162,11 +167,13 @@ function mockCaseRepo(): ICaseRepository {
 // ============================================================================
 describe('CreateTemplateUseCase', () => {
   let qcRepo: ReturnType<typeof mockQCRepo>;
+  let translationTaskService: ReturnType<typeof mockTranslationTaskService>;
   let uc: CreateTemplateUseCase;
 
   beforeEach(() => {
     qcRepo = mockQCRepo();
-    uc = new CreateTemplateUseCase(qcRepo);
+    translationTaskService = mockTranslationTaskService();
+    uc = new CreateTemplateUseCase(qcRepo, translationTaskService as any);
   });
 
   it('creates a template for admin', async () => {
@@ -197,11 +204,13 @@ describe('CreateTemplateUseCase', () => {
 // ============================================================================
 describe('UpdateTemplateUseCase', () => {
   let qcRepo: ReturnType<typeof mockQCRepo>;
+  let translationTaskService: ReturnType<typeof mockTranslationTaskService>;
   let uc: UpdateTemplateUseCase;
 
   beforeEach(() => {
     qcRepo = mockQCRepo();
-    uc = new UpdateTemplateUseCase(qcRepo);
+    translationTaskService = mockTranslationTaskService();
+    uc = new UpdateTemplateUseCase(qcRepo, translationTaskService as any);
   });
 
   it('updates a template for admin', async () => {
@@ -320,12 +329,14 @@ describe('GetTemplateUseCase', () => {
 describe('SubmitResponseUseCase', () => {
   let qcRepo: ReturnType<typeof mockQCRepo>;
   let caseRepo: ReturnType<typeof mockCaseRepo>;
+  let translationTaskService: ReturnType<typeof mockTranslationTaskService>;
   let uc: SubmitResponseUseCase;
 
   beforeEach(() => {
     qcRepo = mockQCRepo();
     caseRepo = mockCaseRepo();
-    uc = new SubmitResponseUseCase(qcRepo, caseRepo);
+    translationTaskService = mockTranslationTaskService();
+    uc = new SubmitResponseUseCase(qcRepo, caseRepo, translationTaskService as any);
   });
 
   it('creates new response on submit', async () => {

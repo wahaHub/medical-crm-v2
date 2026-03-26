@@ -4,6 +4,7 @@ import { generateId, NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { SupportTicketReplyDTO } from '../../dtos/support-ticket.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toSupportTicketReplyDTO } from '../../mappers/support-ticket.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
 
 export interface ReplyToTicketInput {
   content: string;
@@ -15,6 +16,7 @@ export class ReplyToTicketUseCase {
   constructor(
     private readonly ticketRepo: ISupportTicketRepository,
     private readonly replyRepo: ISupportTicketReplyRepository,
+    private readonly translationTaskService: TranslationTaskService,
   ) {}
 
   async execute(
@@ -47,6 +49,15 @@ export class ReplyToTicketUseCase {
     });
 
     const saved = await this.replyRepo.save(reply);
+
+    if (!isInternalNote) {
+      await this.translationTaskService.enqueue({
+        sourceDb: 'crm',
+        entityType: 'support_ticket_reply',
+        entityId: saved.id,
+        fieldsToTranslate: { content: input.content },
+      });
+    }
 
     // If patient replies to PENDING_INFO ticket, transition back to ASSIGNED
     if (actor.role !== 'ADMIN' && ticket.status === 'PENDING_INFO') {

@@ -3,6 +3,7 @@ import { ForbiddenError } from '@medical-crm/utils';
 import type { ChatbotFaqCategoryDTO } from '../../dtos/chatbot-faq.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toChatbotFaqCategoryDTO } from '../../mappers/chatbot-faq.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
 
 export interface CreateFaqCategoryInput {
   name: string;
@@ -12,7 +13,10 @@ export interface CreateFaqCategoryInput {
 }
 
 export class CreateFaqCategoryUseCase {
-  constructor(private readonly faqRepo: IChatbotFaqRepository) {}
+  constructor(
+    private readonly faqRepo: IChatbotFaqRepository,
+    private readonly translationTaskService: TranslationTaskService,
+  ) {}
 
   async execute(input: CreateFaqCategoryInput, actor: Actor): Promise<ChatbotFaqCategoryDTO> {
     if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
@@ -27,6 +31,13 @@ export class CreateFaqCategoryUseCase {
       hospitalId,
       sortOrder: input.sortOrder ?? 0,
       isActive: input.isActive ?? true,
+    });
+
+    await this.translationTaskService.enqueue({
+      sourceDb: 'crm',
+      entityType: 'chatbot_faq_category',
+      entityId: created.id,
+      fieldsToTranslate: { name: input.name },
     });
 
     return toChatbotFaqCategoryDTO(created);

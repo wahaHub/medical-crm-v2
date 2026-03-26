@@ -4,6 +4,7 @@ import { generateId } from '@medical-crm/utils';
 import type { SupportTicketDTO } from '../../dtos/support-ticket.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toSupportTicketDTO } from '../../mappers/support-ticket.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
 
 export interface CreateTicketInput {
   caseId?: string;
@@ -15,7 +16,10 @@ export interface CreateTicketInput {
 }
 
 export class CreateTicketUseCase {
-  constructor(private readonly ticketRepo: ISupportTicketRepository) {}
+  constructor(
+    private readonly ticketRepo: ISupportTicketRepository,
+    private readonly translationTaskService: TranslationTaskService,
+  ) {}
 
   async execute(input: CreateTicketInput, actor: Actor): Promise<SupportTicketDTO> {
     const ticketNumberStr = await this.ticketRepo.nextTicketNumber();
@@ -40,6 +44,17 @@ export class CreateTicketUseCase {
     });
 
     const saved = await this.ticketRepo.save(entity);
+
+    await this.translationTaskService.enqueue({
+      sourceDb: 'crm',
+      entityType: 'support_ticket',
+      entityId: saved.id,
+      fieldsToTranslate: {
+        subject: entity.subject ?? '',
+        description: entity.description,
+      },
+    });
+
     return toSupportTicketDTO(saved);
   }
 }

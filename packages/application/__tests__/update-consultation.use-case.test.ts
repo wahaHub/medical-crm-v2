@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UpdateConsultationUseCase } from '../src/use-cases/consultations/update-consultation.use-case.js';
+
+const mockTranslationTaskService = { enqueue: vi.fn() };
 import { UpdateConsultationStatusUseCase } from '../src/use-cases/consultations/update-consultation-status.use-case.js';
 import type { IConsultationRepository } from '@medical-crm/domain';
 import { Consultation } from '@medical-crm/domain';
@@ -54,7 +56,7 @@ describe('UpdateConsultationUseCase', () => {
       countByFilters: vi.fn(),
     };
 
-    useCase = new UpdateConsultationUseCase(mockConsultationRepo);
+    useCase = new UpdateConsultationUseCase(mockConsultationRepo, mockTranslationTaskService as any);
   });
 
   it('throws NotFoundError when consultation does not exist', async () => {

@@ -3,6 +3,7 @@ import { generateId, ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
 
 export interface CreateConsultationInput {
   caseId: string;
@@ -18,6 +19,7 @@ export class CreateConsultationUseCase {
   constructor(
     private readonly consultationRepo: IConsultationRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly translationTaskService: TranslationTaskService,
   ) {}
 
   async execute(input: CreateConsultationInput, actor: Actor): Promise<ConsultationDTO> {
@@ -63,6 +65,16 @@ export class CreateConsultationUseCase {
     });
 
     const saved = await this.consultationRepo.save(entity);
+
+    if (input.notes) {
+      await this.translationTaskService.enqueue({
+        sourceDb: 'crm',
+        entityType: 'consultation',
+        entityId: saved.id,
+        fieldsToTranslate: { notes: input.notes },
+      });
+    }
+
     return toConsultationDTO(saved);
   }
 }

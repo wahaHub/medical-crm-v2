@@ -3,6 +3,7 @@ import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { ChatbotFaqItemDTO } from '../../dtos/chatbot-faq.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toChatbotFaqItemDTO } from '../../mappers/chatbot-faq.mapper.js';
+import type { TranslationTaskService } from '../../services/translation-task.service.js';
 
 export interface UpdateFaqItemInput {
   category?: string;
@@ -16,7 +17,10 @@ export interface UpdateFaqItemInput {
 }
 
 export class UpdateFaqItemUseCase {
-  constructor(private readonly faqRepo: IChatbotFaqRepository) {}
+  constructor(
+    private readonly faqRepo: IChatbotFaqRepository,
+    private readonly translationTaskService: TranslationTaskService,
+  ) {}
 
   async execute(id: string, input: UpdateFaqItemInput, actor: Actor): Promise<ChatbotFaqItemDTO> {
     if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
@@ -44,6 +48,19 @@ export class UpdateFaqItemUseCase {
     entity.updatedAt = new Date();
 
     const saved = await this.faqRepo.save(entity);
+
+    const fieldsToTranslate: Record<string, string> = {};
+    if (input.question !== undefined) fieldsToTranslate.question = input.question;
+    if (input.answer !== undefined) fieldsToTranslate.answer = input.answer;
+    if (Object.keys(fieldsToTranslate).length > 0) {
+      await this.translationTaskService.enqueue({
+        sourceDb: 'crm',
+        entityType: 'chatbot_faq_item',
+        entityId: saved.id,
+        fieldsToTranslate,
+      });
+    }
+
     return toChatbotFaqItemDTO(saved);
   }
 }

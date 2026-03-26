@@ -325,6 +325,7 @@ export const consultations = pgTable("consultations", {
 	aiSummaryStatus: aiSummaryStatus("ai_summary_status").default('PENDING').notNull(),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	index("consultations_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
 	index("consultations_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
@@ -370,24 +371,28 @@ export const consultationTranscripts = pgTable("consultation_transcripts", {
 
 export const translationTasks = pgTable("translation_tasks", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
-	hospitalType: text("hospital_type").notNull(),
+	hospitalType: text("hospital_type"),
 	entityType: text("entity_type").notNull(),
 	entityId: uuid("entity_id").notNull(),
 	sourceLanguage: text("source_language").default('zh').notNull(),
-	targetLanguage: text("target_language").notNull(),
+	targetLanguage: text("target_language"),
 	status: text().default('pending'),
 	errorMessage: text("error_message"),
 	retryCount: integer("retry_count").default(0),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }),
 	completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
+	sourceDb: text("source_db").default('crm').notNull(),
+	fieldsToTranslate: jsonb("fields_to_translate").default({}).notNull(),
+	targetLanguages: text("target_languages").array().default(sql`'{}'::text[]`).notNull(),
+	detectedLanguage: varchar("detected_language", { length: 10 }),
 }, (table) => [
 	index("idx_translation_tasks_created_at").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 	index("idx_translation_tasks_entity").using("btree", table.entityType.asc().nullsLast().op("text_ops"), table.entityId.asc().nullsLast().op("uuid_ops")),
 	index("idx_translation_tasks_hospital_type").using("btree", table.hospitalType.asc().nullsLast().op("text_ops")),
 	index("idx_translation_tasks_pending").using("btree", table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(status = 'pending'::text)`),
 	index("idx_translation_tasks_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
-	unique("translation_tasks_hospital_type_entity_type_entity_id_sourc_key").on(table.hospitalType, table.entityType, table.entityId, table.sourceLanguage, table.targetLanguage),
+	index("translation_tasks_entity_dedup_idx").using("btree", table.sourceDb.asc(), table.entityType.asc(), table.entityId.asc()),
 ]);
 
 export const hospitalRegistrationTokens = pgTable("hospital_registration_tokens", {
@@ -498,6 +503,7 @@ export const supportTickets = pgTable("support_tickets", {
 	version: integer().default(1).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull(),
+	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	index("idx_tickets_patient_status").using("btree", table.patientId.asc().nullsLast(), table.status.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
 	index("idx_tickets_queue").using("btree", table.status.asc().nullsLast(), table.priority.asc().nullsLast(), table.slaDeadline.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
@@ -512,6 +518,7 @@ export const supportTicketReplies = pgTable("support_ticket_replies", {
 	isInternalNote: boolean("is_internal_note").default(false).notNull(),
 	attachments: jsonb(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	index("idx_ticket_replies_ticket").using("btree", table.ticketId.asc().nullsLast(), table.createdAt.desc().nullsFirst()),
 ]);
@@ -629,6 +636,7 @@ export const questionCollectorTemplates = pgTable("question_collector_templates"
 	createdBy: uuid("created_by").references(() => users.id),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	index("idx_qct_active").using("btree", table.isActive.asc().nullsLast(), table.category.asc().nullsLast()),
 ]);
@@ -645,6 +653,7 @@ export const questionCollectorResponses = pgTable("question_collector_responses"
 	submittedAt: timestamp("submitted_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	index("idx_qcr_case").using("btree", table.caseId.asc().nullsLast(), table.submittedAt.desc().nullsFirst()),
 	index("idx_qcr_completion_submitted").using("btree", table.completionStatus.asc().nullsLast(), table.submittedAt.desc().nullsFirst()),
@@ -779,6 +788,7 @@ export const chatbotFaqItems = pgTable("chatbot_faq_items", {
 	attachments: jsonb('attachments').default([]),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	index("chatbot_faq_items_category_idx").using("btree", table.category.asc().nullsLast()),
 	index("chatbot_faq_items_hospital_type_idx").using("btree", table.hospitalType.asc().nullsLast()),
@@ -795,6 +805,7 @@ export const chatbotFaqCategories = pgTable("chatbot_faq_categories", {
 	isActive: boolean("is_active").default(true).notNull(),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+	translations: jsonb().default({}).notNull(),
 }, (table) => [
 	unique("chatbot_faq_categories_name_hospital_type_hospital_id_key").on(table.name, table.hospitalType, table.hospitalId),
 	index("chatbot_faq_categories_hospital_type_idx").using("btree", table.hospitalType.asc().nullsLast()),

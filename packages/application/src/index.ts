@@ -354,3 +354,14 @@ export { UpdateProfileUseCase } from './use-cases/users/update-profile.use-case.
 export type { UpdateProfileInput } from './use-cases/users/update-profile.use-case.js';
 export { ChangePasswordUseCase } from './use-cases/users/change-password.use-case.js';
 export type { ChangePasswordInput } from './use-cases/users/change-password.use-case.js';
+
+// Services — Translation
+export { TranslationTaskService } from './services/translation-task.service.js';
+
+// Use Cases — Translations
+export { ProcessTranslationTasksUseCase } from './use-cases/translations/process-translation-tasks.use-case.js';
+export type { TranslationWriteback, ProcessTranslationTasksResult } from './use-cases/translations/process-translation-tasks.use-case.js';
+export { RetryTranslationUseCase } from './use-cases/translations/retry-translation.use-case.js';
+export type { RetryTranslationInput } from './use-cases/translations/retry-translation.use-case.js';
+export { GetTranslationStatusUseCase } from './use-cases/translations/get-translation-status.use-case.js';
+export type { TranslationStatusResult } from './use-cases/translations/get-translation-status.use-case.js';

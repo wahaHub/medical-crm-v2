@@ -100,3 +100,7 @@ export type ServiceCatalogCategory =
 // Phase 2 M9: BookingRequest
 export type BookingRequestStatus = 'PENDING' | 'HOSPITALS_MATCHED' | 'SELECTIONS_SAVED' | 'COMPLETED' | 'EXPIRED';
 export type BookingConditionType = 'COSMETIC' | 'MEDICAL' | 'DENTAL' | 'WELLNESS' | 'OTHER';
+
+// Unified AI Translation System
+export type { TranslationTaskStatus, SourceDb, SupportedLanguage } from './translation.js';
+export { TRANSLATION_CONFIG } from './translation.config.js';

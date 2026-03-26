@@ -190,6 +190,9 @@ export { QCTemplate } from './entities/qc-template.entity.js';
 export type { QCTemplateProps } from './entities/qc-template.entity.js';
 export { QCResponse } from './entities/qc-response.entity.js';
 export type { QCResponseProps } from './entities/qc-response.entity.js';
+
+// QC canonical payload types (for translation worker and normalization helpers)
+export type { QCQuestionType, QCTemplateQuestion, QCResponsePayload } from './entities/qc-types.js';
 export { QCCustomization } from './entities/qc-customization.entity.js';
 export type { QCCustomizationProps } from './entities/qc-customization.entity.js';
 
@@ -255,3 +258,15 @@ export type { IEmailTemplateRepository, EmailTemplateListQuery } from './ports/e
 export { CaseAssignmentService } from './services/case-assignment.service.js';
 export { PatientAuthService } from './services/patient-auth.service.js';
 export type { PatientSessionPayload, MagicLinkPayload } from './services/patient-auth.service.js';
+
+// Unified AI Translation System — Enums + Config
+export type { TranslationTaskStatus, SourceDb, SupportedLanguage } from './enums/index.js';
+export { TRANSLATION_CONFIG } from './enums/index.js';
+
+// Unified AI Translation System — Entity
+export { TranslationTask } from './entities/translation-task.entity.js';
+export type { TranslationTaskProps } from './entities/translation-task.entity.js';
+
+// Unified AI Translation System — Ports
+export type { ITranslationTaskRepository, EnqueueTranslationInput } from './ports/translation-task-repository.port.js';
+export type { IBatchTranslationService, BatchTranslateRequest, BatchTranslateResult } from './ports/batch-translation-service.port.js';

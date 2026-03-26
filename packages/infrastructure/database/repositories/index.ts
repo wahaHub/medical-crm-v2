@@ -24,4 +24,5 @@ export { DrizzleServiceCatalogRepository } from './drizzle-service-catalog.repos
 export { DrizzleBookingRequestRepository } from './drizzle-booking-request.repository.js';
 export { DrizzleChatbotFaqRepository } from './drizzle-chatbot-faq.repository.js';
 export { DrizzleEmailTemplateRepository } from './drizzle-email-template.repository.js';
+export { DrizzleTranslationTaskRepository } from './drizzle-translation-task.repository.js';
 export { DrizzleTransactionRunner } from '../transaction-runner.js';

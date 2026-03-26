@@ -41,7 +41,7 @@ Per the existing spec (`2026-03-17-patient-dashboard-chatwidget-design.md`), the
 | BFF proxy hides backend URL | Existing |
 | Rate limiting (magic link 3/hr, onboarding 5/IP/hr) | Existing |
 | Turnstile CAPTCHA on onboarding | Existing |
-| `Secure` + `SameSite=Strict` cookie flags | Verify in production |
+| `Secure` + `SameSite=Lax` cookie flags | Existing (`Lax` required — `Strict` would break magic link redirects from email) |
 | Magic link token one-time use | Verify implementation |
 | Strong JWT secret in production | Verify (dev uses placeholder) |
 | Ownership check on all patient queries | Verify per endpoint |
@@ -154,9 +154,26 @@ IntakePage
 
 ### Intake Backend Changes
 
-- `GET /api/patient/intake/template` — returns default Question Collector template (replaces current stub)
-- `POST /api/patient/intake/:caseId` — submit responses (existing, needs real implementation)
-- `PATCH /api/patient/intake/:caseId` — save draft (existing, needs real implementation)
+- `GET /api/patient/intake/:caseId/template` — returns default Question Collector template, with hospital customization if case has assigned hospital (replaces current stub)
+- `POST /api/patient/intake/:caseId` — submit responses (existing route, needs real implementation connecting to Question Collector)
+- `PATCH /api/patient/intake/:caseId` — save draft (**new route**, does not exist yet)
+
+### QCResponsePayload Type Extension
+
+The existing `QCResponsePayload` type (`Record<string, string | string[] | null>`) cannot accommodate `file_upload` (array of objects with storageKey/fileName/fileSize) or `dynamic_list` (array of objects with sub-field values). Must be extended to:
+
+```typescript
+export type QCResponseValue =
+  | string
+  | string[]
+  | null
+  | Array<{ storageKey: string; fileName: string; fileSize: number }>  // file_upload
+  | Array<Record<string, string | string[] | null>>;                   // dynamic_list items
+
+export type QCResponsePayload = Record<string, QCResponseValue>;
+```
+
+The normalization function `normalizeQCResponses()` must be updated to accept these new value shapes.
 
 ## Messages (Real-time)
 
@@ -224,6 +241,14 @@ Ticket types: `ACCOUNT_ISSUES`, `PAYMENT_PROBLEMS`, `HOSPITAL_COMMUNICATION`, et
 
 Attachments use existing `ticket_reply_attachment` upload policy.
 
+### Ticket Ownership & Authorization
+
+- All patient ticket endpoints filter by `createdBy = session.userId` — patients can only see their own tickets
+- `GET /api/patient/tickets/:id` filters replies: `isInternalNote = false` (admin-only notes hidden)
+- Patient actor construction: `{ id: session.userId, role: 'PATIENT' }` — passed to use cases
+- New patient-specific use cases needed: `CreatePatientTicket`, `ListPatientTickets`, `GetPatientTicketDetail`, `PatientReplyToTicket` — these wrap existing domain logic with patient ownership enforcement
+- Patients can create tickets with or without a `caseId` (general account issues don't need a case)
+
 ## Quotes
 
 ### Page Structure
@@ -267,8 +292,12 @@ OrdersPage
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/patient/orders` | Patient's order list |
+| GET | `/api/patient/orders` | Patient's order list (paginated) |
 | GET | `/api/patient/orders/:id` | Order detail |
+
+### Backend Requirements
+
+New use cases needed: `ListPatientOrders`, `GetPatientOrderDetail` — filter by patient ownership. These require a new `DrizzleOrderRepository` (or extending existing repo) with patient-scoped queries. Orders are **read-only** for patients — no create/update/cancel endpoints.
 
 ## Journey
 
@@ -363,7 +392,9 @@ Replace existing login with magic link flow:
 | 5 | GET | `/api/patient/orders` | Patient's order list |
 | 6 | GET | `/api/patient/orders/:id` | Order detail |
 | 7 | POST | `/api/patient/intake/:caseId/upload` | Questionnaire file upload (presigned URL) |
-| 8 | GET | `/api/patient/intake/template` | Default Question Collector template |
+| 8 | GET | `/api/patient/intake/:caseId/template` | Question Collector template (default + hospital customization) |
+| 9 | PATCH | `/api/patient/intake/:caseId` | Save intake draft |
+| 10 | POST | `/api/patient/login` | Email + password login (rate limited: 5 attempts/email/15min) |
 
 ### Existing Endpoints to Extend
 
@@ -381,14 +412,34 @@ Replace existing login with magic link flow:
 - `POST /api/patient/cases/:id/quote/accept` — accept quote
 - `POST /api/patient/cases/:id/quote/reject` — reject quote
 - `POST /api/patient/intake/:caseId` — submit intake
-- `PATCH /api/patient/intake/:caseId` — save intake draft
 
 ### New Backend Infrastructure
 
 - `intake_document` upload policy in `UploadPolicyRegistry`
 - `QCQuestionType` extended: `file_upload`, `dynamic_list`, `yes_no_conditional`
 - `QCTemplateQuestion` extended: `accept`, `maxFiles`, `maxFileSizeMB`, `listFields`, `conditionalFields`
-- WebSocket notification channel: `ws://.../ws/patient/notifications`
+- WebSocket notification channel: `ws://.../ws/patient/notifications` (already partially implemented in patient-ws.ts, needs completion)
+
+## Pagination
+
+All list endpoints use offset pagination consistent with existing CRM v2 patterns:
+- Query params: `page` (default 1), `limit` (default 20, max 100)
+- Response: `{ data: T[], total: number, page: number, limit: number }`
+- Applies to: tickets, orders, quotes (per case), milestones, conversations, messages (cursor-based for messages)
+
+## Error States & Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| File upload exceeds size limit | Frontend validates before upload; backend returns 413 if bypassed |
+| S3 presigned URL expires during upload | Frontend retries: request new presigned URL, re-upload |
+| No cases exist for patient | Journey/AI Summary/Quotes pages show empty state with CTA to start case intake |
+| No orders exist | Orders page shows empty state |
+| WebSocket reconnect fails permanently (>5min) | Stay on REST polling (5s), show "Limited connectivity" banner |
+| Draft save conflict (concurrent edits) | Last-write-wins; frontend shows "Saved" timestamp so user knows |
+| Session cookie expired (24h) | API returns 401 → frontend shows "Session expired" modal → magic link re-login |
+| Patient has no conversation yet | Messages page shows empty state with info about when conversations are created |
+| Quote already accepted/rejected | Buttons disabled with status badge; actions are final |
 
 ## Out of Scope
 

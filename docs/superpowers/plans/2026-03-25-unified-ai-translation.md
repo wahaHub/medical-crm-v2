@@ -18,7 +18,7 @@
 
 | File | Responsibility |
 |------|----------------|
-| `config/translation.config.ts` | **CREATE** — Supported languages, default targets, translatable field map, retry config |
+| `enums/translation.config.ts` | **CREATE** — Supported languages, default targets, translatable field map, retry config |
 | `ports/batch-translation-service.port.ts` | **CREATE** — `IBatchTranslationService` interface |
 | `ports/translation-task-repository.port.ts` | **CREATE** — `ITranslationTaskRepository` interface (enqueue, pull, retry, status) |
 | `entities/translation-task.entity.ts` | **CREATE** — `TranslationTask` entity with status/retry logic |
@@ -69,8 +69,8 @@
 
 | File | Responsibility |
 |------|----------------|
-| `migrations/005_add_translations_columns.sql` | **CREATE** — Add `translations jsonb` to `procedure_cases` (Beauty) |
-| `migrations/005_add_translations_columns_china.sql` | **CREATE** — Add `translations jsonb` to `procedure_cases` (China) |
+| `packages/infrastructure/supabase-main/migrations/001_add_procedure_cases_translations.sql` | **CREATE** — Add `translations jsonb` to `procedure_cases` (Beauty) |
+| `packages/infrastructure/supabase-china/migrations/001_add_procedure_cases_translations.sql` | **CREATE** — Add `translations jsonb` to `procedure_cases` (China) |
 
 ---
 
@@ -80,7 +80,7 @@
 
 **Files:**
 - Create: `packages/domain/src/enums/translation.ts`
-- Create: `packages/domain/src/config/translation.config.ts`
+- Create: `packages/domain/src/enums/translation.config.ts`
 - Modify: `packages/domain/src/enums/index.ts`
 
 - [ ] **Step 1: Create translation enums**
@@ -92,15 +92,28 @@ export type SourceDb = 'crm' | 'supabase_beauty' | 'supabase_china';
 export type SupportedLanguage = 'zh' | 'en' | 'ru' | 'fr' | 'es' | 'de' | 'ar' | 'id' | 'vi';
 ```
 
-- [ ] **Step 2: Create translation config**
+- [ ] **Step 2: Create translation config (in enums/ directory alongside translation.ts)**
 
 ```ts
-// packages/domain/src/config/translation.config.ts
-import type { SupportedLanguage } from '../enums/translation.js';
+// packages/domain/src/enums/translation.config.ts
+import type { SupportedLanguage } from './translation.js';
 
 export const TRANSLATION_CONFIG = {
   supportedLanguages: ['zh', 'en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as const satisfies readonly SupportedLanguage[],
   defaultTargetLanguages: ['zh', 'en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as const,
+  translatableFields: {
+    support_ticket: ['subject', 'description'],
+    support_ticket_reply: ['content'],
+    consultation: ['notes'],
+    qc_template: ['templateName', 'questions.*.label', 'questions.*.placeholder', 'questions.*.options'],
+    qc_response: ['responses.*'],
+    chatbot_faq_item: ['question', 'answer'],
+    chatbot_faq_category: ['name'],
+    surgeon: ['title', 'bio.intro', 'bio.expertise', 'bio.philosophy', 'bio.achievements', 'specialties', 'education', 'certifications'],
+    hospital_beauty: ['tagline', 'description', 'highlights'],
+    hospital_china: ['display_name', 'name', 'hospital_type', 'tier', 'ownership_type', 'short_description', 'overview', 'full_description', 'value_proposition', 'core_specialties', 'departments_info', 'facilities_info'],
+    procedure_case: ['description', 'provider_name'],
+  },
   retry: { maxRetries: 3 },
 } as const;
 ```
@@ -111,6 +124,15 @@ Add to `packages/domain/src/enums/index.ts`:
 
 ```ts
 export * from './translation.js';
+export { TRANSLATION_CONFIG } from './translation.config.js';
+```
+
+- [ ] **Step 3b: Export from domain package index**
+
+Add to `packages/domain/src/index.ts`:
+
+```ts
+export { TRANSLATION_CONFIG } from './enums/translation.config.js';
 ```
 
 - [ ] **Step 4: Verify typecheck passes**
@@ -135,7 +157,7 @@ git commit -m "feat(domain): add translation enums and config"
 ```ts
 // packages/domain/src/entities/translation-task.entity.ts
 import type { TranslationTaskStatus, SourceDb } from '../enums/translation.js';
-import { TRANSLATION_CONFIG } from '../config/translation.config.js';
+import { TRANSLATION_CONFIG } from '../enums/translation.config.js';
 
 export interface TranslationTaskProps {
   id: string;
@@ -364,23 +386,41 @@ translations: jsonb().default({}).notNull(),
 translations: jsonb().default({}).notNull(),
 ```
 
-- [ ] **Step 3: Generate Drizzle migration**
+- [ ] **Step 3: Write hand-numbered CRM migration file**
 
-Run: `cd packages/infrastructure && npx drizzle-kit generate`
-
-- [ ] **Step 4: Review generated SQL migration**
-
-Verify the migration includes:
-- New columns on `translation_tasks`
-- `translations jsonb` on all 7 tables
-- Dropping old unique constraint
-- The partial unique index (may need manual edit for the WHERE clause):
+Create `packages/infrastructure/database/migrations/0024_unified_translation.sql` (check the latest migration number and increment):
 
 ```sql
+-- Extend translation_tasks
+ALTER TABLE translation_tasks
+  ADD COLUMN IF NOT EXISTS source_db VARCHAR(32) NOT NULL DEFAULT 'crm',
+  ADD COLUMN IF NOT EXISTS fields_to_translate JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS target_languages TEXT[] NOT NULL DEFAULT '{}'::text[],
+  ADD COLUMN IF NOT EXISTS detected_language VARCHAR(10);
+
+ALTER TABLE translation_tasks ALTER COLUMN hospital_type DROP NOT NULL;
+ALTER TABLE translation_tasks ALTER COLUMN target_language DROP NOT NULL;
+
+DROP INDEX IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
 CREATE UNIQUE INDEX translation_tasks_entity_dedup
   ON translation_tasks (source_db, entity_type, entity_id)
   WHERE status IN ('pending', 'processing');
+
+-- Add translations jsonb to CRM tables
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE support_ticket_replies ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE consultations ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE question_collector_templates ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE question_collector_responses ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE chatbot_faq_items ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE chatbot_faq_categories ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
 ```
+
+- [ ] **Step 4: Run the migration and regenerate Drizzle schema**
+
+Run: `cd packages/infrastructure && npx drizzle-kit generate`
+
+This regenerates the TypeScript schema from the live DB. Verify the new columns appear in `schema.ts`.
 
 - [ ] **Step 5: Verify typecheck**
 
@@ -396,25 +436,36 @@ git commit -m "feat(schema): extend translation_tasks + add translations jsonb t
 ### Task 5: Supabase migrations — add translations to procedure_cases
 
 **Files:**
-- Create: `migrations/005_add_procedure_cases_translations.sql`
+- Create: `packages/infrastructure/supabase-main/migrations/001_add_procedure_cases_translations.sql`
+- Create: `packages/infrastructure/supabase-china/migrations/001_add_procedure_cases_translations.sql`
 
-- [ ] **Step 1: Write migration file**
+> **Note:** These SQL files must be applied manually to each Supabase instance (via Supabase Dashboard SQL editor or `supabase db push`). They are not auto-applied like Drizzle migrations.
+
+- [ ] **Step 1: Write Beauty Supabase migration**
 
 ```sql
--- migrations/005_add_procedure_cases_translations.sql
--- Apply to BOTH Beauty and China Medical Supabase instances
-
+-- packages/infrastructure/supabase-main/migrations/001_add_procedure_cases_translations.sql
 ALTER TABLE procedure_cases
   ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 COMMENT ON COLUMN procedure_cases.translations IS 'Multi-language translations: {"en": {"description": "...", "provider_name": "..."}, ...}';
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **Step 2: Write China Medical Supabase migration (identical SQL)**
+
+```sql
+-- packages/infrastructure/supabase-china/migrations/001_add_procedure_cases_translations.sql
+ALTER TABLE procedure_cases
+  ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+COMMENT ON COLUMN procedure_cases.translations IS 'Multi-language translations: {"en": {"description": "...", "provider_name": "..."}, ...}';
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
-git add migrations/005_add_procedure_cases_translations.sql
-git commit -m "feat(supabase): add translations jsonb to procedure_cases"
+git add packages/infrastructure/supabase-main/migrations/ packages/infrastructure/supabase-china/migrations/
+git commit -m "feat(supabase): add translations jsonb to procedure_cases for both instances"
 ```
 
 ---
@@ -522,36 +573,29 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
     const targetLangs = input.targetLanguages ?? [...TRANSLATION_CONFIG.defaultTargetLanguages];
     const id = generateId();
 
-    const [row] = await this.db
-      .insert(translationTasks)
-      .values({
-        id,
-        sourceDb: input.sourceDb,
-        entityType: input.entityType,
-        entityId: input.entityId,
-        hospitalType: input.hospitalType ?? null,
-        fieldsToTranslate: input.fieldsToTranslate,
-        targetLanguages: targetLangs,
-        sourceLanguage: null,
-        targetLanguage: null,
-        status: 'pending',
-        errorMessage: null,
-        retryCount: 0,
-        createdAt: now,
-      })
-      .onConflictDoUpdate({
-        // Uses the partial unique index (source_db, entity_type, entity_id) WHERE status IN (pending, processing)
-        // Drizzle doesn't support partial unique index conflicts natively, so we use raw SQL
-        target: [translationTasks.sourceDb, translationTasks.entityType, translationTasks.entityId],
-        set: {
-          fieldsToTranslate: input.fieldsToTranslate,
-          targetLanguages: targetLangs,
-          status: 'pending',
-        },
-      })
-      .returning();
+    // Drizzle cannot reference partial unique indexes in onConflictDoUpdate,
+    // so we use raw SQL with INSERT ... ON CONFLICT on the partial index.
+    const rows = await this.db.execute(sql`
+      INSERT INTO translation_tasks (
+        id, source_db, entity_type, entity_id, hospital_type,
+        fields_to_translate, target_languages, source_language, target_language,
+        status, error_message, retry_count, created_at
+      ) VALUES (
+        ${id}, ${input.sourceDb}, ${input.entityType}, ${input.entityId},
+        ${input.hospitalType ?? null},
+        ${JSON.stringify(input.fieldsToTranslate)}::jsonb,
+        ${sql.raw(`ARRAY[${targetLangs.map(l => `'${l}'`).join(',')}]::text[]`)},
+        NULL, NULL, 'pending', NULL, 0, ${now}
+      )
+      ON CONFLICT (source_db, entity_type, entity_id) WHERE status IN ('pending', 'processing')
+      DO UPDATE SET
+        fields_to_translate = EXCLUDED.fields_to_translate,
+        target_languages = EXCLUDED.target_languages,
+        status = 'pending'
+      RETURNING *
+    `);
 
-    return this.rowToEntity(row);
+    return this.rowToEntity((rows.rows as any[])[0]);
   }
 
   async pullPending(limit: number): Promise<TranslationTask[]> {
@@ -804,10 +848,18 @@ Rules:
 Run: `cd packages/infrastructure && npx vitest run __tests__/openai-batch-translation.service.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Export from infrastructure services index**
+
+Add to `packages/infrastructure/services/index.ts`:
+
+```ts
+export { OpenAIBatchTranslationService } from './openai-batch-translation.service.js';
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/infrastructure/services/openai-batch-translation.service.ts packages/infrastructure/__tests__/openai-batch-translation.service.test.ts
+git add packages/infrastructure/services/openai-batch-translation.service.ts packages/infrastructure/__tests__/openai-batch-translation.service.test.ts packages/infrastructure/services/index.ts
 git commit -m "feat(infra): add OpenAIBatchTranslationService with GPT-4o JSON mode"
 ```
 
@@ -976,10 +1028,24 @@ export class TranslationWritebackService {
 
 Run: `cd packages/infrastructure && npx tsc --noEmit`
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Export from infrastructure services and repositories indexes**
+
+Add to `packages/infrastructure/services/index.ts`:
+
+```ts
+export { TranslationWritebackService } from './translation-writeback.service.js';
+```
+
+Add to `packages/infrastructure/database/repositories/index.ts`:
+
+```ts
+export { DrizzleTranslationTaskRepository } from './drizzle-translation-task.repository.js';
+```
+
+- [ ] **Step 4: Commit**
 
 ```bash
-git add packages/infrastructure/services/translation-writeback.service.ts
+git add packages/infrastructure/services/translation-writeback.service.ts packages/infrastructure/services/index.ts packages/infrastructure/database/repositories/index.ts
 git commit -m "feat(infra): add TranslationWritebackService with CRM/Supabase routing"
 ```
 
@@ -1231,11 +1297,23 @@ git commit -m "feat(app): add retry and status translation use cases"
 
 ## Chunk 4: Module Integration — Hook Into Existing Use Cases
 
+### Important: Updating Existing Tests
+
+> **For Tasks 12–16:** Each modified use case that gets a new `translationTaskService` constructor parameter will break its existing unit tests. After modifying each use case, you MUST also update the corresponding test file in `packages/application/__tests__/` (or `packages/domain/__tests__/`) to pass a mock `TranslationTaskService`:
+>
+> ```ts
+> const mockTranslationTaskService = { enqueue: vi.fn() };
+> // Pass as the new constructor argument
+> ```
+>
+> The test suite must remain green after each task.
+
 ### Task 12: Hook translation into Support Tickets
 
 **Files:**
 - Modify: `packages/application/src/use-cases/tickets/create-ticket.use-case.ts`
 - Modify: `packages/application/src/use-cases/tickets/reply-to-ticket.use-case.ts`
+- Modify: corresponding test files in `packages/application/__tests__/`
 
 - [ ] **Step 1: Modify CreateTicketUseCase**
 
@@ -1676,16 +1754,32 @@ git commit -m "feat(api): register translations routes"
 **Files:**
 - Modify: `apps/api/src/composition-root.ts`
 
-- [ ] **Step 1: Add imports**
+- [ ] **Step 0: Ensure application layer exports exist**
+
+Before wiring, verify these are exported from `packages/application/src/index.ts`:
 
 ```ts
-import { DrizzleTranslationTaskRepository } from '@medical-crm/infrastructure/database/repositories/drizzle-translation-task.repository.js';
-import { OpenAIBatchTranslationService } from '@medical-crm/infrastructure/services/openai-batch-translation.service.js';
-import { TranslationWritebackService } from '@medical-crm/infrastructure/services/translation-writeback.service.js';
-import { TranslationTaskService } from '@medical-crm/application/services/translation-task.service.js';
-import { ProcessTranslationTasksUseCase } from '@medical-crm/application/use-cases/translations/process-translation-tasks.use-case.js';
-import { RetryTranslationUseCase } from '@medical-crm/application/use-cases/translations/retry-translation.use-case.js';
-import { GetTranslationStatusUseCase } from '@medical-crm/application/use-cases/translations/get-translation-status.use-case.js';
+export { TranslationTaskService } from './services/translation-task.service.js';
+export { ProcessTranslationTasksUseCase } from './use-cases/translations/process-translation-tasks.use-case.js';
+export { RetryTranslationUseCase } from './use-cases/translations/retry-translation.use-case.js';
+export { GetTranslationStatusUseCase } from './use-cases/translations/get-translation-status.use-case.js';
+```
+
+- [ ] **Step 1: Add imports in composition-root.ts**
+
+Use the package-level exports (not deep file paths):
+
+```ts
+// From infrastructure (via package.json exports)
+import { DrizzleTranslationTaskRepository } from '@medical-crm/infrastructure/repositories';
+import { OpenAIBatchTranslationService, TranslationWritebackService } from '@medical-crm/infrastructure/services';
+// From application (via package index)
+import {
+  TranslationTaskService,
+  ProcessTranslationTasksUseCase,
+  RetryTranslationUseCase,
+  GetTranslationStatusUseCase,
+} from '@medical-crm/application';
 ```
 
 - [ ] **Step 2: Instantiate in getServices()**

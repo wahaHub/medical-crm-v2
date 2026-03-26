@@ -1,15 +1,13 @@
 # Dify AI Chatbot Integration Implementation Plan
 
-> For implementation workers: follow the revised spec in `docs/superpowers/specs/2026-03-20-dify-ai-chatbot-design.md`. This plan is intentionally aligned to the current codebase constraints, not the original brainstorm version.
+> This plan is revised for the real target: the chatbot is a consultation conversion entry, not only an FAQ bot.
 
-**Goal:** Add a Dify-backed AI chatbot to CRM v2 with CRM-side chat logging, scoped FAQ/package sync, and human escalation.
+**Goal:** ship an unmodified Dify-based chatbot that can:
 
-**Key correction versus the original draft:**
-
-- Do not reuse existing `conversations/messages` for anonymous AI chat
-- Do not trust `userId` from frontend
-- FAQ sync must include `hospital_id` scope
-- Dify document sync must match the actual SDK/API path shape in the vendored `dify` tree
+- answer public FAQ / package / process questions
+- route consultation intent into lead/case actions
+- handle crisis queries safely
+- create human escalation when needed
 
 ---
 
@@ -27,73 +25,105 @@
 - [ ] Create `ai_chat_sessions`
 - [ ] Create `ai_chat_messages`
 - [ ] Create `dify_document_mappings`
-- [ ] Add indexes for `session_id`, `dify_conversation_id`, `(entity_type, entity_key)`
-- [ ] Update Drizzle schema and domain exports
+- [ ] Create `ai_sync_outbox`
 
-**Schema shape**
+**Required fields**
 
 `ai_chat_sessions`
 
-- `id`
 - `session_id`
+- `session_secret_hash`
 - `dify_conversation_id`
 - `patient_id nullable`
 - `hospital_type`
 - `status`
-- `created_at`
-- `updated_at`
 
 `ai_chat_messages`
 
-- `id`
-- `session_id` FK to `ai_chat_sessions.id`
 - `role`
 - `content`
+- `intent nullable`
+- `risk_level nullable`
 - `can_answer nullable`
+- `next_action nullable`
+- `citations jsonb`
 - `metadata jsonb`
-- `created_at`
 
 `dify_document_mappings`
 
-- `id`
 - `entity_type`
 - `entity_key`
 - `dify_dataset_id`
 - `dify_document_id`
-- `last_synced_at`
-- `created_at`
 
-**Notes**
+`ai_sync_outbox`
 
-- Do not insert a fake `SYSTEM` user in this migration
-- Do not add `AI_CHATBOT` to `ConversationCategory` in v1
+- `entity_type`
+- `entity_key`
+- `action`
+- `attempts`
+- `next_retry_at`
+- `status`
+
+**Important**
+
+- do not add `AI_CHATBOT` to `ConversationCategory`
+- do not insert fake Dify/system users
 
 ---
 
-## Chunk 2: Domain & Repository Ports
+## Chunk 2: Dataset Scope Strategy
 
-### Task 2: Add ports for AI chat persistence
+### Task 2: Move from single logical scope to scoped datasets
+
+**Files**
+
+- Modify design/config docs
+- Modify env loading in `apps/api/src/composition-root.ts`
+
+- [ ] Add per-`hospitalType` dataset config
+- [ ] Route FAQ sync to the correct dataset by scope
+- [ ] Route package sync to the correct dataset by scope
+- [ ] Explicitly exclude hospital-private FAQ from public chatbot unless dedicated dataset exists
+
+**Env shape**
+
+- `DIFY_FAQ_DATASET_ID_COSMETIC`
+- `DIFY_FAQ_DATASET_ID_REGULAR`
+- `DIFY_PACKAGE_DATASET_ID_COSMETIC`
+- `DIFY_PACKAGE_DATASET_ID_REGULAR`
+
+**Rule**
+
+- do not rely on “scope text inside markdown” as the only guard
+
+---
+
+## Chunk 3: Domain & Repository Ports
+
+### Task 3: Add ports
 
 **Files**
 
 - Create: `packages/domain/src/ports/ai-chat-session-repository.port.ts`
 - Create: `packages/domain/src/ports/ai-chat-message-repository.port.ts`
 - Create: `packages/domain/src/ports/dify-document-mapping-repository.port.ts`
+- Create: `packages/domain/src/ports/ai-sync-outbox-repository.port.ts`
 - Create: `packages/domain/src/ports/dify-sync-service.port.ts`
 - Modify: `packages/domain/src/index.ts`
 
-- [ ] Define `IAiChatSessionRepository`
-- [ ] Define `IAiChatMessageRepository`
-- [ ] Define `IDifyDocumentMappingRepository`
-- [ ] Define `IDifySyncService`
-- [ ] Export all new ports from domain index
+- [ ] Add `IAiChatSessionRepository`
+- [ ] Add `IAiChatMessageRepository`
+- [ ] Add `IDifyDocumentMappingRepository`
+- [ ] Add `IAiSyncOutboxRepository`
+- [ ] Add `IDifySyncService`
 
-**Required repository operations**
+**Must-have methods**
 
 `IAiChatSessionRepository`
 
-- `findBySessionId(sessionId: string)`
-- `findByDifyConversationId(difyConversationId: string)`
+- `findBySessionId(sessionId)`
+- `findByDifyConversationId(difyConversationId)`
 - `save(...)`
 - `attachPatient(...)`
 - `updateStatus(...)`
@@ -101,258 +131,297 @@
 `IAiChatMessageRepository`
 
 - `create(...)`
-- `listBySession(sessionDbId: string, limit?: number)`
+- `listBySession(...)`
 
-`IDifyDocumentMappingRepository`
+`IAiSyncOutboxRepository`
 
-- `findByEntity(entityType, entityKey)`
-- `save(...)`
-- `deleteByEntity(...)`
-
-`IDifySyncService`
-
-- `syncFaqCategory(categoryName, hospitalType, hospitalId?)`
-- `deleteFaqCategoryDocument(categoryName, hospitalType, hospitalId?)`
-- `syncPackageType(type)`
-- `fullSync()`
+- `enqueue(...)`
+- `claimBatch(...)`
+- `markDone(...)`
+- `markRetry(...)`
 
 ---
 
-## Chunk 3: Infrastructure Repositories
+## Chunk 4: Dify Client
 
-### Task 3: Implement Drizzle repositories
-
-**Files**
-
-- Create: `packages/infrastructure/database/repositories/drizzle-ai-chat-session.repository.ts`
-- Create: `packages/infrastructure/database/repositories/drizzle-ai-chat-message.repository.ts`
-- Create: `packages/infrastructure/database/repositories/drizzle-dify-document-mapping.repository.ts`
-- Create tests under `packages/infrastructure/__tests__/`
-
-- [ ] Implement AI chat session repo
-- [ ] Implement AI chat message repo
-- [ ] Implement Dify document mapping repo
-- [ ] Add unit or integration tests following existing repository patterns
-
-**Important**
-
-- `entity_key` for FAQ must be scoped:
-  - `faq:${hospitalType}:${hospitalId || "global"}:${categoryName}`
-- `entity_key` for package can be:
-  - `package:${type}`
-
----
-
-## Chunk 4: Dify API Client
-
-### Task 4: Implement a thin client around the real Dify API
+### Task 4: Thin client matching the vendored Dify API
 
 **Files**
 
 - Create: `packages/infrastructure/dify/dify-api-client.ts`
 - Create: `packages/infrastructure/dify/types.ts`
-- Create: `packages/infrastructure/dify/__tests__/dify-api-client.test.ts`
+- Create tests
 
-- [ ] Add typed wrapper for Dify chat requests
-- [ ] Add typed wrapper for dataset document create/update/delete
-- [ ] Add streaming parser helpers if needed
-- [ ] Add tests with mocked `fetch`
+- [ ] Add chat request wrapper
+- [ ] Add text document create/update/delete wrapper
+- [ ] Add stream event parsing helper
 
-**Must match the vendored SDK**
+**Constraints**
 
-- Chat: `POST /chat-messages`
-- Create text document: `POST /datasets/{datasetId}/document/create_by_text`
-- Update text document: `POST /datasets/{datasetId}/documents/{documentId}/update_by_text`
-- Delete document: use the actual documented delete endpoint from the vendored Dify client / API before implementation
-
-**Do not use**
-
-- `create-by-text`
-- `update-by-text`
-- `PUT` for text document updates
+- `POST /chat-messages`
+- `POST /datasets/{datasetId}/document/create_by_text`
+- `POST /datasets/{datasetId}/documents/{documentId}/update_by_text`
+- confirm the delete endpoint from vendored Dify before implementation
 
 ---
 
-## Chunk 5: Dify Sync Service
+## Chunk 5: Sync Service + Outbox Worker
 
-### Task 5: Build scoped FAQ/package sync
+### Task 5: Build reliable FAQ / package sync
 
 **Files**
 
 - Create: `packages/infrastructure/dify/dify-sync-service.ts`
-- Create: `packages/infrastructure/dify/__tests__/dify-sync-service.test.ts`
-- Modify: FAQ and package use cases
-- Modify: `apps/api/src/composition-root.ts`
+- Create: `packages/infrastructure/workers/ai-sync-worker.ts` or equivalent
+- Modify FAQ/package use cases
+- Modify `apps/api/src/composition-root.ts`
 
-- [ ] Generate FAQ markdown from scoped category data
-- [ ] Generate package markdown from published packages of a type
-- [ ] Upsert document into Dify via `dify_document_mappings`
-- [ ] Expose `fullSync()`
-- [ ] Wire sync hooks into FAQ CRUD and package publish/update/delete flows
+- [ ] FAQ CRUD writes sync task into outbox
+- [ ] package publish/update/delete writes sync task into outbox
+- [ ] worker merges duplicate `entity_key` jobs
+- [ ] worker retries transient Dify failures
+- [ ] admin `fullSync` remains available
 
-**Implementation notes**
+**Do not**
 
-- Use existing FAQ repo `findAll(...)` with `{ category, hospitalType, hospitalId, isActive: true }`
-- Do not invent `findByCategory(...)` unless you also extend the domain port intentionally
-- Use existing package repo `findAll(...)` with `{ type, status: 'PUBLISHED' }`
-- Creating an empty Dify document for an empty category is not required
+- directly fire-and-forget network sync on every CRUD path in production mode
 
 ---
 
-## Chunk 6: Public Chatbot Use Cases
+## Chunk 6: Dify Workflow Design
 
-### Task 6: Add application-layer chatbot orchestration
+### Task 6: Design the workflow around conversion, not only FAQ
+
+**Artifacts**
+
+- Dify workflow config
+- internal prompt docs / JSON contract docs
+
+- [ ] Add `Risk Classification` node
+- [ ] Add `Intent Router`
+- [ ] Add `FAQ_RAG` branch
+- [ ] Add `CONSULT_CONVERSION` branch
+- [ ] Add `UNKNOWN_ESCALATE` branch
+- [ ] Add `SAFETY` branch
+
+**Required output**
+
+- `answer`
+- `intent`
+- `riskLevel`
+- `canAnswer`
+- `nextAction`
+- `escalationReason`
+- `citations`
+- `collectedFields optional`
+- `missingItems optional`
+- `recommendedProviders optional`
+
+**Expected values**
+
+`intent`
+
+- `FAQ`
+- `CONSULT`
+- `UNKNOWN`
+- `SAFETY`
+
+`riskLevel`
+
+- `NORMAL`
+- `SENSITIVE`
+- `CRISIS`
+
+`nextAction`
+
+- `ANSWER`
+- `CONSULT_CONVERSION`
+- `CREATE_CASE`
+- `REQUEST_DOCS`
+- `ESCALATE`
+- `SAFETY`
+
+**Optional payload semantics**
+
+- `collectedFields` carries reusable lead / case inputs such as `name`, `email`, `country`, `conditionSummary`, `budget`, `intent`
+- `missingItems` drives document upload or checklist UI when `nextAction = REQUEST_DOCS`
+- `recommendedProviders` carries optional provider recommendations for future provider DB integration
+- MVP can persist these optional fields inside `ai_chat_messages.metadata` instead of adding dedicated columns
+- v1 should keep `recommendedProviders` disabled even if the field remains in the contract
+- v1 should default to `CONSULT_CONVERSION` for most conversion scenarios
+- only use `CREATE_CASE` when user intent clearly indicates formal progression
+
+---
+
+## Chunk 7: Application Use Cases
+
+### Task 7: Add chatbot orchestration in application layer
 
 **Files**
 
 - Create: `packages/application/src/use-cases/chatbot/send-chat-message.use-case.ts`
 - Create: `packages/application/src/use-cases/chatbot/get-chat-history.use-case.ts`
 - Create: `packages/application/src/use-cases/chatbot/escalate-chat.use-case.ts`
+- Create: `packages/application/src/use-cases/chatbot/convert-chat.use-case.ts`
 - Modify: `packages/application/src/index.ts`
 - Modify: `apps/api/src/composition-root.ts`
 
 - [ ] `SendChatMessageUseCase`
 - [ ] `GetChatHistoryUseCase`
 - [ ] `EscalateChatUseCase`
+- [ ] `ConvertChatUseCase`
 
-**Responsibilities**
+**Rules**
 
 `SendChatMessageUseCase`
 
-- resolve logged-in patient from cookie/session if present
-- validate `sessionId`
-- create or reuse `ai_chat_session`
-- write user message
-- call Dify streaming API
-- persist assistant terminal message with `can_answer`
+- accept `sessionId`, `hospitalType`, `message`
+- ignore any frontend `difyConversationId`
+- find session by `sessionId`
+- create Dify conversation only on backend side
+- mint `session_secret` on first request
+- persist structured AI output
 
 `GetChatHistoryUseCase`
 
-- load session by `sessionId`
-- enforce access:
-  - logged-in patient must match `patient_id`
-  - anonymous access must be bound to the same `sessionId`
+- require `sessionId`
+- require matching `session_secret`
+- if patient logged in, also verify `patient_id`
+
+`ConvertChatUseCase`
+
+- map `CONSULT_CONVERSION` / `CREATE_CASE` / `REQUEST_DOCS` to actual CRM actions
+- reuse the existing case-first business logic and field model from the patient dashboard/chat widget work
+- use `collectedFields` as prefill input when present
+- require `name`, `email`, `country`, `conditionSummary`, `budget`
+- treat `recommendedProviders` as optional UI hints, not hard business logic
+- v1 does not need live provider recommendation logic
+- treat `CONSULT_CONVERSION` as the default conversion action
+- only switch to `CREATE_CASE` when the user explicitly signals “start now / create case / match hospitals / proceed formally”
 
 `EscalateChatUseCase`
 
-- summarize chat transcript
-- for logged-in patient: create `support_ticket`
-- for anonymous user: create or upsert a minimal patient record first, then create `support_ticket`
-- mark `ai_chat_session.status = ESCALATED`
+- summarize transcript
+- create `support_ticket(type = AI_ESCALATION)`
+- update session status
+- require `name`, `email`, `country`, `conditionSummary`, `budget`
 
 ---
 
-## Chunk 7: API Routes
+## Chunk 8: API Routes
 
-### Task 7: Add chatbot routes in Hono
+### Task 8: Add chatbot routes
 
 **Files**
 
 - Create: `apps/api/src/routes/chatbot.routes.ts`
 - Modify: `apps/api/src/routes/index.ts`
-- Create or modify validation schemas in `packages/shared/validation/src/`
-- Add tests in `apps/api/src/__tests__/chatbot.routes.test.ts`
+- Add validation schemas
+- Add route tests
 
 - [ ] `POST /api/v2/chatbot/chat`
 - [ ] `GET /api/v2/chatbot/history/{sessionId}`
 - [ ] `POST /api/v2/chatbot/escalate`
-- [ ] `POST /api/v2/chatbot/sync` (admin only)
-
-**Route rules**
-
-- `chat` is public but rate-limited
-- `history` is not wide-open; enforce session ownership
-- `escalate` requires valid `contactInfo`
-- no request body field named `userId`
+- [ ] `POST /api/v2/chatbot/convert`
+- [ ] `POST /api/v2/chatbot/uploads/init`
+- [ ] `POST /api/v2/chatbot/sync` admin only
 
 **Validation**
 
-- max message length 2000
-- `hospitalType` is required
-- `sessionId` is required
-- `contactInfo.email` required for anonymous escalation
+- `message` max 2000 chars
+- `sessionId` required
+- `hospitalType` required
+- no accepted request field named `difyConversationId`
+- `convert` / `escalate` require `name`, `email`, `country`, `conditionSummary`, `budget`
+- `uploads/init` validates `fileName`, `fileSize`, `mimeType`
 
 ---
 
-## Chunk 8: Session & Abuse Controls
+## Chunk 9: Session & Security Controls
 
-### Task 8: Add middleware and ownership checks
+### Task 9: Implement ownership guardrails
 
 **Files**
 
-- Modify or add middleware under `apps/api/src/middleware/`
-- Add tests
+- middleware under `apps/api/src/middleware/`
+- related tests
 
-- [ ] Add IP rate limit for chatbot routes
-- [ ] Add session-based rate limit
-- [ ] Add helper to read optional patient session cookie
-- [ ] Add history ownership guard
+- [ ] add IP rate limit
+- [ ] add session-based rate limit
+- [ ] add optional patient-session resolution
+- [ ] set `session_secret` via `httpOnly` cookie
+- [ ] enforce `sessionId + session_secret` on history / escalate / convert
 
 **Suggested limits**
 
 - 30 messages / minute / `sessionId`
 - 60 messages / minute / IP
+- stricter history limit than chat
 
 ---
 
-## Chunk 9: Frontend Widget
+## Chunk 10: Frontend Widget
 
-### Task 9: Build shared widget package
+### Task 10: Adapt widget for conversion actions
 
 **Files**
 
-- Create: `packages/chat-widget/`
-- Integrate into the two patient-facing sites
+- `packages/chat-widget/`
+- consuming patient-facing apps
 
-- [ ] Store `sessionId` in `localStorage`
-- [ ] Store `difyConversationId` in `localStorage`
-- [ ] Stream SSE chunks
-- [ ] Render escalation form
-- [ ] Never accept or inject `userId`
-
-**Widget props**
-
-- `apiBaseUrl`
-- `hospitalType`
-- `locale?`
-- `theme?`
+- [ ] store only `sessionId` in `localStorage`
+- [ ] never store or submit `difyConversationId` as authoritative input
+- [ ] parse `nextAction`
+- [ ] show inline conversion widget inside the same chat modal when `CONSULT_CONVERSION`
+- [ ] switch to a fuller case-collection widget inside the same chat modal when `CREATE_CASE`
+- [ ] show document checklist and direct upload entry when `REQUEST_DOCS`
+- [ ] use chatbot-specific upload init endpoint for `REQUEST_DOCS`
+- [ ] prefill form fields from `collectedFields` when available
+- [ ] do not render `recommendedProviders` in v1
+- [ ] show crisis banner / safety notice when `SAFETY`
+- [ ] show citations on FAQ answers when enabled
 
 ---
 
-## Chunk 10: Tests & Rollout
+## Chunk 11: Verification
 
-### Task 10: Verification
-
-**Automated**
+### Task 11: Automated
 
 - [ ] repository tests for new tables
 - [ ] Dify client tests
-- [ ] sync service tests
-- [ ] route tests for chat/history/escalate/sync
+- [ ] sync worker tests
+- [ ] route tests for chat/history/escalate/convert/sync
 
-**Manual**
+### Task 12: Manual
 
-- [ ] anonymous cosmetic-site chat
-- [ ] logged-in patient chat
-- [ ] FAQ update triggers Dify sync
-- [ ] package publish triggers Dify sync
-- [ ] escalation creates ticket
-- [ ] history refresh restores transcript
-
-### Task 11: Deployment
-
-- [ ] deploy Dify
-- [ ] configure model provider
-- [ ] create FAQ / Package datasets
-- [ ] create chatbot app
-- [ ] set CRM env vars
-- [ ] run admin `fullSync`
-- [ ] run end-to-end test
+- [ ] FAQ question returns cited answer
+- [ ] consult intent opens lead/case path
+- [ ] ordinary consult intent defaults to `CONSULT_CONVERSION`
+- [ ] explicit “start now / create case / match hospitals / proceed” intent upgrades to `CREATE_CASE`
+- [ ] request-docs intent opens checklist/upload path
+- [ ] chatbot uploads work before a formal case exists
+- [ ] convert/escalate reject missing `name/email/country/conditionSummary/budget`
+- [ ] unknown question says “don’t know” and offers escalation
+- [ ] crisis input triggers fixed safety branch
+- [ ] forged `difyConversationId` is ignored
+- [ ] wrong `session_secret` cannot read history
+- [ ] FAQ/package update reaches Dify through outbox
 
 ---
 
 ## Risks To Track
 
-- Anonymous escalation depends on a clean minimal-patient creation path
-- Dify document delete endpoint should be confirmed against the vendored client before coding
-- FAQ category naming collisions are safe only if `entity_key` remains scoped
+- public chatbot scope must remain dataset-isolated
+- conversion UX must align with existing case-first field model while staying inside the same chat modal
+- history leakage risk remains if `session_secret` is not implemented early
+
+## V1 Decisions Locked
+
+- public chatbot v1 uses only `hospitalType`-scoped datasets
+- do not build single-hospital datasets in v1
+- default conversion path is `CONSULT_CONVERSION`
+- only explicit formal-progression intent should trigger `CREATE_CASE`
+- `REQUEST_DOCS` must support direct upload, not only checklist display
+- `REQUEST_DOCS` uploads use `POST /api/v2/chatbot/uploads/init`
+- reuse existing upload infrastructure, but not the existing case/conversation upload business routes
+- `recommendedProviders` stays as a reserved field and is not implemented in v1

@@ -1,6 +1,16 @@
 import { z } from 'zod';
 
 export const chatbotHospitalTypeSchema = z.enum(['COSMETIC', 'REGULAR']);
+export const chatbotNextActionSchema = z.enum([
+  'ANSWER',
+  'CONSULT_CONVERSION',
+  'CREATE_CASE',
+  'REQUEST_DOCS',
+  'ESCALATE',
+  'SAFETY',
+]);
+export const chatbotIntentSchema = z.enum(['FAQ', 'CONSULT', 'UNKNOWN', 'SAFETY']);
+export const chatbotRiskLevelSchema = z.enum(['NORMAL', 'SENSITIVE', 'CRISIS']);
 
 export const chatbotUploadInitSchema = z.object({
   sessionId: z.string().min(1).max(255),
@@ -32,6 +42,88 @@ export const chatbotEscalateSchema = chatbotConversionBaseSchema.extend({
   reason: z.string().min(1).max(1000).optional(),
 }).strict();
 
+export const chatbotCitationSchema = z.object({
+  sourceTitle: z.string().optional(),
+  snippet: z.string().optional(),
+  sourceType: z.string().optional(),
+  documentId: z.string().optional(),
+}).catchall(z.unknown());
+
+export const chatbotCollectedFieldsSchema = z.object({
+  name: z.string().optional(),
+  email: z.string().optional(),
+  country: z.string().optional(),
+  conditionSummary: z.string().optional(),
+  budget: z.string().optional(),
+}).catchall(z.unknown());
+
+export const chatbotRecommendedProviderSchema = z.object({
+  id: z.string().optional(),
+  name: z.string(),
+  reason: z.string().optional(),
+  ctaUrl: z.string().optional(),
+}).catchall(z.unknown());
+
+export const chatbotChatResponseSchema = z.object({
+  sessionId: z.string().min(1).max(255),
+  messageId: z.string().min(1),
+  answer: z.string(),
+  intent: chatbotIntentSchema.nullable(),
+  riskLevel: chatbotRiskLevelSchema.nullable(),
+  canAnswer: z.boolean().nullable(),
+  nextAction: chatbotNextActionSchema.nullable(),
+  citations: z.array(chatbotCitationSchema),
+  collectedFields: chatbotCollectedFieldsSchema.nullable(),
+  missingItems: z.array(z.string()),
+  recommendedProviders: z.array(chatbotRecommendedProviderSchema),
+  history: z.object({
+    userMessageId: z.string().min(1),
+    assistantMessageId: z.string().min(1),
+  }),
+}).strict();
+
+export const chatbotConvertResponseSchema = z.object({
+  sessionId: z.string().min(1).max(255),
+  patientId: z.string().min(1).nullable().optional(),
+  caseId: z.string().min(1),
+  requestedAction: z.enum(['CONSULT_CONVERSION', 'CREATE_CASE']),
+  isExistingPatient: z.boolean().optional(),
+  alreadyExists: z.boolean(),
+}).strict();
+
+export const chatbotEscalateResponseSchema = z.object({
+  sessionId: z.string().min(1).max(255),
+  patientId: z.string().min(1).nullable().optional(),
+  caseId: z.string().min(1).nullable().optional(),
+  ticketId: z.string().min(1),
+  alreadyExists: z.boolean(),
+}).strict();
+
+export const chatbotHistoryMessageSchema = z.object({
+  id: z.string().min(1),
+  role: z.enum(['USER', 'ASSISTANT', 'SYSTEM']),
+  content: z.string(),
+  intent: chatbotIntentSchema.nullable(),
+  riskLevel: chatbotRiskLevelSchema.nullable(),
+  canAnswer: z.boolean().nullable(),
+  nextAction: chatbotNextActionSchema.nullable(),
+  citations: z.array(chatbotCitationSchema),
+  metadata: z.record(z.string(), z.unknown()),
+  createdAt: z.string().min(1),
+}).strict();
+
+export const chatbotHistoryResponseSchema = z.object({
+  session: z.object({
+    sessionId: z.string().min(1).max(255),
+    hospitalType: chatbotHospitalTypeSchema,
+    status: z.enum(['ACTIVE', 'ESCALATED', 'CLOSED']),
+    patientId: z.string().nullable(),
+    createdAt: z.string().min(1),
+    updatedAt: z.string().min(1),
+  }).strict(),
+  messages: z.array(chatbotHistoryMessageSchema),
+}).strict();
+
 export const chatbotSessionParamSchema = z.object({
   sessionId: z.string().min(1).max(255),
 });
@@ -44,3 +136,7 @@ export type ChatbotUploadInitInput = z.infer<typeof chatbotUploadInitSchema>;
 export type ChatbotChatInput = z.infer<typeof chatbotChatSchema>;
 export type ChatbotConvertInput = z.infer<typeof chatbotConvertSchema>;
 export type ChatbotEscalateInput = z.infer<typeof chatbotEscalateSchema>;
+export type ChatbotChatResponse = z.infer<typeof chatbotChatResponseSchema>;
+export type ChatbotConvertResponse = z.infer<typeof chatbotConvertResponseSchema>;
+export type ChatbotEscalateResponse = z.infer<typeof chatbotEscalateResponseSchema>;
+export type ChatbotHistoryResponse = z.infer<typeof chatbotHistoryResponseSchema>;

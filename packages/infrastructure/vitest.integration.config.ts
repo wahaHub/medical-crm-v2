@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'node',
     include: ['__tests__/integration/**/*.test.ts'],
     testTimeout: 30000,
-    globalSetup: [],
+    globalSetup: ['./__tests__/integration/global-teardown.ts'],
     teardownTimeout: 10000,
     pool: 'forks',
     poolOptions: {

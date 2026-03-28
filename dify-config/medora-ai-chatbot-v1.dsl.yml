@@ -1,0 +1,920 @@
+app:
+  name: Medora AI Chatbot v2
+  description: Medora public chatbot flow with memory-enabled routing and category-derived topic output.
+  mode: advanced-chat
+  icon_type: emoji
+  icon: "\U0001F916"
+  icon_background: '#FFEAD5'
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.6.0
+dependencies: []
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - id: start-risk
+      source: start
+      sourceHandle: source
+      target: risk_classifier
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: start
+        targetType: question-classifier
+        isInIteration: false
+        isInLoop: false
+    - id: risk-crisis-safety
+      source: risk_classifier
+      sourceHandle: crisis
+      target: safety_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    - id: risk-sensitive-intent
+      source: risk_classifier
+      sourceHandle: sensitive
+      target: intent_classifier
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: question-classifier
+        isInIteration: false
+        isInLoop: false
+    - id: risk-normal-intent
+      source: risk_classifier
+      sourceHandle: normal
+      target: intent_classifier
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: question-classifier
+        isInIteration: false
+        isInLoop: false
+    - id: intent-faq-scope
+      source: intent_classifier
+      sourceHandle: faq
+      target: hospital_scope
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+    - id: intent-consult-conversion
+      source: intent_classifier
+      sourceHandle: consult_conversion
+      target: consult_conversion_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: intent-create-case
+      source: intent_classifier
+      sourceHandle: create_case
+      target: create_case_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: intent-request-docs
+      source: intent_classifier
+      sourceHandle: request_docs
+      target: request_docs_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: intent-unknown
+      source: intent_classifier
+      sourceHandle: unknown
+      target: unknown_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: question-classifier
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    - id: scope-cosmetic-kr
+      source: hospital_scope
+      sourceHandle: cosmetic
+      target: kr_cosmetic
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: scope-regular-kr
+      source: hospital_scope
+      sourceHandle: 'false'
+      target: kr_regular
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: kr-cosmetic-faq-llm
+      source: kr_cosmetic
+      sourceHandle: source
+      target: faq_cosmetic_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: kr-regular-faq-llm
+      source: kr_regular
+      sourceHandle: source
+      target: faq_regular_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: faq-cosmetic-answer
+      source: faq_cosmetic_llm
+      sourceHandle: source
+      target: faq_cosmetic_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    - id: faq-regular-answer
+      source: faq_regular_llm
+      sourceHandle: source
+      target: faq_regular_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    - id: consult-conversion-answer
+      source: consult_conversion_llm
+      sourceHandle: source
+      target: consult_conversion_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    - id: create-case-answer
+      source: create_case_llm
+      sourceHandle: source
+      target: create_case_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    - id: request-docs-answer
+      source: request_docs_llm
+      sourceHandle: source
+      target: request_docs_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    nodes:
+    - id: start
+      type: custom
+      position:
+        x: 80
+        y: 340
+      data:
+        title: Start
+        desc: ''
+        type: start
+        variables:
+        - variable: hospitalType
+          label: hospitalType
+          type: select
+          required: true
+          options:
+          - COSMETIC
+          - REGULAR
+          default: COSMETIC
+          max_length: 48
+          placeholder: Select hospital type
+    - id: risk_classifier
+      type: custom
+      position:
+        x: 370
+        y: 220
+      data:
+        title: Risk Classifier
+        desc: Route CRISIS before any other action.
+        type: question-classifier
+        query_variable_selector:
+        - sys
+        - query
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.1
+        classes:
+        - id: crisis
+          name: CRISIS
+        - id: sensitive
+          name: SENSITIVE
+        - id: normal
+          name: NORMAL
+        instruction: |
+          Classify the user's latest message into exactly one class.
+          Use recent conversation context when the user refers to earlier messages through pronouns, ellipsis, or other references to prior turns.
+
+          CRISIS:
+          - self-harm, suicide, immediate danger
+          - chest pain, severe bleeding, breathing trouble, or other emergency symptoms
+          - urgent medical crisis where online consultation is unsafe
+
+          SENSITIVE:
+          - emotional distress, depression, anxiety, vulnerability
+          - sensitive mental-health language without immediate danger
+
+          NORMAL:
+          - everything else
+
+          Output only the best matching class.
+        memory:
+          query_prompt_template: '{{#sys.query#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 3
+        vision:
+          enabled: false
+    - id: safety_answer
+      type: custom
+      position:
+        x: 720
+        y: 60
+      data:
+        title: Safety Response
+        desc: Fixed safety-first reply for crisis cases.
+        type: answer
+        variables: []
+        answer: |-
+          {
+            "answer": "If this is an immediate emergency or there is a risk of harming yourself or others, please contact local emergency services or go to the nearest emergency department now. If possible, stay with someone you trust and seek immediate in-person help.",
+            "intent": "SAFETY",
+            "topic": "SAFETY",
+            "riskLevel": "CRISIS",
+            "canAnswer": false,
+            "nextAction": "SAFETY",
+            "escalationReason": "CRISIS",
+            "collectedFields": {
+              "name": null,
+              "email": null,
+              "country": null,
+              "conditionSummary": null,
+              "budget": null
+            },
+            "missingItems": [],
+            "recommendedProviders": [],
+            "citations": []
+          }
+    - id: intent_classifier
+      type: custom
+      position:
+        x: 720
+        y: 330
+      data:
+        title: Intent Router
+        desc: Choose FAQ, consult conversion, create case, request docs, or unknown.
+        type: question-classifier
+        query_variable_selector:
+        - sys
+        - query
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.1
+        classes:
+        - id: faq
+          name: FAQ
+        - id: consult_conversion
+          name: CONSULT_CONVERSION
+        - id: create_case
+          name: CREATE_CASE
+        - id: request_docs
+          name: REQUEST_DOCS
+        - id: unknown
+          name: UNKNOWN
+        instruction: |
+          Route the user's latest message into exactly one class.
+          Use recent conversation context when the user asks a follow-up question or refers back to earlier turns instead of repeating all details.
+
+          Use the risk level "{{#risk_classifier.class_name#}}" as context.
+
+          FAQ:
+          - factual questions about process, eligibility, timing, basic pricing, documents, or treatment information
+
+          CONSULT_CONVERSION:
+          - consultation intent, but the user is not explicitly asking to formally start now
+          - this should be the default conversion path for most treatment inquiries
+
+          CREATE_CASE:
+          - only when the user clearly says they want to start now, create a case, formally proceed, or be matched with hospitals now
+
+          REQUEST_DOCS:
+          - the user asks what supporting materials are needed
+          - the user wants to upload or share existing supporting documents, records, files, or evidence
+
+          UNKNOWN:
+          - not covered by knowledge and not clearly one of the conversion paths above
+
+          Output only the best matching class.
+        memory:
+          query_prompt_template: '{{#sys.query#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 6
+        vision:
+          enabled: false
+    - id: hospital_scope
+      type: custom
+      position:
+        x: 1030
+        y: 240
+      data:
+        title: Hospital Type Scope
+        desc: Route FAQ retrieval by hospitalType input.
+        type: if-else
+        cases:
+        - case_id: cosmetic
+          id: cosmetic
+          logical_operator: and
+          conditions:
+          - id: hospital-type-cosmetic
+            variable_selector:
+            - start
+            - hospitalType
+            comparison_operator: is
+            value: COSMETIC
+            varType: string
+    - id: kr_cosmetic
+      type: custom
+      position:
+        x: 1360
+        y: 120
+      data:
+        title: Knowledge Retrieval Cosmetic
+        desc: Bind FAQ_COSMETIC and PACKAGES datasets after import.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 4
+          score_threshold: 0.5
+          reranking_enable: false
+        metadata_filtering_mode: disabled
+        vision:
+          enabled: false
+    - id: kr_regular
+      type: custom
+      position:
+        x: 1360
+        y: 380
+      data:
+        title: Knowledge Retrieval Regular
+        desc: Bind FAQ_REGULAR and PACKAGES datasets after import.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 4
+          score_threshold: 0.5
+          reranking_enable: false
+        metadata_filtering_mode: disabled
+        vision:
+          enabled: false
+    - id: faq_cosmetic_llm
+      type: custom
+      position:
+        x: 1680
+        y: 120
+      data:
+        title: FAQ Composer Cosmetic
+        desc: Answer only from cosmetic scoped retrieval results.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.2
+        prompt_template:
+        - role: system
+          text: |
+            You are a retrieval-grounded medical travel assistant.
+
+            Use only the retrieved context. If the context is insufficient, do not guess.
+
+            Return JSON only. Do not wrap the JSON in markdown.
+            Required shape:
+            {
+              "answer": "string",
+              "intent": "FAQ|UNKNOWN",
+              "topic": "string|null",
+              "riskLevel": "NORMAL|SENSITIVE",
+              "canAnswer": true,
+              "nextAction": "ANSWER|ESCALATE",
+              "escalationReason": null,
+              "collectedFields": {
+                "name": null,
+                "email": null,
+                "country": null,
+                "conditionSummary": null,
+                "budget": null
+              },
+              "missingItems": [],
+              "recommendedProviders": [],
+              "citations": []
+            }
+
+            If the retrieved context is insufficient:
+            - set intent to "UNKNOWN"
+            - set canAnswer to false
+            - set nextAction to "ESCALATE"
+            - set escalationReason to "KB_NOT_FOUND"
+            - set topic to null
+
+            When the retrieved context includes a line like "Category: X", set topic to that exact category name.
+            If no clear category is present, set topic to "GENERAL".
+          edition_type: basic
+        - role: user
+          text: |
+            Risk level: {{#risk_classifier.class_name#}}
+            Hospital type: {{#start.hospitalType#}}
+            User question: {{#sys.query#}}
+          edition_type: basic
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 6
+        context:
+          enabled: true
+          variable_selector:
+          - kr_cosmetic
+          - result
+        vision:
+          enabled: false
+    - id: faq_regular_llm
+      type: custom
+      position:
+        x: 1680
+        y: 380
+      data:
+        title: FAQ Composer Regular
+        desc: Answer only from regular scoped retrieval results.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.2
+        prompt_template:
+        - role: system
+          text: |
+            You are a retrieval-grounded medical travel assistant.
+
+            Use only the retrieved context. If the context is insufficient, do not guess.
+
+            Return JSON only. Do not wrap the JSON in markdown.
+            Required shape:
+            {
+              "answer": "string",
+              "intent": "FAQ|UNKNOWN",
+              "topic": "string|null",
+              "riskLevel": "NORMAL|SENSITIVE",
+              "canAnswer": true,
+              "nextAction": "ANSWER|ESCALATE",
+              "escalationReason": null,
+              "collectedFields": {
+                "name": null,
+                "email": null,
+                "country": null,
+                "conditionSummary": null,
+                "budget": null
+              },
+              "missingItems": [],
+              "recommendedProviders": [],
+              "citations": []
+            }
+
+            If the retrieved context is insufficient:
+            - set intent to "UNKNOWN"
+            - set canAnswer to false
+            - set nextAction to "ESCALATE"
+            - set escalationReason to "KB_NOT_FOUND"
+            - set topic to null
+
+            When the retrieved context includes a line like "Category: X", set topic to that exact category name.
+            If no clear category is present, set topic to "GENERAL".
+          edition_type: basic
+        - role: user
+          text: |
+            Risk level: {{#risk_classifier.class_name#}}
+            Hospital type: {{#start.hospitalType#}}
+            User question: {{#sys.query#}}
+          edition_type: basic
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 6
+        context:
+          enabled: true
+          variable_selector:
+          - kr_regular
+          - result
+        vision:
+          enabled: false
+    - id: faq_cosmetic_answer
+      type: custom
+      position:
+        x: 1990
+        y: 120
+      data:
+        title: FAQ Answer Cosmetic
+        desc: ''
+        type: answer
+        variables: []
+        answer: '{{#faq_cosmetic_llm.text#}}'
+    - id: faq_regular_answer
+      type: custom
+      position:
+        x: 1990
+        y: 380
+      data:
+        title: FAQ Answer Regular
+        desc: ''
+        type: answer
+        variables: []
+        answer: '{{#faq_regular_llm.text#}}'
+    - id: consult_conversion_llm
+      type: custom
+      position:
+        x: 1040
+        y: 560
+      data:
+        title: Consult Conversion Composer
+        desc: Default conversion path for most consult-like messages.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.2
+        prompt_template:
+        - role: system
+          text: |
+            You are a medical consultation funnel assistant.
+
+            The user has consult intent. Default to CONSULT_CONVERSION.
+            Do not force CREATE_CASE here.
+
+            Extract any obvious structured details if present in the current message or recent conversation context.
+            Reuse already known user details when the user is clearly referring to previously provided information.
+
+            Return JSON only. Do not wrap the JSON in markdown.
+            Required shape:
+            {
+              "answer": "string",
+              "intent": "CONSULT",
+              "topic": "string|null",
+              "riskLevel": "NORMAL|SENSITIVE",
+              "canAnswer": true,
+              "nextAction": "CONSULT_CONVERSION",
+              "escalationReason": null,
+              "collectedFields": {
+                "name": null,
+                "email": null,
+                "country": null,
+                "conditionSummary": null,
+                "budget": null
+              },
+              "missingItems": [],
+              "recommendedProviders": [],
+              "citations": []
+            }
+
+            If riskLevel is SENSITIVE:
+            - keep the tone supportive
+            - do not strongly push or hard-sell
+            - topic may be null if no clear FAQ category can be inferred
+          edition_type: basic
+        - role: user
+          text: |
+            Risk level: {{#risk_classifier.class_name#}}
+            User message: {{#sys.query#}}
+          edition_type: basic
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 8
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: consult_conversion_answer
+      type: custom
+      position:
+        x: 1350
+        y: 560
+      data:
+        title: Consult Conversion Answer
+        desc: ''
+        type: answer
+        variables: []
+        answer: '{{#consult_conversion_llm.text#}}'
+    - id: create_case_llm
+      type: custom
+      position:
+        x: 1040
+        y: 760
+      data:
+        title: Create Case Composer
+        desc: Heavier conversion path only for explicit start-now intent.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.2
+        prompt_template:
+        - role: system
+          text: |
+            You are a medical consultation funnel assistant.
+
+            The user explicitly wants to begin now, create a case, or formally proceed.
+            Reuse already known user details when the user is clearly referring to previously provided information.
+
+            Extract any obvious structured details if present in the current message or recent conversation context.
+
+            Return JSON only. Do not wrap the JSON in markdown.
+            Required shape:
+            {
+              "answer": "string",
+              "intent": "CONSULT",
+              "topic": "string|null",
+              "riskLevel": "NORMAL|SENSITIVE",
+              "canAnswer": true,
+              "nextAction": "CREATE_CASE",
+              "escalationReason": null,
+              "collectedFields": {
+                "name": null,
+                "email": null,
+                "country": null,
+                "conditionSummary": null,
+                "budget": null
+              },
+              "missingItems": [],
+              "recommendedProviders": [],
+              "citations": []
+            }
+
+            If riskLevel is SENSITIVE:
+            - stay supportive
+            - do not use aggressive conversion language
+            - topic may be null if no clear FAQ category can be inferred
+          edition_type: basic
+        - role: user
+          text: |
+            Risk level: {{#risk_classifier.class_name#}}
+            User message: {{#sys.query#}}
+          edition_type: basic
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 8
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: create_case_answer
+      type: custom
+      position:
+        x: 1350
+        y: 760
+      data:
+        title: Create Case Answer
+        desc: ''
+        type: answer
+        variables: []
+        answer: '{{#create_case_llm.text#}}'
+    - id: request_docs_llm
+      type: custom
+      position:
+        x: 1040
+        y: 960
+      data:
+        title: Request Docs Composer
+        desc: Ask for files and return a missingItems list.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.2
+        prompt_template:
+        - role: system
+          text: |
+            You are a medical consultation funnel assistant.
+
+            The user wants to know what materials are needed or wants to upload supporting documents now.
+            Return JSON only. Do not wrap the JSON in markdown.
+
+            Use nextAction REQUEST_DOCS.
+            Include a practical missingItems array.
+
+            Build missingItems from the likely supporting materials needed for the user's scenario.
+            Use recent conversation context when the user refers to previously mentioned files, reports, constraints, or requirements.
+
+            Required shape:
+            {
+              "answer": "string",
+              "intent": "CONSULT",
+              "topic": "string|null",
+              "riskLevel": "NORMAL|SENSITIVE",
+              "canAnswer": true,
+              "nextAction": "REQUEST_DOCS",
+              "escalationReason": null,
+              "collectedFields": {
+                "name": null,
+                "email": null,
+                "country": null,
+                "conditionSummary": null,
+                "budget": null
+              },
+              "missingItems": ["medical report"],
+              "recommendedProviders": [],
+              "citations": []
+            }
+          edition_type: basic
+        - role: user
+          text: |
+            Risk level: {{#risk_classifier.class_name#}}
+            User message: {{#sys.query#}}
+          edition_type: basic
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 8
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: request_docs_answer
+      type: custom
+      position:
+        x: 1350
+        y: 960
+      data:
+        title: Request Docs Answer
+        desc: ''
+        type: answer
+        variables: []
+        answer: '{{#request_docs_llm.text#}}'
+    - id: unknown_answer
+      type: custom
+      position:
+        x: 1040
+        y: 1140
+      data:
+        title: Unknown Escalation Answer
+        desc: Escalate when not covered by KB or conversion logic.
+        type: answer
+        variables: []
+        answer: |-
+          {
+            "answer": "I don't know based on the current information available, but I can connect you with our team.",
+            "intent": "UNKNOWN",
+            "topic": null,
+            "riskLevel": "{{#risk_classifier.class_name#}}",
+            "canAnswer": false,
+            "nextAction": "ESCALATE",
+            "escalationReason": "KB_NOT_FOUND",
+            "collectedFields": {
+              "name": null,
+              "email": null,
+              "country": null,
+              "conditionSummary": null,
+              "budget": null
+            },
+            "missingItems": [],
+            "recommendedProviders": [],
+            "citations": []
+          }
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.6

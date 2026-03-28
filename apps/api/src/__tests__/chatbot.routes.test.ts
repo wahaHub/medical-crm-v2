@@ -4,6 +4,8 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import {
   chatbotChatResponseSchema,
   chatbotConvertResponseSchema,
+  chatbotEscalateResponseSchema,
+  chatbotHistoryResponseSchema,
 } from '@medical-crm/validation';
 import chatbotRoutes from '../routes/chatbot.routes.js';
 
@@ -94,6 +96,24 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeEscalationMessage(overrides: Record<string, unknown> = {}) {
+  return makeMessage({
+    id: 'workflow-msg-esc',
+    role: 'SYSTEM',
+    content: 'Chatbot conversation escalated to support.',
+    nextAction: 'ESCALATE',
+    metadata: {
+      workflow: {
+        kind: 'ESCALATE',
+        patientId: 'patient-1',
+        caseId: 'case-1',
+        ticketId: 'ticket-1',
+      },
+    },
+    ...overrides,
+  });
+}
+
 describe('Chatbot routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -152,6 +172,48 @@ describe('Chatbot routes', () => {
     );
   });
 
+  it('POST /api/v2/chatbot/chat returns 409 when an existing session is reused with a mismatched hospitalType', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      hospitalType: 'COSMETIC',
+    }));
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'REGULAR',
+        message: 'I want to consult about rhinoplasty.',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/chat returns 502 when the Dify client throws', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockRejectedValue(new Error('upstream unavailable'));
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'I want to consult about rhinoplasty.',
+      }),
+    });
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'upstream unavailable' });
+  });
+
   it('POST /api/v2/chatbot/uploads/init rejects access without matching chatbot session secret', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -171,6 +233,64 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(401);
     expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} returns 401 without a valid chatbot session secret', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+    }));
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockServices.aiChatMessageRepo.listBySession).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} returns ordered history payload for an authorized session', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    // Repository contract is newest-first (DESC); the route should reverse into chronological order.
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-new',
+        role: 'ASSISTANT',
+        content: 'Latest answer',
+        createdAt: new Date('2026-03-26T09:05:00.000Z'),
+      }),
+      makeMessage({
+        id: 'msg-old',
+        role: 'USER',
+        content: 'First question',
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.session).toEqual({
+      sessionId: 'session-1',
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      patientId: 'patient-1',
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+    });
+    expect(json.messages.map((message) => message.id)).toEqual(['msg-old', 'msg-new']);
+    expect(json.messages.map((message) => message.content)).toEqual(['First question', 'Latest answer']);
+    expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
   });
 
   it('POST /api/v2/chatbot/convert reuses existing case workflow instead of creating a duplicate case', async () => {
@@ -217,6 +337,160 @@ describe('Chatbot routes', () => {
     expect(json.alreadyExists).toBe(true);
     expect(mockServices.initOnboarding.execute).not.toHaveBeenCalled();
     expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
+  });
+
+  it('POST /api/v2/chatbot/escalate reuses an existing ticket workflow instead of creating a duplicate ticket', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+      status: 'ESCALATED',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeEscalationMessage(),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/escalate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        reason: 'Need follow-up help',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotEscalateResponseSchema.parse(await res.json());
+    expect(json).toEqual({
+      sessionId: 'session-1',
+      patientId: 'patient-1',
+      caseId: 'case-1',
+      ticketId: 'ticket-1',
+      alreadyExists: true,
+    });
+    expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
+    expect(mockServices.aiChatSessionRepo.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/escalate creates a ticket and marks the session escalated for a new escalation path', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      status: 'ACTIVE',
+    }));
+    mockServices.initOnboarding.execute.mockResolvedValue({
+      patientId: 'patient-2',
+      caseId: 'case-2',
+      token: 'patient-token-2',
+      isExistingPatient: false,
+    });
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-2',
+      patientId: 'patient-2',
+      patientName: null,
+      patientCountry: null,
+      conditionSummary: null,
+      structuredData: {},
+    });
+    mockServices.createTicket.execute.mockResolvedValue({
+      id: 'ticket-2',
+    });
+    mockServices.aiChatSessionRepo.updateStatus.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      status: 'ESCALATED',
+      patientId: 'patient-2',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+
+    const res = await app.request('/api/v2/chatbot/escalate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        reason: 'Need follow-up help',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotEscalateResponseSchema.parse(await res.json());
+    expect(json).toEqual({
+      sessionId: 'session-1',
+      patientId: 'patient-2',
+      caseId: 'case-2',
+      ticketId: 'ticket-2',
+      alreadyExists: false,
+    });
+    expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
+    expect(mockServices.aiChatSessionRepo.updateStatus).toHaveBeenCalledWith('session-1', 'ESCALATED');
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenCalledOnce();
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'SYSTEM',
+      nextAction: 'ESCALATE',
+      metadata: expect.objectContaining({
+        workflow: expect.objectContaining({
+          kind: 'ESCALATE',
+          patientId: 'patient-2',
+          caseId: 'case-2',
+          ticketId: 'ticket-2',
+        }),
+      }),
+    }));
+  });
+
+  it('POST /api/v2/chatbot/escalate repairs stale ESCALATED state without creating a duplicate ticket', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+      status: 'ACTIVE',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeEscalationMessage(),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/escalate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotEscalateResponseSchema.parse(await res.json());
+    expect(json).toEqual({
+      sessionId: 'session-1',
+      patientId: 'patient-1',
+      caseId: 'case-1',
+      ticketId: 'ticket-1',
+      alreadyExists: true,
+    });
+    expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
+    expect(mockServices.aiChatSessionRepo.updateStatus).toHaveBeenCalledWith('session-1', 'ESCALATED');
   });
 
   it('POST /api/v2/chatbot/sync is admin-only and returns the bootstrap enqueue summary', async () => {

@@ -227,12 +227,13 @@ describe('DrizzleCaseRepository integration', () => {
 
     expect(typeof stats.total).toBe('number');
     expect(typeof stats.unassigned).toBe('number');
-    expect(typeof stats.active).toBe('number');
+    expect(typeof stats.assigned).toBe('number');
+    expect(typeof stats.inTreatment).toBe('number');
+    expect(typeof stats.postTreatment).toBe('number');
     expect(typeof stats.completed).toBe('number');
-    expect(typeof stats.cancelled).toBe('number');
+    expect(typeof stats.followUp).toBe('number');
     expect(stats.total).toBeGreaterThanOrEqual(0);
-    // active should include our test cases (they were created with status ACTIVE)
-    expect(stats.active).toBeGreaterThanOrEqual(0);
+    expect(stats.unassigned).toBeGreaterThanOrEqual(0);
   });
 
   it('countByFilters without hospitalId returns global stats', async () => {

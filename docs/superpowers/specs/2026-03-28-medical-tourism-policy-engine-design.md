@@ -141,6 +141,189 @@ User Message
   -> final structured response
 ```
 
+### 4.4 Dify <-> Backend Transport Contract
+
+In v1, Dify should call backend policy endpoints over internal HTTP tools exposed by `medical-crm-v2`.
+
+Recommended internal endpoints:
+
+- `POST /api/v2/internal/ai-policy/context`
+- `POST /api/v2/internal/ai-policy/decide`
+- `POST /api/v2/internal/ai-policy/writeback`
+
+Recommended auth:
+
+- shared internal secret header, reusing the existing internal-worker pattern
+- header example: `X-Internal-Secret: <INTERNAL_API_SECRET>`
+
+Recommended request metadata on every call:
+
+- `request_id`
+- `session_id`
+- `message_id`
+- `actor = ai_chatbot`
+- `source_channel`
+- `hospital_type`
+
+Recommended timeout and retry behavior:
+
+- `context`: timeout `2s`, retry once only on network timeout or `5xx`
+- `decide`: timeout `4s`, do not retry after a policy response has started
+- `writeback`: timeout `4s`, retry only if idempotency key is present and backend confirms safe retry
+
+Recommended idempotency behavior:
+
+- `decide` should be idempotent per `(session_id, user_message_id)`
+- `writeback` should be idempotent per `(session_id, assistant_message_id, writeback_version)`
+
+If Dify cannot reach backend policy endpoints:
+
+- it must not silently self-decide business truth
+- it may fall back only to a safe degraded reply such as:
+  - temporary inability to continue advanced guidance
+  - human handoff suggestion
+  - grounded FAQ answer if already retrieved and safe
+
+### 4.5 Backend Endpoint Contract Summary
+
+#### `POST /api/v2/internal/ai-policy/context`
+
+Purpose:
+
+- return CRM truth for this turn
+
+Response should include:
+
+- `profile`
+- `status_snapshot`
+- `conversation_summary`
+- `pending_offer`
+- `pending_question`
+- `recent_messages`
+- `active_followups`
+
+#### `POST /api/v2/internal/ai-policy/decide`
+
+Purpose:
+
+- return authoritative turn decision
+
+Minimum request:
+
+- `session_id`
+- `message_id`
+- `user_message`
+- `recent_messages`
+- `conversation_summary`
+- `status_snapshot`
+- `pending_offer`
+- `pending_question`
+- `candidate_signals`
+- `retrieval_hints`
+
+Minimum response:
+
+- `resolved_intent`
+- `risk_level`
+- `next_action`
+- `secondary_action`
+- `response_mode`
+- `allowed_tools`
+- `reason_codes`
+- `shortlist`
+- `handoff_required`
+- `writeback_plan`
+
+#### `POST /api/v2/internal/ai-policy/writeback`
+
+Purpose:
+
+- persist authoritative post-turn updates
+
+Minimum request:
+
+- `session_id`
+- `assistant_message_id`
+- `policy_decision`
+- `tool_results`
+- `final_response_metadata`
+- `idempotency_key`
+
+Minimum response:
+
+- `status_updated`
+- `timeline_events_written`
+- `memory_updated`
+- `handoff_created`
+- `followup_created`
+
+### 4.6 Envelope, Versioning, and Error Schema
+
+All three internal policy endpoints should use the same top-level envelope.
+
+Recommended request envelope:
+
+```json
+{
+  "version": "2026-03-28.v1",
+  "request_id": "req-123",
+  "session_id": "chat-session-1",
+  "message_id": "msg-1",
+  "actor": "ai_chatbot",
+  "source_channel": "patient_web",
+  "hospital_type": "COSMETIC",
+  "payload": {}
+}
+```
+
+Recommended success envelope:
+
+```json
+{
+  "ok": true,
+  "version": "2026-03-28.v1",
+  "request_id": "req-123",
+  "payload": {}
+}
+```
+
+Recommended error envelope:
+
+```json
+{
+  "ok": false,
+  "version": "2026-03-28.v1",
+  "request_id": "req-123",
+  "error": {
+    "code": "validation_error | policy_block | timeout | system_error | not_found | unauthorized | forbidden | conflict | dependency_unavailable",
+    "message": "Human-readable summary",
+    "retryable": false,
+    "safe_fallback": "HANDOFF | FAQ_ONLY | APOLOGY",
+    "details": {}
+  }
+}
+```
+
+Versioning rule:
+
+- all internal policy endpoints must reject unsupported versions explicitly
+- version bumps are required when payload semantics change
+
+### 4.7 Failure Matrix
+
+| Failing Step | Dify Behavior | Backend Behavior | User-Facing Outcome |
+|---|---|---|---|
+| `context` timeout | do not continue with policy flow | return `timeout` envelope | safe apology + optional human handoff |
+| `context` auth failure | stop policy flow | return `unauthorized` or `forbidden` envelope | generic unavailable message; no policy execution |
+| `decide` timeout | do not self-decide business truth | return `timeout` envelope | grounded FAQ only if already available, else handoff/apology |
+| `decide` conflict | stop current write path | return `conflict` envelope | ask user to retry or continue with non-destructive fallback |
+| retrieval timeout | skip unavailable retrieval branch | no truth write | say current information is unavailable, offer next safe step |
+| downstream dependency unavailable | skip blocked branch | return `dependency_unavailable` envelope | grounded apology + handoff or later-follow-up path |
+| shortlist empty | do not fabricate alternatives | return decision with `next_action=ASK_CLARIFYING_INFO` or handoff | ask for missing info or route to human |
+| `writeback` failure | response may still render if safe | persist retry task/outbox | user receives response; internal retry handles truth update |
+| `writeback` auth/forbidden | do not retry blindly | log policy/config error | safe response may return; internal alert required |
+| malformed tool payload | stop that branch | return `validation_error` | safe fallback, no silent continuation |
+
 ---
 
 ## 5. Why Backend Is the Main Brain
@@ -435,6 +618,30 @@ Only one primary next action should be selected each turn.
 
 At most one secondary assistive action may be attached.
 
+### 8.7 Decision Precedence Rules
+
+The following precedence order should be used whenever signals conflict:
+
+1. `risk_level`
+2. mandatory handoff rules
+3. explicit user request
+4. pending question resolution
+5. pending offer resolution
+6. current topical FAQ or clarification intent
+7. proactive commercial progression
+
+Canonical conflict rules:
+
+- If `risk_level = CRISIS`, final action must be `SAFETY_ESCALATION` even if recommendation or package eligibility is otherwise true.
+- If `risk_level = HIGH_RISK`, recommendation and package progression are blocked for that turn; allowed follow-on actions are safety guidance, consult explanation, or handoff.
+- If user explicitly asks for a human, `HANDOFF_TO_HUMAN` beats all non-safety commercial actions.
+- If both `pending_question` and `pending_offer` are active:
+  - short direct slot-filling replies answer `pending_question` first
+  - short acceptance/rejection replies answer `pending_offer` first
+  - ambiguous short replies with no clear polarity trigger `ASK_CLARIFYING_INFO`
+- If user is recommendation-eligible but also triggers objection handling, `HANDLE_OBJECTION` wins unless the user explicitly asked to see hospitals now.
+- If shortlist is empty after eligibility passes, downgrade from `SHOW_HOSPITAL_RECOMMENDATIONS` to `ASK_CLARIFYING_INFO` or `HANDOFF_TO_HUMAN` depending on risk and lead maturity.
+
 ---
 
 ## 9. Status Model
@@ -550,6 +757,33 @@ The system may not:
 - rank hospitals based on pure generation
 - present precision when inputs are too incomplete
 
+### 10.5 Recommendation Source of Truth and Freshness
+
+Hospital and package recommendation inputs must come from an approved catalog state in CRM or an approved downstream source synchronized into CRM.
+
+Recommended source rules:
+
+- shortlist logic may only use records in `approved` or equivalent reviewed state
+- unreviewed, draft, archived, or stale records must not be surfaced as authoritative recommendations
+- partial records may remain queryable for internal ops, but are not eligible for patient-facing shortlist output
+
+Recommended freshness rules:
+
+- hospital/package records used for recommendation should carry `source_updated_at` and `reviewed_at`
+- recommendation policy should reject or downgrade records considered stale by configured SLA
+- if all eligible records are stale or partial:
+  - no fabricated recommendation
+  - downgrade to `ASK_CLARIFYING_INFO`, `EXPLAIN_PROCESS`, or `HANDOFF_TO_HUMAN`
+
+Recommended v1 behavior when data quality is insufficient:
+
+- `eligible = false`
+- include `reason_codes` such as:
+  - `catalog_partial`
+  - `catalog_stale`
+  - `no_reviewed_records`
+  - `missing_required_filters`
+
 ---
 
 ## 11. Tool and MCP Contract Design
@@ -642,6 +876,39 @@ The spec should explicitly reject:
 - Dify direct writes into CRM truth tables
 - recommendation tools deciding eligibility on their own
 - handoff tools deciding necessity on their own
+
+### 11.5 Tool Failure and Degraded-Mode Rules
+
+Tool failures must be first-class runtime states.
+
+Recommended behavior:
+
+- if `get_conversation_context` fails:
+  - do not proceed with authoritative planning
+  - reply with safe temporary degradation or handoff suggestion
+- if `decide_next_action` fails:
+  - do not invent a replacement decision in Dify
+  - allow only safe FAQ-only fallback if grounded retrieval is already available
+- if retrieval tool fails:
+  - downgrade to `I don't know based on current information` or handoff prompt
+- if hospital/package tools fail:
+  - do not fabricate alternatives
+  - respond with process guidance or handoff depending on lead maturity
+- if `apply_writeback_plan` fails:
+  - user response may still be returned if safe
+  - backend must emit retryable outbox or failure event for recovery
+
+All tool errors should normalize to:
+
+- `policy_block`
+- `validation_error`
+- `not_found`
+- `timeout`
+- `system_error`
+- `unauthorized`
+- `forbidden`
+- `conflict`
+- `dependency_unavailable`
 
 ---
 
@@ -755,6 +1022,61 @@ Recommended v1 follow-up trigger types:
 
 These should be explicit database objects, not only implicit conversational hints.
 
+### 12.8 Writeback Failure Recovery
+
+Writeback must be split into safe steps:
+
+1. persist raw assistant message audit
+2. persist authoritative status/profile/timeline updates
+3. persist side-effect records such as handoff/follow-up
+
+Recommended rule:
+
+- message audit may succeed without full business writeback
+- business writeback may be retried idempotently
+- no duplicate timeline, handoff, or follow-up rows should be created on retry
+
+Recommended recovery strategy:
+
+- store failed writeback attempts in retryable outbox state
+- mark session with `last_writeback_error_at`
+- expose retry-safe idempotency key
+- log failure reason for audit
+
+Summary refresh should be best-effort:
+
+- if summary update fails, structured status must still commit
+- summary can be recomputed later from truth tables
+
+### 12.9 Data Governance and Access Rules
+
+The policy engine stores sensitive medical-tourism context, so governance rules must be explicit.
+
+Recommended rules:
+
+- only persist fields necessary for routing, recommendation, handoff, follow-up, and audit
+- do not persist diagnosis-like conclusions as confirmed facts unless explicitly user-provided or human-confirmed
+- keep `source`, `confidence`, and `updated_by` metadata for inferred memory where possible
+- handoff briefs and timeline payloads must be redactable for downstream viewers who do not need raw medical detail
+
+Recommended access model:
+
+- AI runtime may read only the subset needed for current turn planning and generation
+- human advisors may read handoff briefs, timeline, and profile fields relevant to case handling
+- broader admin/reporting access should use redacted or aggregated views where possible
+
+Recommended retention model:
+
+- session messages remain as operational audit unless legal/compliance policy says otherwise
+- profile memory should be retained only while linked to an active patient/lead lifecycle
+- follow-up triggers and handoff records should be retained with normal CRM operational history
+- redaction or deletion workflows must be able to remove or anonymize AI-generated profile memory without corrupting audit integrity
+
+Recommended v1 implementation rule:
+
+- design schema with explicit ownership and redaction-friendly JSON payloads
+- defer sophisticated retention automation, but do not defer retention fields and access boundaries
+
 ---
 
 ## 13. CRM Schema Design
@@ -838,6 +1160,327 @@ Purpose:
 Purpose:
 
 - preserve structured handoff decision, brief, priority, and lifecycle
+
+### 13.9 Minimum V1 Schema Scope
+
+To keep implementation planable, v1 schema should include only:
+
+- expand `ai_chat_sessions`
+- expand `ai_chat_messages`
+- add `ai_user_profiles`
+- add `ai_chat_timeline_events`
+- add `ai_followup_triggers`
+- add `ai_handoffs`
+
+Not required in the first implementation slice:
+
+- separate `ai_hospital_recommendation_logs`
+  - shortlist audit may initially live in message metadata + timeline payload
+
+### 13.10 Recommended Table Rules
+
+#### `ai_chat_sessions`
+
+Primary key:
+
+- `id`
+
+Unique keys:
+
+- unique `session_id`
+
+Recommended indexes:
+
+- `(patient_id)`
+- `(hospital_type, status)`
+- `(handoff_status)`
+- `(updated_at desc)`
+
+Nullability:
+
+- `patient_id` nullable for anonymous sessions
+- `dify_conversation_id` nullable until first successful Dify turn
+- status snapshot fields non-null with explicit enum defaults where possible
+
+#### `ai_chat_messages`
+
+Primary key:
+
+- `id`
+
+Foreign keys:
+
+- `session_id -> ai_chat_sessions.id`
+
+Recommended indexes:
+
+- `(session_id, created_at)`
+- `(role, created_at)`
+- `(next_action)`
+
+Rules:
+
+- do not delete for normal operation
+- use as immutable turn audit
+
+#### `ai_user_profiles`
+
+Primary key:
+
+- `id`
+
+Foreign keys:
+
+- `patient_id -> users.id` if patient is known
+
+Unique keys:
+
+- unique nullable `patient_id`
+- otherwise unique `(anonymous_profile_key)` if anonymous support is retained
+
+Recommended indexes:
+
+- `(lead_stage)`
+- `(updated_at desc)`
+
+#### `ai_chat_timeline_events`
+
+Primary key:
+
+- `id`
+
+Foreign keys:
+
+- `session_id -> ai_chat_sessions.id`
+
+Recommended indexes:
+
+- `(session_id, created_at desc)`
+- `(event_type, created_at desc)`
+- `(patient_id, created_at desc)`
+
+#### `ai_followup_triggers`
+
+Primary key:
+
+- `id`
+
+Foreign keys:
+
+- `session_id -> ai_chat_sessions.id`
+
+Recommended indexes:
+
+- `(status, due_at)`
+- `(trigger_type, status)`
+- `(patient_id, due_at)`
+
+Rules:
+
+- support `pending`, `completed`, `cancelled`, `failed`
+- allow only one active trigger of the same type per session unless explicitly overridden
+
+#### `ai_handoffs`
+
+Primary key:
+
+- `id`
+
+Foreign keys:
+
+- `session_id -> ai_chat_sessions.id`
+- optional `support_ticket_id -> support_tickets.id`
+
+Recommended indexes:
+
+- `(status, priority, created_at desc)`
+- `(handoff_type, created_at desc)`
+- `(patient_id, created_at desc)`
+
+### 13.11 Migration Ordering
+
+Recommended migration sequence:
+
+1. expand `ai_chat_sessions`
+2. expand `ai_chat_messages`
+3. add `ai_user_profiles`
+4. add `ai_chat_timeline_events`
+5. add `ai_followup_triggers`
+6. add `ai_handoffs`
+7. backfill defaults and nullable-safe values
+8. update repositories and use cases
+
+Recommended rollout rule:
+
+- deploy additive schema first
+- backfill second
+- only then enable policy-engine writes in runtime paths
+
+### 13.12 Concrete V1 Schema Appendix
+
+This appendix is the implementation-facing minimum schema for planning.
+
+#### A. `ai_chat_sessions` current columns retained
+
+- `id uuid primary key`
+- `session_id varchar(255) not null unique`
+- `session_secret_hash varchar(255) null`
+- `dify_conversation_id varchar(255) null`
+- `patient_id uuid null references users(id) on delete set null`
+- `hospital_type HospitalType not null`
+- `status varchar(20) not null default 'ACTIVE'`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`
+
+#### B. `ai_chat_sessions` new v1 columns
+
+- `condition_status varchar(20) not null default 'unknown'`
+- `form_status varchar(20) not null default 'not_started'`
+- `doc_upload_status varchar(20) not null default 'none'`
+- `recommendation_status varchar(30) not null default 'not_started'`
+- `consultation_status varchar(30) not null default 'not_introduced'`
+- `package_status varchar(30) not null default 'not_introduced'`
+- `handoff_status varchar(20) not null default 'not_needed'`
+- `lead_maturity varchar(20) not null default 'browsing'`
+- `risk_level varchar(20) not null default 'low'`
+- `trust_or_objection varchar(30) not null default 'none'`
+- `pending_offer_type varchar(50) null`
+- `pending_offer_payload jsonb not null default '{}'::jsonb`
+- `pending_question_type varchar(50) null`
+- `pending_question_payload jsonb not null default '{}'::jsonb`
+- `last_next_action varchar(50) null`
+- `last_resolved_intent varchar(80) null`
+- `conversation_summary text not null default ''`
+- `last_policy_decision_at timestamptz null`
+- `last_user_message_at timestamptz null`
+- `last_assistant_message_at timestamptz null`
+
+Recommended new indexes:
+
+- `ai_chat_sessions_handoff_status_idx (handoff_status, updated_at desc)`
+- `ai_chat_sessions_lead_maturity_idx (lead_maturity, updated_at desc)`
+- `ai_chat_sessions_risk_level_idx (risk_level, updated_at desc)`
+
+Backfill rule:
+
+- all existing sessions receive defaults
+- existing `status` remains unchanged
+- `conversation_summary` backfills to empty string
+
+#### C. `ai_chat_messages` current columns retained
+
+- `id uuid primary key`
+- `session_id uuid not null references ai_chat_sessions(id) on delete cascade`
+- `role varchar(20) not null`
+- `content text not null`
+- `intent varchar(80) null`
+- `risk_level varchar(20) null`
+- `can_answer boolean null`
+- `next_action varchar(50) null`
+- `citations jsonb not null default '[]'::jsonb`
+- `metadata jsonb not null default '{}'::jsonb`
+- `created_at timestamptz not null default now()`
+
+#### D. `ai_chat_messages` new v1 columns
+
+- `secondary_action varchar(50) null`
+- `response_mode varchar(40) null`
+- `tool_trace jsonb not null default '[]'::jsonb`
+- `reason_codes jsonb not null default '[]'::jsonb`
+- `shortlist jsonb not null default '[]'::jsonb`
+- `writeback_status varchar(20) not null default 'pending'`
+
+Backfill rule:
+
+- all existing rows receive empty arrays/defaults
+- no historical reinterpretation of existing intent/risk values in migration
+- widen existing `intent` column before any policy-engine rollout that writes canonical long-form intents
+
+#### E. `ai_user_profiles`
+
+New table:
+
+- `id uuid primary key default gen_random_uuid()`
+- `patient_id uuid null references users(id) on delete set null`
+- `anonymous_key varchar(255) null`
+- `condition_or_goal text null`
+- `condition_category varchar(50) null`
+- `preferred_destination jsonb not null default '[]'::jsonb`
+- `preferred_language varchar(20) null`
+- `budget_band varchar(20) null`
+- `urgency_level varchar(20) null`
+- `existing_reports_status varchar(20) not null default 'none'`
+- `objection_tags jsonb not null default '[]'::jsonb`
+- `lead_stage varchar(20) not null default 'browsing'`
+- `next_best_action varchar(50) null`
+- `memory_summary text not null default ''`
+- `source_confidence_map jsonb not null default '{}'::jsonb`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`
+
+Constraints:
+
+- unique nullable `patient_id`
+- unique nullable `anonymous_key`
+
+#### F. `ai_chat_timeline_events`
+
+New table:
+
+- `id uuid primary key default gen_random_uuid()`
+- `session_id uuid not null references ai_chat_sessions(id) on delete cascade`
+- `patient_id uuid null references users(id) on delete set null`
+- `event_type varchar(50) not null`
+- `summary text not null`
+- `payload jsonb not null default '{}'::jsonb`
+- `actor varchar(20) not null`
+- `confidence numeric(5,4) null`
+- `created_at timestamptz not null default now()`
+
+#### G. `ai_followup_triggers`
+
+New table:
+
+- `id uuid primary key default gen_random_uuid()`
+- `session_id uuid not null references ai_chat_sessions(id) on delete cascade`
+- `patient_id uuid null references users(id) on delete set null`
+- `trigger_type varchar(50) not null`
+- `status varchar(20) not null default 'pending'`
+- `due_at timestamptz not null`
+- `channel varchar(20) not null default 'crm_queue'`
+- `reason text not null`
+- `payload jsonb not null default '{}'::jsonb`
+- `created_at timestamptz not null default now()`
+- `resolved_at timestamptz null`
+
+Constraint:
+
+- unique active trigger per `(session_id, trigger_type, status='pending')` enforced in application logic or partial index
+
+#### H. `ai_handoffs`
+
+New table:
+
+- `id uuid primary key default gen_random_uuid()`
+- `session_id uuid not null references ai_chat_sessions(id) on delete cascade`
+- `patient_id uuid null references users(id) on delete set null`
+- `support_ticket_id uuid null references support_tickets(id) on delete set null`
+- `handoff_type varchar(40) not null`
+- `priority varchar(20) not null`
+- `reason_code varchar(60) not null`
+- `brief jsonb not null default '{}'::jsonb`
+- `status varchar(20) not null default 'requested'`
+- `assigned_to uuid null references users(id) on delete set null`
+- `created_at timestamptz not null default now()`
+- `completed_at timestamptz null`
+
+#### I. Enum/Value Canonicalization Rule
+
+To minimize migration risk in the current repo:
+
+- v1 stores new policy enums as `varchar`
+- canonical allowed values are enforced in validation/schema layer first
+- dedicated postgres enums may be introduced later once contracts stabilize
 
 ---
 
@@ -1026,6 +1669,21 @@ Must always regress:
 - explicit human request not triggering handoff
 - recommendation shown when eligibility is not met
 
+### 16.6 Failure and Recovery Test Bucket
+
+V1 regression must also cover:
+
+- malformed Dify extraction payload
+- malformed tool payload from Dify to backend
+- `decide_next_action` timeout
+- retrieval timeout with safe fallback
+- writeback failure after response generation
+- duplicate writeback retry with idempotency key
+- shortlist generation returning zero hospitals
+- handoff creation failure while response_mode is handoff
+
+Expected behavior in these tests should be explicit and non-silent.
+
 ---
 
 ## 17. Migration from Earlier Design
@@ -1050,6 +1708,43 @@ This means the next implementation cycle should not throw away the current chatb
 - evolve Dify from decision-maker into orchestrator
 - add structured memory, handoff, recommendation, and follow-up truth tables
 
+### 17.1 Implementation Phasing
+
+This should not be executed as one giant undifferentiated build.
+
+Recommended phases:
+
+#### Phase 1A: Schema and backend contract first
+
+- internal policy endpoints
+- expanded session/message schema
+- profile/timeline/handoff/follow-up core tables
+
+Deliverable:
+
+- CRM can compute and persist policy decisions without Dify cutover
+
+#### Phase 1B: Dify workflow cutover
+
+- context/decide/writeback contracts wired into Dify
+- Dify workflow switched to backend-authoritative decisioning
+- degraded-mode fallbacks verified end-to-end
+
+#### Phase 2: Recommendation and operational hardening
+
+- backend recommendation policy module
+- shortlist presentation integration
+- failure recovery and writeback retry hardening
+- regression suite expansion
+
+#### Phase 3: Optimization
+
+- recommendation audit expansion if needed
+- follow-up automation consumers
+- analytics/dashboarding
+
+This keeps the scope planable while preserving the full target architecture.
+
 ---
 
 ## 18. Final Definition
@@ -1057,4 +1752,3 @@ This means the next implementation cycle should not throw away the current chatb
 The medical tourism CRM AI chatbot should be defined as:
 
 > A backend-authoritative, policy-driven conversation system that uses Dify for orchestration, retrieval, tool calling, and natural-language generation; stores business truth in CRM; and continuously balances grounded answering, recommendation, memory, conversion, handoff, and safety under explicit policy control.
-

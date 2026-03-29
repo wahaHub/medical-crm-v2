@@ -106,6 +106,10 @@ app.openapi(sendChatRoute, async (c) => {
       inputs: {
         hospitalType: body.hospitalType,
         sessionId: body.sessionId,
+        currentStatus: session.statusSnapshot,
+        conversationSummary: session.statusSnapshot.conversationSummary,
+        pendingOffer: session.statusSnapshot.pendingOffer,
+        pendingQuestion: session.statusSnapshot.pendingQuestion,
       },
       query: body.message,
       user: body.sessionId,
@@ -132,10 +136,15 @@ app.openapi(sendChatRoute, async (c) => {
     role: 'ASSISTANT',
     content: normalized.answer,
     intent: normalized.intent,
+    resolvedIntent: normalized.resolvedIntent ?? normalized.intent,
     riskLevel: normalized.riskLevel,
     canAnswer: normalized.canAnswer,
     nextAction: normalized.nextAction,
+    secondaryAction: normalized.secondaryAction,
+    responseMode: normalized.responseMode,
     citations: normalized.citations,
+    reasonCodes: normalized.reasonCodes,
+    shortlist: normalized.shortlist,
     metadata: normalized.metadata,
     createdAt: new Date(),
   }));
@@ -149,13 +158,19 @@ app.openapi(sendChatRoute, async (c) => {
     messageId: assistantMessage.id,
     answer: assistantMessage.content,
     intent: assistantMessage.intent,
+    topic: normalized.topic,
     riskLevel: assistantMessage.riskLevel,
     canAnswer: assistantMessage.canAnswer,
     nextAction: assistantMessage.nextAction,
+    secondaryAction: assistantMessage.secondaryAction,
+    responseMode: assistantMessage.responseMode,
     citations: assistantMessage.citations,
     collectedFields: normalized.collectedFields,
     missingItems: normalized.missingItems,
     recommendedProviders: normalized.recommendedProviders,
+    reasonCodes: assistantMessage.reasonCodes,
+    shortlist: assistantMessage.shortlist,
+    metadata: assistantMessage.metadata,
     history: {
       userMessageId: userMessage.id,
       assistantMessageId: assistantMessage.id,
@@ -445,10 +460,15 @@ app.openapi(getChatbotHistoryRoute, async (c) => {
       role: message.role,
       content: message.content,
       intent: message.intent,
+      topic: asString(message.metadata.topic) ?? null,
       riskLevel: message.riskLevel,
       canAnswer: message.canAnswer,
       nextAction: message.nextAction,
+      secondaryAction: message.secondaryAction,
+      responseMode: message.responseMode,
       citations: message.citations,
+      reasonCodes: message.reasonCodes,
+      shortlist: message.shortlist,
       metadata: message.metadata,
       createdAt: message.createdAt.toISOString(),
     })),
@@ -788,22 +808,30 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
   const metadata = asRecord(response.metadata);
   const parsedAnswer = parseStructuredAnswer(response.answer);
   const citations = parsedAnswer?.citations ?? deriveCitations(metadata);
+  const topic = parsedAnswer?.topic ?? null;
 
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
     intent: normalizeIntent(parsedAnswer?.intent),
+    resolvedIntent: parsedAnswer?.resolvedIntent ?? parsedAnswer?.intent ?? null,
+    topic,
     riskLevel: normalizeRiskLevel(parsedAnswer?.riskLevel),
     canAnswer: parsedAnswer?.canAnswer ?? null,
     nextAction: normalizeNextAction(parsedAnswer?.nextAction),
+    secondaryAction: parsedAnswer?.secondaryAction ?? null,
+    responseMode: parsedAnswer?.responseMode ?? null,
     collectedFields: parsedAnswer?.collectedFields ?? null,
     missingItems: parsedAnswer?.missingItems ?? [],
     recommendedProviders: parsedAnswer?.recommendedProviders ?? [],
+    reasonCodes: parsedAnswer?.reasonCodes ?? [],
+    shortlist: parsedAnswer?.shortlist ?? [],
     citations,
     conversationId: asString(response.conversation_id),
     messageId: asString(response.message_id),
     taskId: asString(response.task_id),
       metadata: {
         ...metadata,
+        topic,
         structuredOutput: parsedAnswer ?? null,
         rawResponse: response,
       },
@@ -813,9 +841,15 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
 function parseStructuredAnswer(value: unknown): {
   answer?: string;
   intent?: string;
+  resolvedIntent?: string;
+  topic?: string;
   riskLevel?: string;
   canAnswer?: boolean;
   nextAction?: string;
+  secondaryAction?: string;
+  responseMode?: string;
+  reasonCodes?: string[];
+  shortlist?: Array<Record<string, unknown>>;
   citations?: AiChatCitation[];
   collectedFields?: Record<string, unknown>;
   missingItems?: string[];
@@ -828,15 +862,33 @@ function parseStructuredAnswer(value: unknown): {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
     return {
       answer: asString(parsed.answer),
-      intent: asString(parsed.intent),
-      riskLevel: asString(parsed.riskLevel),
-      canAnswer: typeof parsed.canAnswer === 'boolean' ? parsed.canAnswer : undefined,
-      nextAction: asString(parsed.nextAction),
+      intent: asString(parsed.intent) ?? asString(parsed['intent']),
+      resolvedIntent: asString(parsed.resolvedIntent) ?? asString(parsed.resolved_intent),
+      topic: asString(parsed.topic),
+      riskLevel: asString(parsed.riskLevel) ?? asString(parsed.risk_level),
+      canAnswer: typeof parsed.canAnswer === 'boolean'
+        ? parsed.canAnswer
+        : typeof parsed.can_answer === 'boolean'
+          ? parsed.can_answer
+          : undefined,
+      nextAction: asString(parsed.nextAction) ?? asString(parsed.next_action),
+      secondaryAction: asString(parsed.secondaryAction) ?? asString(parsed.secondary_action),
+      responseMode: asString(parsed.responseMode) ?? asString(parsed.response_mode),
+      reasonCodes: Array.isArray(parsed.reasonCodes)
+        ? parsed.reasonCodes.filter((item): item is string => typeof item === 'string')
+        : Array.isArray(parsed.reason_codes)
+          ? parsed.reason_codes.filter((item): item is string => typeof item === 'string')
+          : undefined,
+      shortlist: Array.isArray(parsed.shortlist)
+        ? parsed.shortlist.map((item) => asRecord(item))
+        : undefined,
       citations: Array.isArray(parsed.citations) ? parsed.citations as AiChatCitation[] : undefined,
-      collectedFields: asRecord(parsed.collectedFields),
+      collectedFields: asRecord(parsed.collectedFields ?? parsed.collected_fields),
       missingItems: Array.isArray(parsed.missingItems) ? parsed.missingItems.filter((item): item is string => typeof item === 'string') : undefined,
       recommendedProviders: Array.isArray(parsed.recommendedProviders)
         ? parsed.recommendedProviders.map((item) => asRecord(item))
+        : Array.isArray(parsed.recommended_providers)
+          ? parsed.recommended_providers.map((item) => asRecord(item))
         : undefined,
     };
   } catch {

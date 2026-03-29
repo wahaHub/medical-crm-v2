@@ -89,7 +89,11 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
     riskLevel: null,
     canAnswer: null,
     nextAction: null,
+    secondaryAction: null,
+    responseMode: null,
     citations: [],
+    reasonCodes: [],
+    shortlist: [],
     metadata: {},
     createdAt: NOW,
     ...overrides,
@@ -140,12 +144,15 @@ describe('Chatbot routes', () => {
         canAnswer: true,
         topic: 'PROCEDURE',
         nextAction: 'CONSULT_CONVERSION',
+        secondaryAction: 'REQUEST_DOCS',
         responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['consult_interest_detected'],
+        shortlist: [{ hospitalId: 'hospital-1', matchType: 'matched', reasonCodes: ['goal_fit'] }],
         collectedFields: { country: 'Singapore' },
         missingItems: ['photo'],
         citations: [{ sourceTitle: 'FAQ', snippet: 'Sample snippet' }],
       }),
-      metadata: {},
+      metadata: { retriever_resources: [] },
     });
 
     const res = await app.request('/api/v2/chatbot/chat', {
@@ -164,14 +171,40 @@ describe('Chatbot routes', () => {
     expect(json.intent).toBe('CONSULT');
     expect((json as Record<string, unknown>)['topic']).toBe('PROCEDURE');
     expect(json.nextAction).toBe('CONSULT_CONVERSION');
+    expect(json.secondaryAction).toBe('REQUEST_DOCS');
     expect((json as Record<string, unknown>)['responseMode']).toBe('grounded_plus_guidance');
+    expect(json.reasonCodes).toEqual(['consult_interest_detected']);
+    expect(json.shortlist).toEqual([{ hospitalId: 'hospital-1', matchType: 'matched', reasonCodes: ['goal_fit'] }]);
     expect(json.collectedFields?.country).toBe('Singapore');
     expect(json.missingItems).toEqual(['photo']);
+    expect(json.metadata).toMatchObject({
+      structuredOutput: expect.objectContaining({
+        topic: 'PROCEDURE',
+      }),
+    });
     expect('difyConversationId' in (json as Record<string, unknown>)).toBe(false);
     expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         user: 'session-1',
         conversationId: null,
+        inputs: expect.objectContaining({
+          hospitalType: 'COSMETIC',
+          sessionId: 'session-1',
+          currentStatus: expect.any(Object),
+        }),
+      }),
+    );
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        resolvedIntent: 'CONSULT',
+        nextAction: 'CONSULT_CONVERSION',
+        secondaryAction: 'REQUEST_DOCS',
+        responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['consult_interest_detected'],
+        shortlist: [{ hospitalId: 'hospital-1', matchType: 'matched', reasonCodes: ['goal_fit'] }],
+        metadata: expect.objectContaining({
+          topic: 'PROCEDURE',
+        }),
       }),
     );
   });

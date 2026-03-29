@@ -85,10 +85,16 @@ describe('Chatbot routes integration', () => {
         intent: 'CONSULT',
         riskLevel: 'NORMAL',
         canAnswer: true,
+        topic: 'DOCUMENTS',
         nextAction: 'REQUEST_DOCS',
+        secondaryAction: 'CONSULT_CONVERSION',
+        responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['documents_requested'],
+        shortlist: [{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }],
         missingItems: ['medical report'],
         citations: [{ sourceTitle: 'FAQ', snippet: 'Bring your latest report.' }],
       }),
+      metadata: { retriever_resources: [] },
     });
 
     const sessionId = `${SESSION_PREFIX}${randomUUID()}`;
@@ -105,7 +111,12 @@ describe('Chatbot routes integration', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.sessionId).toBe(sessionId);
+    expect(json.topic).toBe('DOCUMENTS');
     expect(json.nextAction).toBe('REQUEST_DOCS');
+    expect(json.secondaryAction).toBe('CONSULT_CONVERSION');
+    expect(json.responseMode).toBe('grounded_plus_guidance');
+    expect(json.reasonCodes).toEqual(['documents_requested']);
+    expect(json.shortlist).toEqual([{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }]);
     expect(json.missingItems).toEqual(['medical report']);
 
     const cookie = res.headers.get('set-cookie');
@@ -120,6 +131,14 @@ describe('Chatbot routes integration', () => {
     expect(messages[0]?.role).toBe('ASSISTANT');
     expect(messages[1]?.role).toBe('USER');
     expect(messages[0]?.nextAction).toBe('REQUEST_DOCS');
+    expect(messages[0]?.resolvedIntent).toBe('CONSULT');
+    expect(messages[0]?.secondaryAction).toBe('CONSULT_CONVERSION');
+    expect(messages[0]?.responseMode).toBe('grounded_plus_guidance');
+    expect(messages[0]?.reasonCodes).toEqual(['documents_requested']);
+    expect(messages[0]?.shortlist).toEqual([{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }]);
+    expect(messages[0]?.metadata).toMatchObject({
+      topic: 'DOCUMENTS',
+    });
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} reads ordered history from the real database', async () => {

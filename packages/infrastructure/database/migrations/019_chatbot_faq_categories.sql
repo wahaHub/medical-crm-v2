@@ -1,4 +1,4 @@
-CREATE TABLE chatbot_faq_categories (
+CREATE TABLE IF NOT EXISTS chatbot_faq_categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(100) NOT NULL,
   hospital_type VARCHAR(20) NOT NULL,
@@ -12,9 +12,9 @@ CREATE TABLE chatbot_faq_categories (
     UNIQUE (name, hospital_type)
 );
 
-CREATE INDEX chatbot_faq_categories_hospital_type_idx
+CREATE INDEX IF NOT EXISTS chatbot_faq_categories_hospital_type_idx
   ON chatbot_faq_categories(hospital_type);
-CREATE INDEX chatbot_faq_categories_is_active_idx
+CREATE INDEX IF NOT EXISTS chatbot_faq_categories_is_active_idx
   ON chatbot_faq_categories(is_active);
 
 INSERT INTO chatbot_faq_categories (name, hospital_type, sort_order, is_active, updated_at)
@@ -25,5 +25,12 @@ SELECT
   BOOL_OR(is_active) AS is_active,
   CURRENT_TIMESTAMP AS updated_at
 FROM chatbot_faq_items
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM chatbot_faq_categories existing
+  WHERE existing.name = chatbot_faq_items.category
+    AND existing.hospital_type = chatbot_faq_items.hospital_type
+    AND existing.hospital_id IS NULL
+)
 GROUP BY category, hospital_type
-ON CONFLICT (name, hospital_type) DO NOTHING;
+;

@@ -1,10 +1,12 @@
+import type { AiPolicyBackendNextAction } from '../../dtos/ai-policy.dto.js';
+
 export interface WritebackPlannerInput {
   sessionId: string;
   sessionDbId: string;
   patientId: string | null;
   assistantMessageId: string;
   policyDecision: {
-    nextAction: string;
+    nextAction: AiPolicyBackendNextAction;
     riskLevel?: string;
     reasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
@@ -95,6 +97,46 @@ export class WritebackPlannerService {
           reason: 'Waiting for the user to upload supporting documents.',
           payload: { assistantMessageId: input.assistantMessageId },
         },
+        messageMetadata: {
+          reasonCodes,
+        },
+      };
+    }
+
+    if (input.policyDecision.nextAction === 'EXPLORE_HOSPITAL_RECOMMENDATIONS') {
+      return {
+        statusPatch: {
+          recommendationStatus: 'EXPLORED',
+          lastNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+        },
+        timelineEvents: [],
+        followupTrigger: null,
+        messageMetadata: {
+          reasonCodes,
+        },
+      };
+    }
+
+    if (input.policyDecision.nextAction === 'EXPLAIN_DOC_UPLOAD') {
+      return {
+        statusPatch: {
+          lastNextAction: 'EXPLAIN_DOC_UPLOAD',
+        },
+        timelineEvents: [],
+        followupTrigger: null,
+        messageMetadata: {
+          reasonCodes,
+        },
+      };
+    }
+
+    if (input.policyDecision.nextAction === 'EXPLAIN_CONSULT_PROCESS') {
+      return {
+        statusPatch: {
+          lastNextAction: 'EXPLAIN_CONSULT_PROCESS',
+        },
+        timelineEvents: [],
+        followupTrigger: null,
         messageMetadata: {
           reasonCodes,
         },

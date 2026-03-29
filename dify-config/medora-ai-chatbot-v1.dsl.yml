@@ -1,6 +1,6 @@
 app:
-  name: Medora AI Chatbot v3
-  description: Backend-authoritative starter chatflow for Medora. Dify handles extraction, orchestration, retrieval, and response generation, while CRM backend owns policy decision and writeback truth.
+  name: Medora AI Chatbot v5
+  description: Backend-authoritative medical tourism chatflow with lightweight extraction, hospital candidate prefetch, CRM policy decisioning, FAQ/package grounding, and backend writeback.
   mode: advanced-chat
   icon: 🤖
   icon_background: '#FFEAD5'
@@ -41,14 +41,25 @@ workflow:
         targetType: llm
         isInIteration: false
         isInLoop: false
-    - id: extraction-context
+    - id: extraction-search-hospitals
       source: extraction_llm
+      sourceHandle: source
+      target: search_hospitals_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: search-hospitals-context
+      source: search_hospitals_http
       sourceHandle: source
       target: context_http
       targetHandle: target
       type: custom
       data:
-        sourceType: llm
+        sourceType: http-request
         targetType: http-request
         isInIteration: false
         isInLoop: false
@@ -96,40 +107,7 @@ workflow:
         targetType: if-else
         isInIteration: false
         isInLoop: false
-    - id: action-hospitals
-      source: action_gate
-      sourceHandle: show_hospitals
-      target: search_hospitals_http
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: if-else
-        targetType: http-request
-        isInIteration: false
-        isInLoop: false
-    - id: hospitals-details
-      source: search_hospitals_http
-      sourceHandle: source
-      target: hospital_details_http
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: http-request
-        targetType: http-request
-        isInIteration: false
-        isInLoop: false
-    - id: details-response
-      source: hospital_details_http
-      sourceHandle: source
-      target: response_composer
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: http-request
-        targetType: llm
-        isInIteration: false
-        isInLoop: false
-    - id: action-package
+    - id: action-show-package
       source: action_gate
       sourceHandle: show_package
       target: list_packages_http
@@ -140,7 +118,7 @@ workflow:
         targetType: http-request
         isInIteration: false
         isInLoop: false
-    - id: package-response
+    - id: list-packages-response
       source: list_packages_http
       sourceHandle: source
       target: response_composer
@@ -151,10 +129,10 @@ workflow:
         targetType: llm
         isInIteration: false
         isInLoop: false
-    - id: action-faq
+    - id: action-faq-scope
       source: action_gate
       sourceHandle: faq_answer
-      target: hospital_scope
+      target: faq_scope
       targetHandle: target
       type: custom
       data:
@@ -174,7 +152,7 @@ workflow:
         isInIteration: false
         isInLoop: false
     - id: scope-cosmetic
-      source: hospital_scope
+      source: faq_scope
       sourceHandle: cosmetic
       target: faq_cosmetic_kr
       targetHandle: target
@@ -185,7 +163,7 @@ workflow:
         isInIteration: false
         isInLoop: false
     - id: scope-regular
-      source: hospital_scope
+      source: faq_scope
       sourceHandle: 'false'
       target: faq_regular_kr
       targetHandle: target
@@ -228,7 +206,7 @@ workflow:
         targetType: http-request
         isInIteration: false
         isInLoop: false
-    - id: writeback-answer
+    - id: writeback-final
       source: writeback_http
       sourceHandle: source
       target: final_answer
@@ -244,10 +222,10 @@ workflow:
       type: custom
       position:
         x: 80
-        y: 360
+        y: 340
       data:
         title: Start
-        desc: Collect CRM session metadata for the chatflow run.
+        desc: Collect session metadata supplied by CRM backend.
         type: start
         variables:
         - variable: hospitalType
@@ -266,14 +244,20 @@ workflow:
           required: true
           max_length: 255
           placeholder: CRM chatbot session id
+        - variable: assistantMessageId
+          label: assistantMessageId
+          type: text-input
+          required: true
+          max_length: 255
+          placeholder: Pre-generated CRM assistant message id
     - id: extraction_llm
       type: custom
       position:
         x: 360
-        y: 360
+        y: 340
       data:
         title: Lightweight Extraction
-        desc: Extract candidate signals only. Do not make final decisions here.
+        desc: Non-authoritative candidate signal extraction.
         type: llm
         model:
           provider: ''
@@ -284,19 +268,22 @@ workflow:
         prompt_template:
         - role: system
           text: |
-            Extract candidate signals from the latest user turn.
+            Extract non-authoritative candidate signals from the latest user turn.
 
-            Return JSON only:
+            Return JSON only with this exact flat shape:
             {
-              "candidate_signals": {
-                "possibleIntent": "string|null",
-                "possibleRisk": "LOW|SENSITIVE|CRISIS|null",
-                "affirmative": false,
-                "negative": false,
-                "mentionedBudget": "string|null",
-                "topicHint": "string|null"
-              }
+              "possibleIntent": "ASK_FOR_RECOMMENDATION|REQUEST_DOC_UPLOAD|GENERAL_CONSULT|FAQ|null",
+              "possibleRisk": "CRISIS|SENSITIVE|LOW|null",
+              "affirmative": false,
+              "negative": false,
+              "mentionedBudget": "string|null",
+              "topicHint": "string|null"
             }
+
+            Rules:
+            - Keep values null unless there is clear evidence.
+            - Do not output nested wrappers.
+            - This output is only a hint for the backend policy engine.
         memory:
           query_prompt_template: '{{#sys.query#}}'
           role_prefix:
@@ -311,23 +298,64 @@ workflow:
         vision:
           enabled: false
         variables: []
-    - id: context_http
+    - id: search_hospitals_http
       type: custom
       position:
-        x: 660
-        y: 360
+        x: 670
+        y: 340
       data:
-        title: Load CRM Context
-        desc: Configure the internal URL and X-Internal-Secret after import.
+        title: Search Hospitals
+        desc: Candidate pool prefetch for backend-authoritative shortlist selection.
         type: http-request
         method: post
-        url: http://host.docker.internal:3000/api/v2/internal/ai-policy/context
+        url: http://host.docker.internal:3001/api/v2/internal/mcp/search-hospitals
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_SECRET
+          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
+        params: ''
+        body:
+          type: json
+          data:
+          - key: ''
+            type: text
+            value: |
+              {
+                "session_id": "{{#start.sessionId#}}",
+                "query": "{{#sys.query#}}",
+                "candidate_signals": {{#extraction_llm.text#}}
+              }
+        timeout:
+          connect: 5
+          read: 10
+          write: 10
+        retry_config:
+          enabled: true
+          max_retries: 1
+          retry_interval: 500
+          exponential_backoff:
+            enabled: false
+            multiplier: 2
+            max_interval: 2000
+    - id: context_http
+      type: custom
+      position:
+        x: 980
+        y: 340
+      data:
+        title: Load CRM Context
+        desc: CRM truth source for summary, status, pending offer, and history.
+        type: http-request
+        method: post
+        url: http://host.docker.internal:3001/api/v2/internal/ai-policy/context
+        authorization:
+          type: no-auth
+          config: null
+        headers: |-
+          Content-Type: application/json
+          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
         params: ''
         body:
           type: json
@@ -361,20 +389,20 @@ workflow:
     - id: decide_http
       type: custom
       position:
-        x: 980
-        y: 360
+        x: 1310
+        y: 340
       data:
         title: Backend Policy Decide
-        desc: Authoritative decision source. Dify must not self-decide risk, recommendation, or handoff.
+        desc: Authoritative decision source. Candidate hospitals are input only; shortlist is decided by backend.
         type: http-request
         method: post
-        url: http://host.docker.internal:3000/api/v2/internal/ai-policy/decide
+        url: http://host.docker.internal:3001/api/v2/internal/ai-policy/decide
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_SECRET
+          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
         params: ''
         body:
           type: json
@@ -391,7 +419,8 @@ workflow:
                 "hospital_type": "{{#start.hospitalType#}}",
                 "payload": {
                   "user_message": "{{#sys.query#}}",
-                  "candidate_signals": {{#extraction_llm.text#}}
+                  "candidate_signals": {{#extraction_llm.text#}},
+                  "candidate_hospitals": {{#search_hospitals_http.body.data#}}
                 }
               }
         timeout:
@@ -409,18 +438,18 @@ workflow:
     - id: risk_gate
       type: custom
       position:
-        x: 1280
-        y: 220
+        x: 1620
+        y: 210
       data:
         title: Safety Gate
-        desc: Route crisis turns directly into safety-only response mode.
+        desc: CRISIS bypasses tool/rag branching and goes straight to safety response generation.
         type: if-else
         cases:
         - case_id: crisis
           id: crisis
           logical_operator: and
           conditions:
-          - id: risk-level-crisis
+          - id: risk-crisis
             variable_selector:
             - decide_http
             - body
@@ -432,26 +461,13 @@ workflow:
     - id: action_gate
       type: custom
       position:
-        x: 1600
-        y: 360
+        x: 1620
+        y: 470
       data:
-        title: Allowed Tool Gate
-        desc: Only follow branches explicitly authorized by backend policy output.
+        title: Action Gate
+        desc: Package path is explicit; FAQ path is grounded; other actions go direct to composer with backend contract.
         type: if-else
         cases:
-        - case_id: show_hospitals
-          id: show_hospitals
-          logical_operator: and
-          conditions:
-          - id: next-action-hospitals
-            variable_selector:
-            - decide_http
-            - body
-            - data
-            - next_action
-            comparison_operator: is
-            value: SHOW_HOSPITAL_RECOMMENDATIONS
-            varType: string
         - case_id: show_package
           id: show_package
           logical_operator: and
@@ -478,14 +494,14 @@ workflow:
             comparison_operator: is
             value: ANSWER_FAQ
             varType: string
-    - id: hospital_scope
+    - id: faq_scope
       type: custom
       position:
-        x: 1920
-        y: 620
+        x: 1940
+        y: 640
       data:
         title: FAQ Scope
-        desc: Bind FAQ datasets by hospitalType after import.
+        desc: Bind the correct FAQ dataset by hospitalType. Attach PACKAGES to both FAQ retrieval nodes.
         type: if-else
         cases:
         - case_id: cosmetic
@@ -502,11 +518,11 @@ workflow:
     - id: faq_cosmetic_kr
       type: custom
       position:
-        x: 2240
-        y: 520
+        x: 2280
+        y: 560
       data:
         title: Search FAQ Cosmetic
-        desc: Attach FAQ_COSMETIC and PACKAGES datasets after import.
+        desc: After import, attach FAQ_COSMETIC and PACKAGES.
         type: knowledge-retrieval
         query_variable_selector:
         - sys
@@ -515,8 +531,8 @@ workflow:
         dataset_ids: []
         retrieval_mode: multiple
         multiple_retrieval_config:
-          top_k: 4
-          score_threshold: 0.5
+          top_k: 6
+          score_threshold: 0.35
           reranking_enable: false
         metadata_filtering_mode: disabled
         vision:
@@ -524,11 +540,11 @@ workflow:
     - id: faq_regular_kr
       type: custom
       position:
-        x: 2240
-        y: 720
+        x: 2280
+        y: 760
       data:
         title: Search FAQ Regular
-        desc: Attach FAQ_REGULAR and PACKAGES datasets after import.
+        desc: After import, attach FAQ_REGULAR and PACKAGES.
         type: knowledge-retrieval
         query_variable_selector:
         - sys
@@ -537,110 +553,29 @@ workflow:
         dataset_ids: []
         retrieval_mode: multiple
         multiple_retrieval_config:
-          top_k: 4
-          score_threshold: 0.5
+          top_k: 6
+          score_threshold: 0.35
           reranking_enable: false
         metadata_filtering_mode: disabled
         vision:
           enabled: false
-    - id: search_hospitals_http
-      type: custom
-      position:
-        x: 1920
-        y: 140
-      data:
-        title: Search Hospitals
-        desc: Replace this starter URL with your MCP or backend hospital search endpoint.
-        type: http-request
-        method: post
-        url: http://host.docker.internal:3000/api/v2/internal/mcp/search-hospitals
-        authorization:
-          type: no-auth
-          config: null
-        headers: |-
-          Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_SECRET
-        params: ''
-        body:
-          type: json
-          data:
-          - key: ''
-            type: text
-            value: |
-              {
-                "session_id": "{{#start.sessionId#}}",
-                "policy_decision": {{#decide_http.body.data#}},
-                "query": "{{#sys.query#}}"
-              }
-        timeout:
-          connect: 5
-          read: 15
-          write: 15
-        retry_config:
-          enabled: false
-          max_retries: 1
-          retry_interval: 500
-          exponential_backoff:
-            enabled: false
-            multiplier: 2
-            max_interval: 2000
-    - id: hospital_details_http
-      type: custom
-      position:
-        x: 2240
-        y: 140
-      data:
-        title: Get Hospital Details
-        desc: Optional enrichment step for shortlist cards. Keep this aligned to allowed_tools.
-        type: http-request
-        method: post
-        url: http://host.docker.internal:3000/api/v2/internal/mcp/get-hospital-details
-        authorization:
-          type: no-auth
-          config: null
-        headers: |-
-          Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_SECRET
-        params: ''
-        body:
-          type: json
-          data:
-          - key: ''
-            type: text
-            value: |
-              {
-                "session_id": "{{#start.sessionId#}}",
-                "shortlist": {{#search_hospitals_http.body#}}
-              }
-        timeout:
-          connect: 5
-          read: 15
-          write: 15
-        retry_config:
-          enabled: false
-          max_retries: 1
-          retry_interval: 500
-          exponential_backoff:
-            enabled: false
-            multiplier: 2
-            max_interval: 2000
     - id: list_packages_http
       type: custom
       position:
-        x: 1920
-        y: 360
+        x: 1940
+        y: 410
       data:
         title: List Packages
-        desc: Replace this starter URL with your MCP or backend package listing endpoint.
+        desc: Compact published package cards for soft CTA / package explanation flows.
         type: http-request
         method: post
-        url: http://host.docker.internal:3000/api/v2/internal/mcp/list-packages
+        url: http://host.docker.internal:3001/api/v2/internal/mcp/list-packages
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_SECRET
+          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
         params: ''
         body:
           type: json
@@ -655,8 +590,8 @@ workflow:
               }
         timeout:
           connect: 5
-          read: 15
-          write: 15
+          read: 10
+          write: 10
         retry_config:
           enabled: false
           max_retries: 1
@@ -668,11 +603,11 @@ workflow:
     - id: response_composer
       type: custom
       position:
-        x: 2600
+        x: 2660
         y: 360
       data:
         title: Response Composer
-        desc: Generate final public JSON only. Respect backend next_action, risk, and allowed_tools.
+        desc: Generate final public JSON only. Backend decision is authoritative; tools and retrieval are grounding inputs.
         type: llm
         model:
           provider: ''
@@ -686,19 +621,41 @@ workflow:
             You are the final response layer for a backend-authoritative medical tourism chatbot.
 
             The backend policy decision is the source of truth.
-            Do not invent tools, hospitals, packages, risk, or next actions outside the decision contract.
+            Do not invent risk, actions, hospitals, package facts, or human handoff decisions outside that contract.
 
-            Return strict JSON only with this shape:
+            You may use grounded FAQ/package retrieval and tool outputs as facts.
+
+            Map internal backend fields to the public chatbot contract:
+            - risk_level CRISIS -> riskLevel CRISIS
+            - risk_level SENSITIVE -> riskLevel SENSITIVE
+            - risk_level LOW -> riskLevel NORMAL
+            - next_action ANSWER_FAQ -> nextAction ANSWER
+            - next_action SHOW_PACKAGE -> nextAction ANSWER
+            - next_action REQUEST_DOC_UPLOAD -> nextAction REQUEST_DOCS
+            - next_action EXPLAIN_DOC_UPLOAD -> nextAction ANSWER
+            - next_action EXPLAIN_CONSULT_PROCESS -> nextAction ANSWER
+            - next_action EXPLORE_HOSPITAL_RECOMMENDATIONS -> nextAction CONSULT_CONVERSION
+            - next_action SHOW_HOSPITAL_RECOMMENDATIONS -> nextAction CONSULT_CONVERSION
+            - next_action SAFETY_HANDOFF -> nextAction SAFETY
+
+            Return strict JSON only with this exact shape:
             {
               "answer": "string",
               "intent": "FAQ|CONSULT|UNKNOWN|SAFETY|null",
+              "resolvedIntent": "string|null",
               "topic": "string|null",
               "riskLevel": "NORMAL|SENSITIVE|CRISIS|null",
               "canAnswer": true,
               "nextAction": "ANSWER|CONSULT_CONVERSION|CREATE_CASE|REQUEST_DOCS|ESCALATE|SAFETY|null",
               "secondaryAction": "string|null",
               "responseMode": "string|null",
-              "collectedFields": {},
+              "collectedFields": {
+                "name": null,
+                "email": null,
+                "country": null,
+                "conditionSummary": null,
+                "budget": null
+              },
               "missingItems": [],
               "recommendedProviders": [],
               "reasonCodes": [],
@@ -706,19 +663,24 @@ workflow:
               "citations": []
             }
 
-            Safety rules:
-            - If backend risk is CRISIS, produce a safety-only response.
-            - Never self-decide recommendation eligibility or human handoff.
-            - Only use hospitals, packages, and FAQ facts returned by the allowed branches in this workflow.
-
-            Mapping guidance:
-            - internal next_action REQUEST_DOC_UPLOAD -> public nextAction REQUEST_DOCS
-            - internal next_action SHOW_HOSPITAL_RECOMMENDATIONS -> public nextAction CONSULT_CONVERSION
-            - internal next_action SHOW_PACKAGE -> public nextAction ANSWER unless backend instructs otherwise
+            Rules:
+            - If backend next_action is REQUEST_DOC_UPLOAD, ask for documents and set missingItems if grounded sources mention required materials.
+            - If backend next_action is EXPLAIN_DOC_UPLOAD, explain the upload process without pretending an upload widget has already started.
+            - If backend next_action is EXPLAIN_CONSULT_PROCESS, explain the consult workflow and keep the tone exploratory rather than forceful.
+            - If backend next_action is EXPLORE_HOSPITAL_RECOMMENDATIONS, explain how hospital matching works and keep shortlist aligned to backend shortlist if one is present.
+            - If backend next_action is SHOW_HOSPITAL_RECOMMENDATIONS, use backend shortlist and search_hospitals output together, but do not invent hospitals outside the tool output.
+            - If backend risk is CRISIS, produce a safety-only response and do not promote services.
+            - If retrieval is weak, keep the answer short and avoid hallucinating facts.
+            - If grounded FAQ content exposes a category, use that as topic; otherwise use null.
+            - Keep reasonCodes aligned to backend reason_codes.
+            - Keep shortlist aligned to backend shortlist if present; otherwise use [].
         - role: user
           text: |
-            User message: {{#sys.query#}}
-            Hospital type: {{#start.hospitalType#}}
+            User message:
+            {{#sys.query#}}
+
+            Hospital type:
+            {{#start.hospitalType#}}
 
             CRM context:
             {{#context_http.body.data#}}
@@ -726,20 +688,17 @@ workflow:
             Backend policy decision:
             {{#decide_http.body.data#}}
 
-            FAQ retrieval cosmetic:
+            Candidate hospitals:
+            {{#search_hospitals_http.body.data#}}
+
+            Cosmetic FAQ/package retrieval:
             {{#faq_cosmetic_kr.result#}}
 
-            FAQ retrieval regular:
+            Regular FAQ/package retrieval:
             {{#faq_regular_kr.result#}}
 
-            Hospital search output:
-            {{#search_hospitals_http.body#}}
-
-            Hospital detail output:
-            {{#hospital_details_http.body#}}
-
-            Package output:
-            {{#list_packages_http.body#}}
+            Package cards:
+            {{#list_packages_http.body.data#}}
         memory:
           query_prompt_template: '{{#sys.query#}}'
           role_prefix:
@@ -757,20 +716,20 @@ workflow:
     - id: writeback_http
       type: custom
       position:
-        x: 2940
+        x: 3040
         y: 360
       data:
         title: Backend Writeback
-        desc: Final truth writeback should stay in CRM backend.
+        desc: Final status / timeline writeback remains in CRM backend.
         type: http-request
         method: post
-        url: http://host.docker.internal:3000/api/v2/internal/ai-policy/writeback
+        url: http://host.docker.internal:3001/api/v2/internal/ai-policy/writeback
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_SECRET
+          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
         params: ''
         body:
           type: json
@@ -780,29 +739,28 @@ workflow:
             value: |
               {
                 "version": "v1",
-                "request_id": "writeback-{{#start.sessionId#}}",
+                "request_id": "writeback-{{#start.sessionId#}}-{{#start.assistantMessageId#}}",
                 "session_id": "{{#start.sessionId#}}",
                 "actor": "DIFY",
                 "source_channel": "chatflow",
                 "hospital_type": "{{#start.hospitalType#}}",
                 "payload": {
-                  "assistant_message_id": "replace-after-import",
-                  "idempotency_key": "{{#start.sessionId#}}:writeback:v1",
+                  "assistant_message_id": "{{#start.assistantMessageId#}}",
+                  "idempotency_key": "{{#start.sessionId#}}:{{#start.assistantMessageId#}}:v1",
                   "policy_decision": {{#decide_http.body.data#}},
                   "tool_results": {
+                    "candidate_hospitals": {{#search_hospitals_http.body.data#}},
                     "faq_cosmetic": {{#faq_cosmetic_kr.result#}},
                     "faq_regular": {{#faq_regular_kr.result#}},
-                    "search_hospitals": {{#search_hospitals_http.body#}},
-                    "hospital_details": {{#hospital_details_http.body#}},
-                    "packages": {{#list_packages_http.body#}}
+                    "packages": {{#list_packages_http.body.data#}}
                   },
                   "final_response_metadata": {{#response_composer.text#}}
                 }
               }
         timeout:
           connect: 5
-          read: 15
-          write: 15
+          read: 10
+          write: 10
         retry_config:
           enabled: false
           max_retries: 1
@@ -814,7 +772,7 @@ workflow:
     - id: final_answer
       type: custom
       position:
-        x: 3260
+        x: 3380
         y: 360
       data:
         title: Final Answer
@@ -825,4 +783,4 @@ workflow:
     viewport:
       x: 0
       y: 0
-      zoom: 0.48
+      zoom: 0.46

@@ -279,7 +279,17 @@ function hasRecentBusinessSignal(
 
   return Boolean(
     candidateAction &&
-      ['CONSULT_CONVERSION', 'CREATE_CASE', 'REQUEST_DOCS', 'SHOW_HOSPITAL_RECOMMENDATIONS', 'SHOW_PACKAGE', 'PROMOTE_ONLINE_CONSULT'].includes(candidateAction),
+      [
+        'CONSULT_CONVERSION',
+        'CREATE_CASE',
+        'REQUEST_DOCS',
+        'SHOW_HOSPITAL_RECOMMENDATIONS',
+        'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+        'EXPLAIN_DOC_UPLOAD',
+        'EXPLAIN_CONSULT_PROCESS',
+        'SHOW_PACKAGE',
+        'PROMOTE_ONLINE_CONSULT',
+      ].includes(candidateAction),
   );
 }
 

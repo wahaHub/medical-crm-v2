@@ -5,6 +5,19 @@ export type AiPolicyEngagementMode =
   | 'QUALIFIED_EXPLORATION'
   | 'DEEP_WORKFLOW';
 
+export const AI_POLICY_BACKEND_NEXT_ACTIONS = [
+  'ANSWER_FAQ',
+  'SHOW_PACKAGE',
+  'REQUEST_DOC_UPLOAD',
+  'SHOW_HOSPITAL_RECOMMENDATIONS',
+  'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+  'EXPLAIN_DOC_UPLOAD',
+  'EXPLAIN_CONSULT_PROCESS',
+  'SAFETY_HANDOFF',
+] as const;
+
+export type AiPolicyBackendNextAction = (typeof AI_POLICY_BACKEND_NEXT_ACTIONS)[number];
+
 export interface AiPolicyRequestEnvelope<TPayload = Record<string, unknown>> {
   version: 'v1';
   request_id: string;
@@ -20,7 +33,7 @@ export interface AiPolicyErrorEnvelope {
   code: string;
   retryable: boolean;
   safeFallback?: {
-    nextAction?: string;
+    nextAction?: AiPolicyBackendNextAction;
     answer?: string;
   };
   details?: Record<string, unknown>;

@@ -407,4 +407,95 @@ describe('DecideAiPolicyUseCase', () => {
     expect(result.allowed_tools).toEqual(['search_faq']);
     expect(result.shortlist).toEqual([]);
   });
+
+  it('blocks shortlist progression in deep workflow when documents are still missing or only requested', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => {
+      if (input.depth === 'light') {
+        return {
+          contextDepth: 'light',
+          sessionId: 'session-6',
+          userMessage: 'Can you recommend hospitals for me now?',
+          sessionRef: { id: 'db-session-6', sessionId: 'session-6', patientId: null },
+          patientId: null,
+          currentEngagementMode: 'DEEP_WORKFLOW',
+          pendingOffer: { exists: false, type: null },
+          pendingQuestion: { exists: false, type: null },
+          lastAssistantAction: 'REQUEST_DOC_UPLOAD',
+          safetyFlags: {
+            riskLevel: 'LOW',
+            hasHighRiskSignal: false,
+            requiresSafetyHandling: false,
+          },
+          profile: null,
+          recentMessages: [],
+          recentTimeline: [],
+          activeFollowups: [],
+          recentHandoffs: [],
+        };
+      }
+
+      return {
+        contextDepth: 'full',
+        sessionId: 'session-6',
+        userMessage: 'Can you recommend hospitals for me now?',
+        sessionRef: { id: 'db-session-6', sessionId: 'session-6', patientId: null },
+        patientId: null,
+        currentEngagementMode: 'DEEP_WORKFLOW',
+        pendingOffer: { exists: false, type: null },
+        pendingQuestion: { exists: false, type: null },
+        lastAssistantAction: 'REQUEST_DOC_UPLOAD',
+        safetyFlags: {
+          riskLevel: 'LOW',
+          hasHighRiskSignal: false,
+          requiresSafetyHandling: false,
+        },
+        statusSnapshot: {
+          conditionStatus: 'known',
+          formStatus: 'completed',
+          docUploadStatus: 'REQUESTED',
+          recommendationStatus: 'not_started',
+          consultationStatus: 'ready',
+          packageStatus: 'shown',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'qualified',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: 'REQUEST_DOC_UPLOAD',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+          conversationSummary: 'User still owes documents before recommendation can proceed.',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        profile: null,
+        recentMessages: [],
+        recentTimeline: [],
+        activeFollowups: [],
+        recentHandoffs: [],
+      };
+    });
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-6',
+      userMessage: 'Can you recommend hospitals for me now?',
+      extraction: {},
+      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+    });
+
+    expect(result.engagement_mode).toBe('DEEP_WORKFLOW');
+    expect(result.next_action).toBe('REQUEST_DOC_UPLOAD');
+    expect(result.shortlist).toEqual([]);
+  });
 });

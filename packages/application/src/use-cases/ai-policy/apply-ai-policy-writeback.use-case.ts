@@ -1,4 +1,5 @@
 import type { IAiChatSessionRepository } from '@medical-crm/domain';
+import type { AiPolicyBackendNextAction } from '../../dtos/ai-policy.dto.js';
 import { WritebackExecutorService } from '../../services/policy-engine/writeback-executor.service.js';
 
 interface IIdempotencyExecutor {
@@ -10,7 +11,7 @@ export interface ApplyAiPolicyWritebackInput {
   assistantMessageId: string;
   idempotencyKey: string;
   policyDecision: {
-    nextAction: string;
+    nextAction: AiPolicyBackendNextAction;
     riskLevel?: string;
     reasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;

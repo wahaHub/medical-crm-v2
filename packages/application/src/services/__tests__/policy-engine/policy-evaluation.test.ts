@@ -6,6 +6,7 @@ import { RecommendationPolicyService } from '../../policy-engine/recommendation-
 import { RiskResolverService } from '../../policy-engine/risk-resolver.service.js';
 import { SignalResolverService } from '../../policy-engine/signal-resolver.service.js';
 import { WritebackPlannerService } from '../../policy-engine/writeback-planner.service.js';
+import type { AiPolicyBackendNextAction } from '../../../dtos/ai-policy.dto.js';
 import type { PolicyEvalFixture } from './fixtures/policy-eval.fixtures.js';
 import {
   buildFaqFixture,
@@ -199,7 +200,7 @@ async function runPolicyFixture(
     candidateHospitals: fixture.simulate?.malformedToolPayload ? undefined : fixture.candidateHospitals,
   });
 
-  const nextAction = risk.overrideAction
+  const nextAction: AiPolicyBackendNextAction = risk.overrideAction
     ?? (recommendation.eligible && recommendation.shortlist.length > 0
       ? 'SHOW_HOSPITAL_RECOMMENDATIONS'
       : plan.nextAction);

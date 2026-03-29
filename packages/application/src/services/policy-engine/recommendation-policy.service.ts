@@ -1,3 +1,5 @@
+import { isMissingDocumentStatus, normalizePolicyState } from './status-normalization.js';
+
 export interface RecommendationCandidate {
   hospitalId: string;
   reasonCodes: string[];
@@ -21,7 +23,7 @@ export interface RecommendationDecisionResult {
 
 export class RecommendationPolicyService {
   async decide(input: RecommendationDecisionInput): Promise<RecommendationDecisionResult> {
-    const riskLevel = normalize(input.statusSnapshot.riskLevel);
+    const riskLevel = normalizePolicyState(input.statusSnapshot.riskLevel);
     if (riskLevel === 'CRISIS' || riskLevel === 'HIGH_RISK' || riskLevel === 'HIGH') {
       return {
         eligible: false,
@@ -30,7 +32,7 @@ export class RecommendationPolicyService {
       };
     }
 
-    if (normalize(input.statusSnapshot.docUploadStatus) === 'NOT_STARTED') {
+    if (isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)) {
       return {
         eligible: false,
         shortlist: [],
@@ -53,8 +55,4 @@ export class RecommendationPolicyService {
       reasonCodes: shortlist.length > 0 ? ['authoritative_shortlist_ready'] : ['no_candidates_available'],
     };
   }
-}
-
-function normalize(value: string | undefined): string {
-  return (value ?? '').toUpperCase();
 }

@@ -5,7 +5,10 @@ import { IntentResolverService } from '../../services/policy-engine/intent-resol
 import { RecommendationPolicyService } from '../../services/policy-engine/recommendation-policy.service.js';
 import { RiskResolverService } from '../../services/policy-engine/risk-resolver.service.js';
 import { SignalResolverService } from '../../services/policy-engine/signal-resolver.service.js';
-import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
+import type {
+  AiPolicyBackendNextAction,
+  AiPolicyEngagementMode,
+} from '../../dtos/ai-policy.dto.js';
 
 export interface DecideAiPolicyInput {
   sessionId: string;
@@ -107,7 +110,7 @@ export class DecideAiPolicyUseCase {
         reasonCodes: ['recommendation_deferred_by_engagement_mode'],
       };
 
-    const resolvedNextAction = risk.overrideAction ?? (
+    const resolvedNextAction: AiPolicyBackendNextAction = risk.overrideAction ?? (
       recommendation.eligible && recommendation.shortlist.length > 0
         ? 'SHOW_HOSPITAL_RECOMMENDATIONS'
         : plan.nextAction
@@ -190,7 +193,7 @@ function dedupeReasonCodes(...codes: string[]): string[] {
   return [...new Set(codes.filter((code) => code.length > 0))];
 }
 
-function buildAllowedTools(nextAction: string): string[] {
+function buildAllowedTools(nextAction: AiPolicyBackendNextAction): string[] {
   switch (nextAction) {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
       return ['search_hospitals', 'get_hospital_details'];
@@ -210,7 +213,7 @@ function buildAllowedTools(nextAction: string): string[] {
   }
 }
 
-function buildResponseMode(nextAction: string): string {
+function buildResponseMode(nextAction: AiPolicyBackendNextAction): string {
   switch (nextAction) {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
       return 'grounded_with_shortlist';

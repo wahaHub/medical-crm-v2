@@ -120,6 +120,32 @@ describe('EngagementModeResolverService', () => {
     expect(result.reasonCodes).toContain('pending_context_confirmed');
   });
 
+  it('treats explanation and exploration actions as business continuity signals', () => {
+    const resolver = new EngagementModeResolverService();
+
+    const result = resolver.resolve({
+      userMessage: 'More, please.',
+      statusSnapshot: {
+        leadMaturity: 'browsing',
+        riskLevel: 'LOW',
+        pendingOffer: null,
+        pendingQuestion: null,
+      },
+      recentMessages: [
+        {
+          role: 'ASSISTANT',
+          content: 'I can explain the upload requirements first.',
+          nextAction: 'EXPLAIN_DOC_UPLOAD',
+        },
+      ],
+      profile: null,
+      candidateSignals: {},
+    });
+
+    expect(result.engagementMode).toBe('QUALIFIED_EXPLORATION');
+    expect(result.reasonCodes).not.toContain('default_light_path');
+  });
+
   it('bypasses cheap discovery handling for crisis signals even without commercial intent', () => {
     const resolver = new EngagementModeResolverService();
 

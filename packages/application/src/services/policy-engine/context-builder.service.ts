@@ -173,7 +173,15 @@ function inferCurrentEngagementMode(statusSnapshot: AiChatStatusSnapshot): AiPol
     || statusSnapshot.pendingQuestion
     || isStarted(statusSnapshot.recommendationStatus, ['NOT_SHOWN', 'PRELIMINARY_SHOWN', 'SHORTLIST_SHOWN', 'EXPLORED'])
     || isStarted(statusSnapshot.packageStatus, ['NOT_SHOWN', 'SHOWN', 'INTERESTED', 'EXPLORED'])
-    || ['CONSULT_CONVERSION', 'CREATE_CASE', 'REQUEST_DOCS', 'SHOW_PACKAGE'].includes(statusSnapshot.lastNextAction ?? '')
+    || [
+      'CONSULT_CONVERSION',
+      'CREATE_CASE',
+      'REQUEST_DOCS',
+      'SHOW_PACKAGE',
+      'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+      'EXPLAIN_DOC_UPLOAD',
+      'EXPLAIN_CONSULT_PROCESS',
+    ].includes(statusSnapshot.lastNextAction ?? '')
   ) {
     return 'QUALIFIED_EXPLORATION';
   }

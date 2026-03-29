@@ -1,4 +1,8 @@
-import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
+import type {
+  AiPolicyBackendNextAction,
+  AiPolicyEngagementMode,
+} from '../../dtos/ai-policy.dto.js';
+import { isMissingDocumentStatus, normalizePolicyState } from './status-normalization.js';
 
 export interface ActionPlannerInput {
   engagementMode: AiPolicyEngagementMode;
@@ -13,14 +17,14 @@ export interface ActionPlannerInput {
 }
 
 export interface ActionPlan {
-  nextAction: string;
-  secondaryAction: string | null;
+  nextAction: AiPolicyBackendNextAction;
+  secondaryAction: AiPolicyBackendNextAction | null;
   reasonCodes: string[];
 }
 
 export class ActionPlannerService {
   plan(input: ActionPlannerInput): ActionPlan {
-    const riskLevel = normalize(input.statusSnapshot.riskLevel);
+    const riskLevel = normalizePolicyState(input.statusSnapshot.riskLevel);
     if (riskLevel === 'CRISIS' || riskLevel === 'HIGH_RISK' || riskLevel === 'HIGH') {
       return {
         nextAction: 'SAFETY_HANDOFF',
@@ -74,7 +78,7 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
     };
   }
 
-  if (input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' && !isDocsMissing(input.statusSnapshot.docUploadStatus)) {
+  if (input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)) {
     return {
       nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
       secondaryAction: null,
@@ -84,7 +88,7 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
 
   if (
     input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' &&
-    isDocsMissing(input.statusSnapshot.docUploadStatus)
+    isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
   ) {
     return {
       nextAction: 'EXPLAIN_DOC_UPLOAD',
@@ -95,8 +99,8 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
 
   if (
     input.resolvedIntent === 'GENERAL_CONSULT' &&
-    normalize(input.statusSnapshot.packageStatus) !== 'NOT_SHOWN' &&
-    normalize(input.statusSnapshot.packageStatus) !== 'NOT_INTRODUCED'
+    normalizePolicyState(input.statusSnapshot.packageStatus) !== 'NOT_SHOWN' &&
+    normalizePolicyState(input.statusSnapshot.packageStatus) !== 'NOT_INTRODUCED'
   ) {
     return {
       nextAction: 'EXPLAIN_CONSULT_PROCESS',
@@ -105,7 +109,7 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
     };
   }
 
-  if (normalize(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalize(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED') {
+  if (normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED') {
     return {
       nextAction: 'SHOW_PACKAGE',
       secondaryAction: null,
@@ -131,7 +135,7 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
 
   if (
     input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' &&
-    isDocsMissing(input.statusSnapshot.docUploadStatus)
+    isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
   ) {
     return {
       nextAction: 'REQUEST_DOC_UPLOAD',
@@ -140,7 +144,7 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
     };
   }
 
-  if (normalize(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalize(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED') {
+  if (normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED') {
       return {
         nextAction: 'SHOW_PACKAGE',
         secondaryAction: null,
@@ -153,12 +157,4 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
     secondaryAction: null,
     reasonCodes: ['deep_workflow_guidance_path'],
   };
-}
-
-function isDocsMissing(value: string | undefined): boolean {
-  return ['NOT_STARTED', 'NONE', 'NOT_UPLOADED'].includes(normalize(value));
-}
-
-function normalize(value: string | undefined): string {
-  return (value ?? '').toUpperCase();
 }

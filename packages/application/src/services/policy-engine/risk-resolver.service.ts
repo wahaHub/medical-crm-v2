@@ -1,3 +1,5 @@
+import type { AiPolicyBackendNextAction } from '../../dtos/ai-policy.dto.js';
+
 export interface RiskResolverInput {
   userMessage: string;
   candidateSignals?: Record<string, unknown>;
@@ -5,7 +7,7 @@ export interface RiskResolverInput {
 
 export interface RiskResolution {
   riskLevel: string;
-  overrideAction: string | null;
+  overrideAction: AiPolicyBackendNextAction | null;
   reasonCodes: string[];
 }
 

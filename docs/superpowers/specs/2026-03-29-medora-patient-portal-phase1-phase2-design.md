@@ -138,7 +138,8 @@ The patient portal layer owns:
 - dashboard shell and tabs
 - formal messages surface inside dashboard
 - quotes
-- intake
+- intake route and intake-needed entry actions
+- packages route and package-order entry actions
 - tickets
 - orders
 - journey
@@ -194,6 +195,8 @@ This includes:
 
 When formal conversations are ready, this entire pre-bootstrap history must be imported into the formal `patient-admin` conversation through the dedicated bootstrap/import backend contract.
 
+This history must also be persisted safely for same-browser returns before full conversation bootstrap finishes. Recovery must be retry-safe and must not silently discard pre-bootstrap messages after reloads or temporary bootstrap failures.
+
 ### Patient Info Submit Behavior
 
 Submitting the patient info form:
@@ -233,11 +236,12 @@ Resume behavior depends on actual patient state.
 
 | Restored state | Widget state |
 |---|---|
-| No completed patient-info submit | show `patient info form` + prior chat history |
+| No completed patient-info submit | show `patient info form` + prior same-browser chat history |
 | Patient info submitted, hospitals not selected | show `hospital selection form` + prior chat history |
 | Formal conversations exist | show normal compact chat with no form |
+| Conversation bootstrap previously failed | show retry-safe `bootstrap-error` state with preserved local history |
 
-This rule is identical to China.
+This rule follows the same China model, including same-browser persistence and recoverable bootstrap-error handling.
 
 ## Dashboard Information Architecture
 
@@ -252,6 +256,22 @@ The final Medora dashboard IA is identical to China:
 - `Orders`
 - `Journey`
 - `AI Summary`
+
+`Intake` is intentionally **not** a top-level tab in the final IA.
+It remains a dedicated patient route, such as `/dashboard/intake`, reached from:
+
+- `Home` action items
+- intake-needed alerts
+- quote or case-progress CTAs
+
+`Packages` is also intentionally **not** a top-level tab in the final IA.
+It remains a dedicated patient route, such as `/packages` or `/dashboard/packages`, reached from:
+
+- `PatientMessagePanel` actions
+- `Home` commerce or package CTAs
+- `Orders` empty states and follow-up actions
+
+This keeps the final top-level IA unified without losing an executable place for intake.
 
 ### Medora Home Semantics
 
@@ -282,6 +302,8 @@ After Phase 1:
 
 Converge Medora's existing patient entry, auth, messaging, dashboard shell, and intake onto the shared CRM v2 model.
 
+This is intentionally broader than the approved China Phase 1 scope because Medora chooses to pull intake migration forward instead of deferring it.
+
 ### Deliverables
 
 - `ChatWidget` first-open state aligned to the shared hybrid model
@@ -293,6 +315,7 @@ Converge Medora's existing patient entry, auth, messaging, dashboard shell, and 
 - `/dashboard` converged to the shared shell first stage
 - `Home / Quotes / Messages` formally working on shared contracts
 - intake upgraded to the new dynamic intake contract
+- dedicated intake route reachable from `Home` and intake-needed CTAs
 
 ### Phase 1 Non-Goals
 
@@ -310,15 +333,17 @@ Expand the already-aligned Medora shell into the complete shared patient portal.
 
 - full 7-tab dashboard
 - `Tickets` create/list/detail/reply
-- `Orders` list/detail
-- `Packages` page ordering flow
+- `Orders` list/detail plus payment-init action for eligible orders
+- `Packages` list/detail and package ordering flow
 - `Journey` read-only
 - `AI Summary` read-only
-- `PatientMessagePanel` phase-2 entry actions aligned with China
+- `PatientMessagePanel` phase-2 entry actions aligned with the shared patient phase-2 contract surface
 
 ### Phase 2 Rules
 
-- `Packages -> Orders` flow must match China
+- `Packages -> Orders` flow is defined by the shared patient phase-2 backend/contracts spec, not by the China Phase 1 spec
+- Medora Phase 2 must ship package browse/detail, order creation from package, and payment-init readiness for orders that are awaiting payment
+- `Packages` lives as a dedicated route outside the 7 dashboard tabs, matching the same role it plays in China's patient flow
 - `PatientMessagePanel` provides reliable actions into packages/orders
 - it does not become a second home for `Journey` or `AI Summary`
 
@@ -377,11 +402,18 @@ These should move directly to the new shared contracts instead of preserving old
 - backend imports pre-bootstrap history into `patient-admin`
 - panel opens
 
+If bootstrap fails after patient auth is already established:
+
+- local history must remain intact
+- widget must resume into `bootstrap-error`
+- retry must be possible without forcing the patient back through patient-info submit
+
 ### Post-Bootstrap
 
 - `PatientMessagePanel` becomes the main long-form messaging surface
 - widget becomes compact ongoing admin chat once `messages-ready`
 - dashboard `Messages` uses the same underlying conversation contracts
+- intake remains reachable as a dedicated route launched from `Home` or intake-needed CTAs, not as a top-level tab
 
 ## Implementation Risks
 

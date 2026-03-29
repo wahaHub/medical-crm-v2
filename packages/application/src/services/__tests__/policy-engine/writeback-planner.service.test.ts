@@ -60,6 +60,38 @@ describe('WritebackPlannerService', () => {
     expect(result.followupTrigger).toBeNull();
   });
 
+  it('downgrades mismatched light discovery writeback depth before planning side effects', () => {
+    const planner = new WritebackPlannerService();
+
+    const result = planner.plan({
+      sessionId: 'session-1',
+      sessionDbId: 'db-session-1',
+      patientId: null,
+      assistantMessageId: 'assistant-light-unsafe',
+      policyDecision: {
+        engagementMode: 'LIGHT_DISCOVERY',
+        writebackDepth: 'complete',
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        reasonCodes: ['documents_requested'],
+        prequalificationReasonCodes: ['low_signal_docs_question'],
+      },
+    });
+
+    expect(result.statusPatch).toEqual({
+      engagementMode: 'LIGHT_DISCOVERY',
+      prequalificationReasonCodes: ['low_signal_docs_question'],
+      lastNextAction: 'REQUEST_DOC_UPLOAD',
+    });
+    expect(result.timelineEvents).toEqual([]);
+    expect(result.followupTrigger).toBeNull();
+    expect(result.messageMetadata).toMatchObject({
+      engagementMode: 'LIGHT_DISCOVERY',
+      writebackDepth: 'minimal',
+      prequalificationReasonCodes: ['low_signal_docs_question'],
+      reasonCodes: ['documents_requested'],
+    });
+  });
+
   it('clears prequalification reason codes when latest truth is empty', () => {
     const planner = new WritebackPlannerService();
 

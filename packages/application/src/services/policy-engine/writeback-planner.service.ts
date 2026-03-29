@@ -54,7 +54,10 @@ export class WritebackPlannerService {
     const shortlist = input.policyDecision.shortlist ?? [];
     const reasonCodes = input.policyDecision.reasonCodes ?? [];
     const engagementMode = input.policyDecision.engagementMode;
-    const writebackDepth = input.policyDecision.writebackDepth;
+    const writebackDepth = resolveEffectiveWritebackDepth(
+      engagementMode,
+      input.policyDecision.writebackDepth,
+    );
     const hasPrequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes !== undefined;
     const prequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes ?? [];
     const baseStatusPatch = {
@@ -251,5 +254,25 @@ export class WritebackPlannerService {
         reasonCodes,
       },
     };
+  }
+}
+
+function resolveEffectiveWritebackDepth(
+  engagementMode: AiPolicyEngagementMode | undefined,
+  requestedDepth: 'minimal' | 'moderate' | 'complete' | undefined,
+): 'minimal' | 'moderate' | 'complete' | undefined {
+  if (!engagementMode) {
+    return requestedDepth;
+  }
+
+  switch (engagementMode) {
+    case 'LIGHT_DISCOVERY':
+      return 'minimal';
+    case 'QUALIFIED_EXPLORATION':
+      return requestedDepth === 'complete' ? 'moderate' : (requestedDepth ?? 'moderate');
+    case 'DEEP_WORKFLOW':
+      return requestedDepth ?? 'complete';
+    default:
+      return requestedDepth;
   }
 }

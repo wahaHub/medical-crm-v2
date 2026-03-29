@@ -141,6 +141,42 @@ User Message
   -> final structured response
 ```
 
+### 4.3.1 Dify Orchestration Checklist
+
+The starter Dify workflow must satisfy all of the following:
+
+- Dify calls internal backend endpoints for `context`, `decide`, and `writeback`
+- Dify only runs downstream retrieval or tool calls when they are explicitly allowed by backend policy output
+- Dify does not self-decide recommendation eligibility, shortlist authority, or human handoff eligibility
+- Dify final output remains strict JSON so the CRM backend can parse, audit, and persist it consistently
+- Safety turns must downgrade into safety-only response mode instead of continuing package or recommendation flows
+
+### 4.3.2 Starter Workflow Shape
+
+Recommended starter node sequence:
+
+- `User Input`
+- `Lightweight Extraction`
+- `Load CRM Context`
+- `Backend Policy Decide`
+- `Safety Gate`
+- conditional branches for:
+  - `Search FAQ`
+  - `Search Hospitals`
+  - `Get Hospital Details`
+  - `List Packages`
+  - direct `Safety / Docs / Conversion` response mode
+- `Response Composer`
+- `Backend Writeback`
+- `Final Answer`
+
+The starter asset committed in `dify-config/medora-ai-chatbot-v1.dsl.yml` is intentionally a scaffold:
+
+- internal URLs must be replaced after import
+- internal secret headers must be configured after import
+- dataset IDs must be attached after import
+- tool endpoints such as hospital search, hospital details, and package listing must be pointed at the actual MCP or backend gateway endpoints
+
 ### 4.4 Dify <-> Backend Transport Contract
 
 In v1, Dify should call backend policy endpoints over internal HTTP tools exposed by `medical-crm-v2`.
@@ -183,6 +219,19 @@ If Dify cannot reach backend policy endpoints:
   - temporary inability to continue advanced guidance
   - human handoff suggestion
   - grounded FAQ answer if already retrieved and safe
+
+### 4.4 Manual Import / Preview Checklist
+
+Before using the Dify workflow in shared environments, an operator should verify:
+
+- internal HTTP nodes point at the correct CRM base URL
+- internal HTTP nodes include the correct `X-Internal-Secret`
+- `FAQ_COSMETIC`, `FAQ_REGULAR`, and `PACKAGES` datasets are attached to the intended retrieval nodes
+- response composer returns strict JSON without markdown fences
+- crisis input produces a safety-only response
+- recommendation input only traverses the hospital branch when backend `allowed_tools` and `next_action` permit it
+- package input only traverses the package branch when backend `allowed_tools` and `next_action` permit it
+- writeback succeeds without mutating CRM truth outside the backend writeback endpoint
 
 ### 4.5 Backend Endpoint Contract Summary
 

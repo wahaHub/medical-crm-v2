@@ -228,4 +228,34 @@ describe('WritebackPlannerService', () => {
       writebackDepth: 'complete',
     });
   });
+
+  it('forces complete writeback depth for deep workflow even if caller sends a lighter depth', () => {
+    const planner = new WritebackPlannerService();
+
+    const result = planner.plan({
+      sessionId: 'session-1',
+      sessionDbId: 'db-session-1',
+      patientId: null,
+      assistantMessageId: 'assistant-deep-unsafe',
+      policyDecision: {
+        engagementMode: 'DEEP_WORKFLOW',
+        writebackDepth: 'minimal',
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        reasonCodes: ['documents_required_before_recommendation'],
+        prequalificationReasonCodes: ['form_completed'],
+      },
+    });
+
+    expect(result.statusPatch).toMatchObject({
+      engagementMode: 'DEEP_WORKFLOW',
+      docUploadStatus: 'REQUESTED',
+      lastNextAction: 'REQUEST_DOC_UPLOAD',
+    });
+    expect(result.timelineEvents[0]?.eventType).toBe('DOC_UPLOAD_REQUESTED');
+    expect(result.followupTrigger?.triggerType).toBe('DOC_UPLOAD_PENDING');
+    expect(result.messageMetadata).toMatchObject({
+      engagementMode: 'DEEP_WORKFLOW',
+      writebackDepth: 'complete',
+    });
+  });
 });

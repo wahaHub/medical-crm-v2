@@ -271,7 +271,7 @@ function resolveEffectiveWritebackDepth(
     case 'QUALIFIED_EXPLORATION':
       return requestedDepth === 'complete' ? 'moderate' : (requestedDepth ?? 'moderate');
     case 'DEEP_WORKFLOW':
-      return requestedDepth ?? 'complete';
+      return 'complete';
     default:
       return requestedDepth;
   }

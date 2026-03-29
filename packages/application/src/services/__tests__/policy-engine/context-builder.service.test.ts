@@ -193,6 +193,7 @@ describe('ContextBuilderService', () => {
         hospitalType: 'COSMETIC',
         status: 'ACTIVE',
         statusSnapshot: {
+          engagementMode: 'QUALIFIED_EXPLORATION',
           formStatus: 'not_started',
           docUploadStatus: 'none',
           recommendationStatus: 'not_started',
@@ -302,5 +303,87 @@ describe('ContextBuilderService', () => {
     expect(timelineRepo.listRecentBySession).not.toHaveBeenCalled();
     expect(followupRepo.listPendingBySession).not.toHaveBeenCalled();
     expect(handoffRepo.listRecentBySession).not.toHaveBeenCalled();
+  });
+
+  it('treats persisted deep engagement mode as authoritative on read', async () => {
+    const sessionRepo: IAiChatSessionRepository = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'session-3',
+        sessionId: 'policy-session-3',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          engagementMode: 'DEEP_WORKFLOW',
+          enteredDeepWorkflowAt: new Date('2026-03-29T00:00:00.000Z'),
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          packageStatus: 'not_introduced',
+          consultationStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          riskLevel: 'low',
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: null,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      findByDifyConversationId: vi.fn(async () => null),
+      save: vi.fn(),
+      attachPatient: vi.fn(),
+      updateStatus: vi.fn(),
+      patchStatus: vi.fn(),
+    };
+
+    const messageRepo: IAiChatMessageRepository = {
+      create: vi.fn(),
+      listBySession: vi.fn(async () => []),
+      listRecentBySession: vi.fn(async () => []),
+      updateWritebackMetadata: vi.fn(async () => null),
+    };
+
+    const profileRepo: IAiUserProfileRepository = {
+      findByAnonymousKeyOrPatient: vi.fn(async () => null),
+      save: vi.fn(),
+      patch: vi.fn(),
+    };
+
+    const timelineRepo: IAiChatTimelineEventRepository = {
+      listRecentBySession: vi.fn(async () => []),
+      append: vi.fn(),
+    };
+
+    const followupRepo: IAiFollowupTriggerRepository = {
+      listPendingBySession: vi.fn(async () => [] as AiFollowupTrigger[]),
+      createPendingTrigger: vi.fn(),
+      resolvePendingTrigger: vi.fn(),
+    };
+
+    const handoffRepo: IAiHandoffRepository = {
+      listRecentBySession: vi.fn(async () => [] as AiHandoff[]),
+      save: vi.fn(),
+      complete: vi.fn(),
+    };
+
+    const builder = new ContextBuilderService(
+      sessionRepo,
+      messageRepo,
+      profileRepo,
+      timelineRepo,
+      followupRepo,
+      handoffRepo,
+    );
+
+    const context = await builder.build({
+      sessionId: 'policy-session-3',
+      userMessage: 'hello',
+      depth: 'light',
+    });
+
+    expect(context.currentEngagementMode).toBe('DEEP_WORKFLOW');
   });
 });

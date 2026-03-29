@@ -159,6 +159,15 @@ function buildSafetyFlags(statusSnapshot: AiChatStatusSnapshot): PolicySafetyFla
 }
 
 function inferCurrentEngagementMode(statusSnapshot: AiChatStatusSnapshot): AiPolicyEngagementMode {
+  if (statusSnapshot.enteredDeepWorkflowAt) {
+    return 'DEEP_WORKFLOW';
+  }
+
+  const persistedMode = normalizePersistedEngagementMode(statusSnapshot.engagementMode);
+  if (persistedMode) {
+    return persistedMode;
+  }
+
   if (
     isStarted(statusSnapshot.formStatus, ['COMPLETED', 'SUBMITTED', 'IN_PROGRESS', 'STARTED'])
     || isStarted(statusSnapshot.docUploadStatus, ['UPLOADED', 'UPLOADING', 'IN_PROGRESS', 'SUBMITTED', 'STARTED'])
@@ -187,6 +196,20 @@ function inferCurrentEngagementMode(statusSnapshot: AiChatStatusSnapshot): AiPol
   }
 
   return 'LIGHT_DISCOVERY';
+}
+
+function normalizePersistedEngagementMode(
+  value: AiChatStatusSnapshot['engagementMode'],
+): AiPolicyEngagementMode | null {
+  const normalized = normalize(value);
+  switch (normalized) {
+    case 'LIGHT_DISCOVERY':
+    case 'QUALIFIED_EXPLORATION':
+    case 'DEEP_WORKFLOW':
+      return normalized;
+    default:
+      return null;
+  }
 }
 
 function isStarted(value: string | null | undefined, activeStates: string[]): boolean {

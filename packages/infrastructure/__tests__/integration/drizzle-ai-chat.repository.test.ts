@@ -177,6 +177,52 @@ describe('AI chat repositories integration', () => {
     expect(messages[0]?.citations).toEqual([{ sourceTitle: 'FAQ', snippet: 'Example snippet' }]);
   });
 
+  it('finalizes assistant drafts by merging writeback metadata and can delete abandoned drafts', async () => {
+    const session = await sessionRepo.save(makeSession());
+    const draft = await messageRepo.create(makeMessage({
+      sessionId: session.id,
+      content: '',
+      intent: null,
+      riskLevel: null,
+      canAnswer: null,
+      nextAction: null,
+      citations: [],
+      metadata: { engagementMode: 'DEEP_WORKFLOW', writebackDepth: 'complete' },
+    }));
+
+    await messageRepo.updateWritebackMetadata(draft.id, {
+      metadata: { handoffCreated: true },
+      writebackStatus: 'completed',
+    });
+
+    const finalized = await messageRepo.updateMessage(draft.id, {
+      content: 'Final answer',
+      intent: 'CONSULT',
+      riskLevel: 'NORMAL',
+      canAnswer: true,
+      nextAction: 'CONSULT_CONVERSION',
+      metadata: { topic: 'PROCEDURE' },
+    });
+
+    expect(finalized).not.toBeNull();
+    expect(finalized?.content).toBe('Final answer');
+    expect(finalized?.metadata).toEqual({
+      engagementMode: 'DEEP_WORKFLOW',
+      writebackDepth: 'complete',
+      handoffCreated: true,
+      topic: 'PROCEDURE',
+    });
+    expect(finalized?.writebackStatus).toBe('completed');
+
+    const abandoned = await messageRepo.create(makeMessage({
+      sessionId: session.id,
+      content: '',
+      metadata: {},
+    }));
+    expect(await messageRepo.deleteById(abandoned.id)).toBe(true);
+    expect(await messageRepo.deleteById(abandoned.id)).toBe(false);
+  });
+
   it('upserts document mappings by logical entity key and deletes them cleanly', async () => {
     const entityKey = `${ENTITY_PREFIX}${randomUUID()}`;
     await mappingRepo.save(makeMapping({

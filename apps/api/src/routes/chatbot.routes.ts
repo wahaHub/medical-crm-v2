@@ -103,6 +103,20 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   }));
 
   const assistantMessageId = generateId();
+  await svc.aiChatMessageRepo.create(new AiChatMessage({
+    id: assistantMessageId,
+    sessionId: session.id,
+    role: 'ASSISTANT',
+    content: '',
+    intent: null,
+    riskLevel: null,
+    canAnswer: null,
+    nextAction: null,
+    citations: [],
+    metadata: {},
+    createdAt: new Date(),
+  }));
+
   let difyResponse: Record<string, unknown>;
   try {
     difyResponse = await svc.difyApi.createChatMessage({
@@ -120,6 +134,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       conversationId: session.difyConversationId,
     });
   } catch (error) {
+    await svc.aiChatMessageRepo.deleteById(assistantMessageId).catch(() => undefined);
     return c.json({
       error: error instanceof Error ? error.message : 'Dify request failed',
     }, 502);
@@ -134,10 +149,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     }));
   }
 
-  const assistantMessage = await svc.aiChatMessageRepo.create(new AiChatMessage({
-    id: assistantMessageId,
-    sessionId: session.id,
-    role: 'ASSISTANT',
+  const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
     intent: normalized.intent,
     resolvedIntent: normalized.resolvedIntent ?? normalized.intent,
@@ -150,8 +162,11 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     reasonCodes: normalized.reasonCodes,
     shortlist: normalized.shortlist,
     metadata: normalized.metadata,
-    createdAt: new Date(),
-  }));
+  });
+
+  if (!assistantMessage) {
+    return c.json({ error: 'Assistant message draft missing after Dify response' }, 500);
+  }
 
   if (sessionSecretToSet) {
     setChatbotSessionSecretCookie(c, sessionSecretToSet);
@@ -809,11 +824,11 @@ function buildEscalationDescription(
 }
 
 function normalizeDifyChatResponse(response: Record<string, unknown>) {
-  const metadata = asRecord(response.metadata);
+  const metadata = sanitizePublicMetadata(asRecord(response.metadata));
   const parsedAnswer = parseStructuredAnswer(response.answer);
   const citations = parsedAnswer?.citations ?? deriveCitations(metadata);
   const topic = parsedAnswer?.topic ?? null;
-  const structuredMetadata = parsedAnswer?.metadata ?? {};
+  const structuredMetadata = sanitizePublicMetadata(parsedAnswer?.metadata ?? {});
   const engagementMode = parsedAnswer?.engagementMode
     ?? asString(structuredMetadata.engagementMode)
     ?? asString(structuredMetadata.engagement_mode)
@@ -823,13 +838,14 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ?? asString(structuredMetadata.internal_next_action)
     ?? null;
   const publicNextAction = normalizeNextAction(parsedAnswer?.nextAction);
+  const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
 
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
     intent: normalizeIntent(parsedAnswer?.intent),
     resolvedIntent: parsedAnswer?.resolvedIntent ?? parsedAnswer?.intent ?? null,
     topic,
-    riskLevel: normalizeRiskLevel(parsedAnswer?.riskLevel),
+    riskLevel: publicRiskLevel,
     canAnswer: parsedAnswer?.canAnswer ?? null,
     nextAction: publicNextAction,
     secondaryAction: parsedAnswer?.secondaryAction ?? null,
@@ -848,10 +864,10 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
         ...structuredMetadata,
         engagementMode,
         internalNextAction,
+        internalRiskLevel: parsedAnswer?.riskLevel ?? null,
         publicNextAction,
         topic,
         structuredOutput: parsedAnswer ?? null,
-        rawResponse: response,
       },
   };
 }
@@ -942,6 +958,7 @@ function normalizeIntent(value: string | undefined): import('@medical-crm/domain
 }
 
 function normalizeRiskLevel(value: string | undefined): import('@medical-crm/domain').AiChatRiskLevel | null {
+  if (value === 'HIGH_RISK' || value === 'HIGH') return 'CRISIS';
   if (value === 'NORMAL' || value === 'SENSITIVE' || value === 'CRISIS') return value;
   return null;
 }
@@ -957,6 +974,16 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function sanitizePublicMetadata(value: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = { ...value };
+  delete sanitized.rawResponse;
+  delete sanitized.raw_response;
+  delete sanitized.conversation_id;
+  delete sanitized.message_id;
+  delete sanitized.task_id;
+  return sanitized;
 }
 
 export default app;

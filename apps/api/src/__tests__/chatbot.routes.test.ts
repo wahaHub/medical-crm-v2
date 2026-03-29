@@ -18,6 +18,8 @@ const mockServices = {
   },
   aiChatMessageRepo: {
     create: vi.fn(),
+    updateMessage: vi.fn(),
+    deleteById: vi.fn(),
     listBySession: vi.fn(),
   },
   difyApi: {
@@ -130,6 +132,27 @@ describe('Chatbot routes', () => {
     };
     mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
     mockServices.aiChatMessageRepo.create.mockImplementation(async (entity: unknown) => entity);
+    mockServices.aiChatMessageRepo.updateMessage.mockImplementation(async (id: string, patch: Record<string, unknown>) => ({
+      id,
+      sessionId: 'db-session-1',
+      role: 'ASSISTANT',
+      content: patch.content ?? '',
+      intent: patch.intent ?? null,
+      resolvedIntent: patch.resolvedIntent ?? null,
+      riskLevel: patch.riskLevel ?? null,
+      canAnswer: patch.canAnswer ?? null,
+      nextAction: patch.nextAction ?? null,
+      secondaryAction: patch.secondaryAction ?? null,
+      responseMode: patch.responseMode ?? null,
+      citations: patch.citations ?? [],
+      reasonCodes: patch.reasonCodes ?? [],
+      shortlist: patch.shortlist ?? [],
+      metadata: patch.metadata ?? {},
+      createdAt: NOW,
+      writebackStatus: 'pending',
+      toolTrace: [],
+    }));
+    mockServices.aiChatMessageRepo.deleteById.mockResolvedValue(true);
     mockServices.patientAuthService.createSessionToken.mockResolvedValue('patient-token');
   });
 
@@ -182,6 +205,7 @@ describe('Chatbot routes', () => {
         topic: 'PROCEDURE',
       }),
     });
+    expect(json.metadata.rawResponse).toBeUndefined();
     expect('difyConversationId' in (json as Record<string, unknown>)).toBe(false);
     expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -195,9 +219,17 @@ describe('Chatbot routes', () => {
         }),
       }),
     );
-    expect(mockServices.aiChatMessageRepo.create).toHaveBeenLastCalledWith(
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
         id: expect.any(String),
+        role: 'ASSISTANT',
+        content: '',
+      }),
+    );
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
         resolvedIntent: 'CONSULT',
         nextAction: 'CONSULT_CONVERSION',
         secondaryAction: 'REQUEST_DOCS',
@@ -210,8 +242,55 @@ describe('Chatbot routes', () => {
       }),
     );
     const difyPayload = mockServices.difyApi.createChatMessage.mock.calls[0]?.[0];
-    const assistantEntity = mockServices.aiChatMessageRepo.create.mock.calls.at(-1)?.[0];
-    expect(assistantEntity.id).toBe(difyPayload.inputs.assistantMessageId);
+    const assistantDraft = mockServices.aiChatMessageRepo.create.mock.calls[1]?.[0];
+    expect(assistantDraft.id).toBe(difyPayload.inputs.assistantMessageId);
+    expect(mockServices.aiChatMessageRepo.create.mock.invocationCallOrder[1]).toBeLessThan(
+      mockServices.difyApi.createChatMessage.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('POST /api/v2/chatbot/chat maps HIGH_RISK into a safe public risk level without leaking raw upstream payloads', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-risk',
+      message_id: 'provider-msg-1',
+      task_id: 'provider-task-1',
+      answer: JSON.stringify({
+        answer: 'You should seek urgent support right now.',
+        intent: 'SAFETY',
+        riskLevel: 'HIGH_RISK',
+        canAnswer: true,
+        nextAction: 'SAFETY',
+        responseMode: 'safety_only',
+        metadata: {
+          conversation_id: 'should-not-leak',
+        },
+      }),
+      metadata: {
+        retriever_resources: [],
+        message_id: 'provider-msg-1',
+      },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-risk',
+        hospitalType: 'COSMETIC',
+        message: 'I feel unsafe and need help now.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.riskLevel).toBe('CRISIS');
+    expect(json.metadata).toMatchObject({
+      internalRiskLevel: 'HIGH_RISK',
+    });
+    expect(json.metadata.rawResponse).toBeUndefined();
+    expect(json.metadata.conversation_id).toBeUndefined();
+    expect(json.metadata.message_id).toBeUndefined();
   });
 
   it('POST /api/v2/chatbot/chat preserves light-discovery routing details without promoting a deep action', async () => {
@@ -384,6 +463,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: 'upstream unavailable' });
+    expect(mockServices.aiChatMessageRepo.deleteById).toHaveBeenCalledWith(expect.any(String));
   });
 
   it('POST /api/v2/chatbot/uploads/init rejects access without matching chatbot session secret', async () => {

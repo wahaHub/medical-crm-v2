@@ -108,6 +108,8 @@ describe('ContextBuilderService', () => {
         }),
       ]),
       updateWritebackMetadata: vi.fn(async () => null),
+      updateMessage: vi.fn(async () => null),
+      deleteById: vi.fn(async () => false),
     };
 
     const profileRepo: IAiUserProfileRepository = {
@@ -243,6 +245,8 @@ describe('ContextBuilderService', () => {
         }),
       ]),
       updateWritebackMetadata: vi.fn(async () => null),
+      updateMessage: vi.fn(async () => null),
+      deleteById: vi.fn(async () => false),
     };
 
     const profileRepo: IAiUserProfileRepository = {
@@ -344,6 +348,8 @@ describe('ContextBuilderService', () => {
       listBySession: vi.fn(async () => []),
       listRecentBySession: vi.fn(async () => []),
       updateWritebackMetadata: vi.fn(async () => null),
+      updateMessage: vi.fn(async () => null),
+      deleteById: vi.fn(async () => false),
     };
 
     const profileRepo: IAiUserProfileRepository = {

@@ -29,6 +29,9 @@ export type {
   CaseProgressDTO, DiagnosisDTO, PhoneCallDTO, ConsultationHistoryDTO,
 } from './dtos/progress.dto.js';
 export type { HospitalDTO } from './dtos/hospital.dto.js';
+export {
+  AI_POLICY_BACKEND_NEXT_ACTIONS,
+} from './dtos/ai-policy.dto.js';
 export type { AiPolicyRequestEnvelope, AiPolicyErrorEnvelope, AiPolicyEngagementMode } from './dtos/ai-policy.dto.js';
 export type { ConversationDTO, MessageDTO } from './dtos/conversation.dto.js';
 export type { ConsultationDTO, ConsultationTranscriptDTO } from './dtos/consultation.dto.js';

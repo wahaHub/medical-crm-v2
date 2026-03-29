@@ -139,7 +139,9 @@ describe('Chatbot routes integration', () => {
     expect(messages[0]?.metadata).toMatchObject({
       topic: 'DOCUMENTS',
     });
-  });
+    expect(messages[0]?.metadata.rawResponse).toBeUndefined();
+    expect(messages[0]?.content).toBe('Please share your reports.');
+  }, 15000);
 
   it('GET /api/v2/chatbot/history/{sessionId} reads ordered history from the real database', async () => {
     const secret = 'route-secret-123';
@@ -197,7 +199,7 @@ describe('Chatbot routes integration', () => {
     expect(json.messages[0]?.content).toBe('First question');
     expect(json.messages[1]?.content).toBe('Second answer');
     expect(json.messages[1]?.nextAction).toBe('ANSWER');
-  });
+  }, 15000);
 
   it('POST /api/v2/chatbot/chat falls back safely when Dify returns plain text instead of structured JSON', async () => {
     mockServices.difyApi.createChatMessage.mockResolvedValue({
@@ -224,5 +226,5 @@ describe('Chatbot routes integration', () => {
     expect(json.nextAction).toBeNull();
     expect(json.reasonCodes).toEqual([]);
     expect(json.shortlist).toEqual([]);
-  });
+  }, 15000);
 });

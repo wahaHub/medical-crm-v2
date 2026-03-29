@@ -52,11 +52,23 @@ export class DrizzleAiChatMessageRepository implements IAiChatMessageRepository 
     return this.listBySession(sessionId, limit, tx);
   }
 
-  async updateWritebackMetadata(
+  async updateMessage(
     messageId: string,
     patch: {
+      content?: string;
+      intent?: import('@medical-crm/domain').AiChatIntent | null;
+      resolvedIntent?: string | null;
+      riskLevel?: import('@medical-crm/domain').AiChatRiskLevel | null;
+      canAnswer?: boolean | null;
+      nextAction?: import('@medical-crm/domain').AiChatNextAction | null;
+      secondaryAction?: string | null;
+      responseMode?: string | null;
+      citations?: import('@medical-crm/domain').AiChatCitation[];
       metadata?: Record<string, unknown>;
+      reasonCodes?: string[];
+      shortlist?: Array<Record<string, unknown>>;
       writebackStatus?: string;
+      toolTrace?: Array<Record<string, unknown>>;
     },
     tx?: unknown,
   ): Promise<AiChatMessage | null> {
@@ -82,6 +94,18 @@ export class DrizzleAiChatMessageRepository implements IAiChatMessageRepository 
     const updated = await db
       .update(aiChatMessages)
       .set({
+        ...(patch.content !== undefined ? { content: patch.content } : {}),
+        ...(patch.intent !== undefined ? { intent: patch.intent } : {}),
+        ...(patch.resolvedIntent !== undefined ? { resolvedIntent: patch.resolvedIntent } : {}),
+        ...(patch.riskLevel !== undefined ? { riskLevel: patch.riskLevel } : {}),
+        ...(patch.canAnswer !== undefined ? { canAnswer: patch.canAnswer } : {}),
+        ...(patch.nextAction !== undefined ? { nextAction: patch.nextAction } : {}),
+        ...(patch.secondaryAction !== undefined ? { secondaryAction: patch.secondaryAction } : {}),
+        ...(patch.responseMode !== undefined ? { responseMode: patch.responseMode } : {}),
+        ...(patch.citations !== undefined ? { citations: patch.citations } : {}),
+        ...(patch.reasonCodes !== undefined ? { reasonCodes: patch.reasonCodes } : {}),
+        ...(patch.shortlist !== undefined ? { shortlist: patch.shortlist } : {}),
+        ...(patch.toolTrace !== undefined ? { toolTrace: patch.toolTrace } : {}),
         metadata: mergedMetadata,
         ...(patch.writebackStatus !== undefined ? { writebackStatus: patch.writebackStatus } : {}),
       })
@@ -89,6 +113,27 @@ export class DrizzleAiChatMessageRepository implements IAiChatMessageRepository 
       .returning();
 
     return updated[0] ? this.rowToEntity(updated[0]) : null;
+  }
+
+  async updateWritebackMetadata(
+    messageId: string,
+    patch: {
+      metadata?: Record<string, unknown>;
+      writebackStatus?: string;
+    },
+    tx?: unknown,
+  ): Promise<AiChatMessage | null> {
+    return this.updateMessage(messageId, patch, tx);
+  }
+
+  async deleteById(messageId: string, tx?: unknown): Promise<boolean> {
+    const db = (tx as CrmDb) ?? this.db;
+    const deleted = await db
+      .delete(aiChatMessages)
+      .where(eq(aiChatMessages.id, messageId))
+      .returning({ id: aiChatMessages.id });
+
+    return deleted.length > 0;
   }
 
   private rowToEntity(row: typeof aiChatMessages.$inferSelect): AiChatMessage {

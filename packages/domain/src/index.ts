@@ -148,9 +148,21 @@ export type { SupportTicketProps } from './entities/support-ticket.entity.js';
 export { SupportTicketReply } from './entities/support-ticket-reply.entity.js';
 export type { SupportTicketReplyProps } from './entities/support-ticket-reply.entity.js';
 export { AiChatSession } from './entities/ai-chat-session.entity.js';
-export type { AiChatSessionProps } from './entities/ai-chat-session.entity.js';
+export type {
+  AiChatPendingState,
+  AiChatSessionProps,
+  AiChatStatusSnapshot,
+} from './entities/ai-chat-session.entity.js';
 export { AiChatMessage } from './entities/ai-chat-message.entity.js';
 export type { AiChatMessageProps, AiChatCitation } from './entities/ai-chat-message.entity.js';
+export { AiUserProfile } from './entities/ai-user-profile.entity.js';
+export type { AiUserProfileProps } from './entities/ai-user-profile.entity.js';
+export { AiChatTimelineEvent } from './entities/ai-chat-timeline-event.entity.js';
+export type { AiChatTimelineEventProps } from './entities/ai-chat-timeline-event.entity.js';
+export { AiFollowupTrigger } from './entities/ai-followup-trigger.entity.js';
+export type { AiFollowupTriggerProps } from './entities/ai-followup-trigger.entity.js';
+export { AiHandoff } from './entities/ai-handoff.entity.js';
+export type { AiHandoffProps } from './entities/ai-handoff.entity.js';
 export { DifyDocumentMapping } from './entities/dify-document-mapping.entity.js';
 export type { DifyDocumentMappingProps } from './entities/dify-document-mapping.entity.js';
 export { AiSyncOutbox } from './entities/ai-sync-outbox.entity.js';
@@ -161,6 +173,10 @@ export type { ISupportTicketRepository, TicketListQuery } from './ports/support-
 export type { ISupportTicketReplyRepository } from './ports/support-ticket-reply-repository.port.js';
 export type { IAiChatSessionRepository } from './ports/ai-chat-session-repository.port.js';
 export type { IAiChatMessageRepository } from './ports/ai-chat-message-repository.port.js';
+export type { IAiUserProfileRepository } from './ports/ai-user-profile-repository.port.js';
+export type { IAiChatTimelineEventRepository } from './ports/ai-chat-timeline-event-repository.port.js';
+export type { IAiFollowupTriggerRepository } from './ports/ai-followup-trigger-repository.port.js';
+export type { IAiHandoffRepository } from './ports/ai-handoff-repository.port.js';
 export type { IDifyDocumentMappingRepository } from './ports/dify-document-mapping-repository.port.js';
 export type { IAiSyncOutboxRepository } from './ports/ai-sync-outbox-repository.port.js';
 

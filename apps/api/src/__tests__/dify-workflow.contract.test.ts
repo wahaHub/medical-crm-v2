@@ -230,7 +230,13 @@ describe('Dify workflow contract', () => {
     expect(prompt).toContain('metadata.internalNextAction');
     expect(prompt).toContain('metadata.pathMode');
     expect(prompt).toContain('REQUEST_DOC_UPLOAD');
+    expect(prompt).toContain('EXPLAIN_DOC_UPLOAD');
+    expect(prompt).toContain('EXPLAIN_CONSULT_PROCESS');
     expect(prompt).toContain('SHOW_HOSPITAL_RECOMMENDATIONS');
     expect(prompt).toContain('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(prompt).toContain('SAFETY_HANDOFF');
+    expect(prompt).toContain('explain the upload process without pretending an upload widget has already started');
+    expect(prompt).toContain('explain the consult workflow and keep the tone exploratory rather than forceful');
+    expect(prompt).toContain('If backend next_action is SAFETY_HANDOFF, keep the response safety-only and direct the user toward human or emergency support without any commercial CTA');
   });
 });

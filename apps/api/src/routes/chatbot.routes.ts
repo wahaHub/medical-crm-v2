@@ -134,7 +134,13 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       conversationId: session.difyConversationId,
     });
   } catch (error) {
-    await svc.aiChatMessageRepo.deleteById(assistantMessageId).catch(() => undefined);
+    await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
+      metadata: {
+        draftState: 'provider_error',
+        failureStage: 'provider_request',
+        failureRecordedAt: new Date().toISOString(),
+      },
+    }).catch(() => undefined);
     return c.json({
       error: error instanceof Error ? error.message : 'Dify request failed',
     }, 502);
@@ -189,7 +195,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     recommendedProviders: normalized.recommendedProviders,
     reasonCodes: assistantMessage.reasonCodes,
     shortlist: assistantMessage.shortlist,
-    metadata: assistantMessage.metadata,
+    metadata: sanitizePublicMetadataDeep(assistantMessage.metadata),
     history: {
       userMessageId: userMessage.id,
       assistantMessageId: assistantMessage.id,
@@ -488,7 +494,7 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       citations: message.citations,
       reasonCodes: message.reasonCodes,
       shortlist: message.shortlist,
-      metadata: message.metadata,
+      metadata: sanitizePublicMetadataDeep(message.metadata),
       createdAt: message.createdAt.toISOString(),
     })),
   }, 200);
@@ -824,11 +830,11 @@ function buildEscalationDescription(
 }
 
 function normalizeDifyChatResponse(response: Record<string, unknown>) {
-  const metadata = sanitizePublicMetadata(asRecord(response.metadata));
+  const metadata = sanitizePublicMetadataDeep(asRecord(response.metadata));
   const parsedAnswer = parseStructuredAnswer(response.answer);
   const citations = parsedAnswer?.citations ?? deriveCitations(metadata);
   const topic = parsedAnswer?.topic ?? null;
-  const structuredMetadata = sanitizePublicMetadata(parsedAnswer?.metadata ?? {});
+  const structuredMetadata = sanitizePublicMetadataDeep(parsedAnswer?.metadata ?? {});
   const engagementMode = parsedAnswer?.engagementMode
     ?? asString(structuredMetadata.engagementMode)
     ?? asString(structuredMetadata.engagement_mode)
@@ -839,6 +845,37 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ?? null;
   const publicNextAction = normalizeNextAction(parsedAnswer?.nextAction);
   const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
+  const collectedFields = sanitizeNullableRecord(parsedAnswer?.collectedFields);
+  const recommendedProviders = sanitizeRecordArray(parsedAnswer?.recommendedProviders);
+  const shortlist = sanitizeRecordArray(parsedAnswer?.shortlist);
+  const citationsSafe = sanitizeCitationArray(citations);
+  const publicStructuredOutput = parsedAnswer
+    ? {
+        answer: parsedAnswer.answer ?? asString(response.answer) ?? '',
+        intent: normalizeIntent(parsedAnswer.intent),
+        resolvedIntent: parsedAnswer.resolvedIntent ?? parsedAnswer.intent ?? null,
+        topic,
+        riskLevel: publicRiskLevel,
+        canAnswer: parsedAnswer.canAnswer ?? null,
+        nextAction: publicNextAction,
+        secondaryAction: parsedAnswer.secondaryAction ?? null,
+        responseMode: parsedAnswer.responseMode ?? null,
+        collectedFields,
+        missingItems: parsedAnswer.missingItems ?? [],
+        recommendedProviders,
+        reasonCodes: parsedAnswer.reasonCodes ?? [],
+        shortlist,
+        citations: citationsSafe,
+        metadata: {
+          ...structuredMetadata,
+          engagementMode,
+          internalNextAction,
+          internalRiskLevel: parsedAnswer.riskLevel ?? null,
+          publicNextAction,
+          topic,
+        },
+      }
+    : null;
 
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
@@ -850,12 +887,12 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     nextAction: publicNextAction,
     secondaryAction: parsedAnswer?.secondaryAction ?? null,
     responseMode: parsedAnswer?.responseMode ?? null,
-    collectedFields: parsedAnswer?.collectedFields ?? null,
+    collectedFields,
     missingItems: parsedAnswer?.missingItems ?? [],
-    recommendedProviders: parsedAnswer?.recommendedProviders ?? [],
+    recommendedProviders,
     reasonCodes: parsedAnswer?.reasonCodes ?? [],
-    shortlist: parsedAnswer?.shortlist ?? [],
-    citations,
+    shortlist,
+    citations: citationsSafe,
     conversationId: asString(response.conversation_id),
     messageId: asString(response.message_id),
     taskId: asString(response.task_id),
@@ -867,7 +904,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
         internalRiskLevel: parsedAnswer?.riskLevel ?? null,
         publicNextAction,
         topic,
-        structuredOutput: parsedAnswer ?? null,
+        structuredOutput: publicStructuredOutput,
       },
   };
 }
@@ -976,13 +1013,48 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-function sanitizePublicMetadata(value: Record<string, unknown>): Record<string, unknown> {
-  const sanitized = { ...value };
-  delete sanitized.rawResponse;
-  delete sanitized.raw_response;
-  delete sanitized.conversation_id;
-  delete sanitized.message_id;
-  delete sanitized.task_id;
+function sanitizePublicMetadataDeep(value: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeUnknownValue(value) as Record<string, unknown>;
+}
+
+function sanitizeNullableRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!value) return null;
+  return sanitizeUnknownValue(value) as Record<string, unknown>;
+}
+
+function sanitizeRecordArray(value: Array<Record<string, unknown>> | undefined): Array<Record<string, unknown>> {
+  if (!value) return [];
+  return sanitizeUnknownValue(value) as Array<Record<string, unknown>>;
+}
+
+function sanitizeCitationArray(value: AiChatCitation[]): AiChatCitation[] {
+  return sanitizeUnknownValue(value) as AiChatCitation[];
+}
+
+function sanitizeUnknownValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeUnknownValue(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      key === 'rawResponse'
+      || key === 'raw_response'
+      || key === 'conversation_id'
+      || key === 'message_id'
+      || key === 'task_id'
+    ) {
+      continue;
+    }
+
+    sanitized[key] = sanitizeUnknownValue(nestedValue);
+  }
+
   return sanitized;
 }
 

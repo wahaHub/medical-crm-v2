@@ -793,6 +793,7 @@ workflow:
             - If backend next_action is EXPLAIN_CONSULT_PROCESS, explain the consult workflow and keep the tone exploratory rather than forceful.
             - If backend next_action is EXPLORE_HOSPITAL_RECOMMENDATIONS, explain how hospital matching works and keep shortlist aligned to backend shortlist if one is present.
             - If backend next_action is SHOW_HOSPITAL_RECOMMENDATIONS, use backend shortlist and search_hospitals output together, but do not invent hospitals outside the tool output.
+            - If backend next_action is SAFETY_HANDOFF, keep the response safety-only and direct the user toward human or emergency support without any commercial CTA.
             - If backend risk is HIGH_RISK or CRISIS, produce a safety-only response and do not promote services.
             - If retrieval is weak, keep the answer short and avoid hallucinating facts.
             - If grounded FAQ content exposes a category, use that as topic; otherwise use null.

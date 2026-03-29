@@ -293,6 +293,78 @@ describe('Chatbot routes', () => {
     expect(json.metadata.message_id).toBeUndefined();
   });
 
+  it('POST /api/v2/chatbot/chat deeply sanitizes nested structuredOutput metadata before returning it publicly', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-nested',
+      message_id: 'provider-msg-nested',
+      task_id: 'provider-task-nested',
+      answer: JSON.stringify({
+        answer: 'Here is a safe explanation of our process.',
+        intent: 'FAQ',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'ANSWER',
+        responseMode: 'light_discovery_guidance',
+        metadata: {
+          rawResponse: { secret: true },
+          conversation_id: 'nested-conversation-id',
+          message_id: 'nested-message-id',
+          nested: {
+            raw_response: { secret: 'nested' },
+            task_id: 'nested-task-id',
+          },
+        },
+        collectedFields: {
+          metadata: {
+            rawResponse: 'should-not-survive',
+            conversation_id: 'collected-conversation-id',
+          },
+        },
+      }),
+      metadata: {
+        retriever_resources: [],
+        rawResponse: { requestId: 'provider-request' },
+        nested: {
+          conversation_id: 'provider-conversation-id',
+          message_id: 'provider-message-id',
+        },
+      },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-nested',
+        hospitalType: 'COSMETIC',
+        message: 'Just explain the process.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.metadata.rawResponse).toBeUndefined();
+    expect(json.metadata.message_id).toBeUndefined();
+    const structuredOutput = (json.metadata as Record<string, unknown>).structuredOutput as Record<string, unknown>;
+    expect(structuredOutput).toMatchObject({
+      answer: 'Here is a safe explanation of our process.',
+      metadata: {
+        nested: {},
+      },
+      collectedFields: {
+        metadata: {},
+      },
+    });
+    expect((structuredOutput.metadata as Record<string, unknown>).rawResponse).toBeUndefined();
+    expect((structuredOutput.metadata as Record<string, unknown>).conversation_id).toBeUndefined();
+    expect((structuredOutput.metadata as Record<string, unknown>).message_id).toBeUndefined();
+    expect(((structuredOutput.metadata as Record<string, unknown>).nested as Record<string, unknown>).raw_response).toBeUndefined();
+    expect(((structuredOutput.metadata as Record<string, unknown>).nested as Record<string, unknown>).task_id).toBeUndefined();
+    expect((((structuredOutput.collectedFields as Record<string, unknown>).metadata) as Record<string, unknown>).rawResponse).toBeUndefined();
+    expect((((structuredOutput.collectedFields as Record<string, unknown>).metadata) as Record<string, unknown>).conversation_id).toBeUndefined();
+  });
+
   it('POST /api/v2/chatbot/chat preserves light-discovery routing details without promoting a deep action', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
@@ -463,7 +535,18 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: 'upstream unavailable' });
-    expect(mockServices.aiChatMessageRepo.deleteById).toHaveBeenCalledWith(expect.any(String));
+    expect(mockServices.aiChatMessageRepo.deleteById).not.toHaveBeenCalled();
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          draftState: 'provider_error',
+          failureStage: 'provider_request',
+        }),
+      }),
+    );
+    const failurePatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];
+    expect(failurePatch.writebackStatus).toBeUndefined();
   });
 
   it('POST /api/v2/chatbot/uploads/init rejects access without matching chatbot session secret', async () => {

@@ -133,6 +133,7 @@ Recommended split:
 User Message
   -> Dify workflow
   -> lightweight extraction
+  -> backend pre-validator / engagement mode resolution
   -> load CRM context
   -> backend policy decision
   -> allowed tool calls
@@ -145,6 +146,7 @@ User Message
 
 The starter Dify workflow must satisfy all of the following:
 
+- Dify can take a cheap path for low-signal turns, but only when backend `engagement_mode` explicitly allows it
 - Dify calls internal backend endpoints for `context`, `decide`, and `writeback`
 - Dify only runs downstream retrieval or tool calls when they are explicitly allowed by backend policy output
 - Dify does not self-decide recommendation eligibility, shortlist authority, or human handoff eligibility
@@ -157,6 +159,7 @@ Recommended starter node sequence:
 
 - `User Input`
 - `Lightweight Extraction`
+- `Backend Pre-Validator / Engagement Mode`
 - `Load CRM Context`
 - `Backend Policy Decide`
 - `Safety Gate`
@@ -219,6 +222,11 @@ If Dify cannot reach backend policy endpoints:
   - temporary inability to continue advanced guidance
   - human handoff suggestion
   - grounded FAQ answer if already retrieved and safe
+
+Pre-validator fallback rule:
+
+- if backend engagement-mode resolution is unavailable, Dify may only use a lightweight discovery reply
+- it must not silently promote the turn into recommendation, package, handoff, or heavy writeback mode
 
 ### 4.4 Manual Import / Preview Checklist
 
@@ -503,6 +511,7 @@ Recommended module decomposition:
 
 - `ContextBuilder`
 - `SignalResolver`
+- `EngagementModeResolver`
 - `IntentResolver`
 - `RiskResolver`
 - `ActionPlanner`
@@ -516,12 +525,13 @@ Recommended backend pipeline:
 
 1. Load truth
 2. Merge candidate signals
-3. Resolve intent
-4. Resolve risk
-5. Generate candidate actions
-6. Score and select actions
-7. Attach downstream constraints
-8. Return authoritative decision contract
+3. Resolve engagement mode
+4. Resolve intent
+5. Resolve risk
+6. Generate candidate actions
+7. Score and select actions
+8. Attach downstream constraints
+9. Return authoritative decision contract
 
 ### 7.4 Authoritative Decision Contract
 
@@ -529,6 +539,7 @@ Recommended backend output to Dify:
 
 ```json
 {
+  "engagement_mode": "QUALIFIED_EXPLORATION",
   "resolved_intent": "ACCEPT_HOSPITAL_RECOMMENDATION",
   "risk_level": "LOW",
   "next_action": "SHOW_HOSPITAL_RECOMMENDATIONS",
@@ -580,7 +591,135 @@ It should not be a hidden LLM planner with opaque business behavior.
 
 ---
 
-## 8. Intent, Risk, and Next Action Model
+## 8. Engagement Mode and Entry Gating
+
+### 8.1 Why Engagement Mode Exists
+
+Many early turns should not enter the full policy-engine path.
+
+Examples:
+
+- greeting-only messages
+- low-information noise
+- obvious trolling or repeated sandbox testing
+- very broad discovery questions with no clear action intent
+
+The system should not hard-block these turns. Instead, it should choose a cheaper and more natural operating mode.
+
+### 8.2 Engagement Mode Model
+
+Recommended backend-authoritative modes:
+
+- `LIGHT_DISCOVERY`
+- `QUALIFIED_EXPLORATION`
+- `DEEP_WORKFLOW`
+
+This should replace any binary "serious client" flag.
+
+### 8.3 Mode Semantics
+
+#### `LIGHT_DISCOVERY`
+
+Use for:
+
+- greetings
+- trust-building questions
+- broad "what do you do" discovery
+- weak or ambiguous intent
+- noisy or low-value repeated probes
+
+Behavior:
+
+- allow lightweight FAQ and process explanation
+- avoid heavy status loading
+- avoid full action scoring
+- avoid strong commercial pressure
+- keep writeback minimal
+
+#### `QUALIFIED_EXPLORATION`
+
+Use for:
+
+- sustained multi-turn interest
+- concrete questions about hospitals, packages, consultation, services, or travel
+- partial disclosure of condition, destination, budget, timing, or uploaded-material readiness
+- cautious but promising users who are still building trust
+
+Behavior:
+
+- load CRM context
+- run normal policy decision
+- allow moderate writeback
+- allow recommendation or package exploration when policy permits
+
+#### `DEEP_WORKFLOW`
+
+Use for:
+
+- explicit progression into form, docs, recommendation acceptance, handoff, or booking-style actions
+- clear high-intent conversion behavior
+- uploaded materials or strong structured facts
+- cases that require full writeback, follow-up, or handoff orchestration
+
+Behavior:
+
+- run full policy engine
+- allow full scoring and side-effect planning
+- allow full writeback depth and downstream trigger creation
+
+### 8.4 Mode Resolution Principle
+
+`engagement_mode` should be decided by backend, not by Dify alone.
+
+Dify may provide lightweight candidate signals such as:
+
+- greeting / noise / broad-discovery hints
+- likely qualification signals
+- possible strong-progression signals
+
+But backend performs the final mode decision using:
+
+- current user message
+- recent interaction pattern
+- pending offer / pending question
+- structured CRM status
+- previously known user details
+- recommendation / docs / handoff state
+
+### 8.5 Mode Escalation Rules
+
+- mode should usually escalate gradually, not jump to deep workflow on weak evidence
+- explicit progression requests may jump directly to `DEEP_WORKFLOW`
+- risk override may force deep handling or handoff even when commercial engagement is low
+- "filled form" is a strong signal for `DEEP_WORKFLOW`, but not the only valid signal
+- careful, high-value, trust-building users must not be penalized for asking detailed questions before submitting data
+
+### 8.6 Mode-Specific Allowed Behavior
+
+Recommended defaults:
+
+- `LIGHT_DISCOVERY`
+  - FAQ, process explanation, why-us explanation, light trust-building
+  - no proactive shortlist push
+  - no heavy writeback beyond minimal session metadata
+- `QUALIFIED_EXPLORATION`
+  - FAQ, shortlist exploration, docs explanation, consult explanation, package exploration
+  - moderate writeback and summary refresh
+- `DEEP_WORKFLOW`
+  - full recommendation, docs upload, form progression, handoff, follow-up creation
+  - full writeback and audit depth
+
+### 8.7 Mode-Selection Failure Principle
+
+If mode resolution fails or is unavailable:
+
+- default to `LIGHT_DISCOVERY`
+- do not silently escalate into heavy recommendation or conversion flows
+- keep the response useful, grounded, and low-pressure
+
+---
+
+## 9. Intent, Risk, and Next Action Model
 
 ### 8.1 Intent Principles
 
@@ -693,12 +832,13 @@ Canonical conflict rules:
 
 ---
 
-## 9. Status Model
+## 10. Status Model
 
 ### 9.1 Business Status
 
 Recommended business status fields:
 
+- `engagement_mode`
 - `condition_status`
 - `form_status`
 - `doc_upload_status`
@@ -744,7 +884,7 @@ This allows the system to request the smallest valuable increment instead of res
 
 ---
 
-## 10. Recommendation Policy
+## 11. Recommendation Policy
 
 ### 10.1 Recommendation Ownership
 
@@ -961,7 +1101,7 @@ All tool errors should normalize to:
 
 ---
 
-## 12. Memory, Summary, Timeline, and Writeback
+## 13. Memory, Summary, Timeline, and Writeback
 
 ### 12.1 Memory Must Live in CRM DB
 
@@ -1015,6 +1155,7 @@ Recommended cadence:
 
 #### Every turn
 
+- engagement mode refresh
 - pending offer/question refresh
 - last intent / last action
 - message-level metadata
@@ -1025,6 +1166,15 @@ Recommended cadence:
 - lead stage updates
 - objection updates
 - summary refresh
+
+Mode guidance:
+
+- `LIGHT_DISCOVERY`
+  - only minimal session metadata and lightweight intent/action audit
+- `QUALIFIED_EXPLORATION`
+  - allow targeted summary and status refresh when user signals are meaningful
+- `DEEP_WORKFLOW`
+  - allow full structured writeback, timeline, handoff, and follow-up side effects
 
 #### Event-driven updates
 
@@ -1533,7 +1683,7 @@ To minimize migration risk in the current repo:
 
 ---
 
-## 14. Human Handoff and Follow-Up
+## 15. Human Handoff and Follow-Up
 
 ### 14.1 Handoff Is a First-Class Business Flow
 
@@ -1647,7 +1797,7 @@ If `HIGH_RISK` or `CRISIS`:
 
 ---
 
-## 16. Evaluation and Regression Strategy
+## 17. Evaluation and Regression Strategy
 
 ### 16.1 Core Evaluation Dimensions
 
@@ -1684,6 +1834,7 @@ If `HIGH_RISK` or `CRISIS`:
 
 ### 16.3 Required Test Buckets
 
+- engagement mode resolution
 - FAQ
 - recommendation
 - history-aware intent
@@ -1711,6 +1862,8 @@ Test trust, naturalness, brief quality, and conversion tone.
 
 Must always regress:
 
+- low-signal greeting incorrectly triggering deep workflow
+- careful trust-building user incorrectly trapped in permanent light mode
 - crisis with accidental selling
 - fabricated hospital/package facts
 - short acknowledgement resolving to wrong pending offer
@@ -1732,6 +1885,15 @@ V1 regression must also cover:
 - handoff creation failure while response_mode is handoff
 
 Expected behavior in these tests should be explicit and non-silent.
+
+### 17.7 Engagement Mode Evaluation Notes
+
+The evaluation set must specifically check that:
+
+- `LIGHT_DISCOVERY` stays fast, low-pressure, and useful
+- `QUALIFIED_EXPLORATION` captures cautious but valuable users without forcing form completion
+- `DEEP_WORKFLOW` is only entered on strong signals or justified overrides
+- form completion is treated as a strong signal, not the sole definition of seriousness
 
 ---
 

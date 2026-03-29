@@ -1,6 +1,6 @@
 app:
   name: Medora AI Chatbot v5
-  description: Backend-authoritative medical tourism chatflow with lightweight extraction, hospital candidate prefetch, CRM policy decisioning, FAQ/package grounding, and backend writeback.
+  description: Backend-authoritative medical tourism chatflow with lightweight extraction, engagement-mode-first routing, CRM policy decisioning, FAQ/package grounding, and backend writeback.
   mode: advanced-chat
   icon: 🤖
   icon_background: '#FFEAD5'
@@ -41,25 +41,14 @@ workflow:
         targetType: llm
         isInIteration: false
         isInLoop: false
-    - id: extraction-search-hospitals
+    - id: extraction-decide
       source: extraction_llm
-      sourceHandle: source
-      target: search_hospitals_http
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: llm
-        targetType: http-request
-        isInIteration: false
-        isInLoop: false
-    - id: search-hospitals-decide
-      source: search_hospitals_http
       sourceHandle: source
       target: decide_http
       targetHandle: target
       type: custom
       data:
-        sourceType: http-request
+        sourceType: llm
         targetType: http-request
         isInIteration: false
         isInLoop: false
@@ -88,6 +77,17 @@ workflow:
     - id: risk-crisis-response
       source: risk_gate
       sourceHandle: crisis
+      target: response_composer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: risk-high-risk-response
+      source: risk_gate
+      sourceHandle: high_risk
       target: response_composer
       targetHandle: target
       type: custom
@@ -140,8 +140,41 @@ workflow:
         targetType: http-request
         isInIteration: false
         isInLoop: false
+    - id: action-show-hospitals
+      source: action_gate
+      sourceHandle: show_hospital_recommendations
+      target: search_hospitals_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: action-explore-hospitals
+      source: action_gate
+      sourceHandle: explore_hospital_recommendations
+      target: search_hospitals_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
     - id: list-packages-response
       source: list_packages_http
+      sourceHandle: source
+      target: response_composer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: http-request
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-search-response
+      source: search_hospitals_http
       sourceHandle: source
       target: response_composer
       targetHandle: target
@@ -323,11 +356,11 @@ workflow:
     - id: search_hospitals_http
       type: custom
       position:
-        x: 670
-        y: 340
+        x: 2280
+        y: 350
       data:
         title: Search Hospitals
-        desc: Candidate pool prefetch for backend-authoritative shortlist selection.
+        desc: Hospital grounding only for deeper recommendation/exploration turns. LIGHT_DISCOVERY must bypass this node.
         type: http-request
         method: post
         url: http://host.docker.internal:3001/api/v2/internal/mcp/search-hospitals
@@ -364,7 +397,7 @@ workflow:
     - id: context_http
       type: custom
       position:
-        x: 980
+        x: 1310
         y: 340
       data:
         title: Load CRM Context
@@ -411,11 +444,11 @@ workflow:
     - id: decide_http
       type: custom
       position:
-        x: 1310
+        x: 680
         y: 340
       data:
         title: Resolve Engagement Mode + Backend Policy Decide
-        desc: Authoritative backend gate. Returns engagement_mode, risk, and next_action from light inputs first; candidate hospitals are hints only and shortlist selection remains backend-owned.
+        desc: Authoritative backend gate. Engagement mode and risk resolve before any expensive hospital/package tool branching.
         type: http-request
         method: post
         url: http://host.docker.internal:3001/api/v2/internal/ai-policy/decide
@@ -441,8 +474,7 @@ workflow:
                 "hospital_type": "{{#start.hospitalType#}}",
                 "payload": {
                   "user_message": "{{#sys.query#}}",
-                  "candidate_signals": {{#extraction_llm.text#}},
-                  "candidate_hospitals": {{#search_hospitals_http.body.data#}}
+                  "candidate_signals": {{#extraction_llm.text#}}
                 }
               }
         timeout:
@@ -460,11 +492,11 @@ workflow:
     - id: risk_gate
       type: custom
       position:
-        x: 1620
+        x: 980
         y: 210
       data:
         title: Safety Gate
-        desc: CRISIS bypasses tool/rag branching and goes straight to safety response generation.
+        desc: HIGH_RISK and CRISIS bypass commercial/tool branching and go straight to safety-governed response generation.
         type: if-else
         cases:
         - case_id: crisis
@@ -480,10 +512,23 @@ workflow:
             comparison_operator: is
             value: CRISIS
             varType: string
+        - case_id: high_risk
+          id: high_risk
+          logical_operator: and
+          conditions:
+          - id: risk-high-risk
+            variable_selector:
+            - decide_http
+            - body
+            - data
+            - risk_level
+            comparison_operator: is
+            value: HIGH_RISK
+            varType: string
     - id: engagement_gate
       type: custom
       position:
-        x: 1620
+        x: 980
         y: 470
       data:
         title: Engagement Gate
@@ -506,11 +551,11 @@ workflow:
     - id: action_gate
       type: custom
       position:
-        x: 1940
+        x: 1620
         y: 470
       data:
         title: Action Gate
-        desc: Deeper modes may branch into package, FAQ retrieval, or a direct composer pass-through. Backend remains authoritative.
+        desc: Deeper modes may branch into package, hospital grounding, FAQ retrieval, or a direct composer pass-through. Backend remains authoritative.
         type: if-else
         cases:
         - case_id: show_package
@@ -525,6 +570,32 @@ workflow:
             - next_action
             comparison_operator: is
             value: SHOW_PACKAGE
+            varType: string
+        - case_id: show_hospital_recommendations
+          id: show_hospital_recommendations
+          logical_operator: and
+          conditions:
+          - id: next-action-show-hospitals
+            variable_selector:
+            - decide_http
+            - body
+            - data
+            - next_action
+            comparison_operator: is
+            value: SHOW_HOSPITAL_RECOMMENDATIONS
+            varType: string
+        - case_id: explore_hospital_recommendations
+          id: explore_hospital_recommendations
+          logical_operator: and
+          conditions:
+          - id: next-action-explore-hospitals
+            variable_selector:
+            - decide_http
+            - body
+            - data
+            - next_action
+            comparison_operator: is
+            value: EXPLORE_HOSPITAL_RECOMMENDATIONS
             varType: string
         - case_id: faq_answer
           id: faq_answer
@@ -542,7 +613,7 @@ workflow:
     - id: faq_scope
       type: custom
       position:
-        x: 1940
+        x: 1950
         y: 640
       data:
         title: FAQ Scope
@@ -607,7 +678,7 @@ workflow:
     - id: list_packages_http
       type: custom
       position:
-        x: 1940
+        x: 1950
         y: 410
       data:
         title: List Packages
@@ -673,6 +744,7 @@ workflow:
 
             Map internal backend fields to the public chatbot contract:
             - risk_level CRISIS -> riskLevel CRISIS
+            - risk_level HIGH_RISK -> riskLevel CRISIS
             - risk_level SENSITIVE -> riskLevel SENSITIVE
             - risk_level LOW -> riskLevel NORMAL
             - next_action ANSWER_FAQ -> nextAction ANSWER
@@ -721,7 +793,7 @@ workflow:
             - If backend next_action is EXPLAIN_CONSULT_PROCESS, explain the consult workflow and keep the tone exploratory rather than forceful.
             - If backend next_action is EXPLORE_HOSPITAL_RECOMMENDATIONS, explain how hospital matching works and keep shortlist aligned to backend shortlist if one is present.
             - If backend next_action is SHOW_HOSPITAL_RECOMMENDATIONS, use backend shortlist and search_hospitals output together, but do not invent hospitals outside the tool output.
-            - If backend risk is CRISIS, produce a safety-only response and do not promote services.
+            - If backend risk is HIGH_RISK or CRISIS, produce a safety-only response and do not promote services.
             - If retrieval is weak, keep the answer short and avoid hallucinating facts.
             - If grounded FAQ content exposes a category, use that as topic; otherwise use null.
             - Keep reasonCodes aligned to backend reason_codes.
@@ -729,7 +801,7 @@ workflow:
             - Set metadata.engagementMode from backend engagement_mode.
             - Set metadata.internalNextAction from backend next_action.
             - Set metadata.pathMode to:
-              - safety_path for CRISIS/high-risk handling
+              - safety_path for HIGH_RISK/CRISIS handling
               - cheap_path for LIGHT_DISCOVERY
               - full_path otherwise
         - role: user

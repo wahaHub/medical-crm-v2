@@ -1,5 +1,10 @@
 import type { HospitalType } from '@medical-crm/domain';
 
+export type AiPolicyEngagementMode =
+  | 'LIGHT_DISCOVERY'
+  | 'QUALIFIED_EXPLORATION'
+  | 'DEEP_WORKFLOW';
+
 export interface AiPolicyRequestEnvelope<TPayload = Record<string, unknown>> {
   version: 'v1';
   request_id: string;

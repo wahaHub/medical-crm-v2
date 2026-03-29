@@ -190,12 +190,14 @@ describe('Chatbot routes', () => {
         inputs: expect.objectContaining({
           hospitalType: 'COSMETIC',
           sessionId: 'session-1',
+          assistantMessageId: expect.any(String),
           currentStatus: expect.any(Object),
         }),
       }),
     );
     expect(mockServices.aiChatMessageRepo.create).toHaveBeenLastCalledWith(
       expect.objectContaining({
+        id: expect.any(String),
         resolvedIntent: 'CONSULT',
         nextAction: 'CONSULT_CONVERSION',
         secondaryAction: 'REQUEST_DOCS',
@@ -207,6 +209,139 @@ describe('Chatbot routes', () => {
         }),
       }),
     );
+    const difyPayload = mockServices.difyApi.createChatMessage.mock.calls[0]?.[0];
+    const assistantEntity = mockServices.aiChatMessageRepo.create.mock.calls.at(-1)?.[0];
+    expect(assistantEntity.id).toBe(difyPayload.inputs.assistantMessageId);
+  });
+
+  it('POST /api/v2/chatbot/chat preserves light-discovery routing details without promoting a deep action', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-light',
+      answer: JSON.stringify({
+        answer: 'We can help explain what we do and how the process works.',
+        intent: 'FAQ',
+        resolvedIntent: 'GENERAL_CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'ANSWER',
+        secondaryAction: null,
+        responseMode: 'light_discovery_guidance',
+        engagementMode: 'LIGHT_DISCOVERY',
+        metadata: {
+          internalNextAction: 'ANSWER_FAQ',
+        },
+        reasonCodes: ['light_discovery_soft_guidance'],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-light',
+        hospitalType: 'COSMETIC',
+        message: 'Hi, what do you do?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('ANSWER');
+    expect(json.responseMode).toBe('light_discovery_guidance');
+    expect(json.metadata).toMatchObject({
+      engagementMode: 'LIGHT_DISCOVERY',
+      internalNextAction: 'ANSWER_FAQ',
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat preserves qualified-exploration detail while keeping the public contract compatible', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-qualified',
+      answer: JSON.stringify({
+        answer: 'I can walk you through how consultation and hospital matching usually work before you decide.',
+        intent: 'CONSULT',
+        resolvedIntent: 'GENERAL_CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'ANSWER',
+        secondaryAction: null,
+        responseMode: 'consult_explanation',
+        engagementMode: 'QUALIFIED_EXPLORATION',
+        metadata: {
+          internalNextAction: 'EXPLAIN_CONSULT_PROCESS',
+        },
+        reasonCodes: ['qualified_consult_explanation'],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-qualified',
+        hospitalType: 'COSMETIC',
+        message: 'Can you explain how you choose hospitals before I decide?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('ANSWER');
+    expect(json.responseMode).toBe('consult_explanation');
+    expect(json.metadata).toMatchObject({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      internalNextAction: 'EXPLAIN_CONSULT_PROCESS',
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat keeps explicit progression requests on deep workflow signals', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-deep',
+      answer: JSON.stringify({
+        answer: 'We can start a full case workflow now.',
+        intent: 'CONSULT',
+        resolvedIntent: 'START_CASE',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'CREATE_CASE',
+        secondaryAction: 'REQUEST_DOCS',
+        responseMode: 'deep_workflow_progression',
+        engagementMode: 'DEEP_WORKFLOW',
+        metadata: {
+          internalNextAction: 'CREATE_CASE',
+        },
+        reasonCodes: ['explicit_progression_request'],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-deep',
+        hospitalType: 'COSMETIC',
+        message: 'I want to start now and create a case.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('CREATE_CASE');
+    expect(json.secondaryAction).toBe('REQUEST_DOCS');
+    expect(json.responseMode).toBe('deep_workflow_progression');
+    expect(json.metadata).toMatchObject({
+      engagementMode: 'DEEP_WORKFLOW',
+      internalNextAction: 'CREATE_CASE',
+    });
   });
 
   it('POST /api/v2/chatbot/chat returns 409 when an existing session is reused with a mismatched hospitalType', async () => {

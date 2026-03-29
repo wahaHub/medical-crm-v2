@@ -17,6 +17,8 @@ import {
 import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 
+export const chatbotPublicRoutes = new OpenAPIHono();
+export const chatbotProtectedRoutes = new OpenAPIHono();
 const app = new OpenAPIHono();
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
@@ -38,7 +40,7 @@ const sendChatRoute = createRoute({
   },
 });
 
-app.openapi(sendChatRoute, async (c) => {
+chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
 
@@ -100,12 +102,14 @@ app.openapi(sendChatRoute, async (c) => {
     createdAt: new Date(),
   }));
 
+  const assistantMessageId = generateId();
   let difyResponse: Record<string, unknown>;
   try {
     difyResponse = await svc.difyApi.createChatMessage({
       inputs: {
         hospitalType: body.hospitalType,
         sessionId: body.sessionId,
+        assistantMessageId,
         currentStatus: session.statusSnapshot,
         conversationSummary: session.statusSnapshot.conversationSummary,
         pendingOffer: session.statusSnapshot.pendingOffer,
@@ -131,7 +135,7 @@ app.openapi(sendChatRoute, async (c) => {
   }
 
   const assistantMessage = await svc.aiChatMessageRepo.create(new AiChatMessage({
-    id: generateId(),
+    id: assistantMessageId,
     sessionId: session.id,
     role: 'ASSISTANT',
     content: normalized.answer,
@@ -187,7 +191,7 @@ const bootstrapChatbotSyncRoute = createRoute({
   },
 });
 
-app.openapi(bootstrapChatbotSyncRoute, async (c) => {
+chatbotProtectedRoutes.openapi(bootstrapChatbotSyncRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   if (actor.role !== 'ADMIN') {
     return c.json({ error: 'Forbidden' }, 403);
@@ -214,7 +218,7 @@ const convertChatRoute = createRoute({
   },
 });
 
-app.openapi(convertChatRoute, async (c) => {
+chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
@@ -289,7 +293,7 @@ const escalateChatRoute = createRoute({
   },
 });
 
-app.openapi(escalateChatRoute, async (c) => {
+chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
@@ -381,7 +385,7 @@ const initChatbotUploadRoute = createRoute({
   },
 });
 
-app.openapi(initChatbotUploadRoute, async (c) => {
+chatbotPublicRoutes.openapi(initChatbotUploadRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
   const session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
@@ -429,7 +433,7 @@ const getChatbotHistoryRoute = createRoute({
   },
 });
 
-app.openapi(getChatbotHistoryRoute, async (c) => {
+chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
   const { sessionId } = c.req.valid('param');
   const { limit } = c.req.valid('query');
   const svc = getServices();
@@ -809,6 +813,16 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
   const parsedAnswer = parseStructuredAnswer(response.answer);
   const citations = parsedAnswer?.citations ?? deriveCitations(metadata);
   const topic = parsedAnswer?.topic ?? null;
+  const structuredMetadata = parsedAnswer?.metadata ?? {};
+  const engagementMode = parsedAnswer?.engagementMode
+    ?? asString(structuredMetadata.engagementMode)
+    ?? asString(structuredMetadata.engagement_mode)
+    ?? null;
+  const internalNextAction = parsedAnswer?.internalNextAction
+    ?? asString(structuredMetadata.internalNextAction)
+    ?? asString(structuredMetadata.internal_next_action)
+    ?? null;
+  const publicNextAction = normalizeNextAction(parsedAnswer?.nextAction);
 
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
@@ -817,7 +831,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     topic,
     riskLevel: normalizeRiskLevel(parsedAnswer?.riskLevel),
     canAnswer: parsedAnswer?.canAnswer ?? null,
-    nextAction: normalizeNextAction(parsedAnswer?.nextAction),
+    nextAction: publicNextAction,
     secondaryAction: parsedAnswer?.secondaryAction ?? null,
     responseMode: parsedAnswer?.responseMode ?? null,
     collectedFields: parsedAnswer?.collectedFields ?? null,
@@ -831,6 +845,10 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     taskId: asString(response.task_id),
       metadata: {
         ...metadata,
+        ...structuredMetadata,
+        engagementMode,
+        internalNextAction,
+        publicNextAction,
         topic,
         structuredOutput: parsedAnswer ?? null,
         rawResponse: response,
@@ -851,6 +869,9 @@ function parseStructuredAnswer(value: unknown): {
   reasonCodes?: string[];
   shortlist?: Array<Record<string, unknown>>;
   citations?: AiChatCitation[];
+  engagementMode?: string;
+  internalNextAction?: string;
+  metadata?: Record<string, unknown>;
   collectedFields?: Record<string, unknown>;
   missingItems?: string[];
   recommendedProviders?: Record<string, unknown>[];
@@ -879,6 +900,9 @@ function parseStructuredAnswer(value: unknown): {
         : Array.isArray(parsed.reason_codes)
           ? parsed.reason_codes.filter((item): item is string => typeof item === 'string')
           : undefined,
+      engagementMode: asString(parsed.engagementMode) ?? asString(parsed.engagement_mode),
+      internalNextAction: asString(parsed.internalNextAction) ?? asString(parsed.internal_next_action),
+      metadata: asRecord(parsed.metadata),
       shortlist: Array.isArray(parsed.shortlist)
         ? parsed.shortlist.map((item) => asRecord(item))
         : undefined,
@@ -936,3 +960,6 @@ function asString(value: unknown): string | undefined {
 }
 
 export default app;
+
+app.route('/', chatbotPublicRoutes);
+app.route('/', chatbotProtectedRoutes);

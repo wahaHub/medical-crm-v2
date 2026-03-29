@@ -52,19 +52,8 @@ workflow:
         targetType: http-request
         isInIteration: false
         isInLoop: false
-    - id: search-hospitals-context
+    - id: search-hospitals-decide
       source: search_hospitals_http
-      sourceHandle: source
-      target: context_http
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: http-request
-        targetType: http-request
-        isInIteration: false
-        isInLoop: false
-    - id: context-decide
-      source: context_http
       sourceHandle: source
       target: decide_http
       targetHandle: target
@@ -72,6 +61,17 @@ workflow:
       data:
         sourceType: http-request
         targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: risk-normal-engagement-gate
+      source: risk_gate
+      sourceHandle: 'false'
+      target: engagement_gate
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: if-else
         isInIteration: false
         isInLoop: false
     - id: decide-risk-gate
@@ -96,14 +96,36 @@ workflow:
         targetType: llm
         isInIteration: false
         isInLoop: false
-    - id: risk-normal-action-gate
-      source: risk_gate
-      sourceHandle: 'false'
-      target: action_gate
+    - id: engagement-light-response
+      source: engagement_gate
+      sourceHandle: light_discovery
+      target: response_composer
       targetHandle: target
       type: custom
       data:
         sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: engagement-deeper-context
+      source: engagement_gate
+      sourceHandle: 'false'
+      target: context_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: context-action-gate
+      source: context_http
+      sourceHandle: source
+      target: action_gate
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: http-request
         targetType: if-else
         isInIteration: false
         isInLoop: false
@@ -346,7 +368,7 @@ workflow:
         y: 340
       data:
         title: Load CRM Context
-        desc: CRM truth source for summary, status, pending offer, and history.
+        desc: Full CRM truth source for summary, status, pending offer, and history. Cheap-path LIGHT_DISCOVERY turns should bypass this node.
         type: http-request
         method: post
         url: http://host.docker.internal:3001/api/v2/internal/ai-policy/context
@@ -392,8 +414,8 @@ workflow:
         x: 1310
         y: 340
       data:
-        title: Backend Policy Decide
-        desc: Authoritative decision source. Candidate hospitals are input only; shortlist is decided by backend.
+        title: Resolve Engagement Mode + Backend Policy Decide
+        desc: Authoritative backend gate. Returns engagement_mode, risk, and next_action from light inputs first; candidate hospitals are hints only and shortlist selection remains backend-owned.
         type: http-request
         method: post
         url: http://host.docker.internal:3001/api/v2/internal/ai-policy/decide
@@ -458,14 +480,37 @@ workflow:
             comparison_operator: is
             value: CRISIS
             varType: string
-    - id: action_gate
+    - id: engagement_gate
       type: custom
       position:
         x: 1620
         y: 470
       data:
+        title: Engagement Gate
+        desc: LIGHT_DISCOVERY stays on the cheap path. Qualified/deep modes continue into context, retrieval, and tool branching.
+        type: if-else
+        cases:
+        - case_id: light_discovery
+          id: light_discovery
+          logical_operator: and
+          conditions:
+          - id: engagement-light
+            variable_selector:
+            - decide_http
+            - body
+            - data
+            - engagement_mode
+            comparison_operator: is
+            value: LIGHT_DISCOVERY
+            varType: string
+    - id: action_gate
+      type: custom
+      position:
+        x: 1940
+        y: 470
+      data:
         title: Action Gate
-        desc: Package path is explicit; FAQ path is grounded; other actions go direct to composer with backend contract.
+        desc: Deeper modes may branch into package, FAQ retrieval, or a direct composer pass-through. Backend remains authoritative.
         type: if-else
         cases:
         - case_id: show_package
@@ -624,6 +669,7 @@ workflow:
             Do not invent risk, actions, hospitals, package facts, or human handoff decisions outside that contract.
 
             You may use grounded FAQ/package retrieval and tool outputs as facts.
+            CRM context may be empty on LIGHT_DISCOVERY turns because cheap-path handling bypasses deeper retrieval/context loading.
 
             Map internal backend fields to the public chatbot contract:
             - risk_level CRISIS -> riskLevel CRISIS
@@ -634,7 +680,7 @@ workflow:
             - next_action REQUEST_DOC_UPLOAD -> nextAction REQUEST_DOCS
             - next_action EXPLAIN_DOC_UPLOAD -> nextAction ANSWER
             - next_action EXPLAIN_CONSULT_PROCESS -> nextAction ANSWER
-            - next_action EXPLORE_HOSPITAL_RECOMMENDATIONS -> nextAction CONSULT_CONVERSION
+            - next_action EXPLORE_HOSPITAL_RECOMMENDATIONS -> nextAction ANSWER
             - next_action SHOW_HOSPITAL_RECOMMENDATIONS -> nextAction CONSULT_CONVERSION
             - next_action SAFETY_HANDOFF -> nextAction SAFETY
 
@@ -660,10 +706,16 @@ workflow:
               "recommendedProviders": [],
               "reasonCodes": [],
               "shortlist": [],
-              "citations": []
+              "citations": [],
+              "metadata": {
+                "engagementMode": "LIGHT_DISCOVERY|QUALIFIED_EXPLORATION|DEEP_WORKFLOW|null",
+                "internalNextAction": "string|null",
+                "pathMode": "cheap_path|full_path|safety_path|null"
+              }
             }
 
             Rules:
+            - If backend engagement_mode is LIGHT_DISCOVERY, keep the answer lightweight and trust-building. Do not force conversion, shortlist promotion, or heavy workflow language.
             - If backend next_action is REQUEST_DOC_UPLOAD, ask for documents and set missingItems if grounded sources mention required materials.
             - If backend next_action is EXPLAIN_DOC_UPLOAD, explain the upload process without pretending an upload widget has already started.
             - If backend next_action is EXPLAIN_CONSULT_PROCESS, explain the consult workflow and keep the tone exploratory rather than forceful.
@@ -674,6 +726,12 @@ workflow:
             - If grounded FAQ content exposes a category, use that as topic; otherwise use null.
             - Keep reasonCodes aligned to backend reason_codes.
             - Keep shortlist aligned to backend shortlist if present; otherwise use [].
+            - Set metadata.engagementMode from backend engagement_mode.
+            - Set metadata.internalNextAction from backend next_action.
+            - Set metadata.pathMode to:
+              - safety_path for CRISIS/high-risk handling
+              - cheap_path for LIGHT_DISCOVERY
+              - full_path otherwise
         - role: user
           text: |
             User message:

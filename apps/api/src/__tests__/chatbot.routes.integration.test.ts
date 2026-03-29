@@ -198,4 +198,31 @@ describe('Chatbot routes integration', () => {
     expect(json.messages[1]?.content).toBe('Second answer');
     expect(json.messages[1]?.nextAction).toBe('ANSWER');
   });
+
+  it('POST /api/v2/chatbot/chat falls back safely when Dify returns plain text instead of structured JSON', async () => {
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'conv-int-plain-1',
+      answer: 'We can help you continue this conversation with our team.',
+      metadata: { retriever_resources: [] },
+    });
+
+    const sessionId = `${SESSION_PREFIX}${randomUUID()}`;
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        hospitalType: 'COSMETIC',
+        message: 'Can you help me?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.answer).toBe('We can help you continue this conversation with our team.');
+    expect(json.topic).toBeNull();
+    expect(json.nextAction).toBeNull();
+    expect(json.reasonCodes).toEqual([]);
+    expect(json.shortlist).toEqual([]);
+  });
 });

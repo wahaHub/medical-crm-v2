@@ -25,6 +25,14 @@ export class ActionPlannerService {
       };
     }
 
+    if (input.resolvedIntent === 'REQUEST_DOC_UPLOAD') {
+      return {
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        secondaryAction: null,
+        reasonCodes: ['explicit_document_request'],
+      };
+    }
+
     if (
       input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' &&
       normalize(input.statusSnapshot.docUploadStatus) === 'NOT_STARTED'

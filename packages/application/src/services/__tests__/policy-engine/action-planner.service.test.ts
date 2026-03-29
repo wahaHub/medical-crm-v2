@@ -17,4 +17,21 @@ describe('ActionPlannerService', () => {
 
     expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
   });
+
+  it('keeps explicit document-upload intent ahead of package promotion', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      statusSnapshot: {
+        docUploadStatus: 'NOT_STARTED',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+    });
+
+    expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(plan.reasonCodes).toContain('explicit_document_request');
+  });
 });

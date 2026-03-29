@@ -72,4 +72,22 @@ describe('ActionPlannerService', () => {
     expect(plan.nextAction).toBe('SHOW_PACKAGE');
     expect(plan.reasonCodes).toContain('qualified_package_exploration');
   });
+
+  it('allows recommendation exploration in qualified exploration without forcing full shortlist progression', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+    });
+
+    expect(plan.nextAction).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(plan.reasonCodes).toContain('qualified_recommendation_exploration');
+  });
 });

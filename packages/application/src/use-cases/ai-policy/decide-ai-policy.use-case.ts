@@ -42,15 +42,9 @@ export class DecideAiPolicyUseCase {
 
     const engagement = this.engagementModeResolver.resolve({
       userMessage: input.userMessage,
-      statusSnapshot: {
-        formStatus: lightContext.statusSnapshot.formStatus,
-        docUploadStatus: lightContext.statusSnapshot.docUploadStatus,
-        consultationStatus: lightContext.statusSnapshot.consultationStatus,
-        leadMaturity: lightContext.statusSnapshot.leadMaturity,
-        riskLevel: lightContext.statusSnapshot.riskLevel,
-        pendingOffer: lightContext.statusSnapshot.pendingOffer,
-        pendingQuestion: lightContext.statusSnapshot.pendingQuestion,
-      },
+      currentEngagementMode: lightContext.currentEngagementMode,
+      pendingOffer: lightContext.pendingOffer,
+      pendingQuestion: lightContext.pendingQuestion,
       lastAssistantAction: lightContext.lastAssistantAction,
       candidateSignals,
     });
@@ -72,25 +66,33 @@ export class DecideAiPolicyUseCase {
 
     const intent = await this.intentResolver.resolve({
       userMessage: input.userMessage,
-      pendingOffer: context.statusSnapshot.pendingOffer,
-      recentMessages: context.recentMessages.map((message) => ({
+      pendingOffer: context.pendingOffer.exists
+        ? { type: context.pendingOffer.type ?? 'UNKNOWN' }
+        : null,
+      recentMessages: context.contextDepth === 'full'
+        ? context.recentMessages.map((message) => ({
         role: message.role,
         content: message.content,
         nextAction: message.nextAction,
-      })),
+      }))
+        : [],
       candidateSignals,
     });
 
     const plan = this.actionPlanner.plan({
-      statusSnapshot: {
-        ...context.statusSnapshot,
-        riskLevel: risk.riskLevel,
-      },
+      statusSnapshot: context.contextDepth === 'full'
+        ? {
+            ...context.statusSnapshot,
+            riskLevel: risk.riskLevel,
+          }
+        : {
+            riskLevel: risk.riskLevel,
+          },
       engagementMode: effectiveEngagementMode,
       resolvedIntent: intent.resolvedIntent,
     });
 
-    const recommendation = effectiveEngagementMode === 'DEEP_WORKFLOW'
+    const recommendation = effectiveEngagementMode === 'DEEP_WORKFLOW' && context.contextDepth === 'full'
       ? await this.recommendationPolicy.decide({
         statusSnapshot: {
           ...context.statusSnapshot,
@@ -192,6 +194,8 @@ function buildAllowedTools(nextAction: string): string[] {
   switch (nextAction) {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
       return ['search_hospitals', 'get_hospital_details'];
+    case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
+      return ['search_hospitals'];
     case 'REQUEST_DOC_UPLOAD':
       return ['request_docs_upload'];
     case 'SHOW_PACKAGE':
@@ -207,6 +211,8 @@ function buildResponseMode(nextAction: string): string {
   switch (nextAction) {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
       return 'grounded_with_shortlist';
+    case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
+      return 'grounded_with_guidance';
     case 'REQUEST_DOC_UPLOAD':
       return 'guided_upload_request';
     case 'SHOW_PACKAGE':

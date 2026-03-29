@@ -285,10 +285,11 @@ describe('ContextBuilderService', () => {
     expect(context.currentEngagementMode).toBe('QUALIFIED_EXPLORATION');
     expect(context.pendingOffer.type).toBe('HOSPITAL_RECOMMENDATION');
     expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
-    expect(context.profile).toBeNull();
-    expect(context.recentTimeline).toEqual([]);
-    expect(context.activeFollowups).toEqual([]);
-    expect(context.recentHandoffs).toEqual([]);
+    expect('statusSnapshot' in context).toBe(false);
+    expect('profile' in context).toBe(false);
+    expect('recentTimeline' in context).toBe(false);
+    expect('activeFollowups' in context).toBe(false);
+    expect('recentHandoffs' in context).toBe(false);
     expect(profileRepo.findByAnonymousKeyOrPatient).not.toHaveBeenCalled();
     expect(timelineRepo.listRecentBySession).not.toHaveBeenCalled();
     expect(followupRepo.listPendingBySession).not.toHaveBeenCalled();

@@ -22,26 +22,6 @@ describe('DecideAiPolicyUseCase', () => {
         },
         patientId: null,
         currentEngagementMode: 'LIGHT_DISCOVERY',
-        statusSnapshot: {
-          conditionStatus: 'unknown',
-          formStatus: 'not_started',
-          docUploadStatus: 'none',
-          recommendationStatus: 'not_started',
-          consultationStatus: 'not_introduced',
-          packageStatus: 'not_introduced',
-          handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
-          riskLevel: 'low',
-          trustOrObjection: 'none',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: null,
-          lastResolvedIntent: null,
-          conversationSummary: '',
-          lastPolicyDecisionAt: null,
-          lastUserMessageAt: null,
-          lastAssistantMessageAt: null,
-        },
         pendingOffer: { exists: false, type: null },
         pendingQuestion: { exists: false, type: null },
         lastAssistantAction: null,
@@ -92,33 +72,13 @@ describe('DecideAiPolicyUseCase', () => {
           contextDepth: 'light',
           sessionId: 'session-2',
           userMessage: 'I want to understand your process and how you choose hospitals before I decide.',
-          session: { id: 'db-session-2', sessionId: 'session-2', patientId: null },
-          patientId: null,
-          currentEngagementMode: 'LIGHT_DISCOVERY',
-          statusSnapshot: {
-            conditionStatus: 'unknown',
-            formStatus: 'not_started',
-            docUploadStatus: 'none',
-            recommendationStatus: 'not_started',
-            consultationStatus: 'not_introduced',
-            packageStatus: 'not_introduced',
-            handoffStatus: 'not_needed',
-            leadMaturity: 'browsing',
-            riskLevel: 'low',
-            trustOrObjection: 'none',
-            pendingOffer: null,
-            pendingQuestion: null,
-            lastNextAction: null,
-            lastResolvedIntent: null,
-            conversationSummary: '',
-            lastPolicyDecisionAt: null,
-            lastUserMessageAt: null,
-            lastAssistantMessageAt: null,
-          },
-          pendingOffer: { exists: false, type: null },
-          pendingQuestion: { exists: false, type: null },
-          lastAssistantAction: null,
-          safetyFlags: {
+        session: { id: 'db-session-2', sessionId: 'session-2', patientId: null },
+        patientId: null,
+        currentEngagementMode: 'LIGHT_DISCOVERY',
+        pendingOffer: { exists: false, type: null },
+        pendingQuestion: { exists: false, type: null },
+        lastAssistantAction: null,
+        safetyFlags: {
             riskLevel: 'LOW',
             hasHighRiskSignal: false,
             requiresSafetyHandling: false,
@@ -204,27 +164,7 @@ describe('DecideAiPolicyUseCase', () => {
       userMessage: 'What happens after the form review?',
       session: { id: 'db-session-3', sessionId: 'session-3', patientId: null },
       patientId: null,
-      currentEngagementMode: input.depth === 'full' ? 'DEEP_WORKFLOW' : 'LIGHT_DISCOVERY',
-      statusSnapshot: {
-        conditionStatus: 'known',
-        formStatus: 'completed',
-        docUploadStatus: 'uploaded',
-        recommendationStatus: 'not_started',
-        consultationStatus: 'not_introduced',
-        packageStatus: 'not_introduced',
-        handoffStatus: 'not_needed',
-        leadMaturity: 'qualified',
-        riskLevel: 'low',
-        trustOrObjection: 'none',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: 'CONSULT_CONVERSION',
-        lastResolvedIntent: 'GENERAL_CONSULT',
-        conversationSummary: 'Form completed and documents uploaded.',
-        lastPolicyDecisionAt: null,
-        lastUserMessageAt: null,
-        lastAssistantMessageAt: null,
-      },
+      currentEngagementMode: input.depth === 'full' ? 'DEEP_WORKFLOW' : 'DEEP_WORKFLOW',
       pendingOffer: { exists: false, type: null },
       pendingQuestion: { exists: false, type: null },
       lastAssistantAction: 'CONSULT_CONVERSION',
@@ -233,11 +173,41 @@ describe('DecideAiPolicyUseCase', () => {
         hasHighRiskSignal: false,
         requiresSafetyHandling: false,
       },
-      profile: null,
-      recentMessages: [],
-      recentTimeline: [],
-      activeFollowups: [],
-      recentHandoffs: [],
+      ...(input.depth === 'full'
+        ? {
+            statusSnapshot: {
+              conditionStatus: 'known',
+              formStatus: 'completed',
+              docUploadStatus: 'uploaded',
+              recommendationStatus: 'not_started',
+              consultationStatus: 'not_introduced',
+              packageStatus: 'not_introduced',
+              handoffStatus: 'not_needed',
+              leadMaturity: 'qualified',
+              riskLevel: 'low',
+              trustOrObjection: 'none',
+              pendingOffer: null,
+              pendingQuestion: null,
+              lastNextAction: 'CONSULT_CONVERSION',
+              lastResolvedIntent: 'GENERAL_CONSULT',
+              conversationSummary: 'Form completed and documents uploaded.',
+              lastPolicyDecisionAt: null,
+              lastUserMessageAt: null,
+              lastAssistantMessageAt: null,
+            },
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }
+        : {
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }),
     }));
 
     const useCase = new DecideAiPolicyUseCase(
@@ -258,5 +228,97 @@ describe('DecideAiPolicyUseCase', () => {
 
     expect(result.engagement_mode).toBe('DEEP_WORKFLOW');
     expect(build).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps qualified exploration on a recommendation-exploration path without producing a shortlist', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => {
+      if (input.depth === 'light') {
+        return {
+          contextDepth: 'light',
+          sessionId: 'session-4',
+          userMessage: 'Can you walk me through how you choose hospitals for someone like me?',
+          session: { id: 'db-session-4', sessionId: 'session-4', patientId: null },
+          patientId: null,
+          currentEngagementMode: 'LIGHT_DISCOVERY',
+          pendingOffer: { exists: false, type: null },
+          pendingQuestion: { exists: false, type: null },
+          lastAssistantAction: null,
+          safetyFlags: {
+            riskLevel: 'LOW',
+            hasHighRiskSignal: false,
+            requiresSafetyHandling: false,
+          },
+          profile: null,
+          recentMessages: [],
+          recentTimeline: [],
+          activeFollowups: [],
+          recentHandoffs: [],
+        };
+      }
+
+      return {
+        contextDepth: 'full',
+        sessionId: 'session-4',
+        userMessage: 'Can you walk me through how you choose hospitals for someone like me?',
+        session: { id: 'db-session-4', sessionId: 'session-4', patientId: null },
+        patientId: null,
+        currentEngagementMode: 'QUALIFIED_EXPLORATION',
+        pendingOffer: { exists: false, type: null },
+        pendingQuestion: { exists: false, type: null },
+        lastAssistantAction: 'CONSULT_CONVERSION',
+        safetyFlags: {
+          riskLevel: 'LOW',
+          hasHighRiskSignal: false,
+          requiresSafetyHandling: false,
+        },
+        statusSnapshot: {
+          conditionStatus: 'unknown',
+          formStatus: 'not_started',
+          docUploadStatus: 'uploaded',
+          recommendationStatus: 'not_started',
+          consultationStatus: 'not_introduced',
+          packageStatus: 'shown',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'qualified',
+          riskLevel: 'low',
+          trustOrObjection: 'needs_trust',
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: 'CONSULT_CONVERSION',
+          lastResolvedIntent: 'GENERAL_CONSULT',
+          conversationSummary: 'User wants to understand hospital choice process before deciding.',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        profile: null,
+        recentMessages: [],
+        recentTimeline: [],
+        activeFollowups: [],
+        recentHandoffs: [],
+      };
+    });
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-4',
+      userMessage: 'Can you walk me through how you choose hospitals for someone like me?',
+      extraction: {},
+      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+    });
+
+    expect(result.engagement_mode).toBe('QUALIFIED_EXPLORATION');
+    expect(result.next_action).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.shortlist).toEqual([]);
+    expect(result.allowed_tools).toEqual(['search_hospitals']);
   });
 });

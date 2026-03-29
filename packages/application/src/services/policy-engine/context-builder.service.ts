@@ -43,6 +43,14 @@ export interface PolicyConversationContext {
   pendingQuestion: PolicyPendingStateSummary;
   lastAssistantAction: string | null;
   safetyFlags: PolicySafetyFlags;
+}
+
+export interface LightPolicyConversationContext extends PolicyConversationContext {
+  contextDepth: 'light';
+}
+
+export interface FullPolicyConversationContext extends PolicyConversationContext {
+  contextDepth: 'full';
   statusSnapshot: AiChatStatusSnapshot;
   profile: AiUserProfile | null;
   recentMessages: AiChatMessage[];
@@ -61,7 +69,9 @@ export class ContextBuilderService {
     private readonly handoffRepo: IAiHandoffRepository,
   ) {}
 
-  async build(input: BuildPolicyContextInput): Promise<PolicyConversationContext> {
+  async build(input: BuildPolicyContextInput & { depth: 'light' }): Promise<LightPolicyConversationContext>;
+  async build(input: BuildPolicyContextInput & { depth?: 'full' }): Promise<FullPolicyConversationContext>;
+  async build(input: BuildPolicyContextInput): Promise<LightPolicyConversationContext | FullPolicyConversationContext> {
     const depth = input.depth ?? 'full';
     const session = await this.sessionRepo.findBySessionId(input.sessionId);
     if (!session) {
@@ -79,8 +89,7 @@ export class ContextBuilderService {
       pendingQuestion: summarizePendingState(session.statusSnapshot.pendingQuestion),
       lastAssistantAction: session.statusSnapshot.lastNextAction,
       safetyFlags: buildSafetyFlags(session.statusSnapshot),
-      statusSnapshot: session.statusSnapshot,
-    } satisfies Omit<PolicyConversationContext, 'profile' | 'recentMessages' | 'recentTimeline' | 'activeFollowups' | 'recentHandoffs'>;
+    } satisfies PolicyConversationContext;
 
     if (depth === 'light') {
       const recentMessages = await this.messageRepo.listRecentBySession(session.id, 4);
@@ -90,12 +99,8 @@ export class ContextBuilderService {
 
       return {
         ...baseContext,
+        contextDepth: 'light',
         lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
-        profile: null,
-        recentMessages: [],
-        recentTimeline: [],
-        activeFollowups: [],
-        recentHandoffs: [],
       };
     }
 
@@ -116,7 +121,9 @@ export class ContextBuilderService {
 
     return {
       ...baseContext,
+      contextDepth: 'full',
       lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
+      statusSnapshot: session.statusSnapshot,
       profile,
       recentMessages,
       recentTimeline,

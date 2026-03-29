@@ -74,9 +74,17 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
     };
   }
 
+  if (input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' && !isDocsMissing(input.statusSnapshot.docUploadStatus)) {
+    return {
+      nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+      secondaryAction: null,
+      reasonCodes: ['qualified_recommendation_exploration'],
+    };
+  }
+
   if (
     input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' &&
-    normalize(input.statusSnapshot.docUploadStatus) === 'NOT_STARTED'
+    isDocsMissing(input.statusSnapshot.docUploadStatus)
   ) {
     return {
       nextAction: 'REQUEST_DOC_UPLOAD',

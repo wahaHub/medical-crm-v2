@@ -2,6 +2,15 @@ import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
 
 export interface EngagementModeResolverInput {
   userMessage: string;
+  currentEngagementMode?: AiPolicyEngagementMode | null;
+  pendingOffer?: {
+    exists: boolean;
+    type: string | null;
+  };
+  pendingQuestion?: {
+    exists: boolean;
+    type: string | null;
+  };
   statusSnapshot?: {
     formStatus?: string;
     docUploadStatus?: string;
@@ -125,10 +134,24 @@ export class EngagementModeResolverService {
       };
     }
 
-    if (hasActivePendingContext(input.statusSnapshot) && isAffirmative(userMessage)) {
+    if (hasActivePendingContext(input.statusSnapshot, input.pendingOffer, input.pendingQuestion) && isAffirmative(userMessage)) {
       return {
         engagementMode: 'DEEP_WORKFLOW',
         reasonCodes: ['pending_context_confirmed'],
+      };
+    }
+
+    if (input.currentEngagementMode === 'DEEP_WORKFLOW') {
+      return {
+        engagementMode: 'DEEP_WORKFLOW',
+        reasonCodes: ['existing_deep_workflow_state'],
+      };
+    }
+
+    if (input.currentEngagementMode === 'QUALIFIED_EXPLORATION') {
+      return {
+        engagementMode: 'QUALIFIED_EXPLORATION',
+        reasonCodes: ['existing_qualified_exploration_state'],
       };
     }
 
@@ -212,8 +235,15 @@ function looksLikeTrustBuildingOrQualification(
 
 function hasActivePendingContext(
   statusSnapshot: EngagementModeResolverInput['statusSnapshot'],
+  pendingOffer?: EngagementModeResolverInput['pendingOffer'],
+  pendingQuestion?: EngagementModeResolverInput['pendingQuestion'],
 ): boolean {
-  return Boolean(statusSnapshot?.pendingOffer || statusSnapshot?.pendingQuestion);
+  return Boolean(
+    pendingOffer?.exists
+    || pendingQuestion?.exists
+    || statusSnapshot?.pendingOffer
+    || statusSnapshot?.pendingQuestion,
+  );
 }
 
 function isAffirmative(userMessage: string): boolean {

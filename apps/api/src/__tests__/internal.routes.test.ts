@@ -7,6 +7,7 @@ const mockServices = {
   processMessageTasks: { execute: vi.fn() },
   processTranslationTasks: { execute: vi.fn() },
   processAiSyncOutbox: { execute: vi.fn() },
+  decideAiPolicy: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -105,6 +106,30 @@ describe('Internal routes', () => {
 
       expect(res.status).toBe(401);
       expect(mockServices.processAiSyncOutbox.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/v2/internal/ai-policy/decide', () => {
+    it('returns 400 for unsupported contract versions', async () => {
+      const res = await app.request('/api/v2/internal/ai-policy/decide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          version: 'old',
+          request_id: 'req-1',
+          session_id: 'session-1',
+          actor: 'DIFY',
+          source_channel: 'chatflow',
+          hospital_type: 'COSMETIC',
+          payload: {},
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.decideAiPolicy.execute).not.toHaveBeenCalled();
     });
   });
 });

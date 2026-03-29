@@ -138,7 +138,9 @@ describe('Chatbot routes', () => {
         intent: 'CONSULT',
         riskLevel: 'NORMAL',
         canAnswer: true,
+        topic: 'PROCEDURE',
         nextAction: 'CONSULT_CONVERSION',
+        responseMode: 'grounded_plus_guidance',
         collectedFields: { country: 'Singapore' },
         missingItems: ['photo'],
         citations: [{ sourceTitle: 'FAQ', snippet: 'Sample snippet' }],
@@ -160,7 +162,9 @@ describe('Chatbot routes', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.sessionId).toBe('session-1');
     expect(json.intent).toBe('CONSULT');
+    expect((json as Record<string, unknown>)['topic']).toBe('PROCEDURE');
     expect(json.nextAction).toBe('CONSULT_CONVERSION');
+    expect((json as Record<string, unknown>)['responseMode']).toBe('grounded_plus_guidance');
     expect(json.collectedFields?.country).toBe('Singapore');
     expect(json.missingItems).toEqual(['photo']);
     expect('difyConversationId' in (json as Record<string, unknown>)).toBe(false);

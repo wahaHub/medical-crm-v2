@@ -3,6 +3,7 @@ import {
   AiChatTimelineEvent,
   AiFollowupTrigger,
   AiHandoff,
+  type IAiChatMessageRepository,
   type IAiChatSessionRepository,
   type IAiChatTimelineEventRepository,
   type IAiFollowupTriggerRepository,
@@ -33,6 +34,7 @@ export class WritebackExecutorService {
   constructor(
     private readonly sessionRepo: IAiChatSessionRepository,
     private readonly _profileRepo: IAiUserProfileRepository,
+    private readonly messageRepo: IAiChatMessageRepository,
     private readonly timelineRepo: IAiChatTimelineEventRepository,
     private readonly followupRepo: IAiFollowupTriggerRepository,
     private readonly handoffRepo: IAiHandoffRepository,
@@ -101,6 +103,11 @@ export class WritebackExecutorService {
       }));
       handoffCreated = created.id;
     }
+
+    await this.messageRepo.updateWritebackMetadata(input.assistantMessageId, {
+      metadata: plan.messageMetadata,
+      writebackStatus: 'completed',
+    });
 
     return {
       statusUpdated,

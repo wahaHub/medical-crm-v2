@@ -52,6 +52,45 @@ export class DrizzleAiChatMessageRepository implements IAiChatMessageRepository 
     return this.listBySession(sessionId, limit, tx);
   }
 
+  async updateWritebackMetadata(
+    messageId: string,
+    patch: {
+      metadata?: Record<string, unknown>;
+      writebackStatus?: string;
+    },
+    tx?: unknown,
+  ): Promise<AiChatMessage | null> {
+    const db = (tx as CrmDb) ?? this.db;
+    const existing = await db
+      .select()
+      .from(aiChatMessages)
+      .where(eq(aiChatMessages.id, messageId))
+      .limit(1);
+
+    const row = existing[0];
+    if (!row) {
+      return null;
+    }
+
+    const mergedMetadata = patch.metadata === undefined
+      ? ((row.metadata as Record<string, unknown> | null) ?? {})
+      : {
+          ...((row.metadata as Record<string, unknown> | null) ?? {}),
+          ...patch.metadata,
+        };
+
+    const updated = await db
+      .update(aiChatMessages)
+      .set({
+        metadata: mergedMetadata,
+        ...(patch.writebackStatus !== undefined ? { writebackStatus: patch.writebackStatus } : {}),
+      })
+      .where(eq(aiChatMessages.id, messageId))
+      .returning();
+
+    return updated[0] ? this.rowToEntity(updated[0]) : null;
+  }
+
   private rowToEntity(row: typeof aiChatMessages.$inferSelect): AiChatMessage {
     return new AiChatMessage({
       id: row.id,

@@ -77,6 +77,7 @@ describe('WritebackExecutorService', () => {
       })),
     };
     const profileRepo = { patch: vi.fn(async () => null) };
+    const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
     const timelineRepo = { append: vi.fn(async (event) => event) };
     const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
     const handoffRepo = { save: vi.fn(async (handoff) => handoff) };
@@ -84,6 +85,7 @@ describe('WritebackExecutorService', () => {
     const executor = new WritebackExecutorService(
       sessionRepo as any,
       profileRepo as any,
+      messageRepo as any,
       timelineRepo as any,
       followupRepo as any,
       handoffRepo as any,
@@ -113,6 +115,14 @@ describe('WritebackExecutorService', () => {
     }));
     expect(timelineRepo.append).not.toHaveBeenCalled();
     expect(followupRepo.createPendingTrigger).not.toHaveBeenCalled();
+    expect(messageRepo.updateWritebackMetadata).toHaveBeenCalledWith('assistant-light-1', {
+      metadata: expect.objectContaining({
+        engagementMode: 'LIGHT_DISCOVERY',
+        writebackDepth: 'minimal',
+        prequalificationReasonCodes: ['greeting_detected'],
+      }),
+      writebackStatus: 'completed',
+    });
     expect(result.timelineEventsWritten).toEqual([]);
     expect(result.followupCreated).toBeNull();
   });
@@ -191,6 +201,7 @@ describe('WritebackExecutorService', () => {
       })),
     };
     const profileRepo = { patch: vi.fn(async () => null) };
+    const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
     const timelineRepo = { append: vi.fn(async (event) => event) };
     const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
     const handoffRepo = { save: vi.fn(async (handoff) => handoff) };
@@ -198,6 +209,7 @@ describe('WritebackExecutorService', () => {
     const executor = new WritebackExecutorService(
       sessionRepo as any,
       profileRepo as any,
+      messageRepo as any,
       timelineRepo as any,
       followupRepo as any,
       handoffRepo as any,
@@ -225,6 +237,15 @@ describe('WritebackExecutorService', () => {
     expect(result.statusUpdated.recommendationStatus).toBe('PRELIMINARY_SHOWN');
     expect(result.statusUpdated.engagementMode).toBe('DEEP_WORKFLOW');
     expect(result.statusUpdated.enteredDeepWorkflowAt).toBeInstanceOf(Date);
+    expect(messageRepo.updateWritebackMetadata).toHaveBeenCalledWith('assistant-1', {
+      metadata: expect.objectContaining({
+        engagementMode: 'DEEP_WORKFLOW',
+        writebackDepth: 'complete',
+        prequalificationReasonCodes: ['form_completed', 'recommendation_requested'],
+        shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
+      }),
+      writebackStatus: 'completed',
+    });
     expect(result.messageMetadata.shortlist?.[0]?.hospitalId).toBe('hospital-1');
   });
 });

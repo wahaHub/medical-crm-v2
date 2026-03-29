@@ -107,6 +107,7 @@ describe('ContextBuilderService', () => {
           createdAt: new Date(),
         }),
       ]),
+      updateWritebackMetadata: vi.fn(async () => null),
     };
 
     const profileRepo: IAiUserProfileRepository = {
@@ -240,6 +241,7 @@ describe('ContextBuilderService', () => {
           createdAt: new Date(),
         }),
       ]),
+      updateWritebackMetadata: vi.fn(async () => null),
     };
 
     const profileRepo: IAiUserProfileRepository = {

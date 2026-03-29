@@ -55,18 +55,54 @@ export class WritebackPlannerService {
     const reasonCodes = input.policyDecision.reasonCodes ?? [];
     const engagementMode = input.policyDecision.engagementMode;
     const writebackDepth = input.policyDecision.writebackDepth;
+    const hasPrequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes !== undefined;
     const prequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes ?? [];
     const baseStatusPatch = {
       ...(engagementMode ? { engagementMode } : {}),
-      ...(prequalificationReasonCodes.length > 0 ? { prequalificationReasonCodes } : {}),
+      ...(hasPrequalificationReasonCodes ? { prequalificationReasonCodes } : {}),
     };
     const baseMessageMetadata = {
       ...(engagementMode ? { engagementMode } : {}),
       ...(writebackDepth ? { writebackDepth } : {}),
-      ...(prequalificationReasonCodes.length > 0 ? { prequalificationReasonCodes } : {}),
+      ...(hasPrequalificationReasonCodes ? { prequalificationReasonCodes } : {}),
     };
+    const minimalOnly = writebackDepth === 'minimal';
+    const moderateOnly = writebackDepth === 'moderate';
 
     if (input.policyDecision.nextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS') {
+      if (minimalOnly) {
+        return {
+          statusPatch: {
+            ...baseStatusPatch,
+            lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          },
+          timelineEvents: [],
+          followupTrigger: null,
+          messageMetadata: {
+            ...baseMessageMetadata,
+            shortlist,
+            reasonCodes,
+          },
+        };
+      }
+
+      if (moderateOnly) {
+        return {
+          statusPatch: {
+            ...baseStatusPatch,
+            recommendationStatus: 'PRELIMINARY_SHOWN',
+            lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          },
+          timelineEvents: [],
+          followupTrigger: null,
+          messageMetadata: {
+            ...baseMessageMetadata,
+            shortlist,
+            reasonCodes,
+          },
+        };
+      }
+
       return {
         statusPatch: {
           ...baseStatusPatch,
@@ -94,6 +130,37 @@ export class WritebackPlannerService {
     }
 
     if (input.policyDecision.nextAction === 'REQUEST_DOC_UPLOAD') {
+      if (minimalOnly) {
+        return {
+          statusPatch: {
+            ...baseStatusPatch,
+            lastNextAction: 'REQUEST_DOC_UPLOAD',
+          },
+          timelineEvents: [],
+          followupTrigger: null,
+          messageMetadata: {
+            ...baseMessageMetadata,
+            reasonCodes,
+          },
+        };
+      }
+
+      if (moderateOnly) {
+        return {
+          statusPatch: {
+            ...baseStatusPatch,
+            docUploadStatus: 'REQUESTED',
+            lastNextAction: 'REQUEST_DOC_UPLOAD',
+          },
+          timelineEvents: [],
+          followupTrigger: null,
+          messageMetadata: {
+            ...baseMessageMetadata,
+            reasonCodes,
+          },
+        };
+      }
+
       return {
         statusPatch: {
           ...baseStatusPatch,

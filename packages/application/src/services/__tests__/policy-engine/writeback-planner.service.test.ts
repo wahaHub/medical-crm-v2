@@ -34,6 +34,62 @@ describe('WritebackPlannerService', () => {
     });
   });
 
+  it('suppresses heavy side effects when writeback depth is minimal even for progression actions', () => {
+    const planner = new WritebackPlannerService();
+
+    const result = planner.plan({
+      sessionId: 'session-1',
+      sessionDbId: 'db-session-1',
+      patientId: null,
+      assistantMessageId: 'assistant-light-2',
+      policyDecision: {
+        engagementMode: 'LIGHT_DISCOVERY',
+        writebackDepth: 'minimal',
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        reasonCodes: ['documents_requested'],
+        prequalificationReasonCodes: ['low_signal_docs_question'],
+      },
+    });
+
+    expect(result.statusPatch).toEqual({
+      engagementMode: 'LIGHT_DISCOVERY',
+      prequalificationReasonCodes: ['low_signal_docs_question'],
+      lastNextAction: 'REQUEST_DOC_UPLOAD',
+    });
+    expect(result.timelineEvents).toEqual([]);
+    expect(result.followupTrigger).toBeNull();
+  });
+
+  it('clears prequalification reason codes when latest truth is empty', () => {
+    const planner = new WritebackPlannerService();
+
+    const result = planner.plan({
+      sessionId: 'session-1',
+      sessionDbId: 'db-session-1',
+      patientId: null,
+      assistantMessageId: 'assistant-light-3',
+      policyDecision: {
+        engagementMode: 'LIGHT_DISCOVERY',
+        writebackDepth: 'minimal',
+        nextAction: 'ANSWER_FAQ',
+        reasonCodes: ['light_discovery_soft_guidance'],
+        prequalificationReasonCodes: [],
+      },
+    });
+
+    expect(result.statusPatch).toEqual({
+      engagementMode: 'LIGHT_DISCOVERY',
+      prequalificationReasonCodes: [],
+      lastNextAction: 'ANSWER_FAQ',
+    });
+    expect(result.messageMetadata).toMatchObject({
+      engagementMode: 'LIGHT_DISCOVERY',
+      writebackDepth: 'minimal',
+      prequalificationReasonCodes: [],
+      reasonCodes: ['light_discovery_soft_guidance'],
+    });
+  });
+
   it('marks recommendation exploration without fabricating shortlist audit', () => {
     const planner = new WritebackPlannerService();
 

@@ -161,7 +161,7 @@ function isCrisisSignal(userMessage: string, candidateRisk: string | null): bool
 }
 
 function isDirectProgressionRequest(userMessage: string, candidateIntent: string | null): boolean {
-  if (candidateIntent && ['DEEP_WORKFLOW', 'CREATE_CASE', 'CONSULT_CONVERSION', 'REQUEST_DOCS'].includes(candidateIntent)) {
+  if (candidateIntent && ['DEEP_WORKFLOW', 'CREATE_CASE', 'REQUEST_DOCS'].includes(candidateIntent)) {
     return true;
   }
 
@@ -215,17 +215,17 @@ function hasKnownUserDetails(profile: EngagementModeResolverInput['profile']): b
   }
 
   return Boolean(
-    profile.conditionOrGoal ||
-      profile.conditionCategory ||
-      profile.preferredDestination?.length ||
-      profile.preferredLanguage ||
-      profile.budgetBand ||
-      profile.urgencyLevel ||
-      profile.existingReportsStatus !== undefined ||
-      profile.objectionTags?.length ||
-      profile.leadStage ||
-      profile.nextBestAction ||
-      profile.memorySummary,
+    hasMeaningfulString(profile.conditionOrGoal) ||
+      hasMeaningfulString(profile.conditionCategory) ||
+      (profile.preferredDestination?.length ?? 0) > 0 ||
+      hasMeaningfulString(profile.preferredLanguage) ||
+      hasMeaningfulString(profile.budgetBand) ||
+      hasMeaningfulString(profile.urgencyLevel) ||
+      hasMeaningfulReportsStatus(profile.existingReportsStatus) ||
+      (profile.objectionTags?.length ?? 0) > 0 ||
+      hasMeaningfulLeadStage(profile.leadStage) ||
+      hasMeaningfulString(profile.nextBestAction) ||
+      hasMeaningfulString(profile.memorySummary),
   );
 }
 
@@ -253,6 +253,29 @@ function containsBusinessSignal(userMessage: string): boolean {
     || /\breport\b/i.test(userMessage)
     || /\bscan\b/i.test(userMessage)
     || /\bbudget\b/i.test(userMessage);
+}
+
+function hasMeaningfulString(value: string | null | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasMeaningfulReportsStatus(value: string | undefined): boolean {
+  const normalized = normalizeMeaningfulString(value);
+  return normalized !== null && !['none', 'unknown'].includes(normalized);
+}
+
+function hasMeaningfulLeadStage(value: string | undefined): boolean {
+  const normalized = normalizeMeaningfulString(value);
+  return normalized !== null && !['browsing', 'none', 'unknown'].includes(normalized);
+}
+
+function normalizeMeaningfulString(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function normalizeText(value: unknown): string {

@@ -68,6 +68,29 @@ describe('EngagementModeResolverService', () => {
     expect(result.reasonCodes).toContain('explicit_progression_request');
   });
 
+  it('does not treat a soft consult-conversion hint as automatic deep workflow', () => {
+    const resolver = new EngagementModeResolverService();
+
+    const result = resolver.resolve({
+      userMessage: 'Can you explain the consultation options before I decide?',
+      statusSnapshot: {
+        leadMaturity: 'browsing',
+        riskLevel: 'LOW',
+        pendingOffer: null,
+        pendingQuestion: null,
+      },
+      recentMessages: [],
+      profile: null,
+      candidateSignals: {
+        possibleIntent: 'CONSULT_CONVERSION',
+      },
+    });
+
+    expect(result.engagementMode).toBe('QUALIFIED_EXPLORATION');
+    expect(result.reasonCodes).toContain('trust_building_signal');
+    expect(result.engagementMode).not.toBe('DEEP_WORKFLOW');
+  });
+
   it('uses the pending conversation context to escalate affirmative replies', () => {
     const resolver = new EngagementModeResolverService();
 
@@ -117,5 +140,37 @@ describe('EngagementModeResolverService', () => {
 
     expect(result.engagementMode).toBe('DEEP_WORKFLOW');
     expect(result.reasonCodes).toContain('risk_override');
+  });
+
+  it('keeps default profile values in LIGHT_DISCOVERY unless the message is stronger', () => {
+    const resolver = new EngagementModeResolverService();
+
+    const result = resolver.resolve({
+      userMessage: 'What is this?',
+      statusSnapshot: {
+        leadMaturity: 'browsing',
+        riskLevel: 'LOW',
+        pendingOffer: null,
+        pendingQuestion: null,
+      },
+      recentMessages: [],
+      profile: {
+        conditionOrGoal: null,
+        conditionCategory: null,
+        preferredDestination: [],
+        preferredLanguage: null,
+        budgetBand: null,
+        urgencyLevel: null,
+        existingReportsStatus: 'none',
+        objectionTags: [],
+        leadStage: 'browsing',
+        nextBestAction: null,
+        memorySummary: '',
+      },
+      candidateSignals: {},
+    });
+
+    expect(result.engagementMode).toBe('LIGHT_DISCOVERY');
+    expect(result.reasonCodes).toContain('default_light_path');
   });
 });

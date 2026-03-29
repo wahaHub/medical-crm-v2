@@ -1,5 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
+import {
+  AiChatMessage,
+  AiChatSession,
+  AiChatTimelineEvent,
+  AiFollowupTrigger,
+  AiHandoff,
+  AiUserProfile,
+} from '@medical-crm/domain';
 import { testDb } from './helpers.js';
 import {
   buildFollowupTriggerRow,
@@ -10,6 +18,19 @@ import {
   buildTimelineEventRow,
   policyTestPrefixes,
 } from './builders/ai-policy-test-builders.js';
+import { DrizzleAiChatMessageRepository } from '../../database/repositories/drizzle-ai-chat-message.repository.js';
+import { DrizzleAiChatSessionRepository } from '../../database/repositories/drizzle-ai-chat-session.repository.js';
+import { DrizzleAiChatTimelineEventRepository } from '../../database/repositories/drizzle-ai-chat-timeline-event.repository.js';
+import { DrizzleAiFollowupTriggerRepository } from '../../database/repositories/drizzle-ai-followup-trigger.repository.js';
+import { DrizzleAiHandoffRepository } from '../../database/repositories/drizzle-ai-handoff.repository.js';
+import { DrizzleAiUserProfileRepository } from '../../database/repositories/drizzle-ai-user-profile.repository.js';
+
+let sessionRepo: DrizzleAiChatSessionRepository;
+let messageRepo: DrizzleAiChatMessageRepository;
+let profileRepo: DrizzleAiUserProfileRepository;
+let timelineRepo: DrizzleAiChatTimelineEventRepository;
+let followupRepo: DrizzleAiFollowupTriggerRepository;
+let handoffRepo: DrizzleAiHandoffRepository;
 
 async function cleanupPolicyArtifacts() {
   const existingTables = await testDb.execute(sql`
@@ -77,6 +98,12 @@ async function cleanupPolicyArtifacts() {
 }
 
 beforeAll(async () => {
+  sessionRepo = new DrizzleAiChatSessionRepository(testDb);
+  messageRepo = new DrizzleAiChatMessageRepository(testDb);
+  profileRepo = new DrizzleAiUserProfileRepository(testDb);
+  timelineRepo = new DrizzleAiChatTimelineEventRepository(testDb);
+  followupRepo = new DrizzleAiFollowupTriggerRepository(testDb);
+  handoffRepo = new DrizzleAiHandoffRepository(testDb);
   await cleanupPolicyArtifacts();
 });
 
@@ -85,263 +112,155 @@ afterAll(async () => {
 });
 
 describe('AI policy schema integration', () => {
-  it('persists session policy state, profile memory, timeline events, followups, and handoffs', async () => {
-    const session = buildPolicySessionRow();
+  it('updates session snapshot and links profile/timeline/followup rows through repository classes', async () => {
+    const sessionRow = buildPolicySessionRow();
+    const session = await sessionRepo.save(new AiChatSession({
+      id: sessionRow.id,
+      sessionId: sessionRow.sessionId,
+      sessionSecretHash: sessionRow.sessionSecretHash,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: sessionRow.hospitalType,
+      status: sessionRow.status,
+      statusSnapshot: {
+        conditionStatus: sessionRow.conditionStatus,
+        formStatus: sessionRow.formStatus,
+        docUploadStatus: sessionRow.docUploadStatus,
+        recommendationStatus: sessionRow.recommendationStatus,
+        consultationStatus: sessionRow.consultationStatus,
+        packageStatus: sessionRow.packageStatus,
+        handoffStatus: sessionRow.handoffStatus,
+        leadMaturity: sessionRow.leadMaturity,
+        riskLevel: sessionRow.riskLevel,
+        trustOrObjection: sessionRow.trustOrObjection,
+        pendingOffer: {
+          type: sessionRow.pendingOfferType,
+          payload: sessionRow.pendingOfferPayload,
+        },
+        pendingQuestion: {
+          type: sessionRow.pendingQuestionType,
+          payload: sessionRow.pendingQuestionPayload,
+        },
+        lastNextAction: sessionRow.lastNextAction,
+        lastResolvedIntent: sessionRow.lastResolvedIntent,
+        conversationSummary: sessionRow.conversationSummary,
+        lastPolicyDecisionAt: new Date(sessionRow.lastPolicyDecisionAt),
+        lastUserMessageAt: new Date(sessionRow.lastUserMessageAt),
+        lastAssistantMessageAt: new Date(sessionRow.lastAssistantMessageAt),
+      },
+      createdAt: new Date(sessionRow.createdAt),
+      updatedAt: new Date(sessionRow.updatedAt),
+    }));
 
-    await testDb.execute(sql`
-      insert into ai_chat_sessions (
-        id,
-        session_id,
-        session_secret_hash,
-        hospital_type,
-        status,
-        condition_status,
-        form_status,
-        doc_upload_status,
-        recommendation_status,
-        consultation_status,
-        package_status,
-        handoff_status,
-        lead_maturity,
-        risk_level,
-        trust_or_objection,
-        pending_offer_type,
-        pending_offer_payload,
-        pending_question_type,
-        pending_question_payload,
-        last_next_action,
-        last_resolved_intent,
-        conversation_summary,
-        last_policy_decision_at,
-        last_user_message_at,
-        last_assistant_message_at,
-        created_at,
-        updated_at
-      ) values (
-        ${session.id},
-        ${session.sessionId},
-        ${session.sessionSecretHash},
-        ${session.hospitalType},
-        ${session.status},
-        ${session.conditionStatus},
-        ${session.formStatus},
-        ${session.docUploadStatus},
-        ${session.recommendationStatus},
-        ${session.consultationStatus},
-        ${session.packageStatus},
-        ${session.handoffStatus},
-        ${session.leadMaturity},
-        ${session.riskLevel},
-        ${session.trustOrObjection},
-        ${session.pendingOfferType},
-        ${JSON.stringify(session.pendingOfferPayload)}::jsonb,
-        ${session.pendingQuestionType},
-        ${JSON.stringify(session.pendingQuestionPayload)}::jsonb,
-        ${session.lastNextAction},
-        ${session.lastResolvedIntent},
-        ${session.conversationSummary},
-        ${session.lastPolicyDecisionAt}::timestamptz,
-        ${session.lastUserMessageAt}::timestamptz,
-        ${session.lastAssistantMessageAt}::timestamptz,
-        ${session.createdAt}::timestamptz,
-        ${session.updatedAt}::timestamptz
-      )
-    `);
+    const messageRow = buildPolicyMessageRow(session.id);
+    await messageRepo.create(new AiChatMessage({
+      id: messageRow.id,
+      sessionId: messageRow.sessionId,
+      role: 'ASSISTANT',
+      content: messageRow.content,
+      intent: 'CONSULT',
+      resolvedIntent: messageRow.resolvedIntent,
+      riskLevel: 'NORMAL',
+      canAnswer: messageRow.canAnswer,
+      nextAction: 'REQUEST_DOCS',
+      secondaryAction: messageRow.secondaryAction,
+      responseMode: messageRow.responseMode,
+      citations: messageRow.citations,
+      reasonCodes: messageRow.reasonCodes,
+      shortlist: messageRow.shortlist,
+      writebackStatus: messageRow.writebackStatus,
+      toolTrace: messageRow.toolTrace,
+      metadata: messageRow.metadata,
+      createdAt: new Date(messageRow.createdAt),
+    }));
 
-    const message = buildPolicyMessageRow(session.id);
-    await testDb.execute(sql`
-      insert into ai_chat_messages (
-        id,
-        session_id,
-        role,
-        content,
-        intent,
-        resolved_intent,
-        risk_level,
-        can_answer,
-        next_action,
-        secondary_action,
-        response_mode,
-        citations,
-        metadata,
-        reason_codes,
-        shortlist,
-        writeback_status,
-        tool_trace,
-        created_at
-      ) values (
-        ${message.id},
-        ${message.sessionId},
-        ${message.role},
-        ${message.content},
-        ${message.intent},
-        ${message.resolvedIntent},
-        ${message.riskLevel},
-        ${message.canAnswer},
-        ${message.nextAction},
-        ${message.secondaryAction},
-        ${message.responseMode},
-        ${JSON.stringify(message.citations)}::jsonb,
-        ${JSON.stringify(message.metadata)}::jsonb,
-        ${JSON.stringify(message.reasonCodes)}::jsonb,
-        ${JSON.stringify(message.shortlist)}::jsonb,
-        ${message.writebackStatus},
-        ${JSON.stringify(message.toolTrace)}::jsonb,
-        ${message.createdAt}::timestamptz
-      )
-    `);
+    const profileRow = buildPolicyProfileRow(session.sessionId);
+    const profile = await profileRepo.save(new AiUserProfile({
+      id: profileRow.id,
+      patientId: profileRow.patientId,
+      anonymousKey: profileRow.anonymousKey,
+      conditionOrGoal: profileRow.conditionOrGoal,
+      conditionCategory: profileRow.conditionCategory,
+      preferredDestination: profileRow.preferredDestination,
+      preferredLanguage: profileRow.preferredLanguage,
+      budgetBand: profileRow.budgetBand,
+      urgencyLevel: profileRow.urgencyLevel,
+      existingReportsStatus: profileRow.existingReportsStatus,
+      objectionTags: profileRow.objectionTags,
+      leadStage: profileRow.leadStage,
+      nextBestAction: profileRow.nextBestAction,
+      memorySummary: profileRow.memorySummary,
+      sourceConfidenceMap: profileRow.sourceConfidenceMap,
+      createdAt: new Date(profileRow.createdAt),
+      updatedAt: new Date(profileRow.updatedAt),
+    }));
 
-    const profile = buildPolicyProfileRow(session.sessionId);
-    await testDb.execute(sql`
-      insert into ai_user_profiles (
-        id,
-        patient_id,
-        anonymous_key,
-        condition_or_goal,
-        condition_category,
-        preferred_destination,
-        preferred_language,
-        budget_band,
-        urgency_level,
-        existing_reports_status,
-        objection_tags,
-        lead_stage,
-        next_best_action,
-        memory_summary,
-        source_confidence_map,
-        created_at,
-        updated_at
-      ) values (
-        ${profile.id},
-        ${profile.patientId},
-        ${profile.anonymousKey},
-        ${profile.conditionOrGoal},
-        ${profile.conditionCategory},
-        ${JSON.stringify(profile.preferredDestination)}::jsonb,
-        ${profile.preferredLanguage},
-        ${profile.budgetBand},
-        ${profile.urgencyLevel},
-        ${profile.existingReportsStatus},
-        ${JSON.stringify(profile.objectionTags)}::jsonb,
-        ${profile.leadStage},
-        ${profile.nextBestAction},
-        ${profile.memorySummary},
-        ${JSON.stringify(profile.sourceConfidenceMap)}::jsonb,
-        ${profile.createdAt}::timestamptz,
-        ${profile.updatedAt}::timestamptz
-      )
-    `);
+    const eventRow = buildTimelineEventRow(session.id);
+    const event = await timelineRepo.append(new AiChatTimelineEvent({
+      id: eventRow.id,
+      sessionId: eventRow.sessionId,
+      patientId: eventRow.patientId,
+      eventType: eventRow.eventType,
+      summary: eventRow.summary,
+      payload: eventRow.payload,
+      actor: eventRow.actor,
+      confidence: eventRow.confidence,
+      createdAt: new Date(eventRow.createdAt),
+    }));
 
-    const event = buildTimelineEventRow(session.id);
-    await testDb.execute(sql`
-      insert into ai_chat_timeline_events (
-        id,
-        session_id,
-        patient_id,
-        event_type,
-        summary,
-        payload,
-        actor,
-        confidence,
-        created_at
-      ) values (
-        ${event.id},
-        ${event.sessionId},
-        ${event.patientId},
-        ${event.eventType},
-        ${event.summary},
-        ${JSON.stringify(event.payload)}::jsonb,
-        ${event.actor},
-        ${event.confidence}::numeric,
-        ${event.createdAt}::timestamptz
-      )
-    `);
+    const followupRow = buildFollowupTriggerRow(session.id);
+    const followup = await followupRepo.createPendingTrigger(new AiFollowupTrigger({
+      id: followupRow.id,
+      sessionId: followupRow.sessionId,
+      patientId: followupRow.patientId,
+      triggerType: followupRow.triggerType,
+      status: followupRow.status,
+      dueAt: new Date(followupRow.dueAt),
+      channel: followupRow.channel,
+      reason: followupRow.reason,
+      payload: followupRow.payload,
+      createdAt: new Date(followupRow.createdAt),
+      resolvedAt: null,
+    }));
 
-    const followup = buildFollowupTriggerRow(session.id);
-    await testDb.execute(sql`
-      insert into ai_followup_triggers (
-        id,
-        session_id,
-        patient_id,
-        trigger_type,
-        status,
-        due_at,
-        channel,
-        reason,
-        payload,
-        created_at,
-        resolved_at
-      ) values (
-        ${followup.id},
-        ${followup.sessionId},
-        ${followup.patientId},
-        ${followup.triggerType},
-        ${followup.status},
-        ${followup.dueAt}::timestamptz,
-        ${followup.channel},
-        ${followup.reason},
-        ${JSON.stringify(followup.payload)}::jsonb,
-        ${followup.createdAt}::timestamptz,
-        ${followup.resolvedAt}
-      )
-    `);
+    const handoffRow = buildHandoffRow(session.id);
+    const handoff = await handoffRepo.save(new AiHandoff({
+      id: handoffRow.id,
+      sessionId: handoffRow.sessionId,
+      patientId: handoffRow.patientId,
+      supportTicketId: handoffRow.supportTicketId,
+      handoffType: handoffRow.handoffType,
+      priority: handoffRow.priority,
+      reasonCode: handoffRow.reasonCode,
+      brief: handoffRow.brief,
+      status: handoffRow.status,
+      assignedTo: handoffRow.assignedTo,
+      createdAt: new Date(handoffRow.createdAt),
+      completedAt: null,
+    }));
 
-    const handoff = buildHandoffRow(session.id);
-    await testDb.execute(sql`
-      insert into ai_handoffs (
-        id,
-        session_id,
-        patient_id,
-        support_ticket_id,
-        handoff_type,
-        priority,
-        reason_code,
-        brief,
-        status,
-        assigned_to,
-        created_at,
-        completed_at
-      ) values (
-        ${handoff.id},
-        ${handoff.sessionId},
-        ${handoff.patientId},
-        ${handoff.supportTicketId},
-        ${handoff.handoffType},
-        ${handoff.priority},
-        ${handoff.reasonCode},
-        ${JSON.stringify(handoff.brief)}::jsonb,
-        ${handoff.status},
-        ${handoff.assignedTo},
-        ${handoff.createdAt}::timestamptz,
-        ${handoff.completedAt}
-      )
-    `);
+    await sessionRepo.patchStatus(session.sessionId, {
+      formStatus: 'in_progress',
+      pendingQuestion: {
+        type: 'ASK_BUDGET',
+        payload: { source: 'repo-test' },
+      },
+    });
 
-    const sessionRows = await testDb.execute(sql`
-      select
-        session_id,
-        last_resolved_intent,
-        recommendation_status
-      from ai_chat_sessions
-      where id = ${session.id}
-    `);
-    const profileRows = await testDb.execute(sql`
-      select anonymous_key, memory_summary from ai_user_profiles where id = ${profile.id}
-    `);
-    const timelineRows = await testDb.execute(sql`
-      select event_type from ai_chat_timeline_events where id = ${event.id}
-    `);
-    const followupRows = await testDb.execute(sql`
-      select trigger_type from ai_followup_triggers where id = ${followup.id}
-    `);
-    const handoffRows = await testDb.execute(sql`
-      select handoff_type from ai_handoffs where id = ${handoff.id}
-    `);
+    const persisted = await sessionRepo.findBySessionId(session.sessionId);
+    const recentMessages = await messageRepo.listRecentBySession(session.id, 5);
+    const recentTimeline = await timelineRepo.listRecentBySession(session.id, 5);
 
-    expect((sessionRows as Array<{ session_id: string }>)[0]?.session_id).toBe(session.sessionId);
-    expect((profileRows as Array<{ memory_summary: string }>)[0]?.memory_summary).toContain('rhinoplasty');
-    expect((timelineRows as Array<{ event_type: string }>)[0]?.event_type).toBe('DOC_UPLOAD_REQUESTED');
-    expect((followupRows as Array<{ trigger_type: string }>)[0]?.trigger_type).toBe('DOC_UPLOAD_PENDING');
-    expect((handoffRows as Array<{ handoff_type: string }>)[0]?.handoff_type).toBe('HIGH_VALUE_LEAD');
+    expect(persisted?.statusSnapshot.formStatus).toBe('in_progress');
+    expect(persisted?.statusSnapshot.pendingOffer?.type).toBe('FORM_COMPLETION');
+    expect(persisted?.statusSnapshot.pendingQuestion?.type).toBe('ASK_BUDGET');
+    expect(persisted?.statusSnapshot.conversationSummary).toContain('rhinoplasty');
+
+    expect(profile.memorySummary).toContain('rhinoplasty');
+    expect(event.eventType).toBe('DOC_UPLOAD_REQUESTED');
+    expect(recentMessages[0]?.resolvedIntent).toBe('ASK_FOR_RECOMMENDATION');
+    expect(recentTimeline[0]?.eventType).toBe('DOC_UPLOAD_REQUESTED');
+    expect(followup.triggerType).toBe('DOC_UPLOAD_PENDING');
+    expect(handoff.handoffType).toBe('HIGH_VALUE_LEAD');
   });
 });

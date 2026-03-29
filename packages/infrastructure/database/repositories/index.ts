@@ -27,6 +27,10 @@ export { DrizzleEmailTemplateRepository } from './drizzle-email-template.reposit
 export { DrizzleTranslationTaskRepository } from './drizzle-translation-task.repository.js';
 export { DrizzleAiChatSessionRepository } from './drizzle-ai-chat-session.repository.js';
 export { DrizzleAiChatMessageRepository } from './drizzle-ai-chat-message.repository.js';
+export { DrizzleAiUserProfileRepository } from './drizzle-ai-user-profile.repository.js';
+export { DrizzleAiChatTimelineEventRepository } from './drizzle-ai-chat-timeline-event.repository.js';
+export { DrizzleAiFollowupTriggerRepository } from './drizzle-ai-followup-trigger.repository.js';
+export { DrizzleAiHandoffRepository } from './drizzle-ai-handoff.repository.js';
 export { DrizzleDifyDocumentMappingRepository } from './drizzle-dify-document-mapping.repository.js';
 export { DrizzleAiSyncOutboxRepository } from './drizzle-ai-sync-outbox.repository.js';
 export { DrizzleTransactionRunner } from '../transaction-runner.js';

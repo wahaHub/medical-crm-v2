@@ -441,11 +441,16 @@ Not recommended for Dify in v1:
 ```text
 User Input
   -> Lightweight Extraction
-  -> Get Conversation Context Tool
-  -> Decide Next Action Tool
-  -> Conditional Tool Calls
-  -> Response Composer
-  -> Apply Writeback Plan Tool
+  -> Resolve Engagement Mode
+  -> if LIGHT_DISCOVERY:
+       lightweight FAQ / process / trust-building path
+       minimal writeback
+     else:
+       Get Conversation Context Tool
+       Decide Next Action Tool
+       Conditional Tool Calls
+       Response Composer
+       Apply Writeback Plan Tool
   -> Final Answer
 ```
 
@@ -686,13 +691,39 @@ But backend performs the final mode decision using:
 - previously known user details
 - recommendation / docs / handoff state
 
+Recommended context tiers:
+
+- `light_context`
+  - session exists?
+  - known patient binding?
+  - current `engagement_mode`
+  - pending offer / pending question existence and type
+  - last assistant action
+  - safety flags
+- `full_context`
+  - full `status_snapshot`
+  - rolling summary
+  - recent messages
+  - active follow-ups
+  - AI profile
+
+Rule:
+
+- `LIGHT_DISCOVERY` should prefer `light_context`
+- `QUALIFIED_EXPLORATION` and `DEEP_WORKFLOW` may load `full_context`
+
 ### 8.5 Mode Escalation Rules
 
 - mode should usually escalate gradually, not jump to deep workflow on weak evidence
 - explicit progression requests may jump directly to `DEEP_WORKFLOW`
-- risk override may force deep handling or handoff even when commercial engagement is low
+- safety signals may force safety-governed handling or handoff even when commercial engagement is low
 - "filled form" is a strong signal for `DEEP_WORKFLOW`, but not the only valid signal
 - careful, high-value, trust-building users must not be penalized for asking detailed questions before submitting data
+
+Hard safety rule:
+
+- if safety signals indicate `HIGH_RISK` or `CRISIS`, engagement mode resolution must not keep the turn in cheap discovery handling
+- the turn must immediately enter safety-governed handling and may bypass normal commercial gating
 
 ### 8.6 Mode-Specific Allowed Behavior
 
@@ -721,7 +752,7 @@ If mode resolution fails or is unavailable:
 
 ## 9. Intent, Risk, and Next Action Model
 
-### 8.1 Intent Principles
+### 9.1 Intent Principles
 
 Intent resolution must be history-aware, not single-turn only.
 
@@ -743,7 +774,7 @@ Short responses like:
 
 must be interpreted against pending context first.
 
-### 8.2 Intent Model
+### 9.2 Intent Model
 
 Recommended intent families:
 
@@ -765,7 +796,7 @@ Representative examples:
 - `CRISIS_SIGNAL`
 - `CHANGE_TOPIC`
 
-### 8.3 Risk Model
+### 9.3 Risk Model
 
 Recommended risk levels:
 
@@ -774,14 +805,14 @@ Recommended risk levels:
 - `HIGH_RISK`
 - `CRISIS`
 
-### 8.4 Risk Override Rules
+### 9.4 Risk Override Rules
 
 - risk overrides next action
 - crisis blocks conversion and marketing
 - high-risk blocks clinical overreach and pushes professional evaluation or handoff
 - sensitive allows guidance, but under stricter grounded constraints
 
-### 8.5 Next Action Model
+### 9.5 Next Action Model
 
 Recommended next action set:
 
@@ -800,13 +831,13 @@ Recommended next action set:
 - `SAFETY_ESCALATION`
 - `FOLLOW_UP_LATER`
 
-### 8.6 Action Selection Principle
+### 9.6 Action Selection Principle
 
 Only one primary next action should be selected each turn.
 
 At most one secondary assistive action may be attached.
 
-### 8.7 Decision Precedence Rules
+### 9.7 Decision Precedence Rules
 
 The following precedence order should be used whenever signals conflict:
 
@@ -834,7 +865,7 @@ Canonical conflict rules:
 
 ## 10. Status Model
 
-### 9.1 Business Status
+### 10.1 Business Status
 
 Recommended business status fields:
 
@@ -850,7 +881,7 @@ Recommended business status fields:
 - `risk_level`
 - `trust_or_objection`
 
-### 9.2 Conversation Control Status
+### 10.2 Conversation Control Status
 
 Recommended conversation-control fields:
 
@@ -861,7 +892,22 @@ Recommended conversation-control fields:
 - `last_next_action`
 - `last_resolved_intent`
 
-### 9.3 Form Field-Level State
+### 10.3 Engagement Mode vs Lead Maturity
+
+These two fields should not be treated as interchangeable.
+
+- `engagement_mode` controls current-turn execution depth and orchestration path
+- `lead_maturity` represents longer-horizon commercial maturity
+
+Rules:
+
+- `lead_maturity` must not by itself determine runtime safety handling
+- `lead_maturity` must not by itself force deep workflow entry
+- `engagement_mode` may influence the current turn even when `lead_maturity` remains low
+- analytics and CRM funnel reporting should prefer `lead_maturity`
+- runtime routing should prefer `engagement_mode`
+
+### 10.4 Form Field-Level State
 
 Do not store form state as only completed or not completed.
 
@@ -886,7 +932,7 @@ This allows the system to request the smallest valuable increment instead of res
 
 ## 11. Recommendation Policy
 
-### 10.1 Recommendation Ownership
+### 11.1 Recommendation Ownership
 
 Hospital recommendation should be backend-authoritative.
 
@@ -900,7 +946,7 @@ Backend decides:
 
 Dify only explains and presents the shortlist.
 
-### 10.2 Shortlist Style
+### 11.2 Shortlist Style
 
 The user explicitly chose:
 
@@ -914,7 +960,7 @@ Recommended v1 output:
 - `match_type = matched | explore`
 - short `reason_codes`
 
-### 10.3 Recommendation Contract
+### 11.3 Recommendation Contract
 
 Recommended object:
 
@@ -936,7 +982,7 @@ Recommended object:
 }
 ```
 
-### 10.4 Recommendation Guardrails
+### 11.4 Recommendation Guardrails
 
 The system may not:
 
@@ -946,7 +992,7 @@ The system may not:
 - rank hospitals based on pure generation
 - present precision when inputs are too incomplete
 
-### 10.5 Recommendation Source of Truth and Freshness
+### 11.5 Recommendation Source of Truth and Freshness
 
 Hospital and package recommendation inputs must come from an approved catalog state in CRM or an approved downstream source synchronized into CRM.
 
@@ -975,9 +1021,9 @@ Recommended v1 behavior when data quality is insufficient:
 
 ---
 
-## 11. Tool and MCP Contract Design
+## 12. Tool and MCP Contract Design
 
-### 11.1 Tool Design Principles
+### 12.1 Tool Design Principles
 
 - business-critical claims must come from tools
 - write operations must go through backend authority
@@ -985,7 +1031,7 @@ Recommended v1 behavior when data quality is insufficient:
 - read and write concerns should not be mixed arbitrarily
 - tool outputs must be small and predictable
 
-### 11.2 Recommended Tool Groups
+### 12.2 Recommended Tool Groups
 
 #### Context / policy tools
 
@@ -1009,7 +1055,7 @@ Recommended v1 behavior when data quality is insufficient:
 - `create_or_update_lead`
 - `record_package_interest`
 
-### 11.3 Recommended Core Tool Contracts
+### 12.3 Recommended Core Tool Contracts
 
 #### `get_conversation_context`
 
@@ -1057,7 +1103,7 @@ Executes:
 - follow-up trigger creation
 - handoff persistence
 
-### 11.4 Explicit Anti-Patterns
+### 12.4 Explicit Anti-Patterns
 
 The spec should explicitly reject:
 
@@ -1066,7 +1112,7 @@ The spec should explicitly reject:
 - recommendation tools deciding eligibility on their own
 - handoff tools deciding necessity on their own
 
-### 11.5 Tool Failure and Degraded-Mode Rules
+### 12.5 Tool Failure and Degraded-Mode Rules
 
 Tool failures must be first-class runtime states.
 
@@ -1103,7 +1149,7 @@ All tool errors should normalize to:
 
 ## 13. Memory, Summary, Timeline, and Writeback
 
-### 12.1 Memory Must Live in CRM DB
+### 13.1 Memory Must Live in CRM DB
 
 Long-term runtime memory should not live primarily in markdown files.
 
@@ -1120,7 +1166,7 @@ Markdown may still be useful for:
 
 But not for runtime memory truth.
 
-### 12.2 Memory Layers
+### 13.2 Memory Layers
 
 Recommended layers:
 
@@ -1140,7 +1186,7 @@ Short AI/human-readable summary for fast recovery
 
 Short, human-readable milestones
 
-### 12.3 Writeback Principles
+### 13.3 Writeback Principles
 
 - write structured fields first
 - distinguish `confirmed`, `user_stated`, and `inferred`
@@ -1149,7 +1195,7 @@ Short, human-readable milestones
 - do not overwrite higher-confidence or human-confirmed information blindly
 - do not turn timeline into a copy of chat history
 
-### 12.4 Writeback Cadence
+### 13.4 Writeback Cadence
 
 Recommended cadence:
 
@@ -1183,7 +1229,7 @@ Mode guidance:
 - handoff record
 - follow-up trigger
 
-### 12.5 Summary Rules
+### 13.5 Summary Rules
 
 Rolling summary should remain short and operational.
 
@@ -1197,7 +1243,7 @@ Recommended content:
 - next best action
 - handoff context
 
-### 12.6 Pending Offer / Pending Question
+### 13.6 Pending Offer / Pending Question
 
 These should be first-class state objects.
 
@@ -1209,7 +1255,7 @@ Recommended fields:
 - `expires_after_turns`
 - `status`
 
-### 12.7 Follow-Up Triggers
+### 13.7 Follow-Up Triggers
 
 Recommended v1 follow-up trigger types:
 
@@ -1221,7 +1267,7 @@ Recommended v1 follow-up trigger types:
 
 These should be explicit database objects, not only implicit conversational hints.
 
-### 12.8 Writeback Failure Recovery
+### 13.8 Writeback Failure Recovery
 
 Writeback must be split into safe steps:
 
@@ -1247,7 +1293,7 @@ Summary refresh should be best-effort:
 - if summary update fails, structured status must still commit
 - summary can be recomputed later from truth tables
 
-### 12.9 Data Governance and Access Rules
+### 13.9 Data Governance and Access Rules
 
 The policy engine stores sensitive medical-tourism context, so governance rules must be explicit.
 
@@ -1278,11 +1324,11 @@ Recommended v1 implementation rule:
 
 ---
 
-## 13. CRM Schema Design
+## 14. CRM Schema Design
 
 This design should extend existing chatbot work already present in `medical-crm-v2`, rather than replacing it.
 
-### 13.1 Keep Existing Tables
+### 14.1 Keep Existing Tables
 
 Retain and evolve:
 
@@ -1291,7 +1337,7 @@ Retain and evolve:
 - `dify_document_mappings`
 - `ai_sync_outbox`
 
-### 13.2 Expand `ai_chat_sessions`
+### 14.2 Expand `ai_chat_sessions`
 
 This table should hold current session truth:
 
@@ -1304,7 +1350,7 @@ This table should hold current session truth:
 - rolling summary
 - last policy decision timestamps
 
-### 13.3 Keep `ai_chat_messages` as Turn Audit
+### 14.3 Keep `ai_chat_messages` as Turn Audit
 
 Each assistant/system message should be able to carry:
 
@@ -1316,7 +1362,7 @@ Each assistant/system message should be able to carry:
 - tool trace
 - response metadata
 
-### 13.4 Add `ai_user_profiles`
+### 14.4 Add `ai_user_profiles`
 
 Purpose:
 
@@ -1336,31 +1382,31 @@ Suggested fields:
 - next best action
 - memory summary
 
-### 13.5 Add `ai_chat_timeline_events`
+### 14.5 Add `ai_chat_timeline_events`
 
 Purpose:
 
 - human-readable milestone log
 
-### 13.6 Add `ai_followup_triggers`
+### 14.6 Add `ai_followup_triggers`
 
 Purpose:
 
 - queue future re-engagement or human callback actions
 
-### 13.7 Add `ai_hospital_recommendation_logs`
+### 14.7 Add `ai_hospital_recommendation_logs`
 
 Purpose:
 
 - preserve recommendation decisions, reason codes, and shortlist audit
 
-### 13.8 Add `ai_handoffs`
+### 14.8 Add `ai_handoffs`
 
 Purpose:
 
 - preserve structured handoff decision, brief, priority, and lifecycle
 
-### 13.9 Minimum V1 Schema Scope
+### 14.9 Minimum V1 Schema Scope
 
 To keep implementation planable, v1 schema should include only:
 
@@ -1376,7 +1422,7 @@ Not required in the first implementation slice:
 - separate `ai_hospital_recommendation_logs`
   - shortlist audit may initially live in message metadata + timeline payload
 
-### 13.10 Recommended Table Rules
+### 14.10 Recommended Table Rules
 
 #### `ai_chat_sessions`
 
@@ -1496,7 +1542,7 @@ Recommended indexes:
 - `(handoff_type, created_at desc)`
 - `(patient_id, created_at desc)`
 
-### 13.11 Migration Ordering
+### 14.11 Migration Ordering
 
 Recommended migration sequence:
 
@@ -1515,7 +1561,7 @@ Recommended rollout rule:
 - backfill second
 - only then enable policy-engine writes in runtime paths
 
-### 13.12 Concrete V1 Schema Appendix
+### 14.12 Concrete V1 Schema Appendix
 
 This appendix is the implementation-facing minimum schema for planning.
 
@@ -1540,15 +1586,18 @@ This appendix is the implementation-facing minimum schema for planning.
 - `consultation_status varchar(30) not null default 'not_introduced'`
 - `package_status varchar(30) not null default 'not_introduced'`
 - `handoff_status varchar(20) not null default 'not_needed'`
+- `engagement_mode varchar(30) not null default 'LIGHT_DISCOVERY'`
 - `lead_maturity varchar(20) not null default 'browsing'`
 - `risk_level varchar(20) not null default 'low'`
 - `trust_or_objection varchar(30) not null default 'none'`
+- `prequalification_reason_codes jsonb not null default '[]'::jsonb`
 - `pending_offer_type varchar(50) null`
 - `pending_offer_payload jsonb not null default '{}'::jsonb`
 - `pending_question_type varchar(50) null`
 - `pending_question_payload jsonb not null default '{}'::jsonb`
 - `last_next_action varchar(50) null`
 - `last_resolved_intent varchar(80) null`
+- `entered_deep_workflow_at timestamptz null`
 - `conversation_summary text not null default ''`
 - `last_policy_decision_at timestamptz null`
 - `last_user_message_at timestamptz null`
@@ -1557,6 +1606,7 @@ This appendix is the implementation-facing minimum schema for planning.
 Recommended new indexes:
 
 - `ai_chat_sessions_handoff_status_idx (handoff_status, updated_at desc)`
+- `ai_chat_sessions_engagement_mode_idx (engagement_mode, updated_at desc)`
 - `ai_chat_sessions_lead_maturity_idx (lead_maturity, updated_at desc)`
 - `ai_chat_sessions_risk_level_idx (risk_level, updated_at desc)`
 
@@ -1685,7 +1735,7 @@ To minimize migration risk in the current repo:
 
 ## 15. Human Handoff and Follow-Up
 
-### 14.1 Handoff Is a First-Class Business Flow
+### 15.1 Handoff Is a First-Class Business Flow
 
 Handoff is not only a fallback when AI fails.
 
@@ -1697,7 +1747,7 @@ It is also:
 - trust recovery path
 - closing support path
 
-### 14.2 Recommended Handoff Types
+### 15.2 Recommended Handoff Types
 
 - `SAFETY_ESCALATION`
 - `COMPLEX_CASE`
@@ -1705,7 +1755,7 @@ It is also:
 - `REQUESTED_HUMAN`
 - `TRUST_RECOVERY`
 
-### 14.3 Mandatory Handoff Conditions
+### 15.3 Mandatory Handoff Conditions
 
 - crisis or emergency-like language
 - explicit request for a human
@@ -1713,14 +1763,14 @@ It is also:
 - policy-sensitive custom commitments or negotiations
 - complaints or severe trust breakdown
 
-### 14.4 Suggested Handoff Conditions
+### 15.4 Suggested Handoff Conditions
 
 - existing records + urgency + willingness to proceed
 - cross-country or cross-specialty complexity
 - repeated objections near conversion
 - high commercial intent
 
-### 14.5 Handoff Brief Requirements
+### 15.5 Handoff Brief Requirements
 
 The brief should include:
 
@@ -1733,7 +1783,7 @@ The brief should include:
 - next suggested step
 - recent user tone
 
-### 14.6 Follow-Up Rules
+### 15.6 Follow-Up Rules
 
 Follow-up should be a policy output, not an ad hoc prompt idea.
 
@@ -1747,9 +1797,9 @@ It should not become spam.
 
 ---
 
-## 15. Guardrail and Safety Model
+## 16. Guardrail and Safety Model
 
-### 15.1 Priority Order
+### 16.1 Priority Order
 
 Recommended policy priority:
 
@@ -1759,7 +1809,7 @@ Recommended policy priority:
 4. trust-preserving persuasion
 5. operational traceability
 
-### 15.2 Allowed vs Prohibited
+### 16.2 Allowed vs Prohibited
 
 Allowed:
 
@@ -1777,7 +1827,7 @@ Prohibited:
 - outcome guarantees
 - fear-based or manipulative pressure
 
-### 15.3 Response Modes
+### 16.3 Response Modes
 
 Recommended response modes:
 
@@ -1786,7 +1836,7 @@ Recommended response modes:
 - `safety_template`
 - `handoff_prompt`
 
-### 15.4 Safety Override
+### 16.4 Safety Override
 
 If `HIGH_RISK` or `CRISIS`:
 
@@ -1799,7 +1849,7 @@ If `HIGH_RISK` or `CRISIS`:
 
 ## 17. Evaluation and Regression Strategy
 
-### 16.1 Core Evaluation Dimensions
+### 17.1 Core Evaluation Dimensions
 
 - grounded answer quality
 - risk and safety behavior
@@ -1809,7 +1859,7 @@ If `HIGH_RISK` or `CRISIS`:
 - writeback accuracy
 - handoff and follow-up quality
 
-### 16.2 Failure Tiers
+### 17.2 Failure Tiers
 
 #### Hard fail
 
@@ -1832,7 +1882,13 @@ If `HIGH_RISK` or `CRISIS`:
 - mediocre summary
 - low-value phrasing issues
 
-### 16.3 Required Test Buckets
+### 17.3 Required Test Buckets
+
+- validator routing quality
+- engagement mode false-negative rate
+- engagement mode false-positive rate
+- lightweight-path latency
+- full-path escalation correctness
 
 - engagement mode resolution
 - FAQ
@@ -1844,7 +1900,7 @@ If `HIGH_RISK` or `CRISIS`:
 - writeback
 - follow-up
 
-### 16.4 Testing Layers
+### 17.4 Testing Layers
 
 #### Policy unit tests
 
@@ -1858,7 +1914,7 @@ Test Dify orchestration, backend policy, tools, and writeback together.
 
 Test trust, naturalness, brief quality, and conversion tone.
 
-### 16.5 Red-Line Regression Cases
+### 17.5 Red-Line Regression Cases
 
 Must always regress:
 
@@ -1871,7 +1927,7 @@ Must always regress:
 - explicit human request not triggering handoff
 - recommendation shown when eligibility is not met
 
-### 16.6 Failure and Recovery Test Bucket
+### 17.6 Failure and Recovery Test Bucket
 
 V1 regression must also cover:
 
@@ -1897,7 +1953,7 @@ The evaluation set must specifically check that:
 
 ---
 
-## 17. Migration from Earlier Design
+## 18. Migration from Earlier Design
 
 The earlier chatbot design in this repo treated Dify more like the main router and response engine, with backend supporting:
 
@@ -1919,7 +1975,7 @@ This means the next implementation cycle should not throw away the current chatb
 - evolve Dify from decision-maker into orchestrator
 - add structured memory, handoff, recommendation, and follow-up truth tables
 
-### 17.1 Implementation Phasing
+### 18.1 Implementation Phasing
 
 This should not be executed as one giant undifferentiated build.
 
@@ -1958,7 +2014,7 @@ This keeps the scope planable while preserving the full target architecture.
 
 ---
 
-## 18. Final Definition
+## 19. Final Definition
 
 The medical tourism CRM AI chatbot should be defined as:
 

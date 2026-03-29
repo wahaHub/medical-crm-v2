@@ -12,6 +12,7 @@
 
 - Add a backend `EngagementModeResolver`
 - Extend the authoritative decision contract with `engagement_mode`
+- Define explicit `light_context` vs `full_context`
 - Use mode-aware action planning and writeback depth
 - Update Dify workflow to respect backend-selected mode
 - Add regression coverage for false escalation and false suppression
@@ -61,6 +62,9 @@ Out of scope for this addendum:
   - structured status
   - previously known user details
   - candidate signals from Dify extraction
+- [ ] Document resolver rule in code comments and tests:
+  - `engagement_mode` is runtime routing mode
+  - it is not interchangeable with `lead_maturity`
 
 ### Task A2: Test the resolver first
 
@@ -68,7 +72,7 @@ Out of scope for this addendum:
   - greeting-only input -> `LIGHT_DISCOVERY`
   - cautious trust-building question -> `QUALIFIED_EXPLORATION`
   - explicit "start now / upload now / connect me to a person" -> `DEEP_WORKFLOW`
-  - explicit risk cases can still force deep handling even without commercial signals
+  - explicit risk cases must bypass cheap discovery handling even without commercial signals
 
 Verification command:
 
@@ -88,6 +92,27 @@ pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/po
   3. resolve `engagement_mode`
   4. resolve intent/risk/action using that mode
 - [ ] Ensure the authoritative policy response returned to Dify includes `engagement_mode`
+- [ ] Add hard safety rule:
+  - `HIGH_RISK` / `CRISIS` turns must not remain in cheap discovery handling
+
+### Task B1.1: Define context depth explicitly
+
+- [ ] Add a `light_context` path that only loads:
+  - session exists?
+  - patient binding
+  - current `engagement_mode`
+  - pending offer / pending question existence and type
+  - last assistant action
+  - safety flags
+- [ ] Add a `full_context` path that loads:
+  - full `status_snapshot`
+  - rolling summary
+  - recent messages
+  - active followups
+  - AI profile
+- [ ] Ensure:
+  - `LIGHT_DISCOVERY` prefers `light_context`
+  - `QUALIFIED_EXPLORATION` and `DEEP_WORKFLOW` may use `full_context`
 
 ### Task B2: Make action planning mode-aware
 
@@ -120,6 +145,8 @@ pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/po
 ### Task C1: Persist session-level engagement mode
 
 - [ ] Add `engagement_mode` to the session truth model
+- [ ] Add `prequalification_reason_codes`
+- [ ] Add `entered_deep_workflow_at`
 - [ ] Store the latest resolved mode on `ai_chat_sessions`
 - [ ] Include the mode in message-level decision metadata when useful for audit
 
@@ -146,7 +173,13 @@ pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/po
 - [ ] Ensure Dify consumes backend `engagement_mode`
 - [ ] Add an explicit cheap-path rule:
   - if `engagement_mode = LIGHT_DISCOVERY`, do not force deep branches
+- [ ] Align the workflow shape with the spec:
+  - `User Input -> Lightweight Extraction -> Resolve Engagement Mode`
+  - cheap path for `LIGHT_DISCOVERY`
+  - `Get Conversation Context -> Decide Next Action -> tools -> writeback` for deeper modes
 - [ ] Keep backend as authority for escalation into heavy flows
+- [ ] Ensure risk-first behavior:
+  - crisis/high-risk turns bypass commercial cheap-path behavior
 
 ### Task D2: Verify workflow behavior
 
@@ -170,6 +203,11 @@ pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/po
   - explicit start-now conversion
   - explicit human request
   - crisis input
+- [ ] Verify metrics/reportability hooks for:
+  - validator routing quality
+  - engagement mode false-negative / false-positive cases
+  - lightweight-path latency
+  - full-path escalation correctness
 
 Verification commands:
 

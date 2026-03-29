@@ -13,16 +13,36 @@ import type {
   IAiHandoffRepository,
   IAiUserProfileRepository,
 } from '@medical-crm/domain';
+import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
 
 export interface BuildPolicyContextInput {
   sessionId: string;
   userMessage: string;
+  depth?: 'light' | 'full';
+}
+
+export interface PolicyPendingStateSummary {
+  exists: boolean;
+  type: string | null;
+}
+
+export interface PolicySafetyFlags {
+  riskLevel: string;
+  hasHighRiskSignal: boolean;
+  requiresSafetyHandling: boolean;
 }
 
 export interface PolicyConversationContext {
   sessionId: string;
   userMessage: string;
+  contextDepth: 'light' | 'full';
   session: AiChatSession;
+  patientId: string | null;
+  currentEngagementMode: AiPolicyEngagementMode | null;
+  pendingOffer: PolicyPendingStateSummary;
+  pendingQuestion: PolicyPendingStateSummary;
+  lastAssistantAction: string | null;
+  safetyFlags: PolicySafetyFlags;
   statusSnapshot: AiChatStatusSnapshot;
   profile: AiUserProfile | null;
   recentMessages: AiChatMessage[];
@@ -42,9 +62,41 @@ export class ContextBuilderService {
   ) {}
 
   async build(input: BuildPolicyContextInput): Promise<PolicyConversationContext> {
+    const depth = input.depth ?? 'full';
     const session = await this.sessionRepo.findBySessionId(input.sessionId);
     if (!session) {
       throw new Error(`AI chat session not found: ${input.sessionId}`);
+    }
+
+    const baseContext = {
+      sessionId: input.sessionId,
+      userMessage: input.userMessage,
+      contextDepth: depth,
+      session,
+      patientId: session.patientId,
+      currentEngagementMode: inferCurrentEngagementMode(session.statusSnapshot),
+      pendingOffer: summarizePendingState(session.statusSnapshot.pendingOffer),
+      pendingQuestion: summarizePendingState(session.statusSnapshot.pendingQuestion),
+      lastAssistantAction: session.statusSnapshot.lastNextAction,
+      safetyFlags: buildSafetyFlags(session.statusSnapshot),
+      statusSnapshot: session.statusSnapshot,
+    } satisfies Omit<PolicyConversationContext, 'profile' | 'recentMessages' | 'recentTimeline' | 'activeFollowups' | 'recentHandoffs'>;
+
+    if (depth === 'light') {
+      const recentMessages = await this.messageRepo.listRecentBySession(session.id, 4);
+      const lastAssistantMessage = [...recentMessages]
+        .reverse()
+        .find((message) => message.role.toUpperCase() === 'ASSISTANT');
+
+      return {
+        ...baseContext,
+        lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
+        profile: null,
+        recentMessages: [],
+        recentTimeline: [],
+        activeFollowups: [],
+        recentHandoffs: [],
+      };
     }
 
     const [recentMessages, profile, recentTimeline, activeFollowups, recentHandoffs] = await Promise.all([
@@ -58,11 +110,13 @@ export class ContextBuilderService {
       this.handoffRepo.listRecentBySession(session.id, 5),
     ]);
 
+    const lastAssistantMessage = [...recentMessages]
+      .reverse()
+      .find((message) => message.role.toUpperCase() === 'ASSISTANT');
+
     return {
-      sessionId: input.sessionId,
-      userMessage: input.userMessage,
-      session,
-      statusSnapshot: session.statusSnapshot,
+      ...baseContext,
+      lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
       profile,
       recentMessages,
       recentTimeline,
@@ -70,4 +124,54 @@ export class ContextBuilderService {
       recentHandoffs,
     };
   }
+}
+
+function summarizePendingState(
+  pendingState: AiChatStatusSnapshot['pendingOffer'] | AiChatStatusSnapshot['pendingQuestion'],
+): PolicyPendingStateSummary {
+  return {
+    exists: Boolean(pendingState),
+    type: pendingState?.type ?? null,
+  };
+}
+
+function buildSafetyFlags(statusSnapshot: AiChatStatusSnapshot): PolicySafetyFlags {
+  const riskLevel = normalize(statusSnapshot.riskLevel);
+  return {
+    riskLevel,
+    hasHighRiskSignal: riskLevel === 'HIGH_RISK' || riskLevel === 'HIGH' || riskLevel === 'CRISIS',
+    requiresSafetyHandling: riskLevel === 'HIGH_RISK' || riskLevel === 'HIGH' || riskLevel === 'CRISIS',
+  };
+}
+
+function inferCurrentEngagementMode(statusSnapshot: AiChatStatusSnapshot): AiPolicyEngagementMode {
+  if (
+    isStarted(statusSnapshot.formStatus, ['COMPLETED', 'SUBMITTED', 'IN_PROGRESS', 'STARTED'])
+    || isStarted(statusSnapshot.docUploadStatus, ['UPLOADED', 'UPLOADING', 'IN_PROGRESS', 'SUBMITTED', 'STARTED'])
+    || isStarted(statusSnapshot.consultationStatus, ['SCHEDULED', 'INTRODUCED', 'READY', 'BOOKED'])
+    || isStarted(statusSnapshot.handoffStatus, ['REQUESTED', 'OPEN', 'IN_PROGRESS'])
+  ) {
+    return 'DEEP_WORKFLOW';
+  }
+
+  if (
+    statusSnapshot.pendingOffer
+    || statusSnapshot.pendingQuestion
+    || isStarted(statusSnapshot.recommendationStatus, ['NOT_SHOWN', 'PRELIMINARY_SHOWN', 'SHORTLIST_SHOWN', 'EXPLORED'])
+    || isStarted(statusSnapshot.packageStatus, ['NOT_SHOWN', 'SHOWN', 'INTERESTED', 'EXPLORED'])
+    || ['CONSULT_CONVERSION', 'CREATE_CASE', 'REQUEST_DOCS', 'SHOW_PACKAGE'].includes(statusSnapshot.lastNextAction ?? '')
+  ) {
+    return 'QUALIFIED_EXPLORATION';
+  }
+
+  return 'LIGHT_DISCOVERY';
+}
+
+function isStarted(value: string | null | undefined, activeStates: string[]): boolean {
+  const normalized = normalize(value);
+  return normalized.length > 0 && activeStates.includes(normalized);
+}
+
+function normalize(value: string | null | undefined): string {
+  return (value ?? '').trim().toUpperCase();
 }

@@ -1,9 +1,11 @@
 import { ActionPlannerService } from '../../services/policy-engine/action-planner.service.js';
 import { ContextBuilderService } from '../../services/policy-engine/context-builder.service.js';
+import { EngagementModeResolverService } from '../../services/policy-engine/engagement-mode-resolver.service.js';
 import { IntentResolverService } from '../../services/policy-engine/intent-resolver.service.js';
 import { RecommendationPolicyService } from '../../services/policy-engine/recommendation-policy.service.js';
 import { RiskResolverService } from '../../services/policy-engine/risk-resolver.service.js';
 import { SignalResolverService } from '../../services/policy-engine/signal-resolver.service.js';
+import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
 
 export interface DecideAiPolicyInput {
   sessionId: string;
@@ -19,6 +21,7 @@ export class DecideAiPolicyUseCase {
   constructor(
     private readonly contextBuilder: ContextBuilderService,
     private readonly signalResolver: SignalResolverService,
+    private readonly engagementModeResolver: EngagementModeResolverService,
     private readonly intentResolver: IntentResolverService,
     private readonly riskResolver: RiskResolverService,
     private readonly actionPlanner: ActionPlannerService,
@@ -26,14 +29,46 @@ export class DecideAiPolicyUseCase {
   ) {}
 
   async execute(input: DecideAiPolicyInput) {
-    const context = await this.contextBuilder.build({
+    const lightContext = await this.contextBuilder.build({
       sessionId: input.sessionId,
       userMessage: input.userMessage,
+      depth: 'light',
     });
 
     const signals = this.signalResolver.resolve({
       extraction: input.extraction,
     });
+    const candidateSignals = mergeCandidateSignals(input.extraction, signals);
+
+    const engagement = this.engagementModeResolver.resolve({
+      userMessage: input.userMessage,
+      statusSnapshot: {
+        formStatus: lightContext.statusSnapshot.formStatus,
+        docUploadStatus: lightContext.statusSnapshot.docUploadStatus,
+        consultationStatus: lightContext.statusSnapshot.consultationStatus,
+        leadMaturity: lightContext.statusSnapshot.leadMaturity,
+        riskLevel: lightContext.statusSnapshot.riskLevel,
+        pendingOffer: lightContext.statusSnapshot.pendingOffer,
+        pendingQuestion: lightContext.statusSnapshot.pendingQuestion,
+      },
+      lastAssistantAction: lightContext.lastAssistantAction,
+      candidateSignals,
+    });
+
+    const risk = await this.riskResolver.resolve({
+      userMessage: input.userMessage,
+      candidateSignals,
+    });
+
+    const effectiveEngagementMode = enforceRiskFirstEngagementMode(engagement.engagementMode, risk.riskLevel);
+
+    const context = effectiveEngagementMode === 'LIGHT_DISCOVERY'
+      ? lightContext
+      : await this.contextBuilder.build({
+        sessionId: input.sessionId,
+        userMessage: input.userMessage,
+        depth: 'full',
+      });
 
     const intent = await this.intentResolver.resolve({
       userMessage: input.userMessage,
@@ -43,15 +78,7 @@ export class DecideAiPolicyUseCase {
         content: message.content,
         nextAction: message.nextAction,
       })),
-      candidateSignals: input.extraction,
-    });
-
-    const risk = await this.riskResolver.resolve({
-      userMessage: input.userMessage,
-      candidateSignals: {
-        ...input.extraction,
-        possibleRisk: signals.possibleRisk,
-      },
+      candidateSignals,
     });
 
     const plan = this.actionPlanner.plan({
@@ -59,17 +86,24 @@ export class DecideAiPolicyUseCase {
         ...context.statusSnapshot,
         riskLevel: risk.riskLevel,
       },
+      engagementMode: effectiveEngagementMode,
       resolvedIntent: intent.resolvedIntent,
     });
 
-    const recommendation = await this.recommendationPolicy.decide({
-      statusSnapshot: {
-        ...context.statusSnapshot,
-        riskLevel: risk.riskLevel,
-      },
-      resolvedIntent: intent.resolvedIntent,
-      candidateHospitals: input.candidateHospitals,
-    });
+    const recommendation = effectiveEngagementMode === 'DEEP_WORKFLOW'
+      ? await this.recommendationPolicy.decide({
+        statusSnapshot: {
+          ...context.statusSnapshot,
+          riskLevel: risk.riskLevel,
+        },
+        resolvedIntent: intent.resolvedIntent,
+        candidateHospitals: input.candidateHospitals,
+      })
+      : {
+        eligible: false,
+        shortlist: [],
+        reasonCodes: ['recommendation_deferred_by_engagement_mode'],
+      };
 
     const resolvedNextAction = risk.overrideAction ?? (
       recommendation.eligible && recommendation.shortlist.length > 0
@@ -78,6 +112,7 @@ export class DecideAiPolicyUseCase {
     );
 
     const reasonCodes = dedupeReasonCodes(
+      ...engagement.reasonCodes,
       ...intent.reasonCodes,
       ...risk.reasonCodes,
       ...plan.reasonCodes,
@@ -87,6 +122,7 @@ export class DecideAiPolicyUseCase {
     const allowedTools = buildAllowedTools(resolvedNextAction);
 
     return {
+      engagement_mode: effectiveEngagementMode,
       resolved_intent: intent.resolvedIntent,
       risk_level: risk.riskLevel,
       next_action: resolvedNextAction,
@@ -103,11 +139,48 @@ export class DecideAiPolicyUseCase {
       })),
       handoff_required: resolvedNextAction === 'SAFETY_HANDOFF',
       writeback_plan: {
+        context_depth: context.contextDepth,
+        writeback_depth: determineWritebackDepth(effectiveEngagementMode),
+        engagement_mode: effectiveEngagementMode,
         next_action: resolvedNextAction,
         risk_level: risk.riskLevel,
         reason_codes: reasonCodes,
       },
     };
+  }
+}
+
+function mergeCandidateSignals(
+  extraction: Record<string, unknown> | undefined,
+  signals: ReturnType<SignalResolverService['resolve']>,
+): Record<string, unknown> {
+  return {
+    ...(extraction ?? {}),
+    affirmative: extraction?.['affirmative'] ?? signals.affirmative,
+    negative: extraction?.['negative'] ?? signals.negative,
+    possibleRisk: extraction?.['possibleRisk'] ?? signals.possibleRisk,
+    possibleIntent: extraction?.['possibleIntent'] ?? signals.possibleIntent,
+    mentionedBudget: extraction?.['mentionedBudget'] ?? signals.mentionedBudget,
+  };
+}
+
+function enforceRiskFirstEngagementMode(
+  engagementMode: AiPolicyEngagementMode,
+  riskLevel: string,
+): AiPolicyEngagementMode {
+  return ['HIGH_RISK', 'HIGH', 'CRISIS'].includes(riskLevel.toUpperCase())
+    ? 'DEEP_WORKFLOW'
+    : engagementMode;
+}
+
+function determineWritebackDepth(engagementMode: AiPolicyEngagementMode): 'minimal' | 'moderate' | 'complete' {
+  switch (engagementMode) {
+    case 'QUALIFIED_EXPLORATION':
+      return 'moderate';
+    case 'DEEP_WORKFLOW':
+      return 'complete';
+    default:
+      return 'minimal';
   }
 }
 

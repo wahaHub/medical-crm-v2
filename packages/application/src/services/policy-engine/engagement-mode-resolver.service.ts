@@ -3,6 +3,9 @@ import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
 export interface EngagementModeResolverInput {
   userMessage: string;
   statusSnapshot?: {
+    formStatus?: string;
+    docUploadStatus?: string;
+    consultationStatus?: string;
     leadMaturity?: string;
     riskLevel?: string;
     pendingOffer?: {
@@ -20,6 +23,7 @@ export interface EngagementModeResolverInput {
     nextAction?: string | null;
     resolvedIntent?: string | null;
   }>;
+  lastAssistantAction?: string | null;
   profile?: {
     conditionOrGoal?: string | null;
     conditionCategory?: string | null;
@@ -128,6 +132,13 @@ export class EngagementModeResolverService {
       };
     }
 
+    if (hasDeepWorkflowState(input.statusSnapshot)) {
+      return {
+        engagementMode: 'DEEP_WORKFLOW',
+        reasonCodes: ['existing_deep_workflow_state'],
+      };
+    }
+
     if (isGreetingOnly(userMessage)) {
       return {
         engagementMode: 'LIGHT_DISCOVERY',
@@ -142,7 +153,7 @@ export class EngagementModeResolverService {
       };
     }
 
-    if (hasKnownUserDetails(input.profile) || hasRecentBusinessSignal(input.recentMessages)) {
+    if (hasKnownUserDetails(input.profile) || hasRecentBusinessSignal(input.recentMessages, input.lastAssistantAction)) {
       return {
         engagementMode: 'QUALIFIED_EXPLORATION',
         reasonCodes: ['known_context_signal'],
@@ -229,16 +240,27 @@ function hasKnownUserDetails(profile: EngagementModeResolverInput['profile']): b
   );
 }
 
-function hasRecentBusinessSignal(recentMessages: EngagementModeResolverInput['recentMessages']): boolean {
+function hasRecentBusinessSignal(
+  recentMessages: EngagementModeResolverInput['recentMessages'],
+  lastAssistantAction?: string | null,
+): boolean {
   const lastAssistantMessage = [...(recentMessages ?? [])].reverse().find((message) => message.role.toUpperCase() === 'ASSISTANT');
-  if (!lastAssistantMessage) {
-    return false;
-  }
+  const candidateAction = lastAssistantMessage?.nextAction ?? lastAssistantAction;
 
   return Boolean(
-    lastAssistantMessage.nextAction &&
-      ['CONSULT_CONVERSION', 'CREATE_CASE', 'REQUEST_DOCS', 'SHOW_HOSPITAL_RECOMMENDATIONS', 'SHOW_PACKAGE', 'PROMOTE_ONLINE_CONSULT'].includes(lastAssistantMessage.nextAction),
+    candidateAction &&
+      ['CONSULT_CONVERSION', 'CREATE_CASE', 'REQUEST_DOCS', 'SHOW_HOSPITAL_RECOMMENDATIONS', 'SHOW_PACKAGE', 'PROMOTE_ONLINE_CONSULT'].includes(candidateAction),
   );
+}
+
+function hasDeepWorkflowState(statusSnapshot: EngagementModeResolverInput['statusSnapshot']): boolean {
+  const formStatus = normalizeState(statusSnapshot?.formStatus);
+  const docUploadStatus = normalizeState(statusSnapshot?.docUploadStatus);
+  const consultationStatus = normalizeState(statusSnapshot?.consultationStatus);
+
+  return ['COMPLETED', 'SUBMITTED', 'IN_PROGRESS', 'STARTED'].includes(formStatus ?? '')
+    || ['UPLOADED', 'UPLOADING', 'IN_PROGRESS', 'SUBMITTED', 'STARTED'].includes(docUploadStatus ?? '')
+    || ['SCHEDULED', 'BOOKED', 'READY'].includes(consultationStatus ?? '');
 }
 
 function containsBusinessSignal(userMessage: string): boolean {
@@ -280,4 +302,8 @@ function normalizeMeaningfulString(value: string | null | undefined): string | n
 
 function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeState(value: string | null | undefined): string {
+  return (value ?? '').trim().toUpperCase();
 }

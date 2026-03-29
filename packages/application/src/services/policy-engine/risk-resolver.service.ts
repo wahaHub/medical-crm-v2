@@ -30,6 +30,14 @@ export class RiskResolverService {
       };
     }
 
+    if (possibleRisk === 'HIGH_RISK' || possibleRisk === 'HIGH') {
+      return {
+        riskLevel: 'HIGH_RISK',
+        overrideAction: 'SAFETY_HANDOFF',
+        reasonCodes: ['high_risk_signal_detected'],
+      };
+    }
+
     if (possibleRisk === 'SENSITIVE') {
       return {
         riskLevel: 'SENSITIVE',

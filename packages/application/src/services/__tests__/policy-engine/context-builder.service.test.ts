@@ -180,4 +180,118 @@ describe('ContextBuilderService', () => {
     expect(context.profile?.memorySummary).toContain('Korea');
     expect(context.recentTimeline[0]?.eventType).toBeDefined();
   });
+
+  it('builds light context without loading profile, timeline, followups, or handoffs', async () => {
+    const sessionRepo: IAiChatSessionRepository = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'session-2',
+        sessionId: 'policy-session-2',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: 'patient-2',
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          packageStatus: 'not_introduced',
+          consultationStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          riskLevel: 'low',
+          pendingOffer: {
+            type: 'HOSPITAL_RECOMMENDATION',
+            payload: {},
+          },
+          lastNextAction: 'CONSULT_CONVERSION',
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      findByDifyConversationId: vi.fn(async () => null),
+      save: vi.fn(),
+      attachPatient: vi.fn(),
+      updateStatus: vi.fn(),
+      patchStatus: vi.fn(),
+    };
+
+    const messageRepo: IAiChatMessageRepository = {
+      create: vi.fn(),
+      listBySession: vi.fn(async () => []),
+      listRecentBySession: vi.fn(async () => [
+        new AiChatMessage({
+          id: 'msg-2',
+          sessionId: 'session-2',
+          role: 'ASSISTANT',
+          content: 'If you want, I can explain how recommendations work.',
+          intent: 'CONSULT',
+          resolvedIntent: 'GENERAL_CONSULT',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'CONSULT_CONVERSION',
+          secondaryAction: null,
+          responseMode: 'grounded_answer',
+          citations: [],
+          reasonCodes: [],
+          shortlist: [],
+          writebackStatus: 'pending',
+          toolTrace: [],
+          metadata: {},
+          createdAt: new Date(),
+        }),
+      ]),
+    };
+
+    const profileRepo: IAiUserProfileRepository = {
+      findByAnonymousKeyOrPatient: vi.fn(async () => null),
+      save: vi.fn(),
+      patch: vi.fn(),
+    };
+
+    const timelineRepo: IAiChatTimelineEventRepository = {
+      listRecentBySession: vi.fn(async () => []),
+      append: vi.fn(),
+    };
+
+    const followupRepo: IAiFollowupTriggerRepository = {
+      listPendingBySession: vi.fn(async () => [] as AiFollowupTrigger[]),
+      createPendingTrigger: vi.fn(),
+      resolvePendingTrigger: vi.fn(),
+    };
+
+    const handoffRepo: IAiHandoffRepository = {
+      listRecentBySession: vi.fn(async () => [] as AiHandoff[]),
+      save: vi.fn(),
+      complete: vi.fn(),
+    };
+
+    const builder = new ContextBuilderService(
+      sessionRepo,
+      messageRepo,
+      profileRepo,
+      timelineRepo,
+      followupRepo,
+      handoffRepo,
+    );
+
+    const context = await builder.build({
+      sessionId: 'policy-session-2',
+      userMessage: 'hello',
+      depth: 'light',
+    });
+
+    expect(context.contextDepth).toBe('light');
+    expect(context.patientId).toBe('patient-2');
+    expect(context.currentEngagementMode).toBe('QUALIFIED_EXPLORATION');
+    expect(context.pendingOffer.type).toBe('HOSPITAL_RECOMMENDATION');
+    expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
+    expect(context.profile).toBeNull();
+    expect(context.recentTimeline).toEqual([]);
+    expect(context.activeFollowups).toEqual([]);
+    expect(context.recentHandoffs).toEqual([]);
+    expect(profileRepo.findByAnonymousKeyOrPatient).not.toHaveBeenCalled();
+    expect(timelineRepo.listRecentBySession).not.toHaveBeenCalled();
+    expect(followupRepo.listPendingBySession).not.toHaveBeenCalled();
+    expect(handoffRepo.listRecentBySession).not.toHaveBeenCalled();
+  });
 });

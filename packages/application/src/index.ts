@@ -11,6 +11,15 @@ export {
   renderFaqSyncDocument,
   renderPackageSyncDocument,
 } from './services/ai-sync-task.service.js';
+export { ContextBuilderService } from './services/policy-engine/context-builder.service.js';
+export { SignalResolverService } from './services/policy-engine/signal-resolver.service.js';
+export { IntentResolverService } from './services/policy-engine/intent-resolver.service.js';
+export { RiskResolverService } from './services/policy-engine/risk-resolver.service.js';
+export { ActionPlannerService } from './services/policy-engine/action-planner.service.js';
+export { RecommendationPolicyService } from './services/policy-engine/recommendation-policy.service.js';
+export { HandoffPolicyService } from './services/policy-engine/handoff-policy.service.js';
+export { WritebackPlannerService } from './services/policy-engine/writeback-planner.service.js';
+export { WritebackExecutorService } from './services/policy-engine/writeback-executor.service.js';
 
 // DTOs
 export type { CaseDTO, HospitalCaseDetailDTO, CaseStatsDTO } from './dtos/case.dto.js';
@@ -169,6 +178,9 @@ export { RecordCaseEventUseCase } from './use-cases/events/record-case-event.use
 export type { RecordCaseEventInput } from './use-cases/events/record-case-event.use-case.js';
 export { ListCaseEventsUseCase } from './use-cases/events/list-case-events.use-case.js';
 export { GetCaseTimelineUseCase } from './use-cases/events/get-case-timeline.use-case.js';
+export { GetAiPolicyContextUseCase } from './use-cases/ai-policy/get-ai-policy-context.use-case.js';
+export { DecideAiPolicyUseCase } from './use-cases/ai-policy/decide-ai-policy.use-case.js';
+export { ApplyAiPolicyWritebackUseCase } from './use-cases/ai-policy/apply-ai-policy-writeback.use-case.js';
 
 // DTOs — Support Tickets
 export type { SupportTicketDTO, SupportTicketReplyDTO } from './dtos/support-ticket.dto.js';

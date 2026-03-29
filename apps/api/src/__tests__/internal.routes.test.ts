@@ -7,7 +7,9 @@ const mockServices = {
   processMessageTasks: { execute: vi.fn() },
   processTranslationTasks: { execute: vi.fn() },
   processAiSyncOutbox: { execute: vi.fn() },
+  getAiPolicyContext: { execute: vi.fn() },
   decideAiPolicy: { execute: vi.fn() },
+  applyAiPolicyWriteback: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -130,6 +132,104 @@ describe('Internal routes', () => {
 
       expect(res.status).toBe(400);
       expect(mockServices.decideAiPolicy.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/v2/internal/ai-policy/context', () => {
+    it('returns policy context through the shared envelope', async () => {
+      mockServices.getAiPolicyContext.execute.mockResolvedValue({
+        profile: null,
+        status_snapshot: { risk_level: 'LOW' },
+        conversation_summary: '',
+        pending_offer: null,
+        pending_question: null,
+        recent_messages: [],
+        active_followups: [],
+      });
+
+      const res = await app.request('/api/v2/internal/ai-policy/context', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          version: 'v1',
+          request_id: 'req-ctx-1',
+          session_id: 'session-1',
+          actor: 'DIFY',
+          source_channel: 'chatflow',
+          hospital_type: 'COSMETIC',
+          payload: {
+            user_message: 'hello',
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        ok: true,
+        data: {
+          profile: null,
+          status_snapshot: { risk_level: 'LOW' },
+          conversation_summary: '',
+          pending_offer: null,
+          pending_question: null,
+          recent_messages: [],
+          active_followups: [],
+        },
+      });
+    });
+  });
+
+  describe('POST /api/v2/internal/ai-policy/writeback', () => {
+    it('returns a writeback envelope and stays idempotent for the same writeback key', async () => {
+      const response = {
+        statusUpdated: { docUploadStatus: 'REQUESTED' },
+        timelineEventsWritten: ['DOC_UPLOAD_REQUESTED'],
+        messageMetadata: {},
+        followupCreated: 'followup-1',
+        handoffCreated: null,
+      };
+      mockServices.applyAiPolicyWriteback.execute.mockResolvedValue(response);
+
+      const body = {
+        version: 'v1',
+        request_id: 'req-writeback-1',
+        session_id: 'session-1',
+        actor: 'DIFY',
+        source_channel: 'chatflow',
+        hospital_type: 'COSMETIC',
+        payload: {
+          assistant_message_id: 'assistant-1',
+          idempotency_key: 'session-1:assistant-1:v1',
+          policy_decision: { next_action: 'REQUEST_DOC_UPLOAD' },
+          tool_results: [],
+          final_response_metadata: {},
+        },
+      };
+
+      const first = await app.request('/api/v2/internal/ai-policy/writeback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify(body),
+      });
+
+      const second = await app.request('/api/v2/internal/ai-policy/writeback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify(body),
+      });
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(await first.json()).toEqual(await second.json());
     });
   });
 });

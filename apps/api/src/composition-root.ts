@@ -180,6 +180,18 @@ import {
   RetryTranslationUseCase,
   GetTranslationStatusUseCase,
   AiSyncTaskService,
+  ContextBuilderService,
+  SignalResolverService,
+  IntentResolverService,
+  RiskResolverService,
+  ActionPlannerService,
+  RecommendationPolicyService,
+  HandoffPolicyService,
+  WritebackPlannerService,
+  WritebackExecutorService,
+  GetAiPolicyContextUseCase,
+  DecideAiPolicyUseCase,
+  ApplyAiPolicyWritebackUseCase,
 } from '@medical-crm/application';
 import type { IMagicLinkEmailService } from '@medical-crm/application';
 import {
@@ -213,6 +225,10 @@ import {
   DrizzleTranslationTaskRepository,
   DrizzleAiChatSessionRepository,
   DrizzleAiChatMessageRepository,
+  DrizzleAiUserProfileRepository,
+  DrizzleAiChatTimelineEventRepository,
+  DrizzleAiFollowupTriggerRepository,
+  DrizzleAiHandoffRepository,
   DrizzleAiSyncOutboxRepository,
   DrizzleDifyDocumentMappingRepository,
 } from '@medical-crm/infrastructure/repositories';
@@ -462,6 +478,9 @@ interface AppServices {
   // use cases — translations
   processTranslationTasks: ProcessTranslationTasksUseCase;
   processAiSyncOutbox: ProcessAiSyncOutboxUseCase;
+  getAiPolicyContext: GetAiPolicyContextUseCase;
+  decideAiPolicy: DecideAiPolicyUseCase;
+  applyAiPolicyWriteback: ApplyAiPolicyWritebackUseCase;
   retryTranslation: RetryTranslationUseCase;
   getTranslationStatus: GetTranslationStatusUseCase;
 
@@ -595,6 +614,10 @@ export function getServices(): AppServices {
     const transcriptRepo = new DrizzleConsultationTranscriptRepository(crmDb);
     const aiChatSessionRepo = new DrizzleAiChatSessionRepository(crmDb);
     const aiChatMessageRepo = new DrizzleAiChatMessageRepository(crmDb);
+    const aiUserProfileRepo = new DrizzleAiUserProfileRepository(crmDb);
+    const aiChatTimelineEventRepo = new DrizzleAiChatTimelineEventRepository(crmDb);
+    const aiFollowupTriggerRepo = new DrizzleAiFollowupTriggerRepository(crmDb);
+    const aiHandoffRepo = new DrizzleAiHandoffRepository(crmDb);
     const aiSyncOutboxRepo = new DrizzleAiSyncOutboxRepository(crmDb);
     const difyDocumentMappingRepo = new DrizzleDifyDocumentMappingRepository(crmDb);
     // Materials: route to correct Supabase based on hospital type (COSMETIC → Main, REGULAR → China)
@@ -654,6 +677,30 @@ export function getServices(): AppServices {
     const translationTaskRepo = new DrizzleTranslationTaskRepository(crmDb);
     const translationTaskService = new TranslationTaskService(translationTaskRepo);
     const aiSyncTaskService = new AiSyncTaskService(aiSyncOutboxRepo);
+    const contextBuilderService = new ContextBuilderService(
+      aiChatSessionRepo,
+      aiChatMessageRepo,
+      aiUserProfileRepo,
+      aiChatTimelineEventRepo,
+      aiFollowupTriggerRepo,
+      aiHandoffRepo,
+    );
+    const signalResolverService = new SignalResolverService();
+    const intentResolverService = new IntentResolverService();
+    const riskResolverService = new RiskResolverService();
+    const actionPlannerService = new ActionPlannerService();
+    const recommendationPolicyService = new RecommendationPolicyService();
+    const handoffPolicyService = new HandoffPolicyService();
+    const writebackPlannerService = new WritebackPlannerService();
+    const writebackExecutorService = new WritebackExecutorService(
+      aiChatSessionRepo,
+      aiUserProfileRepo,
+      aiChatTimelineEventRepo,
+      aiFollowupTriggerRepo,
+      aiHandoffRepo,
+      writebackPlannerService,
+      handoffPolicyService,
+    );
     const batchTranslationService = new OpenAIBatchTranslationService(process.env['OPENAI_API_KEY'] ?? '');
     const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase);
 
@@ -844,6 +891,20 @@ export function getServices(): AppServices {
       processTranslationTasks: new ProcessTranslationTasksUseCase(translationTaskRepo, batchTranslationService, translationWritebackService),
       bootstrapAiSync: new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService),
       processAiSyncOutbox: new ProcessAiSyncOutboxUseCase(aiSyncOutboxRepo, difyDocumentMappingRepo, difyApiClient),
+      getAiPolicyContext: new GetAiPolicyContextUseCase(contextBuilderService),
+      decideAiPolicy: new DecideAiPolicyUseCase(
+        contextBuilderService,
+        signalResolverService,
+        intentResolverService,
+        riskResolverService,
+        actionPlannerService,
+        recommendationPolicyService,
+      ),
+      applyAiPolicyWriteback: new ApplyAiPolicyWritebackUseCase(
+        aiChatSessionRepo,
+        writebackExecutorService,
+        idempotencyGuard,
+      ),
       retryTranslation: new RetryTranslationUseCase(translationTaskRepo),
       getTranslationStatus: new GetTranslationStatusUseCase(translationTaskRepo),
 

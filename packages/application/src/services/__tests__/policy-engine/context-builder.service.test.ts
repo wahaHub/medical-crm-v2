@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import type {
+import {
   AiChatMessage,
   AiChatSession,
   AiChatTimelineEvent,
   AiFollowupTrigger,
   AiHandoff,
   AiUserProfile,
+} from '@medical-crm/domain';
+import type {
   IAiChatMessageRepository,
   IAiChatSessionRepository,
   IAiChatTimelineEventRepository,
@@ -18,7 +20,7 @@ import { ContextBuilderService } from '../../policy-engine/context-builder.servi
 describe('ContextBuilderService', () => {
   it('assembles context from session, profile, timeline, and pending state', async () => {
     const sessionRepo: IAiChatSessionRepository = {
-      findBySessionId: vi.fn(async () => ({
+      findBySessionId: vi.fn(async () => new AiChatSession({
         id: 'session-1',
         sessionId: 'policy-session-1',
         sessionSecretHash: null,
@@ -27,14 +29,31 @@ describe('ContextBuilderService', () => {
         hospitalType: 'COSMETIC',
         status: 'ACTIVE',
         statusSnapshot: {
+          conditionStatus: 'unknown',
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          consultationStatus: 'not_introduced',
+          packageStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'browsing',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
           pendingOffer: {
             type: 'HOSPITAL_RECOMMENDATION',
             payload: { shortlistId: 'rec-1' },
           },
+          pendingQuestion: null,
+          lastNextAction: null,
+          lastResolvedIntent: null,
+          conversationSummary: '',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
         },
         createdAt: new Date(),
         updatedAt: new Date(),
-      }) as AiChatSession),
+      })),
       findByDifyConversationId: vi.fn(async () => null),
       save: vi.fn(),
       attachPatient: vi.fn(),
@@ -45,14 +64,14 @@ describe('ContextBuilderService', () => {
     const messageRepo: IAiChatMessageRepository = {
       create: vi.fn(),
       listBySession: vi.fn(async () => [
-        {
+        new AiChatMessage({
           id: 'msg-1',
           sessionId: 'session-1',
-          role: 'assistant',
+          role: 'ASSISTANT',
           content: 'Here are the Korea recommendations we discussed earlier.',
           intent: 'CONSULT',
           resolvedIntent: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-          riskLevel: 'LOW',
+          riskLevel: 'NORMAL',
           canAnswer: true,
           nextAction: 'CONSULT_CONVERSION',
           secondaryAction: null,
@@ -64,26 +83,59 @@ describe('ContextBuilderService', () => {
           toolTrace: [],
           metadata: {},
           createdAt: new Date(),
-        } as AiChatMessage,
+        }),
+      ]),
+      listRecentBySession: vi.fn(async () => [
+        new AiChatMessage({
+          id: 'msg-1',
+          sessionId: 'session-1',
+          role: 'ASSISTANT',
+          content: 'Here are the Korea recommendations we discussed earlier.',
+          intent: 'CONSULT',
+          resolvedIntent: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'CONSULT_CONVERSION',
+          secondaryAction: null,
+          responseMode: 'grounded_plus_guidance',
+          citations: [],
+          reasonCodes: [],
+          shortlist: [],
+          writebackStatus: 'applied',
+          toolTrace: [],
+          metadata: {},
+          createdAt: new Date(),
+        }),
       ]),
     };
 
     const profileRepo: IAiUserProfileRepository = {
-      findByAnonymousKeyOrPatient: vi.fn(async () => ({
+      findByAnonymousKeyOrPatient: vi.fn(async () => new AiUserProfile({
         id: 'profile-1',
         patientId: null,
         anonymousKey: 'policy-session-1',
+        conditionOrGoal: null,
+        conditionCategory: null,
+        preferredDestination: [],
+        preferredLanguage: null,
+        budgetBand: null,
+        urgencyLevel: null,
+        existingReportsStatus: 'none',
+        objectionTags: [],
+        leadStage: 'browsing',
+        nextBestAction: null,
         memorySummary: 'Interested in Korea and rhinoplasty.',
+        sourceConfidenceMap: {},
         createdAt: new Date(),
         updatedAt: new Date(),
-      }) as AiUserProfile),
+      })),
       save: vi.fn(),
       patch: vi.fn(),
     };
 
     const timelineRepo: IAiChatTimelineEventRepository = {
       listRecentBySession: vi.fn(async () => [
-        {
+        new AiChatTimelineEvent({
           id: 'timeline-1',
           sessionId: 'session-1',
           patientId: null,
@@ -93,7 +145,7 @@ describe('ContextBuilderService', () => {
           actor: 'ai',
           confidence: '0.95',
           createdAt: new Date(),
-        } as AiChatTimelineEvent,
+        }),
       ]),
       append: vi.fn(),
     };

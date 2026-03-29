@@ -196,6 +196,9 @@ function buildAllowedTools(nextAction: string): string[] {
       return ['search_hospitals', 'get_hospital_details'];
     case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
       return ['search_hospitals'];
+    case 'EXPLAIN_DOC_UPLOAD':
+    case 'EXPLAIN_CONSULT_PROCESS':
+      return ['search_faq'];
     case 'REQUEST_DOC_UPLOAD':
       return ['request_docs_upload'];
     case 'SHOW_PACKAGE':
@@ -212,6 +215,8 @@ function buildResponseMode(nextAction: string): string {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
       return 'grounded_with_shortlist';
     case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
+    case 'EXPLAIN_DOC_UPLOAD':
+    case 'EXPLAIN_CONSULT_PROCESS':
       return 'grounded_with_guidance';
     case 'REQUEST_DOC_UPLOAD':
       return 'guided_upload_request';

@@ -285,6 +285,12 @@ describe('ContextBuilderService', () => {
     expect(context.currentEngagementMode).toBe('QUALIFIED_EXPLORATION');
     expect(context.pendingOffer.type).toBe('HOSPITAL_RECOMMENDATION');
     expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
+    expect(context.sessionRef).toEqual({
+      id: 'session-2',
+      sessionId: 'policy-session-2',
+      patientId: 'patient-2',
+    });
+    expect('session' in context).toBe(false);
     expect('statusSnapshot' in context).toBe(false);
     expect('profile' in context).toBe(false);
     expect('recentTimeline' in context).toBe(false);

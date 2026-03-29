@@ -1,5 +1,4 @@
 import type {
-  AiChatSession,
   AiChatStatusSnapshot,
   AiChatMessage,
   AiChatTimelineEvent,
@@ -36,7 +35,11 @@ export interface PolicyConversationContext {
   sessionId: string;
   userMessage: string;
   contextDepth: 'light' | 'full';
-  session: AiChatSession;
+  sessionRef: {
+    id: string;
+    sessionId: string;
+    patientId: string | null;
+  };
   patientId: string | null;
   currentEngagementMode: AiPolicyEngagementMode | null;
   pendingOffer: PolicyPendingStateSummary;
@@ -82,7 +85,11 @@ export class ContextBuilderService {
       sessionId: input.sessionId,
       userMessage: input.userMessage,
       contextDepth: depth,
-      session,
+      sessionRef: {
+        id: session.id,
+        sessionId: session.sessionId,
+        patientId: session.patientId,
+      },
       patientId: session.patientId,
       currentEngagementMode: inferCurrentEngagementMode(session.statusSnapshot),
       pendingOffer: summarizePendingState(session.statusSnapshot.pendingOffer),

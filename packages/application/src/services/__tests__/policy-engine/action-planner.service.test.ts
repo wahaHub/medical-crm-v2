@@ -90,4 +90,40 @@ describe('ActionPlannerService', () => {
     expect(plan.nextAction).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
     expect(plan.reasonCodes).toContain('qualified_recommendation_exploration');
   });
+
+  it('keeps explicit document questions in qualified exploration on an explanation path', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      statusSnapshot: {
+        docUploadStatus: 'NONE',
+        packageStatus: 'SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+    });
+
+    expect(plan.nextAction).toBe('EXPLAIN_DOC_UPLOAD');
+    expect(plan.reasonCodes).toContain('qualified_docs_explanation');
+  });
+
+  it('keeps consult-style questions in qualified exploration on an explanation path', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'GENERAL_CONSULT',
+    });
+
+    expect(plan.nextAction).toBe('EXPLAIN_CONSULT_PROCESS');
+    expect(plan.reasonCodes).toContain('qualified_consult_explanation');
+  });
 });

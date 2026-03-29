@@ -68,9 +68,9 @@ function planLightDiscovery(input: ActionPlannerInput): ActionPlan {
 function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
   if (input.resolvedIntent === 'REQUEST_DOC_UPLOAD') {
     return {
-      nextAction: 'REQUEST_DOC_UPLOAD',
+      nextAction: 'EXPLAIN_DOC_UPLOAD',
       secondaryAction: null,
-      reasonCodes: ['explicit_document_request'],
+      reasonCodes: ['qualified_docs_explanation'],
     };
   }
 
@@ -87,9 +87,21 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
     isDocsMissing(input.statusSnapshot.docUploadStatus)
   ) {
     return {
-      nextAction: 'REQUEST_DOC_UPLOAD',
+      nextAction: 'EXPLAIN_DOC_UPLOAD',
       secondaryAction: null,
-      reasonCodes: ['qualified_recommendation_needs_documents'],
+      reasonCodes: ['qualified_recommendation_needs_documents_explanation'],
+    };
+  }
+
+  if (
+    input.resolvedIntent === 'GENERAL_CONSULT' &&
+    normalize(input.statusSnapshot.packageStatus) !== 'NOT_SHOWN' &&
+    normalize(input.statusSnapshot.packageStatus) !== 'NOT_INTRODUCED'
+  ) {
+    return {
+      nextAction: 'EXPLAIN_CONSULT_PROCESS',
+      secondaryAction: null,
+      reasonCodes: ['qualified_consult_explanation'],
     };
   }
 

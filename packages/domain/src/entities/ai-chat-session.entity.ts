@@ -16,6 +16,9 @@ export interface AiChatStatusSnapshot {
   leadMaturity: string;
   riskLevel: string;
   trustOrObjection: string;
+  engagementMode: string;
+  prequalificationReasonCodes: string[];
+  enteredDeepWorkflowAt: Date | null;
   pendingOffer: AiChatPendingState | null;
   pendingQuestion: AiChatPendingState | null;
   lastNextAction: string | null;
@@ -70,6 +73,9 @@ export class AiChatSession {
       leadMaturity: props.statusSnapshot?.leadMaturity ?? 'browsing',
       riskLevel: props.statusSnapshot?.riskLevel ?? 'low',
       trustOrObjection: props.statusSnapshot?.trustOrObjection ?? 'none',
+      engagementMode: props.statusSnapshot?.engagementMode ?? 'LIGHT_DISCOVERY',
+      prequalificationReasonCodes: props.statusSnapshot?.prequalificationReasonCodes ?? [],
+      enteredDeepWorkflowAt: props.statusSnapshot?.enteredDeepWorkflowAt ?? null,
       pendingOffer: props.statusSnapshot?.pendingOffer ?? null,
       pendingQuestion: props.statusSnapshot?.pendingQuestion ?? null,
       lastNextAction: props.statusSnapshot?.lastNextAction ?? null,

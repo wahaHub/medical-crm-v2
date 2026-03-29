@@ -3,6 +3,12 @@ import { getServerEnv } from '@medical-crm/config';
 import { getServices } from '../composition-root.js';
 
 const app = new OpenAPIHono();
+const INTERNAL_SYSTEM_ACTOR = {
+  userId: 'internal-mcp',
+  email: 'internal@medora.local',
+  role: 'ADMIN' as const,
+  hospitalId: null,
+};
 
 function isAuthorized(secret: string | undefined): boolean {
   const { INTERNAL_API_SECRET } = getServerEnv();
@@ -165,14 +171,100 @@ app.openapi(aiPolicyWritebackRoute, async (c) => {
     assistantMessageId: payload.assistant_message_id,
     idempotencyKey: payload.idempotency_key,
     policyDecision: {
+      engagementMode: decision.engagement_mode,
+      writebackDepth: decision.writeback_depth,
       nextAction: decision.next_action,
       riskLevel: decision.risk_level,
       reasonCodes: decision.reason_codes ?? [],
+      prequalificationReasonCodes: decision.prequalification_reason_codes ?? [],
       shortlist: decision.shortlist ?? [],
     },
   });
 
   return c.json({ ok: true, data: result }, 200);
 });
+
+const searchHospitalsRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/internal/mcp/search-hospitals',
+  responses: { 200: { description: 'Hospital candidate pool for Dify orchestration' } },
+});
+
+app.openapi(searchHospitalsRoute, async (c) => {
+  const secret = c.req.header('X-Internal-Secret');
+  if (!isAuthorized(secret)) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const body = await c.req.json();
+  const topicHint = readOptionalString(body?.candidate_signals?.topicHint);
+  const query = readOptionalString(body?.query);
+  const category = topicHint ?? inferHospitalCategory(query);
+
+  const svc = getServices();
+  const result = await svc.matchHospitals.execute({
+    category: category ?? undefined,
+  });
+
+  return c.json({
+    ok: true,
+    data: result.hospitals.map((hospital) => ({
+      hospitalId: hospital.id,
+      name: hospital.name,
+      nameEn: hospital.nameEn,
+      rating: hospital.rating,
+      logoUrl: hospital.logoUrl,
+      tags: hospital.tags,
+      procedureCount: hospital.procedureCount,
+      reasonCodes: ['candidate_pool_match'],
+    })),
+  }, 200);
+});
+
+const listPackagesRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/internal/mcp/list-packages',
+  responses: { 200: { description: 'Compact package cards for Dify orchestration' } },
+});
+
+app.openapi(listPackagesRoute, async (c) => {
+  const secret = c.req.header('X-Internal-Secret');
+  if (!isAuthorized(secret)) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const svc = getServices();
+  const result = await svc.listPackages.execute({
+    page: 1,
+    limit: 5,
+    status: 'PUBLISHED',
+  }, INTERNAL_SYSTEM_ACTOR);
+
+  return c.json({
+    ok: true,
+    data: result.data.map((pkg) => ({
+      packageId: pkg.id,
+      name: pkg.nameEn,
+      type: pkg.type,
+      price: pkg.price,
+      currency: pkg.currency,
+      description: pkg.descriptionEn,
+      coverImageUrl: pkg.coverImageUrl,
+    })),
+  }, 200);
+});
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function inferHospitalCategory(query: string | null): string | null {
+  if (!query) return null;
+  const normalized = query.toLowerCase();
+  if (normalized.includes('rhinoplasty')) return 'rhinoplasty';
+  if (normalized.includes('hair') || normalized.includes('transplant')) return 'hair transplant';
+  if (normalized.includes('ivf') || normalized.includes('fertility')) return 'fertility';
+  return null;
+}
 
 export default app;

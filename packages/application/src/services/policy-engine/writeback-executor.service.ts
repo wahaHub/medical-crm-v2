@@ -19,6 +19,9 @@ export interface WritebackExecutorResult {
   statusUpdated: Record<string, unknown>;
   timelineEventsWritten: string[];
   messageMetadata: {
+    engagementMode?: string;
+    writebackDepth?: 'minimal' | 'moderate' | 'complete';
+    prequalificationReasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
     reasonCodes?: string[];
   };
@@ -39,8 +42,18 @@ export class WritebackExecutorService {
 
   async execute(input: WritebackExecutorInput): Promise<WritebackExecutorResult> {
     void this._profileRepo;
+    const currentSession = await this.sessionRepo.findBySessionId(input.sessionId);
+    if (!currentSession) {
+      throw new Error(`AI chat session not found: ${input.sessionId}`);
+    }
+
     const plan = this.planner.plan(input);
-    const statusUpdated = plan.statusPatch;
+    const statusUpdated = {
+      ...plan.statusPatch,
+      ...(shouldStampDeepWorkflowEntry(currentSession.statusSnapshot.enteredDeepWorkflowAt, input.policyDecision)
+        ? { enteredDeepWorkflowAt: new Date() }
+        : {}),
+    };
 
     await this.sessionRepo.patchStatus(input.sessionId, statusUpdated);
 
@@ -97,6 +110,13 @@ export class WritebackExecutorService {
       handoffCreated,
     };
   }
+}
+
+function shouldStampDeepWorkflowEntry(
+  existingValue: Date | null,
+  policyDecision: WritebackPlannerInput['policyDecision'],
+): boolean {
+  return existingValue === null && policyDecision.engagementMode === 'DEEP_WORKFLOW';
 }
 
 function toTimelineEntity(event: PlannedTimelineEvent): AiChatTimelineEvent {

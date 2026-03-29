@@ -541,6 +541,9 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	leadMaturity: varchar("lead_maturity", { length: 20 }).default('browsing').notNull(),
 	riskLevel: varchar("risk_level", { length: 20 }).default('low').notNull(),
 	trustOrObjection: varchar("trust_or_objection", { length: 30 }).default('none').notNull(),
+	engagementMode: varchar("engagement_mode", { length: 30 }).default('LIGHT_DISCOVERY').notNull(),
+	prequalificationReasonCodes: jsonb("prequalification_reason_codes").default([]).notNull(),
+	enteredDeepWorkflowAt: timestamp("entered_deep_workflow_at", { withTimezone: true, mode: 'string' }),
 	pendingOfferType: varchar("pending_offer_type", { length: 50 }),
 	pendingOfferPayload: jsonb("pending_offer_payload").default({}).notNull(),
 	pendingQuestionType: varchar("pending_question_type", { length: 50 }),
@@ -561,6 +564,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	index("ai_chat_sessions_handoff_status_idx").using("btree", table.handoffStatus.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
 	index("ai_chat_sessions_lead_maturity_idx").using("btree", table.leadMaturity.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
 	index("ai_chat_sessions_risk_level_idx").using("btree", table.riskLevel.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("ai_chat_sessions_engagement_mode_idx").using("btree", table.engagementMode.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
 ]);
 
 export const aiChatMessages = pgTable("ai_chat_messages", {

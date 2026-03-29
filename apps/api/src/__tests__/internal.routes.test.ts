@@ -10,6 +10,8 @@ const mockServices = {
   getAiPolicyContext: { execute: vi.fn() },
   decideAiPolicy: { execute: vi.fn() },
   applyAiPolicyWriteback: { execute: vi.fn() },
+  matchHospitals: { execute: vi.fn() },
+  listPackages: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -185,9 +187,9 @@ describe('Internal routes', () => {
   describe('POST /api/v2/internal/ai-policy/writeback', () => {
     it('returns a writeback envelope and stays idempotent for the same writeback key', async () => {
       const response = {
-        statusUpdated: { docUploadStatus: 'REQUESTED' },
+        statusUpdated: { docUploadStatus: 'REQUESTED', engagementMode: 'DEEP_WORKFLOW' },
         timelineEventsWritten: ['DOC_UPLOAD_REQUESTED'],
-        messageMetadata: {},
+        messageMetadata: { engagementMode: 'DEEP_WORKFLOW', writebackDepth: 'complete' },
         followupCreated: 'followup-1',
         handoffCreated: null,
       };
@@ -203,7 +205,12 @@ describe('Internal routes', () => {
         payload: {
           assistant_message_id: 'assistant-1',
           idempotency_key: 'session-1:assistant-1:v1',
-          policy_decision: { next_action: 'REQUEST_DOC_UPLOAD' },
+          policy_decision: {
+            engagement_mode: 'DEEP_WORKFLOW',
+            writeback_depth: 'complete',
+            next_action: 'REQUEST_DOC_UPLOAD',
+            prequalification_reason_codes: ['form_completed'],
+          },
           tool_results: [],
           final_response_metadata: {},
         },
@@ -230,6 +237,132 @@ describe('Internal routes', () => {
       expect(first.status).toBe(200);
       expect(second.status).toBe(200);
       expect(await first.json()).toEqual(await second.json());
+      expect(mockServices.applyAiPolicyWriteback.execute).toHaveBeenCalledWith(expect.objectContaining({
+        policyDecision: expect.objectContaining({
+          engagementMode: 'DEEP_WORKFLOW',
+          writebackDepth: 'complete',
+          prequalificationReasonCodes: ['form_completed'],
+          nextAction: 'REQUEST_DOC_UPLOAD',
+        }),
+      }));
+    });
+  });
+
+  describe('POST /api/v2/internal/mcp/search-hospitals', () => {
+    it('returns hospital cards for Dify orchestration', async () => {
+      mockServices.matchHospitals.execute.mockResolvedValue({
+        hospitals: [{
+          id: 'hospital-1',
+          name: 'Medora Seoul',
+          nameEn: 'Medora Seoul',
+          rating: 4.8,
+          logoUrl: 'https://example.com/logo.png',
+          tags: ['rhinoplasty', 'premium'],
+          procedureCount: 24,
+        }],
+      });
+
+      const res = await app.request('/api/v2/internal/mcp/search-hospitals', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          session_id: 'session-1',
+          query: 'I need help choosing a rhinoplasty hospital',
+          candidate_signals: {
+            topicHint: 'rhinoplasty',
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        ok: true,
+        data: [{
+          hospitalId: 'hospital-1',
+          name: 'Medora Seoul',
+          nameEn: 'Medora Seoul',
+          rating: 4.8,
+          logoUrl: 'https://example.com/logo.png',
+          tags: ['rhinoplasty', 'premium'],
+          procedureCount: 24,
+          reasonCodes: ['candidate_pool_match'],
+        }],
+      });
+      expect(mockServices.matchHospitals.execute).toHaveBeenCalledWith({
+        category: 'rhinoplasty',
+      });
+    });
+  });
+
+  describe('POST /api/v2/internal/mcp/list-packages', () => {
+    it('returns compact published package cards for Dify orchestration', async () => {
+      mockServices.listPackages.execute.mockResolvedValue({
+        data: [{
+          id: 'pkg-1',
+          nameEn: 'Consultation Package',
+          nameZh: null,
+          type: 'CONSULTATION',
+          price: '199',
+          currency: 'USD',
+          descriptionEn: 'Includes concierge support.',
+          descriptionZh: null,
+          inclusions: [],
+          coverImageUrl: 'https://example.com/pkg.png',
+          sortWeight: 0,
+          status: 'PUBLISHED',
+          publishAt: null,
+          takedownAt: null,
+          config: {},
+          createdBy: null,
+          createdAt: '2026-03-29T00:00:00.000Z',
+          updatedAt: '2026-03-29T00:00:00.000Z',
+        }],
+        total: 1,
+        page: 1,
+        limit: 5,
+        totalPages: 1,
+        hasMore: false,
+      });
+
+      const res = await app.request('/api/v2/internal/mcp/list-packages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          session_id: 'session-1',
+          hospital_type: 'COSMETIC',
+          query: 'What package options do you have?',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        ok: true,
+        data: [{
+          packageId: 'pkg-1',
+          name: 'Consultation Package',
+          type: 'CONSULTATION',
+          price: '199',
+          currency: 'USD',
+          description: 'Includes concierge support.',
+          coverImageUrl: 'https://example.com/pkg.png',
+        }],
+      });
+      expect(mockServices.listPackages.execute).toHaveBeenCalledWith(
+        {
+          page: 1,
+          limit: 5,
+          status: 'PUBLISHED',
+        },
+        expect.objectContaining({
+          role: 'ADMIN',
+        }),
+      );
     });
   });
 });

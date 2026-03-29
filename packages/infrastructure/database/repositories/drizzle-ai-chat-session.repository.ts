@@ -51,6 +51,9 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         leadMaturity: entity.statusSnapshot.leadMaturity,
         riskLevel: entity.statusSnapshot.riskLevel,
         trustOrObjection: entity.statusSnapshot.trustOrObjection,
+        engagementMode: entity.statusSnapshot.engagementMode,
+        prequalificationReasonCodes: entity.statusSnapshot.prequalificationReasonCodes,
+        enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
         pendingOfferType: entity.statusSnapshot.pendingOffer?.type ?? null,
         pendingOfferPayload: entity.statusSnapshot.pendingOffer?.payload ?? {},
         pendingQuestionType: entity.statusSnapshot.pendingQuestion?.type ?? null,
@@ -82,6 +85,9 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           leadMaturity: entity.statusSnapshot.leadMaturity,
           riskLevel: entity.statusSnapshot.riskLevel,
           trustOrObjection: entity.statusSnapshot.trustOrObjection,
+          engagementMode: entity.statusSnapshot.engagementMode,
+          prequalificationReasonCodes: entity.statusSnapshot.prequalificationReasonCodes,
+          enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
           pendingOfferType: entity.statusSnapshot.pendingOffer?.type ?? null,
           pendingOfferPayload: entity.statusSnapshot.pendingOffer?.payload ?? {},
           pendingQuestionType: entity.statusSnapshot.pendingQuestion?.type ?? null,
@@ -142,6 +148,13 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.leadMaturity !== undefined) updates.leadMaturity = patch.leadMaturity;
     if (patch.riskLevel !== undefined) updates.riskLevel = patch.riskLevel;
     if (patch.trustOrObjection !== undefined) updates.trustOrObjection = patch.trustOrObjection;
+    if (patch.engagementMode !== undefined) updates.engagementMode = patch.engagementMode;
+    if (patch.prequalificationReasonCodes !== undefined) {
+      updates.prequalificationReasonCodes = patch.prequalificationReasonCodes;
+    }
+    if (patch.enteredDeepWorkflowAt !== undefined) {
+      updates.enteredDeepWorkflowAt = patch.enteredDeepWorkflowAt?.toISOString() ?? null;
+    }
     if (patch.pendingOffer !== undefined) {
       updates.pendingOfferType = patch.pendingOffer?.type ?? null;
       updates.pendingOfferPayload = patch.pendingOffer?.payload ?? {};
@@ -192,6 +205,9 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         leadMaturity: row.leadMaturity,
         riskLevel: row.riskLevel,
         trustOrObjection: row.trustOrObjection,
+        engagementMode: row.engagementMode,
+        prequalificationReasonCodes: ((row.prequalificationReasonCodes as unknown[]) ?? []) as string[],
+        enteredDeepWorkflowAt: row.enteredDeepWorkflowAt ? new Date(row.enteredDeepWorkflowAt) : null,
         pendingOffer: row.pendingOfferType
           ? {
               type: row.pendingOfferType,

@@ -5,8 +5,154 @@ import { WritebackExecutorService } from '../../policy-engine/writeback-executor
 import { WritebackPlannerService } from '../../policy-engine/writeback-planner.service.js';
 
 describe('WritebackExecutorService', () => {
+  it('keeps low-signal turns free of timeline and followup noise while updating engagement truth', async () => {
+    const sessionRepo = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'db-session-0',
+        sessionId: 'session-0',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          conditionStatus: 'unknown',
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          consultationStatus: 'not_introduced',
+          packageStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'browsing',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          engagementMode: 'LIGHT_DISCOVERY',
+          prequalificationReasonCodes: [],
+          enteredDeepWorkflowAt: null,
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: null,
+          lastResolvedIntent: 'GENERAL_CONSULT',
+          conversationSummary: '',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      patchStatus: vi.fn(async (_sessionId: string, patch: Record<string, unknown>) => new AiChatSession({
+        id: 'db-session-0',
+        sessionId: 'session-0',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          conditionStatus: 'unknown',
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          consultationStatus: 'not_introduced',
+          packageStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'browsing',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          engagementMode: (patch['engagementMode'] as string | undefined) ?? 'LIGHT_DISCOVERY',
+          prequalificationReasonCodes: (patch['prequalificationReasonCodes'] as string[] | undefined) ?? [],
+          enteredDeepWorkflowAt: null,
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: (patch['lastNextAction'] as string | undefined) ?? 'ANSWER_FAQ',
+          lastResolvedIntent: 'GENERAL_CONSULT',
+          conversationSummary: '',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+    };
+    const profileRepo = { patch: vi.fn(async () => null) };
+    const timelineRepo = { append: vi.fn(async (event) => event) };
+    const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
+    const handoffRepo = { save: vi.fn(async (handoff) => handoff) };
+
+    const executor = new WritebackExecutorService(
+      sessionRepo as any,
+      profileRepo as any,
+      timelineRepo as any,
+      followupRepo as any,
+      handoffRepo as any,
+      new WritebackPlannerService(),
+      new HandoffPolicyService(),
+    );
+
+    const result = await executor.execute({
+      sessionId: 'session-0',
+      sessionDbId: 'db-session-0',
+      patientId: null,
+      assistantMessageId: 'assistant-light-1',
+      policyDecision: {
+        engagementMode: 'LIGHT_DISCOVERY',
+        writebackDepth: 'minimal',
+        nextAction: 'ANSWER_FAQ',
+        riskLevel: 'LOW',
+        reasonCodes: ['light_discovery_soft_guidance'],
+        prequalificationReasonCodes: ['greeting_detected'],
+      },
+    });
+
+    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-0', expect.objectContaining({
+      engagementMode: 'LIGHT_DISCOVERY',
+      prequalificationReasonCodes: ['greeting_detected'],
+      lastNextAction: 'ANSWER_FAQ',
+    }));
+    expect(timelineRepo.append).not.toHaveBeenCalled();
+    expect(followupRepo.createPendingTrigger).not.toHaveBeenCalled();
+    expect(result.timelineEventsWritten).toEqual([]);
+    expect(result.followupCreated).toBeNull();
+  });
+
   it('writes timeline, session snapshot, shortlist audit, and followup in one backend-controlled pass', async () => {
     const sessionRepo = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'db-session-1',
+        sessionId: 'session-1',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          conditionStatus: 'unknown',
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          consultationStatus: 'not_introduced',
+          packageStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'browsing',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          engagementMode: 'LIGHT_DISCOVERY',
+          prequalificationReasonCodes: [],
+          enteredDeepWorkflowAt: null,
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: null,
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+          conversationSummary: '',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
       patchStatus: vi.fn(async (_sessionId: string, patch: Record<string, unknown>) => new AiChatSession({
         id: 'db-session-1',
         sessionId: 'session-1',
@@ -26,6 +172,11 @@ describe('WritebackExecutorService', () => {
           leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
+          engagementMode: (patch['engagementMode'] as string | undefined) ?? 'DEEP_WORKFLOW',
+          prequalificationReasonCodes: (patch['prequalificationReasonCodes'] as string[] | undefined) ?? [],
+          enteredDeepWorkflowAt: patch['enteredDeepWorkflowAt'] instanceof Date
+            ? patch['enteredDeepWorkflowAt'] as Date
+            : null,
           pendingOffer: null,
           pendingQuestion: null,
           lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
@@ -60,15 +211,20 @@ describe('WritebackExecutorService', () => {
       patientId: null,
       assistantMessageId: 'assistant-1',
       policyDecision: {
+        engagementMode: 'DEEP_WORKFLOW',
+        writebackDepth: 'complete',
         nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         riskLevel: 'LOW',
         reasonCodes: ['condition_fit'],
+        prequalificationReasonCodes: ['form_completed', 'recommendation_requested'],
         shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
       },
     });
 
     expect(result.timelineEventsWritten).toContain('HOSPITALS_RECOMMENDED');
     expect(result.statusUpdated.recommendationStatus).toBe('PRELIMINARY_SHOWN');
+    expect(result.statusUpdated.engagementMode).toBe('DEEP_WORKFLOW');
+    expect(result.statusUpdated.enteredDeepWorkflowAt).toBeInstanceOf(Date);
     expect(result.messageMetadata.shortlist?.[0]?.hospitalId).toBe('hospital-1');
   });
 });

@@ -1,4 +1,5 @@
 import type { AiPolicyBackendNextAction } from '../../dtos/ai-policy.dto.js';
+import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
 
 export interface WritebackPlannerInput {
   sessionId: string;
@@ -6,9 +7,12 @@ export interface WritebackPlannerInput {
   patientId: string | null;
   assistantMessageId: string;
   policyDecision: {
+    engagementMode?: AiPolicyEngagementMode;
+    writebackDepth?: 'minimal' | 'moderate' | 'complete';
     nextAction: AiPolicyBackendNextAction;
     riskLevel?: string;
     reasonCodes?: string[];
+    prequalificationReasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
   };
 }
@@ -37,6 +41,9 @@ export interface WritebackPlan {
   timelineEvents: PlannedTimelineEvent[];
   followupTrigger: PlannedFollowupTrigger | null;
   messageMetadata: {
+    engagementMode?: AiPolicyEngagementMode;
+    writebackDepth?: 'minimal' | 'moderate' | 'complete';
+    prequalificationReasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
     reasonCodes?: string[];
   };
@@ -46,10 +53,23 @@ export class WritebackPlannerService {
   plan(input: WritebackPlannerInput): WritebackPlan {
     const shortlist = input.policyDecision.shortlist ?? [];
     const reasonCodes = input.policyDecision.reasonCodes ?? [];
+    const engagementMode = input.policyDecision.engagementMode;
+    const writebackDepth = input.policyDecision.writebackDepth;
+    const prequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes ?? [];
+    const baseStatusPatch = {
+      ...(engagementMode ? { engagementMode } : {}),
+      ...(prequalificationReasonCodes.length > 0 ? { prequalificationReasonCodes } : {}),
+    };
+    const baseMessageMetadata = {
+      ...(engagementMode ? { engagementMode } : {}),
+      ...(writebackDepth ? { writebackDepth } : {}),
+      ...(prequalificationReasonCodes.length > 0 ? { prequalificationReasonCodes } : {}),
+    };
 
     if (input.policyDecision.nextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS') {
       return {
         statusPatch: {
+          ...baseStatusPatch,
           recommendationStatus: 'PRELIMINARY_SHOWN',
           lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         },
@@ -66,6 +86,7 @@ export class WritebackPlannerService {
         ],
         followupTrigger: null,
         messageMetadata: {
+          ...baseMessageMetadata,
           shortlist,
           reasonCodes,
         },
@@ -75,6 +96,7 @@ export class WritebackPlannerService {
     if (input.policyDecision.nextAction === 'REQUEST_DOC_UPLOAD') {
       return {
         statusPatch: {
+          ...baseStatusPatch,
           docUploadStatus: 'REQUESTED',
           lastNextAction: 'REQUEST_DOC_UPLOAD',
         },
@@ -98,6 +120,7 @@ export class WritebackPlannerService {
           payload: { assistantMessageId: input.assistantMessageId },
         },
         messageMetadata: {
+          ...baseMessageMetadata,
           reasonCodes,
         },
       };
@@ -106,12 +129,14 @@ export class WritebackPlannerService {
     if (input.policyDecision.nextAction === 'EXPLORE_HOSPITAL_RECOMMENDATIONS') {
       return {
         statusPatch: {
+          ...baseStatusPatch,
           recommendationStatus: 'EXPLORED',
           lastNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
         },
         timelineEvents: [],
         followupTrigger: null,
         messageMetadata: {
+          ...baseMessageMetadata,
           reasonCodes,
         },
       };
@@ -120,11 +145,13 @@ export class WritebackPlannerService {
     if (input.policyDecision.nextAction === 'EXPLAIN_DOC_UPLOAD') {
       return {
         statusPatch: {
+          ...baseStatusPatch,
           lastNextAction: 'EXPLAIN_DOC_UPLOAD',
         },
         timelineEvents: [],
         followupTrigger: null,
         messageMetadata: {
+          ...baseMessageMetadata,
           reasonCodes,
         },
       };
@@ -133,11 +160,13 @@ export class WritebackPlannerService {
     if (input.policyDecision.nextAction === 'EXPLAIN_CONSULT_PROCESS') {
       return {
         statusPatch: {
+          ...baseStatusPatch,
           lastNextAction: 'EXPLAIN_CONSULT_PROCESS',
         },
         timelineEvents: [],
         followupTrigger: null,
         messageMetadata: {
+          ...baseMessageMetadata,
           reasonCodes,
         },
       };
@@ -145,11 +174,13 @@ export class WritebackPlannerService {
 
     return {
       statusPatch: {
+        ...baseStatusPatch,
         lastNextAction: input.policyDecision.nextAction,
       },
       timelineEvents: [],
       followupTrigger: null,
       messageMetadata: {
+        ...baseMessageMetadata,
         reasonCodes,
       },
     };

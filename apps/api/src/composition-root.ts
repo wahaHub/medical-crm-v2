@@ -182,6 +182,7 @@ import {
   AiSyncTaskService,
   ContextBuilderService,
   SignalResolverService,
+  EngagementModeResolverService,
   IntentResolverService,
   RiskResolverService,
   ActionPlannerService,
@@ -686,6 +687,7 @@ export function getServices(): AppServices {
       aiHandoffRepo,
     );
     const signalResolverService = new SignalResolverService();
+    const engagementModeResolverService = new EngagementModeResolverService();
     const intentResolverService = new IntentResolverService();
     const riskResolverService = new RiskResolverService();
     const actionPlannerService = new ActionPlannerService();
@@ -895,6 +897,7 @@ export function getServices(): AppServices {
       decideAiPolicy: new DecideAiPolicyUseCase(
         contextBuilderService,
         signalResolverService,
+        engagementModeResolverService,
         intentResolverService,
         riskResolverService,
         actionPlannerService,

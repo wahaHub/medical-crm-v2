@@ -132,11 +132,14 @@ describe('AI policy schema integration', () => {
         handoffStatus: sessionRow.handoffStatus,
         leadMaturity: sessionRow.leadMaturity,
         riskLevel: sessionRow.riskLevel,
-        trustOrObjection: sessionRow.trustOrObjection,
-        pendingOffer: {
-          type: sessionRow.pendingOfferType,
-          payload: sessionRow.pendingOfferPayload,
-        },
+      trustOrObjection: sessionRow.trustOrObjection,
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      prequalificationReasonCodes: ['trust_building_question'],
+      enteredDeepWorkflowAt: null,
+      pendingOffer: {
+        type: sessionRow.pendingOfferType,
+        payload: sessionRow.pendingOfferPayload,
+      },
         pendingQuestion: {
           type: sessionRow.pendingQuestionType,
           payload: sessionRow.pendingQuestionPayload,
@@ -240,6 +243,9 @@ describe('AI policy schema integration', () => {
     }));
 
     await sessionRepo.patchStatus(session.sessionId, {
+      engagementMode: 'DEEP_WORKFLOW',
+      prequalificationReasonCodes: ['form_completed', 'documents_missing'],
+      enteredDeepWorkflowAt: new Date('2026-03-29T12:00:00.000Z'),
       formStatus: 'in_progress',
       pendingQuestion: {
         type: 'ASK_BUDGET',
@@ -252,6 +258,9 @@ describe('AI policy schema integration', () => {
     const recentTimeline = await timelineRepo.listRecentBySession(session.id, 5);
 
     expect(persisted?.statusSnapshot.formStatus).toBe('in_progress');
+    expect(persisted?.statusSnapshot.engagementMode).toBe('DEEP_WORKFLOW');
+    expect(persisted?.statusSnapshot.prequalificationReasonCodes).toEqual(['form_completed', 'documents_missing']);
+    expect(persisted?.statusSnapshot.enteredDeepWorkflowAt?.toISOString()).toBe('2026-03-29T12:00:00.000Z');
     expect(persisted?.statusSnapshot.pendingOffer?.type).toBe('FORM_COMPLETION');
     expect(persisted?.statusSnapshot.pendingQuestion?.type).toBe('ASK_BUDGET');
     expect(persisted?.statusSnapshot.conversationSummary).toContain('rhinoplasty');

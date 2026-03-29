@@ -147,6 +147,7 @@ export class DecideAiPolicyUseCase {
         context_depth: context.contextDepth,
         writeback_depth: determineWritebackDepth(effectiveEngagementMode),
         engagement_mode: effectiveEngagementMode,
+        prequalification_reason_codes: engagement.reasonCodes,
         next_action: resolvedNextAction,
         risk_level: risk.riskLevel,
         reason_codes: reasonCodes,

@@ -1,0 +1,34 @@
+node_modules
+.git
+.gitignore
+*.md
+.env
+.env.*
+**/__tests__
+**/test
+**/*.test.ts
+**/*.spec.ts
+.turbo
+.next
+dist
+coverage
+
+# Large directories not needed for API
+BabelDOC
+dify
+docs
+scripts
+
+# Frontend app source (only package.json needed, copied explicitly in Dockerfile)
+apps/admin/src
+apps/admin/public
+apps/admin/node_modules
+apps/admin/.next
+apps/hospital/src
+apps/hospital/public
+apps/hospital/node_modules
+apps/hospital/.next
+
+# UI package (not needed for API)
+packages/shared/ui/src
+packages/shared/ui/node_modules

@@ -574,7 +574,9 @@ export function getServices(): AppServices {
     const mediaUploadService = new MediaUploadService(uploadPolicyRegistry, storageAdapterRegistry);
     const difyApiClient = new DifyApiClientService(
       process.env['DIFY_API_BASE_URL'] ?? 'https://api.dify.ai/v1',
-      process.env['DIFY_API_KEY'] ?? '',
+      process.env['DIFY_APP_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? '',
+      30_000,
+      process.env['DIFY_DATASET_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? null,
     );
 
     // Domain services

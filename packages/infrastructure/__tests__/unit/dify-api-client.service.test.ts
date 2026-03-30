@@ -109,6 +109,22 @@ describe('DifyApiClientService', () => {
   });
 
   describe('createDocumentByText', () => {
+    it('uses the dataset API key for dataset requests when provided', async () => {
+      service = new DifyApiClientService('https://dify.test/', 'chat-api-key', 1_000, 'dataset-api-key');
+      fetchMock.mockResolvedValueOnce(mockResponse(200, { document_id: 'doc-1' }));
+
+      await service.createDocumentByText({
+        datasetId: 'dataset-1',
+        name: 'Knowledge Base',
+        text: 'Hello world',
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer dataset-api-key',
+      });
+    });
+
     it.each([
       {
         name: 'top-level document_id',
@@ -147,6 +163,9 @@ describe('DifyApiClientService', () => {
       expect(JSON.parse(init?.body as string)).toEqual({
         name: 'Knowledge Base',
         text: 'Hello world',
+        doc_form: 'text_model',
+        doc_language: 'English',
+        indexing_technique: 'economy',
       });
     });
 
@@ -164,6 +183,23 @@ describe('DifyApiClientService', () => {
   });
 
   describe('updateDocumentByText', () => {
+    it('uses the dataset API key for document updates when provided', async () => {
+      service = new DifyApiClientService('https://dify.test/', 'chat-api-key', 1_000, 'dataset-api-key');
+      fetchMock.mockResolvedValueOnce(mockResponse(200, { result: 'ok' }));
+
+      await service.updateDocumentByText({
+        datasetId: 'dataset-1',
+        documentId: 'doc-9',
+        name: 'Updated title',
+        text: 'Updated text',
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer dataset-api-key',
+      });
+    });
+
     it('posts to the expected update endpoint', async () => {
       fetchMock.mockResolvedValueOnce(mockResponse(200, { result: 'ok' }));
 
@@ -190,6 +226,21 @@ describe('DifyApiClientService', () => {
   });
 
   describe('deleteDocument', () => {
+    it('uses the dataset API key for document deletes when provided', async () => {
+      service = new DifyApiClientService('https://dify.test/', 'chat-api-key', 1_000, 'dataset-api-key');
+      fetchMock.mockResolvedValueOnce(mockResponse(204, ''));
+
+      await service.deleteDocument({
+        datasetId: 'dataset-1',
+        documentId: 'doc-9',
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer dataset-api-key',
+      });
+    });
+
     it('sends a DELETE request to the document endpoint', async () => {
       fetchMock.mockResolvedValueOnce(mockResponse(204, ''));
 

@@ -29,6 +29,7 @@ export class DifyApiClientService {
     private readonly baseUrl: string,
     private readonly apiKey: string,
     private readonly timeoutMs = 30_000,
+    private readonly datasetApiKey: string | null = null,
   ) {}
 
   async createChatMessage(request: DifyChatRequest): Promise<DifyChatResponse> {
@@ -69,9 +70,13 @@ export class DifyApiClientService {
   async createDocumentByText(request: DifyDocumentUpsertRequest): Promise<{ documentId: string }> {
     const payload = await this.requestJson(`/datasets/${request.datasetId}/document/create_by_text`, {
       method: 'POST',
+      apiKey: this.getDatasetApiKey(),
       body: JSON.stringify({
         name: request.name,
         text: request.text,
+        doc_form: 'text_model',
+        doc_language: 'English',
+        indexing_technique: 'economy',
       }),
     });
 
@@ -86,6 +91,7 @@ export class DifyApiClientService {
   async updateDocumentByText(request: DifyDocumentUpdateRequest): Promise<void> {
     await this.requestJson(`/datasets/${request.datasetId}/documents/${request.documentId}/update_by_text`, {
       method: 'POST',
+      apiKey: this.getDatasetApiKey(),
       body: JSON.stringify({
         name: request.name,
         text: request.text,
@@ -96,20 +102,28 @@ export class DifyApiClientService {
   async deleteDocument(input: { datasetId: string; documentId: string }): Promise<void> {
     await this.requestJson(`/datasets/${input.datasetId}/documents/${input.documentId}`, {
       method: 'DELETE',
+      apiKey: this.getDatasetApiKey(),
     });
   }
 
-  private async requestJson(path: string, init: RequestInit): Promise<Record<string, unknown>> {
+  private getDatasetApiKey(): string {
+    return this.datasetApiKey && this.datasetApiKey.length > 0
+      ? this.datasetApiKey
+      : this.apiKey;
+  }
+
+  private async requestJson(path: string, init: RequestInit & { apiKey?: string }): Promise<Record<string, unknown>> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const { apiKey, ...fetchInit } = init;
 
     try {
       const response = await fetch(`${this.baseUrl.replace(/\/+$/, '')}${path}`, {
-        ...init,
+        ...fetchInit,
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${apiKey ?? this.apiKey}`,
           'Content-Type': 'application/json',
-          ...(init.headers ?? {}),
+          ...(fetchInit.headers ?? {}),
         },
         signal: controller.signal,
       });

@@ -21,6 +21,10 @@ const app = new OpenAPIHono();
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
 
+function getDifyChatApiKey(): string | null {
+  return process.env['DIFY_APP_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? null;
+}
+
 const sendChatRoute = createRoute({
   method: 'post',
   path: '/api/v2/chatbot/chat',
@@ -42,7 +46,7 @@ app.openapi(sendChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
 
-  if (!process.env['DIFY_API_KEY']) {
+  if (!getDifyChatApiKey()) {
     return c.json({ error: 'Dify API key is not configured' }, 500);
   }
 

@@ -309,6 +309,171 @@ describe('ContextBuilderService', () => {
     expect(handoffRepo.listRecentBySession).not.toHaveBeenCalled();
   });
 
+  it('ignores provider-failed assistant drafts when deriving light-context lastAssistantAction', async () => {
+    const sessionRepo: IAiChatSessionRepository = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'session-3',
+        sessionId: 'policy-session-3',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          engagementMode: 'QUALIFIED_EXPLORATION',
+          lastNextAction: 'CONSULT_CONVERSION',
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      findByDifyConversationId: vi.fn(async () => null),
+      save: vi.fn(),
+      attachPatient: vi.fn(),
+      updateStatus: vi.fn(),
+      patchStatus: vi.fn(),
+    };
+
+    const messageRepo: IAiChatMessageRepository = {
+      create: vi.fn(),
+      listBySession: vi.fn(async () => []),
+      listRecentBySession: vi.fn(async () => [
+        new AiChatMessage({
+          id: 'msg-failed',
+          sessionId: 'session-3',
+          role: 'ASSISTANT',
+          content: '',
+          intent: 'FAQ',
+          resolvedIntent: 'GENERAL_CONSULT',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'REQUEST_DOCS',
+          secondaryAction: null,
+          responseMode: 'grounded_answer',
+          citations: [],
+          reasonCodes: [],
+          shortlist: [],
+          writebackStatus: 'pending',
+          toolTrace: [],
+          metadata: {
+            draftState: 'provider_error',
+            failureStage: 'provider_request',
+          },
+          createdAt: new Date(),
+        }),
+      ]),
+      updateWritebackMetadata: vi.fn(async () => null),
+      updateMessage: vi.fn(async () => null),
+      deleteById: vi.fn(async () => false),
+    };
+
+    const builder = new ContextBuilderService(
+      sessionRepo,
+      messageRepo,
+      { findByAnonymousKeyOrPatient: vi.fn(), save: vi.fn(), patch: vi.fn() } as unknown as IAiUserProfileRepository,
+      { listRecentBySession: vi.fn(), append: vi.fn() } as unknown as IAiChatTimelineEventRepository,
+      { listPendingBySession: vi.fn(), createPendingTrigger: vi.fn(), resolvePendingTrigger: vi.fn() } as unknown as IAiFollowupTriggerRepository,
+      { listRecentBySession: vi.fn(), save: vi.fn(), complete: vi.fn() } as unknown as IAiHandoffRepository,
+    );
+
+    const context = await builder.build({
+      sessionId: 'policy-session-3',
+      userMessage: 'hello',
+      depth: 'light',
+    });
+
+    expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
+  });
+
+  it('excludes provider-failed assistant drafts from full-context recentMessages', async () => {
+    const sessionRepo: IAiChatSessionRepository = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'session-4',
+        sessionId: 'policy-session-4',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      findByDifyConversationId: vi.fn(async () => null),
+      save: vi.fn(),
+      attachPatient: vi.fn(),
+      updateStatus: vi.fn(),
+      patchStatus: vi.fn(),
+    };
+
+    const messageRepo: IAiChatMessageRepository = {
+      create: vi.fn(),
+      listBySession: vi.fn(async () => []),
+      listRecentBySession: vi.fn(async () => [
+        new AiChatMessage({
+          id: 'msg-failed',
+          sessionId: 'session-4',
+          role: 'ASSISTANT',
+          content: '',
+          intent: 'FAQ',
+          resolvedIntent: 'GENERAL_CONSULT',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'ANSWER',
+          secondaryAction: null,
+          responseMode: 'grounded_answer',
+          citations: [],
+          reasonCodes: [],
+          shortlist: [],
+          writebackStatus: 'pending',
+          toolTrace: [],
+          metadata: {
+            draftState: 'provider_error',
+          },
+          createdAt: new Date(),
+        }),
+        new AiChatMessage({
+          id: 'msg-good',
+          sessionId: 'session-4',
+          role: 'ASSISTANT',
+          content: 'We can continue.',
+          intent: 'FAQ',
+          resolvedIntent: 'GENERAL_CONSULT',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'ANSWER',
+          secondaryAction: null,
+          responseMode: 'grounded_answer',
+          citations: [],
+          reasonCodes: [],
+          shortlist: [],
+          writebackStatus: 'completed',
+          toolTrace: [],
+          metadata: {},
+          createdAt: new Date(),
+        }),
+      ]),
+      updateWritebackMetadata: vi.fn(async () => null),
+      updateMessage: vi.fn(async () => null),
+      deleteById: vi.fn(async () => false),
+    };
+
+    const builder = new ContextBuilderService(
+      sessionRepo,
+      messageRepo,
+      { findByAnonymousKeyOrPatient: vi.fn(async () => null), save: vi.fn(), patch: vi.fn() } as unknown as IAiUserProfileRepository,
+      { listRecentBySession: vi.fn(async () => []), append: vi.fn() } as unknown as IAiChatTimelineEventRepository,
+      { listPendingBySession: vi.fn(async () => []), createPendingTrigger: vi.fn(), resolvePendingTrigger: vi.fn() } as unknown as IAiFollowupTriggerRepository,
+      { listRecentBySession: vi.fn(async () => []), save: vi.fn(), complete: vi.fn() } as unknown as IAiHandoffRepository,
+    );
+
+    const context = await builder.build({
+      sessionId: 'policy-session-4',
+      userMessage: 'continue',
+      depth: 'full',
+    });
+
+    expect(context.recentMessages.map((message) => message.id)).toEqual(['msg-good']);
+  });
+
   it('treats persisted deep engagement mode as authoritative on read', async () => {
     const sessionRepo: IAiChatSessionRepository = {
       findBySessionId: vi.fn(async () => new AiChatSession({

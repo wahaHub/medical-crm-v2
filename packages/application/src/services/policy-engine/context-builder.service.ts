@@ -99,7 +99,8 @@ export class ContextBuilderService {
     } satisfies PolicyConversationContext;
 
     if (depth === 'light') {
-      const recentMessages = await this.messageRepo.listRecentBySession(session.id, 4);
+      const recentMessages = (await this.messageRepo.listRecentBySession(session.id, 4))
+        .filter((message) => !isProviderFailedDraft(message));
       const lastAssistantMessage = [...recentMessages]
         .reverse()
         .find((message) => message.role.toUpperCase() === 'ASSISTANT');
@@ -111,7 +112,7 @@ export class ContextBuilderService {
       };
     }
 
-    const [recentMessages, profile, recentTimeline, activeFollowups, recentHandoffs] = await Promise.all([
+    const [rawRecentMessages, profile, recentTimeline, activeFollowups, recentHandoffs] = await Promise.all([
       this.messageRepo.listRecentBySession(session.id, 12),
       this.profileRepo.findByAnonymousKeyOrPatient({
         anonymousKey: session.sessionId,
@@ -121,6 +122,7 @@ export class ContextBuilderService {
       this.followupRepo.listPendingBySession(session.id),
       this.handoffRepo.listRecentBySession(session.id, 5),
     ]);
+    const recentMessages = rawRecentMessages.filter((message) => !isProviderFailedDraft(message));
 
     const lastAssistantMessage = [...recentMessages]
       .reverse()
@@ -219,4 +221,15 @@ function isStarted(value: string | null | undefined, activeStates: string[]): bo
 
 function normalize(value: string | null | undefined): string {
   return (value ?? '').trim().toUpperCase();
+}
+
+function isProviderFailedDraft(message: AiChatMessage): boolean {
+  return message.role.toUpperCase() === 'ASSISTANT'
+    && message.content === ''
+    && normalizeRecordString(message.metadata, 'draftState') === 'provider_error';
+}
+
+function normalizeRecordString(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }

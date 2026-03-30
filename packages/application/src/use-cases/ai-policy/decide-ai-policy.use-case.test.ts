@@ -322,6 +322,80 @@ describe('DecideAiPolicyUseCase', () => {
     expect(result.allowed_tools).toEqual(['search_hospitals']);
   });
 
+  it('keeps shortlist tool permissions aligned to the current backend surface', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => ({
+      contextDepth: input.depth === 'full' ? 'full' : 'light',
+      sessionId: 'session-4b',
+      userMessage: 'Please recommend a hospital for me.',
+      sessionRef: { id: 'db-session-4b', sessionId: 'session-4b', patientId: null },
+      patientId: null,
+      currentEngagementMode: 'DEEP_WORKFLOW',
+      pendingOffer: { exists: false, type: null },
+      pendingQuestion: { exists: false, type: null },
+      lastAssistantAction: 'CONSULT_CONVERSION',
+      safetyFlags: {
+        riskLevel: 'LOW',
+        hasHighRiskSignal: false,
+        requiresSafetyHandling: false,
+      },
+      ...(input.depth === 'full'
+        ? {
+            statusSnapshot: {
+              conditionStatus: 'known',
+              formStatus: 'completed',
+              docUploadStatus: 'uploaded',
+              recommendationStatus: 'preliminary_shown',
+              consultationStatus: 'ready',
+              packageStatus: 'shown',
+              handoffStatus: 'not_needed',
+              leadMaturity: 'qualified',
+              riskLevel: 'low',
+              trustOrObjection: 'none',
+              pendingOffer: null,
+              pendingQuestion: null,
+              lastNextAction: 'CONSULT_CONVERSION',
+              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+              conversationSummary: 'User is ready for a shortlist.',
+              lastPolicyDecisionAt: null,
+              lastUserMessageAt: null,
+              lastAssistantMessageAt: null,
+            },
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }
+        : {
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }),
+    }));
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-4b',
+      userMessage: 'Please recommend a hospital for me.',
+      extraction: {},
+      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+    });
+
+    expect(result.next_action).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(result.allowed_tools).toEqual(['search_hospitals']);
+  });
+
   it('keeps explicit document questions in qualified exploration on an explanation path', async () => {
     const build = vi.fn(async (input: { depth?: string }) => {
       if (input.depth === 'light') {
@@ -406,6 +480,81 @@ describe('DecideAiPolicyUseCase', () => {
     expect(result.next_action).toBe('EXPLAIN_DOC_UPLOAD');
     expect(result.allowed_tools).toEqual(['search_faq']);
     expect(result.shortlist).toEqual([]);
+  });
+
+  it('keeps package tool permissions aligned to the current backend surface', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => ({
+      contextDepth: input.depth === 'full' ? 'full' : 'light',
+      sessionId: 'session-5b',
+      userMessage: 'Can you show me package options?',
+      sessionRef: { id: 'db-session-5b', sessionId: 'session-5b', patientId: null },
+      patientId: null,
+      currentEngagementMode: 'DEEP_WORKFLOW',
+      pendingOffer: { exists: false, type: null },
+      pendingQuestion: { exists: false, type: null },
+      lastAssistantAction: 'CONSULT_CONVERSION',
+      safetyFlags: {
+        riskLevel: 'LOW',
+        hasHighRiskSignal: false,
+        requiresSafetyHandling: false,
+      },
+      ...(input.depth === 'full'
+        ? {
+            statusSnapshot: {
+              conditionStatus: 'known',
+              formStatus: 'completed',
+              docUploadStatus: 'uploaded',
+              recommendationStatus: 'not_started',
+              consultationStatus: 'ready',
+              packageStatus: 'not_introduced',
+              handoffStatus: 'not_needed',
+              leadMaturity: 'qualified',
+              riskLevel: 'low',
+              trustOrObjection: 'none',
+              pendingOffer: null,
+              pendingQuestion: null,
+              lastNextAction: 'CONSULT_CONVERSION',
+              lastResolvedIntent: 'PACKAGE_INTEREST',
+              conversationSummary: 'User wants package options.',
+              lastPolicyDecisionAt: null,
+              lastUserMessageAt: null,
+              lastAssistantMessageAt: null,
+            },
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }
+        : {
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }),
+    }));
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-5b',
+      userMessage: 'Can you show me package options?',
+      extraction: {
+        topicHint: 'PACKAGE',
+      },
+    });
+
+    expect(result.next_action).toBe('SHOW_PACKAGE');
+    expect(result.allowed_tools).toEqual(['list_packages']);
   });
 
   it('blocks shortlist progression in deep workflow when documents are still missing or only requested', async () => {

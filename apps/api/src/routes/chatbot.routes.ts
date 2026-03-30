@@ -470,6 +470,7 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
   }
 
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, limit);
+  const visibleMessages = messages.filter((message) => !isProviderFailedDraft(message));
 
   return c.json({
     session: {
@@ -480,7 +481,7 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       createdAt: session.createdAt.toISOString(),
       updatedAt: session.updatedAt.toISOString(),
     },
-    messages: messages.reverse().map((message) => ({
+    messages: visibleMessages.reverse().map((message) => ({
       id: message.id,
       role: message.role,
       content: message.content,
@@ -1029,6 +1030,12 @@ function sanitizeRecordArray(value: Array<Record<string, unknown>> | undefined):
 
 function sanitizeCitationArray(value: AiChatCitation[]): AiChatCitation[] {
   return sanitizeUnknownValue(value) as AiChatCitation[];
+}
+
+function isProviderFailedDraft(message: { role?: string | null; content?: string | null; metadata?: Record<string, unknown> | null }): boolean {
+  return (message.role ?? '').toUpperCase() === 'ASSISTANT'
+    && (message.content ?? '') === ''
+    && asString(message.metadata?.draftState) === 'provider_error';
 }
 
 function sanitizeUnknownValue(value: unknown): unknown {

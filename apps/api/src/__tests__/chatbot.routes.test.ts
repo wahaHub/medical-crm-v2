@@ -628,6 +628,49 @@ describe('Chatbot routes', () => {
     expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
   });
 
+  it('GET /api/v2/chatbot/history/{sessionId} hides provider-failed assistant drafts', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-failed-draft',
+        role: 'ASSISTANT',
+        content: '',
+        createdAt: new Date('2026-03-26T09:06:00.000Z'),
+        metadata: {
+          draftState: 'provider_error',
+          failureStage: 'provider_request',
+        },
+      }),
+      makeMessage({
+        id: 'msg-answer',
+        role: 'ASSISTANT',
+        content: 'Latest answer',
+        createdAt: new Date('2026-03-26T09:05:00.000Z'),
+      }),
+      makeMessage({
+        id: 'msg-old',
+        role: 'USER',
+        content: 'First question',
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=3', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages.map((message) => message.id)).toEqual(['msg-old', 'msg-answer']);
+    expect(json.messages.every((message) => message.metadata.draftState !== 'provider_error')).toBe(true);
+  });
+
   it('POST /api/v2/chatbot/convert reuses existing case workflow instead of creating a duplicate case', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({

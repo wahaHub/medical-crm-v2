@@ -197,7 +197,7 @@ function dedupeReasonCodes(...codes: string[]): string[] {
 function buildAllowedTools(nextAction: AiPolicyBackendNextAction): string[] {
   switch (nextAction) {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
-      return ['search_hospitals', 'get_hospital_details'];
+      return ['search_hospitals'];
     case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
       return ['search_hospitals'];
     case 'EXPLAIN_DOC_UPLOAD':
@@ -206,7 +206,7 @@ function buildAllowedTools(nextAction: AiPolicyBackendNextAction): string[] {
     case 'REQUEST_DOC_UPLOAD':
       return ['request_docs_upload'];
     case 'SHOW_PACKAGE':
-      return ['list_packages', 'get_package_details'];
+      return ['list_packages'];
     case 'SAFETY_HANDOFF':
       return ['create_handoff'];
     default:

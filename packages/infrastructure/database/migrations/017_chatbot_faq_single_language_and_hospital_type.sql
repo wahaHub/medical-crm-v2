@@ -11,10 +11,20 @@ ALTER TABLE chatbot_faq_items
 ALTER TABLE chatbot_faq_items
   ADD COLUMN IF NOT EXISTS answer TEXT;
 
-UPDATE chatbot_faq_items
-SET
-  question = COALESCE(question, NULLIF(question_en, ''), NULLIF(question_zh, ''), ''),
-  answer = COALESCE(answer, NULLIF(answer_en, ''), NULLIF(answer_zh, ''), '');
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'chatbot_faq_items'
+      AND column_name IN ('question_en', 'question_zh', 'answer_en', 'answer_zh')
+  ) THEN
+    UPDATE chatbot_faq_items
+    SET
+      question = COALESCE(question, NULLIF(question_en, ''), NULLIF(question_zh, ''), ''),
+      answer = COALESCE(answer, NULLIF(answer_en, ''), NULLIF(answer_zh, ''), '');
+  END IF;
+END $$;
 
 ALTER TABLE chatbot_faq_items
   ALTER COLUMN question SET NOT NULL;

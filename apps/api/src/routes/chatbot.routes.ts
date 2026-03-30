@@ -17,6 +17,8 @@ import {
 import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 
+export const chatbotPublicRoutes = new OpenAPIHono();
+export const chatbotProtectedRoutes = new OpenAPIHono();
 const app = new OpenAPIHono();
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
@@ -42,7 +44,7 @@ const sendChatRoute = createRoute({
   },
 });
 
-app.openapi(sendChatRoute, async (c) => {
+chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
 
@@ -104,18 +106,45 @@ app.openapi(sendChatRoute, async (c) => {
     createdAt: new Date(),
   }));
 
+  const assistantMessageId = generateId();
+  await svc.aiChatMessageRepo.create(new AiChatMessage({
+    id: assistantMessageId,
+    sessionId: session.id,
+    role: 'ASSISTANT',
+    content: '',
+    intent: null,
+    riskLevel: null,
+    canAnswer: null,
+    nextAction: null,
+    citations: [],
+    metadata: {},
+    createdAt: new Date(),
+  }));
+
   let difyResponse: Record<string, unknown>;
   try {
     difyResponse = await svc.difyApi.createChatMessage({
       inputs: {
         hospitalType: body.hospitalType,
         sessionId: body.sessionId,
+        assistantMessageId,
+        currentStatus: session.statusSnapshot,
+        conversationSummary: session.statusSnapshot.conversationSummary,
+        pendingOffer: session.statusSnapshot.pendingOffer,
+        pendingQuestion: session.statusSnapshot.pendingQuestion,
       },
       query: body.message,
       user: body.sessionId,
       conversationId: session.difyConversationId,
     });
   } catch (error) {
+    await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
+      metadata: {
+        draftState: 'provider_error',
+        failureStage: 'provider_request',
+        failureRecordedAt: new Date().toISOString(),
+      },
+    }).catch(() => undefined);
     return c.json({
       error: error instanceof Error ? error.message : 'Dify request failed',
     }, 502);
@@ -130,19 +159,24 @@ app.openapi(sendChatRoute, async (c) => {
     }));
   }
 
-  const assistantMessage = await svc.aiChatMessageRepo.create(new AiChatMessage({
-    id: generateId(),
-    sessionId: session.id,
-    role: 'ASSISTANT',
+  const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
     intent: normalized.intent,
+    resolvedIntent: normalized.resolvedIntent ?? normalized.intent,
     riskLevel: normalized.riskLevel,
     canAnswer: normalized.canAnswer,
     nextAction: normalized.nextAction,
+    secondaryAction: normalized.secondaryAction,
+    responseMode: normalized.responseMode,
     citations: normalized.citations,
+    reasonCodes: normalized.reasonCodes,
+    shortlist: normalized.shortlist,
     metadata: normalized.metadata,
-    createdAt: new Date(),
-  }));
+  });
+
+  if (!assistantMessage) {
+    return c.json({ error: 'Assistant message draft missing after Dify response' }, 500);
+  }
 
   if (sessionSecretToSet) {
     setChatbotSessionSecretCookie(c, sessionSecretToSet);
@@ -153,13 +187,19 @@ app.openapi(sendChatRoute, async (c) => {
     messageId: assistantMessage.id,
     answer: assistantMessage.content,
     intent: assistantMessage.intent,
+    topic: normalized.topic,
     riskLevel: assistantMessage.riskLevel,
     canAnswer: assistantMessage.canAnswer,
     nextAction: assistantMessage.nextAction,
+    secondaryAction: assistantMessage.secondaryAction,
+    responseMode: assistantMessage.responseMode,
     citations: assistantMessage.citations,
     collectedFields: normalized.collectedFields,
     missingItems: normalized.missingItems,
     recommendedProviders: normalized.recommendedProviders,
+    reasonCodes: assistantMessage.reasonCodes,
+    shortlist: assistantMessage.shortlist,
+    metadata: sanitizePublicMetadataDeep(assistantMessage.metadata),
     history: {
       userMessageId: userMessage.id,
       assistantMessageId: assistantMessage.id,
@@ -176,7 +216,7 @@ const bootstrapChatbotSyncRoute = createRoute({
   },
 });
 
-app.openapi(bootstrapChatbotSyncRoute, async (c) => {
+chatbotProtectedRoutes.openapi(bootstrapChatbotSyncRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   if (actor.role !== 'ADMIN') {
     return c.json({ error: 'Forbidden' }, 403);
@@ -203,7 +243,7 @@ const convertChatRoute = createRoute({
   },
 });
 
-app.openapi(convertChatRoute, async (c) => {
+chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
@@ -278,7 +318,7 @@ const escalateChatRoute = createRoute({
   },
 });
 
-app.openapi(escalateChatRoute, async (c) => {
+chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
@@ -370,7 +410,7 @@ const initChatbotUploadRoute = createRoute({
   },
 });
 
-app.openapi(initChatbotUploadRoute, async (c) => {
+chatbotPublicRoutes.openapi(initChatbotUploadRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
   const session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
@@ -418,7 +458,7 @@ const getChatbotHistoryRoute = createRoute({
   },
 });
 
-app.openapi(getChatbotHistoryRoute, async (c) => {
+chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
   const { sessionId } = c.req.valid('param');
   const { limit } = c.req.valid('query');
   const svc = getServices();
@@ -434,6 +474,7 @@ app.openapi(getChatbotHistoryRoute, async (c) => {
   }
 
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, limit);
+  const visibleMessages = messages.filter((message) => !isProviderFailedDraft(message));
 
   return c.json({
     session: {
@@ -444,16 +485,21 @@ app.openapi(getChatbotHistoryRoute, async (c) => {
       createdAt: session.createdAt.toISOString(),
       updatedAt: session.updatedAt.toISOString(),
     },
-    messages: messages.reverse().map((message) => ({
+    messages: visibleMessages.reverse().map((message) => ({
       id: message.id,
       role: message.role,
       content: message.content,
       intent: message.intent,
+      topic: asString(message.metadata.topic) ?? null,
       riskLevel: message.riskLevel,
       canAnswer: message.canAnswer,
       nextAction: message.nextAction,
+      secondaryAction: message.secondaryAction,
+      responseMode: message.responseMode,
       citations: message.citations,
-      metadata: message.metadata,
+      reasonCodes: message.reasonCodes,
+      shortlist: message.shortlist,
+      metadata: sanitizePublicMetadataDeep(message.metadata),
       createdAt: message.createdAt.toISOString(),
     })),
   }, 200);
@@ -789,27 +835,81 @@ function buildEscalationDescription(
 }
 
 function normalizeDifyChatResponse(response: Record<string, unknown>) {
-  const metadata = asRecord(response.metadata);
+  const metadata = sanitizePublicMetadataDeep(asRecord(response.metadata));
   const parsedAnswer = parseStructuredAnswer(response.answer);
   const citations = parsedAnswer?.citations ?? deriveCitations(metadata);
+  const topic = parsedAnswer?.topic ?? null;
+  const structuredMetadata = sanitizePublicMetadataDeep(parsedAnswer?.metadata ?? {});
+  const engagementMode = parsedAnswer?.engagementMode
+    ?? asString(structuredMetadata.engagementMode)
+    ?? asString(structuredMetadata.engagement_mode)
+    ?? null;
+  const internalNextAction = parsedAnswer?.internalNextAction
+    ?? asString(structuredMetadata.internalNextAction)
+    ?? asString(structuredMetadata.internal_next_action)
+    ?? null;
+  const publicNextAction = normalizeNextAction(parsedAnswer?.nextAction);
+  const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
+  const collectedFields = sanitizeNullableRecord(parsedAnswer?.collectedFields);
+  const recommendedProviders = sanitizeRecordArray(parsedAnswer?.recommendedProviders);
+  const shortlist = sanitizeRecordArray(parsedAnswer?.shortlist);
+  const citationsSafe = sanitizeCitationArray(citations);
+  const publicStructuredOutput = parsedAnswer
+    ? {
+        answer: parsedAnswer.answer ?? asString(response.answer) ?? '',
+        intent: normalizeIntent(parsedAnswer.intent),
+        resolvedIntent: parsedAnswer.resolvedIntent ?? parsedAnswer.intent ?? null,
+        topic,
+        riskLevel: publicRiskLevel,
+        canAnswer: parsedAnswer.canAnswer ?? null,
+        nextAction: publicNextAction,
+        secondaryAction: parsedAnswer.secondaryAction ?? null,
+        responseMode: parsedAnswer.responseMode ?? null,
+        collectedFields,
+        missingItems: parsedAnswer.missingItems ?? [],
+        recommendedProviders,
+        reasonCodes: parsedAnswer.reasonCodes ?? [],
+        shortlist,
+        citations: citationsSafe,
+        metadata: {
+          ...structuredMetadata,
+          engagementMode,
+          internalNextAction,
+          internalRiskLevel: parsedAnswer.riskLevel ?? null,
+          publicNextAction,
+          topic,
+        },
+      }
+    : null;
 
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
     intent: normalizeIntent(parsedAnswer?.intent),
-    riskLevel: normalizeRiskLevel(parsedAnswer?.riskLevel),
+    resolvedIntent: parsedAnswer?.resolvedIntent ?? parsedAnswer?.intent ?? null,
+    topic,
+    riskLevel: publicRiskLevel,
     canAnswer: parsedAnswer?.canAnswer ?? null,
-    nextAction: normalizeNextAction(parsedAnswer?.nextAction),
-    collectedFields: parsedAnswer?.collectedFields ?? null,
+    nextAction: publicNextAction,
+    secondaryAction: parsedAnswer?.secondaryAction ?? null,
+    responseMode: parsedAnswer?.responseMode ?? null,
+    collectedFields,
     missingItems: parsedAnswer?.missingItems ?? [],
-    recommendedProviders: parsedAnswer?.recommendedProviders ?? [],
-    citations,
+    recommendedProviders,
+    reasonCodes: parsedAnswer?.reasonCodes ?? [],
+    shortlist,
+    citations: citationsSafe,
     conversationId: asString(response.conversation_id),
     messageId: asString(response.message_id),
     taskId: asString(response.task_id),
       metadata: {
         ...metadata,
-        structuredOutput: parsedAnswer ?? null,
-        rawResponse: response,
+        ...structuredMetadata,
+        engagementMode,
+        internalNextAction,
+        internalRiskLevel: parsedAnswer?.riskLevel ?? null,
+        publicNextAction,
+        topic,
+        structuredOutput: publicStructuredOutput,
       },
   };
 }
@@ -817,10 +917,19 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
 function parseStructuredAnswer(value: unknown): {
   answer?: string;
   intent?: string;
+  resolvedIntent?: string;
+  topic?: string;
   riskLevel?: string;
   canAnswer?: boolean;
   nextAction?: string;
+  secondaryAction?: string;
+  responseMode?: string;
+  reasonCodes?: string[];
+  shortlist?: Array<Record<string, unknown>>;
   citations?: AiChatCitation[];
+  engagementMode?: string;
+  internalNextAction?: string;
+  metadata?: Record<string, unknown>;
   collectedFields?: Record<string, unknown>;
   missingItems?: string[];
   recommendedProviders?: Record<string, unknown>[];
@@ -832,15 +941,36 @@ function parseStructuredAnswer(value: unknown): {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>;
     return {
       answer: asString(parsed.answer),
-      intent: asString(parsed.intent),
-      riskLevel: asString(parsed.riskLevel),
-      canAnswer: typeof parsed.canAnswer === 'boolean' ? parsed.canAnswer : undefined,
-      nextAction: asString(parsed.nextAction),
+      intent: asString(parsed.intent) ?? asString(parsed['intent']),
+      resolvedIntent: asString(parsed.resolvedIntent) ?? asString(parsed.resolved_intent),
+      topic: asString(parsed.topic),
+      riskLevel: asString(parsed.riskLevel) ?? asString(parsed.risk_level),
+      canAnswer: typeof parsed.canAnswer === 'boolean'
+        ? parsed.canAnswer
+        : typeof parsed.can_answer === 'boolean'
+          ? parsed.can_answer
+          : undefined,
+      nextAction: asString(parsed.nextAction) ?? asString(parsed.next_action),
+      secondaryAction: asString(parsed.secondaryAction) ?? asString(parsed.secondary_action),
+      responseMode: asString(parsed.responseMode) ?? asString(parsed.response_mode),
+      reasonCodes: Array.isArray(parsed.reasonCodes)
+        ? parsed.reasonCodes.filter((item): item is string => typeof item === 'string')
+        : Array.isArray(parsed.reason_codes)
+          ? parsed.reason_codes.filter((item): item is string => typeof item === 'string')
+          : undefined,
+      engagementMode: asString(parsed.engagementMode) ?? asString(parsed.engagement_mode),
+      internalNextAction: asString(parsed.internalNextAction) ?? asString(parsed.internal_next_action),
+      metadata: asRecord(parsed.metadata),
+      shortlist: Array.isArray(parsed.shortlist)
+        ? parsed.shortlist.map((item) => asRecord(item))
+        : undefined,
       citations: Array.isArray(parsed.citations) ? parsed.citations as AiChatCitation[] : undefined,
-      collectedFields: asRecord(parsed.collectedFields),
+      collectedFields: asRecord(parsed.collectedFields ?? parsed.collected_fields),
       missingItems: Array.isArray(parsed.missingItems) ? parsed.missingItems.filter((item): item is string => typeof item === 'string') : undefined,
       recommendedProviders: Array.isArray(parsed.recommendedProviders)
         ? parsed.recommendedProviders.map((item) => asRecord(item))
+        : Array.isArray(parsed.recommended_providers)
+          ? parsed.recommended_providers.map((item) => asRecord(item))
         : undefined,
     };
   } catch {
@@ -870,6 +1000,7 @@ function normalizeIntent(value: string | undefined): import('@medical-crm/domain
 }
 
 function normalizeRiskLevel(value: string | undefined): import('@medical-crm/domain').AiChatRiskLevel | null {
+  if (value === 'HIGH_RISK' || value === 'HIGH') return 'CRISIS';
   if (value === 'NORMAL' || value === 'SENSITIVE' || value === 'CRISIS') return value;
   return null;
 }
@@ -887,4 +1018,58 @@ function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+function sanitizePublicMetadataDeep(value: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeUnknownValue(value) as Record<string, unknown>;
+}
+
+function sanitizeNullableRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!value) return null;
+  return sanitizeUnknownValue(value) as Record<string, unknown>;
+}
+
+function sanitizeRecordArray(value: Array<Record<string, unknown>> | undefined): Array<Record<string, unknown>> {
+  if (!value) return [];
+  return sanitizeUnknownValue(value) as Array<Record<string, unknown>>;
+}
+
+function sanitizeCitationArray(value: AiChatCitation[]): AiChatCitation[] {
+  return sanitizeUnknownValue(value) as AiChatCitation[];
+}
+
+function isProviderFailedDraft(message: { role?: string | null; content?: string | null; metadata?: Record<string, unknown> | null }): boolean {
+  return (message.role ?? '').toUpperCase() === 'ASSISTANT'
+    && (message.content ?? '') === ''
+    && asString(message.metadata?.draftState) === 'provider_error';
+}
+
+function sanitizeUnknownValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeUnknownValue(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      key === 'rawResponse'
+      || key === 'raw_response'
+      || key === 'conversation_id'
+      || key === 'message_id'
+      || key === 'task_id'
+    ) {
+      continue;
+    }
+
+    sanitized[key] = sanitizeUnknownValue(nestedValue);
+  }
+
+  return sanitized;
+}
+
 export default app;
+
+app.route('/', chatbotPublicRoutes);
+app.route('/', chatbotProtectedRoutes);

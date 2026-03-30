@@ -9,6 +9,16 @@ CREATE INDEX IF NOT EXISTS chatbot_faq_categories_hospital_id_idx
 ALTER TABLE chatbot_faq_categories
   DROP CONSTRAINT IF EXISTS chatbot_faq_categories_name_hospital_type_key;
 
-ALTER TABLE chatbot_faq_categories
-  ADD CONSTRAINT chatbot_faq_categories_name_hospital_type_hospital_id_key
-  UNIQUE (name, hospital_type, hospital_id);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'chatbot_faq_categories'::regclass
+      AND conname = 'chatbot_faq_categories_name_hospital_type_hospital_id_key'
+  ) THEN
+    ALTER TABLE chatbot_faq_categories
+      ADD CONSTRAINT chatbot_faq_categories_name_hospital_type_hospital_id_key
+      UNIQUE (name, hospital_type, hospital_id);
+  END IF;
+END $$;

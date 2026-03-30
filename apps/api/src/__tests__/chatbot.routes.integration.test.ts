@@ -85,10 +85,16 @@ describe('Chatbot routes integration', () => {
         intent: 'CONSULT',
         riskLevel: 'NORMAL',
         canAnswer: true,
+        topic: 'DOCUMENTS',
         nextAction: 'REQUEST_DOCS',
+        secondaryAction: 'CONSULT_CONVERSION',
+        responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['documents_requested'],
+        shortlist: [{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }],
         missingItems: ['medical report'],
         citations: [{ sourceTitle: 'FAQ', snippet: 'Bring your latest report.' }],
       }),
+      metadata: { retriever_resources: [] },
     });
 
     const sessionId = `${SESSION_PREFIX}${randomUUID()}`;
@@ -105,7 +111,12 @@ describe('Chatbot routes integration', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.sessionId).toBe(sessionId);
+    expect(json.topic).toBe('DOCUMENTS');
     expect(json.nextAction).toBe('REQUEST_DOCS');
+    expect(json.secondaryAction).toBe('CONSULT_CONVERSION');
+    expect(json.responseMode).toBe('grounded_plus_guidance');
+    expect(json.reasonCodes).toEqual(['documents_requested']);
+    expect(json.shortlist).toEqual([{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }]);
     expect(json.missingItems).toEqual(['medical report']);
 
     const cookie = res.headers.get('set-cookie');
@@ -120,7 +131,17 @@ describe('Chatbot routes integration', () => {
     expect(messages[0]?.role).toBe('ASSISTANT');
     expect(messages[1]?.role).toBe('USER');
     expect(messages[0]?.nextAction).toBe('REQUEST_DOCS');
-  });
+    expect(messages[0]?.resolvedIntent).toBe('CONSULT');
+    expect(messages[0]?.secondaryAction).toBe('CONSULT_CONVERSION');
+    expect(messages[0]?.responseMode).toBe('grounded_plus_guidance');
+    expect(messages[0]?.reasonCodes).toEqual(['documents_requested']);
+    expect(messages[0]?.shortlist).toEqual([{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }]);
+    expect(messages[0]?.metadata).toMatchObject({
+      topic: 'DOCUMENTS',
+    });
+    expect(messages[0]?.metadata.rawResponse).toBeUndefined();
+    expect(messages[0]?.content).toBe('Please share your reports.');
+  }, 15000);
 
   it('GET /api/v2/chatbot/history/{sessionId} reads ordered history from the real database', async () => {
     const secret = 'route-secret-123';
@@ -178,5 +199,32 @@ describe('Chatbot routes integration', () => {
     expect(json.messages[0]?.content).toBe('First question');
     expect(json.messages[1]?.content).toBe('Second answer');
     expect(json.messages[1]?.nextAction).toBe('ANSWER');
-  });
+  }, 15000);
+
+  it('POST /api/v2/chatbot/chat falls back safely when Dify returns plain text instead of structured JSON', async () => {
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'conv-int-plain-1',
+      answer: 'We can help you continue this conversation with our team.',
+      metadata: { retriever_resources: [] },
+    });
+
+    const sessionId = `${SESSION_PREFIX}${randomUUID()}`;
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        hospitalType: 'COSMETIC',
+        message: 'Can you help me?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.answer).toBe('We can help you continue this conversation with our team.');
+    expect(json.topic).toBeNull();
+    expect(json.nextAction).toBeNull();
+    expect(json.reasonCodes).toEqual([]);
+    expect(json.shortlist).toEqual([]);
+  }, 15000);
 });

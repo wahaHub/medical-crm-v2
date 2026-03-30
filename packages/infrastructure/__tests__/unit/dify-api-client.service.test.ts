@@ -66,6 +66,39 @@ describe('DifyApiClientService', () => {
       });
     });
 
+    it('passes through policy-friendly session metadata in inputs', async () => {
+      fetchMock.mockResolvedValueOnce(mockResponse(200, { answer: 'Hello' }));
+
+      await service.createChatMessage({
+        inputs: {
+          hospitalType: 'COSMETIC',
+          sessionId: 'session-1',
+          currentStatus: {
+            recommendationStatus: 'NOT_STARTED',
+            docUploadStatus: 'NONE',
+          },
+          conversationSummary: 'User is exploring rhinoplasty.',
+        },
+        query: 'What should I do next?',
+        user: 'session-1',
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(init?.body as string) as {
+        inputs: Record<string, unknown>;
+      };
+
+      expect(body.inputs).toEqual({
+        hospitalType: 'COSMETIC',
+        sessionId: 'session-1',
+        currentStatus: {
+          recommendationStatus: 'NOT_STARTED',
+          docUploadStatus: 'NONE',
+        },
+        conversationSummary: 'User is exploring rhinoplasty.',
+      });
+    });
+
     it('surfaces Dify error messages from non-2xx responses', async () => {
       fetchMock.mockResolvedValueOnce(
         mockResponse(400, {

@@ -11,6 +11,8 @@ export const chatbotNextActionSchema = z.enum([
 ]);
 export const chatbotIntentSchema = z.enum(['FAQ', 'CONSULT', 'UNKNOWN', 'SAFETY']);
 export const chatbotRiskLevelSchema = z.enum(['NORMAL', 'SENSITIVE', 'CRISIS']);
+export const chatbotTopicSchema = z.string().min(1).max(80);
+export const chatbotResponseModeSchema = z.string().min(1).max(80);
 
 export const chatbotUploadInitSchema = z.object({
   sessionId: z.string().min(1).max(255),
@@ -64,18 +66,30 @@ export const chatbotRecommendedProviderSchema = z.object({
   ctaUrl: z.string().optional(),
 }).catchall(z.unknown());
 
+export const chatbotShortlistItemSchema = z.object({
+  hospitalId: z.string().optional(),
+  matchType: z.string().optional(),
+  reasonCodes: z.array(z.string()).optional(),
+}).catchall(z.unknown());
+
 export const chatbotChatResponseSchema = z.object({
   sessionId: z.string().min(1).max(255),
   messageId: z.string().min(1),
   answer: z.string(),
   intent: chatbotIntentSchema.nullable(),
+  topic: chatbotTopicSchema.nullable(),
   riskLevel: chatbotRiskLevelSchema.nullable(),
   canAnswer: z.boolean().nullable(),
   nextAction: chatbotNextActionSchema.nullable(),
+  secondaryAction: z.string().nullable(),
+  responseMode: chatbotResponseModeSchema.nullable(),
   citations: z.array(chatbotCitationSchema),
   collectedFields: chatbotCollectedFieldsSchema.nullable(),
   missingItems: z.array(z.string()),
   recommendedProviders: z.array(chatbotRecommendedProviderSchema),
+  reasonCodes: z.array(z.string()),
+  shortlist: z.array(chatbotShortlistItemSchema),
+  metadata: z.record(z.string(), z.unknown()),
   history: z.object({
     userMessageId: z.string().min(1),
     assistantMessageId: z.string().min(1),
@@ -104,10 +118,15 @@ export const chatbotHistoryMessageSchema = z.object({
   role: z.enum(['USER', 'ASSISTANT', 'SYSTEM']),
   content: z.string(),
   intent: chatbotIntentSchema.nullable(),
+  topic: chatbotTopicSchema.nullable().optional(),
   riskLevel: chatbotRiskLevelSchema.nullable(),
   canAnswer: z.boolean().nullable(),
   nextAction: chatbotNextActionSchema.nullable(),
+  secondaryAction: z.string().nullable().optional(),
+  responseMode: chatbotResponseModeSchema.nullable().optional(),
   citations: z.array(chatbotCitationSchema),
+  reasonCodes: z.array(z.string()).optional(),
+  shortlist: z.array(chatbotShortlistItemSchema).optional(),
   metadata: z.record(z.string(), z.unknown()),
   createdAt: z.string().min(1),
 }).strict();

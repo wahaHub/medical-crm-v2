@@ -25,6 +25,11 @@ This design intentionally stays within:
 
 It does **not** introduce a second topic taxonomy or move FAQ retrieval fully into backend.
 
+It also deliberately changes one current codebase rule:
+
+- today only global FAQ reaches the shared Dify FAQ datasets
+- this design requires hospital-scoped FAQ to join those same shared datasets, guarded by metadata filtering
+
 ## 2. Non-Goals
 
 This design does not do the following:
@@ -34,6 +39,8 @@ This design does not do the following:
 - move all FAQ retrieval and ranking into CRM backend
 - redesign package or hospital recommendation retrieval
 - change the policy engine authority boundary
+
+This means the current “hospital FAQ never enters Dify” behavior is **not** preserved.
 
 The backend remains the decision authority. Dify remains the language and orchestration layer.
 
@@ -56,6 +63,13 @@ At current scale that is tolerable. At larger FAQ volume it becomes unstable:
 - retrieval can drift into the wrong topical region
 - hospital-specific FAQ can leak into general answers
 - multi-part questions can miss one of the relevant FAQ clusters
+
+There is also a concrete implementation gap today:
+
+- hospital-scoped FAQ is intentionally excluded from Dify sync
+- only `hospitalId = null` FAQ is enqueued into the shared FAQ datasets
+
+So this design is not just a retrieval tweak. It also requires widening the FAQ sync corpus that Dify can search.
 
 ## 4. Source of Truth
 
@@ -168,6 +182,10 @@ This is the best balance for v1 because it:
 - avoids dataset explosion
 - avoids building a second retrieval system in backend
 - is much more stable than full-dataset semantic retrieval
+- keeps the existing two shared FAQ datasets as the storage model, while allowing both:
+  - general FAQ
+  - hospital-scoped FAQ
+  to coexist safely through metadata filtering
 
 ## 8. Backend Design
 
@@ -185,6 +203,13 @@ Document text remains useful for:
 - fallback retrieval behavior
 
 Structured metadata is added for precise filtering.
+
+This requires changing the current FAQ sync rule:
+
+- active general FAQ stays eligible for sync
+- active hospital-scoped FAQ becomes eligible for sync too
+- both document types flow into the existing `FAQ_COSMETIC` / `FAQ_REGULAR` datasets
+- retrieval guards, not dataset separation, prevent hospital FAQ leakage
 
 ### 8.2 FAQ document metadata
 
@@ -223,6 +248,17 @@ For hospital-specific FAQ:
 }
 ```
 
+Important implementation note:
+
+- Dify document text create/update endpoints do not carry document metadata inline
+- metadata must be managed through Dify's dataset/document metadata APIs as a separate step
+
+So the real sync flow is:
+
+1. create or update the document text
+2. ensure required metadata fields exist on the dataset
+3. upsert metadata bindings for the document
+
 ### 8.3 FAQ category list endpoint
 
 Add an internal endpoint for Dify to fetch the currently valid category names from CRM.
@@ -257,6 +293,12 @@ Behavior rules:
   - active general categories for that `hospitalType`
   - active hospital-specific categories for that `hospitalId`
 
+If the same category `name` exists in both scopes:
+
+- dedupe by `name`
+- return one logical category entry
+- use the lowest `sortOrder` for stable ordering
+
 This gives the resolver the right category universe for both:
 
 - general-only FAQ turns
@@ -272,7 +314,20 @@ Recommended shape:
 - `hospitalId`
 - optional `hospitalName`
 
-This gives backend a reliable page-driven hospital signal without requiring Dify to infer it.
+The real transport path in v1 must be:
+
+1. frontend sends `pageContext` to `POST /api/v2/chatbot/chat`
+2. public chat route stores that `pageContext` on the current user message metadata
+3. public chat route also passes `pageContext` into Dify `inputs`
+4. Dify forwards `page_context` to:
+   - `context_http`
+   - `decide_http`
+5. backend context building derives `activeHospitalContext` from:
+   - current request `page_context`
+   - recent user message metadata
+   - recommendation / shortlist state
+
+This keeps the signal on the real chat -> Dify -> internal-policy path instead of assuming backend sees page context automatically.
 
 ## 9. Dify Workflow Design
 
@@ -301,6 +356,7 @@ FAQ-related turn
 Purpose:
 
 - fetch active CRM categories for the current `hospitalType`
+- use optional `hospitalId` when hospital-aware context is already known
 
 #### `faq_category_resolver_llm`
 
@@ -374,6 +430,17 @@ Recommended v1 limits:
   - general support: `2-3`
 
 This keeps the downstream LLM grounded without flooding it.
+
+### 9.4 Inputs required from transport
+
+For the FAQ branch to work, the workflow must explicitly carry:
+
+- `hospitalType`
+- `sessionId`
+- optional `pageContext`
+- optional `activeHospitalContext`
+
+These are not assumed to exist automatically. They must be forwarded through the existing public chat request, Dify `inputs`, and internal policy request envelopes.
 
 ## 10. Response Composer Rules
 
@@ -459,7 +526,9 @@ Expected behavior:
 ```text
 CRM Admin creates category
   -> category stored in chatbot_faq_categories
-  -> FAQ sync writes document text + metadata to Dify
+  -> FAQ sync writes document text to Dify
+  -> sync ensures dataset metadata fields exist
+  -> sync writes document metadata bindings
   -> Dify fetches valid categories from backend at runtime
   -> resolver selects 1-3 CRM categories
   -> retrieval filters by hospitalType + scope + category (+ hospitalId when needed)

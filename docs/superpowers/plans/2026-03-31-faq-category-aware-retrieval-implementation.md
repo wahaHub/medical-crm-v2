@@ -4,7 +4,7 @@
 
 **Goal:** Add CRM-category-aware FAQ retrieval so the chatbot narrows FAQ search by `chatbot_faq_categories.name`, keeps general FAQ separate from hospital-specific FAQ, and supports hospital-aware FAQ retrieval when active hospital context exists.
 
-**Architecture:** Keep the backend as the authority for category truth and hospital context, but let Dify continue to orchestrate FAQ retrieval. Sync FAQ documents to Dify with structured metadata, expose a lightweight category-list endpoint from CRM, extend the chat/context contract with `pageContext` and active hospital context, then update the Dify FAQ branch to resolve `1-3` categories and filter retrieval by `scope`, `category`, `hospital_type`, and `hospital_id` when applicable.
+**Architecture:** Keep the backend as the authority for category truth and hospital context, but let Dify continue to orchestrate FAQ retrieval. Expand FAQ sync so both general and hospital-scoped FAQ enter the existing shared `hospitalType` datasets, manage Dify metadata through the dataset/document metadata APIs, expose a lightweight category-list endpoint from CRM, carry `pageContext` through the real chat -> Dify -> internal-policy path, then update the Dify FAQ branch to resolve `1-3` categories and filter retrieval by `scope`, `category`, `hospital_type`, and `hospital_id` when applicable.
 
 **Tech Stack:** TypeScript, Hono, Zod, Drizzle schema/repositories, Dify dataset/document APIs, Vitest, YAML DSL
 
@@ -15,19 +15,19 @@
 ### Existing files to modify
 
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/ai-sync-task.service.ts`
-  - Extend FAQ sync rendering and payload helpers to include structured metadata.
+  - Relax the current global-only sync rule and extend FAQ sync rendering/payload helpers to include structured metadata.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/process-ai-sync-outbox.use-case.ts`
   - Pass metadata through the Dify document sync path.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/infrastructure/services/dify-api-client.service.ts`
-  - Add metadata-aware document create/update support for Dify dataset APIs.
+  - Add Dify metadata field management and document-metadata binding support alongside text create/update.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal.routes.ts`
   - Add internal `faq-categories` endpoint and extend policy/context endpoints if needed for `pageContext`.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/chatbot.routes.ts`
-  - Accept `pageContext` in public chat input and pass it into backend context/policy handling.
+  - Accept `pageContext`, store it on user-message metadata, and pass it into Dify `inputs`.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/shared/validation/src/chatbot.schema.ts`
   - Extend public chatbot request schema with optional `pageContext`.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/context-builder.service.ts`
-  - Add active hospital context derivation using page context + recent conversation + recommendation state.
+  - Add active hospital context derivation using current `pageContext`, recent user-message metadata, and recommendation state.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/get-ai-policy-context.use-case.ts`
   - Expose active hospital context to Dify-safe context output.
 - `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.ts`
@@ -78,12 +78,14 @@ rg -n "create_by_text|update_by_text|doc_metadata|metadata" /Users/haowang/Deskt
 ```
 
 Expected:
-- identify the exact request field names Dify expects for document metadata on create/update
+- identify the exact metadata field-definition and document-metadata binding APIs Dify expects
 
 - [ ] **Step 2: Record the confirmed metadata request shape in the implementation notes**
 
 Expected:
-- clear create/update payload shape for metadata
+- clear plan for:
+  - metadata field definition
+  - metadata value binding to documents
 - no guessing during implementation
 
 ### Task 2: Add failing tests for FAQ sync metadata
@@ -98,6 +100,7 @@ Test should cover:
 - general FAQ renders `scope = GENERAL`
 - hospital FAQ renders `scope = HOSPITAL`
 - metadata includes `faq_id`, `category`, `hospital_type`, `hospital_id`, `keywords`
+- hospital-scoped FAQ is eligible for sync instead of being downgraded to `DELETE`
 
 - [ ] **Step 2: Run the focused tests to confirm failure**
 
@@ -108,13 +111,14 @@ pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/appl
 ```
 
 Expected:
-- FAIL because metadata is not yet present in sync payloads
+- FAIL because metadata is not yet present and hospital FAQ is still excluded from sync
 
 ### Task 3: Implement metadata-aware FAQ sync
 
 **Files:**
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/ai-sync-task.service.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/process-ai-sync-outbox.use-case.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/bootstrap-ai-sync.use-case.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/infrastructure/services/dify-api-client.service.ts`
 
 - [ ] **Step 1: Extend rendered FAQ sync output to return both text and metadata**
@@ -123,12 +127,16 @@ Implementation notes:
 - keep existing text body intact
 - add derived `scope = GENERAL` when `hospitalId` is null
 - add derived `scope = HOSPITAL` when `hospitalId` is not null
+- stop downgrading active hospital-scoped FAQ to `DELETE`
+- include active hospital-scoped FAQ in bootstrap sync
 
-- [ ] **Step 2: Extend the Dify gateway interface to accept metadata on create/update**
+- [ ] **Step 2: Extend the Dify gateway to manage metadata through the correct Dify APIs**
 
 Implementation notes:
 - keep package sync behavior unchanged
-- pass FAQ metadata only on FAQ documents
+- create/update document text separately
+- ensure FAQ metadata fields exist on the dataset
+- bind FAQ metadata values to the document after text sync
 
 - [ ] **Step 3: Write the minimal production code to make the metadata tests pass**
 
@@ -146,7 +154,7 @@ Expected:
 - [ ] **Step 5: Commit Chunk 1**
 
 ```bash
-git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/ai-sync-task.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/process-ai-sync-outbox.use-case.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/infrastructure/services/dify-api-client.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/ai-sync-task.service.test.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/process-ai-sync-outbox.use-case.test.ts
+git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/ai-sync-task.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/process-ai-sync-outbox.use-case.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/bootstrap-ai-sync.use-case.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/infrastructure/services/dify-api-client.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/ai-sync-task.service.test.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-sync/process-ai-sync-outbox.use-case.test.ts
 git commit -m "feat: add faq sync metadata for category retrieval"
 ```
 
@@ -241,7 +249,9 @@ git commit -m "feat: add internal faq category lookup for chatbot"
 Test should cover:
 - `/api/v2/chatbot/chat` accepts optional `pageContext`
 - invalid page context is rejected
-- valid page context reaches the service boundary
+- valid page context is:
+  - stored on the new user message metadata
+  - forwarded into Dify `inputs`
 
 - [ ] **Step 2: Run the route tests to confirm failure**
 
@@ -263,7 +273,7 @@ Expected:
 
 Test should cover:
 - `pageContext.hospitalId` wins when present
-- recent hospital discussion can activate hospital-aware context
+- recent user-message metadata can reactivate hospital-aware context
 - recommendation/shortlist context can activate hospital-aware context
 - no clear hospital signal results in no active hospital context
 
@@ -296,11 +306,16 @@ Implementation notes:
 
 - [ ] **Step 2: Pass `pageContext` into backend chat/policy inputs**
 
+Implementation notes:
+- write `pageContext` into the current user message metadata
+- include `pageContext` in the Dify `inputs`
+- update the DSL so `context_http` and `decide_http` forward `payload.page_context`
+
 - [ ] **Step 3: Extend context builder output with `activeHospitalContext`**
 
 Implementation notes:
 - derive from pageContext first
-- then recent conversation / shortlist / recommendation context
+- then recent user-message metadata / shortlist / recommendation context
 - keep output Dify-safe and deterministic
 
 - [ ] **Step 4: Re-run route and context-builder tests**
@@ -367,7 +382,9 @@ Expected:
 Implementation notes:
 - use env-backed CRM base URL and internal secret
 - pass `hospitalType`
-- pass optional `hospitalId` when available from context
+- pass optional `hospitalId` when available from:
+  - `pageContext`
+  - backend `activeHospitalContext`
 
 - [ ] **Step 2: Add `faq_category_resolver_llm`**
 
@@ -382,6 +399,7 @@ Implementation notes:
 - keep general-only path free of hospital FAQ retrieval
 - keep hospital-aware path able to combine hospital FAQ + general FAQ
 - preserve current prompt input aggregation strategy
+- ensure hospital FAQ retrieval is only possible because Chunk 1 has already synced hospital-scoped FAQ into the shared datasets
 
 - [ ] **Step 4: Update composer input contract to distinguish general vs hospital FAQ context**
 

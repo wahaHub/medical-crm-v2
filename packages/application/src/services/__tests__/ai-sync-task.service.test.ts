@@ -14,7 +14,7 @@ describe('AiSyncTaskService', () => {
     vi.clearAllMocks();
   });
 
-  it('enqueues an UPSERT for active global faq items', async () => {
+  it('enqueues an UPSERT for active general faq items', async () => {
     const service = new AiSyncTaskService(outboxRepo);
 
     await service.enqueueFaqUpsert({
@@ -56,7 +56,7 @@ describe('AiSyncTaskService', () => {
     expect(entity.entityKey).toBe('chatbot_faq_item:faq-2');
   });
 
-  it('renders general FAQ metadata with GENERAL scope', () => {
+  it('renders general FAQ output with GENERAL scope metadata', () => {
     const document = renderFaqSyncDocument({
       faqId: 'faq-1',
       category: 'General',
@@ -69,13 +69,28 @@ describe('AiSyncTaskService', () => {
       isActive: true,
     });
 
-    expect(document.metadata).toEqual({
-      faq_id: 'faq-1',
-      hospital_type: 'COSMETIC',
-      scope: 'GENERAL',
-      category: 'General',
-      hospital_id: null,
-      keywords: 'recovery',
+    expect(document).toEqual({
+      name: 'FAQ - General - What is recovery time?',
+      text: [
+        'Category: General',
+        'Hospital Type: COSMETIC',
+        'Hospital Scope: GLOBAL',
+        '',
+        'Question: What is recovery time?',
+        '',
+        'Answer:',
+        'Most patients recover within a week.',
+        '',
+        'Keywords: recovery',
+      ].join('\n'),
+      metadata: {
+        faq_id: 'faq-1',
+        hospital_type: 'COSMETIC',
+        scope: 'GENERAL',
+        category: 'General',
+        hospital_id: null,
+        keywords: 'recovery',
+      },
     });
   });
 

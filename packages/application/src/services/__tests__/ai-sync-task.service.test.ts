@@ -56,6 +56,29 @@ describe('AiSyncTaskService', () => {
     expect(entity.entityKey).toBe('chatbot_faq_item:faq-2');
   });
 
+  it('renders general FAQ metadata with GENERAL scope', () => {
+    const document = renderFaqSyncDocument({
+      faqId: 'faq-1',
+      category: 'General',
+      question: 'What is recovery time?',
+      answer: 'Most patients recover within a week.',
+      hospitalType: 'COSMETIC',
+      hospitalId: null,
+      keywords: ['recovery'],
+      attachments: [],
+      isActive: true,
+    });
+
+    expect(document.metadata).toEqual({
+      faq_id: 'faq-1',
+      hospital_type: 'COSMETIC',
+      scope: 'GENERAL',
+      category: 'General',
+      hospital_id: null,
+      keywords: 'recovery',
+    });
+  });
+
   it('renders FAQ sync output with unchanged text body and separate metadata', () => {
     const document = renderFaqSyncDocument({
       faqId: 'faq-3',

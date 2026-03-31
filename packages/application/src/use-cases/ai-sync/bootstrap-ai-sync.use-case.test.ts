@@ -34,12 +34,18 @@ describe('BootstrapAiSyncUseCase', () => {
     await expect(useCase.execute(patientActor)).rejects.toThrow('Admin only');
   });
 
-  it('enqueues FAQ sync for both hospital types, paginates through all pages, and only queries global active FAQs', async () => {
+  it('enqueues FAQ sync for both hospital types, paginates through all pages, and includes active hospital-scoped FAQs', async () => {
     const useCase = new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService as unknown as AiSyncTaskService);
 
     faqRepo.findAll.mockImplementation((query: { page: number; hospitalType?: string }) => {
       if (query.hospitalType === 'COSMETIC' && query.page === 1) {
-        return Promise.resolve({ data: buildFaqPage('cosmetic', 100), total: 101 });
+        const page = buildFaqPage('cosmetic', 100);
+        page[0] = {
+          ...page[0],
+          hospitalId: 'hospital-123',
+          category: 'Hospital Services',
+        };
+        return Promise.resolve({ data: page, total: 101 });
       }
       if (query.hospitalType === 'COSMETIC' && query.page === 2) {
         return Promise.resolve({ data: buildFaqPage('cosmetic', 1, 101), total: 101 });
@@ -64,28 +70,24 @@ describe('BootstrapAiSyncUseCase', () => {
       page: 1,
       limit: 100,
       hospitalType: 'COSMETIC',
-      hospitalId: null,
       isActive: true,
     });
     expect(faqRepo.findAll).toHaveBeenNthCalledWith(2, {
       page: 2,
       limit: 100,
       hospitalType: 'COSMETIC',
-      hospitalId: null,
       isActive: true,
     });
     expect(faqRepo.findAll).toHaveBeenNthCalledWith(3, {
       page: 1,
       limit: 100,
       hospitalType: 'REGULAR',
-      hospitalId: null,
       isActive: true,
     });
     expect(faqRepo.findAll).toHaveBeenNthCalledWith(4, {
       page: 2,
       limit: 100,
       hospitalType: 'REGULAR',
-      hospitalId: null,
       isActive: true,
     });
     expect(aiSyncTaskService.enqueueFaqUpsert).toHaveBeenCalledTimes(202);
@@ -94,7 +96,7 @@ describe('BootstrapAiSyncUseCase', () => {
       expect.objectContaining({
         faqId: 'cosmetic-faq-1',
         hospitalType: 'COSMETIC',
-        hospitalId: null,
+        hospitalId: 'hospital-123',
         isActive: true,
       }),
     );

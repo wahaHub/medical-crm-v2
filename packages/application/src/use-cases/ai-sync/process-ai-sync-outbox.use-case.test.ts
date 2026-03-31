@@ -60,7 +60,7 @@ describe('ProcessAiSyncOutboxUseCase', () => {
       metadata: {
         faq_id: 'faq-1',
         hospital_type: 'COSMETIC',
-        scope: 'GLOBAL',
+        scope: 'GENERAL',
         category: 'General',
         hospital_id: null,
         keywords: 'recovery',

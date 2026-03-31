@@ -133,7 +133,7 @@ export function renderFaqSyncDocument(payload: FaqSyncPayload): {
     metadata: {
       faq_id: payload.faqId,
       hospital_type: payload.hospitalType,
-      scope: payload.hospitalId === null ? 'GLOBAL' : 'HOSPITAL',
+      scope: payload.hospitalId === null ? 'GENERAL' : 'HOSPITAL',
       category: payload.category,
       hospital_id: payload.hospitalId,
       keywords: payload.keywords.join(', '),

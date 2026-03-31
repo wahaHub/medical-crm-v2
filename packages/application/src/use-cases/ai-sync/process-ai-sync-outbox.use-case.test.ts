@@ -25,7 +25,13 @@ describe('ProcessAiSyncOutboxUseCase', () => {
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    for (const mock of [
+      ...Object.values(outboxRepo),
+      ...Object.values(mappingRepo),
+      ...Object.values(difyGateway),
+    ]) {
+      mock.mockReset();
+    }
     process.env['DIFY_DATASET_FAQ_COSMETIC_ID'] = 'faq-cosmetic-dataset';
     process.env['DIFY_DATASET_FAQ_REGULAR_ID'] = 'faq-regular-dataset';
     process.env['DIFY_DATASET_PACKAGES_ID'] = 'packages-dataset';
@@ -111,6 +117,57 @@ describe('ProcessAiSyncOutboxUseCase', () => {
         keywords: 'vip, pickup',
       },
     });
+  });
+
+  it('persists the mapping before metadata sync so retry updates the same Dify document', async () => {
+    const firstAttempt = buildFaqOutbox({ id: 'job-create-fail', attempts: 0 });
+    const retryAttempt = buildFaqOutbox({ id: 'job-create-fail-retry', attempts: 1 });
+    outboxRepo.claimBatch
+      .mockResolvedValueOnce([firstAttempt])
+      .mockResolvedValueOnce([retryAttempt]);
+    mappingRepo.findByEntity
+      .mockResolvedValueOnce(null);
+    difyGateway.createDocumentByText.mockResolvedValue({ documentId: 'doc-42' });
+    difyGateway.syncDocumentMetadata
+      .mockRejectedValueOnce(new Error('metadata failed'))
+      .mockResolvedValueOnce(undefined);
+    difyGateway.updateDocumentByText.mockResolvedValue(undefined);
+
+    const useCase = new ProcessAiSyncOutboxUseCase(outboxRepo, mappingRepo, difyGateway);
+
+    const firstResult = await useCase.execute();
+
+    expect(firstResult).toEqual({ processed: 0, failed: 1, skipped: 0 });
+    expect(mappingRepo.save).toHaveBeenCalledTimes(1);
+    const persistedMapping = mappingRepo.save.mock.calls[0]?.[0] as DifyDocumentMapping;
+    expect(persistedMapping.difyDocumentId).toBe('doc-42');
+    expect(outboxRepo.markRetry).toHaveBeenCalledWith('job-create-fail', expect.any(Date));
+
+    mappingRepo.findByEntity.mockResolvedValueOnce(persistedMapping);
+
+    const retryResult = await useCase.execute();
+
+    expect(retryResult).toEqual({ processed: 1, failed: 0, skipped: 0 });
+    expect(difyGateway.createDocumentByText).toHaveBeenCalledTimes(1);
+    expect(difyGateway.updateDocumentByText).toHaveBeenCalledWith({
+      datasetId: 'faq-cosmetic-dataset',
+      documentId: 'doc-42',
+      name: expect.stringContaining('FAQ - General'),
+      text: expect.stringContaining('What is recovery time?'),
+    });
+    expect(difyGateway.syncDocumentMetadata).toHaveBeenNthCalledWith(2, {
+      datasetId: 'faq-cosmetic-dataset',
+      documentId: 'doc-42',
+      metadata: {
+        faq_id: 'faq-1',
+        hospital_type: 'COSMETIC',
+        scope: 'GENERAL',
+        category: 'General',
+        hospital_id: null,
+        keywords: 'recovery',
+      },
+    });
+    expect(mappingRepo.save).toHaveBeenCalledTimes(2);
   });
 
   it('retries failed upserts before max attempts', async () => {

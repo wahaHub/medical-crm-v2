@@ -258,6 +258,43 @@ describe('DifyApiClientService', () => {
     });
   });
 
+  describe('syncDocumentMetadata', () => {
+    it('refreshes metadata definitions after a create conflict and reuses the discovered field id', async () => {
+      fetchMock
+        .mockResolvedValueOnce(mockResponse(200, { doc_metadata: [] }))
+        .mockResolvedValueOnce(mockResponse(409, { message: 'Metadata already exists' }))
+        .mockResolvedValueOnce(mockResponse(200, {
+          doc_metadata: [{ id: 'meta-1', name: 'faq_id', type: 'string' }],
+        }))
+        .mockResolvedValueOnce(mockResponse(200, { result: 'ok' }));
+
+      await expect(
+        service.syncDocumentMetadata({
+          datasetId: 'dataset-1',
+          documentId: 'doc-9',
+          metadata: { faq_id: 'faq-1' },
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://dify.test/datasets/dataset-1/metadata');
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('https://dify.test/datasets/dataset-1/metadata');
+      expect(fetchMock.mock.calls[2]?.[0]).toBe('https://dify.test/datasets/dataset-1/metadata');
+      expect(fetchMock.mock.calls[3]?.[0]).toBe('https://dify.test/datasets/dataset-1/documents/metadata');
+      expect(JSON.parse(fetchMock.mock.calls[3]?.[1]?.body as string)).toEqual({
+        operation_data: [{
+          document_id: 'doc-9',
+          metadata_list: [{
+            id: 'meta-1',
+            name: 'faq_id',
+            value: 'faq-1',
+          }],
+          partial_update: true,
+        }],
+      });
+    });
+  });
+
   describe('deleteDocument', () => {
     it('uses the dataset API key for document deletes when provided', async () => {
       service = new DifyApiClientService('https://dify.test/', 'chat-api-key', 1_000, 'dataset-api-key');

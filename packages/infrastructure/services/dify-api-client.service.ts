@@ -162,8 +162,7 @@ export class DifyApiClientService {
   ): Promise<Map<string, DifyMetadataDefinition>> {
     let definitions = this.datasetMetadataCache.get(datasetId);
     if (!definitions) {
-      definitions = await this.listMetadataDefinitions(datasetId);
-      this.datasetMetadataCache.set(datasetId, definitions);
+      definitions = await this.refreshMetadataDefinitions(datasetId);
     }
 
     for (const [name, value] of Object.entries(metadata)) {
@@ -176,10 +175,28 @@ export class DifyApiClientService {
         continue;
       }
 
-      const created = await this.createMetadataDefinition(datasetId, name, expectedType);
-      definitions.set(created.name, created);
+      try {
+        const created = await this.createMetadataDefinition(datasetId, name, expectedType);
+        definitions.set(created.name, created);
+      } catch (error) {
+        definitions = await this.refreshMetadataDefinitions(datasetId);
+        const refreshed = definitions.get(name);
+        if (refreshed) {
+          if (refreshed.type !== expectedType) {
+            throw new Error(`Dify metadata ${name} already exists with type ${refreshed.type}`);
+          }
+          continue;
+        }
+        throw error;
+      }
     }
 
+    return definitions;
+  }
+
+  private async refreshMetadataDefinitions(datasetId: string): Promise<Map<string, DifyMetadataDefinition>> {
+    const definitions = await this.listMetadataDefinitions(datasetId);
+    this.datasetMetadataCache.set(datasetId, definitions);
     return definitions;
   }
 

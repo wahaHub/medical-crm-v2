@@ -143,22 +143,32 @@ export class ProcessAiSyncOutboxUseCase {
       name: document.name,
       text: document.text,
     });
-    if (document.metadata) {
-      await this.difyGateway.syncDocumentMetadata({
-        datasetId: ensuredDatasetId,
-        documentId: created.documentId,
-        metadata: document.metadata,
-      });
-    }
-
-    await this.mappingRepo.save(new DifyDocumentMapping({
+    const createdAt = new Date();
+    const createdMapping = new DifyDocumentMapping({
       id: generateId(),
       entityType: item.entityType,
       entityKey: item.entityKey,
       difyDatasetId: ensuredDatasetId,
       difyDocumentId: created.documentId,
+      lastSyncedAt: document.metadata ? null : createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await this.mappingRepo.save(createdMapping);
+
+    if (!document.metadata) {
+      return;
+    }
+
+    await this.difyGateway.syncDocumentMetadata({
+      datasetId: ensuredDatasetId,
+      documentId: created.documentId,
+      metadata: document.metadata,
+    });
+
+    await this.mappingRepo.save(new DifyDocumentMapping({
+      ...createdMapping,
       lastSyncedAt: new Date(),
-      createdAt: new Date(),
       updatedAt: new Date(),
     }));
   }

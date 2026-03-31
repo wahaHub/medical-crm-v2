@@ -41,7 +41,7 @@ describe('BootstrapAiSyncUseCase', () => {
       if (query.hospitalType === 'COSMETIC' && query.page === 1) {
         const page = buildFaqPage('cosmetic', 100);
         page[0] = {
-          ...page[0],
+          ...page[0]!,
           hospitalId: 'hospital-123',
           category: 'Hospital Services',
         };
@@ -264,7 +264,7 @@ function buildFaqPage(prefix: 'cosmetic' | 'regular', count: number, start = 1) 
       question: `Question ${n}?`,
       answer: `Answer ${n}.`,
       hospitalType: prefix === 'cosmetic' ? 'COSMETIC' : 'REGULAR',
-      hospitalId: null,
+      hospitalId: null as string | null,
       keywords: [`keyword-${n}`],
       attachments: [
         {

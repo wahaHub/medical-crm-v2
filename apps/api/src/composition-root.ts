@@ -162,6 +162,7 @@ import {
   CreateFaqItemUseCase,
   ListFaqItemsUseCase,
   ListFaqCategoriesUseCase,
+  ListFaqCategoriesForChatbotUseCase,
   CreateFaqCategoryUseCase,
   DeleteFaqCategoryUseCase,
   GetFaqItemUseCase,
@@ -458,6 +459,7 @@ interface AppServices {
   createFaqItem: CreateFaqItemUseCase;
   listFaqItems: ListFaqItemsUseCase;
   listFaqCategories: ListFaqCategoriesUseCase;
+  listFaqCategoriesForChatbot: ListFaqCategoriesForChatbotUseCase;
   createFaqCategory: CreateFaqCategoryUseCase;
   deleteFaqCategory: DeleteFaqCategoryUseCase;
   getFaqItem: GetFaqItemUseCase;
@@ -873,6 +875,7 @@ export function getServices(): AppServices {
       createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),
       listFaqItems: new ListFaqItemsUseCase(faqRepo, routedStorageService),
       listFaqCategories: new ListFaqCategoriesUseCase(faqRepo),
+      listFaqCategoriesForChatbot: new ListFaqCategoriesForChatbotUseCase(faqRepo),
       createFaqCategory: new CreateFaqCategoryUseCase(faqRepo, translationTaskService),
       deleteFaqCategory: new DeleteFaqCategoryUseCase(faqRepo),
       getFaqItem: new GetFaqItemUseCase(faqRepo, routedStorageService),

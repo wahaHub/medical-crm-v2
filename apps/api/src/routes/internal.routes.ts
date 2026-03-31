@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { getServerEnv } from '@medical-crm/config';
 import { getServices } from '../composition-root.js';
 
@@ -9,6 +9,11 @@ const INTERNAL_SYSTEM_ACTOR = {
   role: 'ADMIN' as const,
   hospitalId: null,
 };
+
+const faqCategoriesQuerySchema = z.object({
+  hospitalType: z.enum(['COSMETIC', 'REGULAR']),
+  hospitalId: z.string().min(1).optional(),
+});
 
 function isAuthorized(secret: string | undefined): boolean {
   const { INTERNAL_API_SECRET } = getServerEnv();
@@ -219,6 +224,31 @@ app.openapi(searchHospitalsRoute, async (c) => {
       reasonCodes: ['candidate_pool_match'],
     })),
   }, 200);
+});
+
+const faqCategoriesRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/internal/mcp/faq-categories',
+  request: {
+    query: faqCategoriesQuerySchema,
+  },
+  responses: { 200: { description: 'Active FAQ categories for chatbot retrieval' } },
+});
+
+app.openapi(faqCategoriesRoute, async (c) => {
+  const secret = c.req.header('X-Internal-Secret');
+  if (!isAuthorized(secret)) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const query = c.req.valid('query');
+  const svc = getServices();
+  const result = await svc.listFaqCategoriesForChatbot.execute({
+    hospitalType: query.hospitalType,
+    hospitalId: query.hospitalId,
+  });
+
+  return c.json(result, 200);
 });
 
 const listPackagesRoute = createRoute({

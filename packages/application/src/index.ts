@@ -364,6 +364,7 @@ export { UpdateFaqItemUseCase } from './use-cases/chatbot-faq/update-faq-item.us
 export type { UpdateFaqItemInput } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export { DeleteFaqItemUseCase } from './use-cases/chatbot-faq/delete-faq-item.use-case.js';
 export { ListFaqCategoriesUseCase } from './use-cases/chatbot-faq/list-faq-categories.use-case.js';
+export { ListFaqCategoriesForChatbotUseCase } from './use-cases/chatbot-faq/list-faq-categories-for-chatbot.use-case.js';
 export { CreateFaqCategoryUseCase } from './use-cases/chatbot-faq/create-faq-category.use-case.js';
 export type { CreateFaqCategoryInput } from './use-cases/chatbot-faq/create-faq-category.use-case.js';
 export { DeleteFaqCategoryUseCase } from './use-cases/chatbot-faq/delete-faq-category.use-case.js';

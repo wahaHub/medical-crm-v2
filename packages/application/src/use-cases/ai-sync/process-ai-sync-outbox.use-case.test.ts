@@ -20,6 +20,7 @@ describe('ProcessAiSyncOutboxUseCase', () => {
   const difyGateway = {
     createDocumentByText: vi.fn(),
     updateDocumentByText: vi.fn(),
+    syncDocumentMetadata: vi.fn(),
     deleteDocument: vi.fn(),
   };
 
@@ -53,6 +54,63 @@ describe('ProcessAiSyncOutboxUseCase', () => {
         text: expect.stringContaining('Latest question?'),
       }),
     );
+    expect(difyGateway.syncDocumentMetadata).toHaveBeenCalledWith({
+      datasetId: 'faq-cosmetic-dataset',
+      documentId: 'doc-1',
+      metadata: {
+        faq_id: 'faq-1',
+        hospital_type: 'COSMETIC',
+        scope: 'GLOBAL',
+        category: 'General',
+        hospital_id: null,
+        keywords: 'recovery',
+      },
+    });
+  });
+
+  it('updates FAQ metadata separately from update_by_text for existing mappings', async () => {
+    const job = buildFaqOutbox({ id: 'job-update', hospitalId: 'hospital-123', keywords: ['vip', 'pickup'] });
+    const mapping = new DifyDocumentMapping({
+      id: 'mapping-1',
+      entityType: 'chatbot_faq_item',
+      entityKey: 'chatbot_faq_item:faq-1',
+      difyDatasetId: 'faq-cosmetic-dataset',
+      difyDocumentId: 'doc-9',
+      lastSyncedAt: new Date('2026-03-20T00:00:00Z'),
+      createdAt: new Date('2026-03-20T00:00:00Z'),
+      updatedAt: new Date('2026-03-20T00:00:00Z'),
+    });
+    outboxRepo.claimBatch.mockResolvedValue([job]);
+    mappingRepo.findByEntity.mockResolvedValue(mapping);
+
+    const useCase = new ProcessAiSyncOutboxUseCase(outboxRepo, mappingRepo, difyGateway);
+
+    const result = await useCase.execute();
+
+    expect(result).toEqual({ processed: 1, failed: 0, skipped: 0 });
+    expect(difyGateway.updateDocumentByText).toHaveBeenCalledWith({
+      datasetId: 'faq-cosmetic-dataset',
+      documentId: 'doc-9',
+      name: expect.stringContaining('FAQ - General'),
+      text: expect.stringContaining('What is recovery time?'),
+    });
+    expect(difyGateway.updateDocumentByText).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.anything(),
+      }),
+    );
+    expect(difyGateway.syncDocumentMetadata).toHaveBeenCalledWith({
+      datasetId: 'faq-cosmetic-dataset',
+      documentId: 'doc-9',
+      metadata: {
+        faq_id: 'faq-1',
+        hospital_type: 'COSMETIC',
+        scope: 'HOSPITAL',
+        category: 'General',
+        hospital_id: 'hospital-123',
+        keywords: 'vip, pickup',
+      },
+    });
   });
 
   it('retries failed upserts before max attempts', async () => {
@@ -137,6 +195,8 @@ function buildFaqOutbox(
     action: 'UPSERT' | 'DELETE';
     attempts: number;
     question: string;
+    hospitalId: string | null;
+    keywords: string[];
   }> = {},
 ): AiSyncOutbox {
   return new AiSyncOutbox({
@@ -153,8 +213,8 @@ function buildFaqOutbox(
       question: overrides.question ?? 'What is recovery time?',
       answer: 'Most patients recover within a week.',
       hospitalType: 'COSMETIC',
-      hospitalId: null,
-      keywords: ['recovery'],
+      hospitalId: overrides.hospitalId ?? null,
+      keywords: overrides.keywords ?? ['recovery'],
       attachments: [],
       isActive: true,
     },

@@ -44,7 +44,6 @@ export class BootstrapAiSyncUseCase {
         page,
         limit: PAGE_SIZE,
         hospitalType,
-        hospitalId: null,
         isActive: true,
       });
 

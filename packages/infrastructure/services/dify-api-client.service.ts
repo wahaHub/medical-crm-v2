@@ -24,7 +24,23 @@ export interface DifyDocumentUpdateRequest extends DifyDocumentUpsertRequest {
   documentId: string;
 }
 
+export interface DifyDocumentMetadataSyncRequest {
+  datasetId: string;
+  documentId: string;
+  metadata: Record<string, string | number | null>;
+}
+
+type DifyMetadataType = 'string' | 'number' | 'time';
+
+interface DifyMetadataDefinition {
+  id: string;
+  name: string;
+  type: DifyMetadataType;
+}
+
 export class DifyApiClientService {
+  private readonly datasetMetadataCache = new Map<string, Map<string, DifyMetadataDefinition>>();
+
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey: string,
@@ -99,6 +115,34 @@ export class DifyApiClientService {
     });
   }
 
+  async syncDocumentMetadata(request: DifyDocumentMetadataSyncRequest): Promise<void> {
+    const metadataDefinitions = await this.ensureMetadataDefinitions(request.datasetId, request.metadata);
+    const metadataList = Object.entries(request.metadata).map(([name, value]) => {
+      const definition = metadataDefinitions.get(name);
+      if (!definition) {
+        throw new Error(`Dify metadata definition missing for ${name}`);
+      }
+
+      return {
+        id: definition.id,
+        name,
+        value,
+      };
+    });
+
+    await this.requestJson(`/datasets/${request.datasetId}/documents/metadata`, {
+      method: 'POST',
+      apiKey: this.getDatasetApiKey(),
+      body: JSON.stringify({
+        operation_data: [{
+          document_id: request.documentId,
+          metadata_list: metadataList,
+          partial_update: true,
+        }],
+      }),
+    });
+  }
+
   async deleteDocument(input: { datasetId: string; documentId: string }): Promise<void> {
     await this.requestJson(`/datasets/${input.datasetId}/documents/${input.documentId}`, {
       method: 'DELETE',
@@ -110,6 +154,63 @@ export class DifyApiClientService {
     return this.datasetApiKey && this.datasetApiKey.length > 0
       ? this.datasetApiKey
       : this.apiKey;
+  }
+
+  private async ensureMetadataDefinitions(
+    datasetId: string,
+    metadata: Record<string, string | number | null>,
+  ): Promise<Map<string, DifyMetadataDefinition>> {
+    let definitions = this.datasetMetadataCache.get(datasetId);
+    if (!definitions) {
+      definitions = await this.listMetadataDefinitions(datasetId);
+      this.datasetMetadataCache.set(datasetId, definitions);
+    }
+
+    for (const [name, value] of Object.entries(metadata)) {
+      const expectedType = resolveMetadataType(value);
+      const existing = definitions.get(name);
+      if (existing) {
+        if (existing.type !== expectedType) {
+          throw new Error(`Dify metadata ${name} already exists with type ${existing.type}`);
+        }
+        continue;
+      }
+
+      const created = await this.createMetadataDefinition(datasetId, name, expectedType);
+      definitions.set(created.name, created);
+    }
+
+    return definitions;
+  }
+
+  private async listMetadataDefinitions(datasetId: string): Promise<Map<string, DifyMetadataDefinition>> {
+    const payload = await this.requestJson(`/datasets/${datasetId}/metadata`, {
+      method: 'GET',
+      apiKey: this.getDatasetApiKey(),
+    });
+
+    return new Map(
+      readMetadataDefinitions(payload).map((definition) => [definition.name, definition]),
+    );
+  }
+
+  private async createMetadataDefinition(
+    datasetId: string,
+    name: string,
+    type: DifyMetadataType,
+  ): Promise<DifyMetadataDefinition> {
+    const payload = await this.requestJson(`/datasets/${datasetId}/metadata`, {
+      method: 'POST',
+      apiKey: this.getDatasetApiKey(),
+      body: JSON.stringify({ name, type }),
+    });
+
+    const definition = readMetadataDefinition(payload);
+    if (!definition) {
+      throw new Error(`Dify create metadata response did not include metadata definition for ${name}`);
+    }
+
+    return definition;
   }
 
   private async requestJson(path: string, init: RequestInit & { apiKey?: string }): Promise<Record<string, unknown>> {
@@ -157,6 +258,72 @@ function readDocumentId(payload: Record<string, unknown>): string | null {
   }
 
   return null;
+}
+
+function readMetadataDefinitions(payload: Record<string, unknown>): DifyMetadataDefinition[] {
+  const direct = readMetadataDefinitionArray(payload.doc_metadata);
+  if (direct.length > 0) {
+    return direct;
+  }
+
+  const data = payload.data;
+  if (data && typeof data === 'object') {
+    const nested = readMetadataDefinitionArray((data as Record<string, unknown>).doc_metadata);
+    if (nested.length > 0) {
+      return nested;
+    }
+  }
+
+  return [];
+}
+
+function readMetadataDefinition(payload: Record<string, unknown>): DifyMetadataDefinition | null {
+  const direct = readMetadataDefinitionRecord(payload);
+  if (direct) {
+    return direct;
+  }
+
+  const data = payload.data;
+  if (data && typeof data === 'object') {
+    return readMetadataDefinitionRecord(data as Record<string, unknown>);
+  }
+
+  return null;
+}
+
+function readMetadataDefinitionArray(value: unknown): DifyMetadataDefinition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => readMetadataDefinitionRecord(item))
+    .filter((item): item is DifyMetadataDefinition => item !== null);
+}
+
+function readMetadataDefinitionRecord(value: unknown): DifyMetadataDefinition | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id : null;
+  const name = typeof record.name === 'string' ? record.name : null;
+  const type = record.type;
+
+  if (!id || !name || (type !== 'string' && type !== 'number' && type !== 'time')) {
+    return null;
+  }
+
+  return { id, name, type };
+}
+
+function resolveMetadataType(value: string | number | null): DifyMetadataType {
+  if (typeof value === 'number') {
+    return 'number';
+  }
+
+  return 'string';
 }
 
 async function readJsonResponse(response: Response): Promise<Record<string, unknown> | { message?: string }> {

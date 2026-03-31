@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AiSyncTaskService } from '../ai-sync-task.service.js';
+import { AiSyncTaskService, renderFaqSyncDocument } from '../ai-sync-task.service.js';
 
 describe('AiSyncTaskService', () => {
   const outboxRepo = {
@@ -35,7 +35,7 @@ describe('AiSyncTaskService', () => {
     expect(entity.entityKey).toBe('chatbot_faq_item:faq-1');
   });
 
-  it('downgrades hospital-scoped faq items to DELETE so they do not enter shared datasets', async () => {
+  it('enqueues an UPSERT for active hospital-scoped faq items so retrieval can filter by metadata later', async () => {
     const service = new AiSyncTaskService(outboxRepo);
 
     await service.enqueueFaqUpsert({
@@ -52,7 +52,48 @@ describe('AiSyncTaskService', () => {
 
     expect(outboxRepo.enqueue).toHaveBeenCalledOnce();
     const entity = outboxRepo.enqueue.mock.calls[0]?.[0];
-    expect(entity.action).toBe('DELETE');
+    expect(entity.action).toBe('UPSERT');
     expect(entity.entityKey).toBe('chatbot_faq_item:faq-2');
+  });
+
+  it('renders FAQ sync output with unchanged text body and separate metadata', () => {
+    const document = renderFaqSyncDocument({
+      faqId: 'faq-3',
+      category: 'Post-op Care',
+      question: 'What is recovery time?',
+      answer: 'Most patients recover within a week.',
+      hospitalType: 'COSMETIC',
+      hospitalId: 'hospital-123',
+      keywords: ['recovery', 'healing'],
+      attachments: [{ fileName: 'care-guide.pdf', storageKey: 'faq/care-guide.pdf' }],
+      isActive: true,
+    });
+
+    expect(document).toEqual({
+      name: 'FAQ - Post-op Care - What is recovery time?',
+      text: [
+        'Category: Post-op Care',
+        'Hospital Type: COSMETIC',
+        'Hospital Scope: hospital-123',
+        '',
+        'Question: What is recovery time?',
+        '',
+        'Answer:',
+        'Most patients recover within a week.',
+        '',
+        'Keywords: recovery, healing',
+        '',
+        'Attachments:',
+        '- care-guide.pdf',
+      ].join('\n'),
+      metadata: {
+        faq_id: 'faq-3',
+        hospital_type: 'COSMETIC',
+        scope: 'HOSPITAL',
+        category: 'Post-op Care',
+        hospital_id: 'hospital-123',
+        keywords: 'recovery, healing',
+      },
+    });
   });
 });

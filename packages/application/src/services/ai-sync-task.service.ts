@@ -27,15 +27,18 @@ export interface PackageSyncPayload {
   status: 'DRAFT' | 'PUBLISHED';
 }
 
+export interface SyncDocumentMetadata {
+  [key: string]: string | number | null;
+}
+
 export class AiSyncTaskService {
   constructor(private readonly outboxRepo: IAiSyncOutboxRepository) {}
 
   async enqueueFaqUpsert(payload: FaqSyncPayload): Promise<void> {
-    const shouldSyncToSharedDataset = payload.hospitalId === null;
     await this.enqueue({
       entityType: 'chatbot_faq_item',
       entityKey: buildFaqEntityKey(payload.faqId),
-      action: payload.isActive && shouldSyncToSharedDataset ? 'UPSERT' : 'DELETE',
+      action: payload.isActive ? 'UPSERT' : 'DELETE',
       payload,
     });
   }
@@ -97,7 +100,11 @@ export function buildPackageEntityKey(packageId: string): string {
   return `package:${packageId}`;
 }
 
-export function renderFaqSyncDocument(payload: FaqSyncPayload): { name: string; text: string } {
+export function renderFaqSyncDocument(payload: FaqSyncPayload): {
+  name: string;
+  text: string;
+  metadata: SyncDocumentMetadata;
+} {
   const lines = [
     `Category: ${payload.category}`,
     `Hospital Type: ${payload.hospitalType}`,
@@ -123,6 +130,14 @@ export function renderFaqSyncDocument(payload: FaqSyncPayload): { name: string; 
   return {
     name: `FAQ - ${payload.category} - ${payload.question.slice(0, 80)}`,
     text: lines.join('\n'),
+    metadata: {
+      faq_id: payload.faqId,
+      hospital_type: payload.hospitalType,
+      scope: payload.hospitalId === null ? 'GLOBAL' : 'HOSPITAL',
+      category: payload.category,
+      hospital_id: payload.hospitalId,
+      keywords: payload.keywords.join(', '),
+    },
   };
 }
 

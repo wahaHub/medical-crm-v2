@@ -8,11 +8,17 @@ import { generateId } from '@medical-crm/utils';
 import {
   renderFaqSyncDocument,
   renderPackageSyncDocument,
+  type SyncDocumentMetadata,
 } from '../../services/ai-sync-task.service.js';
 
 export interface AiSyncDocumentGateway {
   createDocumentByText(input: { datasetId: string; name: string; text: string }): Promise<{ documentId: string }>;
   updateDocumentByText(input: { datasetId: string; documentId: string; name?: string; text: string }): Promise<void>;
+  syncDocumentMetadata(input: {
+    datasetId: string;
+    documentId: string;
+    metadata: SyncDocumentMetadata;
+  }): Promise<void>;
   deleteDocument(input: { datasetId: string; documentId: string }): Promise<void>;
 }
 
@@ -116,6 +122,13 @@ export class ProcessAiSyncOutboxUseCase {
         name: document.name,
         text: document.text,
       });
+      if (document.metadata) {
+        await this.difyGateway.syncDocumentMetadata({
+          datasetId: ensuredDatasetId,
+          documentId: existing.difyDocumentId,
+          metadata: document.metadata,
+        });
+      }
       await this.mappingRepo.save(new DifyDocumentMapping({
         ...existing,
         difyDatasetId: ensuredDatasetId,
@@ -130,6 +143,13 @@ export class ProcessAiSyncOutboxUseCase {
       name: document.name,
       text: document.text,
     });
+    if (document.metadata) {
+      await this.difyGateway.syncDocumentMetadata({
+        datasetId: ensuredDatasetId,
+        documentId: created.documentId,
+        metadata: document.metadata,
+      });
+    }
 
     await this.mappingRepo.save(new DifyDocumentMapping({
       id: generateId(),
@@ -144,7 +164,7 @@ export class ProcessAiSyncOutboxUseCase {
   }
 }
 
-function renderDocument(item: AiSyncOutbox): { name: string; text: string } {
+function renderDocument(item: AiSyncOutbox): { name: string; text: string; metadata?: SyncDocumentMetadata } {
   if (item.entityType === 'chatbot_faq_item') {
     return renderFaqSyncDocument({
       faqId: readString(item.payload.faqId, 'faqId'),

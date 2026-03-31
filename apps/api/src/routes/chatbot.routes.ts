@@ -102,7 +102,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     canAnswer: null,
     nextAction: null,
     citations: [],
-    metadata: {},
+    metadata: body.pageContext ? { pageContext: body.pageContext } : {},
     createdAt: new Date(),
   }));
 
@@ -132,6 +132,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
         conversationSummary: session.statusSnapshot.conversationSummary,
         pendingOffer: session.statusSnapshot.pendingOffer,
         pendingQuestion: session.statusSnapshot.pendingQuestion,
+        pageContext: body.pageContext ?? null,
       },
       query: body.message,
       user: body.sessionId,

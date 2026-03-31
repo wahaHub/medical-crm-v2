@@ -14,6 +14,11 @@ export interface DecideAiPolicyInput {
   sessionId: string;
   userMessage: string;
   extraction?: Record<string, unknown>;
+  pageContext?: {
+    type: 'HOSPITAL_DETAIL';
+    hospitalId: string;
+    hospitalName?: string;
+  } | null;
   candidateHospitals?: Array<{
     hospitalId: string;
     reasonCodes: string[];
@@ -36,6 +41,7 @@ export class DecideAiPolicyUseCase {
       sessionId: input.sessionId,
       userMessage: input.userMessage,
       depth: 'light',
+      pageContext: input.pageContext,
     });
 
     const signals = this.signalResolver.resolve({
@@ -65,6 +71,7 @@ export class DecideAiPolicyUseCase {
         sessionId: input.sessionId,
         userMessage: input.userMessage,
         depth: 'full',
+        pageContext: input.pageContext,
       });
 
     const intent = await this.intentResolver.resolve({

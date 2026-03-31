@@ -13,6 +13,13 @@ export const chatbotIntentSchema = z.enum(['FAQ', 'CONSULT', 'UNKNOWN', 'SAFETY'
 export const chatbotRiskLevelSchema = z.enum(['NORMAL', 'SENSITIVE', 'CRISIS']);
 export const chatbotTopicSchema = z.string().min(1).max(80);
 export const chatbotResponseModeSchema = z.string().min(1).max(80);
+export const chatbotPageContextSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('HOSPITAL_DETAIL'),
+    hospitalId: z.string().min(1).max(255),
+    hospitalName: z.string().min(1).max(255).optional(),
+  }).strict(),
+]);
 
 export const chatbotUploadInitSchema = z.object({
   sessionId: z.string().min(1).max(255),
@@ -25,6 +32,7 @@ export const chatbotChatSchema = z.object({
   sessionId: z.string().min(1).max(255),
   hospitalType: chatbotHospitalTypeSchema,
   message: z.string().min(1).max(2000),
+  pageContext: chatbotPageContextSchema.optional(),
 }).strict();
 
 const chatbotConversionBaseSchema = z.object({

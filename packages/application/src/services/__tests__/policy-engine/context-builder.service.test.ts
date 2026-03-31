@@ -557,4 +557,203 @@ describe('ContextBuilderService', () => {
 
     expect(context.currentEngagementMode).toBe('DEEP_WORKFLOW');
   });
+
+  it('prefers request pageContext when deriving the active hospital context', async () => {
+    const builder = buildContextBuilder({
+      recentMessages: [],
+    });
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'Can this hospital help?',
+      depth: 'light',
+      pageContext: {
+        type: 'HOSPITAL_DETAIL',
+        hospitalId: 'hospital-123',
+        hospitalName: 'Medora Seoul',
+      },
+    });
+
+    expect(context.activeHospitalContext).toEqual({
+      hospitalId: 'hospital-123',
+      hospitalName: 'Medora Seoul',
+      source: 'page_context',
+    });
+  });
+
+  it('reactivates hospital-aware context from recent user-message metadata when request pageContext is absent', async () => {
+    const builder = buildContextBuilder({
+      recentMessages: [
+        makeContextMessage({
+          id: 'user-msg-1',
+          role: 'USER',
+          content: 'Tell me more about this hospital.',
+          metadata: {
+            pageContext: {
+              type: 'HOSPITAL_DETAIL',
+              hospitalId: 'hospital-abc',
+              hospitalName: 'Medora Busan',
+            },
+          },
+        }),
+      ],
+    });
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'What documents does it need?',
+      depth: 'light',
+    });
+
+    expect(context.activeHospitalContext).toEqual({
+      hospitalId: 'hospital-abc',
+      hospitalName: 'Medora Busan',
+      source: 'recent_user_message',
+    });
+  });
+
+  it('can derive hospital-aware context from the latest shortlist when no page context exists', async () => {
+    const builder = buildContextBuilder({
+      recentMessages: [
+        makeContextMessage({
+          id: 'assistant-msg-1',
+          role: 'ASSISTANT',
+          content: 'Here is a shortlist.',
+          shortlist: [{ hospitalId: 'hospital-shortlist-1' }],
+        }),
+      ],
+    });
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'What about that hospital?',
+      depth: 'full',
+    });
+
+    expect(context.activeHospitalContext).toEqual({
+      hospitalId: 'hospital-shortlist-1',
+      hospitalName: null,
+      source: 'recent_shortlist',
+    });
+  });
+
+  it('returns no active hospital context when there is no page or shortlist signal', async () => {
+    const builder = buildContextBuilder({
+      recentMessages: [],
+    });
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'Just tell me about your process.',
+      depth: 'light',
+    });
+
+    expect(context.activeHospitalContext).toBeNull();
+  });
 });
+
+function buildContextBuilder(overrides: {
+  recentMessages?: AiChatMessage[];
+} = {}) {
+  const sessionRepo: IAiChatSessionRepository = {
+    findBySessionId: vi.fn(async () => new AiChatSession({
+      id: 'session-ctx-1',
+      sessionId: 'policy-session-ctx-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        engagementMode: 'QUALIFIED_EXPLORATION',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        pendingOffer: null,
+        pendingQuestion: null,
+        lastNextAction: null,
+        lastResolvedIntent: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+    findByDifyConversationId: vi.fn(async () => null),
+    save: vi.fn(),
+    attachPatient: vi.fn(),
+    updateStatus: vi.fn(),
+    patchStatus: vi.fn(),
+  };
+
+  const recentMessages = overrides.recentMessages ?? [];
+  const messageRepo: IAiChatMessageRepository = {
+    create: vi.fn(),
+    listBySession: vi.fn(async () => recentMessages),
+    listRecentBySession: vi.fn(async () => recentMessages),
+    updateWritebackMetadata: vi.fn(async () => null),
+    updateMessage: vi.fn(async () => null),
+    deleteById: vi.fn(async () => false),
+  };
+
+  const profileRepo: IAiUserProfileRepository = {
+    findByAnonymousKeyOrPatient: vi.fn(async () => null),
+    save: vi.fn(),
+    patch: vi.fn(),
+  };
+
+  const timelineRepo: IAiChatTimelineEventRepository = {
+    listRecentBySession: vi.fn(async () => []),
+    append: vi.fn(),
+  };
+
+  const followupRepo: IAiFollowupTriggerRepository = {
+    listPendingBySession: vi.fn(async () => []),
+    createPendingTrigger: vi.fn(),
+    resolvePendingTrigger: vi.fn(),
+  };
+
+  const handoffRepo: IAiHandoffRepository = {
+    listRecentBySession: vi.fn(async () => []),
+    save: vi.fn(),
+    complete: vi.fn(),
+  };
+
+  return new ContextBuilderService(
+    sessionRepo,
+    messageRepo,
+    profileRepo,
+    timelineRepo,
+    followupRepo,
+    handoffRepo,
+  );
+}
+
+function makeContextMessage(overrides: Partial<ConstructorParameters<typeof AiChatMessage>[0]> = {}) {
+  return new AiChatMessage({
+    id: overrides.id ?? 'msg-default',
+    sessionId: overrides.sessionId ?? 'session-ctx-1',
+    role: overrides.role ?? 'ASSISTANT',
+    content: overrides.content ?? 'stub',
+    intent: overrides.intent ?? 'FAQ',
+    resolvedIntent: overrides.resolvedIntent ?? 'GENERAL_QUESTION',
+    riskLevel: overrides.riskLevel ?? 'NORMAL',
+    canAnswer: overrides.canAnswer ?? true,
+    nextAction: overrides.nextAction ?? 'ANSWER',
+    secondaryAction: overrides.secondaryAction ?? null,
+    responseMode: overrides.responseMode ?? 'grounded_answer',
+    citations: overrides.citations ?? [],
+    reasonCodes: overrides.reasonCodes ?? [],
+    shortlist: overrides.shortlist ?? [],
+    writebackStatus: overrides.writebackStatus ?? 'pending',
+    toolTrace: overrides.toolTrace ?? [],
+    metadata: overrides.metadata ?? {},
+    createdAt: overrides.createdAt ?? new Date('2026-03-31T00:00:00Z'),
+  });
+}

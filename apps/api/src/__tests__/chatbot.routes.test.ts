@@ -249,6 +249,87 @@ describe('Chatbot routes', () => {
     );
   });
 
+  it('POST /api/v2/chatbot/chat accepts pageContext, stores it on the user message, and forwards it to Dify inputs', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-page-context',
+      answer: JSON.stringify({
+        answer: 'Here is how this hospital handles review.',
+        intent: 'FAQ',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        topic: 'DOCUMENTS',
+        nextAction: 'ANSWER',
+        responseMode: 'grounded_answer',
+        reasonCodes: ['faq_answer'],
+        shortlist: [],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'Can this hospital review my rhinoplasty case?',
+        pageContext: {
+          type: 'HOSPITAL_DETAIL',
+          hospitalId: 'hospital-123',
+          hospitalName: 'Medora Seoul',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+    );
+    const createdUserMessage = mockServices.aiChatMessageRepo.create.mock.calls[0]?.[0];
+    expect(createdUserMessage).toMatchObject({
+      role: 'USER',
+      metadata: {
+        pageContext: {
+          type: 'HOSPITAL_DETAIL',
+          hospitalId: 'hospital-123',
+          hospitalName: 'Medora Seoul',
+        },
+      },
+    });
+    expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputs: expect.objectContaining({
+          pageContext: {
+            type: 'HOSPITAL_DETAIL',
+            hospitalId: 'hospital-123',
+            hospitalName: 'Medora Seoul',
+          },
+        }),
+      }),
+    );
+  });
+
+  it('POST /api/v2/chatbot/chat rejects invalid pageContext payloads', async () => {
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'hello',
+        pageContext: {
+          type: 'HOSPITAL_DETAIL',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
+  });
+
   it('POST /api/v2/chatbot/chat maps HIGH_RISK into a safe public risk level without leaking raw upstream payloads', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({

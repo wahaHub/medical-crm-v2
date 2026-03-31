@@ -118,6 +118,7 @@ app.openapi(aiPolicyContextRoute, async (c) => {
   const result = await svc.getAiPolicyContext.execute({
     sessionId: parsed.body.session_id,
     userMessage: parsed.body.payload?.user_message ?? '',
+    pageContext: parsed.body.payload?.page_context ?? null,
   });
 
   return c.json({ ok: true, data: result }, 200);
@@ -145,6 +146,7 @@ app.openapi(aiPolicyDecideRoute, async (c) => {
     sessionId: parsed.body.session_id,
     userMessage: parsed.body.payload?.user_message ?? '',
     extraction: parsed.body.payload?.candidate_signals ?? {},
+    pageContext: parsed.body.payload?.page_context ?? null,
     candidateHospitals: parsed.body.payload?.candidate_hospitals ?? [],
   });
 

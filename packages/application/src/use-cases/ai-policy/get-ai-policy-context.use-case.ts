@@ -3,6 +3,11 @@ import { ContextBuilderService } from '../../services/policy-engine/context-buil
 export interface GetAiPolicyContextInput {
   sessionId: string;
   userMessage: string;
+  pageContext?: {
+    type: 'HOSPITAL_DETAIL';
+    hospitalId: string;
+    hospitalName?: string;
+  } | null;
 }
 
 export class GetAiPolicyContextUseCase {
@@ -35,6 +40,13 @@ export class GetAiPolicyContextUseCase {
       conversation_summary: context.statusSnapshot.conversationSummary,
       pending_offer: context.statusSnapshot.pendingOffer,
       pending_question: context.statusSnapshot.pendingQuestion,
+      active_hospital_context: context.activeHospitalContext
+        ? {
+            hospital_id: context.activeHospitalContext.hospitalId,
+            hospital_name: context.activeHospitalContext.hospitalName,
+            source: context.activeHospitalContext.source,
+          }
+        : null,
       recent_messages: context.recentMessages.map((message) => ({
         id: message.id,
         role: message.role,

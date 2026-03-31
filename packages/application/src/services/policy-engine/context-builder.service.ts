@@ -18,6 +18,7 @@ export interface BuildPolicyContextInput {
   sessionId: string;
   userMessage: string;
   depth?: 'light' | 'full';
+  pageContext?: PolicyPageContext | null;
 }
 
 export interface PolicyPendingStateSummary {
@@ -31,6 +32,18 @@ export interface PolicySafetyFlags {
   requiresSafetyHandling: boolean;
 }
 
+export interface PolicyPageContext {
+  type: 'HOSPITAL_DETAIL';
+  hospitalId: string;
+  hospitalName?: string;
+}
+
+export interface ActiveHospitalContext {
+  hospitalId: string;
+  hospitalName: string | null;
+  source: 'page_context' | 'recent_user_message' | 'recent_shortlist';
+}
+
 export interface PolicyConversationContext {
   sessionId: string;
   userMessage: string;
@@ -42,6 +55,7 @@ export interface PolicyConversationContext {
   };
   patientId: string | null;
   currentEngagementMode: AiPolicyEngagementMode | null;
+  activeHospitalContext: ActiveHospitalContext | null;
   pendingOffer: PolicyPendingStateSummary;
   pendingQuestion: PolicyPendingStateSummary;
   lastAssistantAction: string | null;
@@ -92,6 +106,7 @@ export class ContextBuilderService {
       },
       patientId: session.patientId,
       currentEngagementMode: inferCurrentEngagementMode(session.statusSnapshot),
+      activeHospitalContext: null,
       pendingOffer: summarizePendingState(session.statusSnapshot.pendingOffer),
       pendingQuestion: summarizePendingState(session.statusSnapshot.pendingQuestion),
       lastAssistantAction: session.statusSnapshot.lastNextAction,
@@ -108,6 +123,10 @@ export class ContextBuilderService {
       return {
         ...baseContext,
         contextDepth: 'light',
+        activeHospitalContext: deriveActiveHospitalContext({
+          pageContext: input.pageContext,
+          recentMessages,
+        }),
         lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
       };
     }
@@ -131,6 +150,10 @@ export class ContextBuilderService {
     return {
       ...baseContext,
       contextDepth: 'full',
+      activeHospitalContext: deriveActiveHospitalContext({
+        pageContext: input.pageContext,
+        recentMessages,
+      }),
       lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
       statusSnapshot: session.statusSnapshot,
       profile,
@@ -140,6 +163,46 @@ export class ContextBuilderService {
       recentHandoffs,
     };
   }
+}
+
+function deriveActiveHospitalContext(input: {
+  pageContext?: PolicyPageContext | null;
+  recentMessages: AiChatMessage[];
+}): ActiveHospitalContext | null {
+  if (input.pageContext?.type === 'HOSPITAL_DETAIL' && input.pageContext.hospitalId) {
+    return {
+      hospitalId: input.pageContext.hospitalId,
+      hospitalName: input.pageContext.hospitalName ?? null,
+      source: 'page_context',
+    };
+  }
+
+  for (const message of [...input.recentMessages].reverse()) {
+    if (message.role.toUpperCase() !== 'USER') {
+      continue;
+    }
+    const pageContext = readPageContextFromMetadata(message.metadata);
+    if (pageContext) {
+      return {
+        hospitalId: pageContext.hospitalId,
+        hospitalName: pageContext.hospitalName ?? null,
+        source: 'recent_user_message',
+      };
+    }
+  }
+
+  for (const message of [...input.recentMessages].reverse()) {
+    const shortlistHospitalId = readShortlistHospitalId(message.shortlist);
+    if (shortlistHospitalId) {
+      return {
+        hospitalId: shortlistHospitalId,
+        hospitalName: null,
+        source: 'recent_shortlist',
+      };
+    }
+  }
+
+  return null;
 }
 
 function summarizePendingState(
@@ -232,4 +295,35 @@ function isProviderFailedDraft(message: AiChatMessage): boolean {
 function normalizeRecordString(record: Record<string, unknown>, key: string): string | null {
   const value = record[key];
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function readPageContextFromMetadata(metadata: Record<string, unknown>): PolicyPageContext | null {
+  const raw = metadata['pageContext'];
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  if (record['type'] !== 'HOSPITAL_DETAIL' || typeof record['hospitalId'] !== 'string' || record['hospitalId'].length === 0) {
+    return null;
+  }
+
+  return {
+    type: 'HOSPITAL_DETAIL',
+    hospitalId: record['hospitalId'],
+    hospitalName: typeof record['hospitalName'] === 'string' && record['hospitalName'].length > 0
+      ? record['hospitalName']
+      : undefined,
+  };
+}
+
+function readShortlistHospitalId(shortlist: Array<Record<string, unknown>>): string | null {
+  for (const item of shortlist) {
+    const hospitalId = item['hospitalId'];
+    if (typeof hospitalId === 'string' && hospitalId.length > 0) {
+      return hospitalId;
+    }
+  }
+
+  return null;
 }

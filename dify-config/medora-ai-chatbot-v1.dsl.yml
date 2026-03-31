@@ -1099,19 +1099,30 @@ workflow:
         prompt_template:
         - role: system
           text: |
-            You are selecting the most relevant CRM FAQ category for retrieval.
+            You are selecting the most relevant CRM FAQ categories for retrieval.
 
             Return JSON only with this exact shape:
             {
-              "primaryCategory": "string|null",
+              "categories": ["string"],
               "faqScope": "GENERAL_ONLY|HOSPITAL_AWARE"
             }
 
             Rules:
             - Use only category names that already exist in the provided category list.
-            - Pick the single best category for retrieval. Use null if none are relevant.
+            - Return 1 to 3 categories ordered from most to least relevant.
+            - Return an empty array if none are relevant.
             - Set faqScope to HOSPITAL_AWARE only when the user is clearly asking about a currently active hospital.
             - If there is no active hospital id, prefer GENERAL_ONLY.
+        - role: user
+          text: |
+            User message:
+            {{#sys.query#}}
+
+            Active hospital id:
+            {{#parse_decide_code.active_hospital_id#}}
+
+            Available CRM category list:
+            {{#faq_categories_http.body#}}
         memory:
           query_prompt_template: '{{#sys.query#}}'
           role_prefix:
@@ -1139,18 +1150,55 @@ workflow:
         code: |
           import json
 
-          def main(resolver_text: str, active_hospital_id: str) -> dict:
+          def _read_available_categories(categories_body: str) -> list[str]:
+              try:
+                  payload = json.loads(categories_body or "{}")
+              except Exception:
+                  payload = {}
+
+              categories = payload.get("categories")
+              if not isinstance(categories, list):
+                  return []
+
+              names = []
+              for item in categories:
+                  if not isinstance(item, dict):
+                      continue
+                  name = item.get("name")
+                  if isinstance(name, str) and name.strip():
+                      names.append(name.strip())
+              return names
+
+          def main(resolver_text: str, active_hospital_id: str, categories_body: str) -> dict:
               parsed = {}
               try:
                   parsed = json.loads(resolver_text or "{}")
               except Exception:
                   parsed = {}
 
-              primary_category = parsed.get("primaryCategory")
-              if not isinstance(primary_category, str) or not primary_category.strip():
-                  primary_category = ""
+              available_categories = _read_available_categories(categories_body)
+              allowed = set(available_categories)
+
+              raw_categories = parsed.get("categories")
+              normalized_categories = []
+              if isinstance(raw_categories, list):
+                  for value in raw_categories:
+                      if isinstance(value, str) and value.strip():
+                          normalized_categories.append(value.strip())
               else:
-                  primary_category = primary_category.strip()
+                  primary_category = parsed.get("primaryCategory")
+                  if isinstance(primary_category, str) and primary_category.strip():
+                      normalized_categories.append(primary_category.strip())
+
+              filtered_categories = []
+              seen = set()
+              for category in normalized_categories:
+                  if category not in allowed or category in seen:
+                      continue
+                  seen.add(category)
+                  filtered_categories.append(category)
+                  if len(filtered_categories) >= 3:
+                      break
 
               scope_hint = parsed.get("faqScope")
               if scope_hint not in ("GENERAL_ONLY", "HOSPITAL_AWARE"):
@@ -1159,12 +1207,12 @@ workflow:
               faq_scope = "HOSPITAL_AWARE" if scope_hint == "HOSPITAL_AWARE" and active_hospital_id else "GENERAL_ONLY"
 
               return {
-                  "primary_category": primary_category,
+                  "categories": filtered_categories,
                   "faq_scope": faq_scope,
               }
         outputs:
-          primary_category:
-            type: string
+          categories:
+            type: array[string]
             children: null
           faq_scope:
             type: string
@@ -1179,6 +1227,11 @@ workflow:
           value_selector:
           - parse_decide_code
           - active_hospital_id
+          value_type: string
+        - variable: categories_body
+          value_selector:
+          - faq_categories_http
+          - body
           value_type: string
     - id: faq_scope_gate
       type: custom
@@ -1284,8 +1337,8 @@ workflow:
             comparison_operator: is
             value: GENERAL
           - name: category
-            comparison_operator: is
-            value: '{{#parse_faq_category_code.primary_category#}}'
+            comparison_operator: in
+            value: '{{#parse_faq_category_code.categories#}}'
         vision:
           enabled: false
     - id: general_faq_regular_kr
@@ -1318,8 +1371,8 @@ workflow:
             comparison_operator: is
             value: GENERAL
           - name: category
-            comparison_operator: is
-            value: '{{#parse_faq_category_code.primary_category#}}'
+            comparison_operator: in
+            value: '{{#parse_faq_category_code.categories#}}'
         vision:
           enabled: false
     - id: hospital_faq_cosmetic_kr
@@ -1355,8 +1408,8 @@ workflow:
             comparison_operator: is
             value: '{{#parse_decide_code.active_hospital_id#}}'
           - name: category
-            comparison_operator: is
-            value: '{{#parse_faq_category_code.primary_category#}}'
+            comparison_operator: in
+            value: '{{#parse_faq_category_code.categories#}}'
         vision:
           enabled: false
     - id: hospital_faq_regular_kr
@@ -1392,8 +1445,8 @@ workflow:
             comparison_operator: is
             value: '{{#parse_decide_code.active_hospital_id#}}'
           - name: category
-            comparison_operator: is
-            value: '{{#parse_faq_category_code.primary_category#}}'
+            comparison_operator: in
+            value: '{{#parse_faq_category_code.categories#}}'
         vision:
           enabled: false
     - id: default_faq_context_body

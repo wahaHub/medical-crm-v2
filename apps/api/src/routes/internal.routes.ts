@@ -12,7 +12,16 @@ const INTERNAL_SYSTEM_ACTOR = {
 
 const faqCategoriesQuerySchema = z.object({
   hospitalType: z.enum(['COSMETIC', 'REGULAR']),
-  hospitalId: z.string().min(1).optional(),
+  hospitalId: z.preprocess(
+    (value) => {
+      if (typeof value !== 'string')
+        return value;
+
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    },
+    z.string().min(1).optional(),
+  ),
 });
 
 function isAuthorized(secret: string | undefined): boolean {

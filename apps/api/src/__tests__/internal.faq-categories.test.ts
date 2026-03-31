@@ -68,4 +68,24 @@ describe('GET /api/v2/internal/mcp/faq-categories', () => {
       hospitalId: 'hospital-123',
     });
   });
+
+  it('normalizes an empty hospitalId query param to undefined for general FAQ turns', async () => {
+    mockServices.listFaqCategoriesForChatbot.execute.mockResolvedValue({
+      hospitalType: 'COSMETIC',
+      hospitalId: null,
+      categories: [
+        { name: 'Consultation Process', sortOrder: 10 },
+      ],
+    });
+
+    const res = await app.request('/api/v2/internal/mcp/faq-categories?hospitalType=COSMETIC&hospitalId=', {
+      headers: { 'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.listFaqCategoriesForChatbot.execute).toHaveBeenCalledWith({
+      hospitalType: 'COSMETIC',
+      hospitalId: undefined,
+    });
+  });
 });

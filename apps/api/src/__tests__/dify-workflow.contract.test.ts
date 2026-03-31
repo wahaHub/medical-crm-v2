@@ -310,6 +310,7 @@ describe('Dify workflow contract', () => {
   it('adds category-aware FAQ resolution before scoped FAQ retrieval', () => {
     const dsl = loadDsl();
     const edges = dsl.workflow.graph.edges;
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
 
     expect(findNode(dsl.workflow.graph.nodes, 'faq_categories_http')).toBeDefined();
     expect(findNode(dsl.workflow.graph.nodes, 'faq_category_resolver_llm')).toBeDefined();
@@ -332,6 +333,11 @@ describe('Dify workflow contract', () => {
         }),
       ]),
     );
+
+    expect(yaml).toContain('Available CRM category list:');
+    expect(yaml).toContain('{{#faq_categories_http.body#}}');
+    expect(yaml).toContain('"categories": ["string"]');
+    expect(yaml).toContain('type: array[string]');
   });
 
   it('uses metadata-filtered general FAQ retrieval keyed by hospital type, GENERAL scope, and resolved categories', () => {
@@ -344,6 +350,8 @@ describe('Dify workflow contract', () => {
     expect(yaml).toContain('name: scope');
     expect(yaml).toContain('value: GENERAL');
     expect(yaml).toContain('name: category');
+    expect(yaml).toContain('comparison_operator: in');
+    expect(yaml).toContain("value: '{{#parse_faq_category_code.categories#}}'");
   });
 
   it('uses metadata-filtered hospital FAQ retrieval keyed by hospital type, HOSPITAL scope, hospital_id, and resolved categories', () => {
@@ -354,6 +362,8 @@ describe('Dify workflow contract', () => {
     expect(yaml).toContain('value: HOSPITAL');
     expect(yaml).toContain('name: hospital_id');
     expect(yaml).toContain('name: category');
+    expect(yaml).toContain('comparison_operator: in');
+    expect(yaml).toContain("value: '{{#parse_faq_category_code.categories#}}'");
   });
 
   it('keeps the general-only FAQ path free of hospital FAQ execution', () => {

@@ -102,6 +102,14 @@ describe('Dify workflow contract', () => {
       ]),
     );
 
+    expect(outgoingEdges(edges, 'decide_http')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target: 'parse_decide_code',
+        }),
+      ]),
+    );
+
     expect(outgoingEdges(edges, 'extraction_llm')).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -135,15 +143,16 @@ describe('Dify workflow contract', () => {
         expect.objectContaining({
           source: 'engagement_gate',
           sourceHandle: 'light_discovery',
-          target: 'response_composer',
+          target: 'light_faq_scope',
         }),
       ]),
     );
 
-    expect(edges).toEqual(
+    expect(edges).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: 'engagement_gate',
+          sourceHandle: 'light_discovery',
           target: 'context_http',
         }),
       ]),
@@ -163,8 +172,12 @@ describe('Dify workflow contract', () => {
     const edges = dsl.workflow.graph.edges;
     const actionGate = findNode(dsl.workflow.graph.nodes, 'action_gate');
     const explicitCases = nodeCaseValues(actionGate);
+    const explicitActionValues = explicitCases.filter((value) => AI_POLICY_BACKEND_NEXT_ACTIONS.includes(
+      value as (typeof AI_POLICY_BACKEND_NEXT_ACTIONS)[number],
+    ));
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
 
-    expect(explicitCases).toEqual([
+    expect(explicitActionValues).toEqual([
       'SHOW_PACKAGE',
       'SHOW_HOSPITAL_RECOMMENDATIONS',
       'EXPLORE_HOSPITAL_RECOMMENDATIONS',
@@ -187,10 +200,14 @@ describe('Dify workflow contract', () => {
         expect.objectContaining({
           source: 'action_gate',
           sourceHandle: 'false',
-          target: 'response_composer',
+          target: 'normalize_direct_inputs',
         }),
       ]),
     );
+
+    expect(yaml).toContain('allow_search_hospitals');
+    expect(yaml).toContain('allow_list_packages');
+    expect(yaml).toContain('allow_search_faq');
   });
 
   it('preserves the response -> writeback -> final answer chain and writeback contract invariants', () => {
@@ -214,9 +231,159 @@ describe('Dify workflow contract', () => {
     );
 
     expect(writebackBody).toContain('"assistant_message_id": "{{#start.assistantMessageId#}}"');
-    expect(writebackBody).toContain('"policy_decision": {{#decide_http.body.data#}}');
+    expect(writebackBody).toContain('"policy_decision": {{#parse_decide_code.writeback_policy_decision#}}');
     expect(writebackBody).toContain('"final_response_metadata": {{#response_composer.text#}}');
     expect(finalAnswerNode.data?.answer).toBe('{{#response_composer.text#}}');
+  });
+
+  it('avoids stale http body.data selectors and parses decide_http before field-level branching', () => {
+    const dsl = loadDsl();
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+
+    expect(yaml).not.toContain('decide_http.body.data');
+    expect(yaml).not.toContain('context_http.body.data');
+    expect(yaml).not.toContain('search_hospitals_http.body.data');
+    expect(yaml).not.toContain('list_packages_http.body.data');
+    expect(yaml).toContain('{{#parse_decide_code.policy_decision#}}');
+    expect(yaml).toContain('{{#parse_decide_code.writeback_policy_decision#}}');
+    expect(yaml).toContain('{{#prompt_inputs_aggregator.ContextBody.output#}}');
+    expect(yaml).toContain('{{#prompt_inputs_aggregator.HospitalsBody.output#}}');
+    expect(yaml).toContain('{{#prompt_inputs_aggregator.PackagesBody.output#}}');
+  });
+
+  it('normalizes branch-specific prompt inputs before the response composer reads optional tool outputs', () => {
+    const dsl = loadDsl();
+    const promptInputsAggregator = findNode(dsl.workflow.graph.nodes, 'prompt_inputs_aggregator');
+    const responseComposer = findNode(dsl.workflow.graph.nodes, 'response_composer');
+    const writebackNode = findNode(dsl.workflow.graph.nodes, 'writeback_http');
+    const prompt = (responseComposer.data?.prompt_template ?? [])
+      .map((item) => item.text ?? '')
+      .join('\n');
+    const writebackBody = writebackNode.data?.body?.data?.[0]?.value ?? '';
+
+    expect(promptInputsAggregator.data?.type).toBe('variable-aggregator');
+    expect(prompt).toContain('{{#prompt_inputs_aggregator.ContextBody.output#}}');
+    expect(prompt).toContain('{{#prompt_inputs_aggregator.HospitalsBody.output#}}');
+    expect(prompt).toContain('{{#prompt_inputs_aggregator.GeneralFaqResult.output#}}');
+    expect(prompt).toContain('{{#prompt_inputs_aggregator.HospitalFaqResult.output#}}');
+    expect(prompt).toContain('{{#prompt_inputs_aggregator.PackagesBody.output#}}');
+
+    expect(prompt).not.toContain('{{#context_http.body#}}');
+    expect(prompt).not.toContain('{{#search_hospitals_http.body#}}');
+    expect(prompt).not.toContain('{{#faq_cosmetic_kr.result#}}');
+    expect(prompt).not.toContain('{{#faq_regular_kr.result#}}');
+    expect(prompt).not.toContain('{{#list_packages_http.body#}}');
+
+    expect(writebackBody).toContain('"tool_results": {}');
+    expect(writebackBody).not.toContain('{{#search_hospitals_http.body#}}');
+    expect(writebackBody).not.toContain('{{#faq_cosmetic_kr.result#}}');
+    expect(writebackBody).not.toContain('{{#faq_regular_kr.result#}}');
+    expect(writebackBody).not.toContain('{{#list_packages_http.body#}}');
+  });
+
+  it('routes LIGHT_DISCOVERY through cheap FAQ retrieval and avoids hardcoded internal transport settings', () => {
+    const dsl = loadDsl();
+    const edges = dsl.workflow.graph.edges;
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          sourceHandle: 'cosmetic',
+          target: 'faq_categories_http',
+        }),
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          sourceHandle: 'false',
+          target: 'faq_categories_http',
+        }),
+      ]),
+    );
+
+    expect(yaml).toContain('{{#env.crm_base_url#}}');
+    expect(yaml).toContain('{{#env.internal_api_secret#}}');
+    expect(yaml).not.toContain('http://host.docker.internal:3001');
+    expect(yaml).not.toContain('dev-internal-api-secret-32chars-min-ok');
+  });
+
+  it('adds category-aware FAQ resolution before scoped FAQ retrieval', () => {
+    const dsl = loadDsl();
+    const edges = dsl.workflow.graph.edges;
+
+    expect(findNode(dsl.workflow.graph.nodes, 'faq_categories_http')).toBeDefined();
+    expect(findNode(dsl.workflow.graph.nodes, 'faq_category_resolver_llm')).toBeDefined();
+    expect(findNode(dsl.workflow.graph.nodes, 'parse_faq_category_code')).toBeDefined();
+    expect(findNode(dsl.workflow.graph.nodes, 'faq_scope_gate')).toBeDefined();
+
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'faq_categories_http',
+          target: 'faq_category_resolver_llm',
+        }),
+        expect.objectContaining({
+          source: 'faq_category_resolver_llm',
+          target: 'parse_faq_category_code',
+        }),
+        expect.objectContaining({
+          source: 'parse_faq_category_code',
+          target: 'faq_scope_gate',
+        }),
+      ]),
+    );
+  });
+
+  it('uses metadata-filtered general FAQ retrieval keyed by hospital type, GENERAL scope, and resolved categories', () => {
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+
+    expect(yaml).toContain('id: general_faq_cosmetic_kr');
+    expect(yaml).toContain('id: general_faq_regular_kr');
+    expect(yaml).toContain('metadata_filtering_mode: manual');
+    expect(yaml).toContain('name: hospital_type');
+    expect(yaml).toContain('name: scope');
+    expect(yaml).toContain('value: GENERAL');
+    expect(yaml).toContain('name: category');
+  });
+
+  it('uses metadata-filtered hospital FAQ retrieval keyed by hospital type, HOSPITAL scope, hospital_id, and resolved categories', () => {
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+
+    expect(yaml).toContain('id: hospital_faq_cosmetic_kr');
+    expect(yaml).toContain('id: hospital_faq_regular_kr');
+    expect(yaml).toContain('value: HOSPITAL');
+    expect(yaml).toContain('name: hospital_id');
+    expect(yaml).toContain('name: category');
+  });
+
+  it('keeps the general-only FAQ path free of hospital FAQ execution', () => {
+    const dsl = loadDsl();
+    const edges = dsl.workflow.graph.edges;
+
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'faq_scope_gate',
+          sourceHandle: 'general_only',
+          target: 'general_faq_scope',
+        }),
+        expect.objectContaining({
+          source: 'faq_scope_gate',
+          sourceHandle: 'hospital_aware',
+          target: 'hospital_faq_scope',
+        }),
+      ]),
+    );
+
+    expect(edges).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'faq_scope_gate',
+          sourceHandle: 'general_only',
+          target: 'hospital_faq_scope',
+        }),
+      ]),
+    );
   });
 
   it('documents safety and API metadata invariants in the response composer prompt', () => {

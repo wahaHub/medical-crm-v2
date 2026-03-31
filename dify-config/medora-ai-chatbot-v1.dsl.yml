@@ -10,7 +10,21 @@ version: 0.6.0
 dependencies: []
 workflow:
   conversation_variables: []
-  environment_variables: []
+  environment_variables:
+  - id: env-crm-base-url
+    name: crm_base_url
+    selector:
+    - env
+    - crm_base_url
+    value: REPLACE_ME_CRM_BASE_URL
+    value_type: string
+  - id: env-internal-api-secret
+    name: internal_api_secret
+    selector:
+    - env
+    - internal_api_secret
+    value: REPLACE_ME_INTERNAL_API_SECRET
+    value_type: secret
   features:
     file_upload:
       enabled: false
@@ -63,48 +77,59 @@ workflow:
         targetType: if-else
         isInIteration: false
         isInLoop: false
-    - id: decide-risk-gate
+    - id: decide-parse
       source: decide_http
+      sourceHandle: source
+      target: parse_decide_code
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: http-request
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: parse-risk-gate
+      source: parse_decide_code
       sourceHandle: source
       target: risk_gate
       targetHandle: target
       type: custom
       data:
-        sourceType: http-request
+        sourceType: code
         targetType: if-else
         isInIteration: false
         isInLoop: false
-    - id: risk-crisis-response
+    - id: risk-crisis-normalize
       source: risk_gate
       sourceHandle: crisis
-      target: response_composer
+      target: normalize_crisis_inputs
       targetHandle: target
       type: custom
       data:
         sourceType: if-else
-        targetType: llm
+        targetType: code
         isInIteration: false
         isInLoop: false
-    - id: risk-high-risk-response
+    - id: risk-high-risk-normalize
       source: risk_gate
       sourceHandle: high_risk
-      target: response_composer
+      target: normalize_high_risk_inputs
       targetHandle: target
       type: custom
       data:
         sourceType: if-else
-        targetType: llm
+        targetType: code
         isInIteration: false
         isInLoop: false
-    - id: engagement-light-response
+    - id: engagement-light-faq-scope
       source: engagement_gate
       sourceHandle: light_discovery
-      target: response_composer
+      target: light_faq_scope
       targetHandle: target
       type: custom
       data:
         sourceType: if-else
-        targetType: llm
+        targetType: if-else
         isInIteration: false
         isInLoop: false
     - id: engagement-deeper-context
@@ -162,26 +187,26 @@ workflow:
         targetType: http-request
         isInIteration: false
         isInLoop: false
-    - id: list-packages-response
+    - id: list-packages-normalize
       source: list_packages_http
       sourceHandle: source
-      target: response_composer
+      target: normalize_package_inputs
       targetHandle: target
       type: custom
       data:
         sourceType: http-request
-        targetType: llm
+        targetType: code
         isInIteration: false
         isInLoop: false
-    - id: hospital-search-response
+    - id: hospital-search-normalize
       source: search_hospitals_http
       sourceHandle: source
-      target: response_composer
+      target: normalize_hospital_inputs
       targetHandle: target
       type: custom
       data:
         sourceType: http-request
-        targetType: llm
+        targetType: code
         isInIteration: false
         isInLoop: false
     - id: action-faq-scope
@@ -195,32 +220,131 @@ workflow:
         targetType: if-else
         isInIteration: false
         isInLoop: false
-    - id: action-direct-response
-      source: action_gate
-      sourceHandle: 'false'
-      target: response_composer
+    - id: light-scope-cosmetic
+      source: light_faq_scope
+      sourceHandle: cosmetic
+      target: faq_categories_http
       targetHandle: target
       type: custom
       data:
         sourceType: if-else
-        targetType: llm
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: light-scope-regular
+      source: light_faq_scope
+      sourceHandle: 'false'
+      target: faq_categories_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: action-direct-normalize
+      source: action_gate
+      sourceHandle: 'false'
+      target: normalize_direct_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: code
         isInIteration: false
         isInLoop: false
     - id: scope-cosmetic
       source: faq_scope
       sourceHandle: cosmetic
-      target: faq_cosmetic_kr
+      target: faq_categories_http
       targetHandle: target
       type: custom
       data:
         sourceType: if-else
-        targetType: knowledge-retrieval
+        targetType: http-request
         isInIteration: false
         isInLoop: false
     - id: scope-regular
       source: faq_scope
       sourceHandle: 'false'
-      target: faq_regular_kr
+      target: faq_categories_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: faq-categories-resolver
+      source: faq_categories_http
+      sourceHandle: source
+      target: faq_category_resolver_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: http-request
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: resolver-parse-category
+      source: faq_category_resolver_llm
+      sourceHandle: source
+      target: parse_faq_category_code
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: parse-category-scope-gate
+      source: parse_faq_category_code
+      sourceHandle: source
+      target: faq_scope_gate
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+    - id: general-only-general-scope
+      source: faq_scope_gate
+      sourceHandle: general_only
+      target: general_faq_scope
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-aware-general-scope
+      source: faq_scope_gate
+      sourceHandle: hospital_aware
+      target: general_faq_scope
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-aware-hospital-scope
+      source: faq_scope_gate
+      sourceHandle: hospital_aware
+      target: hospital_faq_scope
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+    - id: general-scope-cosmetic
+      source: general_faq_scope
+      sourceHandle: cosmetic
+      target: general_faq_cosmetic_kr
       targetHandle: target
       type: custom
       data:
@@ -228,25 +352,190 @@ workflow:
         targetType: knowledge-retrieval
         isInIteration: false
         isInLoop: false
-    - id: cosmetic-response
-      source: faq_cosmetic_kr
-      sourceHandle: source
-      target: response_composer
+    - id: general-scope-regular
+      source: general_faq_scope
+      sourceHandle: 'false'
+      target: general_faq_regular_kr
       targetHandle: target
       type: custom
       data:
-        sourceType: knowledge-retrieval
-        targetType: llm
+        sourceType: if-else
+        targetType: knowledge-retrieval
         isInIteration: false
         isInLoop: false
-    - id: regular-response
-      source: faq_regular_kr
+    - id: hospital-scope-cosmetic
+      source: hospital_faq_scope
+      sourceHandle: cosmetic
+      target: hospital_faq_cosmetic_kr
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-scope-regular
+      source: hospital_faq_scope
+      sourceHandle: 'false'
+      target: hospital_faq_regular_kr
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: general-cosmetic-normalize
+      source: general_faq_cosmetic_kr
+      sourceHandle: source
+      target: normalize_general_faq_cosmetic_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: general-regular-normalize
+      source: general_faq_regular_kr
+      sourceHandle: source
+      target: normalize_general_faq_regular_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-cosmetic-normalize
+      source: hospital_faq_cosmetic_kr
+      sourceHandle: source
+      target: normalize_hospital_faq_cosmetic_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-regular-normalize
+      source: hospital_faq_regular_kr
+      sourceHandle: source
+      target: normalize_hospital_faq_regular_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: crisis-prompt-inputs
+      source: normalize_crisis_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: high-risk-prompt-inputs
+      source: normalize_high_risk_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: light-cosmetic-prompt-inputs
+      source: normalize_general_faq_cosmetic_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: light-regular-prompt-inputs
+      source: normalize_general_faq_regular_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: direct-prompt-inputs
+      source: normalize_direct_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-prompt-inputs
+      source: normalize_hospital_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: package-prompt-inputs
+      source: normalize_package_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: faq-cosmetic-prompt-inputs
+      source: normalize_hospital_faq_cosmetic_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: faq-regular-prompt-inputs
+      source: normalize_hospital_faq_regular_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: prompt-inputs-response
+      source: prompt_inputs_aggregator
       sourceHandle: source
       target: response_composer
       targetHandle: target
       type: custom
       data:
-        sourceType: knowledge-retrieval
+        sourceType: variable-aggregator
         targetType: llm
         isInIteration: false
         isInLoop: false
@@ -315,8 +604,8 @@ workflow:
         desc: Non-authoritative candidate signal extraction.
         type: llm
         model:
-          provider: ''
-          name: ''
+          provider: langgenius/openai/openai
+          name: gpt-4o
           mode: chat
           completion_params:
             temperature: 0.1
@@ -363,13 +652,13 @@ workflow:
         desc: Hospital grounding only for deeper recommendation/exploration turns. LIGHT_DISCOVERY must bypass this node.
         type: http-request
         method: post
-        url: http://host.docker.internal:3001/api/v2/internal/mcp/search-hospitals
+        url: '{{#env.crm_base_url#}}/api/v2/internal/mcp/search-hospitals'
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
+          X-Internal-Secret: {{#env.internal_api_secret#}}
         params: ''
         body:
           type: json
@@ -404,13 +693,13 @@ workflow:
         desc: Full CRM truth source for summary, status, pending offer, and history. Cheap-path LIGHT_DISCOVERY turns should bypass this node.
         type: http-request
         method: post
-        url: http://host.docker.internal:3001/api/v2/internal/ai-policy/context
+        url: '{{#env.crm_base_url#}}/api/v2/internal/ai-policy/context'
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
+          X-Internal-Secret: {{#env.internal_api_secret#}}
         params: ''
         body:
           type: json
@@ -451,13 +740,13 @@ workflow:
         desc: Authoritative backend gate. Engagement mode and risk resolve before any expensive hospital/package tool branching.
         type: http-request
         method: post
-        url: http://host.docker.internal:3001/api/v2/internal/ai-policy/decide
+        url: '{{#env.crm_base_url#}}/api/v2/internal/ai-policy/decide'
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
+          X-Internal-Secret: {{#env.internal_api_secret#}}
         params: ''
         body:
           type: json
@@ -489,6 +778,99 @@ workflow:
             enabled: false
             multiplier: 2
             max_interval: 2000
+    - id: parse_decide_code
+      type: custom
+      position:
+        x: 840
+        y: 340
+      data:
+        title: Parse Decide Response
+        desc: Parse the HTTP body string into field-level decision outputs for gates, prompts, and writeback.
+        type: code
+        code_language: python3
+        code: |
+          import json
+
+          def main(decide_body: str) -> dict:
+              envelope = {}
+              try:
+                  envelope = json.loads(decide_body or "{}")
+              except Exception:
+                  envelope = {}
+
+              data = envelope.get("data") if isinstance(envelope, dict) else {}
+              if not isinstance(data, dict):
+                  data = {}
+
+              writeback_plan = data.get("writeback_plan")
+              if not isinstance(writeback_plan, dict):
+                  writeback_plan = {}
+
+              allowed_tools = data.get("allowed_tools")
+              if not isinstance(allowed_tools, list):
+                  allowed_tools = []
+
+              active_hospital_context = data.get("active_hospital_context")
+              if not isinstance(active_hospital_context, dict):
+                  active_hospital_context = {}
+
+              return {
+                  "policy_decision": data,
+                  "writeback_policy_decision": {
+                      "engagement_mode": data.get("engagement_mode") or writeback_plan.get("engagement_mode"),
+                      "writeback_depth": writeback_plan.get("writeback_depth"),
+                      "next_action": data.get("next_action") or writeback_plan.get("next_action"),
+                      "risk_level": data.get("risk_level") or writeback_plan.get("risk_level"),
+                      "reason_codes": data.get("reason_codes") or writeback_plan.get("reason_codes") or [],
+                      "prequalification_reason_codes": writeback_plan.get("prequalification_reason_codes") or [],
+                      "shortlist": data.get("shortlist") or [],
+                  },
+                  "engagement_mode": data.get("engagement_mode"),
+                  "risk_level": data.get("risk_level"),
+                  "next_action": data.get("next_action"),
+                  "active_hospital_id": active_hospital_context.get("hospital_id") or "",
+                  "active_hospital_name": active_hospital_context.get("hospital_name") or "",
+                  "allow_search_hospitals": "true" if "search_hospitals" in allowed_tools else "false",
+                  "allow_list_packages": "true" if "list_packages" in allowed_tools else "false",
+                  "allow_search_faq": "true" if "search_faq" in allowed_tools else "false",
+              }
+        outputs:
+          policy_decision:
+            type: object
+            children: null
+          writeback_policy_decision:
+            type: object
+            children: null
+          engagement_mode:
+            type: string
+            children: null
+          risk_level:
+            type: string
+            children: null
+          next_action:
+            type: string
+            children: null
+          active_hospital_id:
+            type: string
+            children: null
+          active_hospital_name:
+            type: string
+            children: null
+          allow_search_hospitals:
+            type: string
+            children: null
+          allow_list_packages:
+            type: string
+            children: null
+          allow_search_faq:
+            type: string
+            children: null
+        variables:
+        - variable: decide_body
+          value_selector:
+          - decide_http
+          - body
+          value_type: string
     - id: risk_gate
       type: custom
       position:
@@ -505,9 +887,7 @@ workflow:
           conditions:
           - id: risk-crisis
             variable_selector:
-            - decide_http
-            - body
-            - data
+            - parse_decide_code
             - risk_level
             comparison_operator: is
             value: CRISIS
@@ -518,9 +898,7 @@ workflow:
           conditions:
           - id: risk-high-risk
             variable_selector:
-            - decide_http
-            - body
-            - data
+            - parse_decide_code
             - risk_level
             comparison_operator: is
             value: HIGH_RISK
@@ -541,9 +919,7 @@ workflow:
           conditions:
           - id: engagement-light
             variable_selector:
-            - decide_http
-            - body
-            - data
+            - parse_decide_code
             - engagement_mode
             comparison_operator: is
             value: LIGHT_DISCOVERY
@@ -564,12 +940,17 @@ workflow:
           conditions:
           - id: next-action-package
             variable_selector:
-            - decide_http
-            - body
-            - data
+            - parse_decide_code
             - next_action
             comparison_operator: is
             value: SHOW_PACKAGE
+            varType: string
+          - id: allow-package-tool
+            variable_selector:
+            - parse_decide_code
+            - allow_list_packages
+            comparison_operator: is
+            value: 'true'
             varType: string
         - case_id: show_hospital_recommendations
           id: show_hospital_recommendations
@@ -577,12 +958,17 @@ workflow:
           conditions:
           - id: next-action-show-hospitals
             variable_selector:
-            - decide_http
-            - body
-            - data
+            - parse_decide_code
             - next_action
             comparison_operator: is
             value: SHOW_HOSPITAL_RECOMMENDATIONS
+            varType: string
+          - id: allow-hospital-tool
+            variable_selector:
+            - parse_decide_code
+            - allow_search_hospitals
+            comparison_operator: is
+            value: 'true'
             varType: string
         - case_id: explore_hospital_recommendations
           id: explore_hospital_recommendations
@@ -590,12 +976,17 @@ workflow:
           conditions:
           - id: next-action-explore-hospitals
             variable_selector:
-            - decide_http
-            - body
-            - data
+            - parse_decide_code
             - next_action
             comparison_operator: is
             value: EXPLORE_HOSPITAL_RECOMMENDATIONS
+            varType: string
+          - id: allow-explore-hospital-tool
+            variable_selector:
+            - parse_decide_code
+            - allow_search_hospitals
+            comparison_operator: is
+            value: 'true'
             varType: string
         - case_id: faq_answer
           id: faq_answer
@@ -603,12 +994,17 @@ workflow:
           conditions:
           - id: next-action-faq
             variable_selector:
-            - decide_http
-            - body
-            - data
+            - parse_decide_code
             - next_action
             comparison_operator: is
             value: ANSWER_FAQ
+            varType: string
+          - id: allow-faq-tool
+            variable_selector:
+            - parse_decide_code
+            - allow_search_faq
+            comparison_operator: is
+            value: 'true'
             varType: string
     - id: faq_scope
       type: custom
@@ -631,6 +1027,462 @@ workflow:
             comparison_operator: is
             value: COSMETIC
             varType: string
+    - id: light_faq_scope
+      type: custom
+      position:
+        x: 1620
+        y: 220
+      data:
+        title: Light FAQ Scope
+        desc: LIGHT_DISCOVERY still gets cheap FAQ/process retrieval scoped by hospitalType, without loading full CRM context.
+        type: if-else
+        cases:
+        - case_id: cosmetic
+          id: cosmetic
+          logical_operator: and
+          conditions:
+          - id: light-scope-cosmetic
+            variable_selector:
+            - start
+            - hospitalType
+            comparison_operator: is
+            value: COSMETIC
+            varType: string
+    - id: faq_categories_http
+      type: custom
+      position:
+        x: 1950
+        y: 220
+      data:
+        title: FAQ Categories Lookup
+        desc: Fetch CRM-backed active FAQ categories for the current hospitalType and optional active hospital context.
+        type: http-request
+        method: get
+        url: '{{#env.crm_base_url#}}/api/v2/internal/mcp/faq-categories'
+        authorization:
+          type: no-auth
+          config: null
+        headers: |-
+          Content-Type: application/json
+          X-Internal-Secret: {{#env.internal_api_secret#}}
+        params: hospitalType={{#start.hospitalType#}}&hospitalId={{#parse_decide_code.active_hospital_id#}}
+        body:
+          type: none
+          data: []
+        timeout:
+          connect: 5
+          read: 10
+          write: 10
+        retry_config:
+          enabled: true
+          max_retries: 1
+          retry_interval: 500
+          exponential_backoff:
+            enabled: false
+            multiplier: 2
+            max_interval: 2000
+    - id: faq_category_resolver_llm
+      type: custom
+      position:
+        x: 2280
+        y: 220
+      data:
+        title: FAQ Category Resolver
+        desc: Resolve the most relevant CRM FAQ category and whether hospital-aware FAQ is appropriate for this turn.
+        type: llm
+        model:
+          provider: langgenius/openai/openai
+          name: gpt-4o
+          mode: chat
+          completion_params:
+            temperature: 0.1
+        prompt_template:
+        - role: system
+          text: |
+            You are selecting the most relevant CRM FAQ category for retrieval.
+
+            Return JSON only with this exact shape:
+            {
+              "primaryCategory": "string|null",
+              "faqScope": "GENERAL_ONLY|HOSPITAL_AWARE"
+            }
+
+            Rules:
+            - Use only category names that already exist in the provided category list.
+            - Pick the single best category for retrieval. Use null if none are relevant.
+            - Set faqScope to HOSPITAL_AWARE only when the user is clearly asking about a currently active hospital.
+            - If there is no active hospital id, prefer GENERAL_ONLY.
+        memory:
+          query_prompt_template: '{{#sys.query#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 4
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+        variables: []
+    - id: parse_faq_category_code
+      type: custom
+      position:
+        x: 2580
+        y: 220
+      data:
+        title: Parse FAQ Category
+        desc: Parse FAQ category resolver output and finalize FAQ scope gating with the active hospital context.
+        type: code
+        code_language: python3
+        code: |
+          import json
+
+          def main(resolver_text: str, active_hospital_id: str) -> dict:
+              parsed = {}
+              try:
+                  parsed = json.loads(resolver_text or "{}")
+              except Exception:
+                  parsed = {}
+
+              primary_category = parsed.get("primaryCategory")
+              if not isinstance(primary_category, str) or not primary_category.strip():
+                  primary_category = ""
+              else:
+                  primary_category = primary_category.strip()
+
+              scope_hint = parsed.get("faqScope")
+              if scope_hint not in ("GENERAL_ONLY", "HOSPITAL_AWARE"):
+                  scope_hint = "GENERAL_ONLY"
+
+              faq_scope = "HOSPITAL_AWARE" if scope_hint == "HOSPITAL_AWARE" and active_hospital_id else "GENERAL_ONLY"
+
+              return {
+                  "primary_category": primary_category,
+                  "faq_scope": faq_scope,
+              }
+        outputs:
+          primary_category:
+            type: string
+            children: null
+          faq_scope:
+            type: string
+            children: null
+        variables:
+        - variable: resolver_text
+          value_selector:
+          - faq_category_resolver_llm
+          - text
+          value_type: string
+        - variable: active_hospital_id
+          value_selector:
+          - parse_decide_code
+          - active_hospital_id
+          value_type: string
+    - id: faq_scope_gate
+      type: custom
+      position:
+        x: 2890
+        y: 220
+      data:
+        title: FAQ Scope Gate
+        desc: Keep general-only FAQ turns free of hospital retrieval; only hospital-aware turns may add hospital-specific FAQ.
+        type: if-else
+        cases:
+        - case_id: general_only
+          id: general_only
+          logical_operator: and
+          conditions:
+          - id: faq-scope-general-only
+            variable_selector:
+            - parse_faq_category_code
+            - faq_scope
+            comparison_operator: is
+            value: GENERAL_ONLY
+            varType: string
+        - case_id: hospital_aware
+          id: hospital_aware
+          logical_operator: and
+          conditions:
+          - id: faq-scope-hospital-aware
+            variable_selector:
+            - parse_faq_category_code
+            - faq_scope
+            comparison_operator: is
+            value: HOSPITAL_AWARE
+            varType: string
+    - id: general_faq_scope
+      type: custom
+      position:
+        x: 3210
+        y: 140
+      data:
+        title: General FAQ Scope
+        desc: Route general FAQ retrieval to the correct hospitalType dataset.
+        type: if-else
+        cases:
+        - case_id: cosmetic
+          id: cosmetic
+          logical_operator: and
+          conditions:
+          - id: general-scope-cosmetic-condition
+            variable_selector:
+            - start
+            - hospitalType
+            comparison_operator: is
+            value: COSMETIC
+            varType: string
+    - id: hospital_faq_scope
+      type: custom
+      position:
+        x: 3210
+        y: 300
+      data:
+        title: Hospital FAQ Scope
+        desc: Route hospital-specific FAQ retrieval to the correct hospitalType dataset when active hospital context exists.
+        type: if-else
+        cases:
+        - case_id: cosmetic
+          id: cosmetic
+          logical_operator: and
+          conditions:
+          - id: hospital-scope-cosmetic-condition
+            variable_selector:
+            - start
+            - hospitalType
+            comparison_operator: is
+            value: COSMETIC
+            varType: string
+    - id: general_faq_cosmetic_kr
+      type: custom
+      position:
+        x: 3520
+        y: 80
+      data:
+        title: General FAQ Cosmetic
+        desc: Retrieve general cosmetic FAQ narrowed by CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 4
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: COSMETIC
+          - name: scope
+            comparison_operator: is
+            value: GENERAL
+          - name: category
+            comparison_operator: is
+            value: '{{#parse_faq_category_code.primary_category#}}'
+        vision:
+          enabled: false
+    - id: general_faq_regular_kr
+      type: custom
+      position:
+        x: 3520
+        y: 200
+      data:
+        title: General FAQ Regular
+        desc: Retrieve general regular FAQ narrowed by CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 4
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: REGULAR
+          - name: scope
+            comparison_operator: is
+            value: GENERAL
+          - name: category
+            comparison_operator: is
+            value: '{{#parse_faq_category_code.primary_category#}}'
+        vision:
+          enabled: false
+    - id: hospital_faq_cosmetic_kr
+      type: custom
+      position:
+        x: 3520
+        y: 300
+      data:
+        title: Hospital FAQ Cosmetic
+        desc: Retrieve hospital-specific cosmetic FAQ narrowed by active hospital and CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 3
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: COSMETIC
+          - name: scope
+            comparison_operator: is
+            value: HOSPITAL
+          - name: hospital_id
+            comparison_operator: is
+            value: '{{#parse_decide_code.active_hospital_id#}}'
+          - name: category
+            comparison_operator: is
+            value: '{{#parse_faq_category_code.primary_category#}}'
+        vision:
+          enabled: false
+    - id: hospital_faq_regular_kr
+      type: custom
+      position:
+        x: 3520
+        y: 420
+      data:
+        title: Hospital FAQ Regular
+        desc: Retrieve hospital-specific regular FAQ narrowed by active hospital and CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 3
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: REGULAR
+          - name: scope
+            comparison_operator: is
+            value: HOSPITAL
+          - name: hospital_id
+            comparison_operator: is
+            value: '{{#parse_decide_code.active_hospital_id#}}'
+          - name: category
+            comparison_operator: is
+            value: '{{#parse_faq_category_code.primary_category#}}'
+        vision:
+          enabled: false
+    - id: default_faq_context_body
+      type: custom
+      position:
+        x: 3520
+        y: 560
+      data:
+        title: Default FAQ Context
+        desc: Default empty CRM context for LIGHT_DISCOVERY FAQ turns that bypass full context loading.
+        type: code
+        code_language: python3
+        code: |
+          def main() -> dict:
+              return {
+                  "context_body": "{}",
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+        variables: []
+    - id: faq_context_selector
+      type: custom
+      position:
+        x: 3840
+        y: 560
+      data:
+        title: FAQ Context Selector
+        desc: Use full CRM context when available; otherwise fall back to empty context for LIGHT_DISCOVERY FAQ turns.
+        type: variable-aggregator
+        output_type: string
+        variables:
+        - - context_http
+          - body
+        advanced_settings:
+          group_enabled: true
+          groups:
+          - group_name: ContextBody
+            output_type: string
+            variables:
+            - - context_http
+              - body
+            - - default_faq_context_body
+              - context_body
+    - id: light_faq_cosmetic_kr
+      type: custom
+      position:
+        x: 1950
+        y: 140
+      data:
+        title: Light FAQ Cosmetic
+        desc: Cheap LIGHT_DISCOVERY retrieval for cosmetic FAQ and process explanations.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 3
+          score_threshold: 0.25
+          reranking_enable: false
+        metadata_filtering_mode: disabled
+        vision:
+          enabled: false
+    - id: light_faq_regular_kr
+      type: custom
+      position:
+        x: 1950
+        y: 300
+      data:
+        title: Light FAQ Regular
+        desc: Cheap LIGHT_DISCOVERY retrieval for regular FAQ and process explanations.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - sys
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 3
+          score_threshold: 0.25
+          reranking_enable: false
+        metadata_filtering_mode: disabled
+        vision:
+          enabled: false
     - id: faq_cosmetic_kr
       type: custom
       position:
@@ -685,13 +1537,13 @@ workflow:
         desc: Compact published package cards for soft CTA / package explanation flows.
         type: http-request
         method: post
-        url: http://host.docker.internal:3001/api/v2/internal/mcp/list-packages
+        url: '{{#env.crm_base_url#}}/api/v2/internal/mcp/list-packages'
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
+          X-Internal-Secret: {{#env.internal_api_secret#}}
         params: ''
         body:
           type: json
@@ -716,18 +1568,706 @@ workflow:
             enabled: false
             multiplier: 2
             max_interval: 2000
+    - id: normalize_general_faq_cosmetic_inputs
+      type: custom
+      position:
+        x: 4170
+        y: 80
+      data:
+        title: Normalize General FAQ Cosmetic Inputs
+        desc: Carry metadata-scoped general cosmetic FAQ retrieval into the shared response composer.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, general_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": general_faq_result or [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - faq_context_selector
+          - ContextBody
+          - output
+          value_type: string
+        - variable: general_faq_result
+          value_selector:
+          - general_faq_cosmetic_kr
+          - result
+          value_type: array[object]
+    - id: normalize_general_faq_regular_inputs
+      type: custom
+      position:
+        x: 4170
+        y: 200
+      data:
+        title: Normalize General FAQ Regular Inputs
+        desc: Carry metadata-scoped general regular FAQ retrieval into the shared response composer.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, general_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": general_faq_result or [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - faq_context_selector
+          - ContextBody
+          - output
+          value_type: string
+        - variable: general_faq_result
+          value_selector:
+          - general_faq_regular_kr
+          - result
+          value_type: array[object]
+    - id: normalize_hospital_faq_cosmetic_inputs
+      type: custom
+      position:
+        x: 4170
+        y: 320
+      data:
+        title: Normalize Hospital FAQ Cosmetic Inputs
+        desc: Carry metadata-scoped hospital-specific cosmetic FAQ retrieval into the shared response composer.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, hospital_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": hospital_faq_result or [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - faq_context_selector
+          - ContextBody
+          - output
+          value_type: string
+        - variable: hospital_faq_result
+          value_selector:
+          - hospital_faq_cosmetic_kr
+          - result
+          value_type: array[object]
+    - id: normalize_hospital_faq_regular_inputs
+      type: custom
+      position:
+        x: 4170
+        y: 440
+      data:
+        title: Normalize Hospital FAQ Regular Inputs
+        desc: Carry metadata-scoped hospital-specific regular FAQ retrieval into the shared response composer.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, hospital_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": hospital_faq_result or [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - faq_context_selector
+          - ContextBody
+          - output
+          value_type: string
+        - variable: hospital_faq_result
+          value_selector:
+          - hospital_faq_regular_kr
+          - result
+          value_type: array[object]
+    - id: normalize_crisis_inputs
+      type: custom
+      position:
+        x: 2580
+        y: 40
+      data:
+        title: Normalize Crisis Inputs
+        desc: Provide safe default prompt inputs for crisis handling before the shared response composer.
+        type: code
+        code_language: python3
+        code: |
+          def main() -> dict:
+              return {
+                  "context_body": "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables: []
+    - id: normalize_high_risk_inputs
+      type: custom
+      position:
+        x: 2580
+        y: 140
+      data:
+        title: Normalize High Risk Inputs
+        desc: Provide safe default prompt inputs for high-risk safety handling before the shared response composer.
+        type: code
+        code_language: python3
+        code: |
+          def main() -> dict:
+              return {
+                  "context_body": "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables: []
+    - id: normalize_light_faq_cosmetic_inputs
+      type: custom
+      position:
+        x: 2280
+        y: 140
+      data:
+        title: Normalize Light FAQ Cosmetic Inputs
+        desc: Carry LIGHT_DISCOVERY cosmetic FAQ retrieval into the shared response composer with empty context and tool defaults.
+        type: code
+        code_language: python3
+        code: |
+          def main(general_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": general_faq_result or [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: general_faq_result
+          value_selector:
+          - light_faq_cosmetic_kr
+          - result
+          value_type: array[object]
+    - id: normalize_light_faq_regular_inputs
+      type: custom
+      position:
+        x: 2280
+        y: 300
+      data:
+        title: Normalize Light FAQ Regular Inputs
+        desc: Carry LIGHT_DISCOVERY regular FAQ retrieval into the shared response composer with empty context and tool defaults.
+        type: code
+        code_language: python3
+        code: |
+          def main(hospital_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": hospital_faq_result or [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: hospital_faq_result
+          value_selector:
+          - light_faq_regular_kr
+          - result
+          value_type: array[object]
+    - id: normalize_direct_inputs
+      type: custom
+      position:
+        x: 2580
+        y: 340
+      data:
+        title: Normalize Direct Inputs
+        desc: Carry context forward for direct-response full-path turns while defaulting optional tool payloads.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - context_http
+          - body
+          value_type: string
+    - id: normalize_package_inputs
+      type: custom
+      position:
+        x: 2580
+        y: 440
+      data:
+        title: Normalize Package Inputs
+        desc: Carry package results forward while defaulting unrelated prompt inputs.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, packages_body: str) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": packages_body or "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - context_http
+          - body
+          value_type: string
+        - variable: packages_body
+          value_selector:
+          - list_packages_http
+          - body
+          value_type: string
+    - id: normalize_hospital_inputs
+      type: custom
+      position:
+        x: 2580
+        y: 540
+      data:
+        title: Normalize Hospital Inputs
+        desc: Carry hospital results forward while defaulting unrelated prompt inputs.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, hospitals_body: str) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": hospitals_body or "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - context_http
+          - body
+          value_type: string
+        - variable: hospitals_body
+          value_selector:
+          - search_hospitals_http
+          - body
+          value_type: string
+    - id: normalize_faq_cosmetic_inputs
+      type: custom
+      position:
+        x: 2580
+        y: 640
+      data:
+        title: Normalize FAQ Cosmetic Inputs
+        desc: Carry cosmetic FAQ retrieval into the shared response composer with safe defaults for other tool families.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, general_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": general_faq_result or [],
+                  "hospital_faq_result": [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - context_http
+          - body
+          value_type: string
+        - variable: general_faq_result
+          value_selector:
+          - faq_cosmetic_kr
+          - result
+          value_type: array[object]
+    - id: normalize_faq_regular_inputs
+      type: custom
+      position:
+        x: 2580
+        y: 740
+      data:
+        title: Normalize FAQ Regular Inputs
+        desc: Carry regular FAQ retrieval into the shared response composer with safe defaults for other tool families.
+        type: code
+        code_language: python3
+        code: |
+          def main(context_body: str, hospital_faq_result: list[dict]) -> dict:
+              return {
+                  "context_body": context_body or "{}",
+                  "hospitals_body": "{\"ok\": true, \"data\": []}",
+                  "packages_body": "{\"ok\": true, \"data\": []}",
+                  "general_faq_result": [],
+                  "hospital_faq_result": hospital_faq_result or [],
+              }
+        outputs:
+          context_body:
+            type: string
+            children: null
+          hospitals_body:
+            type: string
+            children: null
+          packages_body:
+            type: string
+            children: null
+          general_faq_result:
+            type: array[object]
+            children: null
+          hospital_faq_result:
+            type: array[object]
+            children: null
+        variables:
+        - variable: context_body
+          value_selector:
+          - context_http
+          - body
+          value_type: string
+        - variable: hospital_faq_result
+          value_selector:
+          - faq_regular_kr
+          - result
+          value_type: array[object]
+    - id: prompt_inputs_aggregator
+      type: custom
+      position:
+        x: 2900
+        y: 360
+      data:
+        title: Prompt Inputs Aggregator
+        desc: Select the normalized prompt inputs from whichever branch actually executed before the shared response composer runs.
+        type: variable-aggregator
+        output_type: string
+        variables:
+        - - normalize_crisis_inputs
+          - context_body
+        advanced_settings:
+          group_enabled: true
+          groups:
+          - group_name: ContextBody
+            output_type: string
+            variables:
+            - - normalize_crisis_inputs
+              - context_body
+            - - normalize_high_risk_inputs
+              - context_body
+            - - normalize_general_faq_cosmetic_inputs
+              - context_body
+            - - normalize_general_faq_regular_inputs
+              - context_body
+            - - normalize_direct_inputs
+              - context_body
+            - - normalize_package_inputs
+              - context_body
+            - - normalize_hospital_inputs
+              - context_body
+            - - normalize_hospital_faq_cosmetic_inputs
+              - context_body
+            - - normalize_hospital_faq_regular_inputs
+              - context_body
+          - group_name: HospitalsBody
+            output_type: string
+            variables:
+            - - normalize_crisis_inputs
+              - hospitals_body
+            - - normalize_high_risk_inputs
+              - hospitals_body
+            - - normalize_general_faq_cosmetic_inputs
+              - hospitals_body
+            - - normalize_general_faq_regular_inputs
+              - hospitals_body
+            - - normalize_direct_inputs
+              - hospitals_body
+            - - normalize_package_inputs
+              - hospitals_body
+            - - normalize_hospital_inputs
+              - hospitals_body
+            - - normalize_hospital_faq_cosmetic_inputs
+              - hospitals_body
+            - - normalize_hospital_faq_regular_inputs
+              - hospitals_body
+          - group_name: PackagesBody
+            output_type: string
+            variables:
+            - - normalize_crisis_inputs
+              - packages_body
+            - - normalize_high_risk_inputs
+              - packages_body
+            - - normalize_general_faq_cosmetic_inputs
+              - packages_body
+            - - normalize_general_faq_regular_inputs
+              - packages_body
+            - - normalize_direct_inputs
+              - packages_body
+            - - normalize_package_inputs
+              - packages_body
+            - - normalize_hospital_inputs
+              - packages_body
+            - - normalize_hospital_faq_cosmetic_inputs
+              - packages_body
+            - - normalize_hospital_faq_regular_inputs
+              - packages_body
+          - group_name: GeneralFaqResult
+            output_type: array[object]
+            variables:
+            - - normalize_crisis_inputs
+              - general_faq_result
+            - - normalize_high_risk_inputs
+              - general_faq_result
+            - - normalize_general_faq_cosmetic_inputs
+              - general_faq_result
+            - - normalize_general_faq_regular_inputs
+              - general_faq_result
+            - - normalize_direct_inputs
+              - general_faq_result
+            - - normalize_package_inputs
+              - general_faq_result
+            - - normalize_hospital_inputs
+              - general_faq_result
+            - - normalize_hospital_faq_cosmetic_inputs
+              - general_faq_result
+            - - normalize_hospital_faq_regular_inputs
+              - general_faq_result
+          - group_name: HospitalFaqResult
+            output_type: array[object]
+            variables:
+            - - normalize_crisis_inputs
+              - hospital_faq_result
+            - - normalize_high_risk_inputs
+              - hospital_faq_result
+            - - normalize_general_faq_cosmetic_inputs
+              - hospital_faq_result
+            - - normalize_general_faq_regular_inputs
+              - hospital_faq_result
+            - - normalize_direct_inputs
+              - hospital_faq_result
+            - - normalize_package_inputs
+              - hospital_faq_result
+            - - normalize_hospital_inputs
+              - hospital_faq_result
+            - - normalize_hospital_faq_cosmetic_inputs
+              - hospital_faq_result
+            - - normalize_hospital_faq_regular_inputs
+              - hospital_faq_result
     - id: response_composer
       type: custom
       position:
-        x: 2660
+        x: 3200
         y: 360
       data:
         title: Response Composer
         desc: Generate final public JSON only. Backend decision is authoritative; tools and retrieval are grounding inputs.
         type: llm
         model:
-          provider: ''
-          name: ''
+          provider: langgenius/openai/openai
+          name: gpt-4o
           mode: chat
           completion_params:
             temperature: 0.2
@@ -795,6 +2335,9 @@ workflow:
             - If backend next_action is SHOW_HOSPITAL_RECOMMENDATIONS, use backend shortlist and search_hospitals output together, but do not invent hospitals outside the tool output.
             - If backend next_action is SAFETY_HANDOFF, keep the response safety-only and direct the user toward human or emergency support without any commercial CTA.
             - If backend risk is HIGH_RISK or CRISIS, produce a safety-only response and do not promote services.
+            - General FAQ retrieval is platform-wide guidance. Hospital-specific FAQ retrieval applies only to the active hospital in backend context.
+            - Never present hospital-specific FAQ as a general rule for all hospitals.
+            - If both general and hospital-specific FAQ are present, prioritize hospital-specific facts for the active hospital and use general FAQ as supporting context.
             - If retrieval is weak, keep the answer short and avoid hallucinating facts.
             - If grounded FAQ content exposes a category, use that as topic; otherwise use null.
             - Keep reasonCodes aligned to backend reason_codes.
@@ -814,22 +2357,22 @@ workflow:
             {{#start.hospitalType#}}
 
             CRM context:
-            {{#context_http.body.data#}}
+            {{#prompt_inputs_aggregator.ContextBody.output#}}
 
             Backend policy decision:
-            {{#decide_http.body.data#}}
+            {{#parse_decide_code.policy_decision#}}
 
             Candidate hospitals:
-            {{#search_hospitals_http.body.data#}}
+            {{#prompt_inputs_aggregator.HospitalsBody.output#}}
 
-            Cosmetic FAQ/package retrieval:
-            {{#faq_cosmetic_kr.result#}}
+            General FAQ retrieval:
+            {{#prompt_inputs_aggregator.GeneralFaqResult.output#}}
 
-            Regular FAQ/package retrieval:
-            {{#faq_regular_kr.result#}}
+            Hospital-specific FAQ retrieval:
+            {{#prompt_inputs_aggregator.HospitalFaqResult.output#}}
 
             Package cards:
-            {{#list_packages_http.body.data#}}
+            {{#prompt_inputs_aggregator.PackagesBody.output#}}
         memory:
           query_prompt_template: '{{#sys.query#}}'
           role_prefix:
@@ -854,13 +2397,13 @@ workflow:
         desc: Final status / timeline writeback remains in CRM backend.
         type: http-request
         method: post
-        url: http://host.docker.internal:3001/api/v2/internal/ai-policy/writeback
+        url: '{{#env.crm_base_url#}}/api/v2/internal/ai-policy/writeback'
         authorization:
           type: no-auth
           config: null
         headers: |-
           Content-Type: application/json
-          X-Internal-Secret: REPLACE_ME_INTERNAL_API_SECRET
+          X-Internal-Secret: {{#env.internal_api_secret#}}
         params: ''
         body:
           type: json
@@ -878,13 +2421,8 @@ workflow:
                 "payload": {
                   "assistant_message_id": "{{#start.assistantMessageId#}}",
                   "idempotency_key": "{{#start.sessionId#}}:{{#start.assistantMessageId#}}:v1",
-                  "policy_decision": {{#decide_http.body.data#}},
-                  "tool_results": {
-                    "candidate_hospitals": {{#search_hospitals_http.body.data#}},
-                    "faq_cosmetic": {{#faq_cosmetic_kr.result#}},
-                    "faq_regular": {{#faq_regular_kr.result#}},
-                    "packages": {{#list_packages_http.body.data#}}
-                  },
+                  "policy_decision": {{#parse_decide_code.writeback_policy_decision#}},
+                  "tool_results": {},
                   "final_response_metadata": {{#response_composer.text#}}
                 }
               }

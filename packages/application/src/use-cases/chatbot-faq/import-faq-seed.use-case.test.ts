@@ -187,6 +187,68 @@ describe('ImportFaqSeedUseCase', () => {
     expect(saved.id).toBe('faq-2');
     expect(saved.answer).toBe('Updated answer');
   });
+
+  it('enqueues FAQ sync upserts for created or updated FAQ items', async () => {
+    const aiSyncTaskService = {
+      enqueueFaqUpsert: vi.fn().mockResolvedValue(undefined),
+    };
+    const faqRepo = {
+      listCategories: vi.fn().mockResolvedValue([]),
+      findById: vi.fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(buildFaqEntity({
+          id: 'faq-2',
+          category: 'Medical Documents',
+          question: 'What should I know about medical documents before I get started?',
+          answer: 'Old answer',
+        })),
+      createCategory: vi.fn().mockImplementation(async (input: any) => buildCategory({
+        id: `cat-${input.name}`,
+        name: input.name,
+        hospitalType: input.hospitalType,
+        hospitalId: input.hospitalId ?? null,
+        sortOrder: input.sortOrder ?? 0,
+        isActive: input.isActive ?? true,
+      })),
+      save: vi.fn().mockImplementation(async (entity: ChatbotFaqItem) => entity),
+    };
+
+    const useCase = new ImportFaqSeedUseCase(faqRepo as any, aiSyncTaskService as any);
+
+    await useCase.execute({
+      seed: buildSeed({
+        categories: [buildSeedCategory({ id: 'general-docs', name: 'Medical Documents' })],
+        faqItems: [
+          buildSeedFaqItem({ id: 'faq-1', category: 'Medical Documents', answer: 'Fresh answer' }),
+          buildSeedFaqItem({ id: 'faq-2', category: 'Medical Documents', answer: 'New answer' }),
+        ],
+      }),
+    });
+
+    expect(aiSyncTaskService.enqueueFaqUpsert).toHaveBeenCalledTimes(2);
+    expect(aiSyncTaskService.enqueueFaqUpsert).toHaveBeenNthCalledWith(1, {
+      faqId: 'faq-1',
+      category: 'Medical Documents',
+      question: 'What should I know about medical documents before I get started?',
+      answer: 'Fresh answer',
+      hospitalType: 'COSMETIC',
+      hospitalId: null,
+      keywords: ['documents'],
+      attachments: [],
+      isActive: true,
+    });
+    expect(aiSyncTaskService.enqueueFaqUpsert).toHaveBeenNthCalledWith(2, {
+      faqId: 'faq-2',
+      category: 'Medical Documents',
+      question: 'What should I know about medical documents before I get started?',
+      answer: 'New answer',
+      hospitalType: 'COSMETIC',
+      hospitalId: null,
+      keywords: ['documents'],
+      attachments: [],
+      isActive: true,
+    });
+  });
 });
 
 function buildSeed(overrides?: {

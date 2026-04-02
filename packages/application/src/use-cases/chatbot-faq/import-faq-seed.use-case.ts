@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { IChatbotFaqRepository } from '@medical-crm/domain';
 import { ChatbotFaqItem } from '@medical-crm/domain';
+import type { AiSyncTaskService } from '../../services/ai-sync-task.service.js';
 
 export interface FaqSeedCategoryRecord {
   id: string;
@@ -56,7 +57,10 @@ export interface ImportFaqSeedResult {
 }
 
 export class ImportFaqSeedUseCase {
-  constructor(private readonly faqRepo: IChatbotFaqRepository) {}
+  constructor(
+    private readonly faqRepo: IChatbotFaqRepository,
+    private readonly aiSyncTaskService?: AiSyncTaskService,
+  ) {}
 
   async execute(input: ImportFaqSeedInput): Promise<ImportFaqSeedResult> {
     const seed = this.resolveSeed(input);
@@ -114,7 +118,7 @@ export class ImportFaqSeedUseCase {
         continue;
       }
 
-      await this.faqRepo.save(new ChatbotFaqItem({
+      const saved = await this.faqRepo.save(new ChatbotFaqItem({
         id: faqItem.id,
         category: faqItem.category,
         question: faqItem.question,
@@ -128,6 +132,20 @@ export class ImportFaqSeedUseCase {
         createdAt: existing?.createdAt ?? new Date(),
         updatedAt: new Date(),
       }));
+
+      if (this.aiSyncTaskService) {
+        await this.aiSyncTaskService.enqueueFaqUpsert({
+          faqId: saved.id,
+          category: saved.category,
+          question: saved.question,
+          answer: saved.answer,
+          hospitalType: saved.hospitalType,
+          hospitalId: saved.hospitalId,
+          keywords: saved.keywords,
+          attachments: [],
+          isActive: saved.isActive,
+        });
+      }
 
       if (existing) {
         result.faqItemsUpdated += 1;

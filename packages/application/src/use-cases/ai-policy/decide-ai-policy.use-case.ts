@@ -132,9 +132,19 @@ export class DecideAiPolicyUseCase {
     );
 
     const allowedTools = buildAllowedTools(resolvedNextAction);
+    const selectedHospitalId = shouldPersistSelectedHospital(intent.resolvedIntent, context.activeHospitalContext)
+      ? context.activeHospitalContext.hospitalId
+      : undefined;
 
     return {
       engagement_mode: effectiveEngagementMode,
+      active_hospital_context: context.activeHospitalContext
+        ? {
+            hospital_id: context.activeHospitalContext.hospitalId,
+            hospital_name: context.activeHospitalContext.hospitalName,
+            source: context.activeHospitalContext.source,
+          }
+        : null,
       resolved_intent: intent.resolvedIntent,
       risk_level: risk.riskLevel,
       next_action: resolvedNextAction,
@@ -144,6 +154,7 @@ export class DecideAiPolicyUseCase {
       response_mode: buildResponseMode(resolvedNextAction),
       allowed_tools: allowedTools,
       reason_codes: reasonCodes,
+      selected_hospital_id: selectedHospitalId,
       shortlist: recommendation.shortlist.map((candidate) => ({
         hospital_id: candidate.hospitalId,
         match_type: 'matched',
@@ -156,6 +167,7 @@ export class DecideAiPolicyUseCase {
         engagement_mode: effectiveEngagementMode,
         prequalification_reason_codes: engagement.reasonCodes,
         next_action: resolvedNextAction,
+        selected_hospital_id: selectedHospitalId,
         risk_level: risk.riskLevel,
         reason_codes: reasonCodes,
       },
@@ -238,4 +250,13 @@ function buildResponseMode(nextAction: AiPolicyBackendNextAction): string {
     default:
       return 'grounded_answer';
   }
+}
+
+function shouldPersistSelectedHospital(
+  resolvedIntent: string,
+  activeHospitalContext: { hospitalId: string; source: string } | null,
+): activeHospitalContext is { hospitalId: string; source: 'page_context' | 'recent_user_message' | 'selected_hospital' } {
+  return resolvedIntent === 'ACCEPT_HOSPITAL_RECOMMENDATION'
+    && activeHospitalContext !== null
+    && ['page_context', 'recent_user_message', 'selected_hospital'].includes(activeHospitalContext.source);
 }

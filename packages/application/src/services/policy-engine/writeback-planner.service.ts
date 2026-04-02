@@ -10,6 +10,7 @@ export interface WritebackPlannerInput {
     engagementMode?: AiPolicyEngagementMode;
     writebackDepth?: 'minimal' | 'moderate' | 'complete';
     nextAction: AiPolicyBackendNextAction;
+    selectedHospitalId?: string;
     riskLevel?: string;
     reasonCodes?: string[];
     prequalificationReasonCodes?: string[];
@@ -62,6 +63,9 @@ export class WritebackPlannerService {
     const prequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes ?? [];
     const baseStatusPatch = {
       ...(engagementMode ? { engagementMode } : {}),
+      ...(input.policyDecision.selectedHospitalId !== undefined
+        ? { selectedHospitalId: input.policyDecision.selectedHospitalId }
+        : {}),
       ...(hasPrequalificationReasonCodes ? { prequalificationReasonCodes } : {}),
     };
     const baseMessageMetadata = {

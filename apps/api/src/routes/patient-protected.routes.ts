@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from '@hono/zod-openapi';
 import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
 import { wsManager } from '../ws/ws-manager.js';
@@ -8,6 +9,11 @@ import {
 } from '@medical-crm/validation';
 
 const app = new Hono();
+const messageUploadInitSchema = z.object({
+  fileName: z.string().min(1),
+  fileSize: z.number().positive(),
+  mimeType: z.string().min(1),
+});
 
 // Apply patient auth to ALL routes in this file
 app.use('/*', async (c, next) => {
@@ -60,6 +66,35 @@ app.get('/conversations/:convId/messages', async (c) => {
   return c.json(response);
 });
 
+// POST /conversations/:convId/attachments/upload
+app.post('/conversations/:convId/attachments/upload', async (c) => {
+  const body = messageUploadInitSchema.parse(await c.req.json());
+  const session = c.get('patientSession');
+  const convId = c.req.param('convId');
+  const { getConversation, mediaUpload } = getServices();
+  const actor = { userId: session.userId, role: 'PATIENT' as const, email: '', hospitalId: null };
+
+  await getConversation.execute(convId, actor);
+
+  const result = await mediaUpload.createUploadIntent({
+    policyId: 'message_attachment',
+    ownerType: 'conversation',
+    ownerId: convId,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  return c.json({
+    upload: {
+      uploadUrl: result.uploadUrl,
+      storageKey: result.storageKey,
+      expiresIn: result.expiresIn,
+    },
+    asset: result.asset,
+  }, 201);
+});
+
 // POST /conversations/:convId/messages
 app.post('/conversations/:convId/messages', async (c) => {
   const body = sendPatientMessageSchema.parse(await c.req.json());
@@ -69,7 +104,8 @@ app.post('/conversations/:convId/messages', async (c) => {
   const actor = { userId: session.userId, role: 'PATIENT' as const, email: '', hospitalId: null };
   const result = await sendMessage.execute(convId, {
     content: body.content,
-    messageType: 'TEXT',
+    messageType: body.messageType,
+    attachments: body.attachments,
   }, actor);
   const response = {
     ...result,

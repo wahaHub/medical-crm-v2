@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { sanitizeRichText } from '@medical-crm/utils';
 
 // POST /api/patient/onboarding/init
 export const initOnboardingSchema = z.object({
@@ -43,7 +44,25 @@ export const setPasswordSchema = z.object({
 
 // POST /api/patient/conversations/:convId/messages
 export const sendPatientMessageSchema = z.object({
-  content: z.string().min(1).max(10000),
+  content: z.string().max(10000).transform(sanitizeRichText),
+  messageType: z.enum(['TEXT', 'IMAGE', 'FILE']).default('TEXT'),
+  attachments: z.array(z.object({
+    fileName: z.string(),
+    fileSize: z.number(),
+    mimeType: z.string(),
+    storageKey: z.string(),
+  })).optional(),
+}).superRefine((value, ctx) => {
+  const hasContent = value.content.trim().length > 0;
+  const hasAttachments = (value.attachments?.length ?? 0) > 0;
+
+  if (!hasContent && !hasAttachments) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['content'],
+      message: 'Message content or attachments are required',
+    });
+  }
 });
 
 // GET /api/patient/conversations/:convId/messages

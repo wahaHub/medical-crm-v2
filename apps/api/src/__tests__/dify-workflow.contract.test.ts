@@ -216,6 +216,7 @@ describe('Dify workflow contract', () => {
     const writebackNode = findNode(dsl.workflow.graph.nodes, 'writeback_http');
     const finalAnswerNode = findNode(dsl.workflow.graph.nodes, 'final_answer');
     const writebackBody = writebackNode.data?.body?.data?.[0]?.value ?? '';
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
 
     expect(edges).toEqual(
       expect.arrayContaining([
@@ -234,6 +235,7 @@ describe('Dify workflow contract', () => {
     expect(writebackBody).toContain('"policy_decision": {{#parse_decide_code.writeback_policy_decision#}}');
     expect(writebackBody).toContain('"final_response_metadata": {{#response_composer.text#}}');
     expect(finalAnswerNode.data?.answer).toBe('{{#response_composer.text#}}');
+    expect(yaml).toContain('"selected_hospital_id": data.get("selected_hospital_id") or writeback_plan.get("selected_hospital_id")');
   });
 
   it('avoids stale http body.data selectors and parses decide_http before field-level branching', () => {
@@ -305,6 +307,10 @@ describe('Dify workflow contract', () => {
     expect(yaml).toContain('{{#env.internal_api_secret#}}');
     expect(yaml).not.toContain('http://host.docker.internal:3001');
     expect(yaml).not.toContain('dev-internal-api-secret-32chars-min-ok');
+    expect(() => findNode(dsl.workflow.graph.nodes, 'light_faq_cosmetic_kr')).toThrow('Node not found: light_faq_cosmetic_kr');
+    expect(() => findNode(dsl.workflow.graph.nodes, 'light_faq_regular_kr')).toThrow('Node not found: light_faq_regular_kr');
+    expect(() => findNode(dsl.workflow.graph.nodes, 'normalize_light_faq_cosmetic_inputs')).toThrow('Node not found: normalize_light_faq_cosmetic_inputs');
+    expect(() => findNode(dsl.workflow.graph.nodes, 'normalize_light_faq_regular_inputs')).toThrow('Node not found: normalize_light_faq_regular_inputs');
   });
 
   it('adds category-aware FAQ resolution before scoped FAQ retrieval', () => {
@@ -338,6 +344,104 @@ describe('Dify workflow contract', () => {
     expect(yaml).toContain('{{#faq_categories_http.body#}}');
     expect(yaml).toContain('"categories": ["string"]');
     expect(yaml).toContain('type: array[string]');
+  });
+
+  it('keeps the LIGHT_DISCOVERY FAQ path on category-aware lookup only', () => {
+    const dsl = loadDsl();
+    const edges = dsl.workflow.graph.edges;
+
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          sourceHandle: 'cosmetic',
+          target: 'faq_categories_http',
+        }),
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          sourceHandle: 'false',
+          target: 'faq_categories_http',
+        }),
+      ]),
+    );
+
+    expect(edges).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          target: 'light_faq_cosmetic_kr',
+        }),
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          target: 'light_faq_regular_kr',
+        }),
+      ]),
+    );
+  });
+
+  it('keeps FAQ context selection explicitly wired into the FAQ normalization nodes', () => {
+    const dsl = loadDsl();
+    const edges = dsl.workflow.graph.edges;
+
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          sourceHandle: 'cosmetic',
+          target: 'default_faq_context_body',
+        }),
+        expect.objectContaining({
+          source: 'light_faq_scope',
+          sourceHandle: 'false',
+          target: 'default_faq_context_body',
+        }),
+        expect.objectContaining({
+          source: 'default_faq_context_body',
+          target: 'faq_context_selector',
+        }),
+        expect.objectContaining({
+          source: 'context_http',
+          target: 'faq_context_selector',
+        }),
+        expect.objectContaining({
+          source: 'faq_context_selector',
+          target: 'normalize_general_faq_cosmetic_inputs',
+        }),
+        expect.objectContaining({
+          source: 'faq_context_selector',
+          target: 'normalize_general_faq_regular_inputs',
+        }),
+        expect.objectContaining({
+          source: 'faq_context_selector',
+          target: 'normalize_hospital_faq_cosmetic_inputs',
+        }),
+        expect.objectContaining({
+          source: 'faq_context_selector',
+          target: 'normalize_hospital_faq_regular_inputs',
+        }),
+      ]),
+    );
+  });
+
+  it('removes legacy unscoped FAQ retrieval nodes and wires general FAQ normalization into the prompt aggregator', () => {
+    const dsl = loadDsl();
+    const edges = dsl.workflow.graph.edges;
+
+    expect(() => findNode(dsl.workflow.graph.nodes, 'faq_cosmetic_kr')).toThrow('Node not found: faq_cosmetic_kr');
+    expect(() => findNode(dsl.workflow.graph.nodes, 'faq_regular_kr')).toThrow('Node not found: faq_regular_kr');
+
+    expect(edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'normalize_general_faq_cosmetic_inputs',
+          target: 'prompt_inputs_aggregator',
+        }),
+        expect.objectContaining({
+          source: 'normalize_general_faq_regular_inputs',
+          target: 'prompt_inputs_aggregator',
+        }),
+      ]),
+    );
   });
 
   it('uses metadata-filtered general FAQ retrieval keyed by hospital type, GENERAL scope, and resolved categories', () => {

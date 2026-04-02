@@ -45,6 +45,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         formStatus: entity.statusSnapshot.formStatus,
         docUploadStatus: entity.statusSnapshot.docUploadStatus,
         recommendationStatus: entity.statusSnapshot.recommendationStatus,
+        selectedHospitalId: entity.statusSnapshot.selectedHospitalId,
         consultationStatus: entity.statusSnapshot.consultationStatus,
         packageStatus: entity.statusSnapshot.packageStatus,
         handoffStatus: entity.statusSnapshot.handoffStatus,
@@ -79,6 +80,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           formStatus: entity.statusSnapshot.formStatus,
           docUploadStatus: entity.statusSnapshot.docUploadStatus,
           recommendationStatus: entity.statusSnapshot.recommendationStatus,
+          selectedHospitalId: entity.statusSnapshot.selectedHospitalId,
           consultationStatus: entity.statusSnapshot.consultationStatus,
           packageStatus: entity.statusSnapshot.packageStatus,
           handoffStatus: entity.statusSnapshot.handoffStatus,
@@ -142,6 +144,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.formStatus !== undefined) updates.formStatus = patch.formStatus;
     if (patch.docUploadStatus !== undefined) updates.docUploadStatus = patch.docUploadStatus;
     if (patch.recommendationStatus !== undefined) updates.recommendationStatus = patch.recommendationStatus;
+    if (patch.selectedHospitalId !== undefined) updates.selectedHospitalId = patch.selectedHospitalId;
     if (patch.consultationStatus !== undefined) updates.consultationStatus = patch.consultationStatus;
     if (patch.packageStatus !== undefined) updates.packageStatus = patch.packageStatus;
     if (patch.handoffStatus !== undefined) updates.handoffStatus = patch.handoffStatus;
@@ -199,6 +202,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         formStatus: row.formStatus,
         docUploadStatus: row.docUploadStatus,
         recommendationStatus: row.recommendationStatus,
+        selectedHospitalId: row.selectedHospitalId ?? null,
         consultationStatus: row.consultationStatus,
         packageStatus: row.packageStatus,
         handoffStatus: row.handoffStatus,

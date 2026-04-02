@@ -247,6 +247,7 @@ describe('AI policy schema integration', () => {
       prequalificationReasonCodes: ['form_completed', 'documents_missing'],
       enteredDeepWorkflowAt: new Date('2026-03-29T12:00:00.000Z'),
       formStatus: 'in_progress',
+      selectedHospitalId: null,
       pendingQuestion: {
         type: 'ASK_BUDGET',
         payload: { source: 'repo-test' },
@@ -261,6 +262,7 @@ describe('AI policy schema integration', () => {
     expect(persisted?.statusSnapshot.engagementMode).toBe('DEEP_WORKFLOW');
     expect(persisted?.statusSnapshot.prequalificationReasonCodes).toEqual(['form_completed', 'documents_missing']);
     expect(persisted?.statusSnapshot.enteredDeepWorkflowAt?.toISOString()).toBe('2026-03-29T12:00:00.000Z');
+    expect(persisted?.statusSnapshot.selectedHospitalId).toBeNull();
     expect(persisted?.statusSnapshot.pendingOffer?.type).toBe('FORM_COMPLETION');
     expect(persisted?.statusSnapshot.pendingQuestion?.type).toBe('ASK_BUDGET');
     expect(persisted?.statusSnapshot.conversationSummary).toContain('rhinoplasty');

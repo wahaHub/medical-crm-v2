@@ -41,7 +41,7 @@ export interface PolicyPageContext {
 export interface ActiveHospitalContext {
   hospitalId: string;
   hospitalName: string | null;
-  source: 'page_context' | 'recent_user_message' | 'recent_shortlist';
+  source: 'page_context' | 'recent_user_message' | 'selected_hospital' | 'recent_shortlist';
 }
 
 export interface PolicyConversationContext {
@@ -126,6 +126,7 @@ export class ContextBuilderService {
         activeHospitalContext: deriveActiveHospitalContext({
           pageContext: input.pageContext,
           recentMessages,
+          selectedHospitalId: session.statusSnapshot.selectedHospitalId,
         }),
         lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
       };
@@ -153,6 +154,7 @@ export class ContextBuilderService {
       activeHospitalContext: deriveActiveHospitalContext({
         pageContext: input.pageContext,
         recentMessages,
+        selectedHospitalId: session.statusSnapshot.selectedHospitalId,
       }),
       lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
       statusSnapshot: session.statusSnapshot,
@@ -168,6 +170,7 @@ export class ContextBuilderService {
 function deriveActiveHospitalContext(input: {
   pageContext?: PolicyPageContext | null;
   recentMessages: AiChatMessage[];
+  selectedHospitalId?: string | null;
 }): ActiveHospitalContext | null {
   if (input.pageContext?.type === 'HOSPITAL_DETAIL' && input.pageContext.hospitalId) {
     return {
@@ -189,6 +192,14 @@ function deriveActiveHospitalContext(input: {
         source: 'recent_user_message',
       };
     }
+  }
+
+  if (input.selectedHospitalId) {
+    return {
+      hospitalId: input.selectedHospitalId,
+      hospitalName: null,
+      source: 'selected_hospital',
+    };
   }
 
   for (const message of [...input.recentMessages].reverse()) {

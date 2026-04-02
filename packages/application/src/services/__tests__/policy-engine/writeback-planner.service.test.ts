@@ -229,6 +229,34 @@ describe('WritebackPlannerService', () => {
     });
   });
 
+  it('persists selectedHospitalId when the user has explicitly chosen a hospital', () => {
+    const planner = new WritebackPlannerService();
+
+    const result = planner.plan({
+      sessionId: 'session-selected-1',
+      sessionDbId: 'db-session-selected-1',
+      patientId: null,
+      assistantMessageId: 'assistant-selected-1',
+      policyDecision: {
+        engagementMode: 'DEEP_WORKFLOW',
+        writebackDepth: 'complete',
+        nextAction: 'ANSWER_FAQ',
+        selectedHospitalId: 'hospital-selected-1',
+        reasonCodes: ['pending_offer_confirmed'],
+        prequalificationReasonCodes: ['recommendation_requested'],
+      },
+    });
+
+    expect(result.statusPatch).toMatchObject({
+      engagementMode: 'DEEP_WORKFLOW',
+      selectedHospitalId: 'hospital-selected-1',
+      lastNextAction: 'ANSWER_FAQ',
+    });
+    expect(result.messageMetadata).toMatchObject({
+      reasonCodes: ['pending_offer_confirmed'],
+    });
+  });
+
   it('forces complete writeback depth for deep workflow even if caller sends a lighter depth', () => {
     const planner = new WritebackPlannerService();
 

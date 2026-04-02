@@ -209,6 +209,7 @@ describe('Internal routes', () => {
             engagement_mode: 'DEEP_WORKFLOW',
             writeback_depth: 'complete',
             next_action: 'REQUEST_DOC_UPLOAD',
+            selected_hospital_id: 'hospital-1',
             prequalification_reason_codes: ['form_completed'],
           },
           tool_results: [],
@@ -241,6 +242,7 @@ describe('Internal routes', () => {
         policyDecision: expect.objectContaining({
           engagementMode: 'DEEP_WORKFLOW',
           writebackDepth: 'complete',
+          selectedHospitalId: 'hospital-1',
           prequalificationReasonCodes: ['form_completed'],
           nextAction: 'REQUEST_DOC_UPLOAD',
         }),

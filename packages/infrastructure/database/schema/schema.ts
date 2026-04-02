@@ -535,6 +535,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	formStatus: varchar("form_status", { length: 20 }).default('not_started').notNull(),
 	docUploadStatus: varchar("doc_upload_status", { length: 20 }).default('none').notNull(),
 	recommendationStatus: varchar("recommendation_status", { length: 30 }).default('not_started').notNull(),
+	selectedHospitalId: uuid("selected_hospital_id").references(() => hospitals.id, { onDelete: 'set null', onUpdate: 'cascade' }),
 	consultationStatus: varchar("consultation_status", { length: 30 }).default('not_introduced').notNull(),
 	packageStatus: varchar("package_status", { length: 30 }).default('not_introduced').notNull(),
 	handoffStatus: varchar("handoff_status", { length: 20 }).default('not_needed').notNull(),
@@ -565,6 +566,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	index("ai_chat_sessions_lead_maturity_idx").using("btree", table.leadMaturity.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
 	index("ai_chat_sessions_risk_level_idx").using("btree", table.riskLevel.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
 	index("ai_chat_sessions_engagement_mode_idx").using("btree", table.engagementMode.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
+	index("ai_chat_sessions_selected_hospital_id_idx").using("btree", table.selectedHospitalId.asc().nullsLast().op("uuid_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),
 ]);
 
 export const aiChatMessages = pgTable("ai_chat_messages", {

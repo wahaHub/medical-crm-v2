@@ -186,13 +186,14 @@ app.openapi(aiPolicyWritebackRoute, async (c) => {
     sessionId: parsed.body.session_id,
     assistantMessageId: payload.assistant_message_id,
     idempotencyKey: payload.idempotency_key,
-    policyDecision: {
-      engagementMode: decision.engagement_mode,
-      writebackDepth: decision.writeback_depth,
-      nextAction: decision.next_action,
-      riskLevel: decision.risk_level,
-      reasonCodes: decision.reason_codes ?? [],
-      prequalificationReasonCodes: decision.prequalification_reason_codes ?? [],
+      policyDecision: {
+        engagementMode: decision.engagement_mode,
+        writebackDepth: decision.writeback_depth,
+        nextAction: decision.next_action,
+        selectedHospitalId: decision.selected_hospital_id,
+        riskLevel: decision.risk_level,
+        reasonCodes: decision.reason_codes ?? [],
+        prequalificationReasonCodes: decision.prequalification_reason_codes ?? [],
       shortlist: decision.shortlist ?? [],
     },
   });

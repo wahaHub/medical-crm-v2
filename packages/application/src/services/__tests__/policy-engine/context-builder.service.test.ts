@@ -637,6 +637,55 @@ describe('ContextBuilderService', () => {
     });
   });
 
+  it('rehydrates active hospital context from persisted selectedHospitalId before falling back to shortlist', async () => {
+    const builder = buildContextBuilder({
+      selectedHospitalId: 'hospital-selected-1',
+      recentMessages: [
+        makeContextMessage({
+          id: 'assistant-msg-2',
+          role: 'ASSISTANT',
+          content: 'Here is another shortlist.',
+          shortlist: [{ hospitalId: 'hospital-shortlist-2' }],
+        }),
+      ],
+    });
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'Can we continue?',
+      depth: 'full',
+    });
+
+    expect(context.activeHospitalContext).toEqual({
+      hospitalId: 'hospital-selected-1',
+      hospitalName: null,
+      source: 'selected_hospital',
+    });
+  });
+
+  it('still prefers page context over a persisted selectedHospitalId', async () => {
+    const builder = buildContextBuilder({
+      selectedHospitalId: 'hospital-selected-1',
+    });
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'Tell me about this hospital.',
+      depth: 'light',
+      pageContext: {
+        type: 'HOSPITAL_DETAIL',
+        hospitalId: 'hospital-page-1',
+        hospitalName: 'Medora Tokyo',
+      },
+    });
+
+    expect(context.activeHospitalContext).toEqual({
+      hospitalId: 'hospital-page-1',
+      hospitalName: 'Medora Tokyo',
+      source: 'page_context',
+    });
+  });
+
   it('returns no active hospital context when there is no page or shortlist signal', async () => {
     const builder = buildContextBuilder({
       recentMessages: [],
@@ -654,6 +703,7 @@ describe('ContextBuilderService', () => {
 
 function buildContextBuilder(overrides: {
   recentMessages?: AiChatMessage[];
+  selectedHospitalId?: string | null;
 } = {}) {
   const sessionRepo: IAiChatSessionRepository = {
     findBySessionId: vi.fn(async () => new AiChatSession({
@@ -669,6 +719,7 @@ function buildContextBuilder(overrides: {
         formStatus: 'not_started',
         docUploadStatus: 'none',
         recommendationStatus: 'not_started',
+        selectedHospitalId: overrides.selectedHospitalId ?? null,
         consultationStatus: 'not_introduced',
         packageStatus: 'not_introduced',
         handoffStatus: 'not_needed',

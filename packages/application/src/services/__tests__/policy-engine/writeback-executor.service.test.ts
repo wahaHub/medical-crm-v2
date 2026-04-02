@@ -248,4 +248,81 @@ describe('WritebackExecutorService', () => {
     });
     expect(result.messageMetadata.shortlist?.[0]?.hospitalId).toBe('hospital-1');
   });
+
+  it('persists selectedHospitalId onto the session snapshot when writeback carries an explicit hospital choice', async () => {
+    const sessionRepo = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'db-session-selected',
+        sessionId: 'session-selected',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          conditionStatus: 'known',
+          formStatus: 'completed',
+          docUploadStatus: 'uploaded',
+          recommendationStatus: 'preliminary_shown',
+          consultationStatus: 'not_introduced',
+          packageStatus: 'shown',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'qualified',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          engagementMode: 'DEEP_WORKFLOW',
+          prequalificationReasonCodes: [],
+          enteredDeepWorkflowAt: null,
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+          conversationSummary: '',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      patchStatus: vi.fn(async (_sessionId: string, patch: Record<string, unknown>) => patch),
+    };
+    const profileRepo = { patch: vi.fn(async () => null) };
+    const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
+    const timelineRepo = { append: vi.fn(async (event) => event) };
+    const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
+    const handoffRepo = { save: vi.fn(async (handoff) => handoff) };
+
+    const executor = new WritebackExecutorService(
+      sessionRepo as any,
+      profileRepo as any,
+      messageRepo as any,
+      timelineRepo as any,
+      followupRepo as any,
+      handoffRepo as any,
+      new WritebackPlannerService(),
+      new HandoffPolicyService(),
+    );
+
+    await executor.execute({
+      sessionId: 'session-selected',
+      sessionDbId: 'db-session-selected',
+      patientId: null,
+      assistantMessageId: 'assistant-selected',
+      policyDecision: {
+        engagementMode: 'DEEP_WORKFLOW',
+        writebackDepth: 'complete',
+        nextAction: 'ANSWER_FAQ',
+        selectedHospitalId: 'hospital-selected-1',
+        riskLevel: 'LOW',
+        reasonCodes: ['pending_offer_confirmed'],
+        prequalificationReasonCodes: ['recommendation_requested'],
+      },
+    });
+
+    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-selected', expect.objectContaining({
+      selectedHospitalId: 'hospital-selected-1',
+      lastNextAction: 'ANSWER_FAQ',
+    }));
+  });
 });

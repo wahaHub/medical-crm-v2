@@ -25,6 +25,7 @@ export class GetAiPolicyContextUseCase {
         form_status: context.statusSnapshot.formStatus,
         doc_upload_status: context.statusSnapshot.docUploadStatus,
         recommendation_status: context.statusSnapshot.recommendationStatus,
+        selected_hospital_id: context.statusSnapshot.selectedHospitalId,
         consultation_status: context.statusSnapshot.consultationStatus,
         package_status: context.statusSnapshot.packageStatus,
         handoff_status: context.statusSnapshot.handoffStatus,

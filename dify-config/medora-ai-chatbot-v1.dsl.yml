@@ -275,6 +275,94 @@ workflow:
         targetType: http-request
         isInIteration: false
         isInLoop: false
+    - id: light-default-context-cosmetic
+      source: light_faq_scope
+      sourceHandle: cosmetic
+      target: default_faq_context_body
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: light-default-context-regular
+      source: light_faq_scope
+      sourceHandle: 'false'
+      target: default_faq_context_body
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: default-context-selector
+      source: default_faq_context_body
+      sourceHandle: source
+      target: faq_context_selector
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: context-selector-context-http
+      source: context_http
+      sourceHandle: source
+      target: faq_context_selector
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: http-request
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: faq-context-general-cosmetic
+      source: faq_context_selector
+      sourceHandle: source
+      target: normalize_general_faq_cosmetic_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: variable-aggregator
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: faq-context-general-regular
+      source: faq_context_selector
+      sourceHandle: source
+      target: normalize_general_faq_regular_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: variable-aggregator
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: faq-context-hospital-cosmetic
+      source: faq_context_selector
+      sourceHandle: source
+      target: normalize_hospital_faq_cosmetic_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: variable-aggregator
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: faq-context-hospital-regular
+      source: faq_context_selector
+      sourceHandle: source
+      target: normalize_hospital_faq_regular_inputs
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: variable-aggregator
+        targetType: code
+        isInIteration: false
+        isInLoop: false
     - id: faq-categories-resolver
       source: faq_categories_http
       sourceHandle: source
@@ -451,28 +539,6 @@ workflow:
         targetType: variable-aggregator
         isInIteration: false
         isInLoop: false
-    - id: light-cosmetic-prompt-inputs
-      source: normalize_general_faq_cosmetic_inputs
-      sourceHandle: source
-      target: prompt_inputs_aggregator
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: code
-        targetType: variable-aggregator
-        isInIteration: false
-        isInLoop: false
-    - id: light-regular-prompt-inputs
-      source: normalize_general_faq_regular_inputs
-      sourceHandle: source
-      target: prompt_inputs_aggregator
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: code
-        targetType: variable-aggregator
-        isInIteration: false
-        isInLoop: false
     - id: direct-prompt-inputs
       source: normalize_direct_inputs
       sourceHandle: source
@@ -486,6 +552,28 @@ workflow:
         isInLoop: false
     - id: hospital-prompt-inputs
       source: normalize_hospital_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: general-faq-cosmetic-prompt-inputs
+      source: normalize_general_faq_cosmetic_inputs
+      sourceHandle: source
+      target: prompt_inputs_aggregator
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: variable-aggregator
+        isInIteration: false
+        isInLoop: false
+    - id: general-faq-regular-prompt-inputs
+      source: normalize_general_faq_regular_inputs
       sourceHandle: source
       target: prompt_inputs_aggregator
       targetHandle: target
@@ -820,6 +908,7 @@ workflow:
                       "engagement_mode": data.get("engagement_mode") or writeback_plan.get("engagement_mode"),
                       "writeback_depth": writeback_plan.get("writeback_depth"),
                       "next_action": data.get("next_action") or writeback_plan.get("next_action"),
+                      "selected_hospital_id": data.get("selected_hospital_id") or writeback_plan.get("selected_hospital_id"),
                       "risk_level": data.get("risk_level") or writeback_plan.get("risk_level"),
                       "reason_codes": data.get("reason_codes") or writeback_plan.get("reason_codes") or [],
                       "prequalification_reason_codes": writeback_plan.get("prequalification_reason_codes") or [],
@@ -1492,94 +1581,6 @@ workflow:
               - body
             - - default_faq_context_body
               - context_body
-    - id: light_faq_cosmetic_kr
-      type: custom
-      position:
-        x: 1950
-        y: 140
-      data:
-        title: Light FAQ Cosmetic
-        desc: Cheap LIGHT_DISCOVERY retrieval for cosmetic FAQ and process explanations.
-        type: knowledge-retrieval
-        query_variable_selector:
-        - sys
-        - query
-        query_attachment_selector: []
-        dataset_ids: []
-        retrieval_mode: multiple
-        multiple_retrieval_config:
-          top_k: 3
-          score_threshold: 0.25
-          reranking_enable: false
-        metadata_filtering_mode: disabled
-        vision:
-          enabled: false
-    - id: light_faq_regular_kr
-      type: custom
-      position:
-        x: 1950
-        y: 300
-      data:
-        title: Light FAQ Regular
-        desc: Cheap LIGHT_DISCOVERY retrieval for regular FAQ and process explanations.
-        type: knowledge-retrieval
-        query_variable_selector:
-        - sys
-        - query
-        query_attachment_selector: []
-        dataset_ids: []
-        retrieval_mode: multiple
-        multiple_retrieval_config:
-          top_k: 3
-          score_threshold: 0.25
-          reranking_enable: false
-        metadata_filtering_mode: disabled
-        vision:
-          enabled: false
-    - id: faq_cosmetic_kr
-      type: custom
-      position:
-        x: 2280
-        y: 560
-      data:
-        title: Search FAQ Cosmetic
-        desc: After import, attach FAQ_COSMETIC and PACKAGES.
-        type: knowledge-retrieval
-        query_variable_selector:
-        - sys
-        - query
-        query_attachment_selector: []
-        dataset_ids: []
-        retrieval_mode: multiple
-        multiple_retrieval_config:
-          top_k: 6
-          score_threshold: 0.35
-          reranking_enable: false
-        metadata_filtering_mode: disabled
-        vision:
-          enabled: false
-    - id: faq_regular_kr
-      type: custom
-      position:
-        x: 2280
-        y: 760
-      data:
-        title: Search FAQ Regular
-        desc: After import, attach FAQ_REGULAR and PACKAGES.
-        type: knowledge-retrieval
-        query_variable_selector:
-        - sys
-        - query
-        query_attachment_selector: []
-        dataset_ids: []
-        retrieval_mode: multiple
-        multiple_retrieval_config:
-          top_k: 6
-          score_threshold: 0.35
-          reranking_enable: false
-        metadata_filtering_mode: disabled
-        vision:
-          enabled: false
     - id: list_packages_http
       type: custom
       position:
@@ -1881,88 +1882,6 @@ workflow:
             type: array[object]
             children: null
         variables: []
-    - id: normalize_light_faq_cosmetic_inputs
-      type: custom
-      position:
-        x: 2280
-        y: 140
-      data:
-        title: Normalize Light FAQ Cosmetic Inputs
-        desc: Carry LIGHT_DISCOVERY cosmetic FAQ retrieval into the shared response composer with empty context and tool defaults.
-        type: code
-        code_language: python3
-        code: |
-          def main(general_faq_result: list[dict]) -> dict:
-              return {
-                  "context_body": "{}",
-                  "hospitals_body": "{\"ok\": true, \"data\": []}",
-                  "packages_body": "{\"ok\": true, \"data\": []}",
-                  "general_faq_result": general_faq_result or [],
-                  "hospital_faq_result": [],
-              }
-        outputs:
-          context_body:
-            type: string
-            children: null
-          hospitals_body:
-            type: string
-            children: null
-          packages_body:
-            type: string
-            children: null
-          general_faq_result:
-            type: array[object]
-            children: null
-          hospital_faq_result:
-            type: array[object]
-            children: null
-        variables:
-        - variable: general_faq_result
-          value_selector:
-          - light_faq_cosmetic_kr
-          - result
-          value_type: array[object]
-    - id: normalize_light_faq_regular_inputs
-      type: custom
-      position:
-        x: 2280
-        y: 300
-      data:
-        title: Normalize Light FAQ Regular Inputs
-        desc: Carry LIGHT_DISCOVERY regular FAQ retrieval into the shared response composer with empty context and tool defaults.
-        type: code
-        code_language: python3
-        code: |
-          def main(hospital_faq_result: list[dict]) -> dict:
-              return {
-                  "context_body": "{}",
-                  "hospitals_body": "{\"ok\": true, \"data\": []}",
-                  "packages_body": "{\"ok\": true, \"data\": []}",
-                  "general_faq_result": [],
-                  "hospital_faq_result": hospital_faq_result or [],
-              }
-        outputs:
-          context_body:
-            type: string
-            children: null
-          hospitals_body:
-            type: string
-            children: null
-          packages_body:
-            type: string
-            children: null
-          general_faq_result:
-            type: array[object]
-            children: null
-          hospital_faq_result:
-            type: array[object]
-            children: null
-        variables:
-        - variable: hospital_faq_result
-          value_selector:
-          - light_faq_regular_kr
-          - result
-          value_type: array[object]
     - id: normalize_direct_inputs
       type: custom
       position:

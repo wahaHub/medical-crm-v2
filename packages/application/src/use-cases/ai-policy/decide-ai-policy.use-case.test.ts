@@ -396,6 +396,250 @@ describe('DecideAiPolicyUseCase', () => {
     expect(result.allowed_tools).toEqual(['search_hospitals']);
   });
 
+  it('returns selected_hospital_id when the user explicitly accepts a hospital recommendation in the current hospital context', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => ({
+      contextDepth: input.depth === 'full' ? 'full' : 'light',
+      sessionId: 'session-accept-1',
+      userMessage: 'yes, let us go with this hospital',
+      sessionRef: { id: 'db-session-accept-1', sessionId: 'session-accept-1', patientId: null },
+      patientId: null,
+      currentEngagementMode: 'DEEP_WORKFLOW',
+      activeHospitalContext: {
+        hospitalId: 'hospital-accept-1',
+        hospitalName: 'Medora Seoul',
+        source: 'page_context',
+      },
+      pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+      pendingQuestion: { exists: false, type: null },
+      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      safetyFlags: {
+        riskLevel: 'LOW',
+        hasHighRiskSignal: false,
+        requiresSafetyHandling: false,
+      },
+      ...(input.depth === 'full'
+        ? {
+            statusSnapshot: {
+              conditionStatus: 'known',
+              formStatus: 'completed',
+              docUploadStatus: 'uploaded',
+              recommendationStatus: 'preliminary_shown',
+              consultationStatus: 'not_introduced',
+              packageStatus: 'shown',
+              handoffStatus: 'not_needed',
+              leadMaturity: 'qualified',
+              riskLevel: 'low',
+              trustOrObjection: 'none',
+              engagementMode: 'DEEP_WORKFLOW',
+              prequalificationReasonCodes: [],
+              enteredDeepWorkflowAt: null,
+              pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
+              pendingQuestion: null,
+              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+              conversationSummary: 'User is reviewing a shortlist and focusing on one hospital.',
+              lastPolicyDecisionAt: null,
+              lastUserMessageAt: null,
+              lastAssistantMessageAt: null,
+            },
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }
+        : {
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }),
+    }));
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-accept-1',
+      userMessage: 'yes, let us go with this hospital',
+      extraction: {},
+    });
+
+    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
+    expect(result.selected_hospital_id).toBe('hospital-accept-1');
+  });
+
+  it('does not persist selected_hospital_id when acceptance only has a shortlist-derived hospital focus', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => ({
+      contextDepth: input.depth === 'full' ? 'full' : 'light',
+      sessionId: 'session-accept-2',
+      userMessage: 'yes, let us do that',
+      sessionRef: { id: 'db-session-accept-2', sessionId: 'session-accept-2', patientId: null },
+      patientId: null,
+      currentEngagementMode: 'DEEP_WORKFLOW',
+      activeHospitalContext: {
+        hospitalId: 'hospital-shortlist-1',
+        hospitalName: null,
+        source: 'recent_shortlist',
+      },
+      pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+      pendingQuestion: { exists: false, type: null },
+      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      safetyFlags: {
+        riskLevel: 'LOW',
+        hasHighRiskSignal: false,
+        requiresSafetyHandling: false,
+      },
+      ...(input.depth === 'full'
+        ? {
+            statusSnapshot: {
+              conditionStatus: 'known',
+              formStatus: 'completed',
+              docUploadStatus: 'uploaded',
+              recommendationStatus: 'preliminary_shown',
+              consultationStatus: 'not_introduced',
+              packageStatus: 'shown',
+              handoffStatus: 'not_needed',
+              leadMaturity: 'qualified',
+              riskLevel: 'low',
+              trustOrObjection: 'none',
+              engagementMode: 'DEEP_WORKFLOW',
+              prequalificationReasonCodes: [],
+              enteredDeepWorkflowAt: null,
+              pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
+              pendingQuestion: null,
+              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+              conversationSummary: 'User has only seen a shortlist so far.',
+              lastPolicyDecisionAt: null,
+              lastUserMessageAt: null,
+              lastAssistantMessageAt: null,
+            },
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }
+        : {
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }),
+    }));
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-accept-2',
+      userMessage: 'yes, let us do that',
+      extraction: {},
+    });
+
+    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
+    expect(result.selected_hospital_id).toBeUndefined();
+  });
+
+  it('rehydrates selected_hospital_id from persisted session memory on later acceptance turns', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => ({
+      contextDepth: input.depth === 'full' ? 'full' : 'light',
+      sessionId: 'session-accept-3',
+      userMessage: 'yes, continue with that hospital',
+      sessionRef: { id: 'db-session-accept-3', sessionId: 'session-accept-3', patientId: null },
+      patientId: null,
+      currentEngagementMode: 'DEEP_WORKFLOW',
+      activeHospitalContext: {
+        hospitalId: 'hospital-selected-2',
+        hospitalName: null,
+        source: 'selected_hospital',
+      },
+      pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+      pendingQuestion: { exists: false, type: null },
+      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      safetyFlags: {
+        riskLevel: 'LOW',
+        hasHighRiskSignal: false,
+        requiresSafetyHandling: false,
+      },
+      ...(input.depth === 'full'
+        ? {
+            statusSnapshot: {
+              conditionStatus: 'known',
+              formStatus: 'completed',
+              docUploadStatus: 'uploaded',
+              recommendationStatus: 'preliminary_shown',
+              selectedHospitalId: 'hospital-selected-2',
+              consultationStatus: 'not_introduced',
+              packageStatus: 'shown',
+              handoffStatus: 'not_needed',
+              leadMaturity: 'qualified',
+              riskLevel: 'low',
+              trustOrObjection: 'none',
+              engagementMode: 'DEEP_WORKFLOW',
+              prequalificationReasonCodes: [],
+              enteredDeepWorkflowAt: null,
+              pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
+              pendingQuestion: null,
+              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+              lastResolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
+              conversationSummary: 'User already selected a hospital earlier.',
+              lastPolicyDecisionAt: null,
+              lastUserMessageAt: null,
+              lastAssistantMessageAt: null,
+            },
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }
+        : {
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }),
+    }));
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-accept-3',
+      userMessage: 'yes, continue with that hospital',
+      extraction: {},
+    });
+
+    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
+    expect(result.selected_hospital_id).toBe('hospital-selected-2');
+  });
+
   it('keeps explicit document questions in qualified exploration on an explanation path', async () => {
     const build = vi.fn(async (input: { depth?: string }) => {
       if (input.depth === 'light') {

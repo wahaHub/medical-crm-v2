@@ -10,6 +10,7 @@ export interface AiChatStatusSnapshot {
   formStatus: string;
   docUploadStatus: string;
   recommendationStatus: string;
+  selectedHospitalId: string | null;
   consultationStatus: string;
   packageStatus: string;
   handoffStatus: string;
@@ -67,6 +68,7 @@ export class AiChatSession {
       formStatus: props.statusSnapshot?.formStatus ?? 'not_started',
       docUploadStatus: props.statusSnapshot?.docUploadStatus ?? 'none',
       recommendationStatus: props.statusSnapshot?.recommendationStatus ?? 'not_started',
+      selectedHospitalId: props.statusSnapshot?.selectedHospitalId ?? null,
       consultationStatus: props.statusSnapshot?.consultationStatus ?? 'not_introduced',
       packageStatus: props.statusSnapshot?.packageStatus ?? 'not_introduced',
       handoffStatus: props.statusSnapshot?.handoffStatus ?? 'not_needed',

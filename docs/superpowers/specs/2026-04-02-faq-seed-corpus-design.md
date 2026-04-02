@@ -88,6 +88,32 @@ Rules:
 - `scope` is `GENERAL` or `HOSPITAL`
 - `name` must match the CRM category truth model
 
+### 4.1a Import constraint
+
+The current user-facing FAQ create/update paths in CRM are actor-derived:
+
+- admin-created FAQ/category becomes global
+- hospital-created FAQ/category becomes scoped to the actor hospital
+
+That is correct for product behavior, but it is not sufficient for bulk seed import across multiple hospitals.
+
+So the seed import path should be treated as a dedicated system/import path, not as a blind reuse of the current actor-driven HTTP flows.
+
+In practice this means:
+
+- hospital-specific seed records must be imported through an import-specific use case or repository-backed path
+- the import flow must be allowed to set `hospitalId` explicitly for seeded hospital data
+- the public/admin/hospital CRUD routes remain unchanged
+
+Important clarification:
+
+- `scope` is seed metadata used by the generator and importer
+- it is not a persisted column on `chatbot_faq_categories`
+- current CRM category truth remains:
+  - `name`
+  - `hospitalType`
+  - `hospitalId`
+
 ### 4.2 `faqItems`
 
 Each FAQ item should include:
@@ -371,8 +397,25 @@ In particular:
 - an import path still needs to be implemented
 - Dify sync still needs to run after import
 - evaluation still needs either:
-  - manual testing
-  - or a scripted harness later
+  - semi-automated scripted execution
+  - or additional instrumentation for full automatic scoring
+
+There is also a current observability gap:
+
+- the existing public chatbot answer contract does not expose the Dify FAQ category resolver output directly
+- so v1 cannot honestly promise fully automatic scoring of:
+  - actual resolved FAQ categories
+  - actual FAQ scope chosen inside the workflow
+
+For v1, the realistic target is:
+
+- automate corpus generation
+- automate CRM import
+- automate Dify sync refresh
+- automate case execution and report capture
+- keep category/scope adjudication either:
+  - semi-automated
+  - or gated on adding explicit diagnostic instrumentation later
 
 ## 15. Recommended Next Step
 
@@ -381,5 +424,10 @@ The next implementation plan should cover:
 1. seed file generation
 2. CRM import path for categories and FAQ items
 3. Dify sync refresh
-4. evaluation query execution
-5. reporting retrieval accuracy by scope/category
+4. scripted evaluation query execution
+5. reporting with realistic v1 boundaries:
+   - seed integrity
+   - import coverage
+   - sync coverage
+   - answer/log capture
+   - category/scope scoring only where instrumentation exists

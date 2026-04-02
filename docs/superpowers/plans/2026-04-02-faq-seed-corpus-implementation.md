@@ -16,14 +16,12 @@
 
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/composition-root.ts`
   - Wire any new seed-import or evaluation service entrypoints if needed.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal.routes.ts`
+  - Add a concrete internal debug/evaluation endpoint for FAQ retrieval scoring and use the existing outbox processing endpoint for sync refresh.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/index.ts`
   - Export any new seed import / evaluation use cases.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/ai-sync-task.service.ts`
   - Only if seed import needs additional helper metadata behavior or explicit resync helpers.
-- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/create-faq-category.use-case.ts`
-  - Reuse for import flow if practical.
-- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/create-faq-item.use-case.ts`
-  - Reuse for import flow if practical.
 
 ### New files to create
 
@@ -32,17 +30,17 @@
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/docs/seed-data/faq-category-aware-retrieval.readme.md`
   - Human-readable explanation of the seed structure, category model, example hospitals, and evaluation buckets.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/import-faq-seed.use-case.ts`
-  - Imports categories and FAQ items from the seed JSON into CRM.
+  - Imports categories and FAQ items from the seed JSON into CRM using an explicit seed-oriented path that can target arbitrary hospital IDs.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/import-faq-seed.use-case.test.ts`
   - Focused tests for seed import behavior.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/evaluate-faq-retrieval.use-case.ts`
-  - Loads evaluation queries and runs retrieval checks through the current backend/Dify-aware path or through a stubbed evaluator for local verification.
+  - Loads evaluation queries and runs retrieval checks through a concrete debug/eval contract that exposes resolved categories and chosen FAQ scope.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/evaluate-faq-retrieval.use-case.test.ts`
   - Tests for query parsing and evaluation bookkeeping.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal-faq-eval.routes.ts`
-  - Optional internal route for manual triggering/reporting if we decide route-based execution is useful.
+  - Concrete internal route for FAQ retrieval debug/evaluation.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/__tests__/internal-faq-eval.routes.test.ts`
-  - API test only if the internal route is added.
+  - API test for the internal FAQ evaluation route.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/generate-faq-seed.ts`
   - Script that writes the large seed JSON and README from deterministic templates/content builders.
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/import-faq-seed.ts`
@@ -168,13 +166,14 @@ Implementation rules:
 - load the seed JSON from disk
 - create or upsert categories first
 - create or upsert FAQ items second
+- accept explicit `hospitalId` from seed records rather than deriving hospital ownership from the current actor
 - preserve:
   - `hospitalType`
   - `hospitalId`
   - `category`
   - `keywords`
   - `isActive`
-- use existing FAQ/category use-case patterns where practical rather than writing direct repository mutations unless the existing use cases are too UI-specific
+- use a dedicated import path instead of the existing admin create use cases because those derive `hospitalId` from actor context and cannot create synthetic hospital-scoped seed records for arbitrary hospitals
 
 - [ ] **Step 3: Add a local script wrapper**
 
@@ -246,10 +245,11 @@ Document or script the sequence:
 
 ```bash
 node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/import-faq-seed.ts
-pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api exec tsx src/scripts/bootstrap-ai-sync.ts
+curl -X POST http://localhost:3001/api/v2/internal/process-ai-sync-outbox \
+  -H 'X-Internal-Secret: <INTERNAL_API_SECRET>'
 ```
 
-If a better existing sync trigger exists, use that instead and update the README/plan notes.
+If the outbox needs to be drained multiple times, make the script or README explicit about repeating the call until pending FAQ sync work is complete.
 
 - [ ] **Step 4: Run focused verification**
 
@@ -277,7 +277,8 @@ git commit -m "feat: sync seeded faq corpus to dify"
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/evaluate-faq-retrieval.use-case.ts`
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/evaluate-faq-retrieval.use-case.test.ts`
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/evaluate-faq-retrieval.ts`
-- Optional Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal-faq-eval.routes.ts`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal-faq-eval.routes.ts`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/__tests__/internal-faq-eval.routes.test.ts`
 
 - [ ] **Step 1: Write failing tests for evaluation bookkeeping**
 
@@ -304,16 +305,18 @@ Expected initially:
 
 For v1, keep it pragmatic:
 - load `evaluationQueries` from the seed JSON
-- execute against whichever stable layer gives the best signal with the least fragility
+- execute against one explicit debug contract that returns the actual retrieval-routing decision fields needed for scoring
 
-Recommended v1 order:
-1. call the current chatbot path or internal FAQ category path
-2. capture:
+Recommended v1 contract:
+1. add an internal endpoint such as `/api/v2/internal/faq-retrieval/evaluate`
+2. have it return:
    - resolved categories
    - chosen FAQ scope
-   - active hospital id when relevant
-3. compare with expected query metadata
-4. emit a JSON or markdown report
+   - active hospital id
+   - hospital type
+   - category list source used
+3. compare that response with expected query metadata
+4. emit a JSON report
 
 Do not overbuild a full benchmark system yet.
 
@@ -347,6 +350,7 @@ Expected:
 
 ```bash
 git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/evaluate-faq-retrieval.use-case.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/evaluate-faq-retrieval.use-case.test.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/evaluate-faq-retrieval.ts
+git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal-faq-eval.routes.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/__tests__/internal-faq-eval.routes.test.ts
 git commit -m "feat: add faq retrieval evaluation runner"
 ```
 

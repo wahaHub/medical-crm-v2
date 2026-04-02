@@ -22,6 +22,8 @@
   - Export any new seed import / evaluation use cases.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/ai-sync-task.service.ts`
   - Only if seed import needs additional helper metadata behavior or explicit resync helpers.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/infrastructure/database/repositories/drizzle-chatbot-faq.repository.ts`
+  - Only if the import path needs repository helpers beyond the current `createCategory()` and `save()` upsert behavior.
 
 ### New files to create
 
@@ -142,6 +144,7 @@ git commit -m "feat: add faq retrieval seed corpus"
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/chatbot-faq/import-faq-seed.use-case.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/index.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/composition-root.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/infrastructure/database/repositories/drizzle-chatbot-faq.repository.ts` only if needed
 
 - [ ] **Step 1: Write failing tests for import ordering and dedupe behavior**
 
@@ -174,6 +177,9 @@ Implementation rules:
   - `keywords`
   - `isActive`
 - use a dedicated import path instead of the existing admin create use cases because those derive `hospitalId` from actor context and cannot create synthetic hospital-scoped seed records for arbitrary hospitals
+- prefer reusing existing repository semantics where they already match the import need:
+  - `createCategory()` already upserts by `(name, hospitalType, hospitalId)`
+  - `save()` already upserts FAQ items by `id`
 
 - [ ] **Step 3: Add a local script wrapper**
 

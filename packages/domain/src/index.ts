@@ -70,6 +70,7 @@ export type { IRegistrationTokenRepository } from './ports/registration-token-re
 export type { IHospitalSyncService } from './ports/hospital-sync-service.port.js';
 export type { IKeycloakAdminService, KeycloakUser } from './ports/keycloak-admin-service.port.js';
 export type { IUserRepository, CreateUserInput, UserProfile, UpdateUserProfileInput, NotificationPreferences } from './ports/user-repository.port.js';
+export type { IUserEmailLookupRepository, UserEmailState } from './ports/user-email-lookup.port.js';
 export type { IEmailService } from './ports/email-service.port.js';
 
 // Phase 2BC Ports — Messaging

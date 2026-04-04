@@ -4,6 +4,7 @@ import type {
   ICaseProgressRepository,
   IHospitalRepository,
   IPatientRepository,
+  IUserEmailLookupRepository,
   IStorageService,
   IAiChatSessionRepository,
   IAiChatMessageRepository,
@@ -157,6 +158,7 @@ import {
   InitOnboardingUseCase,
   MatchHospitalsUseCase,
   SendMagicLinkUseCase,
+  SendPatientLoginLinkUseCase,
   VerifyMagicLinkUseCase,
   SetPasswordUseCase,
   CreateFaqItemUseCase,
@@ -205,6 +207,7 @@ import {
   DrizzleHospitalManagementRepository,
   DrizzleRegistrationTokenRepository,
   DrizzleUserRepository,
+  DrizzleUserEmailLookupRepository,
   DrizzleConversationRepository,
   DrizzleMessageRepository,
   DrizzleMessageTaskRepository,
@@ -273,6 +276,7 @@ interface AppServices {
   progressRepo: ICaseProgressRepository;
   hospitalRepo: IHospitalRepository;
   patientRepo: IPatientRepository;
+  userEmailLookupRepo: IUserEmailLookupRepository;
   aiChatSessionRepo: IAiChatSessionRepository;
   aiChatMessageRepo: IAiChatMessageRepository;
   aiSyncOutboxRepo: IAiSyncOutboxRepository;
@@ -442,6 +446,7 @@ interface AppServices {
   // use cases — patient auth
   patientAuthService: PatientAuthService;
   sendMagicLink: SendMagicLinkUseCase;
+  sendPatientLoginLink: SendPatientLoginLinkUseCase;
   verifyMagicLink: VerifyMagicLinkUseCase;
   setPassword: SetPasswordUseCase;
 
@@ -540,6 +545,7 @@ export function getServices(): AppServices {
     const progressRepo = new DrizzleCaseProgressRepository(crmDb);
     const hospitalRepo = new DrizzleHospitalRepository(crmDb);
     const patientRepo = new DrizzlePatientRepository(crmDb);
+    const userEmailLookupRepo = new DrizzleUserEmailLookupRepository(crmDb);
     const hospitalManagementRepo = new DrizzleHospitalManagementRepository(crmDb);
     const registrationTokenRepo = new DrizzleRegistrationTokenRepository(crmDb);
     const userRepo = new DrizzleUserRepository(crmDb);
@@ -715,7 +721,7 @@ export function getServices(): AppServices {
 
     _services = {
       crmDb, mainSupabase, chinaSupabase,
-      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
+      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, userEmailLookupRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,
@@ -869,6 +875,7 @@ export function getServices(): AppServices {
 
       patientAuthService,
       sendMagicLink: new SendMagicLinkUseCase(patientRepo, patientAuthService, magicLinkEmailService),
+      sendPatientLoginLink: new SendPatientLoginLinkUseCase(userEmailLookupRepo),
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
       setPassword: new SetPasswordUseCase(patientRepo),
 

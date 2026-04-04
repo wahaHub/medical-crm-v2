@@ -325,6 +325,8 @@ export type { MatchHospitalsInput as MatchHospitalsUseCaseInput } from './use-ca
 // Use Cases — Patient Auth
 export { SendMagicLinkUseCase } from './use-cases/patient-auth/send-magic-link.use-case.js';
 export type { IMagicLinkEmailService } from './use-cases/patient-auth/send-magic-link.use-case.js';
+export { SendPatientLoginLinkUseCase } from './use-cases/patient-auth/send-patient-login-link.use-case.js';
+export { EmailRoleConflictError, PatientAlreadyExistsError } from './use-cases/patient-auth/patient-entry-auth.errors.js';
 export { VerifyMagicLinkUseCase } from './use-cases/patient-auth/verify-magic-link.use-case.js';
 export { SetPasswordUseCase } from './use-cases/patient-auth/set-password.use-case.js';
 

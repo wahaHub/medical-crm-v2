@@ -31,6 +31,8 @@ const ERROR_STATUS_MAP: Record<string, number> = {
   VALIDATION_FAILED: 422,
   CONFLICT: 409,
   FORBIDDEN: 403,
+  EMAIL_ROLE_CONFLICT: 409,
+  PATIENT_ALREADY_EXISTS: 409,
 };
 
 export function mapErrorToStatus(code: string): number {

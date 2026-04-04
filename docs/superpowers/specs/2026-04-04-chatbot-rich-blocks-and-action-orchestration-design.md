@@ -191,6 +191,95 @@ Fallback rule for all block types:
 
 - if payload generation fails, the assistant must still produce a useful text response and no malformed block should be returned
 
+Unknown-type handling:
+
+- frontend should ignore unknown block types without breaking the rest of the message
+- backend must only emit block types declared in the shared validation package
+
+## Block Schema Appendix
+
+The formal shared union should be implemented in `medical-crm-v2/packages/shared/validation`.
+
+### Common block shape
+
+Required:
+
+- `id: string`
+- `type: string`
+
+### `PROCESS_MODAL_TRIGGER`
+
+Required:
+
+- `id: string`
+- `type: "PROCESS_MODAL_TRIGGER"`
+- `modalKey: "MEDICAL_TRAVEL_PROCESS"`
+- `title: string`
+
+Optional:
+
+- `description: string`
+- `ctaLabel: string`
+
+### `QUESTIONNAIRE_MODAL_TRIGGER`
+
+Required:
+
+- `id: string`
+- `type: "QUESTIONNAIRE_MODAL_TRIGGER"`
+- `questionnaireKey: string`
+- `title: string`
+
+Optional:
+
+- `description: string`
+- `ctaLabel: string`
+
+### `HOSPITAL_RECOMMENDATION_CARDS`
+
+Required:
+
+- `id: string`
+- `type: "HOSPITAL_RECOMMENDATION_CARDS"`
+- `title: string`
+- `hospitals: HospitalRecommendationCardItem[]`
+
+Optional:
+
+- `description: string`
+
+Where each hospital item has:
+
+Required:
+
+- `hospitalId: string`
+
+Optional:
+
+- `name: string`
+- `reason: string`
+- `ctaUrl: string`
+- `thumbnailUrl: string`
+- `city: string`
+- `matchType: string`
+- `reasonCodes: string[]`
+
+### `ONLINE_CONSULT_BOOKING_CARD`
+
+Required:
+
+- `id: string`
+- `type: "ONLINE_CONSULT_BOOKING_CARD"`
+- `title: string`
+- `requestedAction: "CONSULT_CONVERSION"`
+- `convertPath: string`
+
+Optional:
+
+- `description: string`
+- `consultationStatus: string`
+- `requestState: "idle" | "submitted" | "failed"`
+
 ## Action Catalog
 
 The action set for this design is:
@@ -351,6 +440,22 @@ Failure handling:
 - if backend cannot confidently resolve a questionnaire, it must omit this block
 - the assistant should fall back to explanatory text and either ask for clarification or route to `HUMAN_HANDOFF` if safe self-service intake is not appropriate
 
+Questionnaire lookup contract:
+
+- lookup source: admin `Question Collector` questionnaire registry already managed in CRM
+- input signals for lookup:
+  - resolved hospital type
+  - current disease or intake direction inferred from backend context and current user question
+  - optional selected hospital context if later needed, but not required for MVP
+- tie-breaking:
+  - prefer exact disease-specific questionnaire
+  - otherwise fall back to the nearest intake-direction questionnaire for the same hospital type
+  - if multiple equally good matches remain, do not auto-pick silently; fall back to clarification text
+- failure fallback interface:
+  - omit the block
+  - return text guidance only
+  - optionally pivot to `HUMAN_HANDOFF` when self-service intake would likely be misleading
+
 ### `HOSPITAL_RECOMMENDATION_CARDS`
 
 Purpose:
@@ -384,6 +489,24 @@ Failure handling:
 
 - if consultation request creation fails, the frontend should surface a visible recovery state instead of silently failing
 - backend should still return a usable text response even if the block is omitted
+
+Consult request contract for MVP:
+
+- frontend action:
+  - submit to `convertPath`
+- request body:
+  - `sessionId`
+  - `requestedAction: "CONSULT_CONVERSION"`
+  - plus any fields already required by the existing convert route
+- backend behavior:
+  - create or reuse the case/patient conversion state
+  - mark consultation request as initiated for downstream coordination
+- idempotency rule:
+  - repeated submissions for the same session should return the existing conversion result rather than duplicating records
+- success state:
+  - return a success response that lets frontend show a submitted state such as “We will confirm the time with you shortly.”
+- failure state:
+  - return a recoverable error the card can surface inline without breaking the chat thread
 
 ## Memory And Decisioning Model
 
@@ -536,6 +659,75 @@ Recommended implementation order:
 6. china rich message renderer
 7. china recommendation card reuse and direct selection flow
 8. end-to-end session QA across both repos
+
+## Milestones And Acceptance Criteria
+
+### Milestone 1: Shared Contract And Backend Mapping
+
+Includes:
+
+- shared `blocks[]` schema
+- backend action to block mapping
+- public chatbot normalization updates
+
+Acceptance:
+
+- chatbot responses can carry validated blocks
+- unknown or failed block generation falls back to text-only safely
+
+### Milestone 2: Questionnaire Trigger Flow
+
+Includes:
+
+- `REQUEST_DOC_UPLOAD -> QUESTIONNAIRE_MODAL_TRIGGER`
+- questionnaire lookup contract
+- frontend modal trigger wiring
+
+Acceptance:
+
+- a qualifying turn can open the correct questionnaire modal
+- ambiguous lookup falls back to text instead of a broken modal
+
+### Milestone 3: Recommendation Cards In Chat
+
+Includes:
+
+- backend shortlist payload
+- `HOSPITAL_RECOMMENDATION_CARDS`
+- china message-level recommendation rendering and selection
+
+Acceptance:
+
+- shortlist cards render inside chat messages
+- selection works from the message itself
+- selected-hospital suppression prevents redundant re-showing unless alternatives are requested
+
+### Milestone 4: Online Consult Booking Card
+
+Includes:
+
+- `INVITE_ONLINE_CONSULT -> ONLINE_CONSULT_BOOKING_CARD`
+- convert/request submission from the card
+
+Acceptance:
+
+- booking card can submit successfully from chat
+- duplicate submits are idempotent
+- failures are recoverable in-place
+
+### Milestone 5: Human Handoff And End-To-End QA
+
+Includes:
+
+- `HUMAN_HANDOFF` text plus link flow
+- active-ticket reuse
+- multi-turn end-to-end validation
+
+Acceptance:
+
+- human handoff does not create duplicate active tickets
+- patients can reach dashboard ticket tracking and email fallback
+- multi-turn sessions remain coherent across process, questionnaire, recommendation, consult, and handoff paths
 
 ## Worktree Recommendation
 

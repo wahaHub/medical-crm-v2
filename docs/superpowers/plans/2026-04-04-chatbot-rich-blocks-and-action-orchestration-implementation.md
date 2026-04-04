@@ -297,6 +297,10 @@ Add assertions for:
 - shortlist action -> `HOSPITAL_RECOMMENDATION_CARDS`
 - consult invite -> `ONLINE_CONSULT_BOOKING_CARD`
 - human handoff -> text/link only, no rich block
+- process block includes `modalKey`
+- questionnaire block includes `questionnaireKey`
+- hospital recommendation block includes `caseId` and `selectPath`
+- online consult block includes `requestedAction` and `convertPath`
 
 - [ ] **Step 2: Run the route test to confirm failure**
 
@@ -316,6 +320,8 @@ Add focused helpers for:
 - hospital shortlist payload shaping
 - handoff link text shaping
 - safe omission when payload generation fails
+
+If `chatbot.routes.ts` grows awkwardly during this task, split helper logic into focused route-adjacent modules instead of keeping all block synthesis inline.
 
 - [ ] **Step 4: Re-run the route test**
 
@@ -377,6 +383,7 @@ git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/cha
 Assert that the workflow supports:
 
 - `EXPLAIN_MEDICAL_TRAVEL_PROCESS`
+- `EXPLAIN_DOC_UPLOAD`
 - `EXPLAIN_CONSULT_PROCESS`
 - `REQUEST_DOC_UPLOAD`
 - `INVITE_ONLINE_CONSULT`

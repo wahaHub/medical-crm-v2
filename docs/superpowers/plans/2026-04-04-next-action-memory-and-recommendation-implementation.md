@@ -4,7 +4,7 @@
 
 **Goal:** Add session-scoped action memory, introduce `EXPLAIN_MEDICAL_TRAVEL_PROCESS` and `INVITE_ONLINE_CONSULT`, narrow `SHOW_PACKAGE` out of `REGULAR`, and upgrade hospital recommendation selection to backend-authoritative hybrid retrieval.
 
-**Architecture:** Keep backend as the decision authority. Extend the AI policy contract and session snapshot with explicit action-memory fields, teach action planning to select the best next action while suppressing noisy repetition, and make hospital recommendation a two-stage backend flow: hard filters plus semantic/hybrid candidate ranking before final shortlist selection. Dify remains a response/orchestration layer that follows backend actions and pushes only the chosen soft CTA.
+**Architecture:** Keep backend as the decision authority. Extend the AI policy contract and session snapshot with explicit action-memory fields, teach action planning to select the best next action while suppressing noisy repetition, add a real selector path for overall process questions, and make hospital recommendation a two-stage backend flow: hard filters plus deterministic hybrid reranking over data that exists today. Dify remains a response/orchestration layer that follows backend actions and pushes only the chosen soft CTA.
 
 **Tech Stack:** TypeScript, Node.js, pnpm, existing AI policy services/use cases, Drizzle/Postgres session snapshot persistence, Dify workflow YAML, Vitest.
 
@@ -16,6 +16,10 @@
 
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/dtos/ai-policy.dto.ts`
   - Add new backend next actions and any DTO fields needed for action memory / recommendation reasoning.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/intent-resolver.service.ts`
+  - Add the selector path that distinguishes overall medical-travel process questions from consultation-process questions.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/engagement-mode-resolver.service.ts`
+  - Treat the new actions as recent business signals so the conversation does not fall back into LIGHT_DISCOVERY after meaningful progression.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/action-planner.service.ts`
   - Make next-action selection session-aware and domain-aware.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/recommendation-policy.service.ts`
@@ -25,7 +29,7 @@
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/writeback-planner.service.ts`
   - Plan updates to session action memory fields.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.ts`
-  - Pass action memory and richer candidate inputs into planner/recommendation logic; expose new next actions to Dify.
+  - Pass action memory and richer candidate inputs into planner/recommendation logic; expose new next actions to Dify and update `allowed_tools` / `response_mode` glue.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/get-ai-policy-context.use-case.ts`
   - Return action memory so internal debug/context inspection stays truthful.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/apply-ai-policy-writeback.use-case.ts`
@@ -56,6 +60,7 @@
 
 ### Existing tests to extend
 
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/engagement-mode-resolver.service.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/action-planner.service.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/context-builder.service.test.ts`
@@ -202,12 +207,15 @@ git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/appl
 git commit -m "feat: add session action memory service"
 ```
 
-## Chunk 3: Action Planner Upgrade
+## Chunk 3: Intent Selector and Action Planner Upgrade
 
-### Task 3: Add new actions and remove broad package promotion from REGULAR
+### Task 3: Add the new selector path and update planner behavior
 
 **Files:**
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/intent-resolver.service.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/engagement-mode-resolver.service.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/action-planner.service.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/engagement-mode-resolver.service.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/action-planner.service.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.test.ts`
@@ -216,11 +224,12 @@ git commit -m "feat: add session action memory service"
 
 Add cases for:
 
-- broad process question -> `EXPLAIN_MEDICAL_TRAVEL_PROCESS`
+- broad process question resolves to a dedicated process intent and then -> `EXPLAIN_MEDICAL_TRAVEL_PROCESS`
 - consultation curiosity -> `EXPLAIN_CONSULT_PROCESS`
 - sufficient readiness after consultation explanation -> `INVITE_ONLINE_CONSULT`
 - `REGULAR` qualified exploration does not default to `SHOW_PACKAGE`
 - recently explained process does not choose `EXPLAIN_MEDICAL_TRAVEL_PROCESS` again
+- recent `EXPLAIN_MEDICAL_TRAVEL_PROCESS` or `INVITE_ONLINE_CONSULT` still counts as a business signal for engagement continuity
 
 Run:
 
@@ -231,7 +240,13 @@ pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/appl
 Expected initially:
 - FAIL on missing actions or old package behavior.
 
-- [ ] **Step 2: Upgrade planner inputs**
+- [ ] **Step 2: Add the selector path for overall-process questions**
+
+Update `IntentResolverService` so broad process/journey questions can resolve to a dedicated process-overview intent instead of collapsing into `GENERAL_CONSULT`.
+
+Do not overload consultation-specific questions into the same path.
+
+- [ ] **Step 3: Upgrade planner and engagement inputs**
 
 Extend `ActionPlannerInput` to include at least:
 
@@ -243,7 +258,7 @@ Extend `ActionPlannerInput` to include at least:
 
 Avoid overdesign: only add what current planner rules need.
 
-- [ ] **Step 3: Implement the new selection rules**
+- [ ] **Step 4: Implement the new selection rules**
 
 Key rules:
 
@@ -267,7 +282,7 @@ Key rules:
 
 Use action memory to suppress low-value repeats.
 
-- [ ] **Step 4: Update decision use case expectations**
+- [ ] **Step 5: Update decision-use-case glue**
 
 Ensure:
 
@@ -277,28 +292,30 @@ Ensure:
 
 still align with the chosen action.
 
-- [ ] **Step 5: Run focused verification**
+Also update the engagement-mode resolver’s recent-business-signal list so the new actions do not drop the conversation back into `LIGHT_DISCOVERY`.
+
+- [ ] **Step 6: Run focused verification**
 
 Run:
 
 ```bash
-pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application exec vitest run src/services/__tests__/policy-engine/action-planner.service.test.ts src/use-cases/ai-policy/decide-ai-policy.use-case.test.ts
+pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application exec vitest run src/services/__tests__/policy-engine/engagement-mode-resolver.service.test.ts src/services/__tests__/policy-engine/action-planner.service.test.ts src/use-cases/ai-policy/decide-ai-policy.use-case.test.ts
 pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application exec tsc --noEmit
 ```
 
 Expected:
 - PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/action-planner.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/action-planner.service.test.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.test.ts
+git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/intent-resolver.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/engagement-mode-resolver.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/action-planner.service.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/engagement-mode-resolver.service.test.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/__tests__/policy-engine/action-planner.service.test.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.ts /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/decide-ai-policy.use-case.test.ts
 git commit -m "feat: improve next-action selection"
 ```
 
 ## Chunk 4: Hybrid Hospital Recommendation
 
-### Task 4: Replace simple candidate gating with backend-authoritative hybrid ranking
+### Task 4: Replace simple candidate gating with backend-authoritative deterministic hybrid ranking
 
 **Files:**
 - Create: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/hospital-recommendation-ranker.service.ts`
@@ -312,7 +329,7 @@ git commit -m "feat: improve next-action selection"
 Cover:
 
 - hard filters drop clearly incompatible hospitals
-- semantic preference signals can reorder remaining candidates
+- deterministic preference signals can reorder remaining candidates
 - backend still returns shortlist + reason codes, not freeform retrieval output
 
 Run:
@@ -324,7 +341,7 @@ pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/appl
 Expected initially:
 - FAIL because the ranker does not exist.
 
-- [ ] **Step 2: Implement a minimal hybrid ranker**
+- [ ] **Step 2: Implement a minimal deterministic hybrid ranker**
 
 For v1, do not overbuild embeddings infrastructure inside this task.
 
@@ -334,11 +351,14 @@ Implement a minimal backend-owned structure that supports:
   - destination
   - hospital/service line compatibility
   - international patient support
-- semantic preference inputs:
-  - extracted preference phrases
-  - capability/style keywords
+- rerank inputs drawn from data that exists today:
+  - hospital `tags`
+  - `procedureCount`
+  - specialty/category compatibility
+  - city/destination compatibility when available
+  - extracted user preference phrases converted into deterministic scoring hints
 
-If the codebase does not yet have a full vector retrieval system, implement a deterministic hybrid scoring layer over candidate profiles and leave the profile index behind a focused service boundary so it can be upgraded later without rewriting policy logic.
+If richer hospital profile data is needed later, keep that as a future extension behind the same service boundary.
 
 - [ ] **Step 3: Refactor recommendation policy**
 
@@ -415,6 +435,12 @@ The response composer should:
 - [ ] **Step 3: Update internal route / writeback glue if needed**
 
 If the internal writeback or public response mapping assumes the old action set, patch it here.
+
+Explicitly verify:
+
+- `allowed_tools` mappings for the new actions
+- `response_mode` mappings for the new actions
+- any Dify branch conditions or prompt rules that depend on those values
 
 - [ ] **Step 4: Run focused verification**
 
@@ -517,4 +543,3 @@ Only then queue follow-up tuning.
 git add /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
 git commit -m "feat: add session-aware next action policy"
 ```
-

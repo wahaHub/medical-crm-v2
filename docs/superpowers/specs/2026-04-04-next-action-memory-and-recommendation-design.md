@@ -63,6 +63,15 @@ This creates visible product problems:
 - package promotion can surface in flows where it does not feel natural, especially `REGULAR`
 - recommendation logic remains too dependent on simple structured candidate input
 
+There is also one concrete selector gap in the current codebase:
+
+- broad process/journey questions currently collapse into `GENERAL_CONSULT`
+- the backend does not yet distinguish:
+  - overall medical travel process questions
+  - online consultation process questions
+
+So adding `EXPLAIN_MEDICAL_TRAVEL_PROCESS` requires a real selector path, not just a new action name.
+
 ## 4. Design Principles
 
 ### 4.1 Next action is not a fixed funnel
@@ -149,6 +158,26 @@ It should cover concepts like:
 
 This action is grounded primarily by process-related FAQ categories.
 
+This action must be reachable through an explicit intent/classification path.
+
+The recommended v1 mechanism is:
+
+- add a dedicated resolved intent such as `ASK_MEDICAL_TRAVEL_PROCESS`
+- let Dify extraction and backend intent resolution map broad process/journey questions into that intent
+- keep `EXPLAIN_CONSULT_PROCESS` for narrower consultation-specific questions
+
+Example questions that should map to `ASK_MEDICAL_TRAVEL_PROCESS`:
+
+- “How do you usually help people go abroad for treatment?”
+- “What is the overall process with Medora?”
+- “Can you walk me through the medical travel journey?”
+
+Example questions that should remain consultation-specific:
+
+- “What does the online consultation step involve?”
+- “Why do I need an online consultation first?”
+- “How is the consultation usually arranged?”
+
 ### 5.2 New action: `INVITE_ONLINE_CONSULT`
 
 Purpose:
@@ -167,6 +196,8 @@ The distinction is:
   - how it generally works
 - `INVITE_ONLINE_CONSULT` answers:
   - given the current conversation state, it is now reasonable to move into this step
+
+This action must also count as a real business-progression signal in session and engagement heuristics.
 
 ### 5.3 `SHOW_PACKAGE` narrowing
 
@@ -241,6 +272,24 @@ Examples:
   - may be repeated later if still blocked
 - `INVITE_ONLINE_CONSULT`
   - may be repeated after meaningful progression, but not every turn
+
+### 6.4 Interaction with engagement heuristics
+
+Session action memory is only one layer.
+
+The engagement-mode resolver and any “recent business signal” heuristics must also recognize the new action set when deciding whether the conversation has already moved beyond lightweight discovery.
+
+At minimum, recent-action continuity should include:
+
+- `EXPLAIN_MEDICAL_TRAVEL_PROCESS`
+- `EXPLAIN_CONSULT_PROCESS`
+- `INVITE_ONLINE_CONSULT`
+- `EXPLORE_HOSPITAL_RECOMMENDATIONS`
+- `SHOW_HOSPITAL_RECOMMENDATIONS`
+- `EXPLAIN_DOC_UPLOAD`
+- `REQUEST_DOC_UPLOAD`
+
+Otherwise the policy can regress into `LIGHT_DISCOVERY` and replay explanations that were already given.
 
 ## 7. Next-Action Selection Model
 
@@ -331,7 +380,7 @@ Hospital recommendation should become:
 That means:
 
 1. hard filtering
-2. semantic retrieval / reranking
+2. deterministic hybrid scoring / reranking using data available today
 3. backend shortlist decision
 
 ### 9.3 Hard filtering
@@ -344,15 +393,39 @@ Backend should first eliminate clearly wrong candidates using structured constra
 - international patient support
 - obviously incompatible capability constraints
 
-### 9.4 Semantic retrieval
+### 9.4 Deterministic hybrid scoring in v1
 
-After hard filtering, the remaining candidates should be matched semantically against the user’s expressed needs and preferences.
+The current repo does not yet have:
 
-This is where a hospital profile index is useful.
+- a hospital profile index
+- an embedding store
+- a hospital-profile ingestion path for semantic retrieval
 
-The profile index should contain structured and narrative facts such as:
+So v1 should not assume a full semantic retrieval layer already exists.
+
+Instead, after hard filtering, backend should rerank using hospital data that already exists or is already exposed in the current system, such as:
 
 - specialties
+- city / destination
+- tags
+- procedure counts
+- hospital type/category compatibility
+- extracted user preference phrases converted into deterministic preference signals
+
+This is still hybrid in the sense that it combines:
+
+- structured filters
+- richer user-intent/preference interpretation
+- backend ranking
+
+But it stays implementable with today’s codebase.
+
+### 9.5 Future extension
+
+A richer hospital profile index remains a valid future upgrade.
+
+That future layer may contain structured and narrative facts such as:
+
 - procedures / treatment focus
 - hospital strengths
 - international patient process
@@ -360,9 +433,9 @@ The profile index should contain structured and narrative facts such as:
 - recovery / follow-up style
 - limitations or non-ideal-fit notes
 
-Semantic retrieval does not decide the final shortlist by itself. It improves candidate recall and ranking.
+That future layer is not required for this v1 design.
 
-### 9.5 Backend authority remains final
+### 9.6 Backend authority remains final
 
 The final shortlist must still be decided by backend policy.
 
@@ -374,6 +447,16 @@ Backend remains responsible for:
 - next-action progression
 
 Dify should not independently invent hospital recommendations.
+
+### 9.7 Recommendation data contract for v1
+
+The v1 implementation must explicitly document which hospital fields are available for reranking and which service owns them.
+
+If recommendation input remains only:
+
+- `candidateHospitals[{ hospitalId, reasonCodes }]`
+
+then the implementation must add a small backend-owned enrichment step before reranking, instead of implicitly assuming profile data already exists.
 
 ## 10. Example Action Progression
 
@@ -452,6 +535,7 @@ Instead:
 
 - lifecycle state still captures business progress
 - action memory captures session-level conversational actions already taken
+- intent resolution must distinguish process-overview questions from consultation-process questions
 
 These two layers must remain distinct.
 
@@ -499,8 +583,9 @@ This design extends, but does not replace:
 It specifically adds:
 
 - explicit session-scoped action memory
+- an explicit selector path for overall-process questions
 - two new backend actions:
   - `EXPLAIN_MEDICAL_TRAVEL_PROCESS`
   - `INVITE_ONLINE_CONSULT`
 - `SHOW_PACKAGE` narrowing for `REGULAR`
-- backend-authoritative hybrid hospital recommendation
+- backend-authoritative hybrid hospital recommendation using v1-available data today, with richer profile retrieval deferred

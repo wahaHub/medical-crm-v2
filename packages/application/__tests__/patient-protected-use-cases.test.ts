@@ -353,6 +353,33 @@ describe('SelectHospitalsUseCase', () => {
     expect(convRepo.save).not.toHaveBeenCalled();
   });
 
+  it('resubmitting without customHospitalRequest preserves the existing value', async () => {
+    const baseCase = makeMockCase({
+      structuredData: {
+        patientHospitalSelection: {
+          customHospitalRequest: 'Ruijin Hospital',
+        },
+      },
+    });
+    vi.mocked(caseRepo.findById).mockResolvedValue(baseCase);
+    vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      hospitalIds: [],
+      patientId: 'patient-1',
+      // customHospitalRequest is intentionally omitted (undefined)
+    });
+
+    expect(caseRepo.save).toHaveBeenCalledTimes(1);
+    const savedCase = vi.mocked(caseRepo.save).mock.calls[0]?.[0];
+    expect(savedCase?.structuredData).toMatchObject({
+      patientHospitalSelection: {
+        customHospitalRequest: 'Ruijin Hospital',
+      },
+    });
+  });
+
   it('skips hospital if CHC already exists', async () => {
     const existingCHC = new CaseHospitalContact({
       id: 'chc-1',

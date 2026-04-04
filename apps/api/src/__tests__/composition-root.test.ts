@@ -18,6 +18,7 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzleHospitalManagementRepository: vi.fn(() => ({})),
   DrizzleRegistrationTokenRepository: vi.fn(() => ({})),
   DrizzleUserRepository: vi.fn(() => ({})),
+  DrizzleUserEmailLookupRepository: vi.fn(() => ({})),
   DrizzleConversationRepository: vi.fn(() => ({})),
   DrizzleMessageRepository: vi.fn(() => ({})),
   DrizzleMessageTaskRepository: vi.fn(() => ({})),
@@ -269,6 +270,7 @@ vi.mock('@medical-crm/application', () => ({
   InitOnboardingUseCase: vi.fn(() => ({})),
   MatchHospitalsUseCase: vi.fn(() => ({})),
   SendMagicLinkUseCase: vi.fn(() => ({})),
+  SendPatientLoginLinkUseCase: vi.fn(() => ({})),
   VerifyMagicLinkUseCase: vi.fn(() => ({})),
   SetPasswordUseCase: vi.fn(() => ({})),
   // Chatbot FAQ
@@ -511,6 +513,7 @@ describe('composition root', () => {
     // Patient auth
     expect(services).toHaveProperty('patientAuthService');
     expect(services).toHaveProperty('sendMagicLink');
+    expect(services).toHaveProperty('sendPatientLoginLink');
     expect(services).toHaveProperty('verifyMagicLink');
     expect(services).toHaveProperty('setPassword');
 

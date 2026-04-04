@@ -151,6 +151,7 @@ import {
   GetIntakeTemplateUseCase,
   SubmitIntakeUseCase,
   SelectHospitalsUseCase,
+  SkipMedicalFormUseCase,
   CreateBookingRequestUseCase,
   GetHospitalRecommendationsUseCase,
   SaveHospitalSelectionsUseCase,
@@ -159,12 +160,17 @@ import {
   MatchHospitalsUseCase,
   SendMagicLinkUseCase,
   SendPatientLoginLinkUseCase,
+  VerifyPatientEntryTokenUseCase,
   VerifyMagicLinkUseCase,
+  LoginWithPasswordUseCase,
+  RestoreGuestSessionUseCase,
+  GetPatientSessionStateUseCase,
   SetPasswordUseCase,
   CreateFaqItemUseCase,
   ListFaqItemsUseCase,
   ListFaqCategoriesUseCase,
   ListFaqCategoriesForChatbotUseCase,
+  EvaluateFaqRetrievalUseCase,
   CreateFaqCategoryUseCase,
   DeleteFaqCategoryUseCase,
   GetFaqItemUseCase,
@@ -447,7 +453,11 @@ interface AppServices {
   patientAuthService: PatientAuthService;
   sendMagicLink: SendMagicLinkUseCase;
   sendPatientLoginLink: SendPatientLoginLinkUseCase;
+  verifyPatientEntryToken: VerifyPatientEntryTokenUseCase;
   verifyMagicLink: VerifyMagicLinkUseCase;
+  loginWithPassword: LoginWithPasswordUseCase;
+  restoreGuestSession: RestoreGuestSessionUseCase;
+  getPatientSessionState: GetPatientSessionStateUseCase;
   setPassword: SetPasswordUseCase;
 
   // use cases — patient dashboard
@@ -459,18 +469,19 @@ interface AppServices {
   getIntakeTemplate: GetIntakeTemplateUseCase;
   submitIntake: SubmitIntakeUseCase;
   selectHospitals: SelectHospitalsUseCase;
+  skipMedicalForm: SkipMedicalFormUseCase;
 
   // use cases — chatbot FAQ
   createFaqItem: CreateFaqItemUseCase;
   listFaqItems: ListFaqItemsUseCase;
   listFaqCategories: ListFaqCategoriesUseCase;
   listFaqCategoriesForChatbot: ListFaqCategoriesForChatbotUseCase;
+  evaluateFaqRetrieval: EvaluateFaqRetrievalUseCase;
   createFaqCategory: CreateFaqCategoryUseCase;
   deleteFaqCategory: DeleteFaqCategoryUseCase;
   getFaqItem: GetFaqItemUseCase;
   updateFaqItem: UpdateFaqItemUseCase;
   deleteFaqItem: DeleteFaqItemUseCase;
-
   // use cases — email templates
   createEmailTemplate: CreateEmailTemplateUseCase;
   listEmailTemplates: ListEmailTemplatesUseCase;
@@ -653,7 +664,43 @@ export function getServices(): AppServices {
     if (!resendEmailService && !smtpEmailService) {
       console.warn('[EMAIL] Neither RESEND nor SMTP is configured; falling back to StubEmailService.');
     }
-    const emailService = resendEmailService ?? smtpEmailService ?? new StubEmailService();
+    const rawEmailService = resendEmailService ?? smtpEmailService ?? new StubEmailService();
+    const fallbackEmailService = new StubEmailService();
+    const emailService = {
+      async sendHospitalInvitation(params: {
+        to: string;
+        hospitalName: string;
+        registrationUrl: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendHospitalInvitation(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Hospital invitation delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendHospitalInvitation(params);
+            return;
+          }
+          throw error;
+        }
+      },
+      async sendPatientMagicLink(params: {
+        to: string;
+        magicLink: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendPatientMagicLink(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Patient magic link delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendPatientMagicLink(params);
+            return;
+          }
+          throw error;
+        }
+      },
+    };
 
     // Patient auth
     const patientJwtSecret = process.env['PATIENT_JWT_SECRET'];
@@ -664,9 +711,12 @@ export function getServices(): AppServices {
     }
     const patientAuthService = new PatientAuthService(patientJwtSecret ?? 'dev-patient-secret');
     const magicLinkEmailService: IMagicLinkEmailService = {
-      sendMagicLink: async (email, link) => {
-        const hasToken = link.includes('token=');
-        console.log(`[STUB] Magic link generated for ${email}${hasToken ? ' (token redacted)' : ''}`);
+      sendMagicLink: async (email, link, locale) => {
+        await emailService.sendPatientMagicLink({
+          to: email,
+          magicLink: link,
+          locale,
+        });
       },
     };
 
@@ -860,6 +910,7 @@ export function getServices(): AppServices {
       getIntakeTemplate: new GetIntakeTemplateUseCase(),
       submitIntake: new SubmitIntakeUseCase(),
       selectHospitals: new SelectHospitalsUseCase(caseRepo, chcRepo, conversationRepo),
+      skipMedicalForm: new SkipMedicalFormUseCase(caseRepo),
 
       patientDashboard: new PatientDashboardUseCase(caseRepo, orderRepo, journeyRepo),
       adminDashboard: new AdminDashboardUseCase(caseRepo, ticketRepo, orderRepo),
@@ -870,25 +921,35 @@ export function getServices(): AppServices {
       saveHospitalSelections: new SaveHospitalSelectionsUseCase(bookingRequestRepo),
       completeSignup: new CompleteSignupUseCase(bookingRequestRepo),
 
-      initOnboarding: new InitOnboardingUseCase(patientRepo, caseRepo, patientAuthService),
+      initOnboarding: new InitOnboardingUseCase(
+        patientRepo,
+        userEmailLookupRepo,
+        caseRepo,
+        conversationRepo,
+        patientAuthService,
+      ),
       matchHospitals: new MatchHospitalsUseCase(hospitalRepo),
 
       patientAuthService,
       sendMagicLink: new SendMagicLinkUseCase(patientRepo, patientAuthService, magicLinkEmailService),
-      sendPatientLoginLink: new SendPatientLoginLinkUseCase(userEmailLookupRepo),
+      sendPatientLoginLink: new SendPatientLoginLinkUseCase(userEmailLookupRepo, patientAuthService, magicLinkEmailService),
+      verifyPatientEntryToken: new VerifyPatientEntryTokenUseCase(patientAuthService),
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
+      loginWithPassword: new LoginWithPasswordUseCase(patientRepo, patientAuthService),
+      restoreGuestSession: new RestoreGuestSessionUseCase(patientRepo, patientAuthService),
+      getPatientSessionState: new GetPatientSessionStateUseCase(patientRepo, userRepo, caseRepo, chcRepo, conversationRepo),
       setPassword: new SetPasswordUseCase(patientRepo),
 
       createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),
       listFaqItems: new ListFaqItemsUseCase(faqRepo, routedStorageService),
       listFaqCategories: new ListFaqCategoriesUseCase(faqRepo),
       listFaqCategoriesForChatbot: new ListFaqCategoriesForChatbotUseCase(faqRepo),
+      evaluateFaqRetrieval: new EvaluateFaqRetrievalUseCase(faqRepo),
       createFaqCategory: new CreateFaqCategoryUseCase(faqRepo, translationTaskService),
       deleteFaqCategory: new DeleteFaqCategoryUseCase(faqRepo),
       getFaqItem: new GetFaqItemUseCase(faqRepo, routedStorageService),
       updateFaqItem: new UpdateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),
       deleteFaqItem: new DeleteFaqItemUseCase(faqRepo, aiSyncTaskService),
-
       createEmailTemplate: new CreateEmailTemplateUseCase(emailTemplateRepo),
       listEmailTemplates: new ListEmailTemplatesUseCase(emailTemplateRepo, routedStorageService),
       getEmailTemplate: new GetEmailTemplateUseCase(emailTemplateRepo, routedStorageService),

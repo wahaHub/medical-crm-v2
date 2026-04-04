@@ -327,8 +327,14 @@ export { SendMagicLinkUseCase } from './use-cases/patient-auth/send-magic-link.u
 export type { IMagicLinkEmailService } from './use-cases/patient-auth/send-magic-link.use-case.js';
 export { SendPatientLoginLinkUseCase } from './use-cases/patient-auth/send-patient-login-link.use-case.js';
 export { EmailRoleConflictError, PatientAlreadyExistsError } from './use-cases/patient-auth/patient-entry-auth.errors.js';
-export { VerifyPatientEntryTokenUseCase } from './use-cases/patient-auth/verify-patient-entry-token.use-case.js';
-export { VerifyMagicLinkUseCase } from './use-cases/patient-auth/verify-magic-link.use-case.js';
+export {
+  VerifyPatientEntryTokenUseCase,
+  VerifyPatientEntryTokenAuthError,
+} from './use-cases/patient-auth/verify-patient-entry-token.use-case.js';
+export { VerifyMagicLinkUseCase, VerifyMagicLinkAuthError } from './use-cases/patient-auth/verify-magic-link.use-case.js';
+export { LoginWithPasswordUseCase } from './use-cases/patient-auth/login-with-password.use-case.js';
+export { RestoreGuestSessionUseCase, RestoreGuestSessionAuthError } from './use-cases/patient-auth/restore-guest-session.use-case.js';
+export { GetPatientSessionStateUseCase } from './use-cases/patient-auth/get-patient-session-state.use-case.js';
 export { SetPasswordUseCase } from './use-cases/patient-auth/set-password.use-case.js';
 
 // DTOs — Dashboard
@@ -346,6 +352,7 @@ export { GetPatientConversationsUseCase } from './use-cases/patient-dashboard/ge
 export { PatientAcceptQuoteUseCase } from './use-cases/patient-dashboard/patient-accept-quote.use-case.js';
 export { PatientRejectQuoteUseCase } from './use-cases/patient-dashboard/patient-reject-quote.use-case.js';
 export { SelectHospitalsUseCase } from './use-cases/patient-dashboard/select-hospitals.use-case.js';
+export { SkipMedicalFormUseCase } from './use-cases/patient-dashboard/skip-medical-form.use-case.js';
 
 // Use Cases — Patient Intake
 export { GetIntakeTemplateUseCase } from './use-cases/patient-intake/get-intake-template.use-case.js';
@@ -366,6 +373,8 @@ export { GetFaqItemUseCase } from './use-cases/chatbot-faq/get-faq-item.use-case
 export { UpdateFaqItemUseCase } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export type { UpdateFaqItemInput } from './use-cases/chatbot-faq/update-faq-item.use-case.js';
 export { DeleteFaqItemUseCase } from './use-cases/chatbot-faq/delete-faq-item.use-case.js';
+export { ImportFaqSeedUseCase } from './use-cases/chatbot-faq/import-faq-seed.use-case.js';
+export { EvaluateFaqRetrievalUseCase } from './use-cases/chatbot-faq/evaluate-faq-retrieval.use-case.js';
 export { ListFaqCategoriesUseCase } from './use-cases/chatbot-faq/list-faq-categories.use-case.js';
 export { ListFaqCategoriesForChatbotUseCase } from './use-cases/chatbot-faq/list-faq-categories-for-chatbot.use-case.js';
 export { CreateFaqCategoryUseCase } from './use-cases/chatbot-faq/create-faq-category.use-case.js';

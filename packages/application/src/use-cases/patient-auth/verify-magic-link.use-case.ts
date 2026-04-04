@@ -6,14 +6,17 @@ export class VerifyMagicLinkUseCase {
     private readonly authService: PatientAuthService,
   ) {}
 
-  async execute(input: { token: string }): Promise<{ sessionToken: string; patientId: string }> {
-    const payload = await this.authService.verifyPatientEntryToken(input.token);
-    if (payload.purpose !== 'patient-login') {
-      throw new Error('Invalid token purpose');
-    }
+  async execute(input: { token: string }): Promise<{
+    sessionToken: string;
+    restoreToken: string;
+    restoreCookie: string;
+    patientId: string;
+  }> {
+    const payload = await this.authService.verifyMagicLinkToken(input.token);
     const patient = await this.patientRepo.findByEmail(payload.email);
     if (!patient) throw new Error('Patient not found');
     const sessionToken = await this.authService.createSessionToken(patient.id);
-    return { sessionToken, patientId: patient.id };
+    const { restoreToken, restoreCookie } = await this.authService.createGuestRestoreArtifacts(patient.id);
+    return { sessionToken, restoreToken, restoreCookie, patientId: patient.id };
   }
 }

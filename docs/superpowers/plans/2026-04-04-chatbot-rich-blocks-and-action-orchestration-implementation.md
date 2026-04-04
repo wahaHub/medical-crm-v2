@@ -152,8 +152,11 @@ Add or finalize Zod support for:
 
 Make sure:
 
+- `PROCESS_MODAL_TRIGGER` formally includes `modalKey`
+- `QUESTIONNAIRE_MODAL_TRIGGER` formally includes `questionnaireKey`
 - `HOSPITAL_RECOMMENDATION_CARDS` formally includes `caseId` and `selectPath`
-- `blocks` is optional in storage-facing history data but normalized to `[]` in public responses
+- `ONLINE_CONSULT_BOOKING_CARD` formally includes `requestedAction` and `convertPath`
+- route-level `blocks` normalization stays in the public route task, not in the validation task
 
 - [ ] **Step 4: Run the focused route test again**
 
@@ -203,6 +206,7 @@ Expected: failures on action routing or recommendation suppression
 Make these behavioral changes only:
 
 - support `EXPLAIN_MEDICAL_TRAVEL_PROCESS`, `INVITE_ONLINE_CONSULT`, and `HUMAN_HANDOFF` in backend action enums
+- keep `SAFETY_HANDOFF` present in backend action enums and policy handling, even though it remains text-only in this MVP
 - keep `EXPLAIN_DOC_UPLOAD` and `EXPLAIN_CONSULT_PROCESS` as explicit explanation actions, not accidental fallthroughs
 - keep `SHOW_PACKAGE` available only for `COSMETIC`
 - ensure recommendation policy suppresses shortlist reopen when `selectedHospitalId` exists unless the intent is for alternatives

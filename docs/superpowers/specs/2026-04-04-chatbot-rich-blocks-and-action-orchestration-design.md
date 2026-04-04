@@ -239,11 +239,6 @@ Interaction contract:
 - clicking this trigger opens the process explainer modal only
 - it does not mutate backend state
 
-Frontend interaction contract:
-
-- clicking the trigger opens the questionnaire modal
-- the frontend may emit a local analytics event, but opening the modal itself does not mutate backend state
-
 ### `QUESTIONNAIRE_MODAL_TRIGGER`
 
 Required:
@@ -265,6 +260,8 @@ Required:
 - `id: string`
 - `type: "HOSPITAL_RECOMMENDATION_CARDS"`
 - `title: string`
+- `caseId: string`
+- `selectPath: "/select-hospitals"`
 - `hospitals: HospitalRecommendationCardItem[]`
 
 Optional:
@@ -470,7 +467,11 @@ Output:
 
 - text only for this iteration
 
-Only keep active for `COSMETIC` by default.
+Gating rule for this spec:
+
+- backend may emit `SHOW_PACKAGE` only for `COSMETIC`
+- backend should not emit `SHOW_PACKAGE` for `REGULAR`
+- if package presentation is not appropriate, backend should choose another action instead of relying on frontend suppression
 
 ### `HUMAN_HANDOFF`
 

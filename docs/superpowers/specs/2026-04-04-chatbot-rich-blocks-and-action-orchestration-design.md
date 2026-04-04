@@ -234,6 +234,11 @@ Optional:
 - `description: string`
 - `ctaLabel: string`
 
+Interaction contract:
+
+- clicking this trigger opens the process explainer modal only
+- it does not mutate backend state
+
 Frontend interaction contract:
 
 - clicking the trigger opens the questionnaire modal
@@ -282,6 +287,41 @@ Optional:
 - `matchType: string`
 - `reasonCodes: string[]`
 
+Card action contract:
+
+- the parent block should also carry:
+  - `caseId: string`
+  - `selectPath: "/select-hospitals"`
+- frontend selection posts the chosen hospital IDs to the existing patient-protected hospital selection endpoint
+
+Selection request:
+
+```json
+{
+  "caseId": "case-1",
+  "hospitalIds": ["hospital-1"]
+}
+```
+
+Selection success shape:
+
+- reuse the existing `SelectHospitalsResult` response contract
+
+Recoverable selection failure shape:
+
+```json
+{
+  "ok": false,
+  "errorCode": "HOSPITAL_SELECTION_FAILED",
+  "message": "Unable to save hospital selection right now. Please try again."
+}
+```
+
+Idempotency rule:
+
+- selecting the same hospital again should not create duplicate downstream records
+- it may return the existing selected state
+
 Selection interaction contract:
 
 - selecting a hospital from a card must mutate backend state by marking or submitting the chosen hospital
@@ -325,6 +365,11 @@ Retry rule:
 
 - `china` should keep the card visible and offer retry inline
 - retry should resubmit the same request safely
+
+Emission rule:
+
+- backend should only emit `ONLINE_CONSULT_BOOKING_CARD` when the session already has the minimum data needed to satisfy the convert flow
+- if required patient/profile fields are missing, backend should choose an explanation or intake action instead of emitting this card
 
 ## Action Catalog
 
@@ -643,7 +688,7 @@ Hospital recommendation cards should reuse the existing hospital card visual sys
 
 Direct interaction rules:
 
-- process trigger: open modal only
+- process trigger: open process modal only
 - questionnaire trigger: open modal only
 - hospital cards: select hospital, then optionally navigate
 - consult booking card: submit request inline

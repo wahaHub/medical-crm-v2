@@ -7,6 +7,7 @@ import type {
 } from '@medical-crm/domain';
 import { Conversation } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
+import { asRecord, asNullableString, asNullableDate } from '../../utils/structured-data.js';
 
 export interface PatientSessionState {
   id: string;
@@ -144,16 +145,6 @@ type EntryProfile = {
   treatmentTime: string | null;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function asNullableString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value : null;
-}
-
 function getEntryProfile(structuredData: Record<string, unknown> | null): EntryProfile | null {
   const entryProfile = asRecord(structuredData?.['entryProfile']);
   if (!entryProfile) {
@@ -180,14 +171,6 @@ function getEntryProfile(structuredData: Record<string, unknown> | null): EntryP
 function getCustomHospitalRequest(structuredData: Record<string, unknown> | null): string | null {
   const patientHospitalSelection = asRecord(structuredData?.['patientHospitalSelection']);
   return asNullableString(patientHospitalSelection?.['customHospitalRequest']);
-}
-
-function asNullableDate(value: unknown): Date | null {
-  if (typeof value === 'string' || value instanceof Date) {
-    const d = new Date(value as string);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  return null;
 }
 
 type MedicalFormMetadata = {

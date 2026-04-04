@@ -2,6 +2,7 @@ import type { Case, CaseProgress, Document, CaseStage } from '@medical-crm/domai
 import type { CaseDTO, HospitalCaseDetailDTO, MedicalIntakeDTO } from '../dtos/case.dto.js';
 import { splitProgressByType } from './progress.mapper.js';
 import { toDocumentDTO } from './document.mapper.js';
+import { asRecord } from '../utils/structured-data.js';
 
 const STAGE_DISPLAY_MAP: Record<CaseStage, string> = {
   PENDING_ASSIGNMENT: 'transferred',
@@ -17,6 +18,9 @@ export function toCaseDTO(
   hospitalName?: string,
   patientContact?: { email?: string | null; phone?: string | null },
 ): CaseDTO {
+  const entryProfile = getEntryProfile(entity.structuredData ?? null);
+  const customHospitalRequest = getCustomHospitalRequest(entity.structuredData ?? null);
+
   return {
     id: entity.id,
     caseNumber: entity.caseNumber.value,
@@ -25,6 +29,13 @@ export function toCaseDTO(
     patientLanguage: entity.patientLanguage,
     patientEmail: patientContact?.email ?? null,
     patientPhone: patientContact?.phone ?? null,
+    gender: entryProfile?.gender ?? null,
+    country: entryProfile?.country ?? entity.patientCountry,
+    destination: entryProfile?.destination ?? null,
+    department: entryProfile?.department ?? null,
+    disease: entryProfile?.disease ?? null,
+    treatmentTime: entryProfile?.treatmentTime ?? null,
+    customHospitalRequest,
     assignedHospitalId: entity.assignedHospitalId,
     hospitalName: hospitalName ?? null,
     primaryDiagnosis: entity.primaryDiagnosis,
@@ -48,12 +59,6 @@ export interface PatientInfo {
   gender: string | null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
@@ -62,6 +67,32 @@ function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
   return items.length > 0 ? items : undefined;
+}
+
+function getEntryProfile(value: Record<string, unknown> | null): {
+  gender: string | null;
+  country: string | null;
+  destination: string | null;
+  department: string | null;
+  disease: string | null;
+  treatmentTime: string | null;
+} | null {
+  const entryProfile = asRecord(value?.['entryProfile']);
+  if (!entryProfile) return null;
+
+  return {
+    gender: asString(entryProfile['gender']) ?? null,
+    country: asString(entryProfile['country']) ?? null,
+    destination: asString(entryProfile['destination']) ?? null,
+    department: asString(entryProfile['department']) ?? null,
+    disease: asString(entryProfile['disease']) ?? null,
+    treatmentTime: asString(entryProfile['treatmentTime']) ?? null,
+  };
+}
+
+function getCustomHospitalRequest(value: Record<string, unknown> | null): string | null {
+  const patientHospitalSelection = asRecord(value?.['patientHospitalSelection']);
+  return asString(patientHospitalSelection?.['customHospitalRequest']) ?? null;
 }
 
 function appendUnique(values: string[], next?: string) {

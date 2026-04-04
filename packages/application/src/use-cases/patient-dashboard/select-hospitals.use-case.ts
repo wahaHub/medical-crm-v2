@@ -3,6 +3,7 @@ import { CaseHospitalContact, Conversation } from '@medical-crm/domain';
 import { generateId, NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { CaseHospitalContactDTO } from '../../dtos/case-hospital-contact.dto.js';
 import { toCaseHospitalContactDTO } from '../../mappers/case-hospital-contact.mapper.js';
+import { asRecord } from '../../utils/structured-data.js';
 
 export interface SelectHospitalsInput {
   caseId: string;
@@ -114,12 +115,6 @@ export class SelectHospitalsUseCase {
 
     return results;
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 }
 
 function normalizeCustomHospitalRequest(value: string | undefined): string | null {

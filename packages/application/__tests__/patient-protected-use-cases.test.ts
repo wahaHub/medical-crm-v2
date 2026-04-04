@@ -317,6 +317,7 @@ describe('SelectHospitalsUseCase', () => {
     vi.mocked(chcRepo.findByCaseAndHospital).mockResolvedValue(null);
     vi.mocked(chcRepo.save).mockImplementation(async (entity) => entity);
     vi.mocked(convRepo.save).mockImplementation(async (entity) => entity);
+    vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
 
     const result = await useCase.execute({
       caseId: 'case-1',
@@ -327,6 +328,29 @@ describe('SelectHospitalsUseCase', () => {
     expect(result).toHaveLength(2);
     expect(chcRepo.save).toHaveBeenCalledTimes(2);
     expect(convRepo.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists a custom hospital request onto the case structured data', async () => {
+    const baseCase = makeMockCase();
+    vi.mocked(caseRepo.findById).mockResolvedValue(baseCase);
+    vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      hospitalIds: [],
+      customHospitalRequest: 'Ruijin Hospital',
+      patientId: 'patient-1',
+    });
+
+    expect(caseRepo.save).toHaveBeenCalledTimes(1);
+    const savedCase = vi.mocked(caseRepo.save).mock.calls[0]?.[0];
+    expect(savedCase?.structuredData).toMatchObject({
+      patientHospitalSelection: {
+        customHospitalRequest: 'Ruijin Hospital',
+      },
+    });
+    expect(chcRepo.save).not.toHaveBeenCalled();
+    expect(convRepo.save).not.toHaveBeenCalled();
   });
 
   it('skips hospital if CHC already exists', async () => {
@@ -361,6 +385,153 @@ describe('SelectHospitalsUseCase', () => {
     expect(result).toHaveLength(1);
     expect(chcRepo.save).not.toHaveBeenCalled();
     expect(convRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('soft-removes previously active hospitals that are no longer selected', async () => {
+    const activeHospital = new CaseHospitalContact({
+      id: 'chc-1',
+      caseId: 'case-1',
+      hospitalId: 'hosp-1',
+      subStatus: 'DISTRIBUTED',
+      selectedByPatientAt: new Date('2026-04-04T00:00:00.000Z'),
+      distributedAt: new Date('2026-04-04T00:00:00.000Z'),
+      firstReplyAt: null,
+      quoteId: null,
+      patientViewedQuoteAt: null,
+      patientAcceptedAt: null,
+      patientRejectedAt: null,
+      reminderSentAt: null,
+      removedAt: null,
+      removedReason: null,
+      version: 1,
+      createdAt: new Date('2026-04-04T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
+    });
+
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    vi.mocked(chcRepo.findByCaseId).mockResolvedValue([activeHospital]);
+    vi.mocked(chcRepo.findByCaseAndHospital).mockResolvedValue(null);
+    vi.mocked(chcRepo.save).mockImplementation(async (entity) => entity);
+    vi.mocked(convRepo.save).mockImplementation(async (entity) => entity);
+    vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      hospitalIds: [],
+      patientId: 'patient-1',
+    });
+
+    expect(chcRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'chc-1',
+      removedAt: expect.any(Date),
+      removedReason: 'PATIENT_SELECTION_REPLACED',
+    }));
+  });
+
+  it('restores a previously removed hospital when the patient selects it again', async () => {
+    const removedHospital = new CaseHospitalContact({
+      id: 'chc-1',
+      caseId: 'case-1',
+      hospitalId: 'hosp-1',
+      subStatus: 'REMOVED',
+      selectedByPatientAt: new Date('2026-04-01T00:00:00.000Z'),
+      distributedAt: new Date('2026-04-01T00:00:00.000Z'),
+      firstReplyAt: null,
+      quoteId: null,
+      patientViewedQuoteAt: null,
+      patientAcceptedAt: null,
+      patientRejectedAt: null,
+      reminderSentAt: null,
+      removedAt: new Date('2026-04-02T00:00:00.000Z'),
+      removedReason: 'PATIENT_SELECTION_REPLACED',
+      version: 1,
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T00:00:00.000Z'),
+    });
+
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    vi.mocked(chcRepo.findByCaseId).mockResolvedValue([removedHospital]);
+    vi.mocked(chcRepo.findByCaseAndHospital).mockResolvedValue(removedHospital);
+    vi.mocked(chcRepo.save).mockImplementation(async (entity) => entity);
+    vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      hospitalIds: ['hosp-1'],
+      patientId: 'patient-1',
+    });
+
+    expect(chcRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'chc-1',
+      subStatus: 'DISTRIBUTED',
+      removedAt: null,
+      removedReason: null,
+    }));
+    expect(convRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('returns only currently active contacts, not soft-removed ones', async () => {
+    const activeHospital = new CaseHospitalContact({
+      id: 'chc-1',
+      caseId: 'case-1',
+      hospitalId: 'hosp-1',
+      subStatus: 'DISTRIBUTED',
+      selectedByPatientAt: new Date('2026-04-04T00:00:00.000Z'),
+      distributedAt: new Date('2026-04-04T00:00:00.000Z'),
+      firstReplyAt: null,
+      quoteId: null,
+      patientViewedQuoteAt: null,
+      patientAcceptedAt: null,
+      patientRejectedAt: null,
+      reminderSentAt: null,
+      removedAt: null,
+      removedReason: null,
+      version: 1,
+      createdAt: new Date('2026-04-04T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
+    });
+
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    // Two existing active contacts: hosp-1 and hosp-2
+    const deselectedHospital = new CaseHospitalContact({
+      id: 'chc-2',
+      caseId: 'case-1',
+      hospitalId: 'hosp-2',
+      subStatus: 'DISTRIBUTED',
+      selectedByPatientAt: new Date('2026-04-04T00:00:00.000Z'),
+      distributedAt: new Date('2026-04-04T00:00:00.000Z'),
+      firstReplyAt: null,
+      quoteId: null,
+      patientViewedQuoteAt: null,
+      patientAcceptedAt: null,
+      patientRejectedAt: null,
+      reminderSentAt: null,
+      removedAt: null,
+      removedReason: null,
+      version: 1,
+      createdAt: new Date('2026-04-04T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
+    });
+    vi.mocked(chcRepo.findByCaseId).mockResolvedValue([activeHospital, deselectedHospital]);
+    vi.mocked(chcRepo.findByCaseAndHospital).mockResolvedValue(null);
+    vi.mocked(chcRepo.save).mockImplementation(async (entity) => entity);
+    vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
+
+    // Patient resubmits with only hosp-1; hosp-2 should be soft-removed and not in result
+    const result = await useCase.execute({
+      caseId: 'case-1',
+      hospitalIds: ['hosp-1'],
+      patientId: 'patient-1',
+    });
+
+    // Only hosp-1 should be returned; hosp-2 is removed and excluded
+    expect(result).toHaveLength(1);
+    expect(result[0]!.hospitalId).toBe('hosp-1');
+    // hosp-2 was soft-removed
+    expect(chcRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'chc-2',
+      removedReason: 'PATIENT_SELECTION_REPLACED',
+    }));
   });
 });
 

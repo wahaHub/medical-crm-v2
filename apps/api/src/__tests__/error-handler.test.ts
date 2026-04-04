@@ -71,6 +71,8 @@ describe('Global error handler', () => {
   it('mapErrorToStatus utility works end-to-end', () => {
     expect(mapErrorToStatus('NOT_FOUND')).toBe(404);
     expect(mapErrorToStatus('FORBIDDEN')).toBe(403);
+    expect(mapErrorToStatus('EMAIL_ROLE_CONFLICT')).toBe(409);
+    expect(mapErrorToStatus('PATIENT_ALREADY_EXISTS')).toBe(409);
     expect(mapErrorToStatus('SOMETHING_ELSE')).toBe(500);
   });
 });

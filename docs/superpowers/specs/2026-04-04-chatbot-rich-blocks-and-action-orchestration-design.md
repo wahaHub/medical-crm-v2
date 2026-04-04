@@ -106,6 +106,19 @@ user message
 
 The backend decides whether a block should exist. The frontend only renders the block payload it receives.
 
+`nextAction` remains part of the public chatbot response. For this design it is:
+
+- emitted on every assistant turn where backend has resolved a primary action
+- stored as API-visible routing metadata
+- not a frontend instruction to invent UI independently of `blocks[]`
+
+Relationship between `nextAction` and `blocks[]`:
+
+- `nextAction` expresses backend intent
+- `blocks[]` expresses executable or rich UI payloads for that turn
+- some actions have no block and remain text-only
+- frontend may use `nextAction` for analytics or light presentation logic, but not as the primary source for deciding what block to render
+
 ## Block Contract
 
 `blocks[]` is the shared message-scoped contract between `medical-crm-v2` and `china`.
@@ -221,6 +234,11 @@ Optional:
 - `description: string`
 - `ctaLabel: string`
 
+Frontend interaction contract:
+
+- clicking the trigger opens the questionnaire modal
+- the frontend may emit a local analytics event, but opening the modal itself does not mutate backend state
+
 ### `QUESTIONNAIRE_MODAL_TRIGGER`
 
 Required:
@@ -264,6 +282,12 @@ Optional:
 - `matchType: string`
 - `reasonCodes: string[]`
 
+Selection interaction contract:
+
+- selecting a hospital from a card must mutate backend state by marking or submitting the chosen hospital
+- selection is not just navigation
+- frontend may also navigate to the hospital detail page after a successful selection, but backend selection state must succeed first or fail visibly
+
 ### `ONLINE_CONSULT_BOOKING_CARD`
 
 Required:
@@ -279,6 +303,28 @@ Optional:
 - `description: string`
 - `consultationStatus: string`
 - `requestState: "idle" | "submitted" | "failed"`
+
+Submission interaction contract:
+
+- clicking submit posts to `convertPath`
+- the card stays mounted in the message after submit
+- success changes local render state to submitted
+- failure changes local render state to failed and exposes retry
+
+Recoverable failure shape:
+
+```json
+{
+  "ok": false,
+  "errorCode": "CONSULT_REQUEST_FAILED",
+  "message": "Unable to create consultation request right now. Please try again."
+}
+```
+
+Retry rule:
+
+- `china` should keep the card visible and offer retry inline
+- retry should resubmit the same request safely
 
 ## Action Catalog
 
@@ -583,6 +629,7 @@ The chatbot response schema should support:
 - existing answer fields
 - `blocks[]`
 - structured links/payloads for actions that require execution
+- `nextAction` as public backend-selected routing metadata
 
 ## China Frontend Strategy
 
@@ -593,6 +640,13 @@ The chatbot response schema should support:
 - `blocks[]`
 
 Hospital recommendation cards should reuse the existing hospital card visual system where practical, but data should come from chatbot message blocks rather than `patient-entry.ts -> hospitalApi`.
+
+Direct interaction rules:
+
+- process trigger: open modal only
+- questionnaire trigger: open modal only
+- hospital cards: select hospital, then optionally navigate
+- consult booking card: submit request inline
 
 ## Existing China Recommendation Path To Replace
 

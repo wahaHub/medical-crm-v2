@@ -65,6 +65,7 @@ Tests:
 Message model and renderer:
 
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/services/api/patient-messages.ts`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/types/chatbot-blocks.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/PatientChatMessageList.tsx`
 - Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/ChatMessageBlocks.tsx`
 - Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/blocks/ProcessModalTrigger.tsx`
@@ -81,6 +82,7 @@ Existing UI to reuse:
 Tests:
 
 - Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/ChatMessageTriggers.test.tsx`
 - Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/HospitalRecommendationCards.test.tsx`
 - Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx`
 
@@ -453,7 +455,9 @@ Expected: FAIL because the message type has no `blocks` support
 
 Add:
 
-- `blocks?: []` to the chat message type
+- a concrete `ChatbotMessageBlock[]` type in `src/types/chatbot-blocks.ts`
+- make that local type mirror `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/shared/validation/src/chatbot.schema.ts`
+- use `blocks?: ChatbotMessageBlock[]` in the china message model
 - a dedicated `ChatMessageBlocks` component
 - safe rendering before/above message text
 
@@ -487,13 +491,14 @@ Cover:
 - questionnaire trigger opens modal only
 - hospital cards render reusable card shape and allow selection
 - consult booking card shows idle/submitted/failed states
+- trigger components do not mutate backend state on open
 
 - [ ] **Step 2: Run the component tests to confirm failure**
 
 Run:
 
 ```bash
-pnpm -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks exec vitest run src/components/chat/__tests__/HospitalRecommendationCards.test.tsx src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx
+pnpm -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks exec vitest run src/components/chat/__tests__/ChatMessageTriggers.test.tsx src/components/chat/__tests__/HospitalRecommendationCards.test.tsx src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx
 ```
 
 Expected: FAIL because the block components do not exist yet
@@ -514,7 +519,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks add src/components/chat/blocks/ProcessModalTrigger.tsx src/components/chat/blocks/QuestionnaireModalTrigger.tsx src/components/chat/blocks/HospitalRecommendationCards.tsx src/components/chat/blocks/OnlineConsultBookingCard.tsx src/components/chat/__tests__/HospitalRecommendationCards.test.tsx src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx
+git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks add src/components/chat/blocks/ProcessModalTrigger.tsx src/components/chat/blocks/QuestionnaireModalTrigger.tsx src/components/chat/blocks/HospitalRecommendationCards.tsx src/components/chat/blocks/OnlineConsultBookingCard.tsx src/components/chat/__tests__/ChatMessageTriggers.test.tsx src/components/chat/__tests__/HospitalRecommendationCards.test.tsx src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx
 git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks commit -m "feat: add chatbot block components"
 ```
 
@@ -525,6 +530,7 @@ git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbo
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/contexts/PatientEntryContext.tsx`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/blocks/HospitalRecommendationCards.tsx`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/blocks/OnlineConsultBookingCard.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/__tests__/ChatMessageBlockActions.test.tsx`
 
 - [ ] **Step 1: Add failing integration-style tests or mocks**
 
@@ -534,6 +540,7 @@ Cover:
 - selection is idempotent when re-choosing the same hospital
 - consult request posts to `/api/v2/chatbot/convert`
 - failed consult request surfaces retry state
+- successful consult request moves the card into submitted state
 
 - [ ] **Step 2: Run the focused frontend tests**
 
@@ -555,7 +562,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks add src/services/api/patient-entry.ts src/contexts/PatientEntryContext.tsx src/components/chat/blocks/HospitalRecommendationCards.tsx src/components/chat/blocks/OnlineConsultBookingCard.tsx
+git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks add src/services/api/patient-entry.ts src/contexts/PatientEntryContext.tsx src/components/chat/blocks/HospitalRecommendationCards.tsx src/components/chat/blocks/OnlineConsultBookingCard.tsx src/components/chat/__tests__/ChatMessageBlockActions.test.tsx
 git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks commit -m "feat: wire chatbot block actions"
 ```
 

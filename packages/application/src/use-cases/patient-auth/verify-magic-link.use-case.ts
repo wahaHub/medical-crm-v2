@@ -7,7 +7,10 @@ export class VerifyMagicLinkUseCase {
   ) {}
 
   async execute(input: { token: string }): Promise<{ sessionToken: string; patientId: string }> {
-    const payload = await this.authService.verifyMagicLinkToken(input.token);
+    const payload = await this.authService.verifyPatientEntryToken(input.token);
+    if (payload.purpose !== 'patient-login') {
+      throw new Error('Invalid token purpose');
+    }
     const patient = await this.patientRepo.findByEmail(payload.email);
     if (!patient) throw new Error('Patient not found');
     const sessionToken = await this.authService.createSessionToken(patient.id);

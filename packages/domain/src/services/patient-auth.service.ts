@@ -8,7 +8,20 @@ export interface PatientSessionPayload {
 
 export interface MagicLinkPayload {
   email: string;
-  purpose: 'magic-link';
+  purpose: 'patient-login';
+  exp: number;
+}
+
+export interface PatientEntryTokenPayload {
+  email: string;
+  purpose: 'patient-login' | 'patient-register';
+  exp: number;
+}
+
+export interface GuestRestoreCookiePayload {
+  userId: string;
+  purpose: 'guest-restore-cookie';
+  restoreToken: string;
   exp: number;
 }
 
@@ -32,16 +45,37 @@ export class PatientAuthService {
   }
 
   async createMagicLinkToken(email: string): Promise<string> {
-    return await new jose.SignJWT({ email, purpose: 'magic-link' })
+    return await this.createPatientLoginToken(email);
+  }
+
+  async createPatientLoginToken(email: string): Promise<string> {
+    return await new jose.SignJWT({ email, purpose: 'patient-login' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setExpirationTime('1h')
+      .sign(this.secret);
+  }
+
+  async createPatientRegisterToken(email: string): Promise<string> {
+    return await new jose.SignJWT({ email, purpose: 'patient-register' })
       .setProtectedHeader({ alg: 'HS256' })
       .setExpirationTime('1h')
       .sign(this.secret);
   }
 
   async verifyMagicLinkToken(token: string): Promise<MagicLinkPayload> {
+    const parsed = await this.verifyPatientEntryToken(token);
+    if (parsed.purpose !== 'patient-login') {
+      throw new Error('Invalid token purpose');
+    }
+    return parsed;
+  }
+
+  async verifyPatientEntryToken(token: string): Promise<PatientEntryTokenPayload> {
     const { payload } = await jose.jwtVerify(token, this.secret);
-    const parsed = payload as unknown as MagicLinkPayload;
-    if (parsed.purpose !== 'magic-link') throw new Error('Invalid token purpose');
+    const parsed = payload as unknown as PatientEntryTokenPayload;
+    if (parsed.purpose !== 'patient-login' && parsed.purpose !== 'patient-register') {
+      throw new Error('Invalid token purpose');
+    }
     return parsed;
   }
 }

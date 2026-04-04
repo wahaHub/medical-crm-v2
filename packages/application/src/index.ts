@@ -327,6 +327,7 @@ export { SendMagicLinkUseCase } from './use-cases/patient-auth/send-magic-link.u
 export type { IMagicLinkEmailService } from './use-cases/patient-auth/send-magic-link.use-case.js';
 export { SendPatientLoginLinkUseCase } from './use-cases/patient-auth/send-patient-login-link.use-case.js';
 export { EmailRoleConflictError, PatientAlreadyExistsError } from './use-cases/patient-auth/patient-entry-auth.errors.js';
+export { VerifyPatientEntryTokenUseCase } from './use-cases/patient-auth/verify-patient-entry-token.use-case.js';
 export { VerifyMagicLinkUseCase } from './use-cases/patient-auth/verify-magic-link.use-case.js';
 export { SetPasswordUseCase } from './use-cases/patient-auth/set-password.use-case.js';
 

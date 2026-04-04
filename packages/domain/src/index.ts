@@ -288,7 +288,7 @@ export type { IEmailTemplateRepository, EmailTemplateListQuery } from './ports/e
 // Services
 export { CaseAssignmentService } from './services/case-assignment.service.js';
 export { PatientAuthService } from './services/patient-auth.service.js';
-export type { PatientSessionPayload, MagicLinkPayload } from './services/patient-auth.service.js';
+export type { PatientSessionPayload, MagicLinkPayload, PatientEntryTokenPayload } from './services/patient-auth.service.js';
 
 // Unified AI Translation System — Enums + Config
 export type { TranslationTaskStatus, SourceDb, SupportedLanguage } from './enums/index.js';

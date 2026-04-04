@@ -77,4 +77,18 @@ export class CaseHospitalContact {
     this.removedAt = new Date();
     this.removedReason = reason ?? null;
   }
+
+  /**
+   * Restores a previously removed CHC back to DISTRIBUTED status.
+   * Bypasses transitionSubStatus because REMOVED is a terminal state in the
+   * state machine — this method encodes the explicit business rule that a
+   * patient may re-select a hospital they previously deselected.
+   */
+  restore(now: Date): void {
+    this.subStatus = 'DISTRIBUTED';
+    this.selectedByPatientAt = now;
+    this.removedAt = null;
+    this.removedReason = null;
+    this.updatedAt = now;
+  }
 }

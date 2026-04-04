@@ -61,11 +61,7 @@ export class SelectHospitalsUseCase {
         ?? await this.chcRepo.findByCaseAndHospital(input.caseId, hospitalId);
       if (existing) {
         if (existing.removedAt || existing.subStatus === 'REMOVED') {
-          existing.subStatus = 'DISTRIBUTED';
-          existing.selectedByPatientAt = now;
-          existing.removedAt = null;
-          existing.removedReason = null;
-          existing.updatedAt = now;
+          existing.restore(now);
           const restored = await this.chcRepo.save(existing);
           results.push(toCaseHospitalContactDTO(restored));
           continue;

@@ -478,7 +478,6 @@ describe('SelectHospitalsUseCase', () => {
 
     vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
     vi.mocked(chcRepo.findByCaseId).mockResolvedValue([removedHospital]);
-    vi.mocked(chcRepo.findByCaseAndHospital).mockResolvedValue(removedHospital);
     vi.mocked(chcRepo.save).mockImplementation(async (entity) => entity);
     vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
 

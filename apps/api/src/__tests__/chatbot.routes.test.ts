@@ -397,7 +397,7 @@ describe('Chatbot routes', () => {
     );
   });
 
-  it('POST /api/v2/chatbot/chat hides unsafe legacy nextAction values from the public contract', async () => {
+  it('POST /api/v2/chatbot/chat normalizes legacy consult nextAction values into the public contract', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-unsafe-legacy',
@@ -426,7 +426,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBeNull();
+    expect(json.nextAction).toBe('INVITE_ONLINE_CONSULT');
   });
 
   it('POST /api/v2/chatbot/chat normalizes legacy metadata nextAction fields in the public response only', async () => {
@@ -1077,7 +1077,7 @@ describe('Chatbot routes', () => {
         country: 'Singapore',
         conditionSummary: 'Revision rhinoplasty consultation',
         budget: 'USD 8000',
-        requestedAction: 'CONSULT_CONVERSION',
+        requestedAction: 'INVITE_ONLINE_CONSULT',
       }),
     });
 
@@ -1087,6 +1087,7 @@ describe('Chatbot routes', () => {
     expect(json.patientId).toBe('patient-1');
     expect(json.restoreToken).toBe('restore-token-123');
     expect(json.alreadyExists).toBe(true);
+    expect(json.requestedAction).toBe('INVITE_ONLINE_CONSULT');
     expect(mockServices.initOnboarding.execute).not.toHaveBeenCalled();
     expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
     expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
@@ -1131,7 +1132,7 @@ describe('Chatbot routes', () => {
         country: 'Singapore',
         conditionSummary: 'Revision rhinoplasty consultation',
         budget: 'USD 8000',
-        requestedAction: 'CONSULT_CONVERSION',
+        requestedAction: 'INVITE_ONLINE_CONSULT',
       }),
     });
 
@@ -1188,7 +1189,7 @@ describe('Chatbot routes', () => {
         country: 'Singapore',
         conditionSummary: 'Revision rhinoplasty consultation',
         budget: 'USD 8000',
-        requestedAction: 'CONSULT_CONVERSION',
+        requestedAction: 'INVITE_ONLINE_CONSULT',
       }),
     });
 
@@ -1197,6 +1198,7 @@ describe('Chatbot routes', () => {
     expect(json.patientId).toBe('patient-1');
     expect(json.caseId).toBe('case-1');
     expect(json.alreadyExists).toBe(true);
+    expect(json.requestedAction).toBe('INVITE_ONLINE_CONSULT');
     expect(mockServices.aiChatSessionRepo.attachPatient).toHaveBeenCalledWith('session-1', 'patient-1');
     expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
     expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
@@ -1250,7 +1252,7 @@ describe('Chatbot routes', () => {
         country: 'Singapore',
         conditionSummary: 'Revision rhinoplasty consultation',
         budget: 'USD 8000',
-        requestedAction: 'CONSULT_CONVERSION',
+        requestedAction: 'INVITE_ONLINE_CONSULT',
       }),
     });
 
@@ -1259,6 +1261,8 @@ describe('Chatbot routes', () => {
       email: 'alice@example.com',
       authenticatedPatientId: 'patient-logged-in',
     }));
+    const json = chatbotConvertResponseSchema.parse(await res.json());
+    expect(json.requestedAction).toBe('INVITE_ONLINE_CONSULT');
   });
 
   it('POST /api/v2/chatbot/escalate reuses an existing ticket workflow instead of creating a duplicate ticket', async () => {

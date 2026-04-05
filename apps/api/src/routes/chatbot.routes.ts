@@ -263,7 +263,7 @@ chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
 
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, 200);
   const existingWorkflow = extractWorkflowState(messages);
-  const existingAction = existingWorkflow.lastConvertAction ?? body.requestedAction ?? 'CONSULT_CONVERSION';
+  const existingAction = existingWorkflow.lastConvertAction ?? body.requestedAction ?? 'INVITE_ONLINE_CONSULT';
 
   if (!session.patientId && existingWorkflow.patientId) {
     session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, existingWorkflow.patientId)) ?? session;
@@ -292,7 +292,7 @@ chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
 
   await recordWorkflowMessage(svc, session.id, {
     kind: 'CONVERT',
-    requestedAction: body.requestedAction ?? 'CONSULT_CONVERSION',
+    requestedAction: body.requestedAction ?? 'INVITE_ONLINE_CONSULT',
     patientId: ensured.patientId,
     caseId: ensured.caseId,
     form: buildLeadFormMetadata(body),
@@ -303,7 +303,7 @@ chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
     patientId: ensured.patientId,
     caseId: ensured.caseId,
     restoreToken: ensured.restoreToken,
-    requestedAction: body.requestedAction ?? 'CONSULT_CONVERSION',
+    requestedAction: body.requestedAction ?? 'INVITE_ONLINE_CONSULT',
     isExistingPatient: ensured.isExistingPatient,
     alreadyExists: false,
   }, 200);
@@ -782,7 +782,7 @@ async function recordWorkflowMessage(
     riskLevel: null,
     canAnswer: null,
     nextAction: workflow.kind === 'CONVERT'
-      ? normalizeNextAction(asString(workflow.requestedAction)) ?? 'CONSULT_CONVERSION'
+      ? normalizeNextAction(asString(workflow.requestedAction)) ?? 'INVITE_ONLINE_CONSULT'
       : 'ESCALATE',
     citations: [],
     metadata: { workflow },
@@ -794,12 +794,12 @@ function extractWorkflowState(messages: AiChatMessage[]): {
   caseId: string | null;
   patientId: string | null;
   ticketId: string | null;
-  lastConvertAction: 'CONSULT_CONVERSION' | 'CREATE_CASE' | null;
+  lastConvertAction: 'INVITE_ONLINE_CONSULT' | 'CREATE_CASE' | null;
 } {
   let caseId: string | null = null;
   let patientId: string | null = null;
   let ticketId: string | null = null;
-  let lastConvertAction: 'CONSULT_CONVERSION' | 'CREATE_CASE' | null = null;
+  let lastConvertAction: 'INVITE_ONLINE_CONSULT' | 'CREATE_CASE' | null = null;
 
   for (const message of messages) {
     const workflow = asRecord(message.metadata.workflow);
@@ -816,8 +816,10 @@ function extractWorkflowState(messages: AiChatMessage[]): {
     }
     if (kind === 'CONVERT' && !lastConvertAction) {
       const requestedAction = asString(workflow.requestedAction);
-      if (requestedAction === 'CONSULT_CONVERSION' || requestedAction === 'CREATE_CASE') {
-        lastConvertAction = requestedAction;
+      if (requestedAction === 'CONSULT_CONVERSION' || requestedAction === 'INVITE_ONLINE_CONSULT') {
+        lastConvertAction = 'INVITE_ONLINE_CONSULT';
+      } else if (requestedAction === 'CREATE_CASE') {
+        lastConvertAction = 'CREATE_CASE';
       }
     }
   }
@@ -1065,11 +1067,11 @@ function normalizeRiskLevel(value: string | undefined): import('@medical-crm/dom
 function normalizeNextAction(value: string | undefined): import('@medical-crm/domain').AiChatNextAction | null {
   if (
     value === 'ANSWER'
-    || value === 'CONSULT_CONVERSION'
     || value === 'CREATE_CASE'
     || value === 'REQUEST_DOCS'
     || value === 'ESCALATE'
     || value === 'SAFETY'
+    || value === 'CONSULT_CONVERSION'
     || value === 'ANSWER_FAQ'
     || value === 'EXPLAIN_DOC_UPLOAD'
     || value === 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
@@ -1081,7 +1083,7 @@ function normalizeNextAction(value: string | undefined): import('@medical-crm/do
     || value === 'SHOW_PACKAGE'
     || value === 'HUMAN_HANDOFF'
     || value === 'SAFETY_HANDOFF'
-  ) return value;
+  ) return value === 'CONSULT_CONVERSION' ? 'INVITE_ONLINE_CONSULT' : value;
   return null;
 }
 
@@ -1090,13 +1092,13 @@ function normalizePublicNextAction(value: string | undefined): import('@medical-
   if (value === 'REQUEST_DOCS' || value === 'REQUEST_DOC_UPLOAD') return 'REQUEST_DOC_UPLOAD';
   if (value === 'ESCALATE' || value === 'HUMAN_HANDOFF') return 'HUMAN_HANDOFF';
   if (value === 'SAFETY' || value === 'SAFETY_HANDOFF') return 'SAFETY_HANDOFF';
+  if (value === 'CONSULT_CONVERSION' || value === 'INVITE_ONLINE_CONSULT') return 'INVITE_ONLINE_CONSULT';
   if (
     value === 'EXPLAIN_DOC_UPLOAD'
     || value === 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
     || value === 'EXPLAIN_CONSULT_PROCESS'
     || value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS'
     || value === 'SHOW_HOSPITAL_RECOMMENDATIONS'
-    || value === 'INVITE_ONLINE_CONSULT'
     || value === 'SHOW_PACKAGE'
   ) return value;
   return null;
@@ -1134,10 +1136,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function sanitizePublicMetadataDeep(value: Record<string, unknown>): Record<string, unknown> {
-  return sanitizeUnknownValue(value) as Record<string, unknown>;
 }
 
 function sanitizeNullableRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> | null {

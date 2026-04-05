@@ -50,7 +50,7 @@ const chatbotConversionBaseSchema = z.object({
 });
 
 export const chatbotConvertSchema = chatbotConversionBaseSchema.extend({
-  requestedAction: z.enum(['CONSULT_CONVERSION', 'CREATE_CASE']).optional(),
+  requestedAction: z.enum(['INVITE_ONLINE_CONSULT', 'CREATE_CASE']).optional(),
 }).strict();
 
 export const chatbotEscalateSchema = chatbotConversionBaseSchema.extend({
@@ -128,7 +128,7 @@ export const chatbotMessageBlockSchema = z.discriminatedUnion('type', [
     type: z.literal('ONLINE_CONSULT_BOOKING_CARD'),
     title: z.string(),
     description: z.string().optional(),
-    requestedAction: z.literal('CONSULT_CONVERSION'),
+    requestedAction: z.literal('INVITE_ONLINE_CONSULT'),
     convertPath: z.string().min(1),
     conversionDraft: z.object({
       sessionId: z.string().min(1).max(255),
@@ -173,7 +173,7 @@ export const chatbotConvertResponseSchema = z.object({
   patientId: z.string().min(1).nullable().optional(),
   caseId: z.string().min(1),
   restoreToken: z.string().min(1).optional(),
-  requestedAction: z.enum(['CONSULT_CONVERSION', 'CREATE_CASE']),
+  requestedAction: z.enum(['INVITE_ONLINE_CONSULT', 'CREATE_CASE']),
   isExistingPatient: z.boolean().optional(),
   alreadyExists: z.boolean(),
 }).strict();

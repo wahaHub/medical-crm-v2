@@ -92,7 +92,7 @@ describe('chatbotMessageBlockSchema', () => {
       type: 'ONLINE_CONSULT_BOOKING_CARD',
       title: 'Request online consultation',
       description: 'Submit your consultation request and we will confirm the next step.',
-      requestedAction: 'CONSULT_CONVERSION',
+      requestedAction: 'INVITE_ONLINE_CONSULT',
       convertPath: '/api/v2/chatbot/convert',
       consultationStatus: 'not_started',
       conversionDraft: {
@@ -109,7 +109,7 @@ describe('chatbotMessageBlockSchema', () => {
       id: 'consult-booking-1',
       type: 'ONLINE_CONSULT_BOOKING_CARD',
       title: 'Request online consultation',
-      requestedAction: 'CONSULT_CONVERSION',
+      requestedAction: 'INVITE_ONLINE_CONSULT',
       convertPath: '/api/v2/chatbot/convert',
     }).success).toBe(false);
   });
@@ -124,7 +124,17 @@ describe('chatbotConvertSchema', () => {
       country: 'China',
       conditionSummary: 'Recurring eye pain and vision fluctuation',
       budget: 'to_be_discussed',
-      requestedAction: 'CONSULT_CONVERSION',
+      requestedAction: 'INVITE_ONLINE_CONSULT',
     }).success).toBe(true);
+
+    expect(chatbotConvertSchema.safeParse({
+      sessionId: 'session-123',
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      country: 'China',
+      conditionSummary: 'Recurring eye pain and vision fluctuation',
+      budget: 'to_be_discussed',
+      requestedAction: 'CONSULT_CONVERSION',
+    }).success).toBe(false);
   });
 });

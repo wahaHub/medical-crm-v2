@@ -8,6 +8,7 @@ import type {
 import { Conversation } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
 import { asRecord, asNullableString, asNullableDate } from '../../utils/structured-data.js';
+import type { MedicalFormStatus } from '../../utils/structured-data.js';
 
 export interface PatientSessionState {
   id: string;
@@ -29,14 +30,32 @@ export interface PatientSessionState {
   preferredLanguage: string;
   caseId: string | null;
   nextStep: 'select-hospitals' | 'messages-ready';
+  selectedHospitalId: string | null;
   selectedHospitalIds: string[];
   customHospitalRequest: string | null;
-  medicalFormStatus: 'NOT_STARTED' | 'SKIPPED' | 'SUBMITTED';
+  medicalFormStatus: MedicalFormStatus;
   medicalFormSkippedAt: Date | null;
   medicalFormSubmittedAt: Date | null;
   medicalFormResponseId: string | null;
   profileSubmitted: true;
   chatUnlocked: true;
+  widgetChatTarget: {
+    kind: 'CHATBOT_SESSION';
+    sessionId: string;
+  };
+  formalConversationState: {
+    activeConversationId: string | null;
+    conversationIds: string[];
+  };
+  chatbotOrchestrationState: {
+    sessionId: string;
+    selectedHospitalId: string | null;
+    selectedHospitalIds: string[];
+    conversationSummary: string;
+    pendingOffer: string | null;
+    pendingQuestion: string | null;
+    lastNextAction: string | null;
+  };
 }
 
 export class GetPatientSessionStateUseCase {
@@ -64,12 +83,14 @@ export class GetPatientSessionStateUseCase {
     const customHospitalRequest = getCustomHospitalRequest(latestCase?.structuredData ?? null);
     const medicalFormMetadata = getMedicalFormMetadata(latestCase?.structuredData ?? null);
     const chcs = latestCase ? await this.chcRepo.findByCaseId(latestCase.id) : [];
-    if (latestCase) {
-      await this.ensureAdminConversation(input.patientId, latestCase.id);
-    }
+    const conversationState = latestCase
+      ? await this.ensureAdminConversation(input.patientId, latestCase.id)
+      : { activeConversationId: null, conversationIds: [] };
     const selectedHospitalIds = chcs
       .filter((contact) => !contact.removedAt)
       .map((contact) => contact.hospitalId);
+    const selectedHospitalId = selectedHospitalIds[0] ?? null;
+    const widgetSessionId = `widget-chat:${patient.id}:${latestCase?.id ?? 'pending'}`;
 
     return {
       id: patient.id,
@@ -91,6 +112,7 @@ export class GetPatientSessionStateUseCase {
       preferredLanguage: patient.preferredLanguage,
       caseId: latestCase?.id ?? null,
       nextStep: 'select-hospitals',
+      selectedHospitalId,
       selectedHospitalIds,
       customHospitalRequest,
       medicalFormStatus: medicalFormMetadata.medicalFormStatus,
@@ -99,21 +121,41 @@ export class GetPatientSessionStateUseCase {
       medicalFormResponseId: medicalFormMetadata.medicalFormResponseId,
       profileSubmitted: true,
       chatUnlocked: true,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: widgetSessionId,
+      },
+      formalConversationState: conversationState,
+      chatbotOrchestrationState: {
+        sessionId: widgetSessionId,
+        selectedHospitalId,
+        selectedHospitalIds,
+        conversationSummary: '',
+        pendingOffer: null,
+        pendingQuestion: null,
+        lastNextAction: null,
+      },
     };
   }
 
-  private async ensureAdminConversation(patientId: string, caseId: string): Promise<void> {
+  private async ensureAdminConversation(
+    patientId: string,
+    caseId: string,
+  ): Promise<{ activeConversationId: string; conversationIds: string[] }> {
     const conversations = await this.conversationRepo.findByPatientId(patientId);
-    const hasAdminConversation = conversations.some((conversation) =>
+    const existingAdminConversation = conversations.find((conversation) =>
       conversation.caseId === caseId && conversation.category === 'ADMIN_PATIENT',
     );
 
-    if (hasAdminConversation) {
-      return;
+    if (existingAdminConversation) {
+      return {
+        activeConversationId: existingAdminConversation.id,
+        conversationIds: [existingAdminConversation.id],
+      };
     }
 
     const now = new Date();
-    await this.conversationRepo.save(new Conversation({
+    const conversation = new Conversation({
       id: generateId(),
       caseId,
       hospitalId: null,
@@ -125,7 +167,12 @@ export class GetPatientSessionStateUseCase {
       lastSenderId: null,
       createdAt: now,
       updatedAt: now,
-    }));
+    });
+    await this.conversationRepo.save(conversation);
+    return {
+      activeConversationId: conversation.id,
+      conversationIds: [conversation.id],
+    };
   }
 }
 
@@ -174,7 +221,7 @@ function getCustomHospitalRequest(structuredData: Record<string, unknown> | null
 }
 
 type MedicalFormMetadata = {
-  medicalFormStatus: 'NOT_STARTED' | 'SKIPPED' | 'SUBMITTED';
+  medicalFormStatus: MedicalFormStatus;
   medicalFormSkippedAt: Date | null;
   medicalFormSubmittedAt: Date | null;
   medicalFormResponseId: string | null;
@@ -183,7 +230,7 @@ type MedicalFormMetadata = {
 function getMedicalFormMetadata(structuredData: Record<string, unknown> | null): MedicalFormMetadata {
   const patientHospitalSelection = asRecord(structuredData?.['patientHospitalSelection']);
   const rawStatus = patientHospitalSelection?.['medicalFormStatus'];
-  const medicalFormStatus: 'NOT_STARTED' | 'SKIPPED' | 'SUBMITTED' =
+  const medicalFormStatus: MedicalFormStatus =
     rawStatus === 'SKIPPED' || rawStatus === 'SUBMITTED' ? rawStatus : 'NOT_STARTED';
 
   return {

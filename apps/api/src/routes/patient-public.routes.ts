@@ -1,10 +1,17 @@
 import { Hono } from 'hono';
-import { setCookie } from 'hono/cookie';
+import { getCookie, setCookie } from 'hono/cookie';
+import {
+  EmailRoleConflictError,
+  PatientAlreadyExistsError,
+  VerifyPatientEntryTokenAuthError,
+} from '@medical-crm/application';
 import { getServices } from '../composition-root.js';
 import { rateLimitByIp } from '../middleware/rate-limit.middleware.js';
 import { initOnboardingSchema, matchHospitalsSchema } from '@medical-crm/validation';
 
 const app = new Hono();
+const PATIENT_SESSION_COOKIE = 'patient_session';
+const PATIENT_RESTORE_COOKIE = 'patient_restore';
 const ONBOARDING_RATE_LIMIT = process.env.NODE_ENV === 'production'
   ? { maxRequests: 20, windowMs: 3600_000 } // 20 / hour in production
   : { maxRequests: 200, windowMs: 600_000 }; // 200 / 10 minutes in local/dev
@@ -131,16 +138,86 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
   if (!captchaValid) {
     return c.json({ error: 'Captcha verification failed' }, 400);
   }
-  const { initOnboarding } = getServices();
-  const result = await initOnboarding.execute(body);
-  setCookie(c, 'patient_session', result.token, {
+
+  const {
+    initOnboarding,
+    patientAuthService,
+    verifyPatientEntryToken,
+  } = getServices();
+
+  let authenticatedPatientId: string | undefined;
+  const sessionToken = getCookie(c, PATIENT_SESSION_COOKIE);
+  if (sessionToken) {
+    try {
+      const session = await patientAuthService.verifySessionToken(sessionToken);
+      authenticatedPatientId = session.userId;
+    } catch {
+      authenticatedPatientId = undefined;
+    }
+  }
+
+  let verifiedRegisterEmail: string | undefined;
+  if (body.registerToken) {
+    let registerProof;
+    try {
+      registerProof = await verifyPatientEntryToken.execute({ token: body.registerToken });
+    } catch (error) {
+      if (error instanceof VerifyPatientEntryTokenAuthError) {
+        return c.json({ error: 'Unauthorized' }, 401);
+      }
+      throw error;
+    }
+    if (registerProof.purpose !== 'patient-register') {
+      return c.json({ error: 'Invalid token purpose' }, 400);
+    }
+
+    if (registerProof.email.trim().toLowerCase() !== body.email.trim().toLowerCase()) {
+      return c.json({
+        error: 'Register token email does not match submitted email',
+        code: 'VALIDATION_FAILED',
+      }, 400);
+    }
+
+    verifiedRegisterEmail = registerProof.email;
+  }
+
+  const { registerToken: _registerToken, ...onboardingInput } = body;
+  let result;
+  try {
+    result = await initOnboarding.execute({
+      ...onboardingInput,
+      authenticatedPatientId,
+      verifiedRegisterEmail,
+    });
+  } catch (error) {
+    if (error instanceof PatientAlreadyExistsError || error instanceof EmailRoleConflictError) {
+      return c.json({ error: error.message, code: error.code }, 409);
+    }
+    throw error;
+  }
+
+  setCookie(c, PATIENT_SESSION_COOKIE, result.token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Lax',
     path: '/',
     maxAge: 86400,
   });
-  return c.json({ patientId: result.patientId, caseId: result.caseId, isExistingPatient: result.isExistingPatient });
+  setCookie(c, PATIENT_RESTORE_COOKIE, result.restoreCookie, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 86400,
+  });
+  return c.json({
+    patientId: result.patientId,
+    caseId: result.caseId,
+    nextStep: result.nextStep,
+    isExistingPatient: result.isExistingPatient,
+    restoreToken: result.restoreToken,
+    widgetChatTarget: result.widgetChatTarget,
+  });
 });
 
 // POST /match-hospitals

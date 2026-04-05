@@ -124,6 +124,7 @@ describe('GetPatientSessionStateUseCase', () => {
       preferredLanguage: 'en',
       caseId: 'case-2',
       nextStep: 'select-hospitals',
+      selectedHospitalId: 'hospital-1',
       selectedHospitalIds: ['hospital-1', 'hospital-2'],
       customHospitalRequest: 'Ruijin Hospital',
       medicalFormStatus: 'NOT_STARTED',
@@ -132,6 +133,23 @@ describe('GetPatientSessionStateUseCase', () => {
       medicalFormResponseId: null,
       profileSubmitted: true,
       chatUnlocked: true,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:case-2',
+      },
+      formalConversationState: {
+        activeConversationId: expect.any(String),
+        conversationIds: [expect.any(String)],
+      },
+      chatbotOrchestrationState: {
+        sessionId: 'widget-chat:patient-1:case-2',
+        selectedHospitalId: 'hospital-1',
+        selectedHospitalIds: ['hospital-1', 'hospital-2'],
+        conversationSummary: '',
+        pendingOffer: null,
+        pendingQuestion: null,
+        lastNextAction: null,
+      },
     });
     expect(mockConversationRepo.findByPatientId).toHaveBeenCalledWith('patient-1');
     expect(mockConversationRepo.save).toHaveBeenCalledOnce();
@@ -170,6 +188,7 @@ describe('GetPatientSessionStateUseCase', () => {
     const result = await useCase.execute({ patientId: 'patient-1' });
 
     expect(result.nextStep).toBe('select-hospitals');
+    expect(result.selectedHospitalId).toBeNull();
     expect(result.selectedHospitalIds).toEqual([]);
     expect(result.customHospitalRequest).toBeNull();
     expect(result.caseId).toBe('case-1');
@@ -185,6 +204,23 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.medicalFormSkippedAt).toBeNull();
     expect(result.medicalFormSubmittedAt).toBeNull();
     expect(result.medicalFormResponseId).toBeNull();
+    expect(result.widgetChatTarget).toEqual({
+      kind: 'CHATBOT_SESSION',
+      sessionId: 'widget-chat:patient-1:case-1',
+    });
+    expect(result.formalConversationState).toEqual({
+      activeConversationId: 'conv-1',
+      conversationIds: ['conv-1'],
+    });
+    expect(result.chatbotOrchestrationState).toEqual({
+      sessionId: 'widget-chat:patient-1:case-1',
+      selectedHospitalId: null,
+      selectedHospitalIds: [],
+      conversationSummary: '',
+      pendingOffer: null,
+      pendingQuestion: null,
+      lastNextAction: null,
+    });
     expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 
@@ -234,6 +270,7 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.medicalFormSkippedAt).toEqual(skippedAt);
     expect(result.medicalFormSubmittedAt).toBeNull();
     expect(result.medicalFormResponseId).toBeNull();
+    expect(result.selectedHospitalId).toBe('hospital-1');
     expect(result.selectedHospitalIds).toEqual(['hospital-1']);
     expect(result.caseId).toBe('case-3');
   });
@@ -284,6 +321,7 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.medicalFormSkippedAt).toBeNull();
     expect(result.medicalFormSubmittedAt).toEqual(submittedAt);
     expect(result.medicalFormResponseId).toBe('form-response-abc123');
+    expect(result.selectedHospitalId).toBe('hospital-2');
     expect(result.selectedHospitalIds).toEqual(['hospital-2']);
     expect(result.caseId).toBe('case-4');
   });

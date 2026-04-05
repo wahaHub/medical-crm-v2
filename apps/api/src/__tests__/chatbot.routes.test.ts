@@ -895,6 +895,64 @@ describe('Chatbot routes', () => {
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
   });
 
+  it('POST /api/v2/chatbot/convert prefers existing workflow ownership over a mismatched patient session cookie when session.patientId is null', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: null,
+    }));
+    mockServices.aiChatSessionRepo.attachPatient.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'workflow-msg-legacy-convert',
+        role: 'SYSTEM',
+        metadata: {
+          workflow: {
+            kind: 'CONVERT',
+            requestedAction: 'CONSULT_CONVERSION',
+            patientId: 'patient-1',
+            caseId: 'case-1',
+          },
+        },
+      }),
+    ]);
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-other',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+
+    const res = await app.request('/api/v2/chatbot/convert', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123; patient_session=wrong-patient-session',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        requestedAction: 'CONSULT_CONVERSION',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotConvertResponseSchema.parse(await res.json());
+    expect(json.patientId).toBe('patient-1');
+    expect(json.caseId).toBe('case-1');
+    expect(json.alreadyExists).toBe(true);
+    expect(mockServices.aiChatSessionRepo.attachPatient).toHaveBeenCalledWith('session-1', 'patient-1');
+    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(res.headers.get('set-cookie')).toContain('patient_session=patient-token');
+  });
+
   it('POST /api/v2/chatbot/convert passes authenticatedPatientId to onboarding for a logged-in patient starting a first case', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -1069,6 +1127,65 @@ describe('Chatbot routes', () => {
         }),
       }),
     }));
+  });
+
+  it('POST /api/v2/chatbot/escalate prefers existing workflow ownership over a mismatched patient session cookie when session.patientId is null', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: null,
+      status: 'ESCALATED',
+    }));
+    mockServices.aiChatSessionRepo.attachPatient.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+      status: 'ESCALATED',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeEscalationMessage({
+        metadata: {
+          workflow: {
+            kind: 'ESCALATE',
+            patientId: 'patient-1',
+            caseId: 'case-1',
+            ticketId: 'ticket-1',
+          },
+        },
+      }),
+    ]);
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-other',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+
+    const res = await app.request('/api/v2/chatbot/escalate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123; patient_session=wrong-patient-session',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        reason: 'Need follow-up help',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotEscalateResponseSchema.parse(await res.json());
+    expect(json.patientId).toBe('patient-1');
+    expect(json.caseId).toBe('case-1');
+    expect(json.ticketId).toBe('ticket-1');
+    expect(json.alreadyExists).toBe(true);
+    expect(mockServices.aiChatSessionRepo.attachPatient).toHaveBeenCalledWith('session-1', 'patient-1');
+    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(res.headers.get('set-cookie')).toContain('patient_session=patient-token');
   });
 
   it('POST /api/v2/chatbot/escalate passes authenticatedPatientId to onboarding when the logged-in patient starts the first escalation flow', async () => {

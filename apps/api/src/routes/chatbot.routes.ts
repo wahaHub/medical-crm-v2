@@ -260,20 +260,21 @@ chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
     return authorized;
   }
 
-  const patientSync = await attachPatientFromCookie(c, svc, session);
-  if (patientSync.error) {
-    return patientSync.error;
-  }
-  session = patientSync.session;
-
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, 200);
   const existingWorkflow = extractWorkflowState(messages);
   const existingAction = existingWorkflow.lastConvertAction ?? body.requestedAction ?? 'CONSULT_CONVERSION';
 
-  if (existingWorkflow.caseId) {
-    if (!session.patientId && existingWorkflow.patientId) {
-      session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, existingWorkflow.patientId)) ?? session;
+  if (!session.patientId && existingWorkflow.patientId) {
+    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, existingWorkflow.patientId)) ?? session;
+  } else {
+    const patientSync = await attachPatientFromCookie(c, svc, session);
+    if (patientSync.error) {
+      return patientSync.error;
     }
+    session = patientSync.session;
+  }
+
+  if (existingWorkflow.caseId) {
     const { restoreToken } = await ensurePatientSessionCookies(c, svc, existingWorkflow.patientId ?? session.patientId);
     return c.json({
       sessionId: session.sessionId,
@@ -337,14 +338,18 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
     return authorized;
   }
 
-  const patientSync = await attachPatientFromCookie(c, svc, session);
-  if (patientSync.error) {
-    return patientSync.error;
-  }
-  session = patientSync.session;
-
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, 200);
   const existingWorkflow = extractWorkflowState(messages);
+  if (!session.patientId && existingWorkflow.patientId) {
+    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, existingWorkflow.patientId)) ?? session;
+  } else {
+    const patientSync = await attachPatientFromCookie(c, svc, session);
+    if (patientSync.error) {
+      return patientSync.error;
+    }
+    session = patientSync.session;
+  }
+
   if (existingWorkflow.ticketId) {
     const { restoreToken } = await ensurePatientSessionCookies(c, svc, existingWorkflow.patientId ?? session.patientId);
     if (session.status !== 'ESCALATED') {

@@ -322,7 +322,7 @@ describe('Chatbot routes', () => {
     );
   });
 
-  it('POST /api/v2/chatbot/chat synthesizes rich message blocks for action-driven responses', async () => {
+  it('POST /api/v2/chatbot/chat serializes blocks on the wire for action-driven responses', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-123',
@@ -349,9 +349,14 @@ describe('Chatbot routes', () => {
     });
 
     expect(res.status).toBe(200);
-    const json = chatbotChatResponseSchema.parse(await res.json());
+    const rawJson = await res.json();
+    expect(rawJson).toMatchObject({
+      blocks: [],
+    });
+
+    const json = chatbotChatResponseSchema.parse(rawJson);
     expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect((json as Record<string, unknown>)['blocks']).toEqual([]);
+    expect(json.blocks).toEqual([]);
   });
 
   it('POST /api/v2/chatbot/chat normalizes legacy public nextAction values before schema validation', async () => {

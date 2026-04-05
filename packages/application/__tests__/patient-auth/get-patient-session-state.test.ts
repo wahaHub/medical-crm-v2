@@ -346,4 +346,55 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.selectedHospitalIds).toEqual(['hospital-2']);
     expect(result.caseId).toBe('case-4');
   });
+
+  it('nulls out snapshot selectedHospitalId when it is no longer in the active CHC set', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: null,
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-5',
+        patientName: 'Hao Wang',
+        patientCountry: 'China',
+        structuredData: null,
+        createdAt: new Date('2026-03-06T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([
+      { hospitalId: 'hospital-1', removedAt: null },
+      { hospitalId: 'hospital-2', removedAt: null },
+    ]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-5', caseId: 'case-5', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-5',
+      statusSnapshot: {
+        selectedHospitalId: 'hospital-stale',
+        pendingOffer: null,
+        pendingQuestion: null,
+        lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        conversationSummary: 'Previously selected a hospital that is no longer active.',
+      },
+    });
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.selectedHospitalId).toBeNull();
+    expect(result.selectedHospitalIds).toEqual(['hospital-1', 'hospital-2']);
+    expect(result.chatbotOrchestrationState.selectedHospitalId).toBeNull();
+    expect(result.chatbotOrchestrationState.selectedHospitalIds).toEqual(['hospital-1', 'hospital-2']);
+  });
 });

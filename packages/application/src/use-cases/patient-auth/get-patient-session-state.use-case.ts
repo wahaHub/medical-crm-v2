@@ -1,4 +1,5 @@
 import type {
+  AiChatPendingState,
   IAiChatSessionRepository,
   ICaseRepository,
   ICHCRepository,
@@ -53,8 +54,8 @@ export interface PatientSessionState {
     selectedHospitalId: string | null;
     selectedHospitalIds: string[];
     conversationSummary: string;
-    pendingOffer: string | null;
-    pendingQuestion: string | null;
+    pendingOffer: AiChatPendingState | null;
+    pendingQuestion: AiChatPendingState | null;
     lastNextAction: string | null;
   };
 }
@@ -93,8 +94,10 @@ export class GetPatientSessionStateUseCase {
       .map((contact) => contact.hospitalId);
     const widgetSessionId = `widget-chat:${patient.id}:${latestCase?.id ?? 'pending'}`;
     const aiChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId);
-    const selectedHospitalId = aiChatSession?.statusSnapshot.selectedHospitalId
-      ?? (selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null);
+    const snapshotSelectedHospitalId = aiChatSession?.statusSnapshot.selectedHospitalId ?? null;
+    const selectedHospitalId = snapshotSelectedHospitalId && selectedHospitalIds.includes(snapshotSelectedHospitalId)
+      ? snapshotSelectedHospitalId
+      : (selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null);
 
     return {
       id: patient.id,

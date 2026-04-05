@@ -22,6 +22,7 @@ export const chatbotProtectedRoutes = new OpenAPIHono();
 const app = new OpenAPIHono();
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
+const PATIENT_RESTORE_COOKIE = 'patient_restore';
 
 function getDifyChatApiKey(): string | null {
   return process.env['DIFY_APP_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? null;
@@ -128,6 +129,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
         hospitalType: body.hospitalType,
         sessionId: body.sessionId,
         assistantMessageId,
+        pageContextJson: body.pageContext ? JSON.stringify(body.pageContext) : 'null',
         currentStatus: session.statusSnapshot,
         conversationSummary: session.statusSnapshot.conversationSummary,
         pendingOffer: session.statusSnapshot.pendingOffer,
@@ -272,11 +274,12 @@ chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
     if (!session.patientId && existingWorkflow.patientId) {
       session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, existingWorkflow.patientId)) ?? session;
     }
-    await ensurePatientSessionCookie(c, svc, existingWorkflow.patientId ?? session.patientId);
+    const { restoreToken } = await ensurePatientSessionCookies(c, svc, existingWorkflow.patientId ?? session.patientId);
     return c.json({
       sessionId: session.sessionId,
       patientId: existingWorkflow.patientId ?? session.patientId,
       caseId: existingWorkflow.caseId,
+      restoreToken: restoreToken ?? undefined,
       requestedAction: existingAction,
       alreadyExists: true,
     }, 200);
@@ -297,6 +300,7 @@ chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
     sessionId: session.sessionId,
     patientId: ensured.patientId,
     caseId: ensured.caseId,
+    restoreToken: ensured.restoreToken,
     requestedAction: body.requestedAction ?? 'CONSULT_CONVERSION',
     isExistingPatient: ensured.isExistingPatient,
     alreadyExists: false,
@@ -342,7 +346,7 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, 200);
   const existingWorkflow = extractWorkflowState(messages);
   if (existingWorkflow.ticketId) {
-    await ensurePatientSessionCookie(c, svc, existingWorkflow.patientId ?? session.patientId);
+    const { restoreToken } = await ensurePatientSessionCookies(c, svc, existingWorkflow.patientId ?? session.patientId);
     if (session.status !== 'ESCALATED') {
       session = (await svc.aiChatSessionRepo.updateStatus(session.sessionId, 'ESCALATED')) ?? session;
     }
@@ -351,6 +355,7 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
       patientId: existingWorkflow.patientId ?? session.patientId,
       caseId: existingWorkflow.caseId,
       ticketId: existingWorkflow.ticketId,
+      restoreToken: restoreToken ?? undefined,
       alreadyExists: true,
     }, 200);
   }
@@ -391,6 +396,7 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
     patientId: ensured.patientId,
     caseId: ensured.caseId,
     ticketId: ticket.id,
+    restoreToken: ensured.restoreToken ?? undefined,
     alreadyExists: false,
   }, 200);
 });
@@ -579,8 +585,15 @@ function setChatbotSessionSecretCookie(c: Context, value: string): void {
   });
 }
 
-function setPatientSessionCookie(c: Context, value: string): void {
-  setCookie(c, PATIENT_SESSION_COOKIE, value, {
+function setPatientSessionCookies(c: Context, sessionToken: string, restoreCookie: string): void {
+  setCookie(c, PATIENT_SESSION_COOKIE, sessionToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 24 * 60 * 60,
+  });
+  setCookie(c, PATIENT_RESTORE_COOKIE, restoreCookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Lax',
@@ -589,17 +602,43 @@ function setPatientSessionCookie(c: Context, value: string): void {
   });
 }
 
-async function ensurePatientSessionCookie(
+async function ensurePatientSessionCookies(
   c: Context,
   svc: ReturnType<typeof getServices>,
   patientId: string | null | undefined,
-): Promise<void> {
-  if (!patientId || getCookie(c, PATIENT_SESSION_COOKIE)) {
-    return;
+): Promise<{ restoreToken: string | null }> {
+  if (!patientId) {
+    return { restoreToken: null };
   }
 
-  const token = await svc.patientAuthService.createSessionToken(patientId);
-  setPatientSessionCookie(c, token);
+  const currentSessionCookie = getCookie(c, PATIENT_SESSION_COOKIE);
+  let hasMatchingSession = false;
+
+  if (currentSessionCookie) {
+    try {
+      const session = await svc.patientAuthService.verifySessionToken(currentSessionCookie);
+      hasMatchingSession = session.userId === patientId;
+    } catch {
+      hasMatchingSession = false;
+    }
+  }
+
+  const restoreArtifacts = await svc.patientAuthService.createGuestRestoreArtifacts(patientId);
+
+  if (hasMatchingSession) {
+    setCookie(c, PATIENT_RESTORE_COOKIE, restoreArtifacts.restoreCookie, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax',
+      path: '/',
+      maxAge: 24 * 60 * 60,
+    });
+    return { restoreToken: restoreArtifacts.restoreToken };
+  }
+
+  const sessionToken = await svc.patientAuthService.createSessionToken(patientId);
+  setPatientSessionCookies(c, sessionToken, restoreArtifacts.restoreCookie);
+  return { restoreToken: restoreArtifacts.restoreToken };
 }
 
 async function ensureCaseForSession(
@@ -618,6 +657,7 @@ async function ensureCaseForSession(
   patientId: string;
   caseId: string;
   isExistingPatient: boolean;
+  restoreToken: string;
 }> {
   const onboarding = await svc.initOnboarding.execute({
     email: input.email,
@@ -626,7 +666,7 @@ async function ensureCaseForSession(
     destination: input.country,
   });
 
-  setPatientSessionCookie(c, onboarding.token);
+  setPatientSessionCookies(c, onboarding.token, onboarding.restoreCookie);
   session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, onboarding.patientId)) ?? session;
 
   const caseEntity = await svc.caseRepo.findById(onboarding.caseId);
@@ -642,6 +682,7 @@ async function ensureCaseForSession(
     patientId: onboarding.patientId,
     caseId: onboarding.caseId,
     isExistingPatient: onboarding.isExistingPatient,
+    restoreToken: onboarding.restoreToken,
   };
 }
 
@@ -663,6 +704,7 @@ async function ensureExistingCaseForSession(
   patientId: string;
   caseId: string;
   isExistingPatient: boolean;
+  restoreToken: string | null;
 }> {
   const caseEntity = await svc.caseRepo.findById(caseId);
   if (!caseEntity) {
@@ -670,7 +712,7 @@ async function ensureExistingCaseForSession(
   }
 
   const patientId = preferredPatientId ?? caseEntity.patientId;
-  await ensurePatientSessionCookie(c, svc, patientId);
+  const { restoreToken } = await ensurePatientSessionCookies(c, svc, patientId);
 
   if (!session.patientId) {
     session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, patientId)) ?? session;
@@ -684,6 +726,7 @@ async function ensureExistingCaseForSession(
     patientId,
     caseId,
     isExistingPatient: true,
+    restoreToken,
   };
 }
 
@@ -1007,7 +1050,25 @@ function normalizeRiskLevel(value: string | undefined): import('@medical-crm/dom
 }
 
 function normalizeNextAction(value: string | undefined): import('@medical-crm/domain').AiChatNextAction | null {
-  if (value === 'ANSWER' || value === 'CONSULT_CONVERSION' || value === 'CREATE_CASE' || value === 'REQUEST_DOCS' || value === 'ESCALATE' || value === 'SAFETY') return value;
+  if (
+    value === 'ANSWER'
+    || value === 'CONSULT_CONVERSION'
+    || value === 'CREATE_CASE'
+    || value === 'REQUEST_DOCS'
+    || value === 'ESCALATE'
+    || value === 'SAFETY'
+    || value === 'ANSWER_FAQ'
+    || value === 'EXPLAIN_DOC_UPLOAD'
+    || value === 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
+    || value === 'EXPLAIN_CONSULT_PROCESS'
+    || value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS'
+    || value === 'SHOW_HOSPITAL_RECOMMENDATIONS'
+    || value === 'REQUEST_DOC_UPLOAD'
+    || value === 'INVITE_ONLINE_CONSULT'
+    || value === 'SHOW_PACKAGE'
+    || value === 'HUMAN_HANDOFF'
+    || value === 'SAFETY_HANDOFF'
+  ) return value;
   return null;
 }
 

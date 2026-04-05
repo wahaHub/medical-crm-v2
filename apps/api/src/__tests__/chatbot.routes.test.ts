@@ -28,6 +28,7 @@ const mockServices = {
   patientAuthService: {
     verifySessionToken: vi.fn(),
     createSessionToken: vi.fn(),
+    createGuestRestoreArtifacts: vi.fn(),
   },
   mediaUpload: {
     createUploadIntent: vi.fn(),
@@ -154,6 +155,10 @@ describe('Chatbot routes', () => {
     }));
     mockServices.aiChatMessageRepo.deleteById.mockResolvedValue(true);
     mockServices.patientAuthService.createSessionToken.mockResolvedValue('patient-token');
+    mockServices.patientAuthService.createGuestRestoreArtifacts.mockResolvedValue({
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+    });
   });
 
   it('POST /api/v2/chatbot/chat returns normalized structured response without exposing dify conversation id', async () => {
@@ -302,6 +307,11 @@ describe('Chatbot routes', () => {
     expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         inputs: expect.objectContaining({
+          pageContextJson: JSON.stringify({
+            type: 'HOSPITAL_DETAIL',
+            hospitalId: 'hospital-123',
+            hospitalName: 'Medora Seoul',
+          }),
           pageContext: {
             type: 'HOSPITAL_DETAIL',
             hospitalId: 'hospital-123',
@@ -310,6 +320,38 @@ describe('Chatbot routes', () => {
         }),
       }),
     );
+  });
+
+  it('POST /api/v2/chatbot/chat synthesizes rich message blocks for action-driven responses', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-123',
+      answer: JSON.stringify({
+        answer: 'To move forward, please upload your recent reports first.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        responseMode: 'guided_upload_request',
+        reasonCodes: ['documents_required_before_recommendation'],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'What do you need from me before you can recommend hospitals?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect((json as Record<string, unknown>)['blocks']).toEqual([]);
   });
 
   it('POST /api/v2/chatbot/chat rejects invalid pageContext payloads', async () => {
@@ -793,9 +835,64 @@ describe('Chatbot routes', () => {
     const json = chatbotConvertResponseSchema.parse(await res.json());
     expect(json.caseId).toBe('case-1');
     expect(json.patientId).toBe('patient-1');
+    expect(json.restoreToken).toBe('restore-token-123');
     expect(json.alreadyExists).toBe(true);
     expect(mockServices.initOnboarding.execute).not.toHaveBeenCalled();
     expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
+  });
+
+  it('POST /api/v2/chatbot/convert rotates patient cookies when the browser still has a different patient session', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'workflow-msg-1',
+        role: 'SYSTEM',
+        metadata: {
+          workflow: {
+            kind: 'CONVERT',
+            requestedAction: 'CONSULT_CONVERSION',
+            patientId: 'patient-1',
+            caseId: 'case-1',
+          },
+        },
+      }),
+    ]);
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-other',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+
+    const res = await app.request('/api/v2/chatbot/convert', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123; patient_session=wrong-patient-session; patient_restore=old-restore-cookie',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        requestedAction: 'CONSULT_CONVERSION',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotConvertResponseSchema.parse(await res.json());
+    expect(json.restoreToken).toBe('restore-token-123');
+    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('wrong-patient-session');
+    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(res.headers.get('set-cookie')).toContain('patient_session=patient-token');
+    expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
   });
 
   it('POST /api/v2/chatbot/escalate reuses an existing ticket workflow instead of creating a duplicate ticket', async () => {
@@ -833,6 +930,7 @@ describe('Chatbot routes', () => {
       patientId: 'patient-1',
       caseId: 'case-1',
       ticketId: 'ticket-1',
+      restoreToken: 'restore-token-123',
       alreadyExists: true,
     });
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
@@ -849,6 +947,8 @@ describe('Chatbot routes', () => {
       patientId: 'patient-2',
       caseId: 'case-2',
       token: 'patient-token-2',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
       isExistingPatient: false,
     });
     mockServices.caseRepo.findById.mockResolvedValue({
@@ -893,6 +993,7 @@ describe('Chatbot routes', () => {
       patientId: 'patient-2',
       caseId: 'case-2',
       ticketId: 'ticket-2',
+      restoreToken: 'restore-token-123',
       alreadyExists: false,
     });
     expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
@@ -946,6 +1047,7 @@ describe('Chatbot routes', () => {
       patientId: 'patient-1',
       caseId: 'case-1',
       ticketId: 'ticket-1',
+      restoreToken: 'restore-token-123',
       alreadyExists: true,
     });
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();

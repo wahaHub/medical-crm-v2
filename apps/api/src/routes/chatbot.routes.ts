@@ -505,7 +505,7 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       topic: asString(message.metadata.topic) ?? null,
       riskLevel: message.riskLevel,
       canAnswer: message.canAnswer,
-      nextAction: message.nextAction,
+      nextAction: normalizePublicNextAction(message.nextAction ?? undefined),
       secondaryAction: message.secondaryAction,
       responseMode: message.responseMode,
       citations: message.citations,
@@ -898,7 +898,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ?? asString(structuredMetadata.internalNextAction)
     ?? asString(structuredMetadata.internal_next_action)
     ?? null;
-  const publicNextAction = normalizeNextAction(parsedAnswer?.nextAction);
+  const publicNextAction = normalizePublicNextAction(parsedAnswer?.nextAction);
   const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
   const collectedFields = sanitizeNullableRecord(parsedAnswer?.collectedFields);
   const recommendedProviders = sanitizeRecordArray(parsedAnswer?.recommendedProviders);
@@ -951,16 +951,16 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     conversationId: asString(response.conversation_id),
     messageId: asString(response.message_id),
     taskId: asString(response.task_id),
-      metadata: {
-        ...metadata,
-        ...structuredMetadata,
-        engagementMode,
-        internalNextAction,
-        internalRiskLevel: parsedAnswer?.riskLevel ?? null,
-        publicNextAction,
-        topic,
-        structuredOutput: publicStructuredOutput,
-      },
+    metadata: {
+      ...metadata,
+      ...structuredMetadata,
+      engagementMode,
+      internalNextAction,
+      internalRiskLevel: parsedAnswer?.riskLevel ?? null,
+      publicNextAction,
+      topic,
+      structuredOutput: publicStructuredOutput,
+    },
   };
 }
 
@@ -1074,6 +1074,23 @@ function normalizeNextAction(value: string | undefined): import('@medical-crm/do
     || value === 'SHOW_PACKAGE'
     || value === 'HUMAN_HANDOFF'
     || value === 'SAFETY_HANDOFF'
+  ) return value;
+  return null;
+}
+
+function normalizePublicNextAction(value: string | undefined): import('@medical-crm/domain').AiChatNextAction | null {
+  if (value === 'ANSWER' || value === 'ANSWER_FAQ') return 'ANSWER_FAQ';
+  if (value === 'REQUEST_DOCS' || value === 'REQUEST_DOC_UPLOAD') return 'REQUEST_DOC_UPLOAD';
+  if (value === 'ESCALATE' || value === 'HUMAN_HANDOFF') return 'HUMAN_HANDOFF';
+  if (value === 'SAFETY' || value === 'SAFETY_HANDOFF') return 'SAFETY_HANDOFF';
+  if (
+    value === 'EXPLAIN_DOC_UPLOAD'
+    || value === 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
+    || value === 'EXPLAIN_CONSULT_PROCESS'
+    || value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS'
+    || value === 'SHOW_HOSPITAL_RECOMMENDATIONS'
+    || value === 'INVITE_ONLINE_CONSULT'
+    || value === 'SHOW_PACKAGE'
   ) return value;
   return null;
 }

@@ -6,12 +6,24 @@ import {
 } from '../chatbot.schema';
 
 describe('chatbotNextActionSchema', () => {
-  it('accepts the current backend-orchestrated public actions', () => {
-    expect(chatbotNextActionSchema.safeParse('ANSWER_FAQ').success).toBe(true);
-    expect(chatbotNextActionSchema.safeParse('EXPLAIN_MEDICAL_TRAVEL_PROCESS').success).toBe(true);
-    expect(chatbotNextActionSchema.safeParse('REQUEST_DOC_UPLOAD').success).toBe(true);
-    expect(chatbotNextActionSchema.safeParse('HUMAN_HANDOFF').success).toBe(true);
-    expect(chatbotNextActionSchema.safeParse('SAFETY_HANDOFF').success).toBe(true);
+  it('accepts the full intended public action set', () => {
+    const allowedActions = [
+      'ANSWER_FAQ',
+      'EXPLAIN_DOC_UPLOAD',
+      'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+      'EXPLAIN_CONSULT_PROCESS',
+      'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+      'SHOW_HOSPITAL_RECOMMENDATIONS',
+      'REQUEST_DOC_UPLOAD',
+      'INVITE_ONLINE_CONSULT',
+      'SHOW_PACKAGE',
+      'HUMAN_HANDOFF',
+      'SAFETY_HANDOFF',
+    ] as const;
+
+    for (const action of allowedActions) {
+      expect(chatbotNextActionSchema.safeParse(action).success).toBe(true);
+    }
   });
 
   it('rejects legacy public action names from the new response contract', () => {

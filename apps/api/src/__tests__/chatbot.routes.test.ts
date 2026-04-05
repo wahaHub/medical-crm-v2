@@ -354,6 +354,70 @@ describe('Chatbot routes', () => {
     expect((json as Record<string, unknown>)['blocks']).toEqual([]);
   });
 
+  it('POST /api/v2/chatbot/chat normalizes legacy public nextAction values before schema validation', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-legacy-next-action',
+      answer: JSON.stringify({
+        answer: 'Please upload your documents first.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'REQUEST_DOCS',
+        responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['documents_required_before_recommendation'],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-legacy-next-action',
+        hospitalType: 'COSMETIC',
+        message: 'What do you need before recommending hospitals?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+  });
+
+  it('POST /api/v2/chatbot/chat hides unsafe legacy nextAction values from the public contract', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-unsafe-legacy',
+      answer: JSON.stringify({
+        answer: 'We will connect you with our team.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'CONSULT_CONVERSION',
+        responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['conversion_requested'],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-unsafe-legacy',
+        hospitalType: 'COSMETIC',
+        message: 'I want to start a case now.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBeNull();
+  });
+
   it('POST /api/v2/chatbot/chat rejects invalid pageContext payloads', async () => {
     const res = await app.request('/api/v2/chatbot/chat', {
       method: 'POST',
@@ -749,6 +813,36 @@ describe('Chatbot routes', () => {
     expect(json.messages.map((message) => message.id)).toEqual(['msg-old', 'msg-new']);
     expect(json.messages.map((message) => message.content)).toEqual(['First question', 'Latest answer']);
     expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy workflow nextAction values before public serialization', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeEscalationMessage({
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+      makeMessage({
+        id: 'msg-old',
+        role: 'USER',
+        content: 'Please help',
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[1]?.nextAction).toBe('HUMAN_HANDOFF');
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} hides provider-failed assistant drafts', async () => {

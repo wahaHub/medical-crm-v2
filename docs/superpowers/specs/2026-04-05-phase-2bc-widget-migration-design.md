@@ -65,12 +65,17 @@ Because chat is locked until the base form is submitted, this intermediate histo
 
 Once the base form is submitted successfully, the backend must provision a canonical formal chat target immediately.
 
-This can be:
+For the new widget flow, the default canonical target is:
 
-- a chatbot session, or
-- a formal patient-admin conversation
+- a backend-owned chatbot session
 
-but it must be a real backend-owned target with a canonical identifier.
+This target is created or restored immediately after successful base-form submission and is the default destination for:
+
+- chatbot messages
+- chatbot attachments
+- rich-block-driven next-step orchestration
+
+A formal `patient-admin` conversation is a downstream artifact that may be created or attached later when the backend determines the workflow has entered a formal human conversation phase. It is not the default first chat target for the widget.
 
 The frontend must never have an unlocked chat composer without knowing where outgoing messages and attachments should be stored.
 
@@ -96,6 +101,15 @@ These surfaces are no longer phase-driven frontend logic. They only appear when 
 - consult booking card
 - human handoff text/link
 
+`HUMAN_HANDOFF` is not a passive text hint. It has a required backend side effect contract:
+
+- create a new human-handoff ticket when no active ticket exists
+- reuse the active ticket when one already exists for the same case/session context
+- notify the admin through the existing backend ticket/handoff pipeline
+- return user-facing follow-up content that includes:
+  - dashboard navigation for tracking the ticket and replies
+  - the support email `customer@medicaltourismchina.health`
+
 ## State Model
 
 ### Backend-persisted state
@@ -110,6 +124,7 @@ The backend owns all persistent business state needed for restore and continuity
 - formal conversations
 - formal message history
 - chatbot orchestration state
+- selected-hospital truth
 
 ### Chatbot orchestration state
 
@@ -150,6 +165,8 @@ These two layers come from the backend, but they are not the same thing and must
 - unsent input draft
 
 This state is not persisted as backend truth.
+
+Any selected-hospital state held in frontend context is only a mirror/cache for rendering or optimistic interaction. It is never the authoritative source of truth. The backend-owned selected-hospital state wins on restore and conflict resolution.
 
 ## Composer Rules
 
@@ -195,7 +212,7 @@ The context should remain responsible for:
 - widget/panel shell state
 - active formal conversation state
 - base-form completion state
-- selected hospital UI state
+- selected hospital UI mirror/cache state
 - syncing restored backend status into the UI
 
 ## What To Refactor Into Block Renderers

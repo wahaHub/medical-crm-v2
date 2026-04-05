@@ -439,9 +439,13 @@ describe('Chatbot routes', () => {
         metadata: {
           nextAction: 'REQUEST_DOCS',
           publicNextAction: 'REQUEST_DOCS',
+          next_action: 'REQUEST_DOCS',
+          public_next_action: 'REQUEST_DOCS',
           structuredOutput: {
             nextAction: 'REQUEST_DOCS',
             publicNextAction: 'REQUEST_DOCS',
+            next_action: 'REQUEST_DOCS',
+            public_next_action: 'REQUEST_DOCS',
           },
         },
         citations: [],
@@ -464,8 +468,65 @@ describe('Chatbot routes', () => {
     expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.metadata.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata.next_action).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata.public_next_action).toBe('REQUEST_DOC_UPLOAD');
     expect((json.metadata.structuredOutput as Record<string, unknown>).nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).publicNextAction).toBe('REQUEST_DOC_UPLOAD');
+  });
+
+  it('POST /api/v2/chatbot/chat persists raw assistant metadata while keeping public nextAction normalized', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-persist-raw',
+      answer: JSON.stringify({
+        answer: 'Please upload your documents first.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'REQUEST_DOCS',
+        responseMode: 'grounded_plus_guidance',
+        metadata: {
+          nextAction: 'REQUEST_DOCS',
+          publicNextAction: 'REQUEST_DOCS',
+          structuredOutput: {
+            nextAction: 'REQUEST_DOCS',
+            publicNextAction: 'REQUEST_DOCS',
+          },
+        },
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-persist-raw',
+        hospitalType: 'COSMETIC',
+        message: 'What do you need before recommending hospitals?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          nextAction: 'REQUEST_DOCS',
+          publicNextAction: 'REQUEST_DOCS',
+          structuredOutput: expect.objectContaining({
+            nextAction: 'REQUEST_DOCS',
+            metadata: expect.objectContaining({
+              nextAction: 'REQUEST_DOCS',
+              publicNextAction: 'REQUEST_DOCS',
+            }),
+          }),
+        }),
+      }),
+    );
   });
 
   it('POST /api/v2/chatbot/chat rejects invalid pageContext payloads', async () => {

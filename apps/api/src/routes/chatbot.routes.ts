@@ -885,11 +885,15 @@ function buildEscalationDescription(
 }
 
 function normalizeDifyChatResponse(response: Record<string, unknown>) {
-  const metadata = sanitizePublicMetadataDeep(asRecord(response.metadata));
+  const metadata = asRecord(response.metadata);
   const parsedAnswer = parseStructuredAnswer(response.answer);
   const citations = parsedAnswer?.citations ?? deriveCitations(metadata);
   const topic = parsedAnswer?.topic ?? null;
-  const structuredMetadata = sanitizePublicMetadataDeep(parsedAnswer?.metadata ?? {});
+  const structuredMetadata = asRecord(parsedAnswer?.metadata ?? {});
+  const rawNextAction = parsedAnswer?.nextAction ?? null;
+  const rawPublicNextAction = asString(structuredMetadata.publicNextAction)
+    ?? asString(structuredMetadata.public_next_action)
+    ?? rawNextAction;
   const engagementMode = parsedAnswer?.engagementMode
     ?? asString(structuredMetadata.engagementMode)
     ?? asString(structuredMetadata.engagement_mode)
@@ -913,7 +917,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
         topic,
         riskLevel: publicRiskLevel,
         canAnswer: parsedAnswer.canAnswer ?? null,
-        nextAction: publicNextAction,
+        nextAction: rawNextAction,
         secondaryAction: parsedAnswer.secondaryAction ?? null,
         responseMode: parsedAnswer.responseMode ?? null,
         collectedFields,
@@ -927,7 +931,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
           engagementMode,
           internalNextAction,
           internalRiskLevel: parsedAnswer.riskLevel ?? null,
-          publicNextAction,
+          publicNextAction: rawPublicNextAction,
           topic,
         },
       }
@@ -958,7 +962,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
       engagementMode,
       internalNextAction,
       internalRiskLevel: parsedAnswer?.riskLevel ?? null,
-      publicNextAction,
+      publicNextAction: rawPublicNextAction,
       topic,
       structuredOutput: publicStructuredOutput,
     },
@@ -1112,7 +1116,7 @@ function normalizeHistoryMetadataValue(value: unknown): unknown {
 
   const sanitized: Record<string, unknown> = {};
   for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-    if (key === 'publicNextAction' || key === 'nextAction') {
+    if (key === 'publicNextAction' || key === 'public_next_action' || key === 'nextAction' || key === 'next_action') {
       sanitized[key] = normalizePublicNextAction(asString(nestedValue));
       continue;
     }

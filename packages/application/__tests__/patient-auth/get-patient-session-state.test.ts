@@ -111,6 +111,10 @@ describe('GetPatientSessionStateUseCase', () => {
       { hospitalId: 'hospital-2', removedAt: null },
       { hospitalId: 'hospital-3', removedAt: new Date('2026-03-03T00:00:00Z') },
     ]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-hosp-1', caseId: 'case-2', category: 'HOSPITAL_PATIENT' },
+      { id: 'conv-other-case', caseId: 'case-1', category: 'HOSPITAL_PATIENT' },
+    ]);
     mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
       sessionId: 'widget-chat:patient-1:case-2',
       statusSnapshot: {
@@ -143,7 +147,7 @@ describe('GetPatientSessionStateUseCase', () => {
       patientCode: 'P001',
       preferredLanguage: 'en',
       caseId: 'case-2',
-      nextStep: 'select-hospitals',
+      nextStep: 'messages-ready',
       selectedHospitalId: 'hospital-2',
       selectedHospitalIds: ['hospital-1', 'hospital-2'],
       customHospitalRequest: 'Ruijin Hospital',
@@ -159,7 +163,7 @@ describe('GetPatientSessionStateUseCase', () => {
       },
       formalConversationState: {
         activeConversationId: expect.any(String),
-        conversationIds: [expect.any(String)],
+        conversationIds: [expect.any(String), 'conv-hosp-1'],
       },
       chatbotOrchestrationState: {
         sessionId: 'widget-chat:patient-1:case-2',

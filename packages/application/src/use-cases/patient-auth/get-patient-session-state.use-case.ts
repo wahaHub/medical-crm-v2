@@ -98,6 +98,7 @@ export class GetPatientSessionStateUseCase {
     const selectedHospitalId = snapshotSelectedHospitalId && selectedHospitalIds.includes(snapshotSelectedHospitalId)
       ? snapshotSelectedHospitalId
       : (selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null);
+    const nextStep = selectedHospitalIds.length > 0 ? 'messages-ready' : 'select-hospitals';
 
     return {
       id: patient.id,
@@ -118,7 +119,7 @@ export class GetPatientSessionStateUseCase {
       patientCode: patient.patientCode,
       preferredLanguage: patient.preferredLanguage,
       caseId: latestCase?.id ?? null,
-      nextStep: 'select-hospitals',
+      nextStep,
       selectedHospitalId,
       selectedHospitalIds,
       customHospitalRequest,
@@ -150,14 +151,21 @@ export class GetPatientSessionStateUseCase {
     caseId: string,
   ): Promise<{ activeConversationId: string; conversationIds: string[] }> {
     const conversations = await this.conversationRepo.findByPatientId(patientId);
-    const existingAdminConversation = conversations.find((conversation) =>
+    const currentCaseConversations = conversations.filter((conversation) =>
+      conversation.caseId === caseId
+      && (conversation.category === 'ADMIN_PATIENT' || conversation.category === 'HOSPITAL_PATIENT'),
+    );
+    const existingAdminConversation = currentCaseConversations.find((conversation) =>
       conversation.caseId === caseId && conversation.category === 'ADMIN_PATIENT',
     );
+    const hospitalConversationIds = currentCaseConversations
+      .filter((conversation) => conversation.category === 'HOSPITAL_PATIENT')
+      .map((conversation) => conversation.id);
 
     if (existingAdminConversation) {
       return {
         activeConversationId: existingAdminConversation.id,
-        conversationIds: [existingAdminConversation.id],
+        conversationIds: [existingAdminConversation.id, ...hospitalConversationIds],
       };
     }
 
@@ -178,7 +186,7 @@ export class GetPatientSessionStateUseCase {
     await this.conversationRepo.save(conversation);
     return {
       activeConversationId: conversation.id,
-      conversationIds: [conversation.id],
+      conversationIds: [conversation.id, ...hospitalConversationIds],
     };
   }
 }

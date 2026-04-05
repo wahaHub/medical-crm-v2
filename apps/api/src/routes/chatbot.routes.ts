@@ -664,6 +664,7 @@ async function ensureCaseForSession(
     name: input.name,
     preferredLanguage: 'en',
     destination: input.country,
+    authenticatedPatientId: session.patientId ?? undefined,
   });
 
   setPatientSessionCookies(c, onboarding.token, onboarding.restoreCookie);

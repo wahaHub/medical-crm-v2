@@ -895,6 +895,64 @@ describe('Chatbot routes', () => {
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
   });
 
+  it('POST /api/v2/chatbot/convert passes authenticatedPatientId to onboarding for a logged-in patient starting a first case', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-logged-in',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-logged-in',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.initOnboarding.execute.mockResolvedValue({
+      patientId: 'patient-logged-in',
+      caseId: 'case-new',
+      token: 'patient-token-logged-in',
+      restoreToken: 'restore-token-logged-in',
+      restoreCookie: 'restore-cookie-logged-in',
+      isExistingPatient: true,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-logged-in:case-new',
+      },
+      nextStep: 'select-hospitals',
+    });
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-new',
+      patientId: 'patient-logged-in',
+      patientName: null,
+      patientCountry: null,
+      conditionSummary: null,
+      structuredData: {},
+    });
+
+    const res = await app.request('/api/v2/chatbot/convert', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123; patient_session=patient-session-logged-in',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        requestedAction: 'CONSULT_CONVERSION',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.initOnboarding.execute).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'alice@example.com',
+      authenticatedPatientId: 'patient-logged-in',
+    }));
+  });
+
   it('POST /api/v2/chatbot/escalate reuses an existing ticket workflow instead of creating a duplicate ticket', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -1010,6 +1068,71 @@ describe('Chatbot routes', () => {
           ticketId: 'ticket-2',
         }),
       }),
+    }));
+  });
+
+  it('POST /api/v2/chatbot/escalate passes authenticatedPatientId to onboarding when the logged-in patient starts the first escalation flow', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-logged-in',
+      status: 'ACTIVE',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-logged-in',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.initOnboarding.execute.mockResolvedValue({
+      patientId: 'patient-logged-in',
+      caseId: 'case-esc',
+      token: 'patient-token-esc',
+      restoreToken: 'restore-token-esc',
+      restoreCookie: 'restore-cookie-esc',
+      isExistingPatient: true,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-logged-in:case-esc',
+      },
+      nextStep: 'select-hospitals',
+    });
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-esc',
+      patientId: 'patient-logged-in',
+      patientName: null,
+      patientCountry: null,
+      conditionSummary: null,
+      structuredData: {},
+    });
+    mockServices.createTicket.execute.mockResolvedValue({ id: 'ticket-esc' });
+    mockServices.aiChatSessionRepo.updateStatus.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      status: 'ESCALATED',
+      patientId: 'patient-logged-in',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+
+    const res = await app.request('/api/v2/chatbot/escalate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123; patient_session=patient-session-logged-in',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        reason: 'Need follow-up help',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.initOnboarding.execute).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'alice@example.com',
+      authenticatedPatientId: 'patient-logged-in',
     }));
   });
 

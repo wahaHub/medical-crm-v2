@@ -168,7 +168,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     resolvedIntent: normalized.resolvedIntent ?? normalized.intent,
     riskLevel: normalized.riskLevel,
     canAnswer: normalized.canAnswer,
-    nextAction: normalized.nextAction,
+    nextAction: normalized.storedNextAction,
     secondaryAction: normalized.secondaryAction,
     responseMode: normalized.responseMode,
     citations: normalized.citations,
@@ -193,7 +193,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     topic: normalized.topic,
     riskLevel: assistantMessage.riskLevel,
     canAnswer: assistantMessage.canAnswer,
-    nextAction: assistantMessage.nextAction,
+    nextAction: normalized.nextAction,
     secondaryAction: assistantMessage.secondaryAction,
     responseMode: assistantMessage.responseMode,
     citations: assistantMessage.citations,
@@ -511,7 +511,7 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       citations: message.citations,
       reasonCodes: message.reasonCodes,
       shortlist: message.shortlist,
-      metadata: sanitizePublicMetadataDeep(message.metadata),
+      metadata: normalizePublicMetadataForHistory(message.metadata),
       createdAt: message.createdAt.toISOString(),
     })),
   }, 200);
@@ -898,6 +898,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ?? asString(structuredMetadata.internalNextAction)
     ?? asString(structuredMetadata.internal_next_action)
     ?? null;
+  const storedNextAction = normalizeNextAction(parsedAnswer?.nextAction);
   const publicNextAction = normalizePublicNextAction(parsedAnswer?.nextAction);
   const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
   const collectedFields = sanitizeNullableRecord(parsedAnswer?.collectedFields);
@@ -961,6 +962,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
       topic,
       structuredOutput: publicStructuredOutput,
     },
+    storedNextAction,
   };
 }
 
@@ -1093,6 +1095,32 @@ function normalizePublicNextAction(value: string | undefined): import('@medical-
     || value === 'SHOW_PACKAGE'
   ) return value;
   return null;
+}
+
+function normalizePublicMetadataForHistory(value: Record<string, unknown>): Record<string, unknown> {
+  return normalizeHistoryMetadataValue(sanitizeUnknownValue(value)) as Record<string, unknown>;
+}
+
+function normalizeHistoryMetadataValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeHistoryMetadataValue(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    if (key === 'publicNextAction' || key === 'nextAction') {
+      sanitized[key] = normalizePublicNextAction(asString(nestedValue));
+      continue;
+    }
+
+    sanitized[key] = normalizeHistoryMetadataValue(nestedValue);
+  }
+
+  return sanitized;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

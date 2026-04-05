@@ -384,6 +384,12 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        nextAction: 'REQUEST_DOCS',
+      }),
+    );
   });
 
   it('POST /api/v2/chatbot/chat hides unsafe legacy nextAction values from the public contract', async () => {
@@ -843,6 +849,46 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
     expect(json.messages[1]?.nextAction).toBe('HUMAN_HANDOFF');
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy metadata nextAction fields before public serialization', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-legacy-metadata',
+        role: 'ASSISTANT',
+        content: 'Please upload your reports first.',
+        nextAction: 'REQUEST_DOCS',
+        metadata: {
+          publicNextAction: 'REQUEST_DOCS',
+          structuredOutput: {
+            nextAction: 'REQUEST_DOCS',
+            metadata: {
+              publicNextAction: 'REQUEST_DOCS',
+            },
+          },
+        },
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.messages[0]?.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).publicNextAction).toBe('REQUEST_DOC_UPLOAD');
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} hides provider-failed assistant drafts', async () => {

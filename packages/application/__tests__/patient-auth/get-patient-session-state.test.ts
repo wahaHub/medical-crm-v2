@@ -8,6 +8,7 @@ describe('GetPatientSessionStateUseCase', () => {
   let mockCaseRepo: any;
   let mockChcRepo: any;
   let mockConversationRepo: any;
+  let mockAiChatSessionRepo: any;
 
   beforeEach(() => {
     mockPatientRepo = {
@@ -41,6 +42,14 @@ describe('GetPatientSessionStateUseCase', () => {
       findByPatientId: vi.fn().mockResolvedValue([]),
       save: vi.fn(),
     };
+    mockAiChatSessionRepo = {
+      findBySessionId: vi.fn().mockResolvedValue(null),
+      findByDifyConversationId: vi.fn(),
+      save: vi.fn(),
+      attachPatient: vi.fn(),
+      updateStatus: vi.fn(),
+      patchStatus: vi.fn(),
+    };
 
     useCase = new GetPatientSessionStateUseCase(
       mockPatientRepo,
@@ -48,6 +57,7 @@ describe('GetPatientSessionStateUseCase', () => {
       mockCaseRepo,
       mockChcRepo,
       mockConversationRepo,
+      mockAiChatSessionRepo,
     );
   });
 
@@ -101,6 +111,16 @@ describe('GetPatientSessionStateUseCase', () => {
       { hospitalId: 'hospital-2', removedAt: null },
       { hospitalId: 'hospital-3', removedAt: new Date('2026-03-03T00:00:00Z') },
     ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-2',
+      statusSnapshot: {
+        selectedHospitalId: 'hospital-2',
+        pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: { shortlistId: 'shortlist-1' } },
+        pendingQuestion: { type: 'QUESTIONNAIRE', payload: { templateId: 'template-1' } },
+        lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
+      },
+    });
 
     const result = await useCase.execute({ patientId: 'patient-1' });
 
@@ -124,7 +144,7 @@ describe('GetPatientSessionStateUseCase', () => {
       preferredLanguage: 'en',
       caseId: 'case-2',
       nextStep: 'select-hospitals',
-      selectedHospitalId: 'hospital-1',
+      selectedHospitalId: 'hospital-2',
       selectedHospitalIds: ['hospital-1', 'hospital-2'],
       customHospitalRequest: 'Ruijin Hospital',
       medicalFormStatus: 'NOT_STARTED',
@@ -143,14 +163,15 @@ describe('GetPatientSessionStateUseCase', () => {
       },
       chatbotOrchestrationState: {
         sessionId: 'widget-chat:patient-1:case-2',
-        selectedHospitalId: 'hospital-1',
+        selectedHospitalId: 'hospital-2',
         selectedHospitalIds: ['hospital-1', 'hospital-2'],
-        conversationSummary: '',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: null,
+        conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
+        pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: { shortlistId: 'shortlist-1' } },
+        pendingQuestion: { type: 'QUESTIONNAIRE', payload: { templateId: 'template-1' } },
+        lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       },
     });
+    expect(mockAiChatSessionRepo.findBySessionId).toHaveBeenCalledWith('widget-chat:patient-1:case-2');
     expect(mockConversationRepo.findByPatientId).toHaveBeenCalledWith('patient-1');
     expect(mockConversationRepo.save).toHaveBeenCalledOnce();
   });

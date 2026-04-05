@@ -946,7 +946,7 @@ export function getServices(): AppServices {
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
       loginWithPassword: new LoginWithPasswordUseCase(patientRepo, patientAuthService),
       restoreGuestSession: new RestoreGuestSessionUseCase(patientRepo, patientAuthService),
-      getPatientSessionState: new GetPatientSessionStateUseCase(patientRepo, userRepo, caseRepo, chcRepo, conversationRepo),
+      getPatientSessionState: new GetPatientSessionStateUseCase(patientRepo, userRepo, caseRepo, chcRepo, conversationRepo, aiChatSessionRepo),
       setPassword: new SetPasswordUseCase(patientRepo),
 
       createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),

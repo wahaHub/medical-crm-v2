@@ -106,6 +106,10 @@ export class InitOnboardingUseCase {
     let patient;
     const isExisting = emailState.state === 'PATIENT';
 
+    if (input.authenticatedPatientId && emailState.state === 'NONE') {
+      throw new PatientAlreadyExistsError();
+    }
+
     if (emailState.state === 'PATIENT') {
       if (input.authenticatedPatientId !== emailState.userId) {
         throw new PatientAlreadyExistsError();

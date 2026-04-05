@@ -136,6 +136,21 @@ describe('InitOnboardingUseCase', () => {
     });
   });
 
+  it('rejects an authenticated onboarding submission that tries to fork identity onto a brand-new email', async () => {
+    mockEmailState({ state: 'NONE' });
+
+    await expect(useCase.execute({
+      email: 'brand-new@test.com',
+      name: 'Existing Patient',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      authenticatedPatientId: 'patient-123',
+    })).rejects.toBeInstanceOf(PatientAlreadyExistsError);
+
+    expect(mockPatientRepo.createTempPatient).not.toHaveBeenCalled();
+    expect(mockCaseRepo.save).not.toHaveBeenCalled();
+  });
+
   it('rejects an existing patient email for unauthenticated public onboarding submissions', async () => {
     mockEmailState({ state: 'PATIENT', userId: 'patient-123' });
 

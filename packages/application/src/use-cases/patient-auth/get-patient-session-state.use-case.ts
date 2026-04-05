@@ -1,4 +1,5 @@
 import type {
+  IAiChatSessionRepository,
   ICaseRepository,
   ICHCRepository,
   IConversationRepository,
@@ -65,6 +66,7 @@ export class GetPatientSessionStateUseCase {
     private readonly caseRepo: ICaseRepository,
     private readonly chcRepo: ICHCRepository,
     private readonly conversationRepo: IConversationRepository,
+    private readonly aiChatSessionRepo: IAiChatSessionRepository,
   ) {}
 
   async execute(input: { patientId: string }): Promise<PatientSessionState> {
@@ -89,8 +91,10 @@ export class GetPatientSessionStateUseCase {
     const selectedHospitalIds = chcs
       .filter((contact) => !contact.removedAt)
       .map((contact) => contact.hospitalId);
-    const selectedHospitalId = selectedHospitalIds[0] ?? null;
     const widgetSessionId = `widget-chat:${patient.id}:${latestCase?.id ?? 'pending'}`;
+    const aiChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId);
+    const selectedHospitalId = aiChatSession?.statusSnapshot.selectedHospitalId
+      ?? (selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null);
 
     return {
       id: patient.id,
@@ -130,10 +134,10 @@ export class GetPatientSessionStateUseCase {
         sessionId: widgetSessionId,
         selectedHospitalId,
         selectedHospitalIds,
-        conversationSummary: '',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: null,
+        conversationSummary: aiChatSession?.statusSnapshot.conversationSummary ?? '',
+        pendingOffer: aiChatSession?.statusSnapshot.pendingOffer ?? null,
+        pendingQuestion: aiChatSession?.statusSnapshot.pendingQuestion ?? null,
+        lastNextAction: aiChatSession?.statusSnapshot.lastNextAction ?? null,
       },
     };
   }

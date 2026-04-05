@@ -437,10 +437,12 @@ app.get('/cases/:caseId/milestones', async (c) => {
   return c.json(result);
 });
 
+const intakeCaseIdParamSchema = z.object({ caseId: z.string().uuid() });
+
 // GET /intake/:caseId/response — patient-safe QC response retrieval
 app.get('/intake/:caseId/response', async (c) => {
+  const { caseId } = intakeCaseIdParamSchema.parse({ caseId: c.req.param('caseId') });
   const session = c.get('patientSession');
-  const caseId = c.req.param('caseId');
   const { getPatientQCResponse } = getServices();
   const result = await getPatientQCResponse.execute({ caseId, patientId: session.userId });
   if (result === null) {
@@ -451,9 +453,9 @@ app.get('/intake/:caseId/response', async (c) => {
 
 // POST /intake/:caseId/response — submit QC answers, marks case medicalFormStatus = SUBMITTED
 app.post('/intake/:caseId/response', async (c) => {
+  const { caseId } = intakeCaseIdParamSchema.parse({ caseId: c.req.param('caseId') });
   const body = submitPatientQCResponseSchema.parse(await c.req.json());
   const session = c.get('patientSession');
-  const caseId = c.req.param('caseId');
   const { submitPatientQCResponse } = getServices();
   const result = await submitPatientQCResponse.execute({
     caseId,

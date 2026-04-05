@@ -1,6 +1,6 @@
 import type { IQuestionCollectorRepository, ICaseRepository } from '@medical-crm/domain';
 import { QCResponse } from '@medical-crm/domain';
-import { generateId, ForbiddenError, NotFoundError } from '@medical-crm/utils';
+import { generateId, ForbiddenError, NotFoundError, ConflictError } from '@medical-crm/utils';
 import { asRecord } from '../../utils/structured-data.js';
 import type { MedicalFormStatus } from '../../utils/structured-data.js';
 import type { QCResponseDTO } from '../../dtos/question-collector.dto.js';
@@ -28,6 +28,21 @@ export class SubmitPatientQCResponseUseCase {
       throw new ForbiddenError('Access denied to this case');
     }
 
+    // Verify template exists
+    const template = await this.qcRepo.findTemplateById(input.templateId);
+    if (!template) {
+      throw new NotFoundError(`Template ${input.templateId} not found`);
+    }
+
+    // Prevent resubmission once the medical form has already been submitted
+    const existingSelection = asRecord(caseEntity.structuredData?.['patientHospitalSelection']);
+    if (existingSelection?.['medicalFormStatus'] === 'SUBMITTED') {
+      throw new ConflictError('Medical form has already been submitted for this case');
+    }
+
+    // Translation is not enqueued here — the admin can trigger translation separately;
+    // patient medical form answers are stored as-is.
+
     // Persist QC response
     let entity = await this.qcRepo.findResponseByCaseId(input.caseId);
 
@@ -54,7 +69,6 @@ export class SubmitPatientQCResponseUseCase {
     // Update case structured data: medicalFormStatus = SUBMITTED
     const now = new Date();
     const newStatus: MedicalFormStatus = 'SUBMITTED';
-    const existingSelection = asRecord(caseEntity.structuredData?.['patientHospitalSelection']);
     caseEntity.structuredData = {
       ...(caseEntity.structuredData ?? {}),
       patientHospitalSelection: {

@@ -10,7 +10,7 @@ import { SubmitIntakeUseCase } from '../src/use-cases/patient-intake/submit-inta
 import { SubmitPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/submit-patient-qc-response.use-case.js';
 import { GetPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/get-patient-qc-response.use-case.js';
 import type { ICaseRepository, IConversationRepository, IQuoteRepository, ICHCRepository, IQuestionCollectorRepository } from '@medical-crm/domain';
-import { Case, CaseNumber, Conversation, Quote, QuoteNumber, CaseHospitalContact, QCResponse } from '@medical-crm/domain';
+import { Case, CaseNumber, Conversation, Quote, QuoteNumber, CaseHospitalContact, QCResponse, QCTemplate } from '@medical-crm/domain';
 
 // ——— Factories ———
 function makeMockCase(overrides: Partial<ConstructorParameters<typeof Case>[0]> = {}): Case {
@@ -595,6 +595,22 @@ describe('SubmitIntakeUseCase', () => {
 
 // ——— QC response helpers ———
 
+function makeMockQCTemplate(overrides: Partial<ConstructorParameters<typeof QCTemplate>[0]> = {}): QCTemplate {
+  return new QCTemplate({
+    id: 'template-1',
+    templateName: 'Default Template',
+    category: 'DEFAULT',
+    procedureTypes: [],
+    questions: [],
+    version: 1,
+    isActive: true,
+    createdBy: null,
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+    ...overrides,
+  });
+}
+
 function makeMockQCResponse(overrides: Partial<ConstructorParameters<typeof QCResponse>[0]> = {}): QCResponse {
   return new QCResponse({
     id: 'qcr-1',
@@ -644,6 +660,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
   it('patient can submit response for their own case', async () => {
     const caseEntity = makeMockCase();
     vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findTemplateById).mockResolvedValue(makeMockQCTemplate());
     vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(null);
     const savedResponse = makeMockQCResponse();
     vi.mocked(qcRepo.saveResponse).mockResolvedValue(savedResponse);
@@ -665,6 +682,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
   it('marks case medicalFormStatus as SUBMITTED after submit', async () => {
     const caseEntity = makeMockCase();
     vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findTemplateById).mockResolvedValue(makeMockQCTemplate());
     vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(null);
     const savedResponse = makeMockQCResponse();
     vi.mocked(qcRepo.saveResponse).mockResolvedValue(savedResponse);
@@ -684,24 +702,38 @@ describe('SubmitPatientQCResponseUseCase', () => {
     expect(selection?.['medicalFormResponseId']).toBe('qcr-1');
   });
 
-  it('resubmits and updates existing QC response', async () => {
-    const caseEntity = makeMockCase();
+  it('throws ConflictError when medical form is already SUBMITTED', async () => {
+    const caseEntity = makeMockCase({
+      structuredData: {
+        patientHospitalSelection: {
+          medicalFormStatus: 'SUBMITTED',
+          medicalFormSubmittedAt: '2026-04-01T00:00:00.000Z',
+          medicalFormResponseId: 'qcr-existing',
+        },
+      },
+    });
     vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
-    const existingResponse = makeMockQCResponse({ completionStatus: 'IN_PROGRESS' });
-    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(existingResponse);
-    vi.mocked(qcRepo.saveResponse).mockResolvedValue(existingResponse);
-    vi.mocked(caseRepo.save).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findTemplateById).mockResolvedValue(makeMockQCTemplate());
 
-    await useCase.execute({
+    await expect(useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
       templateId: 'template-1',
       responses: { q1: 'updated answer' },
-    });
+    })).rejects.toThrow('Medical form has already been submitted for this case');
+  });
 
-    expect(existingResponse.completionStatus).toBe('COMPLETED');
-    expect(existingResponse.responses).toEqual({ q1: 'updated answer' });
-    expect(qcRepo.saveResponse).toHaveBeenCalledWith(existingResponse);
+  it('throws NotFoundError when templateId does not exist', async () => {
+    const caseEntity = makeMockCase();
+    vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findTemplateById).mockResolvedValue(null);
+
+    await expect(useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'nonexistent-template',
+      responses: {},
+    })).rejects.toThrow('Template nonexistent-template not found');
   });
 
   it('access is forbidden for other patients\' cases on submit', async () => {

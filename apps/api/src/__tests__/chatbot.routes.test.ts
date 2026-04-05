@@ -1001,6 +1001,41 @@ describe('Chatbot routes', () => {
     expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).publicNextAction).toBe('REQUEST_DOC_UPLOAD');
   });
 
+  it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy workflow requestedAction fields in public metadata', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-legacy-workflow-action',
+        role: 'ASSISTANT',
+        content: 'We can help you request an online consultation.',
+        nextAction: 'CONSULT_CONVERSION',
+        metadata: {
+          workflow: {
+            kind: 'CONVERT',
+            requestedAction: 'CONSULT_CONVERSION',
+          },
+        },
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.nextAction).toBe('INVITE_ONLINE_CONSULT');
+    expect(((json.messages[0]?.metadata.workflow) as Record<string, unknown>).requestedAction).toBe('INVITE_ONLINE_CONSULT');
+  });
+
   it('GET /api/v2/chatbot/history/{sessionId} hides provider-failed assistant drafts', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({

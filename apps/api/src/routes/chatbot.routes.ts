@@ -1119,7 +1119,14 @@ function normalizeHistoryMetadataValue(value: unknown): unknown {
 
   const sanitized: Record<string, unknown> = {};
   for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-    if (key === 'publicNextAction' || key === 'public_next_action' || key === 'nextAction' || key === 'next_action') {
+    if (
+      key === 'publicNextAction'
+      || key === 'public_next_action'
+      || key === 'nextAction'
+      || key === 'next_action'
+      || key === 'requestedAction'
+      || key === 'requested_action'
+    ) {
       sanitized[key] = normalizePublicNextAction(asString(nestedValue));
       continue;
     }

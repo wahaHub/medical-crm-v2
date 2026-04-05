@@ -86,7 +86,7 @@ describe('Chatbot routes integration', () => {
         riskLevel: 'NORMAL',
         canAnswer: true,
         topic: 'DOCUMENTS',
-        nextAction: 'REQUEST_DOCS',
+        nextAction: 'REQUEST_DOC_UPLOAD',
         secondaryAction: 'CONSULT_CONVERSION',
         responseMode: 'grounded_plus_guidance',
         reasonCodes: ['documents_requested'],
@@ -112,7 +112,7 @@ describe('Chatbot routes integration', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.sessionId).toBe(sessionId);
     expect(json.topic).toBe('DOCUMENTS');
-    expect(json.nextAction).toBe('REQUEST_DOCS');
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.secondaryAction).toBe('CONSULT_CONVERSION');
     expect(json.responseMode).toBe('grounded_plus_guidance');
     expect(json.reasonCodes).toEqual(['documents_requested']);
@@ -130,7 +130,7 @@ describe('Chatbot routes integration', () => {
     expect(messages).toHaveLength(2);
     expect(messages[0]?.role).toBe('ASSISTANT');
     expect(messages[1]?.role).toBe('USER');
-    expect(messages[0]?.nextAction).toBe('REQUEST_DOCS');
+    expect(messages[0]?.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(messages[0]?.resolvedIntent).toBe('CONSULT');
     expect(messages[0]?.secondaryAction).toBe('CONSULT_CONVERSION');
     expect(messages[0]?.responseMode).toBe('grounded_plus_guidance');
@@ -178,7 +178,7 @@ describe('Chatbot routes integration', () => {
       intent: 'FAQ',
       riskLevel: 'NORMAL',
       canAnswer: true,
-      nextAction: 'ANSWER',
+      nextAction: 'ANSWER_FAQ',
       citations: [{ sourceTitle: 'FAQ', snippet: 'Clinic hours are 9-5.' }],
       metadata: {},
       createdAt: new Date('2026-03-27T08:05:00Z'),
@@ -198,7 +198,7 @@ describe('Chatbot routes integration', () => {
     expect(json.messages).toHaveLength(2);
     expect(json.messages[0]?.content).toBe('First question');
     expect(json.messages[1]?.content).toBe('Second answer');
-    expect(json.messages[1]?.nextAction).toBe('ANSWER');
+    expect(json.messages[1]?.nextAction).toBe('ANSWER_FAQ');
   }, 15000);
 
   it('POST /api/v2/chatbot/chat falls back safely when Dify returns plain text instead of structured JSON', async () => {

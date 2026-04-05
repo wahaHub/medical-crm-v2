@@ -171,7 +171,7 @@ describe('Chatbot routes', () => {
         riskLevel: 'NORMAL',
         canAnswer: true,
         topic: 'PROCEDURE',
-        nextAction: 'CONSULT_CONVERSION',
+        nextAction: 'REQUEST_DOC_UPLOAD',
         secondaryAction: 'REQUEST_DOCS',
         responseMode: 'grounded_plus_guidance',
         reasonCodes: ['consult_interest_detected'],
@@ -198,7 +198,7 @@ describe('Chatbot routes', () => {
     expect(json.sessionId).toBe('session-1');
     expect(json.intent).toBe('CONSULT');
     expect((json as Record<string, unknown>)['topic']).toBe('PROCEDURE');
-    expect(json.nextAction).toBe('CONSULT_CONVERSION');
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.secondaryAction).toBe('REQUEST_DOCS');
     expect((json as Record<string, unknown>)['responseMode']).toBe('grounded_plus_guidance');
     expect(json.reasonCodes).toEqual(['consult_interest_detected']);
@@ -236,7 +236,7 @@ describe('Chatbot routes', () => {
       expect.any(String),
       expect.objectContaining({
         resolvedIntent: 'CONSULT',
-        nextAction: 'CONSULT_CONVERSION',
+        nextAction: 'REQUEST_DOC_UPLOAD',
         secondaryAction: 'REQUEST_DOCS',
         responseMode: 'grounded_plus_guidance',
         reasonCodes: ['consult_interest_detected'],
@@ -264,7 +264,7 @@ describe('Chatbot routes', () => {
         riskLevel: 'NORMAL',
         canAnswer: true,
         topic: 'DOCUMENTS',
-        nextAction: 'ANSWER',
+        nextAction: 'ANSWER_FAQ',
         responseMode: 'grounded_answer',
         reasonCodes: ['faq_answer'],
         shortlist: [],
@@ -383,7 +383,7 @@ describe('Chatbot routes', () => {
         intent: 'SAFETY',
         riskLevel: 'HIGH_RISK',
         canAnswer: true,
-        nextAction: 'SAFETY',
+        nextAction: 'SAFETY_HANDOFF',
         responseMode: 'safety_only',
         metadata: {
           conversation_id: 'should-not-leak',
@@ -427,7 +427,7 @@ describe('Chatbot routes', () => {
         intent: 'FAQ',
         riskLevel: 'NORMAL',
         canAnswer: true,
-        nextAction: 'ANSWER',
+        nextAction: 'ANSWER_FAQ',
         responseMode: 'light_discovery_guidance',
         metadata: {
           rawResponse: { secret: true },
@@ -498,7 +498,7 @@ describe('Chatbot routes', () => {
         resolvedIntent: 'GENERAL_CONSULT',
         riskLevel: 'NORMAL',
         canAnswer: true,
-        nextAction: 'ANSWER',
+        nextAction: 'ANSWER_FAQ',
         secondaryAction: null,
         responseMode: 'light_discovery_guidance',
         engagementMode: 'LIGHT_DISCOVERY',
@@ -523,7 +523,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('ANSWER');
+    expect(json.nextAction).toBe('ANSWER_FAQ');
     expect(json.responseMode).toBe('light_discovery_guidance');
     expect(json.metadata).toMatchObject({
       engagementMode: 'LIGHT_DISCOVERY',
@@ -541,7 +541,7 @@ describe('Chatbot routes', () => {
         resolvedIntent: 'GENERAL_CONSULT',
         riskLevel: 'NORMAL',
         canAnswer: true,
-        nextAction: 'ANSWER',
+        nextAction: 'EXPLAIN_CONSULT_PROCESS',
         secondaryAction: null,
         responseMode: 'consult_explanation',
         engagementMode: 'QUALIFIED_EXPLORATION',
@@ -566,7 +566,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('ANSWER');
+    expect(json.nextAction).toBe('EXPLAIN_CONSULT_PROCESS');
     expect(json.responseMode).toBe('consult_explanation');
     expect(json.metadata).toMatchObject({
       engagementMode: 'QUALIFIED_EXPLORATION',
@@ -584,7 +584,7 @@ describe('Chatbot routes', () => {
         resolvedIntent: 'START_CASE',
         riskLevel: 'NORMAL',
         canAnswer: true,
-        nextAction: 'CREATE_CASE',
+        nextAction: 'REQUEST_DOC_UPLOAD',
         secondaryAction: 'REQUEST_DOCS',
         responseMode: 'deep_workflow_progression',
         engagementMode: 'DEEP_WORKFLOW',
@@ -609,7 +609,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('CREATE_CASE');
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.secondaryAction).toBe('REQUEST_DOCS');
     expect(json.responseMode).toBe('deep_workflow_progression');
     expect(json.metadata).toMatchObject({

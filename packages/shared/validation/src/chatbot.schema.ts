@@ -2,12 +2,17 @@ import { z } from 'zod';
 
 export const chatbotHospitalTypeSchema = z.enum(['COSMETIC', 'REGULAR']);
 export const chatbotNextActionSchema = z.enum([
-  'ANSWER',
-  'CONSULT_CONVERSION',
-  'CREATE_CASE',
-  'REQUEST_DOCS',
-  'ESCALATE',
-  'SAFETY',
+  'ANSWER_FAQ',
+  'EXPLAIN_DOC_UPLOAD',
+  'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+  'EXPLAIN_CONSULT_PROCESS',
+  'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+  'SHOW_HOSPITAL_RECOMMENDATIONS',
+  'REQUEST_DOC_UPLOAD',
+  'INVITE_ONLINE_CONSULT',
+  'SHOW_PACKAGE',
+  'HUMAN_HANDOFF',
+  'SAFETY_HANDOFF',
 ]);
 export const chatbotIntentSchema = z.enum(['FAQ', 'CONSULT', 'UNKNOWN', 'SAFETY']);
 export const chatbotRiskLevelSchema = z.enum(['NORMAL', 'SENSITIVE', 'CRISIS']);
@@ -80,6 +85,64 @@ export const chatbotShortlistItemSchema = z.object({
   reasonCodes: z.array(z.string()).optional(),
 }).catchall(z.unknown());
 
+const chatbotBlockIdSchema = z.string().min(1).max(255);
+const chatbotUuidSchema = z.string().uuid();
+
+export const chatbotMessageBlockSchema = z.discriminatedUnion('type', [
+  z.object({
+    id: chatbotBlockIdSchema,
+    type: z.literal('PROCESS_MODAL_TRIGGER'),
+    modalKey: z.literal('MEDICAL_TRAVEL_PROCESS'),
+    title: z.string(),
+    description: z.string().optional(),
+    ctaLabel: z.string().optional(),
+  }).strict(),
+  z.object({
+    id: chatbotBlockIdSchema,
+    type: z.literal('QUESTIONNAIRE_MODAL_TRIGGER'),
+    templateId: chatbotUuidSchema,
+    title: z.string(),
+    description: z.string().optional(),
+    ctaLabel: z.string().optional(),
+  }).strict(),
+  z.object({
+    id: chatbotBlockIdSchema,
+    type: z.literal('HOSPITAL_RECOMMENDATION_CARDS'),
+    title: z.string(),
+    caseId: chatbotUuidSchema,
+    selectPath: z.literal('/select-hospitals'),
+    description: z.string().optional(),
+    hospitals: z.array(z.object({
+      hospitalId: chatbotUuidSchema,
+      name: z.string().optional(),
+      reason: z.string().optional(),
+      ctaUrl: z.string().optional(),
+      thumbnailUrl: z.string().optional(),
+      city: z.string().optional(),
+      matchType: z.string().optional(),
+      reasonCodes: z.array(z.string()).optional(),
+    }).catchall(z.unknown())),
+  }).strict(),
+  z.object({
+    id: chatbotBlockIdSchema,
+    type: z.literal('ONLINE_CONSULT_BOOKING_CARD'),
+    title: z.string(),
+    description: z.string().optional(),
+    requestedAction: z.literal('CONSULT_CONVERSION'),
+    convertPath: z.string().min(1),
+    conversionDraft: z.object({
+      sessionId: z.string().min(1).max(255),
+      name: z.string().min(1).max(255),
+      email: z.string().email().max(255),
+      country: z.string().min(1).max(255),
+      conditionSummary: z.string().min(1).max(2000),
+      budget: z.string().min(1).max(255),
+    }).strict(),
+    consultationStatus: z.string().optional(),
+    requestState: z.enum(['idle', 'submitted', 'failed']).optional(),
+  }).strict(),
+]);
+
 export const chatbotChatResponseSchema = z.object({
   sessionId: z.string().min(1).max(255),
   messageId: z.string().min(1),
@@ -97,6 +160,7 @@ export const chatbotChatResponseSchema = z.object({
   recommendedProviders: z.array(chatbotRecommendedProviderSchema),
   reasonCodes: z.array(z.string()),
   shortlist: z.array(chatbotShortlistItemSchema),
+  blocks: z.array(chatbotMessageBlockSchema).default([]),
   metadata: z.record(z.string(), z.unknown()),
   history: z.object({
     userMessageId: z.string().min(1),
@@ -108,6 +172,7 @@ export const chatbotConvertResponseSchema = z.object({
   sessionId: z.string().min(1).max(255),
   patientId: z.string().min(1).nullable().optional(),
   caseId: z.string().min(1),
+  restoreToken: z.string().min(1).optional(),
   requestedAction: z.enum(['CONSULT_CONVERSION', 'CREATE_CASE']),
   isExistingPatient: z.boolean().optional(),
   alreadyExists: z.boolean(),
@@ -118,6 +183,7 @@ export const chatbotEscalateResponseSchema = z.object({
   patientId: z.string().min(1).nullable().optional(),
   caseId: z.string().min(1).nullable().optional(),
   ticketId: z.string().min(1),
+  restoreToken: z.string().min(1).optional(),
   alreadyExists: z.boolean(),
 }).strict();
 
@@ -135,6 +201,7 @@ export const chatbotHistoryMessageSchema = z.object({
   citations: z.array(chatbotCitationSchema),
   reasonCodes: z.array(z.string()).optional(),
   shortlist: z.array(chatbotShortlistItemSchema).optional(),
+  blocks: z.array(chatbotMessageBlockSchema).optional(),
   metadata: z.record(z.string(), z.unknown()),
   createdAt: z.string().min(1),
 }).strict();

@@ -424,6 +424,50 @@ describe('Chatbot routes', () => {
     expect(json.nextAction).toBeNull();
   });
 
+  it('POST /api/v2/chatbot/chat normalizes legacy metadata nextAction fields in the public response only', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-public-metadata',
+      answer: JSON.stringify({
+        answer: 'Please upload your documents first.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['documents_required_before_recommendation'],
+        metadata: {
+          nextAction: 'REQUEST_DOCS',
+          publicNextAction: 'REQUEST_DOCS',
+          structuredOutput: {
+            nextAction: 'REQUEST_DOCS',
+            publicNextAction: 'REQUEST_DOCS',
+          },
+        },
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-public-metadata',
+        hospitalType: 'COSMETIC',
+        message: 'What do you need before recommending hospitals?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect((json.metadata.structuredOutput as Record<string, unknown>).nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).publicNextAction).toBe('REQUEST_DOC_UPLOAD');
+  });
+
   it('POST /api/v2/chatbot/chat rejects invalid pageContext payloads', async () => {
     const res = await app.request('/api/v2/chatbot/chat', {
       method: 'POST',

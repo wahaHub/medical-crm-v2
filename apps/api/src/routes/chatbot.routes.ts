@@ -202,7 +202,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     recommendedProviders: normalized.recommendedProviders,
     reasonCodes: assistantMessage.reasonCodes,
     shortlist: assistantMessage.shortlist,
-    metadata: sanitizePublicMetadataDeep(assistantMessage.metadata),
+    metadata: normalizePublicMetadataForHistory(assistantMessage.metadata),
     history: {
       userMessageId: userMessage.id,
       assistantMessageId: assistantMessage.id,

@@ -7,8 +7,10 @@ import { PatientRejectQuoteUseCase } from '../src/use-cases/patient-dashboard/pa
 import { SelectHospitalsUseCase } from '../src/use-cases/patient-dashboard/select-hospitals.use-case.js';
 import { GetIntakeTemplateUseCase } from '../src/use-cases/patient-intake/get-intake-template.use-case.js';
 import { SubmitIntakeUseCase } from '../src/use-cases/patient-intake/submit-intake.use-case.js';
-import type { ICaseRepository, IConversationRepository, IQuoteRepository, ICHCRepository } from '@medical-crm/domain';
-import { Case, CaseNumber, Conversation, Quote, QuoteNumber, CaseHospitalContact } from '@medical-crm/domain';
+import { SubmitPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/submit-patient-qc-response.use-case.js';
+import { GetPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/get-patient-qc-response.use-case.js';
+import type { ICaseRepository, IConversationRepository, IQuoteRepository, ICHCRepository, IQuestionCollectorRepository } from '@medical-crm/domain';
+import { Case, CaseNumber, Conversation, Quote, QuoteNumber, CaseHospitalContact, QCResponse } from '@medical-crm/domain';
 
 // ——— Factories ———
 function makeMockCase(overrides: Partial<ConstructorParameters<typeof Case>[0]> = {}): Case {
@@ -588,5 +590,219 @@ describe('SubmitIntakeUseCase', () => {
       expect.any(String),
     );
     consoleSpy.mockRestore();
+  });
+});
+
+// ——— QC response helpers ———
+
+function makeMockQCResponse(overrides: Partial<ConstructorParameters<typeof QCResponse>[0]> = {}): QCResponse {
+  return new QCResponse({
+    id: 'qcr-1',
+    caseId: 'case-1',
+    templateId: 'template-1',
+    userId: 'patient-1',
+    responses: { q1: 'answer' },
+    extractedData: null,
+    riskFlags: [],
+    completionStatus: 'COMPLETED',
+    submittedAt: new Date('2026-04-05'),
+    createdAt: new Date('2026-04-05'),
+    updatedAt: new Date('2026-04-05'),
+    ...overrides,
+  });
+}
+
+function makeMockQCRepo(): IQuestionCollectorRepository {
+  return {
+    findTemplateById: vi.fn(),
+    findAllTemplates: vi.fn(),
+    findActiveTemplateByCategory: vi.fn(),
+    saveTemplate: vi.fn(),
+    deleteTemplate: vi.fn(),
+    findResponseById: vi.fn(),
+    findResponseByCaseId: vi.fn(),
+    findAllResponses: vi.fn(),
+    saveResponse: vi.fn(),
+    findCustomization: vi.fn(),
+    saveCustomization: vi.fn(),
+  };
+}
+
+// ——— SubmitPatientQCResponseUseCase tests ———
+
+describe('SubmitPatientQCResponseUseCase', () => {
+  let caseRepo: ICaseRepository;
+  let qcRepo: IQuestionCollectorRepository;
+  let useCase: SubmitPatientQCResponseUseCase;
+
+  beforeEach(() => {
+    caseRepo = makeMockCaseRepo();
+    qcRepo = makeMockQCRepo();
+    useCase = new SubmitPatientQCResponseUseCase(qcRepo, caseRepo);
+  });
+
+  it('patient can submit response for their own case', async () => {
+    const caseEntity = makeMockCase();
+    vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(null);
+    const savedResponse = makeMockQCResponse();
+    vi.mocked(qcRepo.saveResponse).mockResolvedValue(savedResponse);
+    vi.mocked(caseRepo.save).mockResolvedValue(caseEntity);
+
+    const result = await useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: { q1: 'my answer' },
+    });
+
+    expect(qcRepo.saveResponse).toHaveBeenCalled();
+    expect(caseRepo.save).toHaveBeenCalled();
+    expect(result.id).toBe('qcr-1');
+    expect(result.caseId).toBe('case-1');
+  });
+
+  it('marks case medicalFormStatus as SUBMITTED after submit', async () => {
+    const caseEntity = makeMockCase();
+    vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(null);
+    const savedResponse = makeMockQCResponse();
+    vi.mocked(qcRepo.saveResponse).mockResolvedValue(savedResponse);
+    vi.mocked(caseRepo.save).mockResolvedValue(caseEntity);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: { q1: 'my answer' },
+    });
+
+    const savedCase = vi.mocked(caseRepo.save).mock.calls[0]?.[0];
+    const selection = savedCase?.structuredData?.['patientHospitalSelection'] as Record<string, unknown>;
+    expect(selection?.['medicalFormStatus']).toBe('SUBMITTED');
+    expect(selection?.['medicalFormSubmittedAt']).toBeDefined();
+    expect(selection?.['medicalFormResponseId']).toBe('qcr-1');
+  });
+
+  it('resubmits and updates existing QC response', async () => {
+    const caseEntity = makeMockCase();
+    vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    const existingResponse = makeMockQCResponse({ completionStatus: 'IN_PROGRESS' });
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(existingResponse);
+    vi.mocked(qcRepo.saveResponse).mockResolvedValue(existingResponse);
+    vi.mocked(caseRepo.save).mockResolvedValue(caseEntity);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: { q1: 'updated answer' },
+    });
+
+    expect(existingResponse.completionStatus).toBe('COMPLETED');
+    expect(existingResponse.responses).toEqual({ q1: 'updated answer' });
+    expect(qcRepo.saveResponse).toHaveBeenCalledWith(existingResponse);
+  });
+
+  it('access is forbidden for other patients\' cases on submit', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase({ patientId: 'other-patient' }));
+
+    await expect(useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: { q1: 'my answer' },
+    })).rejects.toThrow('Access denied');
+  });
+
+  it('throws NotFoundError when case does not exist', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValue(null);
+
+    await expect(useCase.execute({
+      caseId: 'case-999',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: {},
+    })).rejects.toThrow('Case case-999 not found');
+  });
+});
+
+// ——— GetPatientQCResponseUseCase tests ———
+
+describe('GetPatientQCResponseUseCase', () => {
+  let caseRepo: ICaseRepository;
+  let qcRepo: IQuestionCollectorRepository;
+  let useCase: GetPatientQCResponseUseCase;
+
+  beforeEach(() => {
+    caseRepo = makeMockCaseRepo();
+    qcRepo = makeMockQCRepo();
+    useCase = new GetPatientQCResponseUseCase(qcRepo, caseRepo);
+  });
+
+  it('patient can fetch the submitted response for their own case', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(makeMockQCResponse());
+
+    const result = await useCase.execute({ caseId: 'case-1', patientId: 'patient-1' });
+
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe('qcr-1');
+    expect(result!.caseId).toBe('case-1');
+    expect(result!.completionStatus).toBe('COMPLETED');
+  });
+
+  it('response retrieval after submit returns submitted content', async () => {
+    const submittedResponse = makeMockQCResponse({
+      responses: { q1: 'my submitted answer' },
+      completionStatus: 'COMPLETED',
+      submittedAt: new Date('2026-04-05'),
+    });
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(submittedResponse);
+
+    const result = await useCase.execute({ caseId: 'case-1', patientId: 'patient-1' });
+
+    expect(result!.responses).toEqual({ q1: 'my submitted answer' });
+    expect(result!.submittedAt).toBeDefined();
+    expect(result!.completionStatus).toBe('COMPLETED');
+  });
+
+  it('returns null when no response exists yet', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(null);
+
+    const result = await useCase.execute({ caseId: 'case-1', patientId: 'patient-1' });
+
+    expect(result).toBeNull();
+  });
+
+  it('access is forbidden for other patients\' cases on get', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase({ patientId: 'other-patient' }));
+
+    await expect(useCase.execute({ caseId: 'case-1', patientId: 'patient-1' }))
+      .rejects.toThrow('Access denied');
+  });
+
+  it('does not expose admin-only fields (extractedData, riskFlags, translations, userId)', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(
+      makeMockQCResponse({ riskFlags: ['HIGH_RISK'], extractedData: { secret: true } }),
+    );
+
+    const result = await useCase.execute({ caseId: 'case-1', patientId: 'patient-1' });
+
+    expect(result).not.toBeNull();
+    expect((result as Record<string, unknown>)['riskFlags']).toBeUndefined();
+    expect((result as Record<string, unknown>)['extractedData']).toBeUndefined();
+    expect((result as Record<string, unknown>)['translations']).toBeUndefined();
+    expect((result as Record<string, unknown>)['userId']).toBeUndefined();
+  });
+
+  it('throws NotFoundError when case does not exist', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValue(null);
+
+    await expect(useCase.execute({ caseId: 'case-999', patientId: 'patient-1' }))
+      .rejects.toThrow('Case case-999 not found');
   });
 });

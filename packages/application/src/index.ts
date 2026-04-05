@@ -274,6 +274,8 @@ export { ListResponsesUseCase as ListQCResponsesUseCase } from './use-cases/ques
 export { CustomizeQuestionsUseCase } from './use-cases/question-collector/customize-questions.use-case.js';
 export type { CustomizeQuestionsInput } from './use-cases/question-collector/customize-questions.use-case.js';
 export { GetCustomizationUseCase } from './use-cases/question-collector/get-customization.use-case.js';
+export { GetTemplateByDiseaseUseCase } from './use-cases/question-collector/get-template-by-disease.use-case.js';
+export type { GetTemplateByDiseaseResult, PatientSafeTemplateDTO, DiseaseSelector } from './use-cases/question-collector/get-template-by-disease.use-case.js';
 
 // DTOs — ServiceCatalog
 export type { ServiceCatalogItemDTO, QuoteTemplateDTO } from './dtos/service-catalog.dto.js';
@@ -353,6 +355,10 @@ export { PatientAcceptQuoteUseCase } from './use-cases/patient-dashboard/patient
 export { PatientRejectQuoteUseCase } from './use-cases/patient-dashboard/patient-reject-quote.use-case.js';
 export { SelectHospitalsUseCase } from './use-cases/patient-dashboard/select-hospitals.use-case.js';
 export { SkipMedicalFormUseCase } from './use-cases/patient-dashboard/skip-medical-form.use-case.js';
+export { SubmitPatientQCResponseUseCase } from './use-cases/patient-dashboard/submit-patient-qc-response.use-case.js';
+export type { SubmitPatientQCResponseInput } from './use-cases/patient-dashboard/submit-patient-qc-response.use-case.js';
+export { GetPatientQCResponseUseCase } from './use-cases/patient-dashboard/get-patient-qc-response.use-case.js';
+export type { GetPatientQCResponseInput, PatientSafeQCResponseDTO } from './use-cases/patient-dashboard/get-patient-qc-response.use-case.js';
 
 // Use Cases — Patient Intake
 export { GetIntakeTemplateUseCase } from './use-cases/patient-intake/get-intake-template.use-case.js';

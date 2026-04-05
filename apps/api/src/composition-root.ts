@@ -129,6 +129,7 @@ import {
   ListQCResponsesUseCase,
   CustomizeQuestionsUseCase,
   GetCustomizationUseCase,
+  GetTemplateByDiseaseUseCase,
   CreateServiceCatalogItemUseCase,
   ListServiceCatalogItemsUseCase,
   GetServiceCatalogItemUseCase,
@@ -152,6 +153,8 @@ import {
   SubmitIntakeUseCase,
   SelectHospitalsUseCase,
   SkipMedicalFormUseCase,
+  SubmitPatientQCResponseUseCase,
+  GetPatientQCResponseUseCase,
   CreateBookingRequestUseCase,
   GetHospitalRecommendationsUseCase,
   SaveHospitalSelectionsUseCase,
@@ -418,6 +421,7 @@ interface AppServices {
   listQCResponses: ListQCResponsesUseCase;
   customizeQuestions: CustomizeQuestionsUseCase;
   getCustomization: GetCustomizationUseCase;
+  getTemplateByDisease: GetTemplateByDiseaseUseCase;
 
   // use cases — service catalog
   createServiceCatalogItem: CreateServiceCatalogItemUseCase;
@@ -470,6 +474,8 @@ interface AppServices {
   submitIntake: SubmitIntakeUseCase;
   selectHospitals: SelectHospitalsUseCase;
   skipMedicalForm: SkipMedicalFormUseCase;
+  submitPatientQCResponse: SubmitPatientQCResponseUseCase;
+  getPatientQCResponse: GetPatientQCResponseUseCase;
 
   // use cases — chatbot FAQ
   createFaqItem: CreateFaqItemUseCase;
@@ -888,6 +894,7 @@ export function getServices(): AppServices {
       listQCResponses: new ListQCResponsesUseCase(qcRepo),
       customizeQuestions: new CustomizeQuestionsUseCase(qcRepo),
       getCustomization: new GetCustomizationUseCase(qcRepo),
+      getTemplateByDisease: new GetTemplateByDiseaseUseCase(qcRepo),
 
       createServiceCatalogItem: new CreateServiceCatalogItemUseCase(serviceCatalogRepo),
       listServiceCatalogItems: new ListServiceCatalogItemsUseCase(serviceCatalogRepo),
@@ -911,6 +918,8 @@ export function getServices(): AppServices {
       submitIntake: new SubmitIntakeUseCase(),
       selectHospitals: new SelectHospitalsUseCase(caseRepo, chcRepo, conversationRepo),
       skipMedicalForm: new SkipMedicalFormUseCase(caseRepo),
+      submitPatientQCResponse: new SubmitPatientQCResponseUseCase(qcRepo, caseRepo),
+      getPatientQCResponse: new GetPatientQCResponseUseCase(qcRepo, caseRepo),
 
       patientDashboard: new PatientDashboardUseCase(caseRepo, orderRepo, journeyRepo),
       adminDashboard: new AdminDashboardUseCase(caseRepo, ticketRepo, orderRepo),

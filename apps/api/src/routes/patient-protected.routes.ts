@@ -55,6 +55,14 @@ const patientCreateOrderSchema = z.object({
   packageId: z.string().uuid(),
   idempotencyKey: z.string().max(100).optional(),
 });
+const skipMedicalFormSchema = z.object({ caseId: z.string().uuid() });
+const qcTemplateByDiseaseQuerySchema = z.object({
+  disease: z.string().min(1).max(100),
+});
+const submitPatientQCResponseSchema = z.object({
+  templateId: z.string().uuid(),
+  responses: z.unknown(),
+});
 
 const patientTicketTypeToDomain: Record<z.infer<typeof patientTicketTypeSchema>, string> = {
   GENERAL_SUPPORT: 'GENERAL_QUESTIONS',
@@ -106,9 +114,19 @@ app.get('/me', async (c) => {
   return c.json(result);
 });
 
+// GET /qc-templates/by-disease?disease=DEFAULT
+// Patient-safe read-only endpoint: resolves the active QC template for a disease selector.
+// No mutation is possible through this path.
+app.get('/qc-templates/by-disease', async (c) => {
+  const query = qcTemplateByDiseaseQuerySchema.parse(c.req.query());
+  const { getTemplateByDisease } = getServices();
+  const result = await getTemplateByDisease.execute(query.disease);
+  return c.json(result);
+});
+
 // POST /medical-form/skip
 app.post('/medical-form/skip', async (c) => {
-  const body = z.object({ caseId: z.string().uuid() }).parse(await c.req.json());
+  const body = skipMedicalFormSchema.parse(await c.req.json());
   const session = c.get('patientSession');
   const { skipMedicalForm } = getServices();
   await skipMedicalForm.execute({ caseId: body.caseId, patientId: session.userId });
@@ -417,6 +435,33 @@ app.get('/cases/:caseId/milestones', async (c) => {
   const { listMilestones } = getServices();
   const result = await listMilestones.execute(caseId, toPatientActor(session), { visibleOnly: true });
   return c.json(result);
+});
+
+// GET /intake/:caseId/response — patient-safe QC response retrieval
+app.get('/intake/:caseId/response', async (c) => {
+  const session = c.get('patientSession');
+  const caseId = c.req.param('caseId');
+  const { getPatientQCResponse } = getServices();
+  const result = await getPatientQCResponse.execute({ caseId, patientId: session.userId });
+  if (result === null) {
+    return c.json({ response: null });
+  }
+  return c.json({ response: result });
+});
+
+// POST /intake/:caseId/response — submit QC answers, marks case medicalFormStatus = SUBMITTED
+app.post('/intake/:caseId/response', async (c) => {
+  const body = submitPatientQCResponseSchema.parse(await c.req.json());
+  const session = c.get('patientSession');
+  const caseId = c.req.param('caseId');
+  const { submitPatientQCResponse } = getServices();
+  const result = await submitPatientQCResponse.execute({
+    caseId,
+    patientId: session.userId,
+    templateId: body.templateId,
+    responses: body.responses,
+  });
+  return c.json({ response: result }, 201);
 });
 
 // GET /cases/:caseId/ai-summary

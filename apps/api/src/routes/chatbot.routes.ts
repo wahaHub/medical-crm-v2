@@ -1531,16 +1531,27 @@ function isCanonicalOverlayKey(key: string): boolean {
 function normalizePublicMetadataForHistory(value: Record<string, unknown>): Record<string, unknown> {
   const normalized = normalizeHistoryMetadataValue(sanitizeUnknownValue(value));
   const normalizedRecord = asRecord(normalized);
+  const hasSemanticEnvelope = carriesChatbotSemanticHistoryEnvelope(normalizedRecord);
   const structuredOutputSource = asRecord(
     normalizedRecord.structuredOutput
     ?? normalizedRecord.structured_output,
   );
-  const root = applyStrictHistoryCanonicalEnvelope(normalizedRecord);
-  delete root.structured_output;
+  const root = hasSemanticEnvelope
+    ? applyStrictHistoryCanonicalEnvelope(normalizedRecord)
+    : { ...normalizedRecord };
   if (Object.keys(structuredOutputSource).length > 0) {
+    delete root.structured_output;
     root.structuredOutput = applyStrictHistoryStructuredOutput(structuredOutputSource);
   }
   return root;
+}
+
+function carriesChatbotSemanticHistoryEnvelope(source: Record<string, unknown>): boolean {
+  return Object.keys(source).some((key) => (
+    key === 'structuredOutput'
+    || key === 'structured_output'
+    || isCanonicalOverlayKey(key)
+  ));
 }
 
 

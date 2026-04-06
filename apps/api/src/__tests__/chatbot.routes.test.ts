@@ -1855,6 +1855,62 @@ describe('Chatbot routes', () => {
     expect(mockServices.storage.getSignedUrls).toHaveBeenCalledWith(['crm/dev/chatbot/report.pdf']);
   });
 
+  it('GET /api/v2/chatbot/history/{sessionId} keeps non-semantic user metadata blobs free of synthetic canonical semantics', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-user-non-semantic-metadata',
+        role: 'USER',
+        content: 'Uploaded attachments',
+        metadata: {
+          attachments: [{
+            fileName: 'report.pdf',
+            fileSize: 1024,
+            mimeType: 'application/pdf',
+            storageKey: 'crm/dev/chatbot/report.pdf',
+          }],
+          pageContext: {
+            pageType: 'LANDING',
+            path: '/treatments/hydrafacial',
+          },
+        },
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
+      }),
+    ]);
+    mockServices.storage.getSignedUrls.mockResolvedValue({
+      'crm/dev/chatbot/report.pdf': 'https://signed.example.com/report.pdf',
+    });
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.metadata).toMatchObject({
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+        storageKey: 'crm/dev/chatbot/report.pdf',
+      }],
+      pageContext: {
+        pageType: 'LANDING',
+        path: '/treatments/hydrafacial',
+      },
+    });
+    expect(json.messages[0]?.metadata.resolvedIntent).toBeUndefined();
+    expect(json.messages[0]?.metadata.engagementSignal).toBeUndefined();
+    expect(json.messages[0]?.metadata.semanticSignals).toBeUndefined();
+  });
+
   it('GET /api/v2/chatbot/history/{sessionId} replays stored rich blocks for assistant messages', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({

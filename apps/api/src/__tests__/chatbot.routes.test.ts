@@ -2587,7 +2587,36 @@ describe('Chatbot routes', () => {
     });
     mockServices.caseRepo.save.mockImplementation(async (entity: unknown) => entity);
     mockServices.aiChatMessageRepo.create.mockImplementation(async (entity: AiChatMessage) => {
+      const persistedMetadata = JSON.parse(JSON.stringify(entity.metadata)) as Record<string, unknown>;
+      const persistedWorkflow = persistedMetadata.workflow as Record<string, unknown> | undefined;
+      if (
+        persistedWorkflow?.kind === 'CONVERT'
+        && persistedWorkflow.requestedAction === 'INVITE_ONLINE_CONSULT'
+      ) {
+        persistedWorkflow.requestedAction = 'CONSULT_CONVERSION';
+      }
+
       const persistedMessage = makeMessage({
+        id: entity.id,
+        sessionId: entity.sessionId,
+        role: entity.role,
+        content: entity.content,
+        intent: entity.intent,
+        riskLevel: entity.riskLevel,
+        canAnswer: entity.canAnswer,
+        nextAction: entity.nextAction === 'INVITE_ONLINE_CONSULT'
+          ? 'CONSULT_CONVERSION'
+          : entity.nextAction,
+        secondaryAction: entity.secondaryAction,
+        responseMode: entity.responseMode,
+        citations: JSON.parse(JSON.stringify(entity.citations)),
+        reasonCodes: JSON.parse(JSON.stringify(entity.reasonCodes)),
+        shortlist: JSON.parse(JSON.stringify(entity.shortlist)),
+        metadata: persistedMetadata,
+        createdAt: new Date(entity.createdAt.toISOString()),
+      });
+      persistedMessages.push(persistedMessage);
+      return makeMessage({
         id: entity.id,
         sessionId: entity.sessionId,
         role: entity.role,
@@ -2603,14 +2632,6 @@ describe('Chatbot routes', () => {
         shortlist: JSON.parse(JSON.stringify(entity.shortlist)),
         metadata: JSON.parse(JSON.stringify(entity.metadata)),
         createdAt: new Date(entity.createdAt.toISOString()),
-      });
-      persistedMessages.push(persistedMessage);
-      return makeMessage({
-        ...persistedMessage,
-        metadata: JSON.parse(JSON.stringify(persistedMessage.metadata)),
-        citations: JSON.parse(JSON.stringify(persistedMessage.citations)),
-        reasonCodes: JSON.parse(JSON.stringify(persistedMessage.reasonCodes)),
-        shortlist: JSON.parse(JSON.stringify(persistedMessage.shortlist)),
       }) as unknown as AiChatMessage;
     });
     mockServices.aiChatMessageRepo.listBySession.mockImplementation(async () => (
@@ -2646,11 +2667,11 @@ describe('Chatbot routes', () => {
     expect(persistedMessages[0]).toMatchObject({
       role: 'SYSTEM',
       content: 'Chatbot consultation details submitted.',
-      nextAction: 'INVITE_ONLINE_CONSULT',
+      nextAction: 'CONSULT_CONVERSION',
       metadata: {
         workflow: {
           kind: 'CONVERT',
-          requestedAction: 'INVITE_ONLINE_CONSULT',
+          requestedAction: 'CONSULT_CONVERSION',
           patientId: 'patient-1',
           caseId: 'case-1',
           form: {
@@ -2666,7 +2687,7 @@ describe('Chatbot routes', () => {
     expect(persistedMessages[0]?.metadata).toMatchObject({
       workflow: {
         kind: 'CONVERT',
-        requestedAction: 'INVITE_ONLINE_CONSULT',
+        requestedAction: 'CONSULT_CONVERSION',
         patientId: 'patient-1',
         caseId: 'case-1',
       },

@@ -706,7 +706,7 @@ workflow:
         prompt_template:
         - role: system
           text: |
-            Extract non-authoritative candidate signals from the latest user turn.
+            Extract the canonical semantic contract from the latest user turn.
 
             Return JSON only with this exact flat shape:
             {
@@ -715,9 +715,7 @@ workflow:
               "progressionSignal": "NONE|CURIOUS|OPEN_TO_NEXT_STEP|READY_TO_PROCEED|EXPLICITLY_COMMITTING",
               "recommendationSignal": "NONE|SEEKING_DIRECTION|SEEKING_RECOMMENDATION|READY_FOR_RECOMMENDATION",
               "mentionsCondition": false,
-              "mentionsDoctorOrHospitalNeed": false,
-              "mentionedBudget": "string|null",
-              "topicHint": "string|null"
+              "mentionsDoctorOrHospitalNeed": false
             }
 
             Rules:
@@ -725,10 +723,10 @@ workflow:
             - Map equivalent semantics across languages to the same enum.
             - Keep boolean fields false unless the user clearly expresses that meaning.
             - Do not output nested wrappers.
-            - This output is only a hint for the backend policy engine.
+            - Treat this output as the canonical semantic contract for this turn.
 
             Multilingual examples:
-            - English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
+            - English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_HOSPITAL_RECOMMENDATION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_RECOMMENDATION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
             - Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_HOSPITAL_RECOMMENDATION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_RECOMMENDATION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
             - Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_HOSPITAL_RECOMMENDATION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_RECOMMENDATION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
             - Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_HOSPITAL_RECOMMENDATION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_RECOMMENDATION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}

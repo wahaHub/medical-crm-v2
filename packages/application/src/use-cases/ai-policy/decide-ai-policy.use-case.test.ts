@@ -166,9 +166,13 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
         resolvedIntent: 'GENERAL_INFO',
         engagementSignal: 'LIGHT_DISCOVERY',
       }),
-      harnessOptions: {},
+      harnessOptions: {
+        useRealActionPlanner: true,
+      },
       expectedNextAction: 'ANSWER_FAQ',
       expectedResolvedIntent: 'GENERAL_CONSULT',
+      expectedPlannerNextAction: 'ANSWER_FAQ',
+      expectedPlannerReasonCodes: ['light_discovery_soft_guidance'],
     },
     {
       name: 'consult-process prompts',
@@ -194,6 +198,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       },
       expectedNextAction: 'INVITE_ONLINE_CONSULT',
       expectedResolvedIntent: 'ASK_CONSULT_PROCESS',
+      expectedPlannerNextAction: 'INVITE_ONLINE_CONSULT',
+      expectedPlannerReasonCodes: ['consult_invite_ready'],
     },
     {
       name: 'doctor/hospital-direction prompts',
@@ -210,6 +216,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
         recommendationSignal: 'SEEKING_DIRECTION',
       }),
       harnessOptions: {
+        useRealActionPlanner: true,
         recommendationResult: {
           eligible: true,
           shortlist: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
@@ -219,6 +226,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       candidateHospitals: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
       expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      expectedPlannerNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      expectedPlannerReasonCodes: ['canonical_recommendation_ready'],
       assertRecommendationPolicy: true,
     },
     {
@@ -236,6 +245,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
         recommendationSignal: 'SEEKING_RECOMMENDATION',
       }),
       harnessOptions: {
+        useRealActionPlanner: true,
         recommendationResult: {
           eligible: true,
           shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
@@ -251,6 +261,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
       expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      expectedPlannerNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      expectedPlannerReasonCodes: ['canonical_recommendation_ready'],
       assertRecommendationPolicy: true,
     },
   ])(
@@ -264,6 +276,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       candidateHospitals,
       expectedNextAction,
       expectedResolvedIntent,
+      expectedPlannerNextAction,
+      expectedPlannerReasonCodes,
       assertRecommendationPolicy,
     }) => {
       expect(englishExtraction).toEqual(chineseExtraction);
@@ -285,15 +299,17 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
         candidateHospitals,
       });
 
-      expect(chineseResult).toEqual(englishResult);
-      expect(englishResult.next_action).toBe(expectedNextAction);
-      expect(chineseResult.next_action).toBe(expectedNextAction);
-      expect(englishResult.resolved_intent).toBe(expectedResolvedIntent);
-
       const englishPlannerInput = englishHarness.actionPlanner.plan.mock.calls[0]?.[0];
       const chinesePlannerInput = chineseHarness.actionPlanner.plan.mock.calls[0]?.[0];
+      const englishPlannerResult = englishHarness.actionPlanner.plan.mock.results[0]?.value;
+      const chinesePlannerResult = chineseHarness.actionPlanner.plan.mock.results[0]?.value;
 
       expect(chinesePlannerInput).toEqual(englishPlannerInput);
+      expect(chinesePlannerResult).toEqual(englishPlannerResult);
+      expect(englishPlannerResult).toEqual(expect.objectContaining({
+        nextAction: expectedPlannerNextAction,
+        reasonCodes: expectedPlannerReasonCodes,
+      }));
 
       if (assertRecommendationPolicy) {
         const englishRecommendationInput = englishHarness.recommendationPolicy.decide.mock.calls[0]?.[0];
@@ -301,6 +317,13 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
         expect(chineseRecommendationInput).toEqual(englishRecommendationInput);
       }
+
+      expect(chineseResult.next_action).toBe(englishResult.next_action);
+      expect(englishResult.next_action).toBe(expectedNextAction);
+      expect(chineseResult.next_action).toBe(expectedNextAction);
+      expect(chineseResult.resolved_intent).toBe(englishResult.resolved_intent);
+      expect(englishResult.resolved_intent).toBe(expectedResolvedIntent);
+      expect(chineseResult.resolved_intent).toBe(expectedResolvedIntent);
     },
   );
 

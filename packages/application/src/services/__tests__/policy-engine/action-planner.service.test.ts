@@ -58,7 +58,7 @@ describe('ActionPlannerService', () => {
     expect(plan.reasonCodes).toContain('light_discovery_soft_guidance');
   });
 
-  it('allows package exploration once the user is in qualified exploration', () => {
+  it('allows package exploration once the user is in qualified exploration without a consult-style intent', () => {
     const planner = new ActionPlannerService();
 
     const plan = planner.plan({
@@ -70,7 +70,7 @@ describe('ActionPlannerService', () => {
         recommendationStatus: 'NOT_SHOWN',
         riskLevel: 'LOW',
       },
-      resolvedIntent: 'GENERAL_CONSULT',
+      resolvedIntent: 'UNKNOWN',
     });
 
     expect(plan.nextAction).toBe('SHOW_PACKAGE');
@@ -96,7 +96,7 @@ describe('ActionPlannerService', () => {
     expect(plan.reasonCodes).toContain('qualified_recommendation_exploration');
   });
 
-  it('keeps explicit document questions in qualified exploration on an explanation path', () => {
+  it('keeps explicit document questions in qualified exploration on the document-upload path', () => {
     const planner = new ActionPlannerService();
 
     const plan = planner.plan({
@@ -111,8 +111,7 @@ describe('ActionPlannerService', () => {
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
     });
 
-    expect(plan.nextAction).toBe('EXPLAIN_DOC_UPLOAD');
-    expect(plan.reasonCodes).toContain('qualified_docs_explanation');
+    expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
   });
 
   it('keeps consult-style questions in qualified exploration on an explanation path', () => {
@@ -153,6 +152,136 @@ describe('ActionPlannerService', () => {
 
     expect(plan.nextAction).toBe('EXPLAIN_MEDICAL_TRAVEL_PROCESS');
     expect(plan.reasonCodes).toContain('process_overview_requested');
+  });
+
+  it('routes canonical doctor-or-hospital direction requests to doc upload when readiness is insufficient', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        docUploadStatus: 'NOT_STARTED',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    });
+
+    expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(plan.secondaryAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+  });
+
+  it('routes canonical doctor-or-hospital direction requests to hospital recommendations when readiness is sufficient', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    });
+
+    expect(plan.nextAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+  });
+
+  it('routes canonical hospital-recommendation requests to doc upload when readiness is insufficient', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        docUploadStatus: 'REQUESTED',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+    });
+
+    expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(plan.secondaryAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+  });
+
+  it('routes canonical hospital-recommendation requests to hospital recommendations when readiness is sufficient', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+    });
+
+    expect(plan.nextAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+  });
+
+  it('routes canonical document-upload acceptance onto the document-upload path', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        docUploadStatus: 'NONE',
+        packageStatus: 'SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+    });
+
+    expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
+  });
+
+  it('promotes canonical consult-process requests to an online consult invite when consultation is ready', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'DEEP_WORKFLOW',
+      hospitalType: 'REGULAR',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'SHOWN',
+        recommendationStatus: 'PRELIMINARY_SHOWN',
+        consultationStatus: 'READY',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_CONSULT_PROCESS',
+    });
+
+    expect(plan.nextAction).toBe('INVITE_ONLINE_CONSULT');
+  });
+
+  it('routes canonical human handoff requests directly to HUMAN_HANDOFF outside deep workflow', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'REGULAR',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'SHOWN',
+        recommendationStatus: 'PRELIMINARY_SHOWN',
+        consultationStatus: 'READY',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
+    });
+
+    expect(plan.nextAction).toBe('HUMAN_HANDOFF');
   });
 
   it('does not default REGULAR qualified exploration into SHOW_PACKAGE', () => {

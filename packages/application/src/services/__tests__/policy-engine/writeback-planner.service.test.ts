@@ -146,7 +146,7 @@ describe('WritebackPlannerService', () => {
     expect(result.followupTrigger).toBeNull();
   });
 
-  it('keeps docs explanation on a guidance-only writeback path', () => {
+  it('persists the qualified document-upload path when the final action is REQUEST_DOC_UPLOAD', () => {
     const planner = new WritebackPlannerService();
 
     const result = planner.plan({
@@ -157,16 +157,17 @@ describe('WritebackPlannerService', () => {
       policyDecision: {
         engagementMode: 'QUALIFIED_EXPLORATION',
         writebackDepth: 'moderate',
-        nextAction: 'EXPLAIN_DOC_UPLOAD',
-        reasonCodes: ['qualified_docs_explanation'],
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        reasonCodes: ['documents_required_before_recommendation'],
         prequalificationReasonCodes: ['trust_building_question'],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'QUALIFIED_EXPLORATION',
+      docUploadStatus: 'REQUESTED',
       prequalificationReasonCodes: ['trust_building_question'],
-      lastNextAction: 'EXPLAIN_DOC_UPLOAD',
+      lastNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
@@ -193,6 +194,57 @@ describe('WritebackPlannerService', () => {
       engagementMode: 'QUALIFIED_EXPLORATION',
       prequalificationReasonCodes: ['trust_building_question'],
       lastNextAction: 'EXPLAIN_CONSULT_PROCESS',
+    });
+    expect(result.timelineEvents).toEqual([]);
+    expect(result.followupTrigger).toBeNull();
+  });
+
+  it('keeps consult invites on a final-action writeback path without fabricating extra side effects', () => {
+    const planner = new WritebackPlannerService();
+
+    const result = planner.plan({
+      sessionId: 'session-invite-1',
+      sessionDbId: 'db-session-invite-1',
+      patientId: null,
+      assistantMessageId: 'assistant-invite-1',
+      policyDecision: {
+        engagementMode: 'DEEP_WORKFLOW',
+        writebackDepth: 'complete',
+        nextAction: 'INVITE_ONLINE_CONSULT',
+        reasonCodes: ['consult_invite_ready'],
+        prequalificationReasonCodes: ['engagement_signal_deep_workflow'],
+      },
+    });
+
+    expect(result.statusPatch).toMatchObject({
+      engagementMode: 'DEEP_WORKFLOW',
+      lastNextAction: 'INVITE_ONLINE_CONSULT',
+    });
+    expect(result.timelineEvents).toEqual([]);
+    expect(result.followupTrigger).toBeNull();
+  });
+
+  it('keeps human handoff writeback aligned to the final action and leaves handoff creation to the executor', () => {
+    const planner = new WritebackPlannerService();
+
+    const result = planner.plan({
+      sessionId: 'session-handoff-1',
+      sessionDbId: 'db-session-handoff-1',
+      patientId: null,
+      assistantMessageId: 'assistant-handoff-1',
+      policyDecision: {
+        engagementMode: 'QUALIFIED_EXPLORATION',
+        writebackDepth: 'moderate',
+        nextAction: 'HUMAN_HANDOFF',
+        reasonCodes: ['human_handoff_requested'],
+        prequalificationReasonCodes: ['trust_building_question'],
+      },
+    });
+
+    expect(result.statusPatch).toEqual({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      prequalificationReasonCodes: ['trust_building_question'],
+      lastNextAction: 'HUMAN_HANDOFF',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();

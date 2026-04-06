@@ -37,6 +37,14 @@ export class ActionPlannerService {
       };
     }
 
+    if (isHumanHandoffIntent(input.resolvedIntent)) {
+      return {
+        nextAction: 'HUMAN_HANDOFF',
+        secondaryAction: null,
+        reasonCodes: ['human_handoff_requested'],
+      };
+    }
+
     if (input.engagementMode === 'LIGHT_DISCOVERY') {
       return planLightDiscovery(input);
     }
@@ -90,11 +98,33 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
     };
   }
 
-  if (input.resolvedIntent === 'REQUEST_DOC_UPLOAD') {
+  if (isDocumentUploadPathIntent(input.resolvedIntent)) {
     return {
-      nextAction: 'EXPLAIN_DOC_UPLOAD',
+      nextAction: 'REQUEST_DOC_UPLOAD',
       secondaryAction: null,
-      reasonCodes: ['qualified_docs_explanation'],
+      reasonCodes: ['document_upload_path_requested'],
+    };
+  }
+
+  if (
+    isCanonicalRecommendationIntent(input.resolvedIntent)
+    && isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
+  ) {
+    return {
+      nextAction: 'REQUEST_DOC_UPLOAD',
+      secondaryAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      reasonCodes: ['documents_required_before_recommendation'],
+    };
+  }
+
+  if (
+    isCanonicalRecommendationIntent(input.resolvedIntent)
+    && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
+  ) {
+    return {
+      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      secondaryAction: null,
+      reasonCodes: ['canonical_recommendation_ready'],
     };
   }
 
@@ -156,6 +186,14 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
   }
 
   if (input.resolvedIntent === 'ASK_CONSULT_PROCESS') {
+    if (consultationReadyForInvite(input.statusSnapshot.consultationStatus)) {
+      return {
+        nextAction: 'INVITE_ONLINE_CONSULT',
+        secondaryAction: null,
+        reasonCodes: ['consult_invite_ready'],
+      };
+    }
+
     return {
       nextAction: 'EXPLAIN_CONSULT_PROCESS',
       secondaryAction: null,
@@ -174,19 +212,33 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
     };
   }
 
-  if (input.resolvedIntent === 'REQUEST_HUMAN_HANDOFF') {
-    return {
-      nextAction: 'HUMAN_HANDOFF',
-      secondaryAction: null,
-      reasonCodes: ['human_handoff_requested'],
-    };
-  }
-
-  if (input.resolvedIntent === 'REQUEST_DOC_UPLOAD') {
+  if (isDocumentUploadPathIntent(input.resolvedIntent)) {
     return {
       nextAction: 'REQUEST_DOC_UPLOAD',
       secondaryAction: null,
       reasonCodes: ['explicit_document_request'],
+    };
+  }
+
+  if (
+    isCanonicalRecommendationIntent(input.resolvedIntent)
+    && isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
+  ) {
+    return {
+      nextAction: 'REQUEST_DOC_UPLOAD',
+      secondaryAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      reasonCodes: ['documents_required_before_recommendation'],
+    };
+  }
+
+  if (
+    isCanonicalRecommendationIntent(input.resolvedIntent)
+    && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
+  ) {
+    return {
+      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      secondaryAction: null,
+      reasonCodes: ['canonical_recommendation_ready'],
     };
   }
 
@@ -222,4 +274,23 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
 function consultationCanBeInvited(value: string | undefined): boolean {
   const normalized = normalizePolicyState(value);
   return !['SCHEDULED', 'BOOKED', 'COMPLETED', 'CANCELLED'].includes(normalized);
+}
+
+function consultationReadyForInvite(value: string | undefined): boolean {
+  return normalizePolicyState(value) === 'READY';
+}
+
+function isCanonicalRecommendationIntent(resolvedIntent: string): boolean {
+  return [
+    'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    'ASK_FOR_HOSPITAL_RECOMMENDATION',
+  ].includes(resolvedIntent);
+}
+
+function isDocumentUploadPathIntent(resolvedIntent: string): boolean {
+  return ['REQUEST_DOC_UPLOAD', 'ACCEPT_DOC_UPLOAD'].includes(resolvedIntent);
+}
+
+function isHumanHandoffIntent(resolvedIntent: string): boolean {
+  return resolvedIntent === 'REQUEST_HUMAN_HANDOFF';
 }

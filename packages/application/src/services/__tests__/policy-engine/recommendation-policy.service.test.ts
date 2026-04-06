@@ -44,4 +44,46 @@ describe('RecommendationPolicyService', () => {
       expect(result.reasonCodes).toContain('insufficient_readiness_missing_documents');
     },
   );
+
+  it.each([
+    'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    'ASK_FOR_HOSPITAL_RECOMMENDATION',
+  ])(
+    'treats canonical recommendation intents as shortlist-eligible once readiness is satisfied (%s)',
+    async (resolvedIntent) => {
+      const service = new RecommendationPolicyService();
+
+      const result = await service.decide({
+        statusSnapshot: {
+          recommendationStatus: 'NOT_SHOWN',
+          riskLevel: 'LOW',
+          docUploadStatus: 'UPLOADED',
+        },
+        resolvedIntent,
+        candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
+      });
+
+      expect(result.eligible).toBe(true);
+      expect(result.shortlist).toEqual([{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }]);
+      expect(result.reasonCodes).toContain('authoritative_shortlist_ready');
+    },
+  );
+
+  it('keeps explicit document-upload intents out of recommendation eligibility', async () => {
+    const service = new RecommendationPolicyService();
+
+    const result = await service.decide({
+      statusSnapshot: {
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+        docUploadStatus: 'UPLOADED',
+      },
+      resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
+    });
+
+    expect(result.eligible).toBe(false);
+    expect(result.shortlist).toEqual([]);
+    expect(result.reasonCodes).toContain('recommendation_not_requested');
+  });
 });

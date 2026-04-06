@@ -56,7 +56,7 @@ describe('patientProtectedRoutes', () => {
     });
   });
 
-  it('backfills widget hospital starter blocks on /me when restore returns an empty select-hospitals session', async () => {
+  it('backfills widget starter messages through Dify on /me when restore returns an unseeded select-hospitals session', async () => {
     const execute = vi.fn().mockResolvedValue({
       id: 'patient-1',
       patientId: 'patient-1',
@@ -78,48 +78,54 @@ describe('patientProtectedRoutes', () => {
     const findBySessionId = vi.fn().mockResolvedValue({
       id: 'db-session-1',
       sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      difyConversationId: null,
+      hospitalType: 'REGULAR',
+      statusSnapshot: {},
     });
     const listBySession = vi.fn().mockResolvedValue([]);
     const create = vi.fn().mockResolvedValue({});
-    const matchHospitals = vi.fn().mockResolvedValue({
-      hospitals: [
-        {
-          id: '24872781-f62f-49b5-8ff7-b97a78d6bc1d',
-          name: '深圳市人民医院',
-          nameEn: 'Shenzhen People\'s Hospital',
-          logoUrl: null,
-          tags: [],
-          procedureCount: 0,
-        },
-      ],
+    const updateMessage = vi.fn().mockResolvedValue({});
+    const save = vi.fn().mockImplementation(async (entity) => entity);
+    const createChatMessage = vi.fn().mockResolvedValue({
+      conversation_id: 'dify-conversation-restore-1',
+      answer: JSON.stringify({
+        answer: 'To keep your case moving, choosing a few preferred hospitals will help us coordinate the next step.',
+        nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        shortlist: [
+          {
+            hospitalId: '24872781-f62f-49b5-8ff7-b97a78d6bc1d',
+            name: 'Shenzhen People\'s Hospital',
+          },
+        ],
+      }),
+      metadata: { retriever_resources: [] },
     });
     mockGetServices.mockReturnValue({
       getPatientSessionState: { execute },
-      aiChatSessionRepo: { findBySessionId },
-      aiChatMessageRepo: { listBySession, create },
-      matchHospitals: { execute: matchHospitals },
+      aiChatSessionRepo: { findBySessionId, save },
+      aiChatMessageRepo: { listBySession, create, updateMessage },
+      difyApi: { createChatMessage },
+      matchHospitals: { execute: vi.fn() },
     });
 
     const res = await patientProtectedRoutes.request('/me');
 
     expect(res.status).toBe(200);
     expect(findBySessionId).toHaveBeenCalledWith('widget-chat:patient-1:11111111-1111-4111-8111-111111111111');
-    expect(matchHospitals).toHaveBeenCalledWith({
-      destination: 'Shenzhen',
-      category: undefined,
-      procedureId: undefined,
-    });
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      role: 'ASSISTANT',
+    expect(createChatMessage).toHaveBeenCalledOnce();
+    expect(updateMessage).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       metadata: expect.objectContaining({
         widgetStarterSeed: true,
+        widgetStarterVersion: 'ai-v1',
         internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       }),
     }));
+    expect(save).toHaveBeenCalledOnce();
   });
 
-  it('does not append duplicate generic starter messages on /me when the widget session is already seeded without hospitals', async () => {
+  it('does not append duplicate ai-v1 starter messages on /me when the widget session is already seeded', async () => {
     const execute = vi.fn().mockResolvedValue({
       id: 'patient-1',
       patientId: 'patient-1',
@@ -145,28 +151,113 @@ describe('patientProtectedRoutes', () => {
       {
         id: 'assistant-seeded-1',
         role: 'ASSISTANT',
-        content: 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.',
+        content: 'Thanks for sharing your details. We will walk through the next step together.',
         metadata: {
           widgetStarterSeed: true,
+          widgetStarterVersion: 'ai-v1',
           internalNextAction: null,
         },
       },
     ]);
     const create = vi.fn().mockResolvedValue({});
     const updateMessage = vi.fn().mockResolvedValue({});
-    const matchHospitals = vi.fn().mockResolvedValue({ hospitals: [] });
+    const createChatMessage = vi.fn();
     mockGetServices.mockReturnValue({
       getPatientSessionState: { execute },
       aiChatSessionRepo: { findBySessionId },
       aiChatMessageRepo: { listBySession, create, updateMessage },
-      matchHospitals: { execute: matchHospitals },
+      difyApi: { createChatMessage },
+      matchHospitals: { execute: vi.fn() },
     });
 
     const res = await patientProtectedRoutes.request('/me');
 
     expect(res.status).toBe(200);
+    expect(createChatMessage).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
     expect(updateMessage).not.toHaveBeenCalled();
+  });
+
+  it('retries a pending widget starter seed on /me instead of treating an empty placeholder as complete', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      id: 'patient-1',
+      patientId: 'patient-1',
+      name: 'Hao Wang',
+      email: 'hao@example.com',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'select-hospitals',
+      selectedHospitalIds: [],
+      profileSubmitted: true,
+      chatUnlocked: true,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const findBySessionId = vi.fn().mockResolvedValue({
+      id: 'db-session-1',
+      sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      difyConversationId: null,
+      hospitalType: 'REGULAR',
+      statusSnapshot: {},
+    });
+    const listBySession = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'assistant-pending-1',
+          role: 'ASSISTANT',
+          content: '',
+          metadata: {
+            widgetStarterSeed: true,
+            widgetStarterVersion: 'ai-v1',
+          },
+        },
+      ]);
+    const create = vi.fn().mockResolvedValue({});
+    const updateMessage = vi.fn().mockResolvedValue({});
+    const createChatMessage = vi.fn()
+      .mockRejectedValueOnce(new Error('upstream timeout'))
+      .mockResolvedValueOnce({
+        conversation_id: 'dify-conversation-retry-1',
+        answer: JSON.stringify({
+          answer: 'Choosing preferred hospitals will help us continue with the best-fit options.',
+          nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          shortlist: [
+            {
+              hospitalId: '24872781-f62f-49b5-8ff7-b97a78d6bc1d',
+              name: 'Shenzhen People\'s Hospital',
+            },
+          ],
+        }),
+        metadata: { retriever_resources: [] },
+      });
+
+    mockGetServices.mockReturnValue({
+      getPatientSessionState: { execute },
+      aiChatSessionRepo: { findBySessionId, save: vi.fn().mockImplementation(async (entity) => entity) },
+      aiChatMessageRepo: { listBySession, create, updateMessage },
+      difyApi: { createChatMessage },
+      matchHospitals: { execute: vi.fn() },
+    });
+
+    const firstRes = await patientProtectedRoutes.request('/me');
+    const secondRes = await patientProtectedRoutes.request('/me');
+
+    expect(firstRes.status).toBe(200);
+    expect(secondRes.status).toBe(200);
+    expect(create).toHaveBeenCalledOnce();
+    expect(createChatMessage).toHaveBeenCalledTimes(2);
+    expect(updateMessage).toHaveBeenCalledOnce();
+    expect(updateMessage).toHaveBeenCalledWith('assistant-pending-1', expect.objectContaining({
+      metadata: expect.objectContaining({
+        widgetStarterVersion: 'ai-v1',
+        draftState: 'succeeded',
+      }),
+    }));
   });
 
   it('passes custom hospital request through /select-hospitals', async () => {

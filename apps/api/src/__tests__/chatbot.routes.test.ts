@@ -565,24 +565,34 @@ describe('Chatbot routes', () => {
     expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).publicNextAction).toBe('REQUEST_DOC_UPLOAD');
   });
 
-  it('POST /api/v2/chatbot/chat persists raw assistant metadata while keeping public nextAction normalized', async () => {
+  it('POST /api/v2/chatbot/chat persists canonical semantic and action metadata while keeping the public contract aligned', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
-      conversation_id: 'dify-conv-persist-raw',
+      conversation_id: 'dify-conv-persist-canonical',
       answer: JSON.stringify({
         answer: 'Please upload your documents first.',
         intent: 'CONSULT',
+        resolvedIntent: 'REQUEST_DOC_UPLOAD',
         riskLevel: 'NORMAL',
         canAnswer: true,
         nextAction: 'REQUEST_DOCS',
         responseMode: 'grounded_plus_guidance',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+        recommendationSignal: 'NONE',
+        mentionsCondition: true,
+        mentionsDoctorOrHospitalNeed: false,
         metadata: {
           nextAction: 'REQUEST_DOCS',
           publicNextAction: 'REQUEST_DOCS',
-          structuredOutput: {
-            nextAction: 'REQUEST_DOCS',
-            publicNextAction: 'REQUEST_DOCS',
-          },
+          internalNextAction: 'REQUEST_DOCS',
+          public_next_action: 'REQUEST_DOCS',
+          internal_next_action: 'REQUEST_DOCS',
+          engagement_signal: 'DEEP_WORKFLOW',
+          progression_signal: 'READY_TO_PROCEED',
+          recommendation_signal: 'NONE',
+          mentions_condition: true,
+          mentions_doctor_or_hospital_need: false,
         },
         citations: [],
       }),
@@ -602,17 +612,66 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata).toMatchObject({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'NONE',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+      nextAction: 'REQUEST_DOC_UPLOAD',
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+      public_next_action: 'REQUEST_DOC_UPLOAD',
+      internalNextAction: 'REQUEST_DOCS',
+      internal_next_action: 'REQUEST_DOCS',
+    });
+    expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      nextAction: 'REQUEST_DOC_UPLOAD',
+    });
+    expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'NONE',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+      nextAction: 'REQUEST_DOC_UPLOAD',
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+      public_next_action: 'REQUEST_DOC_UPLOAD',
+      internalNextAction: 'REQUEST_DOCS',
+      internal_next_action: 'REQUEST_DOCS',
+    });
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         metadata: expect.objectContaining({
-          nextAction: 'REQUEST_DOCS',
-          publicNextAction: 'REQUEST_DOCS',
+          resolvedIntent: 'REQUEST_DOC_UPLOAD',
+          engagementSignal: 'DEEP_WORKFLOW',
+          progressionSignal: 'READY_TO_PROCEED',
+          recommendationSignal: 'NONE',
+          mentionsCondition: true,
+          mentionsDoctorOrHospitalNeed: false,
+          nextAction: 'REQUEST_DOC_UPLOAD',
+          publicNextAction: 'REQUEST_DOC_UPLOAD',
+          public_next_action: 'REQUEST_DOC_UPLOAD',
+          internalNextAction: 'REQUEST_DOCS',
+          internal_next_action: 'REQUEST_DOCS',
           structuredOutput: expect.objectContaining({
-            nextAction: 'REQUEST_DOCS',
+            resolvedIntent: 'REQUEST_DOC_UPLOAD',
+            nextAction: 'REQUEST_DOC_UPLOAD',
             metadata: expect.objectContaining({
-              nextAction: 'REQUEST_DOCS',
-              publicNextAction: 'REQUEST_DOCS',
+              resolvedIntent: 'REQUEST_DOC_UPLOAD',
+              engagementSignal: 'DEEP_WORKFLOW',
+              progressionSignal: 'READY_TO_PROCEED',
+              recommendationSignal: 'NONE',
+              mentionsCondition: true,
+              mentionsDoctorOrHospitalNeed: false,
+              nextAction: 'REQUEST_DOC_UPLOAD',
+              publicNextAction: 'REQUEST_DOC_UPLOAD',
+              public_next_action: 'REQUEST_DOC_UPLOAD',
+              internalNextAction: 'REQUEST_DOCS',
+              internal_next_action: 'REQUEST_DOCS',
             }),
           }),
         }),
@@ -1694,6 +1753,78 @@ describe('Chatbot routes', () => {
     expect(json.messages[0]?.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
     expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).publicNextAction).toBe('REQUEST_DOC_UPLOAD');
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} serializes canonical semantic metadata consistently from stored records', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-canonical-metadata',
+        role: 'ASSISTANT',
+        content: 'Please upload your reports first.',
+        nextAction: 'REQUEST_DOCS',
+        metadata: {
+          resolved_intent: 'REQUEST_DOC_UPLOAD',
+          engagement_signal: 'DEEP_WORKFLOW',
+          progression_signal: 'READY_TO_PROCEED',
+          recommendation_signal: 'NONE',
+          mentions_condition: true,
+          mentions_doctor_or_hospital_need: false,
+          public_next_action: 'REQUEST_DOCS',
+          internal_next_action: 'REQUEST_DOCS',
+          structuredOutput: {
+            resolved_intent: 'REQUEST_DOC_UPLOAD',
+            metadata: {
+              engagement_signal: 'DEEP_WORKFLOW',
+              progression_signal: 'READY_TO_PROCEED',
+              recommendation_signal: 'NONE',
+              mentions_condition: true,
+              mentions_doctor_or_hospital_need: false,
+              public_next_action: 'REQUEST_DOCS',
+              internal_next_action: 'REQUEST_DOCS',
+            },
+          },
+        },
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.messages[0]?.metadata).toMatchObject({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'NONE',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+      internalNextAction: 'REQUEST_DOCS',
+    });
+    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+    });
+    expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>)).toMatchObject({
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'NONE',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+      internalNextAction: 'REQUEST_DOCS',
+    });
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy workflow requestedAction fields in public metadata', async () => {

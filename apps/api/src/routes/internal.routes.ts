@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { getServerEnv } from '@medical-crm/config';
+import { chatbotSemanticSignalsSchema } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
 import internalFaqEvalRoutes from './internal-faq-eval.routes.js';
 
@@ -24,6 +25,28 @@ const faqCategoriesQuerySchema = z.object({
     z.string().min(1).optional(),
   ),
 });
+
+const aiPolicyEngagementModeSchema = z.enum([
+  'LIGHT_DISCOVERY',
+  'QUALIFIED_EXPLORATION',
+  'DEEP_WORKFLOW',
+]);
+
+const aiPolicyNextActionSchema = z.enum([
+  'ANSWER_FAQ',
+  'EXPLAIN_DOC_UPLOAD',
+  'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+  'EXPLAIN_CONSULT_PROCESS',
+  'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+  'SHOW_HOSPITAL_RECOMMENDATIONS',
+  'REQUEST_DOC_UPLOAD',
+  'INVITE_ONLINE_CONSULT',
+  'SHOW_PACKAGE',
+  'HUMAN_HANDOFF',
+  'SAFETY_HANDOFF',
+]);
+
+const aiPolicyWritebackDepthSchema = z.enum(['minimal', 'moderate', 'complete']);
 
 function isAuthorized(secret: string | undefined): boolean {
   const { INTERNAL_API_SECRET } = getServerEnv();
@@ -155,7 +178,7 @@ app.openapi(aiPolicyDecideRoute, async (c) => {
   const result = await svc.decideAiPolicy.execute({
     sessionId: parsed.body.session_id,
     userMessage: parsed.body.payload?.user_message ?? '',
-    extraction: parsed.body.payload?.candidate_signals ?? {},
+    extraction: readAiPolicyExtraction(parsed.body.payload),
     pageContext: parsed.body.payload?.page_context ?? null,
     candidateHospitals: parsed.body.payload?.candidate_hospitals ?? [],
   });
@@ -182,19 +205,32 @@ app.openapi(aiPolicyWritebackRoute, async (c) => {
 
   const svc = getServices();
   const payload = parsed.body.payload ?? {};
-  const decision = payload.policy_decision ?? {};
+  const decision = readAiPolicyWritebackDecision(payload.policy_decision);
   const result = await svc.applyAiPolicyWriteback.execute({
     sessionId: parsed.body.session_id,
     assistantMessageId: payload.assistant_message_id,
     idempotencyKey: payload.idempotency_key,
-      policyDecision: {
-        engagementMode: decision.engagement_mode,
-        writebackDepth: decision.writeback_depth,
-        nextAction: decision.next_action,
-        selectedHospitalId: decision.selected_hospital_id,
-        riskLevel: decision.risk_level,
-        reasonCodes: decision.reason_codes ?? [],
-        prequalificationReasonCodes: decision.prequalification_reason_codes ?? [],
+    policyDecision: {
+      engagementMode: readOptionalEnum(
+        decision.engagementMode ?? decision.engagement_mode,
+        aiPolicyEngagementModeSchema,
+      ),
+      writebackDepth: readOptionalEnum(
+        decision.writebackDepth ?? decision.writeback_depth,
+        aiPolicyWritebackDepthSchema,
+      ),
+      nextAction: readOptionalEnum(
+        decision.nextAction ?? decision.next_action,
+        aiPolicyNextActionSchema,
+      ),
+      selectedHospitalId: readOptionalString(
+        decision.selectedHospitalId ?? decision.selected_hospital_id,
+      ) ?? undefined,
+      riskLevel: readOptionalString(decision.riskLevel ?? decision.risk_level) ?? undefined,
+      reasonCodes: readStringArray(decision.reasonCodes ?? decision.reason_codes),
+      prequalificationReasonCodes: readStringArray(
+        decision.prequalificationReasonCodes ?? decision.prequalification_reason_codes,
+      ),
       shortlist: decision.shortlist ?? [],
     },
   });
@@ -299,8 +335,77 @@ app.openapi(listPackagesRoute, async (c) => {
 
 app.route('/', internalFaqEvalRoutes);
 
+function readAiPolicyExtraction(payload: unknown): Record<string, unknown> {
+  const record = asRecord(payload);
+  const candidateSignals = parseRecord(record.candidate_signals) ?? {};
+  const semanticSignals = readCanonicalSemanticSignals(record.semantic_signals)
+    ?? readCanonicalSemanticSignals(record.candidate_signals);
+
+  return semanticSignals
+    ? { ...candidateSignals, ...semanticSignals }
+    : candidateSignals;
+}
+
+function readCanonicalSemanticSignals(
+  value: unknown,
+): z.infer<typeof chatbotSemanticSignalsSchema> | null {
+  const record = parseRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const parsed = chatbotSemanticSignalsSchema.safeParse({
+    resolvedIntent: record.resolvedIntent,
+    engagementSignal: record.engagementSignal,
+    progressionSignal: record.progressionSignal,
+    recommendationSignal: record.recommendationSignal,
+    mentionsCondition: record.mentionsCondition,
+    mentionsDoctorOrHospitalNeed: record.mentionsDoctorOrHospitalNeed,
+  });
+
+  return parsed.success ? parsed.data : null;
+}
+
+function readAiPolicyWritebackDecision(value: unknown): Record<string, unknown> {
+  return parseRecord(value) ?? {};
+}
+
+function parseRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'string') {
+    try {
+      return asRecord(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+
+  return value && typeof value === 'object'
+    ? value as Record<string, unknown>
+    : null;
+}
+
 function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readOptionalEnum<const T extends [string, ...string[]]>(
+  value: unknown,
+  schema: z.ZodEnum<T>,
+): z.infer<typeof schema> | undefined {
+  const parsed = schema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object'
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function inferHospitalCategory(query: string | null): string | null {

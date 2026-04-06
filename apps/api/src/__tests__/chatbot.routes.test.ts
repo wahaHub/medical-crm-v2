@@ -1403,6 +1403,11 @@ describe('Chatbot routes', () => {
           answer: 'We can walk you through how the process works.',
           intent: 'FAQ',
           resolvedIntent: 'ASK_MEDICAL_TRAVEL_PROCESS',
+          engagementSignal: 'LIGHT_DISCOVERY',
+          progressionSignal: 'CURIOUS',
+          recommendationSignal: 'NONE',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: false,
           riskLevel: 'NORMAL',
           canAnswer: true,
           nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
@@ -1417,6 +1422,29 @@ describe('Chatbot routes', () => {
         metadata: { retriever_resources: [] },
       },
       expectedNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+      expectedResolvedIntent: 'ASK_MEDICAL_TRAVEL_PROCESS',
+      expectedPublicMetadata: {
+        resolvedIntent: 'ASK_MEDICAL_TRAVEL_PROCESS',
+        engagementSignal: 'LIGHT_DISCOVERY',
+        progressionSignal: 'CURIOUS',
+        recommendationSignal: 'NONE',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+        semanticSignals: {
+          resolvedIntent: 'ASK_MEDICAL_TRAVEL_PROCESS',
+          engagementSignal: 'LIGHT_DISCOVERY',
+          progressionSignal: 'CURIOUS',
+          recommendationSignal: 'NONE',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: false,
+        },
+        nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+        publicNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+        public_next_action: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+        internalNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+        internal_next_action: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+        engagementMode: 'LIGHT_DISCOVERY',
+      },
       expectedBlocks: [
         expect.objectContaining({
           type: 'PROCESS_MODAL_TRIGGER',
@@ -1437,6 +1465,11 @@ describe('Chatbot routes', () => {
           answer: 'We can explain how consultation usually works.',
           intent: 'CONSULT',
           resolvedIntent: 'ASK_CONSULT_PROCESS',
+          engagementSignal: 'QUALIFIED_EXPLORATION',
+          progressionSignal: 'OPEN_TO_NEXT_STEP',
+          recommendationSignal: 'NONE',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: false,
           riskLevel: 'NORMAL',
           canAnswer: true,
           nextAction: 'EXPLAIN_CONSULT_PROCESS',
@@ -1451,6 +1484,29 @@ describe('Chatbot routes', () => {
         metadata: { retriever_resources: [] },
       },
       expectedNextAction: 'EXPLAIN_CONSULT_PROCESS',
+      expectedResolvedIntent: 'ASK_CONSULT_PROCESS',
+      expectedPublicMetadata: {
+        resolvedIntent: 'ASK_CONSULT_PROCESS',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+        progressionSignal: 'OPEN_TO_NEXT_STEP',
+        recommendationSignal: 'NONE',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+        semanticSignals: {
+          resolvedIntent: 'ASK_CONSULT_PROCESS',
+          engagementSignal: 'QUALIFIED_EXPLORATION',
+          progressionSignal: 'OPEN_TO_NEXT_STEP',
+          recommendationSignal: 'NONE',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: false,
+        },
+        nextAction: 'EXPLAIN_CONSULT_PROCESS',
+        publicNextAction: 'EXPLAIN_CONSULT_PROCESS',
+        public_next_action: 'EXPLAIN_CONSULT_PROCESS',
+        internalNextAction: 'EXPLAIN_CONSULT_PROCESS',
+        internal_next_action: 'EXPLAIN_CONSULT_PROCESS',
+        engagementMode: 'QUALIFIED_EXPLORATION',
+      },
       expectedBlocks: [],
     },
     {
@@ -1466,6 +1522,11 @@ describe('Chatbot routes', () => {
           answer: 'We can help you compare a few good options.',
           intent: 'CONSULT',
           resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+          engagementSignal: 'QUALIFIED_EXPLORATION',
+          progressionSignal: 'OPEN_TO_NEXT_STEP',
+          recommendationSignal: 'SEEKING_DIRECTION',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: true,
           riskLevel: 'NORMAL',
           canAnswer: true,
           nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
@@ -1489,6 +1550,29 @@ describe('Chatbot routes', () => {
         metadata: { retriever_resources: [] },
       },
       expectedNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+      expectedResolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+      expectedPublicMetadata: {
+        resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+        progressionSignal: 'OPEN_TO_NEXT_STEP',
+        recommendationSignal: 'SEEKING_DIRECTION',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: true,
+        semanticSignals: {
+          resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+          engagementSignal: 'QUALIFIED_EXPLORATION',
+          progressionSignal: 'OPEN_TO_NEXT_STEP',
+          recommendationSignal: 'SEEKING_DIRECTION',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: true,
+        },
+        nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+        publicNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+        public_next_action: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+        internalNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+        internal_next_action: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+        engagementMode: 'QUALIFIED_EXPLORATION',
+      },
       expectedBlocks: [],
     },
     {
@@ -1504,6 +1588,11 @@ describe('Chatbot routes', () => {
           answer: 'Here are a few hospitals that look like a fit.',
           intent: 'CONSULT',
           resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+          engagementSignal: 'QUALIFIED_EXPLORATION',
+          progressionSignal: 'READY_TO_PROCEED',
+          recommendationSignal: 'READY_FOR_RECOMMENDATION',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: true,
           riskLevel: 'NORMAL',
           canAnswer: true,
           nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
@@ -1527,6 +1616,29 @@ describe('Chatbot routes', () => {
         metadata: { retriever_resources: [] },
       },
       expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      expectedResolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      expectedPublicMetadata: {
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+        progressionSignal: 'READY_TO_PROCEED',
+        recommendationSignal: 'READY_FOR_RECOMMENDATION',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: true,
+        semanticSignals: {
+          resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+          engagementSignal: 'QUALIFIED_EXPLORATION',
+          progressionSignal: 'READY_TO_PROCEED',
+          recommendationSignal: 'READY_FOR_RECOMMENDATION',
+          mentionsCondition: false,
+          mentionsDoctorOrHospitalNeed: true,
+        },
+        nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        publicNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        public_next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        internal_next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        engagementMode: 'QUALIFIED_EXPLORATION',
+      },
       expectedBlocks: [
         expect.objectContaining({
           type: 'HOSPITAL_RECOMMENDATION_CARDS',
@@ -1539,6 +1651,8 @@ describe('Chatbot routes', () => {
     prompts,
     difyResponse,
     expectedNextAction,
+    expectedResolvedIntent,
+    expectedPublicMetadata,
     expectedBlocks,
   }) => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -1560,17 +1674,61 @@ describe('Chatbot routes', () => {
 
       expect(res.status).toBe(200);
       const json = chatbotChatResponseSchema.parse(await res.json());
+      const difyPayload = mockServices.difyApi.createChatMessage.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+      const difyInputs = difyPayload.inputs as Record<string, unknown>;
+      const structuredOutput = json.metadata.structuredOutput as Record<string, unknown>;
+      const structuredOutputMetadata = (structuredOutput.metadata as Record<string, unknown>);
+
       expect(json.nextAction).toBe(expectedNextAction);
-      expect(json.metadata).toMatchObject({
-        resolvedIntent: expect.any(String),
-        internalNextAction: expectedNextAction,
+      expect(difyPayload.query).toBe(prompt);
+      expect(difyInputs).toMatchObject({
+        hospitalType: 'COSMETIC',
+        sessionId,
+        assistantMessageId: expect.any(String),
+        attachmentsJson: '[]',
+        pageContextJson: 'null',
       });
+      for (const key of [
+        'language',
+        'messageLanguage',
+        'message_language',
+        'detectedLanguage',
+        'detected_language',
+        'promptFamily',
+        'prompt_family',
+        'family',
+        'resolvedIntent',
+        'resolved_intent',
+        'canonicalResolvedIntent',
+        'canonical_resolved_intent',
+        'engagementSignal',
+        'engagement_signal',
+        'progressionSignal',
+        'progression_signal',
+        'recommendationSignal',
+        'recommendation_signal',
+        'mentionsCondition',
+        'mentions_condition',
+        'mentionsDoctorOrHospitalNeed',
+        'mentions_doctor_or_hospital_need',
+        'possibleIntent',
+        'possibleRisk',
+        'mentionedBudget',
+        'topicHint',
+      ]) {
+        expect(difyInputs).not.toHaveProperty(key);
+      }
+      expect(json.metadata).toMatchObject(expectedPublicMetadata);
+      expect(json.metadata).not.toHaveProperty('language');
+      expect(json.metadata).not.toHaveProperty('promptFamily');
+      expect(structuredOutput).toMatchObject({
+        resolvedIntent: expectedResolvedIntent,
+        nextAction: expectedNextAction,
+      });
+      expect(structuredOutputMetadata).toMatchObject(expectedPublicMetadata);
+      expect(structuredOutputMetadata).not.toHaveProperty('language');
+      expect(structuredOutputMetadata).not.toHaveProperty('promptFamily');
       expect(json.blocks ?? []).toEqual(expectedBlocks);
-      expect(mockServices.difyApi.createChatMessage).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          query: prompt,
-        }),
-      );
     }
   });
 
@@ -2405,6 +2563,26 @@ describe('Chatbot routes', () => {
 
     expect(convertRes.status).toBe(200);
     expect(persistedMessages).toHaveLength(1);
+    expect(persistedMessages[0]).toMatchObject({
+      role: 'SYSTEM',
+      content: 'Chatbot consultation details submitted.',
+      nextAction: 'INVITE_ONLINE_CONSULT',
+      metadata: {
+        workflow: {
+          kind: 'CONVERT',
+          requestedAction: 'INVITE_ONLINE_CONSULT',
+          patientId: 'patient-1',
+          caseId: 'case-1',
+          form: {
+            name: 'Alice',
+            email: 'alice@example.com',
+            country: 'Singapore',
+            conditionSummary: 'Revision rhinoplasty consultation',
+            budget: 'USD 8000',
+          },
+        },
+      },
+    });
     expect(persistedMessages[0]?.metadata).toMatchObject({
       workflow: {
         kind: 'CONVERT',
@@ -2424,8 +2602,27 @@ describe('Chatbot routes', () => {
     expect(historyRes.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await historyRes.json());
     expect(json.messages).toHaveLength(1);
-    expect(json.messages[0]?.nextAction).toBe('INVITE_ONLINE_CONSULT');
-    expect(((json.messages[0]?.metadata.workflow) as Record<string, unknown>).requestedAction).toBe('INVITE_ONLINE_CONSULT');
+    expect(json.messages[0]).toMatchObject({
+      id: persistedMessages[0]?.id,
+      role: 'SYSTEM',
+      content: 'Chatbot consultation details submitted.',
+      nextAction: 'INVITE_ONLINE_CONSULT',
+      metadata: {
+        workflow: {
+          kind: 'CONVERT',
+          requestedAction: 'INVITE_ONLINE_CONSULT',
+          patientId: 'patient-1',
+          caseId: 'case-1',
+          form: {
+            name: 'Alice',
+            email: 'alice@example.com',
+            country: 'Singapore',
+            conditionSummary: 'Revision rhinoplasty consultation',
+            budget: 'USD 8000',
+          },
+        },
+      },
+    });
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy metadata nextAction fields before public serialization', async () => {

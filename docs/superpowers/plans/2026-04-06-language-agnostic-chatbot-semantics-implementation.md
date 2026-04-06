@@ -61,6 +61,10 @@
 
 ### API and live-contract coverage
 
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal.routes.ts`
+  - Keep the live Dify-to-backend decide/context ingress aligned with the canonical semantic contract.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/__tests__/internal.routes.test.ts`
+  - Add ingress-shape coverage for the canonical semantic payload.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/chatbot.routes.ts`
   - Normalize/expose the new canonical semantics through persisted message metadata and public responses if needed.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/__tests__/chatbot.routes.test.ts`
@@ -157,11 +161,15 @@ In the existing extraction node:
 - explicitly instruct the model that semantically equivalent messages across languages must map to the same enums
 - keep this in the existing node rather than adding a new node
 
-- [ ] **Step 4: Re-run the focused workflow contract test**
+- [ ] **Step 4: Audit the DSL for old weak semantic-field references**
+
+Verify that `possibleIntent`, `possibleRisk`, `affirmative`, and `negative` no longer appear anywhere in the shipped DSL after the extraction rewrite.
+
+- [ ] **Step 5: Re-run the focused workflow contract test**
 
 Run the same command and expect PASS.
 
-- [ ] **Step 5: Re-import and publish the updated DSL in Dify**
+- [ ] **Step 6: Re-import and publish the updated DSL in Dify**
 
 After the DSL file and contract test are green:
 
@@ -170,7 +178,7 @@ After the DSL file and contract test are green:
 
 This is required before any later live smoke.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
@@ -342,6 +350,8 @@ git commit -m "refactor: remove legacy semantic resolvers from main path"
 ### Task 6: Keep route parsing and stored metadata aligned with canonical semantics
 
 **Files:**
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/internal.routes.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/__tests__/internal.routes.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/chatbot.routes.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/__tests__/chatbot.routes.test.ts`
 - Modify if needed: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/domain/src/entities/ai-chat-message.entity.ts`
@@ -351,6 +361,7 @@ git commit -m "refactor: remove legacy semantic resolvers from main path"
 - [ ] **Step 1: Write failing route tests**
 
 Cover:
+- internal Dify ingress accepts/parses the canonical semantic fields
 - canonical semantic fields can be parsed from Dify responses
 - public chat responses expose the updated semantics consistently
 - persisted message metadata still records the right semantic/action values
@@ -360,6 +371,7 @@ Cover:
 Run:
 ```bash
 cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
+pnpm --filter @medical-crm/api test -- internal.routes.test.ts
 pnpm --filter @medical-crm/api test -- chatbot.routes.test.ts
 ```
 
@@ -368,6 +380,7 @@ Expected: FAIL if parsing/serialization still assumes the old weak fields.
 - [ ] **Step 3: Implement the minimal route/entity changes**
 
 Normalize:
+- internal ingress validation/parsing
 - route parsing
 - stored metadata
 - response serialization
@@ -382,7 +395,7 @@ Run the same command and expect PASS.
 
 ```bash
 cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
-git add apps/api/src/routes/chatbot.routes.ts apps/api/src/__tests__/chatbot.routes.test.ts packages/domain/src/entities/ai-chat-message.entity.ts packages/domain/src/ports/ai-chat-message-repository.port.ts packages/infrastructure/database/repositories/drizzle-ai-chat-message.repository.ts
+git add apps/api/src/routes/internal.routes.ts apps/api/src/__tests__/internal.routes.test.ts apps/api/src/routes/chatbot.routes.ts apps/api/src/__tests__/chatbot.routes.test.ts packages/domain/src/entities/ai-chat-message.entity.ts packages/domain/src/ports/ai-chat-message-repository.port.ts packages/infrastructure/database/repositories/drizzle-ai-chat-message.repository.ts
 git commit -m "feat: persist canonical chatbot semantics through api routes"
 ```
 
@@ -413,7 +426,8 @@ Assertions should verify:
 Run:
 ```bash
 cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
-pnpm --filter @medical-crm/api test -- chatbot.routes.test.ts decide-ai-policy.use-case.test.ts
+pnpm --filter @medical-crm/api test -- chatbot.routes.test.ts
+pnpm --filter @medical-crm/application test -- decide-ai-policy.use-case.test.ts
 ```
 
 Expected: FAIL until the new behavior is fully wired.

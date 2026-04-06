@@ -33,12 +33,33 @@ export const chatbotUploadInitSchema = z.object({
   mimeType: z.string().min(1).max(100),
 }).strict();
 
+export const chatbotAttachmentSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  fileSize: z.number().int().positive(),
+  mimeType: z.string().min(1).max(100),
+  storageKey: z.string().min(1).max(2048),
+}).strict();
+
+export const chatbotHistoryAttachmentSchema = chatbotAttachmentSchema.extend({
+  name: z.string().min(1).max(255),
+  type: z.string().min(1).max(100),
+  size: z.number().int().positive(),
+  url: z.string(),
+}).strict();
+
 export const chatbotChatSchema = z.object({
   sessionId: z.string().min(1).max(255),
-  hospitalType: chatbotHospitalTypeSchema,
-  message: z.string().min(1).max(2000),
+  hospitalType: chatbotHospitalTypeSchema.optional(),
+  message: z.string().max(2000),
+  attachments: z.array(chatbotAttachmentSchema).max(10).optional(),
   pageContext: chatbotPageContextSchema.optional(),
-}).strict();
+}).strict().refine(
+  (value) => value.message.trim().length > 0 || (value.attachments?.length ?? 0) > 0,
+  {
+    message: 'Message text or attachments are required',
+    path: ['message'],
+  },
+);
 
 const chatbotConversionBaseSchema = z.object({
   sessionId: z.string().min(1).max(255),
@@ -116,8 +137,11 @@ export const chatbotMessageBlockSchema = z.discriminatedUnion('type', [
       hospitalId: chatbotUuidSchema,
       name: z.string().optional(),
       reason: z.string().optional(),
+      summary: z.string().optional(),
       ctaUrl: z.string().optional(),
       thumbnailUrl: z.string().optional(),
+      thumbnailFallbackUrls: z.array(z.string()).optional(),
+      slug: z.string().optional(),
       city: z.string().optional(),
       matchType: z.string().optional(),
       reasonCodes: z.array(z.string()).optional(),
@@ -203,6 +227,7 @@ export const chatbotHistoryMessageSchema = z.object({
   shortlist: z.array(chatbotShortlistItemSchema).optional(),
   blocks: z.array(chatbotMessageBlockSchema).optional(),
   metadata: z.record(z.string(), z.unknown()),
+  attachments: z.array(chatbotHistoryAttachmentSchema).optional(),
   createdAt: z.string().min(1),
 }).strict();
 

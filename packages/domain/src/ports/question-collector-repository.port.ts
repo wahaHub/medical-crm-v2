@@ -21,6 +21,7 @@ export interface IQuestionCollectorRepository {
   // Templates
   findTemplateById(id: string): Promise<QCTemplate | null>;
   findAllTemplates(query: QCTemplateListQuery): Promise<{ data: QCTemplate[]; total: number }>;
+  findActiveTemplateByCategory(category: string): Promise<QCTemplate | null>;
   saveTemplate(entity: QCTemplate): Promise<QCTemplate>;
   deleteTemplate(id: string): Promise<void>;
 

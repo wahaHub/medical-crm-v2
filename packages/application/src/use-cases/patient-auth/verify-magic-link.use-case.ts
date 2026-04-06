@@ -1,5 +1,7 @@
 import type { IPatientRepository, PatientAuthService } from '@medical-crm/domain';
 
+export class VerifyMagicLinkAuthError extends Error {}
+
 export class VerifyMagicLinkUseCase {
   constructor(
     private readonly patientRepo: IPatientRepository,
@@ -12,9 +14,17 @@ export class VerifyMagicLinkUseCase {
     restoreCookie: string;
     patientId: string;
   }> {
-    const payload = await this.authService.verifyMagicLinkToken(input.token);
+    let payload;
+    try {
+      payload = await this.authService.verifyMagicLinkToken(input.token);
+    } catch {
+      throw new VerifyMagicLinkAuthError('Invalid token');
+    }
+
     const patient = await this.patientRepo.findByEmail(payload.email);
-    if (!patient) throw new Error('Patient not found');
+    if (!patient) {
+      throw new VerifyMagicLinkAuthError('Patient not found');
+    }
     const sessionToken = await this.authService.createSessionToken(patient.id);
     const { restoreToken, restoreCookie } = await this.authService.createGuestRestoreArtifacts(patient.id);
     return { sessionToken, restoreToken, restoreCookie, patientId: patient.id };

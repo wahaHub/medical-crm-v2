@@ -12,6 +12,9 @@ type DifyEdge = {
 type DifyNode = {
   id: string;
   data?: {
+    variables?: Array<{
+      variable?: string;
+    }>;
     cases?: Array<{
       id?: string;
       case_id?: string;
@@ -191,7 +194,10 @@ describe('Dify workflow contract', () => {
       'SHOW_HOSPITAL_RECOMMENDATIONS',
       'EXPLORE_HOSPITAL_RECOMMENDATIONS',
       'EXPLAIN_DOC_UPLOAD',
+      'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
       'EXPLAIN_CONSULT_PROCESS',
+      'INVITE_ONLINE_CONSULT',
+      'HUMAN_HANDOFF',
       'SAFETY_HANDOFF',
     ]));
 
@@ -251,6 +257,27 @@ describe('Dify workflow contract', () => {
     expect(yaml).toContain('{{#prompt_inputs_aggregator.ContextBody.output#}}');
     expect(yaml).toContain('{{#prompt_inputs_aggregator.HospitalsBody.output#}}');
     expect(yaml).toContain('{{#prompt_inputs_aggregator.PackagesBody.output#}}');
+    expect(yaml).toContain('"page_context": {{#start.pageContextJson#}}');
+  });
+
+  it('forwards CRM page context through workflow start inputs into both decide and context requests', () => {
+    const dsl = loadDsl();
+    const startNode = findNode(dsl.workflow.graph.nodes, 'start');
+    const contextNode = findNode(dsl.workflow.graph.nodes, 'context_http');
+    const decideNode = findNode(dsl.workflow.graph.nodes, 'decide_http');
+    const startVariables = startNode.data?.variables ?? [];
+    const contextBody = contextNode.data?.body?.data?.[0]?.value ?? '';
+    const decideBody = decideNode.data?.body?.data?.[0]?.value ?? '';
+
+    expect(startVariables).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variable: 'pageContextJson',
+        }),
+      ]),
+    );
+    expect(contextBody).toContain('"page_context": {{#start.pageContextJson#}}');
+    expect(decideBody).toContain('"page_context": {{#start.pageContextJson#}}');
   });
 
   it('normalizes branch-specific prompt inputs before the response composer reads optional tool outputs', () => {
@@ -305,6 +332,8 @@ describe('Dify workflow contract', () => {
 
     expect(yaml).toContain('{{#env.crm_base_url#}}');
     expect(yaml).toContain('{{#env.internal_api_secret#}}');
+    expect(yaml).toContain("/api/v2/internal/mcp/faq-categories?hospitalType={{#start.hospitalType#}}&hospitalId={{#parse_decide_code.active_hospital_id#}}");
+    expect(yaml).not.toContain('params: hospitalType={{#start.hospitalType#}}&hospitalId={{#parse_decide_code.active_hospital_id#}}');
     expect(yaml).not.toContain('http://host.docker.internal:3001');
     expect(yaml).not.toContain('dev-internal-api-secret-32chars-min-ok');
     expect(() => findNode(dsl.workflow.graph.nodes, 'light_faq_cosmetic_kr')).toThrow('Node not found: light_faq_cosmetic_kr');
@@ -519,5 +548,10 @@ describe('Dify workflow contract', () => {
     expect(prompt).toContain('explain the upload process without pretending an upload widget has already started');
     expect(prompt).toContain('explain the consult workflow and keep the tone exploratory rather than forceful');
     expect(prompt).toContain('If backend next_action is SAFETY_HANDOFF, keep the response safety-only and direct the user toward human or emergency support without any commercial CTA');
+    expect(prompt).toContain('append at most one short soft-confirmation CTA only when it matches the backend next_action');
+    expect(prompt).toContain('If you\'d like, I can next...');
+    expect(prompt).toContain('Eligible soft-confirmation CTA actions are REQUEST_DOC_UPLOAD, EXPLAIN_DOC_UPLOAD, EXPLAIN_CONSULT_PROCESS, EXPLORE_HOSPITAL_RECOMMENDATIONS, SHOW_HOSPITAL_RECOMMENDATIONS, and SHOW_PACKAGE');
+    expect(prompt).toContain('Do not append a conversion-style CTA on SAFETY_HANDOFF or any HIGH_RISK/CRISIS turn');
+    expect(prompt).toContain('On LIGHT_DISCOVERY, keep any CTA especially soft, optional, and trust-building rather than salesy');
   });
 });

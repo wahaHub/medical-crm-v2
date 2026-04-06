@@ -3,9 +3,12 @@
 import { useMemo, useRef, useState, useTransition } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, StatusBadge, Button, DataTable, EmptyState, useMediaUpload, type Column } from '@medical-crm/ui';
-import { FileText, Upload, Trash2, Eye, Download, Paperclip, X } from 'lucide-react';
-import { useCaseDocuments, useCaseProgress } from '@/queries/use-cases';
+import { FileText, Upload, Trash2, Eye, Download, Paperclip, X, Building2, Send } from 'lucide-react';
+import { useCaseDocuments, useCaseHospitalContacts, useCaseProgress } from '@/queries/use-cases';
 import { addCaseNote, initCaseDocumentUpload, deleteDocument } from '@/actions/case-actions';
+import { requestQuotesForHospitalContacts } from '@/actions/quote-actions';
+import { useHospitalNameMap } from '@/queries/use-hospital-names';
+import { deriveSelectedHospitals, type HospitalContactLike } from '@/lib/case-selected-hospitals';
 import type { CaseProgressItem, CaseSummary } from '@/lib/api-types';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -52,7 +55,12 @@ function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
         <InfoRow label="Patient Name" value={caseData.patientName} />
         <InfoRow label="Email" value={caseData.patientEmail} />
         <InfoRow label="Phone" value={caseData.patientPhone} />
-        <InfoRow label="Country" value={caseData.patientCountry} />
+        <InfoRow label="Gender" value={caseData.gender} />
+        <InfoRow label="Country" value={caseData.country} />
+        <InfoRow label="Destination" value={caseData.destination} />
+        <InfoRow label="Department" value={caseData.department} />
+        <InfoRow label="Disease" value={caseData.disease} />
+        <InfoRow label="Treatment Timing" value={caseData.treatmentTime} />
         <InfoRow label="Language" value={caseData.patientLanguage} />
         <InfoRow label="Primary Diagnosis" value={caseData.primaryDiagnosis} />
         <InfoRow label="Risk Level" value={caseData.riskLevel} />
@@ -88,6 +96,204 @@ function AssignedHospitalCard({ caseData }: { caseData: CaseSummary }) {
         <InfoRow label="Assignment Status" value={caseData.assignmentStatus} />
         <InfoRow label="Treatment Stage" value={caseData.treatmentStage} />
       </dl>
+    </Card>
+  );
+}
+
+interface PaginatedLike<T> {
+  data?: T[];
+}
+
+function toHospitalContacts(raw: unknown): HospitalContactLike[] {
+  if (Array.isArray(raw)) return raw as HospitalContactLike[];
+  if (raw && typeof raw === 'object' && Array.isArray((raw as PaginatedLike<HospitalContactLike>).data)) {
+    return (raw as PaginatedLike<HospitalContactLike>).data ?? [];
+  }
+  return [];
+}
+
+export function SelectedHospitalsCard({ caseData }: { caseData: CaseSummary }) {
+  const queryClient = useQueryClient();
+  const { data: raw, isLoading, error: queryError, refetch } = useCaseHospitalContacts(caseData.id);
+  const contacts = toHospitalContacts(raw);
+  const { nameMap: hospitalNameMap } = useHospitalNameMap(contacts.map((contact) => contact.hospitalId));
+  const selectedHospitals = useMemo(
+    () => deriveSelectedHospitals(contacts, hospitalNameMap),
+    [contacts, hospitalNameMap],
+  );
+  const freshQuoteTargetIds = useMemo(
+    () => selectedHospitals
+      .filter((hospital) => !hospital.hasFollowUpSent && hospital.statusLabel === 'Selected')
+      .map((hospital) => hospital.contactId),
+    [selectedHospitals],
+  );
+  const followUpTargetIds = useMemo(
+    () => selectedHospitals
+      .filter((hospital) => hospital.hasFollowUpSent && hospital.statusLabel === 'Quote Prompt Sent')
+      .map((hospital) => hospital.contactId),
+    [selectedHospitals],
+  );
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const bulkAction = useMemo(() => {
+    if (freshQuoteTargetIds.length > 0 && followUpTargetIds.length > 0) {
+      return {
+        label: 'Send Requests & Follow-ups',
+        mode: 'mixed' as const,
+        contactIds: [...freshQuoteTargetIds, ...followUpTargetIds],
+      };
+    }
+    if (freshQuoteTargetIds.length > 0) {
+      return {
+        label: 'Send Quote Request',
+        mode: 'request' as const,
+        contactIds: freshQuoteTargetIds,
+      };
+    }
+    if (followUpTargetIds.length > 0) {
+      return {
+        label: 'Send Quote Follow-up',
+        mode: 'follow-up' as const,
+        contactIds: followUpTargetIds,
+      };
+    }
+    return {
+      label: 'Send Quote Request',
+      mode: 'request' as const,
+      contactIds: [] as string[],
+    };
+  }, [followUpTargetIds, freshQuoteTargetIds]);
+
+  function handleSendQuoteRequest(contactIds: string[], mode: 'request' | 'follow-up' | 'mixed') {
+    if (contactIds.length === 0) return;
+    setError(null);
+    setSuccess(null);
+    startTransition(async () => {
+      try {
+        const result = await requestQuotesForHospitalContacts(caseData.id, contactIds);
+        if (result.requestedCount > 0) {
+          setSuccess(
+            mode === 'request'
+              ? `Quote prompt sent to ${result.requestedCount} hospital${result.requestedCount === 1 ? '' : 's'}.`
+              : mode === 'follow-up'
+                ? `Quote follow-up sent to ${result.requestedCount} hospital${result.requestedCount === 1 ? '' : 's'}.`
+                : `Quote requests and follow-ups sent to ${result.requestedCount} hospital${result.requestedCount === 1 ? '' : 's'}.`,
+          );
+        }
+        if (result.failures.length > 0) {
+          const failedHospitals = result.failures.map((failure) => (
+            selectedHospitals.find((hospital) => hospital.contactId === failure.contactId)?.hospitalName ?? failure.contactId
+          ));
+          setError(
+            result.requestedCount > 0
+              ? `Completed ${result.requestedCount} request(s), but failed for: ${failedHospitals.join(', ')}.`
+              : result.failures[0]?.message ?? 'Failed to send quote follow-up',
+          );
+        }
+        await refetch();
+        await queryClient.invalidateQueries({ queryKey: ['cases', caseData.id, 'hospital-contacts'] });
+        await queryClient.invalidateQueries({ queryKey: ['cases', caseData.id, 'quotes', 'compare'] });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to send quote request');
+      }
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex w-full items-start justify-between gap-4">
+          <div className="min-w-0">
+            <CardTitle>Hospitals Selected By Patient</CardTitle>
+            <p className="mt-1 text-sm text-slate-500">
+              Keep patient-selected hospitals visible here, then prompt those hospitals to prepare quotes once the case is ready.
+            </p>
+          </div>
+          <Button
+            variant="default"
+            size="sm"
+            className="sm:ml-auto"
+            onClick={() => handleSendQuoteRequest(
+              bulkAction.contactIds,
+              bulkAction.mode,
+            )}
+            disabled={isPending || bulkAction.contactIds.length === 0}
+          >
+            <Send size={14} className="mr-1.5" />
+            {isPending ? 'Sending...' : bulkAction.label}
+          </Button>
+        </div>
+      </CardHeader>
+
+      {error && (
+        <div className="mx-6 mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mx-6 mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          {success}
+        </div>
+      )}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+        </div>
+      ) : queryError ? (
+        <div className="px-6 pb-6">
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700">
+            {queryError instanceof Error ? queryError.message : 'Failed to load selected hospitals'}
+          </div>
+        </div>
+      ) : selectedHospitals.length === 0 ? (
+        <div className="px-6 pb-6">
+          <EmptyState
+            icon={<Building2 size={36} />}
+            title="No patient-selected hospitals yet"
+            description="Once the patient chooses hospitals in the widget, they will appear here."
+          />
+          {caseData.customHospitalRequest ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <span className="font-semibold">Custom hospital requested:</span> {caseData.customHospitalRequest}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-3 px-6 pb-6">
+          {selectedHospitals.map((hospital) => (
+            <div
+              key={hospital.contactId}
+              className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-800">{hospital.hospitalName}</div>
+                <div className="text-xs text-slate-500">{hospital.hospitalId}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {(hospital.statusLabel === 'Selected' || hospital.statusLabel === 'Quote Prompt Sent') ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSendQuoteRequest([hospital.contactId], hospital.hasFollowUpSent ? 'follow-up' : 'request')}
+                    disabled={isPending}
+                  >
+                    {hospital.hasFollowUpSent ? 'Follow Up' : 'Request Quote'}
+                  </Button>
+                ) : null}
+                <StatusBadge status={hospital.statusLabel.toUpperCase().replace(/\s+/g, '_')} />
+              </div>
+            </div>
+          ))}
+          {caseData.customHospitalRequest ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <span className="font-semibold">Custom hospital requested:</span> {caseData.customHospitalRequest}
+            </div>
+          ) : null}
+        </div>
+      )}
     </Card>
   );
 }
@@ -489,6 +695,7 @@ export function CaseOverviewTab({ caseData }: CaseOverviewTabProps) {
   return (
     <div className="space-y-6">
       <PatientInfoCard caseData={caseData} />
+      <SelectedHospitalsCard caseData={caseData} />
       <AssignedHospitalCard caseData={caseData} />
       <AdminNotesCard caseData={caseData} />
       <DocumentsCard caseId={caseData.id} />

@@ -61,6 +61,23 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
     };
   }
 
+  async findActiveTemplateByCategory(category: string): Promise<QCTemplate | null> {
+    const rows = await this.db
+      .select()
+      .from(questionCollectorTemplates)
+      .where(
+        and(
+          eq(questionCollectorTemplates.category, category),
+          eq(questionCollectorTemplates.isActive, true),
+        ),
+      )
+      .orderBy(desc(questionCollectorTemplates.createdAt))
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    return this.rowToTemplate(rows[0]!);
+  }
+
   async saveTemplate(entity: QCTemplate): Promise<QCTemplate> {
     const now = new Date().toISOString();
     const createdBy = await this.resolveExistingUserId(entity.createdBy);

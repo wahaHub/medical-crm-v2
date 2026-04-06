@@ -382,6 +382,44 @@ describe('SelectHospitalsUseCase', () => {
     });
   });
 
+  it('keeps existing selected hospitals when saving only a custom hospital request', async () => {
+    const activeHospital = new CaseHospitalContact({
+      id: 'chc-1',
+      caseId: 'case-1',
+      hospitalId: 'hosp-1',
+      subStatus: 'DISTRIBUTED',
+      selectedByPatientAt: null,
+      distributedAt: new Date(),
+      firstReplyAt: null,
+      quoteId: null,
+      patientViewedQuoteAt: null,
+      patientAcceptedAt: null,
+      patientRejectedAt: null,
+      reminderSentAt: null,
+      removedAt: null,
+      removedReason: null,
+      version: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    vi.mocked(caseRepo.findById).mockResolvedValue(makeMockCase());
+    vi.mocked(chcRepo.findByCaseId).mockResolvedValue([activeHospital]);
+    vi.mocked(caseRepo.save).mockImplementation(async (entity) => entity);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      hospitalIds: [],
+      customHospitalRequest: 'Ruijin Hospital',
+      patientId: 'patient-1',
+    });
+
+    expect(chcRepo.save).not.toHaveBeenCalledWith(expect.objectContaining({
+      hospitalId: 'hosp-1',
+      removedReason: 'PATIENT_SELECTION_REPLACED',
+    }));
+  });
+
   it('skips hospital if CHC already exists', async () => {
     const existingCHC = new CaseHospitalContact({
       id: 'chc-1',
@@ -446,7 +484,7 @@ describe('SelectHospitalsUseCase', () => {
 
     await useCase.execute({
       caseId: 'case-1',
-      hospitalIds: [],
+      hospitalIds: ['hosp-2'],
       patientId: 'patient-1',
     });
 
@@ -734,6 +772,19 @@ describe('SubmitPatientQCResponseUseCase', () => {
       templateId: 'nonexistent-template',
       responses: {},
     })).rejects.toThrow('Template nonexistent-template not found');
+  });
+
+  it('rejects inactive templates for patient medical-form submit', async () => {
+    const caseEntity = makeMockCase();
+    vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findTemplateById).mockResolvedValue(makeMockQCTemplate({ isActive: false }));
+
+    await expect(useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: {},
+    })).rejects.toThrow('Template template-1 not found');
   });
 
   it('access is forbidden for other patients\' cases on submit', async () => {

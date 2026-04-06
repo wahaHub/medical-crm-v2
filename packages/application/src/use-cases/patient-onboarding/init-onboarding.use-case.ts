@@ -1,6 +1,8 @@
 import {
+  AiChatSession,
   Case,
   Conversation,
+  type IAiChatSessionRepository,
   type ICaseRepository,
   type IConversationRepository,
   type IPatientRepository,
@@ -95,6 +97,7 @@ export class InitOnboardingUseCase {
     private readonly userEmailLookupRepo: IUserEmailLookupRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly conversationRepo: IConversationRepository,
+    private readonly aiChatSessionRepo: IAiChatSessionRepository,
     private readonly authService: PatientAuthService,
   ) {}
 
@@ -217,6 +220,22 @@ export class InitOnboardingUseCase {
       }));
     }
 
+    const widgetSessionId = `widget-chat:${patient.id}:${savedCase.id}`;
+    const existingWidgetChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId);
+    if (!existingWidgetChatSession) {
+      await this.aiChatSessionRepo.save(new AiChatSession({
+        id: generateId(),
+        sessionId: widgetSessionId,
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: patient.id,
+        hospitalType: 'REGULAR',
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+    }
+
     // 3. Create session token for the patient
     const token = await this.authService.createSessionToken(patient.id);
     const { restoreToken, restoreCookie } = await this.authService.createGuestRestoreArtifacts(patient.id);
@@ -231,7 +250,7 @@ export class InitOnboardingUseCase {
       isExistingPatient: isExisting,
       widgetChatTarget: {
         kind: 'CHATBOT_SESSION',
-        sessionId: `widget-chat:${patient.id}:${savedCase.id}`,
+        sessionId: widgetSessionId,
       },
     };
   }

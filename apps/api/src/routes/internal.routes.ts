@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { getServerEnv } from '@medical-crm/config';
 import { getServices } from '../composition-root.js';
+import internalFaqEvalRoutes from './internal-faq-eval.routes.js';
 
 const app = new OpenAPIHono();
 const INTERNAL_SYSTEM_ACTOR = {
@@ -295,6 +296,8 @@ app.openapi(listPackagesRoute, async (c) => {
     })),
   }, 200);
 });
+
+app.route('/', internalFaqEvalRoutes);
 
 function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;

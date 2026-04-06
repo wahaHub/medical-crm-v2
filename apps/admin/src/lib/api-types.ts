@@ -23,6 +23,13 @@ export interface CaseSummary {
   patientLanguage?: string | null;
   patientEmail?: string | null;
   patientPhone?: string | null;
+  gender?: string | null;
+  country?: string | null;
+  destination?: string | null;
+  department?: string | null;
+  disease?: string | null;
+  treatmentTime?: string | null;
+  customHospitalRequest?: string | null;
   primaryDiagnosis?: string | null;
   riskLevel?: string | null;
   aiSummary?: string | null;

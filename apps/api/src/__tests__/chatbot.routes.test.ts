@@ -33,6 +33,9 @@ const mockServices = {
   mediaUpload: {
     createUploadIntent: vi.fn(),
   },
+  storage: {
+    getSignedUrls: vi.fn(),
+  },
   initOnboarding: {
     execute: vi.fn(),
   },
@@ -159,6 +162,7 @@ describe('Chatbot routes', () => {
       restoreToken: 'restore-token-123',
       restoreCookie: 'restore-cookie-123',
     });
+    mockServices.storage.getSignedUrls.mockResolvedValue({});
   });
 
   it('POST /api/v2/chatbot/chat returns normalized structured response without exposing dify conversation id', async () => {
@@ -322,18 +326,90 @@ describe('Chatbot routes', () => {
     );
   });
 
+  it('POST /api/v2/chatbot/chat accepts attachment-only input and persists attachment refs on the user message', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-attachments',
+      answer: JSON.stringify({
+        answer: 'Thanks, I reviewed the upload context.',
+        intent: 'FAQ',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        topic: 'DOCUMENTS',
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        responseMode: 'grounded_answer',
+        reasonCodes: ['document_uploaded'],
+        shortlist: [],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: '',
+        attachments: [{
+          fileName: 'report.pdf',
+          fileSize: 1024,
+          mimeType: 'application/pdf',
+          storageKey: 'crm/dev/chatbot/report.pdf',
+        }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        role: 'USER',
+        content: '',
+        metadata: {
+          attachments: [{
+            fileName: 'report.pdf',
+            fileSize: 1024,
+            mimeType: 'application/pdf',
+            storageKey: 'crm/dev/chatbot/report.pdf',
+          }],
+        },
+      }),
+    );
+    expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: 'Uploaded attachments',
+        inputs: expect.objectContaining({
+          attachmentsJson: JSON.stringify([{
+            fileName: 'report.pdf',
+            fileSize: 1024,
+            mimeType: 'application/pdf',
+            storageKey: 'crm/dev/chatbot/report.pdf',
+          }]),
+          attachments: [{
+            fileName: 'report.pdf',
+            fileSize: 1024,
+            mimeType: 'application/pdf',
+            storageKey: 'crm/dev/chatbot/report.pdf',
+          }],
+        }),
+      }),
+    );
+  });
+
   it('POST /api/v2/chatbot/chat serializes blocks on the wire for action-driven responses', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-123',
       answer: JSON.stringify({
-        answer: 'To move forward, please upload your recent reports first.',
+        answer: 'Here is how the process usually works.',
         intent: 'CONSULT',
         riskLevel: 'NORMAL',
         canAnswer: true,
-        nextAction: 'REQUEST_DOC_UPLOAD',
-        responseMode: 'guided_upload_request',
-        reasonCodes: ['documents_required_before_recommendation'],
+        nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+        responseMode: 'grounded_answer',
+        reasonCodes: ['process_overview_requested'],
       }),
       metadata: { retriever_resources: [] },
     });
@@ -351,12 +427,22 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const rawJson = await res.json();
     expect(rawJson).toMatchObject({
-      blocks: [],
+      blocks: [
+        expect.objectContaining({
+          type: 'PROCESS_MODAL_TRIGGER',
+          modalKey: 'MEDICAL_TRAVEL_PROCESS',
+        }),
+      ],
     });
 
     const json = chatbotChatResponseSchema.parse(rawJson);
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.blocks).toEqual([]);
+    expect(json.nextAction).toBe('EXPLAIN_MEDICAL_TRAVEL_PROCESS');
+    expect(json.blocks).toEqual([
+      expect.objectContaining({
+        type: 'PROCESS_MODAL_TRIGGER',
+        modalKey: 'MEDICAL_TRAVEL_PROCESS',
+      }),
+    ]);
   });
 
   it('POST /api/v2/chatbot/chat normalizes legacy public nextAction values before schema validation', async () => {
@@ -532,6 +618,61 @@ describe('Chatbot routes', () => {
         }),
       }),
     );
+  });
+
+  it('POST /api/v2/chatbot/chat builds hospital recommendation cards for restored widget sessions without prior workflow messages', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-restored-shortlist',
+      answer: JSON.stringify({
+        answer: 'Here are some hospital options.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        responseMode: 'grounded_plus_guidance',
+        shortlist: [
+          {
+            hospitalId: '550e8400-e29b-41d4-a716-446655440001',
+            name: 'Ruijin Hospital',
+            reason: 'Strong fit for this case',
+          },
+        ],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        hospitalType: 'COSMETIC',
+        message: 'Can you recommend hospitals for me?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.blocks).toEqual([
+      expect.objectContaining({
+        type: 'HOSPITAL_RECOMMENDATION_CARDS',
+        caseId: '550e8400-e29b-41d4-a716-446655440000',
+      }),
+    ]);
   });
 
   it('POST /api/v2/chatbot/chat rejects invalid pageContext payloads', async () => {
@@ -803,6 +944,11 @@ describe('Chatbot routes', () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
       sessionSecretHash: secretHash,
       hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        conversationSummary: null,
+        pendingOffer: null,
+        pendingQuestion: null,
+      },
     }));
 
     const res = await app.request('/api/v2/chatbot/chat', {
@@ -820,6 +966,286 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(409);
     expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/chat reuses the stored hospitalType when an existing session omits it', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        selectedHospitalId: null,
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        leadMaturity: 'browsing',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        prequalificationReasonCodes: [],
+        enteredDeepWorkflowAt: null,
+        pendingOffer: null,
+        pendingQuestion: null,
+        lastNextAction: null,
+        lastResolvedIntent: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+    }));
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'conv-123',
+      answer: 'Continuing the same session.',
+      metadata: {
+        structuredOutput: {
+          intent: 'FAQ',
+          topic: 'consultation',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'ANSWER_FAQ',
+          citations: [],
+          collectedFields: {},
+          missingItems: [],
+          recommendedProviders: [],
+          reasonCodes: [],
+          shortlist: [],
+        },
+      },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        message: 'Continue our conversation.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputs: expect.objectContaining({
+          hospitalType: 'COSMETIC',
+        }),
+      }),
+    );
+  });
+
+  it('POST /api/v2/chatbot/chat builds consult booking cards from merged collected fields across session history', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+      patientId: 'patient-1',
+      statusSnapshot: {
+        consultationStatus: 'ready',
+      },
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'assistant-old-1',
+        role: 'ASSISTANT',
+        metadata: {
+          structuredOutput: {
+            collectedFields: {
+              name: 'Hao Wang',
+              email: 'hao@example.com',
+              country: 'China',
+              conditionSummary: 'Need a treatment plan for persistent eye pain.',
+            },
+          },
+        },
+      }),
+    ]);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-consult',
+      answer: JSON.stringify({
+        answer: 'We can move to an online consultation next.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'INVITE_ONLINE_CONSULT',
+        responseMode: 'deep_workflow_progression',
+        collectedFields: {
+          budget: 'Flexible',
+        },
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        hospitalType: 'COSMETIC',
+        message: 'Okay, let’s book the online consultation.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('INVITE_ONLINE_CONSULT');
+    expect(json.blocks).toEqual([
+      expect.objectContaining({
+        type: 'ONLINE_CONSULT_BOOKING_CARD',
+        consultationStatus: 'ready',
+        conversionDraft: expect.objectContaining({
+          sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+          name: 'Hao Wang',
+          email: 'hao@example.com',
+          country: 'China',
+          conditionSummary: 'Need a treatment plan for persistent eye pain.',
+          budget: 'Flexible',
+        }),
+      }),
+    ]);
+  });
+
+  it('POST /api/v2/chatbot/chat prefers newer historical collected fields over older values when building consult cards', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+      patientId: 'patient-1',
+      statusSnapshot: {
+        consultationStatus: 'ready',
+      },
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'assistant-newer-1',
+        role: 'ASSISTANT',
+        metadata: {
+          structuredOutput: {
+            collectedFields: {
+              email: 'new-email@example.com',
+              country: 'Singapore',
+            },
+          },
+        },
+      }),
+      makeMessage({
+        id: 'assistant-older-1',
+        role: 'ASSISTANT',
+        metadata: {
+          structuredOutput: {
+            collectedFields: {
+              name: 'Hao Wang',
+              email: 'old-email@example.com',
+              country: 'China',
+              conditionSummary: 'Need a treatment plan for persistent eye pain.',
+            },
+          },
+        },
+      }),
+    ]);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-consult-freshness',
+      answer: JSON.stringify({
+        answer: 'We can move to an online consultation next.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'INVITE_ONLINE_CONSULT',
+        responseMode: 'deep_workflow_progression',
+        collectedFields: {
+          budget: 'Flexible',
+        },
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        hospitalType: 'COSMETIC',
+        message: 'Okay, let’s book the online consultation.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.blocks).toEqual([
+      expect.objectContaining({
+        type: 'ONLINE_CONSULT_BOOKING_CARD',
+        conversionDraft: expect.objectContaining({
+          email: 'new-email@example.com',
+          country: 'Singapore',
+          name: 'Hao Wang',
+          conditionSummary: 'Need a treatment plan for persistent eye pain.',
+          budget: 'Flexible',
+        }),
+      }),
+    ]);
+  });
+
+  it('POST /api/v2/chatbot/chat tolerates a stale patient session cookie when the chatbot secret is still valid', async () => {
+    const secretHash = createHash('sha256').update('secret-current').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+      patientId: 'patient-1',
+      sessionSecretHash: secretHash,
+      hospitalType: 'REGULAR',
+      statusSnapshot: {
+        consultationStatus: 'ready',
+      },
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockRejectedValue(new Error('expired'));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-valid-secret',
+      answer: JSON.stringify({
+        answer: 'We can still continue here.',
+        intent: 'FAQ',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'ANSWER_FAQ',
+        responseMode: 'grounded_answer',
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-current; patient_session=expired-patient-cookie',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        message: 'Hello again',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledOnce();
   });
 
   it('POST /api/v2/chatbot/chat returns 502 when the Dify client throws', async () => {
@@ -852,6 +1278,7 @@ describe('Chatbot routes', () => {
     expect(failurePatch.writebackStatus).toBeUndefined();
   });
 
+
   it('POST /api/v2/chatbot/uploads/init rejects access without matching chatbot session secret', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -873,6 +1300,116 @@ describe('Chatbot routes', () => {
     expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
   });
 
+  it('POST /api/v2/chatbot/uploads/init allows a provisioned widget session with a valid patient session cookie', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      sessionSecretHash: null,
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.mediaUpload.createUploadIntent.mockResolvedValue({
+      uploadUrl: 'https://upload.example.com',
+      storageKey: 'chatbot/file.pdf',
+      expiresIn: 900,
+      asset: {
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        storageKey: 'chatbot/file.pdf',
+      },
+    });
+
+    const res = await app.request('/api/v2/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
+  });
+
+  it('POST /api/v2/chatbot/uploads/init rejects a provisioned widget session without a matching patient session cookie', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      sessionSecretHash: null,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+    }));
+
+    const res = await app.request('/api/v2/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/uploads/init prefers a matching patient session over a stale chatbot secret for widget sessions', async () => {
+    const currentSecretHash = createHash('sha256').update('secret-current').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      sessionSecretHash: currentSecretHash,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.mediaUpload.createUploadIntent.mockResolvedValue({
+      uploadUrl: 'https://upload.example.com',
+      storageKey: 'chatbot/file.pdf',
+      expiresIn: 900,
+      asset: {
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        storageKey: 'chatbot/file.pdf',
+      },
+    });
+
+    const res = await app.request('/api/v2/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-stale; patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('patient-cookie-1');
+    expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
+  });
+
   it('GET /api/v2/chatbot/history/{sessionId} returns 401 without a valid chatbot session secret', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -885,6 +1422,74 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(401);
     expect(mockServices.aiChatMessageRepo.listBySession).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} allows a provisioned widget session with a valid patient session cookie', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      sessionSecretHash: null,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+
+    const res = await app.request('/api/v2/chatbot/history/widget-chat:patient-1:case-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'patient_session=patient-cookie-1',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} rejects a provisioned widget session without a matching patient session cookie', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      sessionSecretHash: null,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+    }));
+
+    const res = await app.request('/api/v2/chatbot/history/widget-chat:patient-1:case-1?limit=2', {
+      method: 'GET',
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockServices.aiChatMessageRepo.listBySession).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} prefers a matching patient session over a stale chatbot secret for widget sessions', async () => {
+    const staleSecretHash = createHash('sha256').update('secret-current').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      sessionSecretHash: staleSecretHash,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+
+    const res = await app.request('/api/v2/chatbot/history/widget-chat:patient-1:case-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-stale; patient_session=patient-cookie-1',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('patient-cookie-1');
+    expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} returns ordered history payload for an authorized session', async () => {
@@ -929,6 +1534,96 @@ describe('Chatbot routes', () => {
     expect(json.messages.map((message) => message.id)).toEqual(['msg-old', 'msg-new']);
     expect(json.messages.map((message) => message.content)).toEqual(['First question', 'Latest answer']);
     expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} returns signed attachment objects for chatbot user messages', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-user',
+        role: 'USER',
+        content: '',
+        metadata: {
+          attachments: [{
+            fileName: 'report.pdf',
+            fileSize: 1024,
+            mimeType: 'application/pdf',
+            storageKey: 'crm/dev/chatbot/report.pdf',
+          }],
+        },
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
+      }),
+    ]);
+    mockServices.storage.getSignedUrls.mockResolvedValue({
+      'crm/dev/chatbot/report.pdf': 'https://signed.example.com/report.pdf',
+    });
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.attachments).toEqual([{
+      fileName: 'report.pdf',
+      fileSize: 1024,
+      mimeType: 'application/pdf',
+      storageKey: 'crm/dev/chatbot/report.pdf',
+      name: 'report.pdf',
+      type: 'application/pdf',
+      size: 1024,
+      url: 'https://signed.example.com/report.pdf',
+    }]);
+    expect(mockServices.storage.getSignedUrls).toHaveBeenCalledWith(['crm/dev/chatbot/report.pdf']);
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} replays stored rich blocks for assistant messages', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-assistant',
+        role: 'ASSISTANT',
+        content: 'Here is how the process works.',
+        metadata: {
+          blocks: [{
+            id: 'process-modal-1',
+            type: 'PROCESS_MODAL_TRIGGER',
+            modalKey: 'MEDICAL_TRAVEL_PROCESS',
+            title: 'How the process works',
+            description: 'See the overall medical travel journey.',
+            ctaLabel: 'Open process guide',
+          }],
+        },
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.blocks).toEqual([
+      expect.objectContaining({
+        type: 'PROCESS_MODAL_TRIGGER',
+        modalKey: 'MEDICAL_TRAVEL_PROCESS',
+      }),
+    ]);
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy workflow nextAction values before public serialization', async () => {

@@ -3,6 +3,7 @@ import { z } from '@hono/zod-openapi';
 import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
 import { wsManager } from '../ws/ws-manager.js';
+import { seedWidgetStarterMessage } from './patient-widget-starter.js';
 import {
   selectHospitalsSchema, sendPatientMessageSchema,
   listMessagesQuerySchema, quoteActionSchema, submitIntakeSchema,
@@ -109,8 +110,23 @@ app.use('/*', async (c, next) => {
 // GET /me — patient profile
 app.get('/me', async (c) => {
   const session = c.get('patientSession');
-  const { getPatientSessionState } = getServices();
+  const services = getServices();
+  const { getPatientSessionState } = services;
   const result = await getPatientSessionState.execute({ patientId: session.userId });
+
+  if (result.nextStep === 'select-hospitals' && result.caseId) {
+    try {
+      await seedWidgetStarterMessage({
+        services,
+        widgetSessionId: result.widgetChatTarget?.sessionId,
+        caseId: result.caseId,
+        destination: result.destination,
+      });
+    } catch (error) {
+      console.warn('Failed to backfill widget starter message during patient restore:', error);
+    }
+  }
+
   return c.json(result);
 });
 

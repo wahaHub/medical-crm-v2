@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GetCaseUseCase } from '../src/use-cases/cases/get-case.use-case.js';
-import type { ICaseRepository } from '@medical-crm/domain';
+import type { ICaseRepository, IUserRepository, IHospitalRepository } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 describe('GetCaseUseCase', () => {
   let useCase: GetCaseUseCase;
   let mockCaseRepo: ICaseRepository;
+  let mockUserRepo: IUserRepository;
+  let mockHospitalRepo: IHospitalRepository;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -41,6 +43,12 @@ describe('GetCaseUseCase', () => {
     diagnosisCode: null,
     symptoms: ['drooping eyelids'],
     medicalHistory: 'No known allergies',
+    structuredData: {
+      entryProfile: {
+        department: 'Oculoplastic Surgery',
+        disease: 'Ptosis',
+      },
+    },
     aiSummary: null,
     aiSummaryLanguage: null,
     riskLevel: null,
@@ -49,6 +57,14 @@ describe('GetCaseUseCase', () => {
     assignedAt: new Date('2026-01-15T10:00:00Z'),
     createdAt: new Date('2026-01-10T08:00:00Z'),
     updatedAt: new Date('2026-01-15T10:00:00Z'),
+    assignmentStatus: 'ASSIGNED',
+    treatmentStage: null,
+    conditionSummary: null,
+    riskFlags: null,
+    priority: null,
+    lastEventAt: null,
+    aiSummaryStatus: 'PENDING',
+    questionCollectorTemplateId: null,
   });
 
   beforeEach(() => {
@@ -59,7 +75,20 @@ describe('GetCaseUseCase', () => {
       nextCaseNumber: vi.fn(),
       countByFilters: vi.fn(),
     };
-    useCase = new GetCaseUseCase(mockCaseRepo);
+    mockUserRepo = {
+      findById: vi.fn().mockResolvedValue({
+        id: 'patient-1',
+        email: 'jane@example.com',
+        phone: '+8613800000000',
+      }),
+    } as unknown as IUserRepository;
+    mockHospitalRepo = {
+      findById: vi.fn().mockResolvedValue({
+        id: 'hosp-1',
+        name: 'Beijing Eye Center',
+      }),
+    } as unknown as IHospitalRepository;
+    useCase = new GetCaseUseCase(mockCaseRepo, mockUserRepo, mockHospitalRepo);
   });
 
   it('returns CaseDTO for ADMIN actor', async () => {
@@ -68,6 +97,9 @@ describe('GetCaseUseCase', () => {
     expect(result.id).toBe('case-id-1');
     expect(result.caseNumber).toBe('CASE-2026-0042');
     expect(result.patientName).toBe('Jane Doe');
+    expect(result.patientPhone).toBe('+8613800000000');
+    expect(result.department).toBe('Oculoplastic Surgery');
+    expect(result.disease).toBe('Ptosis');
     expect(result.status).toBe('ACTIVE');
     expect(result.stage).toBe('TRANSFERRED_TO_HOSPITAL');
     expect(result.primaryDiagnosis).toBe('Double eyelid surgery');

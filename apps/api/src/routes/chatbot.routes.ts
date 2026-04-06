@@ -16,6 +16,7 @@ import {
 } from '@medical-crm/validation';
 import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
+import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
 
 export const chatbotPublicRoutes = new OpenAPIHono();
 export const chatbotProtectedRoutes = new OpenAPIHono();
@@ -55,8 +56,12 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
 
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
   let sessionSecretToSet: string | null = null;
+  let effectiveHospitalType = body.hospitalType ?? null;
 
   if (!session) {
+    if (!effectiveHospitalType) {
+      return c.json({ error: 'Hospital type is required when starting a new chatbot session' }, 400);
+    }
     sessionSecretToSet = createSessionSecret();
     session = await svc.aiChatSessionRepo.save(new AiChatSessionEntity({
       id: generateId(),
@@ -64,7 +69,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       sessionSecretHash: hashSessionSecret(sessionSecretToSet),
       difyConversationId: null,
       patientId: null,
-      hospitalType: body.hospitalType,
+      hospitalType: effectiveHospitalType,
       status: 'ACTIVE',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -74,9 +79,10 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     if (authorized) {
       return authorized;
     }
-    if (session.hospitalType !== body.hospitalType) {
+    if (body.hospitalType && session.hospitalType !== body.hospitalType) {
       return c.json({ error: 'Hospital type does not match existing chatbot session' }, 409);
     }
+    effectiveHospitalType = session.hospitalType;
     if (!session.sessionSecretHash) {
       sessionSecretToSet = createSessionSecret();
       session = await svc.aiChatSessionRepo.save(new AiChatSessionEntity({
@@ -92,6 +98,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     return patientSync.error;
   }
   session = patientSync.session;
+  const userAttachments = body.attachments ?? [];
 
   const userMessage = await svc.aiChatMessageRepo.create(new AiChatMessage({
     id: generateId(),
@@ -103,7 +110,10 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     canAnswer: null,
     nextAction: null,
     citations: [],
-    metadata: body.pageContext ? { pageContext: body.pageContext } : {},
+    metadata: {
+      ...(body.pageContext ? { pageContext: body.pageContext } : {}),
+      ...(userAttachments.length > 0 ? { attachments: userAttachments } : {}),
+    },
     createdAt: new Date(),
   }));
 
@@ -126,17 +136,19 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   try {
     difyResponse = await svc.difyApi.createChatMessage({
       inputs: {
-        hospitalType: body.hospitalType,
+        hospitalType: effectiveHospitalType,
         sessionId: body.sessionId,
         assistantMessageId,
+        attachmentsJson: JSON.stringify(userAttachments),
         pageContextJson: body.pageContext ? JSON.stringify(body.pageContext) : 'null',
         currentStatus: session.statusSnapshot,
         conversationSummary: session.statusSnapshot.conversationSummary,
         pendingOffer: session.statusSnapshot.pendingOffer,
         pendingQuestion: session.statusSnapshot.pendingQuestion,
+        attachments: userAttachments,
         pageContext: body.pageContext ?? null,
       },
-      query: body.message,
+      query: body.message.trim().length > 0 ? body.message : 'Uploaded attachments',
       user: body.sessionId,
       conversationId: session.difyConversationId,
     });
@@ -162,6 +174,32 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     }));
   }
 
+  const richAction = asString(normalized.metadata.internalNextAction) ?? normalized.nextAction;
+  const sessionMessagesRaw = (
+    richAction === 'SHOW_HOSPITAL_RECOMMENDATIONS'
+    || richAction === 'INVITE_ONLINE_CONSULT'
+  )
+    ? await svc.aiChatMessageRepo.listBySession(session.id, 100)
+    : null;
+  const sessionMessages = Array.isArray(sessionMessagesRaw) ? sessionMessagesRaw : [];
+  const workflowState = richAction === 'SHOW_HOSPITAL_RECOMMENDATIONS'
+    ? extractWorkflowState(sessionMessages)
+    : { caseId: null, patientId: null, ticketId: null, lastConvertAction: null };
+  const sessionCaseId = workflowState.caseId ?? extractWidgetSessionCaseId(session.sessionId);
+  const blocks = buildChatbotBlocks({
+    richAction,
+    shortlist: normalized.shortlist,
+    sessionCaseId,
+    sessionConsultationStatus: session.statusSnapshot.consultationStatus,
+    templateId: resolvePendingQuestionTemplateId(session.statusSnapshot.pendingQuestion),
+    conversionDraft: richAction === 'INVITE_ONLINE_CONSULT'
+      ? buildConsultConversionDraft(
+          session.sessionId,
+          mergeConsultCollectedFields(sessionMessages, normalized.collectedFields),
+        )
+      : null,
+  });
+
   const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
     intent: normalized.intent,
@@ -174,7 +212,10 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     citations: normalized.citations,
     reasonCodes: normalized.reasonCodes,
     shortlist: normalized.shortlist,
-    metadata: normalized.metadata,
+    metadata: {
+      ...normalized.metadata,
+      ...(blocks.length > 0 ? { blocks } : {}),
+    },
   });
 
   if (!assistantMessage) {
@@ -202,7 +243,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     recommendedProviders: normalized.recommendedProviders,
     reasonCodes: assistantMessage.reasonCodes,
     shortlist: assistantMessage.shortlist,
-    blocks: [],
+    blocks,
     metadata: normalizePublicMetadataForHistory(assistantMessage.metadata),
     history: {
       userMessageId: userMessage.id,
@@ -432,7 +473,7 @@ chatbotPublicRoutes.openapi(initChatbotUploadRoute, async (c) => {
     return c.json({ error: 'Chatbot session not found' }, 404);
   }
 
-  const authorized = await authorizeSessionAccess(c, svc, session);
+  const authorized = await authorizeSessionAccess(c, svc, session, { allowBootstrapWhenSecretMissing: true });
   if (authorized) {
     return authorized;
   }
@@ -481,13 +522,25 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
     return c.json({ error: 'Chatbot session not found' }, 404);
   }
 
-  const authorized = await authorizeSessionAccess(c, svc, session);
+  const authorized = await authorizeSessionAccess(c, svc, session, { allowBootstrapWhenSecretMissing: true });
   if (authorized) {
     return authorized;
   }
 
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, limit);
   const visibleMessages = messages.filter((message) => !isProviderFailedDraft(message));
+  const attachmentKeys = visibleMessages
+    .flatMap((message) => extractChatbotAttachments(message))
+    .map((attachment) => attachment.storageKey)
+    .filter((storageKey) =>
+      storageKey &&
+      !storageKey.startsWith('http://') &&
+      !storageKey.startsWith('https://') &&
+      !storageKey.startsWith('data:'),
+    );
+  const signedUrls = attachmentKeys.length > 0
+    ? await svc.storage.getSignedUrls(Array.from(new Set(attachmentKeys)))
+    : {};
 
   return c.json({
     session: {
@@ -512,7 +565,9 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       citations: message.citations,
       reasonCodes: message.reasonCodes,
       shortlist: message.shortlist,
+      blocks: extractStoredChatbotBlocks(message.metadata),
       metadata: normalizePublicMetadataForHistory(message.metadata),
+      attachments: toPublicChatbotAttachments(extractChatbotAttachments(message), signedUrls),
       createdAt: message.createdAt.toISOString(),
     })),
   }, 200);
@@ -524,16 +579,37 @@ async function authorizeSessionAccess(
   session: AiChatSession,
   options?: { allowBootstrapWhenSecretMissing?: boolean },
 ) {
-  const rawSecret = getCookie(c, CHATBOT_SESSION_SECRET_COOKIE);
-  if (!session?.sessionSecretHash && options?.allowBootstrapWhenSecretMissing) {
-    return null;
+  const patientToken = session.patientId ? getCookie(c, PATIENT_SESSION_COOKIE) : undefined;
+  if (session.patientId) {
+    if (patientToken) {
+      try {
+        const payload = await svc.patientAuthService.verifySessionToken(patientToken);
+        if (payload.userId === session.patientId) {
+          return null;
+        }
+        return c.json({ error: 'Forbidden' }, 403);
+      } catch {
+        // Ignore stale patient cookies here and fall back to chatbot-session authorization.
+      }
+    }
   }
-  if (!session?.sessionSecretHash || !rawSecret || hashSessionSecret(rawSecret) !== session.sessionSecretHash) {
+
+  const rawSecret = getCookie(c, CHATBOT_SESSION_SECRET_COOKIE);
+  const allowBootstrapAccess = !session?.sessionSecretHash && options?.allowBootstrapWhenSecretMissing;
+  if (allowBootstrapAccess) {
+    if (!session.patientId) {
+      return null;
+    }
+    if (patientToken) {
+      return c.json({ error: 'Invalid or expired patient session' }, 401);
+    }
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+  if (!allowBootstrapAccess && (!session?.sessionSecretHash || !rawSecret || hashSessionSecret(rawSecret) !== session.sessionSecretHash)) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
   if (session.patientId) {
-    const patientToken = getCookie(c, PATIENT_SESSION_COOKIE);
     if (patientToken) {
       try {
         const payload = await svc.patientAuthService.verifySessionToken(patientToken);
@@ -541,7 +617,7 @@ async function authorizeSessionAccess(
           return c.json({ error: 'Forbidden' }, 403);
         }
       } catch {
-        return c.json({ error: 'Invalid or expired patient session' }, 401);
+        return null;
       }
     }
   }
@@ -569,7 +645,7 @@ async function attachPatientFromCookie(
     }
     return { session, error: null };
   } catch {
-    return { session, error: c.json({ error: 'Invalid or expired patient session' }, 401) };
+    return { session, error: null };
   }
 }
 
@@ -843,6 +919,84 @@ function buildLeadFormMetadata(input: {
   };
 }
 
+function buildConsultConversionDraft(
+  sessionId: string,
+  collectedFields: Record<string, unknown> | null,
+): {
+  sessionId: string;
+  name?: string;
+  email?: string;
+  country?: string;
+  conditionSummary?: string;
+  budget?: string;
+} | null {
+  if (!collectedFields) {
+    return null;
+  }
+
+  const draft = {
+    sessionId,
+    name: asString(collectedFields['name']),
+    email: asString(collectedFields['email']),
+    country: asString(collectedFields['country']),
+    conditionSummary: asString(collectedFields['conditionSummary']),
+    budget: asString(collectedFields['budget']),
+  };
+
+  if (
+    !draft.name
+    || !draft.email
+    || !draft.country
+    || !draft.conditionSummary
+    || !draft.budget
+  ) {
+    return null;
+  }
+
+  return draft;
+}
+
+function mergeConsultCollectedFields(
+  sessionMessages: Array<{ metadata?: Record<string, unknown> | null }>,
+  currentCollectedFields: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const merged: Record<string, unknown> = {};
+
+  for (const message of [...sessionMessages].reverse()) {
+    const metadata = asRecord(message.metadata ?? {});
+    const structuredOutput = asRecord(metadata.structuredOutput ?? metadata.structured_output);
+    const historicalFields = asRecord(
+      metadata.collectedFields
+      ?? metadata.collected_fields
+      ?? structuredOutput.collectedFields
+      ?? structuredOutput.collected_fields,
+    );
+
+    if (!historicalFields) {
+      continue;
+    }
+
+    Object.assign(merged, historicalFields);
+  }
+
+  if (currentCollectedFields) {
+    Object.assign(merged, currentCollectedFields);
+  }
+
+  return Object.keys(merged).length > 0 ? merged : null;
+}
+
+function extractWidgetSessionCaseId(sessionId: string): string | null {
+  if (!sessionId.startsWith('widget-chat:')) {
+    return null;
+  }
+
+  const [, , caseId] = sessionId.split(':');
+  return typeof caseId === 'string' && caseId.length > 0 && caseId !== 'pending'
+    ? caseId
+    : null;
+}
+
 function buildEscalationSubject(conditionSummary: string): string {
   const normalized = conditionSummary.trim().replace(/\s+/g, ' ');
   const snippet = normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
@@ -885,6 +1039,69 @@ function buildEscalationDescription(
   }
 
   return sections.join('\n');
+}
+
+function resolvePendingQuestionTemplateId(
+  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
+): string | null {
+  if (!pendingQuestion || pendingQuestion.type !== 'QUESTIONNAIRE') {
+    return null;
+  }
+
+  const templateId = asString(pendingQuestion.payload['templateId']);
+  return templateId ?? null;
+}
+
+function extractChatbotAttachments(message: AiChatMessage): Array<{
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  storageKey: string;
+}> {
+  const attachments = message.role === 'USER'
+    ? asArray(message.metadata.attachments)
+    : [];
+
+  return attachments
+    .map((attachment) => asRecord(attachment))
+    .map((attachment) => ({
+      fileName: asString(attachment.fileName) ?? '',
+      fileSize: asNumber(attachment.fileSize) ?? 0,
+      mimeType: asString(attachment.mimeType) ?? '',
+      storageKey: asString(attachment.storageKey) ?? '',
+    }))
+    .filter((attachment) =>
+      attachment.fileName.length > 0
+      && attachment.mimeType.length > 0
+      && attachment.storageKey.length > 0
+      && attachment.fileSize > 0,
+    );
+}
+
+function toPublicChatbotAttachments(
+  attachments: Array<{
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    storageKey: string;
+  }>,
+  signedUrls: Record<string, string>,
+) {
+  return attachments.map((attachment) => ({
+    ...attachment,
+    name: attachment.fileName,
+    type: attachment.mimeType,
+    size: attachment.fileSize,
+    url: resolveAttachmentUrl(attachment.storageKey, signedUrls),
+  }));
+}
+
+function resolveAttachmentUrl(storageKey: string, signedUrls: Record<string, string>): string {
+  if (storageKey.startsWith('http://') || storageKey.startsWith('https://') || storageKey.startsWith('data:')) {
+    return storageKey;
+  }
+
+  return signedUrls[storageKey] ?? '';
 }
 
 function normalizeDifyChatResponse(response: Record<string, unknown>) {
@@ -1108,6 +1325,7 @@ function normalizePublicMetadataForHistory(value: Record<string, unknown>): Reco
   return normalizeHistoryMetadataValue(sanitizeUnknownValue(value)) as Record<string, unknown>;
 }
 
+
 function normalizeHistoryMetadataValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeHistoryMetadataValue(item));
@@ -1143,6 +1361,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function sanitizeNullableRecord(value: Record<string, unknown> | null | undefined): Record<string, unknown> | null {

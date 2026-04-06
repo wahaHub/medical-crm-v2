@@ -2,14 +2,18 @@ import type {
   AiPolicyBackendNextAction,
   AiPolicyEngagementMode,
 } from '../../dtos/ai-policy.dto.js';
+import type { HospitalType } from '@medical-crm/domain';
 import { isMissingDocumentStatus, normalizePolicyState } from './status-normalization.js';
 
 export interface ActionPlannerInput {
   engagementMode: AiPolicyEngagementMode;
+  hospitalType: HospitalType;
   statusSnapshot: {
     docUploadStatus?: string;
     packageStatus?: string;
     recommendationStatus?: string;
+    selectedHospitalId?: string | null;
+    consultationStatus?: string;
     formStatus?: string;
     riskLevel?: string;
   };
@@ -70,6 +74,22 @@ function planLightDiscovery(input: ActionPlannerInput): ActionPlan {
 }
 
 function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
+  if (input.resolvedIntent === 'ASK_MEDICAL_TRAVEL_PROCESS') {
+    return {
+      nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+      secondaryAction: null,
+      reasonCodes: ['process_overview_requested'],
+    };
+  }
+
+  if (input.resolvedIntent === 'ASK_CONSULT_PROCESS') {
+    return {
+      nextAction: 'EXPLAIN_CONSULT_PROCESS',
+      secondaryAction: null,
+      reasonCodes: ['consult_process_requested'],
+    };
+  }
+
   if (input.resolvedIntent === 'REQUEST_DOC_UPLOAD') {
     return {
       nextAction: 'EXPLAIN_DOC_UPLOAD',
@@ -99,8 +119,7 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
 
   if (
     input.resolvedIntent === 'GENERAL_CONSULT' &&
-    normalizePolicyState(input.statusSnapshot.packageStatus) !== 'NOT_SHOWN' &&
-    normalizePolicyState(input.statusSnapshot.packageStatus) !== 'NOT_INTRODUCED'
+    consultationCanBeInvited(input.statusSnapshot.consultationStatus)
   ) {
     return {
       nextAction: 'EXPLAIN_CONSULT_PROCESS',
@@ -109,7 +128,10 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
     };
   }
 
-  if (normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED') {
+  if (
+    input.hospitalType === 'COSMETIC'
+    && (normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED')
+  ) {
     return {
       nextAction: 'SHOW_PACKAGE',
       secondaryAction: null,
@@ -125,6 +147,41 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
 }
 
 function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
+  if (input.resolvedIntent === 'ASK_MEDICAL_TRAVEL_PROCESS') {
+    return {
+      nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+      secondaryAction: null,
+      reasonCodes: ['process_overview_requested'],
+    };
+  }
+
+  if (input.resolvedIntent === 'ASK_CONSULT_PROCESS') {
+    return {
+      nextAction: 'EXPLAIN_CONSULT_PROCESS',
+      secondaryAction: null,
+      reasonCodes: ['consult_process_requested'],
+    };
+  }
+
+  if (
+    input.resolvedIntent === 'ACCEPT_ONLINE_CONSULT_INVITE'
+    && consultationCanBeInvited(input.statusSnapshot.consultationStatus)
+  ) {
+    return {
+      nextAction: 'INVITE_ONLINE_CONSULT',
+      secondaryAction: null,
+      reasonCodes: ['consult_invite_confirmed'],
+    };
+  }
+
+  if (input.resolvedIntent === 'REQUEST_HUMAN_HANDOFF') {
+    return {
+      nextAction: 'HUMAN_HANDOFF',
+      secondaryAction: null,
+      reasonCodes: ['human_handoff_requested'],
+    };
+  }
+
   if (input.resolvedIntent === 'REQUEST_DOC_UPLOAD') {
     return {
       nextAction: 'REQUEST_DOC_UPLOAD',
@@ -141,10 +198,13 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
       nextAction: 'REQUEST_DOC_UPLOAD',
       secondaryAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       reasonCodes: ['documents_required_before_recommendation'],
-    };
+      };
   }
 
-  if (normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED') {
+  if (
+    input.hospitalType === 'COSMETIC'
+    && (normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_SHOWN' || normalizePolicyState(input.statusSnapshot.packageStatus) === 'NOT_INTRODUCED')
+  ) {
       return {
         nextAction: 'SHOW_PACKAGE',
         secondaryAction: null,
@@ -157,4 +217,9 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
     secondaryAction: null,
     reasonCodes: ['deep_workflow_guidance_path'],
   };
+}
+
+function consultationCanBeInvited(value: string | undefined): boolean {
+  const normalized = normalizePolicyState(value);
+  return !['SCHEDULED', 'BOOKED', 'COMPLETED', 'CANCELLED'].includes(normalized);
 }

@@ -47,6 +47,22 @@ export function useCaseConsultations(caseId: string) {
   });
 }
 
+export function useCaseQuestionnaire(caseId: string) {
+  return useQuery({
+    queryKey: ['cases', caseId, 'questionnaire'],
+    queryFn: () => queryFetch(`/api/cases/${caseId}/questionnaire`),
+    enabled: !!caseId,
+  });
+}
+
+export function useQuestionTemplate(id: string | null) {
+  return useQuery({
+    queryKey: ['question-templates', id],
+    queryFn: () => queryFetch(`/api/question-templates/${id}`),
+    enabled: !!id,
+  });
+}
+
 /** Fetch conversations for a case — returns PaginatedResponse with conversation summaries */
 export function useCaseConversations(caseId: string) {
   return useQuery({

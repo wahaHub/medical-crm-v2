@@ -1,284 +1,248 @@
-import { FileText, AlertCircle, CheckCircle, Stethoscope } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { EmptyState } from './empty-state';
 
-// ── Types ────────────────────────────────────────────────────────────
+type TemplateQuestion = {
+  id: string;
+  prompt: string;
+  required?: boolean;
+};
 
-interface Step1 {
-  symptomLocation?: string;
-  symptomNature?: string[];
-  onsetTime?: string;
-  progressTrend?: string;
-  diagnosisStage?: string;
-  diseaseCategory?: string;
+type TemplateStep = {
+  id: string;
+  title: string;
+  description?: string;
+  questions: TemplateQuestion[];
+};
+
+type ResponseEnvelope = {
+  responses: Record<string, unknown>;
+  extractedData?: Record<string, unknown> | null;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-interface Step2 {
-  detailedDescription?: string;
-  aggravatingFactors?: string[];
-  relievingFactors?: string[];
-  previousTreatment?: string;
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
-interface Step3 {
-  medicalHistory?: string[];
-  chronicConditions?: string;
-  familyHistory?: string;
+function humanizeKey(key: string): string {
+  return key
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
-interface Step4 {
-  currentMedications?: string;
-  drugAllergies?: string;
-  foodAllergies?: string;
+function parseMaybeJsonObject(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) {
+    return value;
+  }
+
+  const text = asNonEmptyString(value);
+  if (!text) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
-interface Step5 {
-  examTypes?: string[];
-  examDetails?: string;
-  labResults?: string;
-  treatmentExpectations?: string[];
-  budgetRange?: string;
-  expectedTimeline?: string;
+function normalizeResponseEnvelope(response: unknown): ResponseEnvelope | null {
+  const payload = isRecord(response) && 'data' in response
+    ? (response as { data?: unknown }).data
+    : response;
+
+  const parsed = parseMaybeJsonObject(payload);
+  if (!parsed) {
+    return null;
+  }
+
+  if (isRecord(parsed.responses)) {
+    return {
+      responses: parsed.responses as Record<string, unknown>,
+      extractedData: isRecord(parsed.extractedData) ? parsed.extractedData as Record<string, unknown> : null,
+    };
+  }
+
+  return {
+    responses: parsed,
+    extractedData: null,
+  };
 }
 
-interface MedicalIntake {
-  step1?: Step1;
-  step2?: Step2;
-  step3?: Step3;
-  step4?: Step4;
-  step5?: Step5;
+function extractTemplateSteps(template: unknown): TemplateStep[] {
+  const payload = isRecord(template) && 'data' in template
+    ? (template as { data?: unknown }).data
+    : template;
+
+  const parsed = parseMaybeJsonObject(payload);
+  const questionsRoot = isRecord(parsed?.questions) ? parsed.questions : parsed;
+  const steps = Array.isArray(questionsRoot?.steps) ? questionsRoot.steps : [];
+
+  const parsedSteps = steps
+    .map((step): TemplateStep | null => {
+      if (!isRecord(step)) {
+        return null;
+      }
+
+      const title = asNonEmptyString(step.title);
+      const questions: TemplateQuestion[] = Array.isArray(step.questions)
+        ? step.questions
+          .map((question): TemplateQuestion | null => {
+            if (!isRecord(question)) {
+              return null;
+            }
+
+            const id = asNonEmptyString(question.id);
+            const prompt = asNonEmptyString(question.prompt)
+              ?? asNonEmptyString(question.label)
+              ?? asNonEmptyString(question.text);
+
+            if (!id || !prompt) {
+              return null;
+            }
+
+            return {
+              id,
+              prompt,
+              required: question.required === true ? true : undefined,
+            };
+          })
+          .filter((question): question is TemplateQuestion => question !== null)
+        : [];
+
+      if (!title || questions.length === 0) {
+        return null;
+      }
+
+      return {
+        id: asNonEmptyString(step.id) ?? title,
+        title,
+        description: asNonEmptyString(step.description) ?? undefined,
+        questions,
+      };
+    })
+    .filter((step): step is TemplateStep => step !== null);
+
+  return parsedSteps;
 }
 
-interface QuestionnaireData {
-  medicalIntake?: MedicalIntake;
-  medicalCondition?: { primaryDiagnosis?: string; medicalHistory?: string };
-  aiSummary?: string;
-  riskLevel?: string;
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => hasMeaningfulValue(item));
+  }
+
+  if (isRecord(value)) {
+    return Object.values(value).some((item) => hasMeaningfulValue(item));
+  }
+
+  return true;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+function flattenArrayValues(values: unknown[]): string[] {
+  return values.flatMap((value) => {
+    if (typeof value === 'string') {
+      return value.trim().length > 0 ? [value] : [];
+    }
 
-function StepBadge({ value }: { value: string }) {
-  return (
-    <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 border border-indigo-200/50 rounded-md text-xs font-semibold">
-      {value}
-    </span>
-  );
+    if (Array.isArray(value)) {
+      return flattenArrayValues(value);
+    }
+
+    if (isRecord(value)) {
+      return Object.values(value).flatMap((nested) => flattenArrayValues([nested]));
+    }
+
+    return value === null || value === undefined ? [] : [String(value)];
+  });
 }
 
-function StepHeader({ number, title }: { number: number; title: string }) {
-  return (
-    <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold">
-        {number}
-      </span>
-      {title}
-    </h3>
-  );
-}
+function renderValue(value: unknown) {
+  if (!hasMeaningfulValue(value)) {
+    return <span className="text-slate-400">—</span>;
+  }
 
-// ── Step Sections ────────────────────────────────────────────────────
-
-function Step1Section({ data }: { data: Step1 }) {
-  return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-      <StepHeader number={1} title="Symptom Overview" />
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-1">Location</p>
-          <p className="font-medium text-sm">{data.symptomLocation || '—'}</p>
-        </div>
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-1">Nature</p>
-          <div className="flex flex-wrap gap-1">
-            {(data.symptomNature ?? []).length > 0
-              ? data.symptomNature!.map((s) => <StepBadge key={s} value={s} />)
-              : <span className="text-sm text-slate-400">—</span>}
-          </div>
-        </div>
-        {data.onsetTime && (
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <p className="text-xs text-slate-500 mb-1">Onset Time</p>
-            <p className="font-medium text-sm">{data.onsetTime}</p>
-          </div>
-        )}
-        {data.progressTrend && (
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <p className="text-xs text-slate-500 mb-1">Progress Trend</p>
-            <p className="font-medium text-sm">{data.progressTrend}</p>
-          </div>
-        )}
-        {data.diagnosisStage && (
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <p className="text-xs text-slate-500 mb-1">Diagnosis Stage</p>
-            <StepBadge value={data.diagnosisStage} />
-          </div>
-        )}
-        {data.diseaseCategory && (
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <p className="text-xs text-slate-500 mb-1">Disease Category</p>
-            <StepBadge value={data.diseaseCategory} />
-          </div>
-        )}
+  if (Array.isArray(value)) {
+    const items = flattenArrayValues(value);
+    return (
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <span
+            key={item}
+            className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-800"
+          >
+            {item}
+          </span>
+        ))}
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-function Step2Section({ data }: { data: Step2 }) {
-  return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-      <StepHeader number={2} title="Detailed Symptoms" />
-      {data.detailedDescription && (
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Description</p>
-          <p className="text-sm text-slate-700">{data.detailedDescription}</p>
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-4">
-        {(data.aggravatingFactors ?? []).length > 0 && (
-          <div className="bg-rose-50 p-4 rounded-lg">
-            <p className="text-xs text-rose-600 mb-2 flex items-center gap-1">
-              <AlertCircle size={12} /> Aggravating Factors
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {data.aggravatingFactors!.map((f) => (
-                <span key={f} className="px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-md text-xs font-medium">{f}</span>
-              ))}
+  if (isRecord(value)) {
+    return (
+      <div className="space-y-1.5">
+        {Object.entries(value)
+          .filter(([, nested]) => hasMeaningfulValue(nested))
+          .map(([key, nested]) => (
+            <div key={key} className="rounded-lg bg-slate-50 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{humanizeKey(key)}</p>
+              <div className="mt-1 text-sm text-slate-700">{renderValue(nested)}</div>
             </div>
-          </div>
-        )}
-        {(data.relievingFactors ?? []).length > 0 && (
-          <div className="bg-emerald-50 p-4 rounded-lg">
-            <p className="text-xs text-emerald-600 mb-2 flex items-center gap-1">
-              <CheckCircle size={12} /> Relieving Factors
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {data.relievingFactors!.map((f) => (
-                <span key={f} className="px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md text-xs font-medium">{f}</span>
-              ))}
-            </div>
-          </div>
-        )}
+          ))}
       </div>
-      {data.previousTreatment && (
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Previous Treatment</p>
-          <p className="text-sm text-slate-700">{data.previousTreatment}</p>
-        </div>
-      )}
-    </div>
-  );
+    );
+  }
+
+  return <span>{String(value)}</span>;
 }
 
-function Step3Section({ data }: { data: Step3 }) {
+function ResponseField({ label, value }: { label: string; value: unknown }) {
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-      <StepHeader number={3} title="Medical History" />
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2 flex items-center gap-1">
-            <Stethoscope size={12} /> Past Medical History
-          </p>
-          <div className="flex flex-wrap gap-1 mb-2">
-            {(data.medicalHistory ?? []).map((h) => <StepBadge key={h} value={h} />)}
-          </div>
-          {data.chronicConditions && (
-            <p className="text-sm text-slate-700">{data.chronicConditions}</p>
-          )}
-        </div>
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Family History</p>
-          <p className="text-sm text-slate-700">{data.familyHistory || '—'}</p>
-        </div>
-      </div>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <div className="mt-2 text-sm text-slate-800">{renderValue(value)}</div>
     </div>
   );
 }
-
-function Step4Section({ data }: { data: Step4 }) {
-  return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-      <StepHeader number={4} title="Medications & Allergies" />
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Current Medications</p>
-          <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">
-            {data.currentMedications || '—'}
-          </pre>
-        </div>
-        <div className="bg-rose-50 p-4 rounded-lg border border-rose-100">
-          <p className="text-xs text-rose-600 mb-2 flex items-center gap-1">
-            <AlertCircle size={12} /> Drug Allergies
-          </p>
-          <p className="text-sm text-rose-700 font-medium">{data.drugAllergies || '—'}</p>
-        </div>
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Food Allergies</p>
-          <p className="text-sm text-slate-700">{data.foodAllergies || '—'}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Step5Section({ data }: { data: Step5 }) {
-  return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-      <StepHeader number={5} title="Tests & Treatment Expectations" />
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Exams Done</p>
-          <div className="flex flex-wrap gap-1 mb-2">
-            {(data.examTypes ?? []).map((e) => <StepBadge key={e} value={e} />)}
-          </div>
-          {data.examDetails && <p className="text-sm text-slate-700">{data.examDetails}</p>}
-        </div>
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Lab Results</p>
-          <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">
-            {data.labResults || '—'}
-          </pre>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-indigo-50 p-4 rounded-lg">
-          <p className="text-xs text-indigo-600 mb-2">Treatment Expectations</p>
-          <div className="flex flex-wrap gap-1">
-            {(data.treatmentExpectations ?? []).map((e) => (
-              <span key={e} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium">{e}</span>
-            ))}
-          </div>
-        </div>
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Budget Range</p>
-          <p className="font-medium text-sm text-slate-700">{data.budgetRange || '—'}</p>
-        </div>
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-xs text-slate-500 mb-2">Expected Timeline</p>
-          <p className="font-medium text-sm text-slate-700">{data.expectedTimeline || '—'}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Export ──────────────────────────────────────────────────────
 
 export interface QuestionnaireReadonlyViewProps {
-  data: unknown;
+  template?: unknown | null;
+  response?: unknown | null;
 }
 
-export function QuestionnaireReadonlyView({ data }: QuestionnaireReadonlyViewProps) {
-  const questionnaire = data as QuestionnaireData | undefined;
+export function QuestionnaireReadonlyView({
+  template = null,
+  response = null,
+}: QuestionnaireReadonlyViewProps) {
+  const normalizedResponse = normalizeResponseEnvelope(response);
+  const responses = normalizedResponse?.responses ?? {};
+  const extractedData = normalizedResponse?.extractedData ?? null;
+  const templateSteps = extractTemplateSteps(template);
+  const fallbackEntries = Object.entries(responses).filter(([, value]) => hasMeaningfulValue(value));
+  const summaryEntries = Object.entries(extractedData ?? {}).filter(([, value]) => hasMeaningfulValue(value));
 
-  const mi = questionnaire?.medicalIntake;
-  const mc = questionnaire?.medicalCondition;
-  const { aiSummary, riskLevel } = questionnaire ?? {};
+  const renderedTemplateSteps = templateSteps
+    .map((step) => ({
+      ...step,
+      answeredQuestions: step.questions.filter((question) => hasMeaningfulValue(responses[question.id])),
+    }))
+    .filter((step) => step.answeredQuestions.length > 0);
 
-  const hasAnyIntake = mi && (mi.step1 || mi.step2 || mi.step3 || mi.step4 || mi.step5);
-  const hasSummary = aiSummary || riskLevel || mc?.primaryDiagnosis;
-
-  if (!hasAnyIntake && !hasSummary) {
+  if (renderedTemplateSteps.length === 0 && fallbackEntries.length === 0 && summaryEntries.length === 0) {
     return (
       <EmptyState
         icon={<FileText size={40} />}
@@ -290,42 +254,51 @@ export function QuestionnaireReadonlyView({ data }: QuestionnaireReadonlyViewPro
 
   return (
     <div className="space-y-6">
-      {mi?.step1 && <Step1Section data={mi.step1} />}
-      {mi?.step2 && <Step2Section data={mi.step2} />}
-      {mi?.step3 && <Step3Section data={mi.step3} />}
-      {mi?.step4 && <Step4Section data={mi.step4} />}
-      {mi?.step5 && <Step5Section data={mi.step5} />}
-
-      {hasSummary && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800">Summary & Assessment</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            {mc?.primaryDiagnosis && (
-              <div className="bg-slate-50 p-4 rounded-lg col-span-2">
-                <p className="text-xs text-slate-500 mb-1">Primary Diagnosis</p>
-                <p className="font-medium">{mc.primaryDiagnosis}</p>
-              </div>
-            )}
-            {riskLevel && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Risk Level</p>
-                <p className="font-medium">{riskLevel}</p>
-              </div>
-            )}
-            {mc?.medicalHistory && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Medical History</p>
-                <p className="font-medium">{mc.medicalHistory}</p>
-              </div>
-            )}
-            {aiSummary && (
-              <div className="bg-indigo-50 p-4 rounded-lg col-span-2">
-                <p className="text-xs text-indigo-600 mb-1">AI Summary</p>
-                <p className="text-sm text-slate-700">{aiSummary}</p>
-              </div>
-            )}
+      {renderedTemplateSteps.length > 0 ? renderedTemplateSteps.map((step, index) => (
+        <section
+          key={step.id}
+          className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm space-y-4"
+        >
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-600 text-sm font-bold text-white">
+              {index + 1}
+            </span>
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+              {step.description && <p className="mt-1 text-sm text-slate-500">{step.description}</p>}
+            </div>
           </div>
-        </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {step.answeredQuestions.map((question) => (
+              <ResponseField
+                key={question.id}
+                label={question.required ? `${question.prompt} *` : question.prompt}
+                value={responses[question.id]}
+              />
+            ))}
+          </div>
+        </section>
+      )) : (
+        <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
+          <h3 className="text-lg font-semibold text-slate-900">Medical intake responses</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            {fallbackEntries.map(([key, value]) => (
+              <ResponseField key={key} label={humanizeKey(key)} value={value} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {summaryEntries.length > 0 && (
+        <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
+          <h3 className="text-lg font-semibold text-slate-900">Summary & Assessment</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            {summaryEntries.map(([key, value]) => (
+              <ResponseField key={key} label={humanizeKey(key)} value={value} />
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

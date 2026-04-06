@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chatbotChatSchema,
   chatbotConvertSchema,
+  chatbotHistoryResponseSchema,
   chatbotMessageBlockSchema,
   chatbotNextActionSchema,
 } from '../chatbot.schema';
@@ -68,8 +70,14 @@ describe('chatbotMessageBlockSchema', () => {
         hospitalId: '95c80c26-b173-497d-a66c-713dd76ca2f4',
         name: 'Example Hospital',
         reason: 'Strong fit for the current case',
+        summary: 'International patient desk and strong ENT coordination.',
         ctaUrl: '/hospitals/95c80c26-b173-497d-a66c-713dd76ca2f4',
         thumbnailUrl: 'https://example.com/thumbnail.jpg',
+        thumbnailFallbackUrls: [
+          'https://example.com/thumbnail-fallback-1.jpg',
+          'https://example.com/thumbnail-fallback-2.jpg',
+        ],
+        slug: 'example-hospital',
         city: 'Shanghai',
         matchType: 'matched',
         reasonCodes: ['fit'],
@@ -136,5 +144,79 @@ describe('chatbotConvertSchema', () => {
       budget: 'to_be_discussed',
       requestedAction: 'CONSULT_CONVERSION',
     }).success).toBe(false);
+  });
+});
+
+describe('chatbotChatSchema', () => {
+  it('accepts attachment-only chat messages and rejects a fully empty send', () => {
+    expect(chatbotChatSchema.safeParse({
+      sessionId: 'session-123',
+      hospitalType: 'COSMETIC',
+      message: '',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+        storageKey: 'crm/dev/chatbot/report.pdf',
+      }],
+    }).success).toBe(true);
+
+    expect(chatbotChatSchema.safeParse({
+      sessionId: 'session-123',
+      hospitalType: 'COSMETIC',
+      message: '',
+    }).success).toBe(false);
+  });
+
+  it('allows existing chatbot sessions to omit hospitalType while still rejecting a fully empty send', () => {
+    expect(chatbotChatSchema.safeParse({
+      sessionId: 'session-123',
+      message: 'Continue our conversation',
+    }).success).toBe(true);
+
+    expect(chatbotChatSchema.safeParse({
+      sessionId: 'session-123',
+      message: '',
+    }).success).toBe(false);
+  });
+});
+
+describe('chatbotHistoryResponseSchema', () => {
+  it('accepts signed attachment objects in chatbot history messages', () => {
+    expect(chatbotHistoryResponseSchema.safeParse({
+      session: {
+        sessionId: 'session-123',
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        patientId: 'patient-1',
+        createdAt: '2026-04-05T00:00:00.000Z',
+        updatedAt: '2026-04-05T00:00:00.000Z',
+      },
+      messages: [{
+        id: 'msg-1',
+        role: 'USER',
+        content: '',
+        intent: null,
+        topic: null,
+        riskLevel: null,
+        canAnswer: null,
+        nextAction: null,
+        secondaryAction: null,
+        responseMode: null,
+        citations: [],
+        metadata: {},
+        attachments: [{
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          storageKey: 'crm/dev/chatbot/report.pdf',
+          name: 'report.pdf',
+          type: 'application/pdf',
+          size: 1024,
+          url: 'https://signed.example.com/report.pdf',
+        }],
+        createdAt: '2026-04-05T00:00:00.000Z',
+      }],
+    }).success).toBe(true);
   });
 });

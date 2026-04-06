@@ -223,6 +223,7 @@ function createMockFaqRepo() {
     listCategories: vi.fn(),
     findCategoryById: vi.fn(),
     createCategory: vi.fn(),
+    updateCategory: vi.fn(),
     countItemsForCategory: vi.fn(),
     save: vi.fn(),
     delete: vi.fn(),

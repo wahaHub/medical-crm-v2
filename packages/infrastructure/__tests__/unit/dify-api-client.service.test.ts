@@ -174,6 +174,11 @@ describe('DifyApiClientService', () => {
         payload: { data: { document_ids: ['doc-3', 'doc-4'] } },
         expectedId: 'doc-3',
       },
+      {
+        name: 'payload.document.id',
+        payload: { document: { id: 'doc-5' } },
+        expectedId: 'doc-5',
+      },
     ])('extracts document id from $name', async ({ payload, expectedId }) => {
       fetchMock.mockResolvedValueOnce(mockResponse(200, payload));
 

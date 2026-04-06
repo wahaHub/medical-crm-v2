@@ -9,6 +9,13 @@ export interface CaseDTO {
   patientLanguage: string;
   patientEmail: string | null;
   patientPhone: string | null;
+  gender: string | null;
+  country: string | null;
+  destination: string | null;
+  department: string | null;
+  disease: string | null;
+  treatmentTime: string | null;
+  customHospitalRequest: string | null;
   assignedHospitalId: string | null;
   hospitalName: string | null;
   primaryDiagnosis: string | null;
@@ -23,42 +30,6 @@ export interface CaseDTO {
   assignedAt: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-/** Step-based medical intake mirroring the patient questionnaire flow */
-export interface MedicalIntakeDTO {
-  step1?: {
-    symptomLocation?: string;
-    symptomNature?: string[];
-    onsetTime?: string;
-    progressTrend?: string;
-    diagnosisStage?: string;
-    diseaseCategory?: string;
-  };
-  step2?: {
-    detailedDescription?: string;
-    aggravatingFactors?: string[];
-    relievingFactors?: string[];
-    previousTreatment?: string;
-  };
-  step3?: {
-    medicalHistory?: string[];
-    chronicConditions?: string;
-    familyHistory?: string;
-  };
-  step4?: {
-    currentMedications?: string;
-    drugAllergies?: string;
-    foodAllergies?: string;
-  };
-  step5?: {
-    examTypes?: string[];
-    examDetails?: string;
-    labResults?: string;
-    treatmentExpectations?: string[];
-    budgetRange?: string;
-    expectedTimeline?: string;
-  };
 }
 
 export interface HospitalCaseDetailDTO {
@@ -80,7 +51,6 @@ export interface HospitalCaseDetailDTO {
     symptoms: string[] | null;
     medicalHistory: string | null;
   };
-  medicalIntake: MedicalIntakeDTO;
   aiSummary: string | null;
   riskLevel: string | null;
   diagnoses: DiagnosisDTO[];

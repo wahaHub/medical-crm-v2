@@ -183,6 +183,7 @@ async function runPolicyFixture(
 
   const plan = actionPlanner.plan({
     engagementMode: 'DEEP_WORKFLOW',
+    hospitalType: 'REGULAR',
     statusSnapshot: {
       ...fixture.statusSnapshot,
       riskLevel: risk.riskLevel,

@@ -37,6 +37,7 @@ describe('SendMagicLinkUseCase', () => {
     expect(mockEmailService.sendMagicLink).toHaveBeenCalledWith(
       'test@example.com',
       expect.stringContaining('magic-token-abc'),
+      'en',
     );
   });
 

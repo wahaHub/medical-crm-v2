@@ -1,5 +1,5 @@
 import { eq, and, sql } from 'drizzle-orm';
-import type { IPatientRepository, PatientBasicInfo } from '@medical-crm/domain';
+import type { IPatientRepository, PatientAuthInfo, PatientBasicInfo } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { users } from '../schema/index.js';
 
@@ -73,6 +73,35 @@ export class DrizzlePatientRepository implements IPatientRepository {
     return row ?? null;
   }
 
+  async findAuthByEmail(email: string): Promise<PatientAuthInfo | null> {
+    try {
+      const [row] = await this.db
+        .select({
+          id: users.id,
+          patientCode: users.patientCode,
+          preferredLanguage: users.preferredLanguage,
+          passwordHash: users.passwordHash,
+        })
+        .from(users)
+        .where(and(eq(users.email, email), eq(users.role, 'PATIENT')))
+        .limit(1);
+
+      return row ?? null;
+    } catch (err: unknown) {
+      if (!this.isMissingColumnError(err, 'password_hash')) {
+        throw err;
+      }
+
+      const patient = await this.findByEmail(email);
+      if (!patient) return null;
+
+      return {
+        ...patient,
+        passwordHash: null,
+      };
+    }
+  }
+
   async createTempPatient(input: {
     email: string;
     name: string;
@@ -100,19 +129,23 @@ export class DrizzlePatientRepository implements IPatientRepository {
       });
       return row!;
     } catch (err: unknown) {
-      // If email already exists (possibly under a non-PATIENT role), reuse it.
+      // If email already exists, only reuse it when it already belongs to a patient.
       if (this.isUniqueEmailViolation(err)) {
         const [existingUser] = await this.db
           .select({
             id: users.id,
             patientCode: users.patientCode,
             preferredLanguage: users.preferredLanguage,
+            role: users.role,
           })
           .from(users)
           .where(eq(users.email, input.email))
           .limit(1);
         if (existingUser) {
-          return existingUser;
+          if (existingUser.role !== 'PATIENT') {
+            throw new Error('EMAIL_ROLE_CONFLICT');
+          }
+          throw new Error('PATIENT_ALREADY_EXISTS');
         }
       }
 

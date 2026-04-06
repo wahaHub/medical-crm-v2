@@ -640,6 +640,93 @@ describe('DecideAiPolicyUseCase', () => {
     expect(result.selected_hospital_id).toBe('hospital-selected-2');
   });
 
+  it('does not reopen shortlist display when the session already has a selected hospital and the user did not ask for alternatives', async () => {
+    const build = vi.fn(async (input: { depth?: string }) => ({
+      contextDepth: input.depth === 'full' ? 'full' : 'light',
+      sessionId: 'session-selected-1',
+      userMessage: 'Can you remind me why this hospital fits my case?',
+      sessionRef: { id: 'db-session-selected-1', sessionId: 'session-selected-1', patientId: null },
+      patientId: null,
+      currentEngagementMode: 'DEEP_WORKFLOW',
+      activeHospitalContext: {
+        hospitalId: 'hospital-selected-2',
+        hospitalName: 'Seoul Aesthetic Center',
+        source: 'selected_hospital',
+      },
+      pendingOffer: { exists: false, type: null },
+      pendingQuestion: { exists: false, type: null },
+      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      safetyFlags: {
+        riskLevel: 'LOW',
+        hasHighRiskSignal: false,
+        requiresSafetyHandling: false,
+      },
+      ...(input.depth === 'full'
+        ? {
+            statusSnapshot: {
+              conditionStatus: 'known',
+              formStatus: 'completed',
+              docUploadStatus: 'uploaded',
+              recommendationStatus: 'preliminary_shown',
+              selectedHospitalId: 'hospital-selected-2',
+              consultationStatus: 'ready',
+              packageStatus: 'shown',
+              handoffStatus: 'not_needed',
+              leadMaturity: 'qualified',
+              riskLevel: 'low',
+              trustOrObjection: 'none',
+              engagementMode: 'DEEP_WORKFLOW',
+              prequalificationReasonCodes: [],
+              enteredDeepWorkflowAt: null,
+              pendingOffer: null,
+              pendingQuestion: null,
+              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+              conversationSummary: 'User already selected a hospital and is now asking follow-up questions about that choice.',
+              lastPolicyDecisionAt: null,
+              lastUserMessageAt: null,
+              lastAssistantMessageAt: null,
+            },
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }
+        : {
+            profile: null,
+            recentMessages: [],
+            recentTimeline: [],
+            activeFollowups: [],
+            recentHandoffs: [],
+          }),
+    }));
+
+    const useCase = new DecideAiPolicyUseCase(
+      { build } as unknown as ContextBuilderService,
+      new SignalResolverService(),
+      new EngagementModeResolverService(),
+      new IntentResolverService(),
+      new RiskResolverService(),
+      new ActionPlannerService(),
+      new RecommendationPolicyService(),
+    );
+
+    const result = await useCase.execute({
+      sessionId: 'session-selected-1',
+      userMessage: 'Can you remind me why this hospital fits my case?',
+      extraction: {},
+      candidateHospitals: [
+        { hospitalId: 'hospital-other-1', reasonCodes: ['fit'] },
+        { hospitalId: 'hospital-other-2', reasonCodes: ['fit'] },
+      ],
+    });
+
+    expect(result.selected_hospital_id).toBeUndefined();
+    expect(result.next_action).not.toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(result.shortlist).toEqual([]);
+  });
+
   it('keeps explicit document questions in qualified exploration on an explanation path', async () => {
     const build = vi.fn(async (input: { depth?: string }) => {
       if (input.depth === 'light') {

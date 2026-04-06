@@ -5,6 +5,7 @@ import type {
   AiFollowupTrigger,
   AiHandoff,
   AiUserProfile,
+  HospitalType,
   IAiChatMessageRepository,
   IAiChatSessionRepository,
   IAiChatTimelineEventRepository,
@@ -48,6 +49,7 @@ export interface PolicyConversationContext {
   sessionId: string;
   userMessage: string;
   contextDepth: 'light' | 'full';
+  hospitalType: HospitalType;
   sessionRef: {
     id: string;
     sessionId: string;
@@ -99,6 +101,7 @@ export class ContextBuilderService {
       sessionId: input.sessionId,
       userMessage: input.userMessage,
       contextDepth: depth,
+      hospitalType: session.hospitalType,
       sessionRef: {
         id: session.id,
         sessionId: session.sessionId,

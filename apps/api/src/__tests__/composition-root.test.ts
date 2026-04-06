@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DifyApiClientService } from '@medical-crm/infrastructure/services';
 
 vi.mock('@medical-crm/infrastructure/database', () => ({
   getCrmDb: vi.fn(() => ({})),
@@ -235,6 +236,7 @@ vi.mock('@medical-crm/application', () => ({
   ListQCResponsesUseCase: vi.fn(() => ({})),
   CustomizeQuestionsUseCase: vi.fn(() => ({})),
   GetCustomizationUseCase: vi.fn(() => ({})),
+  GetTemplateByDiseaseUseCase: vi.fn(() => ({})),
   // ServiceCatalog
   CreateServiceCatalogItemUseCase: vi.fn(() => ({})),
   ListServiceCatalogItemsUseCase: vi.fn(() => ({})),
@@ -267,16 +269,25 @@ vi.mock('@medical-crm/application', () => ({
   GetIntakeTemplateUseCase: vi.fn(() => ({})),
   SubmitIntakeUseCase: vi.fn(() => ({})),
   SelectHospitalsUseCase: vi.fn(() => ({})),
+  SkipMedicalFormUseCase: vi.fn(() => ({})),
+  SubmitPatientQCResponseUseCase: vi.fn(() => ({})),
+  GetPatientQCResponseUseCase: vi.fn(() => ({})),
   InitOnboardingUseCase: vi.fn(() => ({})),
   MatchHospitalsUseCase: vi.fn(() => ({})),
   SendMagicLinkUseCase: vi.fn(() => ({})),
   SendPatientLoginLinkUseCase: vi.fn(() => ({})),
+  VerifyPatientEntryTokenUseCase: vi.fn(() => ({})),
   VerifyMagicLinkUseCase: vi.fn(() => ({})),
+  LoginWithPasswordUseCase: vi.fn(() => ({})),
+  RestoreGuestSessionUseCase: vi.fn(() => ({})),
+  GetPatientSessionStateUseCase: vi.fn(() => ({})),
   SetPasswordUseCase: vi.fn(() => ({})),
   // Chatbot FAQ
   CreateFaqItemUseCase: vi.fn(() => ({})),
   ListFaqItemsUseCase: vi.fn(() => ({})),
   ListFaqCategoriesUseCase: vi.fn(() => ({})),
+  ListFaqCategoriesForChatbotUseCase: vi.fn(() => ({})),
+  EvaluateFaqRetrievalUseCase: vi.fn(() => ({})),
   CreateFaqCategoryUseCase: vi.fn(() => ({})),
   DeleteFaqCategoryUseCase: vi.fn(() => ({})),
   GetFaqItemUseCase: vi.fn(() => ({})),
@@ -529,5 +540,20 @@ describe('composition root', () => {
 
     // Validate registration token
     expect(services).toHaveProperty('validateRegistrationToken');
+  });
+
+  it('configures Dify client with a 90s default timeout', async () => {
+    const difyClientMock = vi.mocked(DifyApiClientService);
+    delete process.env['DIFY_REQUEST_TIMEOUT_MS'];
+
+    const { getServices } = await import('../composition-root');
+    getServices();
+
+    expect(difyClientMock).toHaveBeenCalledWith(
+      'https://api.dify.ai/v1',
+      '',
+      90_000,
+      null,
+    );
   });
 });

@@ -617,10 +617,14 @@ export function getServices(): AppServices {
     ]);
 
     const mediaUploadService = new MediaUploadService(uploadPolicyRegistry, storageAdapterRegistry);
+    const difyRequestTimeoutMs = Number.parseInt(
+      process.env['DIFY_REQUEST_TIMEOUT_MS'] ?? '90000',
+      10,
+    );
     const difyApiClient = new DifyApiClientService(
       process.env['DIFY_API_BASE_URL'] ?? 'https://api.dify.ai/v1',
       process.env['DIFY_APP_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? '',
-      30_000,
+      Number.isFinite(difyRequestTimeoutMs) ? difyRequestTimeoutMs : 90_000,
       process.env['DIFY_DATASET_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? null,
     );
 
@@ -935,6 +939,7 @@ export function getServices(): AppServices {
         userEmailLookupRepo,
         caseRepo,
         conversationRepo,
+        aiChatSessionRepo,
         patientAuthService,
       ),
       matchHospitals: new MatchHospitalsUseCase(hospitalRepo),

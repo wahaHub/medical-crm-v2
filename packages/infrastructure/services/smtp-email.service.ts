@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { IEmailService } from '@medical-crm/domain';
 import { buildHospitalInvitationEmail } from './hospital-invitation-email.template.js';
+import { buildPatientMagicLinkEmail } from './patient-magic-link-email.template.js';
 
 function readSmtpConfig() {
   const host = process.env['SMTP_HOST'] ?? process.env['AWS_SES_SMTP_HOST'];
@@ -55,11 +56,32 @@ export class SmtpEmailService implements IEmailService {
     to: string;
     hospitalName: string;
     registrationUrl: string;
+    locale?: string | null;
   }): Promise<void> {
     const content = buildHospitalInvitationEmail({
       hospitalName: params.hospitalName,
       registrationUrl: params.registrationUrl,
       expiresInHours: 72,
+      locale: params.locale,
+    });
+
+    await this.transporter.sendMail({
+      from: this.from,
+      to: params.to,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+    });
+  }
+
+  async sendPatientMagicLink(params: {
+    to: string;
+    magicLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildPatientMagicLinkEmail({
+      magicLink: params.magicLink,
+      locale: params.locale,
     });
 
     await this.transporter.sendMail({

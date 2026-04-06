@@ -156,7 +156,7 @@ The first iteration requires these block payloads:
 {
   "id": "questionnaire-trigger-1",
   "type": "QUESTIONNAIRE_MODAL_TRIGGER",
-  "questionnaireKey": "ophthalmic-intake",
+  "templateId": "7f8e26b8-4ea1-40b4-9145-327fde0fe4e6",
   "title": "Complete your medical questionnaire",
   "description": "This helps us guide the next step more accurately.",
   "ctaLabel": "Open questionnaire"
@@ -171,12 +171,14 @@ The first iteration requires these block payloads:
   "type": "HOSPITAL_RECOMMENDATION_CARDS",
   "title": "Recommended hospitals",
   "description": "Based on your current information, these look like the closest matches.",
+  "caseId": "5c3f8b47-9a2c-4bc7-8c32-dff44f4d5a80",
+  "selectPath": "/select-hospitals",
   "hospitals": [
     {
-      "hospitalId": "hospital-1",
+      "hospitalId": "95c80c26-b173-497d-a66c-713dd76ca2f4",
       "name": "Example Hospital",
       "reason": "Strong fit for the current case",
-      "ctaUrl": "/hospitals/hospital-1",
+      "ctaUrl": "/hospitals/95c80c26-b173-497d-a66c-713dd76ca2f4",
       "thumbnailUrl": "https://example.com/thumbnail.jpg",
       "city": "Shanghai",
       "matchType": "matched",
@@ -196,7 +198,15 @@ The first iteration requires these block payloads:
   "description": "Submit your consultation request and we will confirm the next step.",
   "requestedAction": "CONSULT_CONVERSION",
   "convertPath": "/api/v2/chatbot/convert",
-  "consultationStatus": "not_started"
+  "consultationStatus": "not_started",
+  "conversionDraft": {
+    "sessionId": "session-123",
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "country": "China",
+    "conditionSummary": "Recurring eye pain and vision fluctuation",
+    "budget": "to_be_discussed"
+  }
 }
 ```
 
@@ -212,6 +222,8 @@ Unknown-type handling:
 ## Block Schema Appendix
 
 The formal shared union should be implemented in `medical-crm-v2/packages/shared/validation`.
+
+Because `china` lives in a separate repository, it cannot import this TypeScript union directly at runtime. `medical-crm-v2` remains the contract source of truth; `china` keeps an intentionally mirrored local union and must verify parity against backend-shaped payload fixtures in tests.
 
 ### Common block shape
 
@@ -245,7 +257,7 @@ Required:
 
 - `id: string`
 - `type: "QUESTIONNAIRE_MODAL_TRIGGER"`
-- `questionnaireKey: string`
+- `templateId: UUID string`
 - `title: string`
 
 Optional:
@@ -260,7 +272,7 @@ Required:
 - `id: string`
 - `type: "HOSPITAL_RECOMMENDATION_CARDS"`
 - `title: string`
-- `caseId: string`
+- `caseId: UUID string`
 - `selectPath: "/select-hospitals"`
 - `hospitals: HospitalRecommendationCardItem[]`
 
@@ -272,7 +284,7 @@ Where each hospital item has:
 
 Required:
 
-- `hospitalId: string`
+- `hospitalId: UUID string`
 
 Optional:
 
@@ -295,10 +307,14 @@ Selection request:
 
 ```json
 {
-  "caseId": "case-1",
-  "hospitalIds": ["hospital-1"]
+  "caseId": "5c3f8b47-9a2c-4bc7-8c32-dff44f4d5a80",
+  "hospitalIds": ["95c80c26-b173-497d-a66c-713dd76ca2f4"]
 }
 ```
+
+Validation rule:
+
+- `caseId` and every submitted `hospitalId` must satisfy the existing UUID validation enforced by the patient hospital-selection schema
 
 Selection success shape:
 
@@ -334,6 +350,12 @@ Required:
 - `title: string`
 - `requestedAction: "CONSULT_CONVERSION"`
 - `convertPath: string`
+- `conversionDraft.sessionId: string`
+- `conversionDraft.name: string`
+- `conversionDraft.email: string`
+- `conversionDraft.country: string`
+- `conversionDraft.conditionSummary: string`
+- `conversionDraft.budget: string`
 
 Optional:
 
@@ -343,7 +365,7 @@ Optional:
 
 Submission interaction contract:
 
-- clicking submit posts to `convertPath`
+- clicking submit posts `conversionDraft` to `convertPath`
 - the card stays mounted in the message after submit
 - success changes local render state to submitted
 - failure changes local render state to failed and exposes retry
@@ -365,8 +387,28 @@ Retry rule:
 
 Emission rule:
 
-- backend should only emit `ONLINE_CONSULT_BOOKING_CARD` when the session already has the minimum data needed to satisfy the convert flow
+- backend should only emit `ONLINE_CONSULT_BOOKING_CARD` when the session already has the minimum data needed to satisfy the convert flow and can populate a complete `conversionDraft`
 - if required patient/profile fields are missing, backend should choose an explanation or intake action instead of emitting this card
+
+## Public `nextAction` Contract
+
+The public `nextAction` returned by `/api/v2/chatbot/chat` uses the same canonical string values already declared in the shared chatbot validation package.
+
+For this MVP, backend action -> public `nextAction` is 1:1:
+
+- `ANSWER_FAQ` -> `ANSWER_FAQ`
+- `EXPLAIN_DOC_UPLOAD` -> `EXPLAIN_DOC_UPLOAD`
+- `EXPLAIN_MEDICAL_TRAVEL_PROCESS` -> `EXPLAIN_MEDICAL_TRAVEL_PROCESS`
+- `EXPLAIN_CONSULT_PROCESS` -> `EXPLAIN_CONSULT_PROCESS`
+- `REQUEST_DOC_UPLOAD` -> `REQUEST_DOC_UPLOAD`
+- `INVITE_ONLINE_CONSULT` -> `INVITE_ONLINE_CONSULT`
+- `EXPLORE_HOSPITAL_RECOMMENDATIONS` -> `EXPLORE_HOSPITAL_RECOMMENDATIONS`
+- `SHOW_HOSPITAL_RECOMMENDATIONS` -> `SHOW_HOSPITAL_RECOMMENDATIONS`
+- `SHOW_PACKAGE` -> `SHOW_PACKAGE`
+- `HUMAN_HANDOFF` -> `HUMAN_HANDOFF`
+- `SAFETY_HANDOFF` -> `SAFETY_HANDOFF`
+
+Legacy public actions such as `CONSULT_CONVERSION`, `CREATE_CASE`, `REQUEST_DOCS`, `ESCALATE`, and `SAFETY` remain valid for older routes and compatibility surfaces, but they are not the preferred names for the new action-orchestrated rich-message flow.
 
 ## Action Catalog
 
@@ -520,7 +562,7 @@ Purpose:
 Behavior:
 
 1. backend determines the likely disease or intake direction from current conversation context
-2. backend maps that to the appropriate admin `Question Collector` questionnaire
+2. backend maps that to the appropriate admin `Question Collector` template
 3. chatbot response returns a trigger block
 4. patient opens the modal
 5. questionnaire is rendered and submitted with any required attachments
@@ -539,9 +581,11 @@ Questionnaire lookup contract:
   - resolved hospital type
   - current disease or intake direction inferred from backend context and current user question
   - optional selected hospital context if later needed, but not required for MVP
+- output:
+  - a concrete `templateId` that already exists in the current question-collector model
 - tie-breaking:
-  - prefer exact disease-specific questionnaire
-  - otherwise fall back to the nearest intake-direction questionnaire for the same hospital type
+  - prefer an exact `procedureTypes` match when available
+  - otherwise fall back to the nearest `category`-level intake template for the same hospital type
   - if multiple equally good matches remain, do not auto-pick silently; fall back to clarification text
 - failure fallback interface:
   - omit the block

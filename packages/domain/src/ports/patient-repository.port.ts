@@ -4,9 +4,14 @@ export interface PatientBasicInfo {
   preferredLanguage: string;
 }
 
+export interface PatientAuthInfo extends PatientBasicInfo {
+  passwordHash: string | null;
+}
+
 export interface IPatientRepository {
   findById(id: string): Promise<PatientBasicInfo | null>;
   findByEmail(email: string): Promise<PatientBasicInfo | null>;
+  findAuthByEmail(email: string): Promise<PatientAuthInfo | null>;
   createTempPatient(input: {
     email: string;
     name: string;

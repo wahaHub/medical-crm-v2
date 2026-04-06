@@ -73,7 +73,11 @@ export class PatientAuthService {
     if (parsed.purpose !== 'patient-login') {
       throw new Error('Invalid token purpose');
     }
-    return parsed;
+    return {
+      email: parsed.email,
+      purpose: 'patient-login',
+      exp: parsed.exp,
+    };
   }
 
   async verifyPatientEntryToken(token: string): Promise<PatientEntryTokenPayload> {

@@ -41,6 +41,10 @@ export interface IChatbotFaqRepository {
     sortOrder?: number;
     isActive?: boolean;
   }): Promise<ChatbotFaqCategory>;
+  updateCategory(id: string, input: {
+    sortOrder?: number;
+    isActive?: boolean;
+  }): Promise<ChatbotFaqCategory>;
   countItemsForCategory(name: string, hospitalType: 'REGULAR' | 'COSMETIC', hospitalId?: string | null): Promise<number>;
   save(entity: ChatbotFaqItem): Promise<ChatbotFaqItem>;
   delete(id: string): Promise<void>;

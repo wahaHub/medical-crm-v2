@@ -30,7 +30,7 @@ export class SubmitPatientQCResponseUseCase {
 
     // Verify template exists
     const template = await this.qcRepo.findTemplateById(input.templateId);
-    if (!template) {
+    if (!template || !template.isActive) {
       throw new NotFoundError(`Template ${input.templateId} not found`);
     }
 

@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 type HospitalType = 'COSMETIC' | 'REGULAR';
 type FaqScope = 'GENERAL' | 'HOSPITAL';
@@ -71,16 +72,24 @@ const REPO_ROOT = resolve(SCRIPT_DIR, '..');
 const SEED_DIR = join(REPO_ROOT, 'docs/seed-data');
 const SEED_JSON_PATH = join(SEED_DIR, 'faq-category-aware-retrieval.seed.json');
 const README_PATH = join(SEED_DIR, 'faq-category-aware-retrieval.readme.md');
+const EXPECTED_EVAL_BUCKETS = {
+  general: 20,
+  hospital: 20,
+  multi: 20,
+  ambiguous: 10,
+  negative: 10,
+} as const;
 
 const GENERAL_QUESTION_TEMPLATES = [
   'What should I know about {topic} before I get started?',
-  'How does {topic} usually work for international patients?',
-  'Do you need anything special for {topic}?',
-  'What happens if I am not ready for {topic} yet?',
-  'How long does {topic} usually take to review?',
-  'Can you help me if I am still comparing options for {topic}?',
-  'Does {topic} affect pricing or travel planning?',
-  'What is the safest next step for {topic}?',
+  'How is {topic} usually handled for international patients?',
+  'Are there any special requirements around {topic}?',
+  'What happens if I am not ready yet for {topic}?',
+  'How long does review around {topic} usually take?',
+  'Can you still help if I am comparing options around {topic}?',
+  'Does {topic} usually affect pricing, timing, or travel planning?',
+  'What is the safest next step if my main concern is {topic}?',
+  'What do patients usually misunderstand about {topic} at the beginning?',
 ] as const;
 
 const GENERAL_ANSWER_TAILS = [
@@ -95,10 +104,11 @@ const GENERAL_ANSWER_TAILS = [
 ] as const;
 
 const HOSPITAL_QUESTION_TEMPLATES = [
-  'For {hospitalName}, what should I prepare for {topic}?',
-  'Does {hospitalName} require anything special for {topic}?',
-  'How does {hospitalName} handle {topic} for international patients?',
-  'What is {hospitalName}\'s rule for {topic}?',
+  'For {hospitalName}, what should I know about {topic}?',
+  'Does {hospitalName} have any special requirements around {topic}?',
+  'How does {hospitalName} usually handle {topic} for international patients?',
+  'What are the main rules at {hospitalName} for {topic}?',
+  'Before I choose {hospitalName}, what should I prepare for {topic}?',
 ] as const;
 
 const HOSPITAL_ANSWER_TAILS = [
@@ -188,19 +198,19 @@ const DOMAINS: Record<HospitalType, DomainDef> = {
     ],
     hospitals: [
       {
-        id: 'cos-seoul-aesthetic-center',
+        id: '4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001',
         name: 'Seoul Aesthetic Center',
         specialty: 'rhinoplasty, eyelid surgery, facial contouring',
         tone: 'structured international workflow and clear pre-op document expectations',
       },
       {
-        id: 'cos-bangkok-beauty-institute',
+        id: '4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0002',
         name: 'Bangkok Beauty Institute',
         specialty: 'body contouring, breast procedures, skin-focused packages',
         tone: 'package-heavy planning with more recovery and stay coordination',
       },
       {
-        id: 'cos-istanbul-aesthetics-hospital',
+        id: '4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0003',
         name: 'Istanbul Aesthetics Hospital',
         specialty: 'rhinoplasty, hair transplant, combo procedures',
         tone: 'more specific photo and document requirements before review',
@@ -286,19 +296,19 @@ const DOMAINS: Record<HospitalType, DomainDef> = {
     ],
     hospitals: [
       {
-        id: 'reg-seoul-advanced-medical-center',
+        id: '4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011',
         name: 'Seoul Advanced Medical Center',
         specialty: 'orthopedics, spine, sports injury',
         tone: 'imaging-heavy review process with a strong second-opinion workflow',
       },
       {
-        id: 'reg-bangkok-international-care-hospital',
+        id: '4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0012',
         name: 'Bangkok International Care Hospital',
         specialty: 'digestive medicine, cardiovascular care, chronic disease support',
         tone: 'coordination-heavy with family and admission logistics',
       },
       {
-        id: 'reg-tokyo-precision-treatment-center',
+        id: '4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0013',
         name: 'Tokyo Precision Treatment Center',
         specialty: 'oncology second opinion, complex surgery planning, precision treatment review',
         tone: 'strict case review and tighter document specificity',
@@ -420,7 +430,7 @@ function buildHospitalCategories(domain: DomainDef): SeedCategory[] {
   for (const hospital of domain.hospitals) {
     HOSPITAL_CATEGORY_DEFS.forEach((category, index) => {
       categories.push({
-        id: `${slugify(domain.hospitalType)}-${slugify(hospital.name)}-${slugify(category.name)}`,
+        id: `${slugify(domain.hospitalType)}-${hospital.id}-${slugify(category.name)}`,
         name: category.name,
         hospitalType: domain.hospitalType,
         hospitalId: hospital.id,
@@ -437,8 +447,8 @@ function buildGeneralFaqItems(domain: DomainDef): SeedFaqItem[] {
   const items: SeedFaqItem[] = [];
   domain.generalCategories.forEach((category, categoryIndex) => {
     GENERAL_QUESTION_TEMPLATES.forEach((template, templateIndex) => {
-      items.push({
-        id: `${slugify(domain.hospitalType)}-general-${slugify(category.name)}-${pad(templateIndex + 1)}`,
+        items.push({
+          id: deterministicUuid(`${domain.hospitalType}:GENERAL:${category.name}:${templateIndex + 1}`),
         hospitalType: domain.hospitalType,
         hospitalId: null,
         scope: 'GENERAL',
@@ -461,7 +471,7 @@ function buildHospitalFaqItems(domain: DomainDef): SeedFaqItem[] {
     HOSPITAL_CATEGORY_DEFS.forEach((category, categoryIndex) => {
       HOSPITAL_QUESTION_TEMPLATES.forEach((template, templateIndex) => {
         items.push({
-          id: `${slugify(domain.hospitalType)}-${slugify(hospital.name)}-${slugify(category.name)}-${pad(templateIndex + 1)}`,
+          id: deterministicUuid(`${domain.hospitalType}:HOSPITAL:${hospital.id}:${category.name}:${templateIndex + 1}`),
           hospitalType: domain.hospitalType,
           hospitalId: hospital.id,
           scope: 'HOSPITAL',
@@ -678,6 +688,35 @@ function buildReadme(seed: SeedCorpus): string {
     evaluationQueries: seed.evaluationQueries.length,
   };
 
+  const categoriesByDomain = Object.values(DOMAINS)
+    .map((domain) => {
+      const generalCategories = seed.categories
+        .filter((category) => category.hospitalType === domain.hospitalType && category.scope === 'GENERAL')
+        .map((category) => category.name)
+        .join(', ');
+      return [
+        `### ${domain.hospitalType} general categories`,
+        '',
+        generalCategories,
+      ].join('\n');
+    })
+    .join('\n\n');
+
+  const exampleHospitals = Object.values(DOMAINS)
+    .map((domain) => {
+      const hospitals = domain.hospitals
+        .map((hospital) => `- ${hospital.name} (${hospital.id}): ${hospital.specialty}`)
+        .join('\n');
+      return [
+        `### ${domain.hospitalType} example hospitals`,
+        '',
+        hospitals,
+      ].join('\n');
+    })
+    .join('\n\n');
+
+  const hospitalCategorySet = HOSPITAL_CATEGORY_DEFS.map((category) => `- ${category.name}`).join('\n');
+
   const domainSummary = Object.values(DOMAINS)
     .map((domain) => {
       const generalCount = seed.categories.filter((category) => category.hospitalType === domain.hospitalType && category.scope === 'GENERAL').length;
@@ -687,11 +726,11 @@ function buildReadme(seed: SeedCorpus): string {
     .join('\n');
 
   const evaluationBuckets = [
-    '- `GENERAL_ONLY`: queries that should stay in general FAQ only',
-    '- `HOSPITAL_AWARE`: queries that should use hospital-specific FAQ plus general support',
-    '- `MULTI_CATEGORY`: queries that should resolve to more than one FAQ region',
-    '- `AMBIGUOUS / EDGE`: queries that probe boundary handling',
-    '- `NEGATIVE / SHOULD-NOT-MIX`: queries that should not leak hospital-specific FAQ into general answers',
+    `- \`GENERAL_ONLY\`: queries that should stay in general FAQ only (${EXPECTED_EVAL_BUCKETS.general})`,
+    `- \`HOSPITAL_AWARE\`: queries that should use hospital-specific FAQ plus general support (${EXPECTED_EVAL_BUCKETS.hospital})`,
+    `- \`MULTI_CATEGORY\`: queries that should resolve to more than one FAQ region (${EXPECTED_EVAL_BUCKETS.multi})`,
+    `- \`AMBIGUOUS / EDGE\`: queries that probe boundary handling (${EXPECTED_EVAL_BUCKETS.ambiguous})`,
+    `- \`NEGATIVE / SHOULD-NOT-MIX\`: queries that should not leak hospital-specific FAQ into general answers (${EXPECTED_EVAL_BUCKETS.negative})`,
   ].join('\n');
 
   return [
@@ -715,9 +754,28 @@ function buildReadme(seed: SeedCorpus): string {
     `- faqItems: ${counts.faqItems}`,
     `- evaluationQueries: ${counts.evaluationQueries}`,
     '',
+    '## Seed Shape',
+    '',
+    '- top-level keys: `categories`, `faqItems`, `evaluationQueries`',
+    '- `categories`: category seed rows for general and hospital-scoped FAQ',
+    '- `faqItems`: FAQ seed rows bound to a category name plus hospital scope/context',
+    '- `evaluationQueries`: retrieval test prompts with expected categories, scope, and optional hospital target',
+    '',
     '## Domain Summary',
     '',
     domainSummary,
+    '',
+    '## Category Sets',
+    '',
+    categoriesByDomain,
+    '',
+    '## Shared Hospital-specific Category Set',
+    '',
+    hospitalCategorySet,
+    '',
+    '## Example Hospitals',
+    '',
+    exampleHospitals,
     '',
     '## Evaluation Buckets',
     '',
@@ -736,18 +794,143 @@ function buildReadme(seed: SeedCorpus): string {
     'node scripts/generate-faq-seed.ts --check',
     '```',
     '',
+    '## Import and Sync',
+    '',
+    '- import into CRM with `pnpm seed:faq:import` or `pnpm exec tsx scripts/import-faq-seed.ts`',
+    '- the import script loads `apps/api/.env` or repo `.env` to find `DATABASE_URL`',
+    '- import writes CRM FAQ rows first and enqueues FAQ sync outbox tasks',
+    '- after import, run the AI sync outbox processor to refresh the Dify datasets:',
+    '',
+    '```bash',
+    "curl -X POST http://localhost:3001/api/v2/internal/process-ai-sync-outbox \\",
+    "  -H 'X-Internal-Secret: <INTERNAL_API_SECRET>'",
+    '```',
+    '',
+    '- repeat the outbox call until it returns `processed: 0` and `failed: 0`',
+    '',
   ].join('\n');
 }
 
 function validateCounts(seed: SeedCorpus, failures: string[]): void {
-  if (seed.categories.length < 30) {
-    failures.push(`expected at least 30 categories, got ${seed.categories.length}`);
+  const expectedCategories =
+    Object.values(DOMAINS).reduce((sum, domain) => sum + domain.generalCategories.length + domain.hospitals.length * HOSPITAL_CATEGORY_DEFS.length, 0);
+  const expectedFaqItems =
+    Object.values(DOMAINS).reduce((sum, domain) => {
+      const generalItems = domain.generalCategories.length * GENERAL_QUESTION_TEMPLATES.length;
+      const hospitalItems = domain.hospitals.length * HOSPITAL_CATEGORY_DEFS.length * HOSPITAL_QUESTION_TEMPLATES.length;
+      return sum + generalItems + hospitalItems;
+    }, 0);
+  const expectedEvaluationQueries =
+    EXPECTED_EVAL_BUCKETS.general +
+    EXPECTED_EVAL_BUCKETS.hospital +
+    EXPECTED_EVAL_BUCKETS.multi +
+    EXPECTED_EVAL_BUCKETS.ambiguous +
+    EXPECTED_EVAL_BUCKETS.negative;
+
+  if (seed.categories.length !== expectedCategories) {
+    failures.push(`expected exactly ${expectedCategories} categories, got ${seed.categories.length}`);
   }
-  if (seed.faqItems.length < 300) {
-    failures.push(`expected at least 300 FAQ items, got ${seed.faqItems.length}`);
+  if (seed.faqItems.length !== expectedFaqItems) {
+    failures.push(`expected exactly ${expectedFaqItems} FAQ items, got ${seed.faqItems.length}`);
   }
-  if (seed.evaluationQueries.length < 60) {
-    failures.push(`expected at least 60 evaluation queries, got ${seed.evaluationQueries.length}`);
+  if (seed.evaluationQueries.length !== expectedEvaluationQueries) {
+    failures.push(`expected exactly ${expectedEvaluationQueries} evaluation queries, got ${seed.evaluationQueries.length}`);
+  }
+
+  const bucketCounts = seed.evaluationQueries.reduce<Record<string, number>>((acc, item) => {
+    const bucket = item.id.split('-eval-')[1]?.split('-')[0] ?? 'unknown';
+    acc[bucket] = (acc[bucket] ?? 0) + 1;
+    return acc;
+  }, {});
+  if ((bucketCounts.general ?? 0) !== EXPECTED_EVAL_BUCKETS.general) {
+    failures.push(`expected ${EXPECTED_EVAL_BUCKETS.general} general evaluation queries, got ${bucketCounts.general ?? 0}`);
+  }
+  if ((bucketCounts.hospital ?? 0) !== EXPECTED_EVAL_BUCKETS.hospital) {
+    failures.push(`expected ${EXPECTED_EVAL_BUCKETS.hospital} hospital evaluation queries, got ${bucketCounts.hospital ?? 0}`);
+  }
+  if ((bucketCounts.multi ?? 0) !== EXPECTED_EVAL_BUCKETS.multi) {
+    failures.push(`expected ${EXPECTED_EVAL_BUCKETS.multi} multi evaluation queries, got ${bucketCounts.multi ?? 0}`);
+  }
+  if ((bucketCounts.ambiguous ?? 0) !== EXPECTED_EVAL_BUCKETS.ambiguous) {
+    failures.push(`expected ${EXPECTED_EVAL_BUCKETS.ambiguous} ambiguous evaluation queries, got ${bucketCounts.ambiguous ?? 0}`);
+  }
+  if ((bucketCounts.negative ?? 0) !== EXPECTED_EVAL_BUCKETS.negative) {
+    failures.push(`expected ${EXPECTED_EVAL_BUCKETS.negative} negative evaluation queries, got ${bucketCounts.negative ?? 0}`);
+  }
+
+  seed.categories.forEach((category) => {
+    if (category.scope === 'GENERAL' && category.hospitalId !== null) {
+      failures.push(`general category ${category.id} must have hospitalId=null`);
+    }
+    if (category.scope === 'HOSPITAL' && !category.hospitalId) {
+      failures.push(`hospital category ${category.id} must have hospitalId`);
+    }
+  });
+
+  seed.faqItems.forEach((item) => {
+    if (item.scope === 'GENERAL' && item.hospitalId !== null) {
+      failures.push(`general FAQ ${item.id} must have hospitalId=null`);
+    }
+    if (item.scope === 'HOSPITAL' && !item.hospitalId) {
+      failures.push(`hospital FAQ ${item.id} must have hospitalId`);
+    }
+  });
+
+  seed.evaluationQueries.forEach((query) => {
+    if (query.expectedCategories.length < 1 || query.expectedCategories.length > 3) {
+      failures.push(`evaluation query ${query.id} must have 1-3 expectedCategories`);
+    }
+    if (query.expectedScope === 'GENERAL_ONLY' && query.expectedHospitalId !== null) {
+      failures.push(`general-only evaluation query ${query.id} must have expectedHospitalId=null`);
+    }
+    if (query.expectedScope === 'HOSPITAL_AWARE' && !query.expectedHospitalId) {
+      failures.push(`hospital-aware evaluation query ${query.id} must have expectedHospitalId`);
+    }
+  });
+
+  assertUnique(seed.categories.map((category) => category.id), 'category ids', failures);
+  assertUnique(seed.faqItems.map((item) => item.id), 'faq item ids', failures);
+  assertUnique(seed.evaluationQueries.map((query) => query.id), 'evaluation query ids', failures);
+
+  const categoryKeys = new Set(
+    seed.categories.map((category) => [category.hospitalType, category.scope, category.hospitalId ?? '', category.name].join('::')),
+  );
+  seed.faqItems.forEach((item) => {
+    const categoryKey = [item.hospitalType, item.scope, item.hospitalId ?? '', item.category].join('::');
+    if (!categoryKeys.has(categoryKey)) {
+      failures.push(`faq item ${item.id} references missing category ${item.category}`);
+    }
+  });
+
+  const generalCategoryNames = new Set(
+    seed.categories.filter((category) => category.scope === 'GENERAL').map((category) => `${category.hospitalType}::${category.name}`),
+  );
+  const hospitalCategoryNames = new Set(HOSPITAL_CATEGORY_DEFS.map((category) => category.name));
+  seed.evaluationQueries.forEach((query) => {
+    query.expectedCategories.forEach((categoryName) => {
+      const generalKey = `${query.hospitalType}::${categoryName}`;
+      if (query.expectedScope === 'GENERAL_ONLY' && !generalCategoryNames.has(generalKey)) {
+        failures.push(`evaluation query ${query.id} references unknown general category ${categoryName}`);
+      }
+      if (
+        query.expectedScope === 'HOSPITAL_AWARE' &&
+        !generalCategoryNames.has(generalKey) &&
+        !hospitalCategoryNames.has(categoryName)
+      ) {
+        failures.push(`hospital-aware evaluation query ${query.id} references unknown category ${categoryName}`);
+      }
+    });
+  });
+}
+
+function assertUnique(values: string[], label: string, failures: string[]): void {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      failures.push(`duplicate ${label}: ${value}`);
+      return;
+    }
+    seen.add(value);
   }
 }
 
@@ -775,6 +958,20 @@ function slugify(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function deterministicUuid(value: string): string {
+  const hex = createHash('sha1').update(value).digest('hex').slice(0, 32).split('');
+  hex[12] = '5';
+  const variantNibble = parseInt(hex[16]!, 16);
+  hex[16] = ((variantNibble & 0x3) | 0x8).toString(16);
+  return [
+    hex.slice(0, 8).join(''),
+    hex.slice(8, 12).join(''),
+    hex.slice(12, 16).join(''),
+    hex.slice(16, 20).join(''),
+    hex.slice(20, 32).join(''),
+  ].join('-');
 }
 
 main();

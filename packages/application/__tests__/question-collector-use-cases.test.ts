@@ -141,6 +141,7 @@ function mockQCRepo(): IQuestionCollectorRepository {
   return {
     findTemplateById: vi.fn(),
     findAllTemplates: vi.fn(),
+    findActiveTemplateByCategory: vi.fn(),
     saveTemplate: vi.fn(),
     findResponseById: vi.fn(),
     findResponseByCaseId: vi.fn(),

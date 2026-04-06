@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { VerifyPatientEntryTokenUseCase } from '../../src/use-cases/patient-auth/verify-patient-entry-token.use-case.js';
+import {
+  VerifyPatientEntryTokenAuthError,
+  VerifyPatientEntryTokenUseCase,
+} from '../../src/use-cases/patient-auth/verify-patient-entry-token.use-case.js';
 
 describe('VerifyPatientEntryTokenUseCase', () => {
   let useCase: VerifyPatientEntryTokenUseCase;
@@ -26,5 +29,11 @@ describe('VerifyPatientEntryTokenUseCase', () => {
       email: 'new@test.com',
       purpose: 'patient-register',
     });
+  });
+
+  it('maps invalid tokens to auth errors', async () => {
+    authService.verifyPatientEntryToken.mockRejectedValue(new Error('Invalid token'));
+
+    await expect(useCase.execute({ token: 'expired-register-token' })).rejects.toBeInstanceOf(VerifyPatientEntryTokenAuthError);
   });
 });

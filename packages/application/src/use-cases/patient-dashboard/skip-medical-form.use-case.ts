@@ -1,6 +1,7 @@
 import type { ICaseRepository } from '@medical-crm/domain';
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import { asRecord } from '../../utils/structured-data.js';
+import type { MedicalFormStatus } from '../../utils/structured-data.js';
 
 export interface SkipMedicalFormInput {
   caseId: string;
@@ -25,11 +26,12 @@ export class SkipMedicalFormUseCase {
     }
 
     const now = new Date();
+    const newStatus: MedicalFormStatus = 'SKIPPED';
     caseEntity.structuredData = {
       ...(caseEntity.structuredData ?? {}),
       patientHospitalSelection: {
         ...existingSelection,
-        medicalFormStatus: 'SKIPPED',
+        medicalFormStatus: newStatus,
         medicalFormSkippedAt: now.toISOString(),
       },
     };

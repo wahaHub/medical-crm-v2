@@ -1,0 +1,6552 @@
+{
+  "generatedAt": "2026-04-03T04:11:38.876Z",
+  "apiBaseUrl": "http://localhost:3001",
+  "seedPath": "/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/docs/seed-data/faq-category-aware-retrieval.seed.json",
+  "buckets": [
+    {
+      "label": "AMBIGUOUS",
+      "passed": 10,
+      "total": 10
+    },
+    {
+      "label": "GENERAL_ONLY",
+      "passed": 20,
+      "total": 20
+    },
+    {
+      "label": "HOSPITAL_AWARE",
+      "passed": 18,
+      "total": 20
+    },
+    {
+      "label": "MULTI_CATEGORY",
+      "passed": 20,
+      "total": 20
+    },
+    {
+      "label": "NEGATIVE",
+      "passed": 10,
+      "total": 10
+    }
+  ],
+  "results": [
+    {
+      "queryId": "cosmetic-eval-ambiguous-01",
+      "query": "I am still comparing options and need to understand Consultation Process and Travel and Stay before I decide what matters most for cosmetic medical travel.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Consultation Process",
+        "Travel and Stay"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Stay",
+        "Consultation Process",
+        "Medical Documents"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-ambiguous-02",
+      "query": "I am still comparing options and need to understand Medical Documents and Pricing and Package Scope before I decide what matters most for cosmetic medical travel.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Medical Documents",
+        "Pricing and Package Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Pricing and Package Scope",
+        "Medical Documents",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-ambiguous-03",
+      "query": "I am still comparing options and need to understand Procedure Eligibility and Risks and Limitations before I decide what matters most for cosmetic medical travel.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Procedure Eligibility",
+        "Risks and Limitations"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Risks and Limitations",
+        "Procedure Eligibility",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-ambiguous-04",
+      "query": "I am still comparing options and need to understand Recovery and Aftercare and Timeline and Scheduling before I decide what matters most for cosmetic medical travel.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Recovery and Aftercare",
+        "Timeline and Scheduling"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Recovery and Aftercare",
+        "Timeline and Scheduling",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-ambiguous-05",
+      "query": "I am still comparing options and need to understand Companion and Support and Revision / Follow-up Planning before I decide what matters most for cosmetic medical travel.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Companion and Support",
+        "Revision / Follow-up Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Revision / Follow-up Planning",
+        "Companion and Support",
+        "Language and Translation Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-01",
+      "query": "For cosmetic medical travel, how do Consultation Process and Medical Documents fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Consultation Process",
+        "Medical Documents"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Medical Documents",
+        "Consultation Process",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-02",
+      "query": "For cosmetic medical travel, how do Procedure Eligibility and Risks and Limitations fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Procedure Eligibility",
+        "Risks and Limitations"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Risks and Limitations",
+        "Procedure Eligibility",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-03",
+      "query": "For cosmetic medical travel, how do Recovery and Aftercare and Timeline and Scheduling fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Recovery and Aftercare",
+        "Timeline and Scheduling"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Recovery and Aftercare",
+        "Timeline and Scheduling",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-04",
+      "query": "For cosmetic medical travel, how do Travel and Stay and Companion and Support fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Travel and Stay",
+        "Companion and Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Stay",
+        "Companion and Support",
+        "Language and Translation Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-05",
+      "query": "For cosmetic medical travel, how do Pricing and Package Scope and Language and Translation Support fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Pricing and Package Scope",
+        "Language and Translation Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Language and Translation Support",
+        "Pricing and Package Scope",
+        "Companion and Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-06",
+      "query": "For cosmetic medical travel, how do Why Medora / Care Coordination and Revision / Follow-up Planning fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Why Medora / Care Coordination",
+        "Revision / Follow-up Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Revision / Follow-up Planning",
+        "Why Medora / Care Coordination",
+        "Recovery and Aftercare"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-07",
+      "query": "For cosmetic medical travel, how do Medical Documents and Recovery and Aftercare, and Pricing and Package Scope fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Medical Documents",
+        "Recovery and Aftercare",
+        "Pricing and Package Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Pricing and Package Scope",
+        "Medical Documents",
+        "Recovery and Aftercare"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-08",
+      "query": "For cosmetic medical travel, how do Consultation Process and Travel and Stay, and Timeline and Scheduling fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Consultation Process",
+        "Travel and Stay",
+        "Timeline and Scheduling"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Stay",
+        "Timeline and Scheduling",
+        "Consultation Process"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-09",
+      "query": "For cosmetic medical travel, how do Procedure Eligibility and Companion and Support, and Revision / Follow-up Planning fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Procedure Eligibility",
+        "Companion and Support",
+        "Revision / Follow-up Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Revision / Follow-up Planning",
+        "Companion and Support",
+        "Procedure Eligibility"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-general-10",
+      "query": "For cosmetic medical travel, how do Risks and Limitations and Language and Translation Support, and Why Medora / Care Coordination fit together before I decide?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Risks and Limitations",
+        "Language and Translation Support",
+        "Why Medora / Care Coordination"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Why Medora / Care Coordination",
+        "Language and Translation Support",
+        "Risks and Limitations"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-01",
+      "query": "For Seoul Aesthetic Center, how should I think about Consultation Process and Hospital Review Requirements if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Consultation Process",
+        "Hospital Review Requirements"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Review Requirements",
+        "Hospital International Patient Process",
+        "Consultation Process"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-02",
+      "query": "For Bangkok Beauty Institute, how should I think about Medical Documents and Hospital Scheduling Rules if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Medical Documents",
+        "Hospital Scheduling Rules"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0002",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Scheduling Rules",
+        "Medical Documents",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0002",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-03",
+      "query": "For Istanbul Aesthetics Hospital, how should I think about Procedure Eligibility and Hospital Stay and Companion Policy if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Procedure Eligibility",
+        "Hospital Stay and Companion Policy"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0003",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Stay and Companion Policy",
+        "Procedure Eligibility",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0003",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-04",
+      "query": "For Seoul Aesthetic Center, how should I think about Recovery and Aftercare and Hospital Recovery Instructions if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Recovery and Aftercare",
+        "Hospital Recovery Instructions"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Recovery Instructions",
+        "Recovery and Aftercare",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-05",
+      "query": "For Bangkok Beauty Institute, how should I think about Travel and Stay and Hospital International Patient Process if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Travel and Stay",
+        "Hospital International Patient Process"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0002",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital International Patient Process",
+        "Travel and Stay",
+        "Hospital Stay and Companion Policy"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0002",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-06",
+      "query": "For Istanbul Aesthetics Hospital, how should I think about Pricing and Package Scope and Hospital Pricing / Deposit Notes if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Pricing and Package Scope",
+        "Hospital Pricing / Deposit Notes"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0003",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Pricing / Deposit Notes",
+        "Pricing and Package Scope",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0003",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-07",
+      "query": "For Seoul Aesthetic Center, how should I think about Risks and Limitations and Hospital Scheduling Rules, plus Hospital Recovery Instructions if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Risks and Limitations",
+        "Hospital Scheduling Rules",
+        "Hospital Recovery Instructions"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Recovery Instructions",
+        "Hospital Scheduling Rules",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": false,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals.",
+        "missing_categories=Risks and Limitations"
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-08",
+      "query": "For Bangkok Beauty Institute, how should I think about Timeline and Scheduling and Hospital Review Requirements, plus Hospital Pricing / Deposit Notes if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Timeline and Scheduling",
+        "Hospital Review Requirements",
+        "Hospital Pricing / Deposit Notes"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0002",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Pricing / Deposit Notes",
+        "Hospital Review Requirements",
+        "Hospital Scheduling Rules"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0002",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": false,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals.",
+        "missing_categories=Timeline and Scheduling"
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-09",
+      "query": "For Istanbul Aesthetics Hospital, how should I think about Companion and Support and Hospital Stay and Companion Policy, plus Hospital International Patient Process if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Companion and Support",
+        "Hospital Stay and Companion Policy",
+        "Hospital International Patient Process"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0003",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Stay and Companion Policy",
+        "Hospital International Patient Process",
+        "Companion and Support"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0003",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-hospital-10",
+      "query": "For Seoul Aesthetic Center, how should I think about Language and Translation Support and Hospital Review Requirements, plus Hospital Stay and Companion Policy if I am planning a cosmetic medical travel case?",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Language and Translation Support",
+        "Hospital Review Requirements",
+        "Hospital Stay and Companion Policy"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Stay and Companion Policy",
+        "Hospital Review Requirements",
+        "Language and Translation Support"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0001",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-01",
+      "query": "I need cosmetic medical travel guidance on Consultation Process, Medical Documents, and Timeline and Scheduling together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Consultation Process",
+        "Medical Documents",
+        "Timeline and Scheduling"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Medical Documents",
+        "Consultation Process",
+        "Timeline and Scheduling"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-02",
+      "query": "I need cosmetic medical travel guidance on Procedure Eligibility, Recovery and Aftercare, and Risks and Limitations together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Procedure Eligibility",
+        "Recovery and Aftercare",
+        "Risks and Limitations"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Recovery and Aftercare",
+        "Risks and Limitations",
+        "Procedure Eligibility"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-03",
+      "query": "I need cosmetic medical travel guidance on Travel and Stay, Pricing and Package Scope, and Companion and Support together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Travel and Stay",
+        "Pricing and Package Scope",
+        "Companion and Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Stay",
+        "Pricing and Package Scope",
+        "Companion and Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-04",
+      "query": "I need cosmetic medical travel guidance on Language and Translation Support, Why Medora / Care Coordination, and Revision / Follow-up Planning together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Language and Translation Support",
+        "Why Medora / Care Coordination",
+        "Revision / Follow-up Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Revision / Follow-up Planning",
+        "Why Medora / Care Coordination",
+        "Language and Translation Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-05",
+      "query": "I need cosmetic medical travel guidance on Medical Documents, Pricing and Package Scope, and Language and Translation Support together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Medical Documents",
+        "Pricing and Package Scope",
+        "Language and Translation Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Language and Translation Support",
+        "Pricing and Package Scope",
+        "Medical Documents"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-06",
+      "query": "I need cosmetic medical travel guidance on Consultation Process, Risks and Limitations, and Revision / Follow-up Planning together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Consultation Process",
+        "Risks and Limitations",
+        "Revision / Follow-up Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Revision / Follow-up Planning",
+        "Risks and Limitations",
+        "Consultation Process"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-07",
+      "query": "I need cosmetic medical travel guidance on Procedure Eligibility, Timeline and Scheduling, and Companion and Support together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Procedure Eligibility",
+        "Timeline and Scheduling",
+        "Companion and Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Companion and Support",
+        "Timeline and Scheduling",
+        "Procedure Eligibility"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-08",
+      "query": "I need cosmetic medical travel guidance on Recovery and Aftercare, Travel and Stay, and Why Medora / Care Coordination together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Recovery and Aftercare",
+        "Travel and Stay",
+        "Why Medora / Care Coordination"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Why Medora / Care Coordination",
+        "Travel and Stay",
+        "Recovery and Aftercare"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-09",
+      "query": "I need cosmetic medical travel guidance on Consultation Process, Recovery and Aftercare, and Companion and Support together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Consultation Process",
+        "Recovery and Aftercare",
+        "Companion and Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Companion and Support",
+        "Recovery and Aftercare",
+        "Consultation Process"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-multi-10",
+      "query": "I need cosmetic medical travel guidance on Pricing and Package Scope, Risks and Limitations, and Language and Translation Support together, because these seem connected.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Pricing and Package Scope",
+        "Risks and Limitations",
+        "Language and Translation Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Language and Translation Support",
+        "Pricing and Package Scope",
+        "Risks and Limitations"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-negative-01",
+      "query": "Give me only general guidance for cosmetic medical travel around Consultation Process and Medical Documents; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Consultation Process",
+        "Medical Documents"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Medical Documents",
+        "Consultation Process",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-negative-02",
+      "query": "Give me only general guidance for cosmetic medical travel around Procedure Eligibility and Recovery and Aftercare; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Procedure Eligibility",
+        "Recovery and Aftercare"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Recovery and Aftercare",
+        "Procedure Eligibility",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-negative-03",
+      "query": "Give me only general guidance for cosmetic medical travel around Travel and Stay and Pricing and Package Scope; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Travel and Stay",
+        "Pricing and Package Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Stay",
+        "Pricing and Package Scope",
+        "Medical Documents"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-negative-04",
+      "query": "Give me only general guidance for cosmetic medical travel around Risks and Limitations and Timeline and Scheduling; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Risks and Limitations",
+        "Timeline and Scheduling"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Risks and Limitations",
+        "Timeline and Scheduling",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "cosmetic-eval-negative-05",
+      "query": "Give me only general guidance for cosmetic medical travel around Companion and Support and Language and Translation Support; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "COSMETIC",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Companion and Support",
+        "Language and Translation Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Language and Translation Support",
+        "Companion and Support",
+        "Travel and Stay"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Consultation Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Documents",
+          "sortOrder": 20
+        },
+        {
+          "name": "Procedure Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Recovery and Aftercare",
+          "sortOrder": 40
+        },
+        {
+          "name": "Travel and Stay",
+          "sortOrder": 50
+        },
+        {
+          "name": "Pricing and Package Scope",
+          "sortOrder": 60
+        },
+        {
+          "name": "Risks and Limitations",
+          "sortOrder": 70
+        },
+        {
+          "name": "Timeline and Scheduling",
+          "sortOrder": 80
+        },
+        {
+          "name": "Companion and Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Language and Translation Support",
+          "sortOrder": 100
+        },
+        {
+          "name": "Why Medora / Care Coordination",
+          "sortOrder": 110
+        },
+        {
+          "name": "Revision / Follow-up Planning",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "regular-eval-ambiguous-01",
+      "query": "I am still comparing options and need to understand Case Review Process and Hospital Selection Criteria before I decide what matters most for general medical travel.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Case Review Process",
+        "Hospital Selection Criteria"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Hospital Selection Criteria",
+        "Case Review Process",
+        "Travel and Admission Planning"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "regular-eval-ambiguous-02",
+      "query": "I am still comparing options and need to understand Medical Records and Imaging and Travel and Admission Planning before I decide what matters most for general medical travel.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Medical Records and Imaging",
+        "Travel and Admission Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Admission Planning",
+        "Medical Records and Imaging",
+        "Caregiver / Family Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "regular-eval-ambiguous-03",
+      "query": "I am still comparing options and need to understand Treatment Eligibility and Length of Stay and Follow-up before I decide what matters most for general medical travel.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Treatment Eligibility",
+        "Length of Stay and Follow-up"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Length of Stay and Follow-up",
+        "Treatment Eligibility",
+        "Post-treatment Monitoring"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "regular-eval-ambiguous-04",
+      "query": "I am still comparing options and need to understand Diagnosis and Second Opinion and Pricing and Cost Scope before I decide what matters most for general medical travel.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Diagnosis and Second Opinion",
+        "Pricing and Cost Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Pricing and Cost Scope",
+        "Diagnosis and Second Opinion",
+        "Travel and Admission Planning"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "regular-eval-ambiguous-05",
+      "query": "I am still comparing options and need to understand Interpreter and Coordination Support and Post-treatment Monitoring before I decide what matters most for general medical travel.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Interpreter and Coordination Support",
+        "Post-treatment Monitoring"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Interpreter and Coordination Support",
+        "Post-treatment Monitoring",
+        "Caregiver / Family Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Ambiguous query should still stay general unless a hospital is explicitly signaled."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-01",
+      "query": "For general medical travel, how do Case Review Process and Medical Records and Imaging fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Case Review Process",
+        "Medical Records and Imaging"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Medical Records and Imaging",
+        "Case Review Process",
+        "Travel and Admission Planning"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-02",
+      "query": "For general medical travel, how do Treatment Eligibility and Length of Stay and Follow-up fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Treatment Eligibility",
+        "Length of Stay and Follow-up"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Length of Stay and Follow-up",
+        "Treatment Eligibility",
+        "Post-treatment Monitoring"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-03",
+      "query": "For general medical travel, how do Diagnosis and Second Opinion and Pricing and Cost Scope fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Diagnosis and Second Opinion",
+        "Pricing and Cost Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Diagnosis and Second Opinion",
+        "Pricing and Cost Scope",
+        "Travel and Admission Planning"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-04",
+      "query": "For general medical travel, how do Hospital Selection Criteria and Interpreter and Coordination Support fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Hospital Selection Criteria",
+        "Interpreter and Coordination Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Interpreter and Coordination Support",
+        "Hospital Selection Criteria",
+        "Caregiver / Family Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-05",
+      "query": "For general medical travel, how do Travel and Admission Planning and Risks, Outcomes, and Limits fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Travel and Admission Planning",
+        "Risks, Outcomes, and Limits"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Admission Planning",
+        "Risks, Outcomes, and Limits",
+        "Medical Records and Imaging"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-06",
+      "query": "For general medical travel, how do Caregiver / Family Support and Post-treatment Monitoring fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Caregiver / Family Support",
+        "Post-treatment Monitoring"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Caregiver / Family Support",
+        "Post-treatment Monitoring",
+        "Interpreter and Coordination Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-07",
+      "query": "For general medical travel, how do Medical Records and Imaging and Diagnosis and Second Opinion, and Travel and Admission Planning fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Medical Records and Imaging",
+        "Diagnosis and Second Opinion",
+        "Travel and Admission Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Admission Planning",
+        "Medical Records and Imaging",
+        "Diagnosis and Second Opinion"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-08",
+      "query": "For general medical travel, how do Case Review Process and Hospital Selection Criteria, and Pricing and Cost Scope fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Case Review Process",
+        "Hospital Selection Criteria",
+        "Pricing and Cost Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Hospital Selection Criteria",
+        "Case Review Process",
+        "Pricing and Cost Scope"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-09",
+      "query": "For general medical travel, how do Treatment Eligibility and Interpreter and Coordination Support, and Post-treatment Monitoring fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Treatment Eligibility",
+        "Interpreter and Coordination Support",
+        "Post-treatment Monitoring"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Interpreter and Coordination Support",
+        "Post-treatment Monitoring",
+        "Treatment Eligibility"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-general-10",
+      "query": "For general medical travel, how do Length of Stay and Follow-up and Risks, Outcomes, and Limits, and Caregiver / Family Support fit together before I decide?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Length of Stay and Follow-up",
+        "Risks, Outcomes, and Limits",
+        "Caregiver / Family Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Length of Stay and Follow-up",
+        "Caregiver / Family Support",
+        "Risks, Outcomes, and Limits"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=General-only query should avoid hospital-specific FAQ."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-01",
+      "query": "For Seoul Advanced Medical Center, how should I think about Case Review Process and Hospital Review Requirements if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Case Review Process",
+        "Hospital Review Requirements"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Review Requirements",
+        "Case Review Process",
+        "Hospital International Patient Process"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-02",
+      "query": "For Bangkok International Care Hospital, how should I think about Medical Records and Imaging and Hospital Scheduling Rules if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Medical Records and Imaging",
+        "Hospital Scheduling Rules"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0012",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Scheduling Rules",
+        "Medical Records and Imaging",
+        "Hospital International Patient Process"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0012",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-03",
+      "query": "For Tokyo Precision Treatment Center, how should I think about Treatment Eligibility and Hospital Stay and Companion Policy if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Treatment Eligibility",
+        "Hospital Stay and Companion Policy"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0013",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Stay and Companion Policy",
+        "Treatment Eligibility",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0013",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-04",
+      "query": "For Seoul Advanced Medical Center, how should I think about Diagnosis and Second Opinion and Hospital Recovery Instructions if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Diagnosis and Second Opinion",
+        "Hospital Recovery Instructions"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Recovery Instructions",
+        "Diagnosis and Second Opinion",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-05",
+      "query": "For Bangkok International Care Hospital, how should I think about Hospital Selection Criteria and Hospital International Patient Process if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Hospital Selection Criteria",
+        "Hospital International Patient Process"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0012",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital International Patient Process",
+        "Hospital Selection Criteria",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0012",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-06",
+      "query": "For Tokyo Precision Treatment Center, how should I think about Travel and Admission Planning and Hospital Pricing / Deposit Notes if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Travel and Admission Planning",
+        "Hospital Pricing / Deposit Notes"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0013",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Travel and Admission Planning",
+        "Hospital Pricing / Deposit Notes",
+        "Hospital Review Requirements"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0013",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-07",
+      "query": "For Seoul Advanced Medical Center, how should I think about Length of Stay and Follow-up and Hospital Scheduling Rules, plus Hospital Recovery Instructions if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Length of Stay and Follow-up",
+        "Hospital Scheduling Rules",
+        "Hospital Recovery Instructions"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Recovery Instructions",
+        "Hospital Scheduling Rules",
+        "Length of Stay and Follow-up"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-08",
+      "query": "For Bangkok International Care Hospital, how should I think about Pricing and Cost Scope and Hospital Review Requirements, plus Hospital Pricing / Deposit Notes if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Pricing and Cost Scope",
+        "Hospital Review Requirements",
+        "Hospital Pricing / Deposit Notes"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0012",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Pricing / Deposit Notes",
+        "Hospital Review Requirements",
+        "Pricing and Cost Scope"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0012",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-09",
+      "query": "For Tokyo Precision Treatment Center, how should I think about Interpreter and Coordination Support and Hospital Stay and Companion Policy, plus Hospital International Patient Process if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Interpreter and Coordination Support",
+        "Hospital Stay and Companion Policy",
+        "Hospital International Patient Process"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0013",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Stay and Companion Policy",
+        "Hospital International Patient Process",
+        "Interpreter and Coordination Support"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0013",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-hospital-10",
+      "query": "For Seoul Advanced Medical Center, how should I think about Risks, Outcomes, and Limits and Hospital Review Requirements, plus Hospital Stay and Companion Policy if I am planning a general medical travel case?",
+      "hospitalType": "REGULAR",
+      "expectedScope": "HOSPITAL_AWARE",
+      "expectedCategories": [
+        "Risks, Outcomes, and Limits",
+        "Hospital Review Requirements",
+        "Hospital Stay and Companion Policy"
+      ],
+      "expectedHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "actualScope": "HOSPITAL_AWARE",
+      "actualCategories": [
+        "Hospital Stay and Companion Policy",
+        "Hospital Review Requirements",
+        "Risks, Outcomes, and Limits"
+      ],
+      "activeHospitalId": "4d7a1d34-6bb8-46aa-a7b6-36e7f7cb0011",
+      "categoryListSourceUsed": "GENERAL_PLUS_HOSPITAL",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Review Requirements",
+          "sortOrder": 10
+        },
+        {
+          "name": "Hospital Scheduling Rules",
+          "sortOrder": 20
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Hospital Stay and Companion Policy",
+          "sortOrder": 30
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Recovery Instructions",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital International Patient Process",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Hospital Pricing / Deposit Notes",
+          "sortOrder": 60
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=18",
+        "category_source=GENERAL_PLUS_HOSPITAL",
+        "seed_note=Hospital-aware query should mix hospital and general FAQ without leaking other hospitals."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-01",
+      "query": "I need general medical travel guidance on Case Review Process, Medical Records and Imaging, and Pricing and Cost Scope together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Case Review Process",
+        "Medical Records and Imaging",
+        "Pricing and Cost Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Medical Records and Imaging",
+        "Case Review Process",
+        "Pricing and Cost Scope"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-02",
+      "query": "I need general medical travel guidance on Treatment Eligibility, Diagnosis and Second Opinion, and Length of Stay and Follow-up together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Treatment Eligibility",
+        "Diagnosis and Second Opinion",
+        "Length of Stay and Follow-up"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Length of Stay and Follow-up",
+        "Diagnosis and Second Opinion",
+        "Treatment Eligibility"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-03",
+      "query": "I need general medical travel guidance on Hospital Selection Criteria, Travel and Admission Planning, and Interpreter and Coordination Support together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Hospital Selection Criteria",
+        "Travel and Admission Planning",
+        "Interpreter and Coordination Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Admission Planning",
+        "Interpreter and Coordination Support",
+        "Hospital Selection Criteria"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-04",
+      "query": "I need general medical travel guidance on Risks, Outcomes, and Limits, Caregiver / Family Support, and Post-treatment Monitoring together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Risks, Outcomes, and Limits",
+        "Caregiver / Family Support",
+        "Post-treatment Monitoring"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Caregiver / Family Support",
+        "Risks, Outcomes, and Limits",
+        "Post-treatment Monitoring"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-05",
+      "query": "I need general medical travel guidance on Medical Records and Imaging, Travel and Admission Planning, and Risks, Outcomes, and Limits together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Medical Records and Imaging",
+        "Travel and Admission Planning",
+        "Risks, Outcomes, and Limits"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Travel and Admission Planning",
+        "Medical Records and Imaging",
+        "Risks, Outcomes, and Limits"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-06",
+      "query": "I need general medical travel guidance on Case Review Process, Length of Stay and Follow-up, and Post-treatment Monitoring together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Case Review Process",
+        "Length of Stay and Follow-up",
+        "Post-treatment Monitoring"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Length of Stay and Follow-up",
+        "Post-treatment Monitoring",
+        "Case Review Process"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-07",
+      "query": "I need general medical travel guidance on Treatment Eligibility, Pricing and Cost Scope, and Interpreter and Coordination Support together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Treatment Eligibility",
+        "Pricing and Cost Scope",
+        "Interpreter and Coordination Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Interpreter and Coordination Support",
+        "Pricing and Cost Scope",
+        "Treatment Eligibility"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-08",
+      "query": "I need general medical travel guidance on Diagnosis and Second Opinion, Hospital Selection Criteria, and Caregiver / Family Support together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Diagnosis and Second Opinion",
+        "Hospital Selection Criteria",
+        "Caregiver / Family Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Caregiver / Family Support",
+        "Diagnosis and Second Opinion",
+        "Hospital Selection Criteria"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-09",
+      "query": "I need general medical travel guidance on Case Review Process, Diagnosis and Second Opinion, and Interpreter and Coordination Support together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Case Review Process",
+        "Diagnosis and Second Opinion",
+        "Interpreter and Coordination Support"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Diagnosis and Second Opinion",
+        "Interpreter and Coordination Support",
+        "Case Review Process"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-multi-10",
+      "query": "I need general medical travel guidance on Travel and Admission Planning, Length of Stay and Follow-up, and Risks, Outcomes, and Limits together, because these seem connected.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Travel and Admission Planning",
+        "Length of Stay and Follow-up",
+        "Risks, Outcomes, and Limits"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Length of Stay and Follow-up",
+        "Travel and Admission Planning",
+        "Risks, Outcomes, and Limits"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Multi-category query should retrieve from several relevant FAQ regions."
+      ]
+    },
+    {
+      "queryId": "regular-eval-negative-01",
+      "query": "Give me only general guidance for general medical travel around Case Review Process and Medical Records and Imaging; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Case Review Process",
+        "Medical Records and Imaging"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Medical Records and Imaging",
+        "Case Review Process",
+        "Travel and Admission Planning"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "regular-eval-negative-02",
+      "query": "Give me only general guidance for general medical travel around Treatment Eligibility and Diagnosis and Second Opinion; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Treatment Eligibility",
+        "Diagnosis and Second Opinion"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Diagnosis and Second Opinion",
+        "Treatment Eligibility",
+        "Hospital Selection Criteria"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "regular-eval-negative-03",
+      "query": "Give me only general guidance for general medical travel around Hospital Selection Criteria and Travel and Admission Planning; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Hospital Selection Criteria",
+        "Travel and Admission Planning"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Hospital Selection Criteria",
+        "Travel and Admission Planning",
+        "Medical Records and Imaging"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "regular-eval-negative-04",
+      "query": "Give me only general guidance for general medical travel around Length of Stay and Follow-up and Pricing and Cost Scope; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Length of Stay and Follow-up",
+        "Pricing and Cost Scope"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Length of Stay and Follow-up",
+        "Pricing and Cost Scope",
+        "Hospital Selection Criteria"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    },
+    {
+      "queryId": "regular-eval-negative-05",
+      "query": "Give me only general guidance for general medical travel around Interpreter and Coordination Support and Risks, Outcomes, and Limits; do not mix in hospital-specific details unless I mention one.",
+      "hospitalType": "REGULAR",
+      "expectedScope": "GENERAL_ONLY",
+      "expectedCategories": [
+        "Interpreter and Coordination Support",
+        "Risks, Outcomes, and Limits"
+      ],
+      "expectedHospitalId": null,
+      "actualScope": "GENERAL_ONLY",
+      "actualCategories": [
+        "Interpreter and Coordination Support",
+        "Risks, Outcomes, and Limits",
+        "Caregiver / Family Support"
+      ],
+      "activeHospitalId": null,
+      "categoryListSourceUsed": "GENERAL_ONLY",
+      "availableCategories": [
+        {
+          "name": "Case Review Process",
+          "sortOrder": 10
+        },
+        {
+          "name": "Medical Records and Imaging",
+          "sortOrder": 20
+        },
+        {
+          "name": "Treatment Eligibility",
+          "sortOrder": 30
+        },
+        {
+          "name": "Diagnosis and Second Opinion",
+          "sortOrder": 40
+        },
+        {
+          "name": "Hospital Selection Criteria",
+          "sortOrder": 50
+        },
+        {
+          "name": "Travel and Admission Planning",
+          "sortOrder": 60
+        },
+        {
+          "name": "Length of Stay and Follow-up",
+          "sortOrder": 70
+        },
+        {
+          "name": "Pricing and Cost Scope",
+          "sortOrder": 80
+        },
+        {
+          "name": "Interpreter and Coordination Support",
+          "sortOrder": 90
+        },
+        {
+          "name": "Risks, Outcomes, and Limits",
+          "sortOrder": 100
+        },
+        {
+          "name": "Caregiver / Family Support",
+          "sortOrder": 110
+        },
+        {
+          "name": "Post-treatment Monitoring",
+          "sortOrder": 120
+        }
+      ],
+      "pass": true,
+      "notes": [
+        "available_categories=12",
+        "category_source=GENERAL_ONLY",
+        "seed_note=Should not mix hospital-specific FAQ into a general-only answer."
+      ]
+    }
+  ]
+}

@@ -7,6 +7,7 @@ describe('ActionPlannerService', () => {
 
     const plan = planner.plan({
       engagementMode: 'DEEP_WORKFLOW',
+      hospitalType: 'COSMETIC',
       statusSnapshot: {
         docUploadStatus: 'NOT_STARTED',
         packageStatus: 'NOT_SHOWN',
@@ -24,6 +25,7 @@ describe('ActionPlannerService', () => {
 
     const plan = planner.plan({
       engagementMode: 'DEEP_WORKFLOW',
+      hospitalType: 'COSMETIC',
       statusSnapshot: {
         docUploadStatus: 'NOT_STARTED',
         packageStatus: 'NOT_SHOWN',
@@ -42,6 +44,7 @@ describe('ActionPlannerService', () => {
 
     const plan = planner.plan({
       engagementMode: 'LIGHT_DISCOVERY',
+      hospitalType: 'COSMETIC',
       statusSnapshot: {
         docUploadStatus: 'UPLOADED',
         packageStatus: 'NOT_SHOWN',
@@ -60,6 +63,7 @@ describe('ActionPlannerService', () => {
 
     const plan = planner.plan({
       engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
       statusSnapshot: {
         docUploadStatus: 'NONE',
         packageStatus: 'NOT_SHOWN',
@@ -78,6 +82,7 @@ describe('ActionPlannerService', () => {
 
     const plan = planner.plan({
       engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
       statusSnapshot: {
         docUploadStatus: 'UPLOADED',
         packageStatus: 'SHOWN',
@@ -96,6 +101,7 @@ describe('ActionPlannerService', () => {
 
     const plan = planner.plan({
       engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
       statusSnapshot: {
         docUploadStatus: 'NONE',
         packageStatus: 'SHOWN',
@@ -114,10 +120,12 @@ describe('ActionPlannerService', () => {
 
     const plan = planner.plan({
       engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'COSMETIC',
       statusSnapshot: {
         docUploadStatus: 'UPLOADED',
         packageStatus: 'SHOWN',
         recommendationStatus: 'NOT_SHOWN',
+        consultationStatus: 'NOT_INTRODUCED',
         riskLevel: 'LOW',
       },
       resolvedIntent: 'GENERAL_CONSULT',
@@ -125,5 +133,45 @@ describe('ActionPlannerService', () => {
 
     expect(plan.nextAction).toBe('EXPLAIN_CONSULT_PROCESS');
     expect(plan.reasonCodes).toContain('qualified_consult_explanation');
+  });
+
+  it('routes broad journey questions to EXPLAIN_MEDICAL_TRAVEL_PROCESS', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'REGULAR',
+      statusSnapshot: {
+        docUploadStatus: 'NONE',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        consultationStatus: 'NOT_INTRODUCED',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_MEDICAL_TRAVEL_PROCESS',
+    });
+
+    expect(plan.nextAction).toBe('EXPLAIN_MEDICAL_TRAVEL_PROCESS');
+    expect(plan.reasonCodes).toContain('process_overview_requested');
+  });
+
+  it('does not default REGULAR qualified exploration into SHOW_PACKAGE', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'REGULAR',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        consultationStatus: 'READY',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'GENERAL_CONSULT',
+    });
+
+    expect(plan.nextAction).toBe('EXPLAIN_CONSULT_PROCESS');
+    expect(plan.reasonCodes).not.toContain('qualified_package_exploration');
   });
 });

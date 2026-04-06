@@ -14,11 +14,16 @@
     "db:pull": "pnpm --filter @medical-crm/infrastructure drizzle-kit pull",
     "db:generate": "pnpm --filter @medical-crm/infrastructure drizzle-kit generate",
     "db:migrate": "pnpm --filter @medical-crm/infrastructure db:migrate",
+    "seed:faq:generate": "node scripts/generate-faq-seed.ts",
+    "seed:faq:check": "node scripts/generate-faq-seed.ts --check",
+    "seed:faq:import": "pnpm exec tsx scripts/import-faq-seed.ts",
+    "seed:faq:evaluate": "pnpm exec tsx scripts/evaluate-faq-retrieval.ts",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
     "eslint": "^9.18.0",
+    "tsx": "^4.21.0",
     "turbo": "^2.4.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.20.0"

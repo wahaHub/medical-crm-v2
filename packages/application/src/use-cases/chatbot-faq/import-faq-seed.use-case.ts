@@ -64,15 +64,16 @@ export class ImportFaqSeedUseCase {
 
   async execute(input: ImportFaqSeedInput): Promise<ImportFaqSeedResult> {
     const seed = this.resolveSeed(input);
+    validateSeed(seed);
     const categoryKeys = new Set(
-      seed.categories.map((category) => categoryKey(category.name, category.hospitalType, category.hospitalId)),
+      seed.categories.map((category) => categorySeedKey(category.name, category.hospitalType, category.hospitalId, category.scope)),
     );
 
     for (const faqItem of seed.faqItems) {
-      const key = categoryKey(faqItem.category, faqItem.hospitalType, faqItem.hospitalId);
+      const key = categorySeedKey(faqItem.category, faqItem.hospitalType, faqItem.hospitalId, faqItem.scope);
       if (!categoryKeys.has(key)) {
         throw new Error(
-          `Seed FAQ item references unknown category: ${faqItem.category} (${faqItem.hospitalType}, ${faqItem.hospitalId ?? 'GENERAL'})`,
+          `Seed FAQ item references unknown category: ${faqItem.category} (${faqItem.hospitalType}, ${faqItem.hospitalId ?? 'GENERAL'}, ${faqItem.scope})`,
         );
       }
     }
@@ -96,17 +97,20 @@ export class ImportFaqSeedUseCase {
         continue;
       }
 
-      await this.faqRepo.createCategory({
-        name: category.name,
-        hospitalType: category.hospitalType,
-        hospitalId: category.hospitalId,
-        sortOrder: category.sortOrder,
-        isActive: category.isActive,
-      });
-
       if (existing) {
+        await this.faqRepo.updateCategory(existing.id, {
+          sortOrder: category.sortOrder,
+          isActive: category.isActive,
+        });
         result.categoriesUpdated += 1;
       } else {
+        await this.faqRepo.createCategory({
+          name: category.name,
+          hospitalType: category.hospitalType,
+          hospitalId: category.hospitalId,
+          sortOrder: category.sortOrder,
+          isActive: category.isActive,
+        });
         result.categoriesCreated += 1;
       }
     }
@@ -114,6 +118,9 @@ export class ImportFaqSeedUseCase {
     for (const faqItem of seed.faqItems) {
       const existing = await this.faqRepo.findById(faqItem.id);
       if (existing && isSameFaqItem(existing, faqItem)) {
+        if (this.aiSyncTaskService) {
+          await this.aiSyncTaskService.enqueueFaqUpsert(toFaqSyncPayload(existing));
+        }
         result.faqItemsSkipped += 1;
         continue;
       }
@@ -128,23 +135,13 @@ export class ImportFaqSeedUseCase {
         keywords: faqItem.keywords,
         sortOrder: faqItem.sortOrder,
         isActive: faqItem.isActive,
-        attachments: [],
+        attachments: existing?.attachments ?? [],
         createdAt: existing?.createdAt ?? new Date(),
         updatedAt: new Date(),
       }));
 
       if (this.aiSyncTaskService) {
-        await this.aiSyncTaskService.enqueueFaqUpsert({
-          faqId: saved.id,
-          category: saved.category,
-          question: saved.question,
-          answer: saved.answer,
-          hospitalType: saved.hospitalType,
-          hospitalId: saved.hospitalId,
-          keywords: saved.keywords,
-          attachments: [],
-          isActive: saved.isActive,
-        });
+        await this.aiSyncTaskService.enqueueFaqUpsert(toFaqSyncPayload(saved));
       }
 
       if (existing) {
@@ -201,6 +198,50 @@ function categoryKey(name: string, hospitalType: 'REGULAR' | 'COSMETIC', hospita
   return `${hospitalType}::${hospitalId ?? 'GENERAL'}::${name.trim()}`;
 }
 
+function categorySeedKey(
+  name: string,
+  hospitalType: 'REGULAR' | 'COSMETIC',
+  hospitalId: string | null,
+  scope: 'GENERAL' | 'HOSPITAL',
+): string {
+  return `${scope}::${categoryKey(name, hospitalType, hospitalId)}`;
+}
+
+function validateSeed(seed: FaqSeedCorpus): void {
+  for (const category of seed.categories) {
+    if (category.scope !== 'GENERAL' && category.scope !== 'HOSPITAL') {
+      throw new Error(`Seed category has invalid scope: ${category.id}`);
+    }
+    if (category.hospitalId && !isUuid(category.hospitalId)) {
+      throw new Error(`Seed category has invalid hospitalId: ${category.id}`);
+    }
+    if (category.scope === 'GENERAL' && category.hospitalId !== null) {
+      throw new Error(`GENERAL seed category must not have hospitalId: ${category.id}`);
+    }
+    if (category.scope === 'HOSPITAL' && !category.hospitalId) {
+      throw new Error(`HOSPITAL seed category must have hospitalId: ${category.id}`);
+    }
+  }
+
+  for (const faqItem of seed.faqItems) {
+    if (!isUuid(faqItem.id)) {
+      throw new Error(`Seed FAQ item has invalid id: ${faqItem.id}`);
+    }
+    if (faqItem.scope !== 'GENERAL' && faqItem.scope !== 'HOSPITAL') {
+      throw new Error(`Seed FAQ item has invalid scope: ${faqItem.id}`);
+    }
+    if (faqItem.hospitalId && !isUuid(faqItem.hospitalId)) {
+      throw new Error(`Seed FAQ item has invalid hospitalId: ${faqItem.id}`);
+    }
+    if (faqItem.scope === 'GENERAL' && faqItem.hospitalId !== null) {
+      throw new Error(`GENERAL seed FAQ item must not have hospitalId: ${faqItem.id}`);
+    }
+    if (faqItem.scope === 'HOSPITAL' && !faqItem.hospitalId) {
+      throw new Error(`HOSPITAL seed FAQ item must have hospitalId: ${faqItem.id}`);
+    }
+  }
+}
+
 function isSameCategory(
   existing: Awaited<ReturnType<IChatbotFaqRepository['listCategories']>>[number],
   category: FaqSeedCategoryRecord,
@@ -228,4 +269,24 @@ function sameStringArray(left: string[], right: string[]): boolean {
     return false;
   }
   return left.every((value, index) => value === right[index]);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function toFaqSyncPayload(
+  faqItem: Pick<ChatbotFaqItem, 'id' | 'category' | 'question' | 'answer' | 'hospitalType' | 'hospitalId' | 'keywords' | 'isActive' | 'attachments'>,
+) {
+  return {
+    faqId: faqItem.id,
+    category: faqItem.category,
+    question: faqItem.question,
+    answer: faqItem.answer,
+    hospitalType: faqItem.hospitalType,
+    hospitalId: faqItem.hospitalId,
+    keywords: faqItem.keywords,
+    attachments: faqItem.attachments,
+    isActive: faqItem.isActive,
+  };
 }

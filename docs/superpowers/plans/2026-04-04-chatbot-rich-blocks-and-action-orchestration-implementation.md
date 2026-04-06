@@ -64,27 +64,28 @@ Tests:
 
 Message model and renderer:
 
-- Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/services/api/patient-messages.ts`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/types/chatbot-blocks.ts`
-- Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/PatientChatMessageList.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/ChatMessageBlocks.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/blocks/ProcessModalTrigger.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/blocks/QuestionnaireModalTrigger.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/blocks/HospitalRecommendationCards.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/blocks/OnlineConsultBookingCard.tsx`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/services/api/patient-messages.ts`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/types/chatbot-blocks.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/PatientChatMessageList.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/ChatMessageBlocks.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/blocks/ProcessModalTrigger.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/blocks/QuestionnaireModalTrigger.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/blocks/HospitalRecommendationCards.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/blocks/OnlineConsultBookingCard.tsx`
 
 Existing UI to reuse:
 
-- Reference: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/HospitalSelectionForm.tsx`
-- Reference: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/services/api/patient-entry.ts`
-- Modify as needed: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/contexts/PatientEntryContext.tsx`
+- Reference: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/HospitalSelectionForm.tsx`
+- Reference: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/services/api/patient-entry.ts`
+- Modify as needed: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/contexts/PatientEntryContext.tsx`
 
 Tests:
 
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/ChatMessageTriggers.test.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/HospitalRecommendationCards.test.tsx`
-- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc/src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/__tests__/ChatbotBlocks.contract.test.ts`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/__tests__/ChatMessageTriggers.test.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/__tests__/HospitalRecommendationCards.test.tsx`
+- Create: `/Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks/src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx`
 
 ## Chunk 1: Backend Contract And Policy Foundation
 
@@ -103,7 +104,17 @@ git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2 worktree add /
 
 Expected: new clean backend worktree on a fresh `codex/` branch
 
-- [ ] **Step 2: Verify the backend worktree is clean**
+- [ ] **Step 2: Create the china worktree**
+
+Run:
+
+```bash
+git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-phase-2bc worktree add /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks -b codex/chatbot-rich-blocks feature/phase-2bc
+```
+
+Expected: new clean china worktree on a fresh `codex/` branch
+
+- [ ] **Step 3: Verify the backend worktree is clean**
 
 Run:
 
@@ -113,7 +124,17 @@ git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/cha
 
 Expected: no output
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Verify the china worktree is clean**
+
+Run:
+
+```bash
+git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks status --short
+```
+
+Expected: no output
+
+- [ ] **Step 5: Commit**
 
 No commit for this setup step
 
@@ -132,6 +153,7 @@ Add tests that assert:
 - `SHOW_HOSPITAL_RECOMMENDATIONS` can return `HOSPITAL_RECOMMENDATION_CARDS`
 - `INVITE_ONLINE_CONSULT` can return `ONLINE_CONSULT_BOOKING_CARD`
 - `nextAction` still remains public metadata
+- new backend actions preserve the same canonical public `nextAction` string names in the response contract
 
 - [ ] **Step 2: Run the focused route test to confirm failure**
 
@@ -155,9 +177,10 @@ Add or finalize Zod support for:
 Make sure:
 
 - `PROCESS_MODAL_TRIGGER` formally includes `modalKey`
-- `QUESTIONNAIRE_MODAL_TRIGGER` formally includes `questionnaireKey`
+- `QUESTIONNAIRE_MODAL_TRIGGER` formally includes `templateId`
 - `HOSPITAL_RECOMMENDATION_CARDS` formally includes `caseId` and `selectPath`
-- `ONLINE_CONSULT_BOOKING_CARD` formally includes `requestedAction` and `convertPath`
+- `HOSPITAL_RECOMMENDATION_CARDS` constrains `caseId` and `hospitalId` payloads to the UUID-compatible shape required by `/select-hospitals`
+- `ONLINE_CONSULT_BOOKING_CARD` formally includes `requestedAction`, `convertPath`, and a complete `conversionDraft`
 - route-level `blocks` normalization stays in the public route task, not in the validation task
 
 - [ ] **Step 4: Run the focused route test again**
@@ -300,9 +323,11 @@ Add assertions for:
 - consult invite -> `ONLINE_CONSULT_BOOKING_CARD`
 - human handoff -> text/link only, no rich block
 - process block includes `modalKey`
-- questionnaire block includes `questionnaireKey`
+- questionnaire block includes `templateId`
 - hospital recommendation block includes `caseId` and `selectPath`
-- online consult block includes `requestedAction` and `convertPath`
+- hospital recommendation block carries UUID-compatible `caseId` and `hospitalId` values
+- online consult block includes `requestedAction`, `convertPath`, and a complete `conversionDraft`
+- new backend actions preserve the expected public `nextAction` values in the normalized response
 
 - [ ] **Step 2: Run the route test to confirm failure**
 
@@ -348,7 +373,7 @@ git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/cha
 
 Cover:
 
-- exact questionnaire lookup returns a trigger block with `questionnaireKey`
+- exact questionnaire lookup returns a trigger block with `templateId`
 - ambiguous lookup omits the block and falls back to text
 
 - [ ] **Step 2: Run the chatbot route test to confirm failure**
@@ -359,8 +384,9 @@ Use the same route Vitest command.
 
 Use the existing Question Collector registry instead of inventing a new store. Keep lookup deterministic:
 
-- exact disease/hospital-type match first
-- intake-direction fallback second
+- exact `procedureTypes` match first
+- `category`-level intake fallback second
+- resolved output is the existing QC `templateId`, not a new slug layer
 - ambiguity -> omit block and return text fallback
 
 - [ ] **Step 4: Re-run the route test**
@@ -389,6 +415,7 @@ Assert that the workflow supports:
 - `EXPLAIN_CONSULT_PROCESS`
 - `REQUEST_DOC_UPLOAD`
 - `INVITE_ONLINE_CONSULT`
+- `HUMAN_HANDOFF`
 - recommendation exploration vs shortlist
 
 - [ ] **Step 2: Run the Dify contract test**
@@ -446,7 +473,7 @@ Cover:
 Run:
 
 ```bash
-pnpm -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks exec vitest run src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx
+pnpm -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks exec vitest run src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx src/components/chat/__tests__/ChatbotBlocks.contract.test.ts
 ```
 
 Expected: FAIL because the message type has no `blocks` support
@@ -456,7 +483,8 @@ Expected: FAIL because the message type has no `blocks` support
 Add:
 
 - a concrete `ChatbotMessageBlock[]` type in `src/types/chatbot-blocks.ts`
-- make that local type mirror `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/shared/validation/src/chatbot.schema.ts`
+- make that local type intentionally mirror `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/shared/validation/src/chatbot.schema.ts`
+- add a small fixture/parity test that parses backend-shaped sample block payloads so cross-repo contract drift fails fast in `china`
 - use `blocks?: ChatbotMessageBlock[]` in the china message model
 - a dedicated `ChatMessageBlocks` component
 - safe rendering before/above message text
@@ -468,7 +496,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks add src/services/api/patient-messages.ts src/components/chat/PatientChatMessageList.tsx src/components/chat/ChatMessageBlocks.tsx src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx
+git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks add src/services/api/patient-messages.ts src/types/chatbot-blocks.ts src/components/chat/PatientChatMessageList.tsx src/components/chat/ChatMessageBlocks.tsx src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx src/components/chat/__tests__/ChatbotBlocks.contract.test.ts
 git -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks commit -m "feat: render chatbot rich message blocks"
 ```
 
@@ -538,7 +566,7 @@ Cover:
 
 - hospital selection posts to `/select-hospitals`
 - selection is idempotent when re-choosing the same hospital
-- consult request posts to `/api/v2/chatbot/convert`
+- consult request posts a complete `conversionDraft` payload to `/api/v2/chatbot/convert`
 - failed consult request surfaces retry state
 - successful consult request moves the card into submitted state
 
@@ -551,7 +579,7 @@ Run the same Vitest command plus any new integration-focused component tests.
 Use existing APIs:
 
 - hospital selection -> reuse `/select-hospitals`
-- consult request -> reuse `/api/v2/chatbot/convert`
+- consult request -> reuse `/api/v2/chatbot/convert` with the block-provided `conversionDraft`
 
 Do not create new frontend-side business logic beyond request state management.
 
@@ -587,7 +615,7 @@ Expected: PASS
 Run:
 
 ```bash
-pnpm -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks exec vitest run src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx src/components/chat/__tests__/HospitalRecommendationCards.test.tsx src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx
+pnpm -C /Users/haowang/Desktop/medora-health-beauty/.codex-worktrees/china-chatbot-rich-blocks exec vitest run src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx src/components/chat/__tests__/ChatbotBlocks.contract.test.ts src/components/chat/__tests__/HospitalRecommendationCards.test.tsx src/components/chat/__tests__/OnlineConsultBookingCard.test.tsx
 ```
 
 Expected: PASS

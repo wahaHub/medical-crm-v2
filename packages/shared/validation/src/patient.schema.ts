@@ -6,11 +6,21 @@ export const initOnboardingSchema = z.object({
   email: z.string().email().max(255),
   name: z.string().min(1).max(100),
   phone: z.string().trim().min(5).max(20).optional(),
+  age: z.string().trim().max(20).optional(),
+  gender: z.string().trim().max(40).optional(),
+  country: z.string().trim().max(120).optional(),
+  whatsapp: z.string().trim().max(120).optional(),
+  messenger: z.string().trim().max(120).optional(),
+  department: z.string().trim().max(120).optional(),
+  departmentCode: z.string().trim().max(120).optional(),
+  disease: z.string().trim().max(500).optional(),
   preferredLanguage: z.string().min(2).max(10).default('en'),
   procedureId: z.string().uuid().optional(),
   destination: z.string().max(100).optional(),
+  treatmentTime: z.string().trim().max(120).optional(),
   category: z.enum(['face', 'body', 'non-surgical']).optional(),
-  captchaToken: z.string().min(1),
+  registerToken: z.string().min(1).optional(),
+  captchaToken: z.string().min(1).optional(),
 });
 
 // POST /api/patient/match-hospitals
@@ -24,7 +34,16 @@ export const matchHospitalsSchema = z.object({
 // POST /api/patient/select-hospitals
 export const selectHospitalsSchema = z.object({
   caseId: z.string().uuid(),
-  hospitalIds: z.array(z.string().uuid()).min(1).max(5),
+  hospitalIds: z.array(z.string().uuid()).max(5),
+  customHospitalRequest: z.string().trim().max(200).optional(),
+}).superRefine((value, ctx) => {
+  if (value.hospitalIds.length === 0 && !(value.customHospitalRequest && value.customHospitalRequest.trim().length > 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['hospitalIds'],
+      message: 'Select at least one hospital or provide a custom hospital request',
+    });
+  }
 });
 
 // POST /api/patient/magic-link
@@ -32,9 +51,25 @@ export const magicLinkSchema = z.object({
   email: z.string().email().max(255),
 });
 
+// POST /api/patient/login
+export const patientPasswordLoginSchema = z.object({
+  email: z.string().email().max(255),
+  password: z.string().min(8).max(100),
+});
+
 // POST /api/patient/verify-token
 export const verifyTokenSchema = z.object({
   token: z.string().min(1),
+});
+
+// POST /api/patient/register-token/verify
+export const verifyRegisterTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
+// POST /api/patient/session/restore
+export const restoreTokenSchema = z.object({
+  restoreToken: z.string().min(1),
 });
 
 // POST /api/patient/set-password
@@ -89,7 +124,10 @@ export type InitOnboardingInput = z.infer<typeof initOnboardingSchema>;
 export type MatchHospitalsInput = z.infer<typeof matchHospitalsSchema>;
 export type SelectHospitalsInput = z.infer<typeof selectHospitalsSchema>;
 export type MagicLinkInput = z.infer<typeof magicLinkSchema>;
+export type PatientPasswordLoginInput = z.infer<typeof patientPasswordLoginSchema>;
 export type VerifyTokenInput = z.infer<typeof verifyTokenSchema>;
+export type VerifyRegisterTokenInput = z.infer<typeof verifyRegisterTokenSchema>;
+export type RestoreTokenInput = z.infer<typeof restoreTokenSchema>;
 export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
 export type SendPatientMessageInput = z.infer<typeof sendPatientMessageSchema>;
 export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;

@@ -1,7 +1,9 @@
 'use client';
 
+import React from 'react';
 import { LoadingSpinner, QuestionnaireReadonlyView } from '@medical-crm/ui';
 import { useCaseQuestionnaire } from '@/queries/use-cases';
+import { useQuestionTemplate } from '@/queries/use-question-collectors';
 
 // ── Main Export ──────────────────────────────────────────────────────
 
@@ -13,36 +15,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function normalizeQuestionnaireData(rawData: unknown): unknown {
+function unwrapQuestionnairePayload(rawData: unknown): Record<string, unknown> | null {
   const payload = isRecord(rawData) && 'data' in rawData
     ? (rawData as { data?: unknown }).data
     : rawData;
 
-  if (!payload || !isRecord(payload)) return payload;
-
-  // API returns QCResponseDTO; UI expects questionnaire-shaped data.
-  if ('responses' in payload && isRecord(payload.responses)) {
-    const responses = payload.responses as Record<string, unknown>;
-    const extractedData = isRecord(payload.extractedData)
-      ? (payload.extractedData as Record<string, unknown>)
-      : {};
-    const medicalCondition = isRecord(responses.medicalCondition)
-      ? responses.medicalCondition
-      : {
-          primaryDiagnosis: extractedData.primaryDiagnosis,
-          medicalHistory: extractedData.medicalHistory,
-        };
-
-    return {
-      ...responses,
-      medicalIntake: responses.medicalIntake ?? responses,
-      medicalCondition,
-      riskLevel: responses.riskLevel ?? extractedData.riskLevel,
-      aiSummary: responses.aiSummary ?? extractedData.aiSummary,
-    };
-  }
-
-  return payload;
+  return isRecord(payload) ? payload : null;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -54,9 +32,16 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function CaseIntakeTab({ caseId }: CaseIntakeTabProps) {
   const { data: rawData, isLoading, error } = useCaseQuestionnaire(caseId);
-  const normalizedData = normalizeQuestionnaireData(rawData);
+  const questionnairePayload = unwrapQuestionnairePayload(rawData);
+  const templateId = typeof questionnairePayload?.['templateId'] === 'string'
+    ? questionnairePayload['templateId']
+    : null;
+  const {
+    data: template,
+    isLoading: isLoadingTemplate,
+  } = useQuestionTemplate(templateId);
 
-  if (isLoading) {
+  if (isLoading || (templateId && isLoadingTemplate)) {
     return (
       <div className="flex items-center justify-center py-20">
         <LoadingSpinner />
@@ -72,5 +57,5 @@ export function CaseIntakeTab({ caseId }: CaseIntakeTabProps) {
     );
   }
 
-  return <QuestionnaireReadonlyView data={normalizedData} />;
+  return <QuestionnaireReadonlyView template={template ?? null} response={questionnairePayload} />;
 }

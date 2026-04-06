@@ -67,7 +67,24 @@ export type AiChatSessionStatus = 'ACTIVE' | 'ESCALATED' | 'CLOSED';
 export type AiChatRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
 export type AiChatIntent = 'FAQ' | 'CONSULT' | 'UNKNOWN' | 'SAFETY';
 export type AiChatRiskLevel = 'NORMAL' | 'SENSITIVE' | 'CRISIS';
-export type AiChatNextAction = 'ANSWER' | 'CONSULT_CONVERSION' | 'CREATE_CASE' | 'REQUEST_DOCS' | 'ESCALATE' | 'SAFETY';
+export type AiChatNextAction =
+  | 'ANSWER'
+  | 'CONSULT_CONVERSION'
+  | 'CREATE_CASE'
+  | 'REQUEST_DOCS'
+  | 'ESCALATE'
+  | 'SAFETY'
+  | 'ANSWER_FAQ'
+  | 'EXPLAIN_DOC_UPLOAD'
+  | 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
+  | 'EXPLAIN_CONSULT_PROCESS'
+  | 'EXPLORE_HOSPITAL_RECOMMENDATIONS'
+  | 'SHOW_HOSPITAL_RECOMMENDATIONS'
+  | 'REQUEST_DOC_UPLOAD'
+  | 'INVITE_ONLINE_CONSULT'
+  | 'SHOW_PACKAGE'
+  | 'HUMAN_HANDOFF'
+  | 'SAFETY_HANDOFF';
 export type AiSyncAction = 'UPSERT' | 'DELETE';
 export type AiSyncStatus = 'PENDING' | 'PROCESSING' | 'DONE' | 'FAILED';
 

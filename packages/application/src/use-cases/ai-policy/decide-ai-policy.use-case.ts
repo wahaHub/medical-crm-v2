@@ -90,6 +90,7 @@ export class DecideAiPolicyUseCase {
     });
 
     const plan = this.actionPlanner.plan({
+      hospitalType: context.hospitalType,
       statusSnapshot: context.contextDepth === 'full'
         ? {
             ...context.statusSnapshot,
@@ -220,12 +221,16 @@ function buildAllowedTools(nextAction: AiPolicyBackendNextAction): string[] {
     case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
       return ['search_hospitals'];
     case 'EXPLAIN_DOC_UPLOAD':
+    case 'EXPLAIN_MEDICAL_TRAVEL_PROCESS':
     case 'EXPLAIN_CONSULT_PROCESS':
       return ['search_faq'];
     case 'REQUEST_DOC_UPLOAD':
       return ['request_docs_upload'];
+    case 'INVITE_ONLINE_CONSULT':
+      return ['open_online_consult'];
     case 'SHOW_PACKAGE':
       return ['list_packages'];
+    case 'HUMAN_HANDOFF':
     case 'SAFETY_HANDOFF':
       return ['create_handoff'];
     default:
@@ -239,12 +244,17 @@ function buildResponseMode(nextAction: AiPolicyBackendNextAction): string {
       return 'grounded_with_shortlist';
     case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
     case 'EXPLAIN_DOC_UPLOAD':
+    case 'EXPLAIN_MEDICAL_TRAVEL_PROCESS':
     case 'EXPLAIN_CONSULT_PROCESS':
       return 'grounded_with_guidance';
     case 'REQUEST_DOC_UPLOAD':
       return 'guided_upload_request';
+    case 'INVITE_ONLINE_CONSULT':
+      return 'guided_consult_invitation';
     case 'SHOW_PACKAGE':
       return 'grounded_with_soft_cta';
+    case 'HUMAN_HANDOFF':
+      return 'guided_human_handoff';
     case 'SAFETY_HANDOFF':
       return 'safety_only';
     default:

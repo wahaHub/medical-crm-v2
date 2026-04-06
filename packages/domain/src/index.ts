@@ -61,7 +61,7 @@ export type { ICaseRepository, CaseListQuery, CaseCountFilters, CaseStats } from
 export type { IDocumentRepository } from './ports/document-repository.port.js';
 export type { ICaseProgressRepository } from './ports/case-progress-repository.port.js';
 export type { IHospitalRepository, HospitalInfo, MatchedHospital, FindMatchingHospitalsInput } from './ports/hospital-repository.port.js';
-export type { IPatientRepository, PatientBasicInfo } from './ports/patient-repository.port.js';
+export type { IPatientRepository, PatientBasicInfo, PatientAuthInfo } from './ports/patient-repository.port.js';
 export type { IStorageService, PresignedUploadResult, StorageBackend, IStorageAdapterRegistry } from './ports/storage-service.port.js';
 
 // Phase 2BC Ports — Hospital

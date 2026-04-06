@@ -48,13 +48,15 @@ export class SelectHospitalsUseCase {
       existingContacts.map((contact) => [contact.hospitalId, contact]),
     );
 
-    for (const contact of existingContacts) {
-      if (selectedHospitalIds.includes(contact.hospitalId) || contact.removedAt) {
-        continue;
-      }
+    if (selectedHospitalIds.length > 0) {
+      for (const contact of existingContacts) {
+        if (selectedHospitalIds.includes(contact.hospitalId) || contact.removedAt) {
+          continue;
+        }
 
-      contact.remove('PATIENT_SELECTION_REPLACED');
-      await this.chcRepo.save(contact);
+        contact.remove('PATIENT_SELECTION_REPLACED');
+        await this.chcRepo.save(contact);
+      }
     }
 
     for (const hospitalId of selectedHospitalIds) {

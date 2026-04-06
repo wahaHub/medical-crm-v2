@@ -1,7 +1,7 @@
 import type { IPatientRepository, PatientAuthService } from '@medical-crm/domain';
 
 export interface IMagicLinkEmailService {
-  sendMagicLink(email: string, link: string): Promise<void>;
+  sendMagicLink(email: string, link: string, locale?: string | null): Promise<void>;
 }
 
 export class SendMagicLinkUseCase {
@@ -16,6 +16,6 @@ export class SendMagicLinkUseCase {
     if (!patient) return; // Silent — no email leak
     const token = await this.authService.createMagicLinkToken(input.email);
     const link = `${process.env['FRONTEND_URL'] ?? 'http://localhost:3000'}/dashboard?token=${token}`;
-    await this.emailService.sendMagicLink(input.email, link);
+    await this.emailService.sendMagicLink(input.email, link, patient.preferredLanguage);
   }
 }

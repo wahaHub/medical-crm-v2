@@ -10,6 +10,7 @@ export interface RecommendationDecisionInput {
     recommendationStatus?: string;
     riskLevel?: string;
     docUploadStatus?: string;
+    selectedHospitalId?: string | null;
   };
   resolvedIntent: string;
   candidateHospitals?: RecommendationCandidate[];
@@ -40,7 +41,18 @@ export class RecommendationPolicyService {
       };
     }
 
-    if (input.resolvedIntent !== 'ASK_FOR_RECOMMENDATION') {
+    if (
+      input.statusSnapshot.selectedHospitalId
+      && input.resolvedIntent !== 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS'
+    ) {
+      return {
+        eligible: false,
+        shortlist: [],
+        reasonCodes: ['recommendation_suppressed_selected_hospital_exists'],
+      };
+    }
+
+    if (!['ASK_FOR_RECOMMENDATION', 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS'].includes(input.resolvedIntent)) {
       return {
         eligible: false,
         shortlist: [],

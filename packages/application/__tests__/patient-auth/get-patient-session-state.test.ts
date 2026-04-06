@@ -249,6 +249,54 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 
+  it('provisions the canonical widget chatbot session on restore when it does not exist yet', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: null,
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-1',
+        patientName: 'Hao Wang',
+        patientCountry: 'Shanghai',
+        structuredData: null,
+        createdAt: new Date('2026-03-01T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockAiChatSessionRepo.save.mockImplementation(async (session: any) => session);
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.widgetChatTarget).toEqual({
+      kind: 'CHATBOT_SESSION',
+      sessionId: 'widget-chat:patient-1:case-1',
+    });
+    expect(result.chatbotOrchestrationState.sessionId).toBe('widget-chat:patient-1:case-1');
+    expect(mockAiChatSessionRepo.save).toHaveBeenCalledOnce();
+    expect(mockAiChatSessionRepo.save.mock.calls[0]?.[0]).toMatchObject({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+      status: 'ACTIVE',
+    });
+  });
+
   it('returns medical-form metadata when the patient has skipped the medical form', async () => {
     const skippedAt = new Date('2026-03-05T10:00:00Z');
     mockPatientRepo.findById.mockResolvedValue({

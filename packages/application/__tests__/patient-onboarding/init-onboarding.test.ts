@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AiChatSession } from '@medical-crm/domain';
 import type { UserEmailState } from '@medical-crm/domain';
 import {
   EmailRoleConflictError,
@@ -12,6 +13,7 @@ describe('InitOnboardingUseCase', () => {
   let mockUserEmailLookupRepo: any;
   let mockCaseRepo: any;
   let mockConversationRepo: any;
+  let mockAiChatSessionRepo: any;
   let mockAuthService: any;
 
   function mockEmailState(state: UserEmailState): void {
@@ -47,6 +49,14 @@ describe('InitOnboardingUseCase', () => {
       findByPatientId: vi.fn().mockResolvedValue([]),
       save: vi.fn().mockImplementation((conversation: any) => Promise.resolve(conversation)),
     };
+    mockAiChatSessionRepo = {
+      findBySessionId: vi.fn().mockResolvedValue(null),
+      save: vi.fn().mockImplementation((session: any) => Promise.resolve(session)),
+      findByDifyConversationId: vi.fn(),
+      attachPatient: vi.fn(),
+      updateStatus: vi.fn(),
+      patchStatus: vi.fn(),
+    };
     mockAuthService = {
       createSessionToken: vi.fn().mockResolvedValue('jwt-token-123'),
       createGuestRestoreArtifacts: vi.fn().mockResolvedValue({
@@ -63,6 +73,7 @@ describe('InitOnboardingUseCase', () => {
       mockUserEmailLookupRepo,
       mockCaseRepo,
       mockConversationRepo,
+      mockAiChatSessionRepo,
       mockAuthService,
     );
   });
@@ -105,6 +116,14 @@ describe('InitOnboardingUseCase', () => {
     expect(result.widgetChatTarget).toEqual({
       kind: 'CHATBOT_SESSION',
       sessionId: `widget-chat:${result.patientId}:${result.caseId}`,
+    });
+    expect(mockAiChatSessionRepo.save).toHaveBeenCalledOnce();
+    expect(mockAiChatSessionRepo.save.mock.calls[0]?.[0]).toBeInstanceOf(AiChatSession);
+    expect(mockAiChatSessionRepo.save.mock.calls[0]?.[0]).toMatchObject({
+      sessionId: `widget-chat:${result.patientId}:${result.caseId}`,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+      status: 'ACTIVE',
     });
   });
 

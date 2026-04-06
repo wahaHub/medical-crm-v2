@@ -10,6 +10,9 @@ describe('SendPatientLoginLinkUseCase', () => {
     createPatientLoginToken: ReturnType<typeof vi.fn>;
     createPatientRegisterToken: ReturnType<typeof vi.fn>;
   };
+  let emailService: {
+    sendMagicLink: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     lookupRepo = {
@@ -19,8 +22,11 @@ describe('SendPatientLoginLinkUseCase', () => {
       createPatientLoginToken: vi.fn().mockResolvedValue('patient-login-token'),
       createPatientRegisterToken: vi.fn().mockResolvedValue('patient-register-token'),
     };
+    emailService = {
+      sendMagicLink: vi.fn().mockResolvedValue(undefined),
+    };
 
-    useCase = new SendPatientLoginLinkUseCase(lookupRepo as never, authService as never);
+    useCase = new SendPatientLoginLinkUseCase(lookupRepo as never, authService as never, emailService as never);
   });
 
   it('creates a patient-login token for an existing patient email', async () => {
@@ -35,6 +41,10 @@ describe('SendPatientLoginLinkUseCase', () => {
     });
     expect(authService.createPatientLoginToken).toHaveBeenCalledWith('patient@test.com');
     expect(authService.createPatientRegisterToken).not.toHaveBeenCalled();
+    expect(emailService.sendMagicLink).toHaveBeenCalledWith(
+      'patient@test.com',
+      'http://localhost:3000/dashboard?token=patient-login-token',
+    );
   });
 
   it('creates a patient-register token for an unregistered email', async () => {
@@ -46,6 +56,10 @@ describe('SendPatientLoginLinkUseCase', () => {
     });
     expect(authService.createPatientRegisterToken).toHaveBeenCalledWith('new@test.com');
     expect(authService.createPatientLoginToken).not.toHaveBeenCalled();
+    expect(emailService.sendMagicLink).toHaveBeenCalledWith(
+      'new@test.com',
+      'http://localhost:3000/free-quote?token=patient-register-token',
+    );
   });
 
   it('throws EMAIL_ROLE_CONFLICT for a hospital email', async () => {
@@ -57,6 +71,7 @@ describe('SendPatientLoginLinkUseCase', () => {
     await expect(useCase.execute({ email: 'hospital@test.com' })).rejects.toMatchObject({
       code: 'EMAIL_ROLE_CONFLICT',
     });
+    expect(emailService.sendMagicLink).not.toHaveBeenCalled();
   });
 
   it('throws EMAIL_ROLE_CONFLICT for an admin email', async () => {
@@ -68,5 +83,6 @@ describe('SendPatientLoginLinkUseCase', () => {
     await expect(useCase.execute({ email: 'admin@test.com' })).rejects.toMatchObject({
       code: 'EMAIL_ROLE_CONFLICT',
     });
+    expect(emailService.sendMagicLink).not.toHaveBeenCalled();
   });
 });

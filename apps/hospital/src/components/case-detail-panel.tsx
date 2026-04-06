@@ -27,10 +27,16 @@ import {
   ChevronUp,
   Clock,
 } from 'lucide-react';
-import { StatusBadge, MessageCaseDetailPanel } from '@medical-crm/ui';
+import { StatusBadge, MessageCaseDetailPanel, QuestionnaireReadonlyView, LoadingSpinner } from '@medical-crm/ui';
 import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
 import { CaseQuoteTab } from './tabs/case-quote-tab';
-import { useCaseConsultations, useCaseConversations, useConversationMessages } from '@/queries/use-cases';
+import {
+  useCaseConsultations,
+  useCaseConversations,
+  useConversationMessages,
+  useCaseQuestionnaire,
+  useQuestionTemplate,
+} from '@/queries/use-cases';
 import { useConsultationTranscript } from '@/queries/use-consultations';
 import { useEmailTemplates } from '@/queries/use-email-templates';
 import { addDiagnosis } from '@/actions/case-actions';
@@ -190,250 +196,38 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
 
 // ── Tab: Intake ─────────────────────────────────────────────────────
 
-function StepBadge({ value }: { value: string }) {
-  return (
-    <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 border border-indigo-200/50 rounded-md text-xs font-semibold">
-      {value}
-    </span>
-  );
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 function IntakeTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
-  const mi = caseDetail.medicalIntake;
-  const mc = caseDetail.medicalCondition;
-  const { aiSummary, riskLevel } = caseDetail;
+  const { data: rawResponse, isLoading, error } = useCaseQuestionnaire(caseDetail.id);
+  const questionnairePayload = isRecord(rawResponse) && 'data' in rawResponse
+    ? (rawResponse as { data?: unknown }).data
+    : rawResponse;
+  const templateId = isRecord(questionnairePayload) && typeof questionnairePayload.templateId === 'string'
+    ? questionnairePayload.templateId
+    : null;
+  const { data: template, isLoading: isLoadingTemplate } = useQuestionTemplate(templateId);
 
-  const hasAnyIntake = mi && (mi.step1 || mi.step2 || mi.step3 || mi.step4 || mi.step5);
+  if (isLoading || (templateId && isLoadingTemplate)) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
-  return (
-    <div className="space-y-6">
-      {/* Step 1: Symptom Location */}
-      {mi?.step1 && (
-        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold">1</span>
-            Symptom Overview
-          </h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-1">Location</p>
-              <p className="font-medium text-sm">{mi.step1.symptomLocation || '-'}</p>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-1">Nature</p>
-              <div className="flex flex-wrap gap-1">
-                {(mi.step1.symptomNature ?? []).length > 0
-                  ? mi.step1.symptomNature!.map((s) => <StepBadge key={s} value={s} />)
-                  : <span className="text-sm text-slate-400">-</span>
-                }
-              </div>
-            </div>
-            {mi.step1.onsetTime && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Onset Time</p>
-                <p className="font-medium text-sm">{mi.step1.onsetTime}</p>
-              </div>
-            )}
-            {mi.step1.progressTrend && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Progress Trend</p>
-                <p className="font-medium text-sm">{mi.step1.progressTrend}</p>
-              </div>
-            )}
-            {mi.step1.diagnosisStage && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Diagnosis Stage</p>
-                <StepBadge value={mi.step1.diagnosisStage} />
-              </div>
-            )}
-            {mi.step1.diseaseCategory && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Disease Category</p>
-                <StepBadge value={mi.step1.diseaseCategory} />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+  if (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load medical intake';
+    return (
+      <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {message}
+      </div>
+    );
+  }
 
-      {/* Step 2: Detailed Symptoms */}
-      {mi?.step2 && (
-        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold">2</span>
-            Detailed Symptoms
-          </h3>
-          {mi.step2.detailedDescription && (
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Description</p>
-              <p className="text-sm text-slate-700">{mi.step2.detailedDescription}</p>
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-4">
-            {(mi.step2.aggravatingFactors ?? []).length > 0 && (
-              <div className="bg-rose-50 p-4 rounded-lg">
-                <p className="text-xs text-rose-600 mb-2 flex items-center gap-1">
-                  <AlertCircle size={12} /> Aggravating Factors
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {mi.step2.aggravatingFactors!.map((f) => (
-                    <span key={f} className="px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 rounded-md text-xs font-medium">{f}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {(mi.step2.relievingFactors ?? []).length > 0 && (
-              <div className="bg-emerald-50 p-4 rounded-lg">
-                <p className="text-xs text-emerald-600 mb-2 flex items-center gap-1">
-                  <CheckCircle size={12} /> Relieving Factors
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {mi.step2.relievingFactors!.map((f) => (
-                    <span key={f} className="px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md text-xs font-medium">{f}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          {mi.step2.previousTreatment && (
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Previous Treatment</p>
-              <p className="text-sm text-slate-700">{mi.step2.previousTreatment}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Step 3: Medical History */}
-      {mi?.step3 && (
-        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold">3</span>
-            Medical History
-          </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2 flex items-center gap-1"><Stethoscope size={12} /> Past Medical History</p>
-              <div className="flex flex-wrap gap-1 mb-2">
-                {(mi.step3.medicalHistory ?? []).map((h) => <StepBadge key={h} value={h} />)}
-              </div>
-              {mi.step3.chronicConditions && <p className="text-sm text-slate-700">{mi.step3.chronicConditions}</p>}
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Family History</p>
-              <p className="text-sm text-slate-700">{mi.step3.familyHistory || '-'}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4: Medications & Allergies */}
-      {mi?.step4 && (
-        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold">4</span>
-            Medications & Allergies
-          </h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Current Medications</p>
-              <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{mi.step4.currentMedications || '-'}</pre>
-            </div>
-            <div className="bg-rose-50 p-4 rounded-lg border border-rose-100">
-              <p className="text-xs text-rose-600 mb-2 flex items-center gap-1"><AlertCircle size={12} /> Drug Allergies</p>
-              <p className="text-sm text-rose-700 font-medium">{mi.step4.drugAllergies || '-'}</p>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Food Allergies</p>
-              <p className="text-sm text-slate-700">{mi.step4.foodAllergies || '-'}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Step 5: Tests & Expectations */}
-      {mi?.step5 && (
-        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold">5</span>
-            Tests & Treatment Expectations
-          </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Exams Done</p>
-              <div className="flex flex-wrap gap-1 mb-2">
-                {(mi.step5.examTypes ?? []).map((e) => <StepBadge key={e} value={e} />)}
-              </div>
-              {mi.step5.examDetails && <p className="text-sm text-slate-700">{mi.step5.examDetails}</p>}
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Lab Results</p>
-              <pre className="text-sm text-slate-700 whitespace-pre-wrap font-sans">{mi.step5.labResults || '-'}</pre>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-indigo-50 p-4 rounded-lg">
-              <p className="text-xs text-indigo-600 mb-2">Treatment Expectations</p>
-              <div className="flex flex-wrap gap-1">
-                {(mi.step5.treatmentExpectations ?? []).map((e) => (
-                  <span key={e} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium">{e}</span>
-                ))}
-              </div>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Budget Range</p>
-              <p className="font-medium text-sm text-slate-700">{mi.step5.budgetRange || '-'}</p>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg">
-              <p className="text-xs text-slate-500 mb-2">Expected Timeline</p>
-              <p className="font-medium text-sm text-slate-700">{mi.step5.expectedTimeline || '-'}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Summary & Risk Level */}
-      {(aiSummary || riskLevel || mc.primaryDiagnosis) && (
-        <div className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800">Summary & Assessment</h3>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            {mc.primaryDiagnosis && (
-              <div className="bg-slate-50 p-4 rounded-lg col-span-2">
-                <p className="text-xs text-slate-500 mb-1">Primary Diagnosis</p>
-                <p className="font-medium">{mc.primaryDiagnosis}</p>
-              </div>
-            )}
-            {riskLevel && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Risk Level</p>
-                <p className="font-medium">{riskLevel}</p>
-              </div>
-            )}
-            {mc.medicalHistory && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <p className="text-xs text-slate-500 mb-1">Medical History</p>
-                <p className="font-medium">{mc.medicalHistory}</p>
-              </div>
-            )}
-            {aiSummary && (
-              <div className="bg-indigo-50 p-4 rounded-lg col-span-2">
-                <p className="text-xs text-indigo-600 mb-1">AI Summary</p>
-                <p className="text-sm text-slate-700">{aiSummary}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Fallback when no intake data */}
-      {!hasAnyIntake && !aiSummary && !mc.primaryDiagnosis && (
-        <div className="bg-white p-8 rounded-[1.5rem] border border-slate-100 shadow-sm text-center">
-          <FileText size={40} className="mx-auto mb-3 text-slate-300" />
-          <p className="text-sm text-slate-400">No medical intake data available yet.</p>
-        </div>
-      )}
-    </div>
-  );
+  return <QuestionnaireReadonlyView template={template ?? null} response={questionnairePayload ?? null} />;
 }
 
 // ── Tab: Documents ──────────────────────────────────────────────────

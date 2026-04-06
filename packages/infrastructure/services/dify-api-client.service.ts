@@ -265,6 +265,13 @@ function readDocumentId(payload: Record<string, unknown>): string | null {
   const direct = typeof payload.document_id === 'string' ? payload.document_id : null;
   if (direct) return direct;
 
+  const document = payload.document;
+  if (document && typeof document === 'object') {
+    const record = document as Record<string, unknown>;
+    if (typeof record.id === 'string') return record.id;
+    if (typeof record.document_id === 'string') return record.document_id;
+  }
+
   const data = payload.data;
   if (data && typeof data === 'object') {
     const record = data as Record<string, unknown>;

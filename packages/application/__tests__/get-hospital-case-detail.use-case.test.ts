@@ -295,88 +295,24 @@ describe('GetHospitalCaseDetailUseCase', () => {
     expect(result.displayStatus).toBe('transferred');
   });
 
-  it('maps legacy intake questionnaire payloads from structuredData', async () => {
+  it('does not expose the legacy medicalIntake structure on hospital case detail responses', async () => {
     mockCaseRepo.findById = vi.fn().mockResolvedValue(new Case({
       ...mockCase,
       structuredData: {
         step2_symptom_location: {
           primary_location: 'Face',
           symptom_nature: ['Pain', 'Swelling'],
-          onset_time: '2 weeks',
-          progression_trend: 'Worsening',
-          diagnosis_stage: 'Diagnosed',
-          main_category: 'Maxillofacial',
         },
-        step3_detailed_symptoms: {
-          detailed_description: 'Facial swelling and pain after surgery',
-          aggravating_factors: ['Cold weather'],
-          relieving_factors: ['Pain medication'],
-          previous_treatments: 'Antibiotics',
-        },
-        step4_medical_history: {
-          past_medical_history: {
-            diabetes: true,
-            other: 'Asthma',
-          },
-          chronic_conditions_description: 'Type 2 diabetes',
-          family_history_description: 'Family history of asthma',
-        },
-        step5_medications_allergies: {
-          current_medications: [
-            { name: 'Ibuprofen', dosage: '200mg' },
-          ],
-          allergies: {
-            drug_allergies: [{ substance: 'Penicillin', reaction: 'Rash' }],
-            food_allergies: [{ substance: 'Shrimp', reaction: 'Hives' }],
-          },
-        },
-        step6_examinations: {
-          exam_types_selected: ['CT', 'MRI'],
-          exam_details_summary: 'CT completed in local hospital',
-          lab_results_summary: 'CBC normal',
-        },
-        step7_expectations: {
-          treatment_expectations: ['Pain relief', 'Functional recovery'],
-          budget_range: '$5k-$10k',
-          preferred_timing: 'Within 1 month',
+        patientHospitalSelection: {
+          medicalFormStatus: 'SUBMITTED',
+          medicalFormResponseId: 'qcr-1',
         },
       },
     }));
 
     const result = await useCase.execute('case-id-1', adminActor);
 
-    expect(result.medicalIntake.step1).toEqual({
-      symptomLocation: 'Face',
-      symptomNature: ['Pain', 'Swelling'],
-      onsetTime: '2 weeks',
-      progressTrend: 'Worsening',
-      diagnosisStage: 'Diagnosed',
-      diseaseCategory: 'Maxillofacial',
-    });
-    expect(result.medicalIntake.step2).toEqual({
-      detailedDescription: 'Facial swelling and pain after surgery',
-      aggravatingFactors: ['Cold weather'],
-      relievingFactors: ['Pain medication'],
-      previousTreatment: 'Antibiotics',
-    });
-    expect(result.medicalIntake.step3).toEqual({
-      medicalHistory: ['Diabetes', 'Asthma'],
-      chronicConditions: 'Type 2 diabetes',
-      familyHistory: 'Family history of asthma',
-    });
-    expect(result.medicalIntake.step4).toEqual({
-      currentMedications: 'Ibuprofen (200mg)',
-      drugAllergies: 'Penicillin (Rash)',
-      foodAllergies: 'Shrimp (Hives)',
-    });
-    expect(result.medicalIntake.step5).toEqual({
-      examTypes: ['CT', 'MRI'],
-      examDetails: 'CT completed in local hospital',
-      labResults: 'CBC normal',
-      treatmentExpectations: ['Pain relief', 'Functional recovery'],
-      budgetRange: '$5k-$10k',
-      expectedTimeline: 'Within 1 month',
-    });
+    expect('medicalIntake' in result).toBe(false);
   });
 
   it('keeps legacy diagnosis progress rows visible when metadata.kind is missing', async () => {

@@ -69,7 +69,7 @@
 Use a lightweight script-level assertion strategy:
 
 ```bash
-node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/generate-faq-seed.ts --check
+node /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/generate-faq-seed.ts --check
 ```
 
 Expected initially:
@@ -108,7 +108,7 @@ Implementation notes:
 Run:
 
 ```bash
-node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/generate-faq-seed.ts
+node /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/generate-faq-seed.ts
 ```
 
 Expected:
@@ -120,7 +120,7 @@ Expected:
 Run:
 
 ```bash
-node --import tsx -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/docs/seed-data/faq-category-aware-retrieval.seed.json','utf8')); console.log({categories:data.categories.length, faqItems:data.faqItems.length, evaluationQueries:data.evaluationQueries.length})"
+node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/docs/seed-data/faq-category-aware-retrieval.seed.json','utf8')); console.log({categories:data.categories.length, faqItems:data.faqItems.length, evaluationQueries:data.evaluationQueries.length})"
 ```
 
 Expected:
@@ -250,7 +250,7 @@ If any field is missing or lossy, patch it here.
 Document or script the sequence:
 
 ```bash
-node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/import-faq-seed.ts
+pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2 exec tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/import-faq-seed.ts
 curl -X POST http://localhost:3001/api/v2/internal/process-ai-sync-outbox \
   -H 'X-Internal-Secret: <INTERNAL_API_SECRET>'
 ```
@@ -373,7 +373,7 @@ git commit -m "feat: add faq retrieval evaluation runner"
 Run:
 
 ```bash
-node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/generate-faq-seed.ts
+node /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/generate-faq-seed.ts
 ```
 
 - [ ] **Step 2: Import it into CRM**
@@ -381,7 +381,7 @@ node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scr
 Run:
 
 ```bash
-node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/import-faq-seed.ts
+pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2 exec tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/import-faq-seed.ts
 ```
 
 - [ ] **Step 3: Trigger or verify Dify sync**
@@ -403,7 +403,7 @@ Confirm:
 Run:
 
 ```bash
-node --import tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/evaluate-faq-retrieval.ts
+pnpm -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2 exec tsx /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/evaluate-faq-retrieval.ts
 ```
 
 Expected:

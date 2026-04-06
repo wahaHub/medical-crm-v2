@@ -7,7 +7,7 @@ import type {
   IPatientRepository,
   IUserRepository,
 } from '@medical-crm/domain';
-import { Conversation } from '@medical-crm/domain';
+import { AiChatSession, Conversation } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
 import { asRecord, asNullableString, asNullableDate } from '../../utils/structured-data.js';
 import type { MedicalFormStatus } from '../../utils/structured-data.js';
@@ -93,7 +93,20 @@ export class GetPatientSessionStateUseCase {
       .filter((contact) => !contact.removedAt)
       .map((contact) => contact.hospitalId);
     const widgetSessionId = `widget-chat:${patient.id}:${latestCase?.id ?? 'pending'}`;
-    const aiChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId);
+    let aiChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId);
+    if (!aiChatSession && latestCase) {
+      aiChatSession = await this.aiChatSessionRepo.save(new AiChatSession({
+        id: generateId(),
+        sessionId: widgetSessionId,
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: patient.id,
+        hospitalType: 'REGULAR',
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+    }
     const snapshotSelectedHospitalId = aiChatSession?.statusSnapshot.selectedHospitalId ?? null;
     const selectedHospitalId = snapshotSelectedHospitalId && selectedHospitalIds.includes(snapshotSelectedHospitalId)
       ? snapshotSelectedHospitalId

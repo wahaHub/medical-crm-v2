@@ -35,42 +35,6 @@ export interface CaseSummary {
   updatedAt?: string;
 }
 
-/** Step-based medical intake from patient questionnaire */
-export interface MedicalIntake {
-  step1?: {
-    symptomLocation?: string;
-    symptomNature?: string[];
-    onsetTime?: string;
-    progressTrend?: string;
-    diagnosisStage?: string;
-    diseaseCategory?: string;
-  };
-  step2?: {
-    detailedDescription?: string;
-    aggravatingFactors?: string[];
-    relievingFactors?: string[];
-    previousTreatment?: string;
-  };
-  step3?: {
-    medicalHistory?: string[];
-    chronicConditions?: string;
-    familyHistory?: string;
-  };
-  step4?: {
-    currentMedications?: string;
-    drugAllergies?: string;
-    foodAllergies?: string;
-  };
-  step5?: {
-    examTypes?: string[];
-    examDetails?: string;
-    labResults?: string;
-    treatmentExpectations?: string[];
-    budgetRange?: string;
-    expectedTimeline?: string;
-  };
-}
-
 /** Phone call record */
 export interface PhoneCallItem {
   id: string;
@@ -110,7 +74,6 @@ export interface HospitalCaseDetail {
     symptoms: string[] | null;
     medicalHistory: string | null;
   };
-  medicalIntake?: MedicalIntake;
   aiSummary: string | null;
   riskLevel: string | null;
   diagnoses: DiagnosisItem[];

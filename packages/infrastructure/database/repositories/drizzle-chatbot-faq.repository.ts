@@ -268,6 +268,51 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     };
   }
 
+  async updateCategory(id: string, input: {
+    sortOrder?: number;
+    isActive?: boolean;
+  }): Promise<ChatbotFaqCategory> {
+    const now = new Date().toISOString();
+    const updateSet: {
+      sortOrder?: number;
+      isActive?: boolean;
+      updatedAt: string;
+    } = {
+      updatedAt: now,
+    };
+
+    if (input.sortOrder !== undefined) {
+      updateSet.sortOrder = input.sortOrder;
+    }
+    if (input.isActive !== undefined) {
+      updateSet.isActive = input.isActive;
+    }
+
+    const rows = await this.db
+      .update(chatbotFaqCategories)
+      .set(updateSet)
+      .where(eq(chatbotFaqCategories.id, id))
+      .returning();
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error(`Chatbot FAQ category not found: ${id}`);
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      hospitalType: row.hospitalType === 'COSMETIC' ? 'COSMETIC' : 'REGULAR',
+      hospitalId: row.hospitalId ?? null,
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+      questionCount: 0,
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    };
+  }
+
   async countItemsForCategory(
     name: string,
     hospitalType: 'REGULAR' | 'COSMETIC',

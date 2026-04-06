@@ -239,7 +239,7 @@ describe('Chatbot routes', () => {
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        resolvedIntent: 'CONSULT',
+        resolvedIntent: 'UNKNOWN',
         nextAction: 'REQUEST_DOC_UPLOAD',
         secondaryAction: 'REQUEST_DOCS',
         responseMode: 'grounded_plus_guidance',
@@ -478,7 +478,7 @@ describe('Chatbot routes', () => {
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        nextAction: 'REQUEST_DOCS',
+        nextAction: 'REQUEST_DOC_UPLOAD',
       }),
     );
   });
@@ -613,7 +613,7 @@ describe('Chatbot routes', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.metadata).toMatchObject({
-      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      resolvedIntent: 'UNKNOWN',
       engagementSignal: 'DEEP_WORKFLOW',
       progressionSignal: 'READY_TO_PROCEED',
       recommendationSignal: 'NONE',
@@ -626,11 +626,11 @@ describe('Chatbot routes', () => {
       internal_next_action: 'REQUEST_DOCS',
     });
     expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
-      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      resolvedIntent: 'UNKNOWN',
       nextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>)).toMatchObject({
-      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      resolvedIntent: 'UNKNOWN',
       engagementSignal: 'DEEP_WORKFLOW',
       progressionSignal: 'READY_TO_PROCEED',
       recommendationSignal: 'NONE',
@@ -646,7 +646,7 @@ describe('Chatbot routes', () => {
       expect.any(String),
       expect.objectContaining({
         metadata: expect.objectContaining({
-          resolvedIntent: 'REQUEST_DOC_UPLOAD',
+          resolvedIntent: 'UNKNOWN',
           engagementSignal: 'DEEP_WORKFLOW',
           progressionSignal: 'READY_TO_PROCEED',
           recommendationSignal: 'NONE',
@@ -658,10 +658,10 @@ describe('Chatbot routes', () => {
           internalNextAction: 'REQUEST_DOCS',
           internal_next_action: 'REQUEST_DOCS',
           structuredOutput: expect.objectContaining({
-            resolvedIntent: 'REQUEST_DOC_UPLOAD',
+            resolvedIntent: 'UNKNOWN',
             nextAction: 'REQUEST_DOC_UPLOAD',
             metadata: expect.objectContaining({
-              resolvedIntent: 'REQUEST_DOC_UPLOAD',
+              resolvedIntent: 'UNKNOWN',
               engagementSignal: 'DEEP_WORKFLOW',
               progressionSignal: 'READY_TO_PROCEED',
               recommendationSignal: 'NONE',
@@ -674,6 +674,113 @@ describe('Chatbot routes', () => {
               internal_next_action: 'REQUEST_DOCS',
             }),
           }),
+        }),
+      }),
+    );
+  });
+
+  it('POST /api/v2/chatbot/chat persists canonical public nextAction when provider exposes it only through metadata', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-metadata-only-action',
+      answer: JSON.stringify({
+        answer: 'Please upload your documents first.',
+        intent: 'CONSULT',
+        resolvedIntent: 'REQUEST_DOC_UPLOAD',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        responseMode: 'grounded_plus_guidance',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+        recommendationSignal: 'NONE',
+        mentionsCondition: true,
+        mentionsDoctorOrHospitalNeed: false,
+        metadata: {
+          public_next_action: 'REQUEST_DOC_UPLOAD',
+          internal_next_action: 'REQUEST_DOCS',
+        },
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-metadata-only-action',
+        hospitalType: 'COSMETIC',
+        message: 'Where do I upload my reports?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata).toMatchObject({
+      nextAction: 'REQUEST_DOC_UPLOAD',
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+      internalNextAction: 'REQUEST_DOCS',
+    });
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        metadata: expect.objectContaining({
+          nextAction: 'REQUEST_DOC_UPLOAD',
+          publicNextAction: 'REQUEST_DOC_UPLOAD',
+          internalNextAction: 'REQUEST_DOCS',
+        }),
+      }),
+    );
+  });
+
+  it('POST /api/v2/chatbot/chat persists canonical resolvedIntent when provider sends only the canonical field shape', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-canonical-resolved-intent-only',
+      answer: JSON.stringify({
+        answer: 'I can explain how online consultation works.',
+        intent: 'CONSULT',
+        canonicalResolvedIntent: 'ASK_CONSULT_PROCESS',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'EXPLAIN_CONSULT_PROCESS',
+        responseMode: 'consult_explanation',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+        progressionSignal: 'OPEN_TO_NEXT_STEP',
+        recommendationSignal: 'NONE',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-canonical-resolved-intent-only',
+        hospitalType: 'COSMETIC',
+        message: 'How does the online consultation process work?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.metadata).toMatchObject({
+      resolvedIntent: 'ASK_CONSULT_PROCESS',
+      semanticSignals: expect.objectContaining({
+        resolvedIntent: 'ASK_CONSULT_PROCESS',
+      }),
+    });
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        resolvedIntent: 'ASK_CONSULT_PROCESS',
+        metadata: expect.objectContaining({
+          resolvedIntent: 'ASK_CONSULT_PROCESS',
         }),
       }),
     );
@@ -1825,6 +1932,104 @@ describe('Chatbot routes', () => {
       publicNextAction: 'REQUEST_DOC_UPLOAD',
       internalNextAction: 'REQUEST_DOCS',
     });
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} emits deterministic canonical fallback metadata and strips invalid raw semantic overlays', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-invalid-canonical-metadata',
+        role: 'ASSISTANT',
+        content: 'I can help with that.',
+        nextAction: null,
+        metadata: {
+          resolved_intent: 'NOT_REAL',
+          engagement_signal: 'INVALID',
+          progression_signal: 'ALMOST_READY',
+          recommendation_signal: 'NOW',
+          next_action: 'FREEFORM_ACTION',
+          public_next_action: 'FREEFORM_ACTION',
+          internal_next_action: 'FREEFORM_ACTION',
+          structuredOutput: {
+            resolved_intent: 'NOT_REAL',
+            next_action: 'FREEFORM_ACTION',
+            metadata: {
+              engagement_signal: 'INVALID',
+              progression_signal: 'ALMOST_READY',
+              recommendation_signal: 'NOW',
+              public_next_action: 'FREEFORM_ACTION',
+              internal_next_action: 'FREEFORM_ACTION',
+            },
+          },
+        },
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.nextAction).toBeNull();
+    expect(json.messages[0]?.metadata).toMatchObject({
+      resolvedIntent: 'UNKNOWN',
+      resolved_intent: 'UNKNOWN',
+      engagementSignal: 'LIGHT_DISCOVERY',
+      engagement_signal: 'LIGHT_DISCOVERY',
+      progressionSignal: 'NONE',
+      progression_signal: 'NONE',
+      recommendationSignal: 'NONE',
+      recommendation_signal: 'NONE',
+      mentionsCondition: false,
+      mentions_condition: false,
+      mentionsDoctorOrHospitalNeed: false,
+      mentions_doctor_or_hospital_need: false,
+      semanticSignals: {
+        resolvedIntent: 'UNKNOWN',
+        engagementSignal: 'LIGHT_DISCOVERY',
+        progressionSignal: 'NONE',
+        recommendationSignal: 'NONE',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+      },
+    });
+    expect(json.messages[0]?.metadata.nextAction).toBeUndefined();
+    expect(json.messages[0]?.metadata.publicNextAction).toBeUndefined();
+    expect(json.messages[0]?.metadata.internalNextAction).toBeUndefined();
+    expect(json.messages[0]?.metadata.next_action).toBeUndefined();
+    expect(json.messages[0]?.metadata.public_next_action).toBeUndefined();
+    expect(json.messages[0]?.metadata.internal_next_action).toBeUndefined();
+    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'UNKNOWN',
+      resolved_intent: 'UNKNOWN',
+    });
+    expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>)).toMatchObject({
+      engagementSignal: 'LIGHT_DISCOVERY',
+      progressionSignal: 'NONE',
+      recommendationSignal: 'NONE',
+      mentionsCondition: false,
+      mentionsDoctorOrHospitalNeed: false,
+      semanticSignals: {
+        resolvedIntent: 'UNKNOWN',
+        engagementSignal: 'LIGHT_DISCOVERY',
+        progressionSignal: 'NONE',
+        recommendationSignal: 'NONE',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+      },
+    });
+    expect(((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction)).toBeUndefined();
+    expect(((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).publicNextAction)).toBeUndefined();
+    expect(((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).internalNextAction)).toBeUndefined();
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy workflow requestedAction fields in public metadata', async () => {

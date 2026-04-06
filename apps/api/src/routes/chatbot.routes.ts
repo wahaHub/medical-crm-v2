@@ -30,6 +30,21 @@ const app = new OpenAPIHono();
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
 const PATIENT_RESTORE_COOKIE = 'patient_restore';
+const DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK = {
+  resolvedIntent: 'UNKNOWN',
+  engagementSignal: 'LIGHT_DISCOVERY',
+  progressionSignal: 'NONE',
+  recommendationSignal: 'NONE',
+  mentionsCondition: false,
+  mentionsDoctorOrHospitalNeed: false,
+} as const satisfies {
+  resolvedIntent: import('@medical-crm/utils').AiPolicyResolvedIntent;
+  engagementSignal: import('@medical-crm/utils').AiPolicyEngagementSignal;
+  progressionSignal: import('@medical-crm/utils').AiPolicyProgressionSignal;
+  recommendationSignal: import('@medical-crm/utils').AiPolicyRecommendationSignal;
+  mentionsCondition: boolean;
+  mentionsDoctorOrHospitalNeed: boolean;
+};
 
 function getDifyChatApiKey(): string | null {
   return process.env['DIFY_APP_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? null;
@@ -209,10 +224,10 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
     intent: normalized.intent,
-    resolvedIntent: normalized.resolvedIntent ?? normalized.intent,
+    resolvedIntent: normalized.resolvedIntent ?? null,
     riskLevel: normalized.riskLevel,
     canAnswer: normalized.canAnswer,
-    nextAction: normalized.storedNextAction,
+    nextAction: normalized.nextAction,
     secondaryAction: normalized.secondaryAction,
     responseMode: normalized.responseMode,
     citations: normalized.citations,
@@ -1128,11 +1143,13 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ?? asString(structuredMetadata.internalNextAction)
     ?? asString(structuredMetadata.internal_next_action)
     ?? null;
+  const canonicalResolvedIntent = normalizeCanonicalResolvedIntent(
+    parsedAnswer?.canonicalResolvedIntent
+    ?? asString(structuredMetadata.resolvedIntent)
+    ?? asString(structuredMetadata.resolved_intent),
+  );
   const canonicalSemanticMetadata = buildCanonicalSemanticMetadata({
-    resolvedIntent: parsedAnswer?.canonicalResolvedIntent
-      ?? parsedAnswer?.resolvedIntent
-      ?? asString(structuredMetadata.resolvedIntent)
-      ?? asString(structuredMetadata.resolved_intent),
+    resolvedIntent: canonicalResolvedIntent,
     engagementSignal: parsedAnswer?.engagementSignal
       ?? asString(structuredMetadata.engagementSignal)
       ?? asString(structuredMetadata.engagement_signal),
@@ -1149,13 +1166,25 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
       ?? asBoolean(structuredMetadata.mentionsDoctorOrHospitalNeed)
       ?? asBoolean(structuredMetadata.mentions_doctor_or_hospital_need),
   });
-  const storedNextAction = normalizeNextAction(parsedAnswer?.nextAction);
   const normalizedInternalNextAction = normalizeNextAction(internalNextAction ?? undefined);
   const publicNextAction = normalizePublicNextAction(rawPublicNextAction ?? undefined);
   const canonicalActionMetadata = buildCanonicalActionMetadata({
     nextAction: publicNextAction,
     internalNextAction: normalizedInternalNextAction,
   });
+  const normalizedStructuredMetadata = composeCanonicalMetadataEnvelope(
+    structuredMetadata,
+    canonicalSemanticMetadata,
+    canonicalActionMetadata,
+  );
+  const normalizedMetadata = composeCanonicalMetadataEnvelope(
+    {
+      ...metadata,
+      ...structuredMetadata,
+    },
+    canonicalSemanticMetadata,
+    canonicalActionMetadata,
+  );
   const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
   const collectedFields = sanitizeNullableRecord(parsedAnswer?.collectedFields);
   const recommendedProviders = sanitizeRecordArray(parsedAnswer?.recommendedProviders);
@@ -1165,10 +1194,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ? {
         answer: parsedAnswer.answer ?? asString(response.answer) ?? '',
         intent: normalizeIntent(parsedAnswer.intent),
-        resolvedIntent: (canonicalSemanticMetadata['resolvedIntent'] as string | undefined)
-          ?? parsedAnswer.resolvedIntent
-          ?? parsedAnswer.intent
-          ?? null,
+        resolvedIntent: canonicalSemanticMetadata['resolvedIntent'] as string,
         topic,
         riskLevel: publicRiskLevel,
         canAnswer: parsedAnswer.canAnswer ?? null,
@@ -1182,9 +1208,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
         shortlist,
         citations: citationsSafe,
         metadata: {
-          ...structuredMetadata,
-          ...canonicalSemanticMetadata,
-          ...canonicalActionMetadata,
+          ...normalizedStructuredMetadata,
           engagementMode,
           internalRiskLevel: parsedAnswer.riskLevel ?? null,
           topic,
@@ -1195,7 +1219,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
     intent: normalizeIntent(parsedAnswer?.intent),
-    resolvedIntent: parsedAnswer?.resolvedIntent ?? parsedAnswer?.intent ?? null,
+    resolvedIntent: canonicalSemanticMetadata['resolvedIntent'] as string,
     topic,
     riskLevel: publicRiskLevel,
     canAnswer: parsedAnswer?.canAnswer ?? null,
@@ -1212,16 +1236,13 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     messageId: asString(response.message_id),
     taskId: asString(response.task_id),
     metadata: {
-      ...metadata,
-      ...structuredMetadata,
-      ...canonicalSemanticMetadata,
-      ...canonicalActionMetadata,
+      ...normalizedMetadata,
       engagementMode,
       internalRiskLevel: parsedAnswer?.riskLevel ?? null,
       topic,
       structuredOutput: publicStructuredOutput,
     },
-    storedNextAction,
+    storedNextAction: publicNextAction,
   };
 }
 
@@ -1392,55 +1413,41 @@ function buildCanonicalSemanticMetadata(input: {
   mentionsCondition?: boolean;
   mentionsDoctorOrHospitalNeed?: boolean;
 }): Record<string, unknown> {
-  const resolvedIntent = normalizeCanonicalResolvedIntent(input.resolvedIntent ?? undefined);
-  const engagementSignal = normalizeCanonicalEngagementSignal(input.engagementSignal ?? undefined);
-  const progressionSignal = normalizeCanonicalProgressionSignal(input.progressionSignal ?? undefined);
-  const recommendationSignal = normalizeCanonicalRecommendationSignal(input.recommendationSignal ?? undefined);
-  const mentionsCondition = input.mentionsCondition;
-  const mentionsDoctorOrHospitalNeed = input.mentionsDoctorOrHospitalNeed;
+  const resolvedIntent = normalizeCanonicalResolvedIntent(input.resolvedIntent ?? undefined)
+    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.resolvedIntent;
+  const engagementSignal = normalizeCanonicalEngagementSignal(input.engagementSignal ?? undefined)
+    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.engagementSignal;
+  const progressionSignal = normalizeCanonicalProgressionSignal(input.progressionSignal ?? undefined)
+    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.progressionSignal;
+  const recommendationSignal = normalizeCanonicalRecommendationSignal(input.recommendationSignal ?? undefined)
+    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.recommendationSignal;
+  const mentionsCondition = input.mentionsCondition
+    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.mentionsCondition;
+  const mentionsDoctorOrHospitalNeed = input.mentionsDoctorOrHospitalNeed
+    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.mentionsDoctorOrHospitalNeed;
 
-  const normalized: Record<string, unknown> = {};
-  if (resolvedIntent) {
-    normalized['resolvedIntent'] = resolvedIntent;
-    normalized['resolved_intent'] = resolvedIntent;
-  }
-  if (engagementSignal) {
-    normalized['engagementSignal'] = engagementSignal;
-    normalized['engagement_signal'] = engagementSignal;
-  }
-  if (progressionSignal) {
-    normalized['progressionSignal'] = progressionSignal;
-    normalized['progression_signal'] = progressionSignal;
-  }
-  if (recommendationSignal) {
-    normalized['recommendationSignal'] = recommendationSignal;
-    normalized['recommendation_signal'] = recommendationSignal;
-  }
-  if (mentionsCondition !== undefined) {
-    normalized['mentionsCondition'] = mentionsCondition;
-    normalized['mentions_condition'] = mentionsCondition;
-  }
-  if (mentionsDoctorOrHospitalNeed !== undefined) {
-    normalized['mentionsDoctorOrHospitalNeed'] = mentionsDoctorOrHospitalNeed;
-    normalized['mentions_doctor_or_hospital_need'] = mentionsDoctorOrHospitalNeed;
-  }
-  if (
-    resolvedIntent
-    && engagementSignal
-    && progressionSignal
-    && recommendationSignal
-    && mentionsCondition !== undefined
-    && mentionsDoctorOrHospitalNeed !== undefined
-  ) {
-    normalized['semanticSignals'] = {
+  const normalized: Record<string, unknown> = {
+    resolvedIntent,
+    resolved_intent: resolvedIntent,
+    engagementSignal,
+    engagement_signal: engagementSignal,
+    progressionSignal,
+    progression_signal: progressionSignal,
+    recommendationSignal,
+    recommendation_signal: recommendationSignal,
+    mentionsCondition,
+    mentions_condition: mentionsCondition,
+    mentionsDoctorOrHospitalNeed,
+    mentions_doctor_or_hospital_need: mentionsDoctorOrHospitalNeed,
+    semanticSignals: {
       resolvedIntent,
       engagementSignal,
       progressionSignal,
       recommendationSignal,
       mentionsCondition,
       mentionsDoctorOrHospitalNeed,
-    };
-  }
+    },
+  };
 
   return normalized;
 }
@@ -1463,8 +1470,57 @@ function buildCanonicalActionMetadata(input: {
   return normalized;
 }
 
+function composeCanonicalMetadataEnvelope(
+  source: Record<string, unknown>,
+  canonicalSemanticMetadata: Record<string, unknown>,
+  canonicalActionMetadata: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...stripCanonicalOverlayKeys(source),
+    ...canonicalSemanticMetadata,
+    ...canonicalActionMetadata,
+  };
+}
+
+function stripCanonicalOverlayKeys(source: Record<string, unknown>): Record<string, unknown> {
+  const stripped: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (
+      key === 'resolvedIntent'
+      || key === 'resolved_intent'
+      || key === 'engagementSignal'
+      || key === 'engagement_signal'
+      || key === 'progressionSignal'
+      || key === 'progression_signal'
+      || key === 'recommendationSignal'
+      || key === 'recommendation_signal'
+      || key === 'mentionsCondition'
+      || key === 'mentions_condition'
+      || key === 'mentionsDoctorOrHospitalNeed'
+      || key === 'mentions_doctor_or_hospital_need'
+      || key === 'semanticSignals'
+      || key === 'nextAction'
+      || key === 'next_action'
+      || key === 'publicNextAction'
+      || key === 'public_next_action'
+      || key === 'internalNextAction'
+      || key === 'internal_next_action'
+    ) {
+      continue;
+    }
+    stripped[key] = value;
+  }
+  return stripped;
+}
+
 function normalizePublicMetadataForHistory(value: Record<string, unknown>): Record<string, unknown> {
-  return normalizeHistoryMetadataValue(sanitizeUnknownValue(value)) as Record<string, unknown>;
+  const normalized = normalizeHistoryMetadataValue(sanitizeUnknownValue(value));
+  const root = applyStrictHistoryCanonicalEnvelope(asRecord(normalized));
+  const structuredOutput = asRecord(root.structuredOutput);
+  if (Object.keys(structuredOutput).length > 0) {
+    root.structuredOutput = applyStrictHistoryStructuredOutput(structuredOutput);
+  }
+  return root;
 }
 
 
@@ -1491,28 +1547,59 @@ function normalizeHistoryMetadataValue(value: unknown): unknown {
     sanitized[key] = normalizeHistoryMetadataValue(nestedValue);
   }
 
-  Object.assign(sanitized, buildCanonicalSemanticMetadata({
-    resolvedIntent: asString(source.resolvedIntent) ?? asString(source.resolved_intent),
-    engagementSignal: asString(source.engagementSignal) ?? asString(source.engagement_signal),
-    progressionSignal: asString(source.progressionSignal) ?? asString(source.progression_signal),
-    recommendationSignal: asString(source.recommendationSignal) ?? asString(source.recommendation_signal),
-    mentionsCondition: asBoolean(source.mentionsCondition) ?? asBoolean(source.mentions_condition),
-    mentionsDoctorOrHospitalNeed: asBoolean(source.mentionsDoctorOrHospitalNeed) ?? asBoolean(source.mentions_doctor_or_hospital_need),
-  }));
-  Object.assign(sanitized, buildCanonicalActionMetadata({
-    nextAction: normalizePublicNextAction(
-      asString(source.publicNextAction)
-      ?? asString(source.public_next_action)
-      ?? asString(source.nextAction)
-      ?? asString(source.next_action),
-    ),
-    internalNextAction: normalizeNextAction(
-      asString(source.internalNextAction)
-      ?? asString(source.internal_next_action),
-    ),
-  }));
-
   return sanitized;
+}
+
+function applyStrictHistoryCanonicalEnvelope(source: Record<string, unknown>): Record<string, unknown> {
+  return composeCanonicalMetadataEnvelope(
+    source,
+    buildCanonicalSemanticMetadata({
+      resolvedIntent: asString(source.resolvedIntent) ?? asString(source.resolved_intent),
+      engagementSignal: asString(source.engagementSignal) ?? asString(source.engagement_signal),
+      progressionSignal: asString(source.progressionSignal) ?? asString(source.progression_signal),
+      recommendationSignal: asString(source.recommendationSignal) ?? asString(source.recommendation_signal),
+      mentionsCondition: asBoolean(source.mentionsCondition) ?? asBoolean(source.mentions_condition),
+      mentionsDoctorOrHospitalNeed: asBoolean(source.mentionsDoctorOrHospitalNeed) ?? asBoolean(source.mentions_doctor_or_hospital_need),
+    }),
+    buildCanonicalActionMetadata({
+      nextAction: normalizePublicNextAction(
+        asString(source.publicNextAction)
+        ?? asString(source.public_next_action)
+        ?? asString(source.nextAction)
+        ?? asString(source.next_action),
+      ),
+      internalNextAction: normalizeNextAction(
+        asString(source.internalNextAction)
+        ?? asString(source.internal_next_action),
+      ),
+    }),
+  );
+}
+
+function applyStrictHistoryStructuredOutput(source: Record<string, unknown>): Record<string, unknown> {
+  const strictStructuredOutput = composeCanonicalMetadataEnvelope(
+    source,
+    buildCanonicalSemanticMetadata({
+      resolvedIntent: asString(source.resolvedIntent) ?? asString(source.resolved_intent),
+    }),
+    buildCanonicalActionMetadata({
+      nextAction: normalizePublicNextAction(
+        asString(source.publicNextAction)
+        ?? asString(source.public_next_action)
+        ?? asString(source.nextAction)
+        ?? asString(source.next_action),
+      ),
+      internalNextAction: normalizeNextAction(
+        asString(source.internalNextAction)
+        ?? asString(source.internal_next_action),
+      ),
+    }),
+  );
+  const metadata = asRecord(strictStructuredOutput.metadata);
+  if (Object.keys(metadata).length > 0) {
+    strictStructuredOutput.metadata = applyStrictHistoryCanonicalEnvelope(metadata);
+  }
+  return strictStructuredOutput;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -16,6 +16,46 @@ export const chatbotNextActionSchema = z.enum([
 ]);
 export const chatbotIntentSchema = z.enum(['FAQ', 'CONSULT', 'UNKNOWN', 'SAFETY']);
 export const chatbotRiskLevelSchema = z.enum(['NORMAL', 'SENSITIVE', 'CRISIS']);
+export const chatbotResolvedIntentSchema = z.enum([
+  'GENERAL_INFO',
+  'ASK_MEDICAL_TRAVEL_PROCESS',
+  'ASK_CONSULT_PROCESS',
+  'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+  'ASK_FOR_HOSPITAL_RECOMMENDATION',
+  'REQUEST_DOC_UPLOAD',
+  'ACCEPT_DOC_UPLOAD',
+  'ACCEPT_ONLINE_CONSULT_INVITE',
+  'REQUEST_HUMAN_HANDOFF',
+  'ASK_PACKAGE_INFO',
+  'SMALL_TALK_OR_GREETING',
+  'UNKNOWN',
+]);
+export const chatbotEngagementSignalSchema = z.enum([
+  'LIGHT_DISCOVERY',
+  'QUALIFIED_EXPLORATION',
+  'DEEP_WORKFLOW',
+]);
+export const chatbotProgressionSignalSchema = z.enum([
+  'NONE',
+  'CURIOUS',
+  'OPEN_TO_NEXT_STEP',
+  'READY_TO_PROCEED',
+  'EXPLICITLY_COMMITTING',
+]);
+export const chatbotRecommendationSignalSchema = z.enum([
+  'NONE',
+  'SEEKING_DIRECTION',
+  'SEEKING_RECOMMENDATION',
+  'READY_FOR_RECOMMENDATION',
+]);
+export const chatbotSemanticSignalsSchema = z.object({
+  resolvedIntent: chatbotResolvedIntentSchema,
+  engagementSignal: chatbotEngagementSignalSchema,
+  progressionSignal: chatbotProgressionSignalSchema,
+  recommendationSignal: chatbotRecommendationSignalSchema,
+  mentionsCondition: z.boolean(),
+  mentionsDoctorOrHospitalNeed: z.boolean(),
+}).strict();
 export const chatbotTopicSchema = z.string().min(1).max(80);
 export const chatbotResponseModeSchema = z.string().min(1).max(80);
 export const chatbotPageContextSchema = z.discriminatedUnion('type', [
@@ -255,6 +295,7 @@ export type ChatbotUploadInitInput = z.infer<typeof chatbotUploadInitSchema>;
 export type ChatbotChatInput = z.infer<typeof chatbotChatSchema>;
 export type ChatbotConvertInput = z.infer<typeof chatbotConvertSchema>;
 export type ChatbotEscalateInput = z.infer<typeof chatbotEscalateSchema>;
+export type ChatbotSemanticSignals = z.infer<typeof chatbotSemanticSignalsSchema>;
 export type ChatbotChatResponse = z.infer<typeof chatbotChatResponseSchema>;
 export type ChatbotConvertResponse = z.infer<typeof chatbotConvertResponseSchema>;
 export type ChatbotEscalateResponse = z.infer<typeof chatbotEscalateResponseSchema>;

@@ -5,7 +5,14 @@ import {
   chatbotHistoryResponseSchema,
   chatbotMessageBlockSchema,
   chatbotNextActionSchema,
+  chatbotSemanticSignalsSchema,
 } from '../chatbot.schema';
+import {
+  AI_POLICY_RECOMMENDATION_SIGNALS,
+  AI_POLICY_RESOLVED_INTENTS,
+  AI_POLICY_ENGAGEMENT_SIGNALS,
+  AI_POLICY_PROGRESSION_SIGNALS,
+} from '../../../../application/src/dtos/ai-policy.dto.js';
 
 describe('chatbotNextActionSchema', () => {
   it('accepts the full intended public action set', () => {
@@ -218,5 +225,96 @@ describe('chatbotHistoryResponseSchema', () => {
         createdAt: '2026-04-05T00:00:00.000Z',
       }],
     }).success).toBe(true);
+  });
+});
+
+describe('chatbotSemanticSignalsSchema', () => {
+  it('accepts only the canonical semantic payload', () => {
+    expect(chatbotSemanticSignalsSchema.safeParse({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      engagementSignal: 'QUALIFIED_EXPLORATION',
+      progressionSignal: 'OPEN_TO_NEXT_STEP',
+      recommendationSignal: 'SEEKING_RECOMMENDATION',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+    }).success).toBe(true);
+  });
+
+  it('rejects legacy weak semantic fields as a standalone payload', () => {
+    expect(chatbotSemanticSignalsSchema.safeParse({
+      possibleIntent: 'ASK_FOR_RECOMMENDATION',
+      possibleRisk: 'SENSITIVE',
+      affirmative: true,
+      negative: false,
+    }).success).toBe(false);
+  });
+
+  it('rejects invalid enum values in the canonical semantic payload', () => {
+    expect(chatbotSemanticSignalsSchema.safeParse({
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'OPEN_TO_NEXT_STEP',
+      recommendationSignal: 'SEEKING_RECOMMENDATION',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+    }).success).toBe(false);
+
+    expect(chatbotSemanticSignalsSchema.safeParse({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'ADVANCING',
+      recommendationSignal: 'SEEKING_RECOMMENDATION',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+    }).success).toBe(false);
+
+    expect(chatbotSemanticSignalsSchema.safeParse({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'OPEN_TO_NEXT_STEP',
+      recommendationSignal: 'CONSIDERING',
+      mentionsCondition: true,
+      mentionsDoctorOrHospitalNeed: false,
+    }).success).toBe(false);
+  });
+});
+
+describe('ai-policy semantic enum constants', () => {
+  it('exposes the approved canonical enum values', () => {
+    expect(AI_POLICY_RESOLVED_INTENTS).toEqual([
+      'GENERAL_INFO',
+      'ASK_MEDICAL_TRAVEL_PROCESS',
+      'ASK_CONSULT_PROCESS',
+      'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+      'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      'REQUEST_DOC_UPLOAD',
+      'ACCEPT_DOC_UPLOAD',
+      'ACCEPT_ONLINE_CONSULT_INVITE',
+      'REQUEST_HUMAN_HANDOFF',
+      'ASK_PACKAGE_INFO',
+      'SMALL_TALK_OR_GREETING',
+      'UNKNOWN',
+    ]);
+
+    expect(AI_POLICY_ENGAGEMENT_SIGNALS).toEqual([
+      'LIGHT_DISCOVERY',
+      'QUALIFIED_EXPLORATION',
+      'DEEP_WORKFLOW',
+    ]);
+
+    expect(AI_POLICY_PROGRESSION_SIGNALS).toEqual([
+      'NONE',
+      'CURIOUS',
+      'OPEN_TO_NEXT_STEP',
+      'READY_TO_PROCEED',
+      'EXPLICITLY_COMMITTING',
+    ]);
+
+    expect(AI_POLICY_RECOMMENDATION_SIGNALS).toEqual([
+      'NONE',
+      'SEEKING_DIRECTION',
+      'SEEKING_RECOMMENDATION',
+      'READY_FOR_RECOMMENDATION',
+    ]);
   });
 });

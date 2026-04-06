@@ -1145,6 +1145,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ?? null;
   const canonicalResolvedIntent = normalizeCanonicalResolvedIntent(
     parsedAnswer?.canonicalResolvedIntent
+    ?? parsedAnswer?.resolvedIntent
     ?? asString(structuredMetadata.resolvedIntent)
     ?? asString(structuredMetadata.resolved_intent),
   );
@@ -1485,40 +1486,55 @@ function composeCanonicalMetadataEnvelope(
 function stripCanonicalOverlayKeys(source: Record<string, unknown>): Record<string, unknown> {
   const stripped: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(source)) {
-    if (
-      key === 'resolvedIntent'
-      || key === 'resolved_intent'
-      || key === 'engagementSignal'
-      || key === 'engagement_signal'
-      || key === 'progressionSignal'
-      || key === 'progression_signal'
-      || key === 'recommendationSignal'
-      || key === 'recommendation_signal'
-      || key === 'mentionsCondition'
-      || key === 'mentions_condition'
-      || key === 'mentionsDoctorOrHospitalNeed'
-      || key === 'mentions_doctor_or_hospital_need'
-      || key === 'semanticSignals'
-      || key === 'nextAction'
-      || key === 'next_action'
-      || key === 'publicNextAction'
-      || key === 'public_next_action'
-      || key === 'internalNextAction'
-      || key === 'internal_next_action'
-    ) {
+    if (isCanonicalOverlayKey(key)) {
       continue;
     }
-    stripped[key] = value;
+    stripped[key] = stripCanonicalOverlayValue(value);
   }
   return stripped;
 }
 
+function stripCanonicalOverlayValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripCanonicalOverlayValue(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  return stripCanonicalOverlayKeys(value as Record<string, unknown>);
+}
+
+function isCanonicalOverlayKey(key: string): boolean {
+  return key === 'resolvedIntent'
+    || key === 'resolved_intent'
+    || key === 'engagementSignal'
+    || key === 'engagement_signal'
+    || key === 'progressionSignal'
+    || key === 'progression_signal'
+    || key === 'recommendationSignal'
+    || key === 'recommendation_signal'
+    || key === 'mentionsCondition'
+    || key === 'mentions_condition'
+    || key === 'mentionsDoctorOrHospitalNeed'
+    || key === 'mentions_doctor_or_hospital_need'
+    || key === 'semanticSignals'
+    || key === 'nextAction'
+    || key === 'next_action'
+    || key === 'publicNextAction'
+    || key === 'public_next_action'
+    || key === 'internalNextAction'
+    || key === 'internal_next_action';
+}
+
 function normalizePublicMetadataForHistory(value: Record<string, unknown>): Record<string, unknown> {
   const normalized = normalizeHistoryMetadataValue(sanitizeUnknownValue(value));
-  const root = applyStrictHistoryCanonicalEnvelope(asRecord(normalized));
-  const structuredOutput = asRecord(root.structuredOutput);
-  if (Object.keys(structuredOutput).length > 0) {
-    root.structuredOutput = applyStrictHistoryStructuredOutput(structuredOutput);
+  const normalizedRecord = asRecord(normalized);
+  const structuredOutputSource = asRecord(normalizedRecord.structuredOutput);
+  const root = applyStrictHistoryCanonicalEnvelope(normalizedRecord);
+  if (Object.keys(structuredOutputSource).length > 0) {
+    root.structuredOutput = applyStrictHistoryStructuredOutput(structuredOutputSource);
   }
   return root;
 }
@@ -1577,6 +1593,7 @@ function applyStrictHistoryCanonicalEnvelope(source: Record<string, unknown>): R
 }
 
 function applyStrictHistoryStructuredOutput(source: Record<string, unknown>): Record<string, unknown> {
+  const metadataSource = asRecord(source.metadata);
   const strictStructuredOutput = composeCanonicalMetadataEnvelope(
     source,
     buildCanonicalSemanticMetadata({
@@ -1595,9 +1612,8 @@ function applyStrictHistoryStructuredOutput(source: Record<string, unknown>): Re
       ),
     }),
   );
-  const metadata = asRecord(strictStructuredOutput.metadata);
-  if (Object.keys(metadata).length > 0) {
-    strictStructuredOutput.metadata = applyStrictHistoryCanonicalEnvelope(metadata);
+  if (Object.keys(metadataSource).length > 0) {
+    strictStructuredOutput.metadata = applyStrictHistoryCanonicalEnvelope(metadataSource);
   }
   return strictStructuredOutput;
 }

@@ -613,7 +613,7 @@ describe('Chatbot routes', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.metadata).toMatchObject({
-      resolvedIntent: 'UNKNOWN',
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
       engagementSignal: 'DEEP_WORKFLOW',
       progressionSignal: 'READY_TO_PROCEED',
       recommendationSignal: 'NONE',
@@ -626,11 +626,11 @@ describe('Chatbot routes', () => {
       internal_next_action: 'REQUEST_DOCS',
     });
     expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
-      resolvedIntent: 'UNKNOWN',
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
       nextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>)).toMatchObject({
-      resolvedIntent: 'UNKNOWN',
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
       engagementSignal: 'DEEP_WORKFLOW',
       progressionSignal: 'READY_TO_PROCEED',
       recommendationSignal: 'NONE',
@@ -645,8 +645,9 @@ describe('Chatbot routes', () => {
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
+        resolvedIntent: 'REQUEST_DOC_UPLOAD',
         metadata: expect.objectContaining({
-          resolvedIntent: 'UNKNOWN',
+          resolvedIntent: 'REQUEST_DOC_UPLOAD',
           engagementSignal: 'DEEP_WORKFLOW',
           progressionSignal: 'READY_TO_PROCEED',
           recommendationSignal: 'NONE',
@@ -658,10 +659,10 @@ describe('Chatbot routes', () => {
           internalNextAction: 'REQUEST_DOCS',
           internal_next_action: 'REQUEST_DOCS',
           structuredOutput: expect.objectContaining({
-            resolvedIntent: 'UNKNOWN',
+            resolvedIntent: 'REQUEST_DOC_UPLOAD',
             nextAction: 'REQUEST_DOC_UPLOAD',
             metadata: expect.objectContaining({
-              resolvedIntent: 'UNKNOWN',
+              resolvedIntent: 'REQUEST_DOC_UPLOAD',
               engagementSignal: 'DEEP_WORKFLOW',
               progressionSignal: 'READY_TO_PROCEED',
               recommendationSignal: 'NONE',
@@ -674,6 +675,58 @@ describe('Chatbot routes', () => {
               internal_next_action: 'REQUEST_DOCS',
             }),
           }),
+        }),
+      }),
+    );
+  });
+
+  it('POST /api/v2/chatbot/chat treats top-level resolvedIntent as the canonical persisted truth', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-top-level-resolved-intent',
+      answer: JSON.stringify({
+        answer: 'I can explain package options for that.',
+        intent: 'CONSULT',
+        resolvedIntent: 'ASK_PACKAGE_INFO',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'SHOW_PACKAGE',
+        responseMode: 'package_guidance',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+        progressionSignal: 'OPEN_TO_NEXT_STEP',
+        recommendationSignal: 'NONE',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-top-level-resolved-intent',
+        hospitalType: 'COSMETIC',
+        message: 'Do you have a package for this?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.metadata).toMatchObject({
+      resolvedIntent: 'ASK_PACKAGE_INFO',
+      semanticSignals: expect.objectContaining({
+        resolvedIntent: 'ASK_PACKAGE_INFO',
+      }),
+    });
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        resolvedIntent: 'ASK_PACKAGE_INFO',
+        nextAction: 'SHOW_PACKAGE',
+        metadata: expect.objectContaining({
+          resolvedIntent: 'ASK_PACKAGE_INFO',
         }),
       }),
     );
@@ -2030,6 +2083,54 @@ describe('Chatbot routes', () => {
     expect(((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction)).toBeUndefined();
     expect(((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).publicNextAction)).toBeUndefined();
     expect(((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).internalNextAction)).toBeUndefined();
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} strips nested semantic and action overlay keys from serialized metadata', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-nested-overlay-leak',
+        role: 'ASSISTANT',
+        content: 'Here is the package guidance.',
+        nextAction: 'SHOW_PACKAGE',
+        metadata: {
+          resolvedIntent: 'ASK_PACKAGE_INFO',
+          structuredOutput: {
+            resolvedIntent: 'ASK_PACKAGE_INFO',
+            metadata: {
+              nested: {
+                resolved_intent: 'NOT_REAL',
+                public_next_action: 'FREEFORM_ACTION',
+                child: {
+                  engagement_signal: 'INVALID',
+                  internal_next_action: 'FREEFORM_ACTION',
+                },
+              },
+            },
+          },
+        },
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    const nested = ((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).nested) as Record<string, unknown>;
+    expect(nested.resolved_intent).toBeUndefined();
+    expect(nested.public_next_action).toBeUndefined();
+    expect((nested.child as Record<string, unknown>).engagement_signal).toBeUndefined();
+    expect((nested.child as Record<string, unknown>).internal_next_action).toBeUndefined();
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy workflow requestedAction fields in public metadata', async () => {

@@ -12,7 +12,7 @@ import {
   AI_POLICY_RESOLVED_INTENTS,
   AI_POLICY_ENGAGEMENT_SIGNALS,
   AI_POLICY_PROGRESSION_SIGNALS,
-} from '../../../../application/src/dtos/ai-policy.dto.js';
+} from '@medical-crm/utils';
 
 describe('chatbotNextActionSchema', () => {
   it('accepts the full intended public action set', () => {

@@ -31,8 +31,21 @@ export type {
 export type { HospitalDTO } from './dtos/hospital.dto.js';
 export {
   AI_POLICY_BACKEND_NEXT_ACTIONS,
+  AI_POLICY_RESOLVED_INTENTS,
+  AI_POLICY_ENGAGEMENT_SIGNALS,
+  AI_POLICY_PROGRESSION_SIGNALS,
+  AI_POLICY_RECOMMENDATION_SIGNALS,
 } from './dtos/ai-policy.dto.js';
-export type { AiPolicyRequestEnvelope, AiPolicyErrorEnvelope, AiPolicyEngagementMode } from './dtos/ai-policy.dto.js';
+export type {
+  AiPolicyRequestEnvelope,
+  AiPolicyErrorEnvelope,
+  AiPolicyEngagementMode,
+  AiPolicyResolvedIntent,
+  AiPolicyEngagementSignal,
+  AiPolicyProgressionSignal,
+  AiPolicyRecommendationSignal,
+  AiPolicySemanticSignals,
+} from './dtos/ai-policy.dto.js';
 export type { ConversationDTO, MessageDTO } from './dtos/conversation.dto.js';
 export type { ConsultationDTO, ConsultationTranscriptDTO } from './dtos/consultation.dto.js';
 export type { CaseHospitalContactDTO } from './dtos/case-hospital-contact.dto.js';

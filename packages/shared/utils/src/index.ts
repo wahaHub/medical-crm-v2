@@ -13,3 +13,16 @@ export {
   ForbiddenError,
   mapErrorToStatus,
 } from './errors';
+export {
+  AI_POLICY_RESOLVED_INTENTS,
+  AI_POLICY_ENGAGEMENT_SIGNALS,
+  AI_POLICY_PROGRESSION_SIGNALS,
+  AI_POLICY_RECOMMENDATION_SIGNALS,
+} from './chatbot-semantics';
+export type {
+  AiPolicyResolvedIntent,
+  AiPolicyEngagementSignal,
+  AiPolicyProgressionSignal,
+  AiPolicyRecommendationSignal,
+  AiPolicySemanticSignals,
+} from './chatbot-semantics';

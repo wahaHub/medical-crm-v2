@@ -5,6 +5,14 @@ import { IntentResolverService } from '../../services/policy-engine/intent-resol
 import { RecommendationPolicyService } from '../../services/policy-engine/recommendation-policy.service.js';
 import { RiskResolverService } from '../../services/policy-engine/risk-resolver.service.js';
 import { SignalResolverService } from '../../services/policy-engine/signal-resolver.service.js';
+import {
+  AI_POLICY_ENGAGEMENT_SIGNALS,
+  AI_POLICY_PROGRESSION_SIGNALS,
+  AI_POLICY_RECOMMENDATION_SIGNALS,
+  AI_POLICY_RESOLVED_INTENTS,
+  type AiPolicyResolvedIntent,
+  type AiPolicySemanticSignals,
+} from '../../dtos/ai-policy.dto.js';
 import type {
   AiPolicyBackendNextAction,
   AiPolicyEngagementMode,
@@ -28,9 +36,9 @@ export interface DecideAiPolicyInput {
 export class DecideAiPolicyUseCase {
   constructor(
     private readonly contextBuilder: ContextBuilderService,
-    private readonly signalResolver: SignalResolverService,
-    private readonly engagementModeResolver: EngagementModeResolverService,
-    private readonly intentResolver: IntentResolverService,
+    _signalResolver: SignalResolverService,
+    _engagementModeResolver: EngagementModeResolverService,
+    _intentResolver: IntentResolverService,
     private readonly riskResolver: RiskResolverService,
     private readonly actionPlanner: ActionPlannerService,
     private readonly recommendationPolicy: RecommendationPolicyService,
@@ -44,26 +52,18 @@ export class DecideAiPolicyUseCase {
       pageContext: input.pageContext,
     });
 
-    const signals = this.signalResolver.resolve({
-      extraction: input.extraction,
-    });
-    const candidateSignals = mergeCandidateSignals(input.extraction, signals);
-
-    const engagement = this.engagementModeResolver.resolve({
-      userMessage: input.userMessage,
-      currentEngagementMode: lightContext.currentEngagementMode,
-      pendingOffer: lightContext.pendingOffer,
-      pendingQuestion: lightContext.pendingQuestion,
-      lastAssistantAction: lightContext.lastAssistantAction,
-      candidateSignals,
-    });
+    const semantics = parseCanonicalSemanticSignals(input.extraction);
+    const candidateSignals = buildCandidateSignals(input.extraction);
 
     const risk = await this.riskResolver.resolve({
       userMessage: input.userMessage,
       candidateSignals,
     });
 
-    const effectiveEngagementMode = enforceRiskFirstEngagementMode(engagement.engagementMode, risk.riskLevel);
+    const effectiveEngagementMode = enforceRiskFirstEngagementMode(
+      semantics.signals.engagementSignal,
+      risk.riskLevel,
+    );
 
     const context = effectiveEngagementMode === 'LIGHT_DISCOVERY'
       ? lightContext
@@ -74,20 +74,7 @@ export class DecideAiPolicyUseCase {
         pageContext: input.pageContext,
       });
 
-    const intent = await this.intentResolver.resolve({
-      userMessage: input.userMessage,
-      pendingOffer: context.pendingOffer.exists
-        ? { type: context.pendingOffer.type ?? 'UNKNOWN' }
-        : null,
-      recentMessages: context.contextDepth === 'full'
-        ? context.recentMessages.map((message) => ({
-        role: message.role,
-        content: message.content,
-        nextAction: message.nextAction,
-      }))
-        : [],
-      candidateSignals,
-    });
+    const runtimeResolvedIntent = mapCanonicalResolvedIntentToRuntimeIntent(semantics.signals.resolvedIntent);
 
     const plan = this.actionPlanner.plan({
       hospitalType: context.hospitalType,
@@ -100,7 +87,7 @@ export class DecideAiPolicyUseCase {
             riskLevel: risk.riskLevel,
           },
       engagementMode: effectiveEngagementMode,
-      resolvedIntent: intent.resolvedIntent,
+      resolvedIntent: runtimeResolvedIntent,
     });
 
     const recommendation = effectiveEngagementMode === 'DEEP_WORKFLOW' && context.contextDepth === 'full'
@@ -109,7 +96,7 @@ export class DecideAiPolicyUseCase {
           ...context.statusSnapshot,
           riskLevel: risk.riskLevel,
         },
-        resolvedIntent: intent.resolvedIntent,
+        resolvedIntent: runtimeResolvedIntent,
         candidateHospitals: input.candidateHospitals,
       })
       : {
@@ -125,15 +112,14 @@ export class DecideAiPolicyUseCase {
     );
 
     const reasonCodes = dedupeReasonCodes(
-      ...engagement.reasonCodes,
-      ...intent.reasonCodes,
+      ...semantics.reasonCodes,
       ...risk.reasonCodes,
       ...plan.reasonCodes,
       ...recommendation.reasonCodes,
     );
 
     const allowedTools = buildAllowedTools(resolvedNextAction);
-    const selectedHospitalId = shouldPersistSelectedHospital(intent.resolvedIntent, context.activeHospitalContext)
+    const selectedHospitalId = shouldPersistSelectedHospital(runtimeResolvedIntent, context.activeHospitalContext)
       ? context.activeHospitalContext.hospitalId
       : undefined;
 
@@ -146,7 +132,7 @@ export class DecideAiPolicyUseCase {
             source: context.activeHospitalContext.source,
           }
         : null,
-      resolved_intent: intent.resolvedIntent,
+      resolved_intent: runtimeResolvedIntent,
       risk_level: risk.riskLevel,
       next_action: resolvedNextAction,
       secondary_action: resolvedNextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS'
@@ -166,7 +152,7 @@ export class DecideAiPolicyUseCase {
         context_depth: context.contextDepth,
         writeback_depth: determineWritebackDepth(effectiveEngagementMode),
         engagement_mode: effectiveEngagementMode,
-        prequalification_reason_codes: engagement.reasonCodes,
+        prequalification_reason_codes: buildPrequalificationReasonCodes(semantics, effectiveEngagementMode),
         next_action: resolvedNextAction,
         selected_hospital_id: selectedHospitalId,
         risk_level: risk.riskLevel,
@@ -176,18 +162,91 @@ export class DecideAiPolicyUseCase {
   }
 }
 
-function mergeCandidateSignals(
+const DETERMINISTIC_SEMANTIC_FALLBACK: AiPolicySemanticSignals = {
+  resolvedIntent: 'UNKNOWN',
+  engagementSignal: 'LIGHT_DISCOVERY',
+  progressionSignal: 'NONE',
+  recommendationSignal: 'NONE',
+  mentionsCondition: false,
+  mentionsDoctorOrHospitalNeed: false,
+};
+
+const RUNTIME_RESOLVED_INTENT_BY_CANONICAL_INTENT: Record<AiPolicyResolvedIntent, string> = {
+  GENERAL_INFO: 'GENERAL_CONSULT',
+  ASK_MEDICAL_TRAVEL_PROCESS: 'ASK_MEDICAL_TRAVEL_PROCESS',
+  ASK_CONSULT_PROCESS: 'ASK_CONSULT_PROCESS',
+  ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION: 'ASK_FOR_RECOMMENDATION',
+  ASK_FOR_HOSPITAL_RECOMMENDATION: 'ASK_FOR_RECOMMENDATION',
+  REQUEST_DOC_UPLOAD: 'REQUEST_DOC_UPLOAD',
+  ACCEPT_DOC_UPLOAD: 'REQUEST_DOC_UPLOAD',
+  ACCEPT_ONLINE_CONSULT_INVITE: 'ACCEPT_ONLINE_CONSULT_INVITE',
+  REQUEST_HUMAN_HANDOFF: 'REQUEST_HUMAN_HANDOFF',
+  ASK_PACKAGE_INFO: 'GENERAL_CONSULT',
+  SMALL_TALK_OR_GREETING: 'GENERAL_CONSULT',
+  UNKNOWN: 'UNKNOWN',
+};
+
+function buildCandidateSignals(extraction: Record<string, unknown> | undefined): Record<string, unknown> {
+  return isRecord(extraction) ? { ...extraction } : {};
+}
+
+function parseCanonicalSemanticSignals(
   extraction: Record<string, unknown> | undefined,
-  signals: ReturnType<SignalResolverService['resolve']>,
-): Record<string, unknown> {
+): {
+  signals: AiPolicySemanticSignals;
+  reasonCodes: string[];
+  usedFallback: boolean;
+} {
+  if (
+    isRecord(extraction)
+    && isEnumValue(extraction.resolvedIntent, AI_POLICY_RESOLVED_INTENTS)
+    && isEnumValue(extraction.engagementSignal, AI_POLICY_ENGAGEMENT_SIGNALS)
+    && isEnumValue(extraction.progressionSignal, AI_POLICY_PROGRESSION_SIGNALS)
+    && isEnumValue(extraction.recommendationSignal, AI_POLICY_RECOMMENDATION_SIGNALS)
+    && typeof extraction.mentionsCondition === 'boolean'
+    && typeof extraction.mentionsDoctorOrHospitalNeed === 'boolean'
+  ) {
+    return {
+      signals: {
+        resolvedIntent: extraction.resolvedIntent,
+        engagementSignal: extraction.engagementSignal,
+        progressionSignal: extraction.progressionSignal,
+        recommendationSignal: extraction.recommendationSignal,
+        mentionsCondition: extraction.mentionsCondition,
+        mentionsDoctorOrHospitalNeed: extraction.mentionsDoctorOrHospitalNeed,
+      },
+      reasonCodes: ['canonical_semantics_consumed'],
+      usedFallback: false,
+    };
+  }
+
   return {
-    ...(extraction ?? {}),
-    affirmative: extraction?.['affirmative'] ?? signals.affirmative,
-    negative: extraction?.['negative'] ?? signals.negative,
-    possibleRisk: extraction?.['possibleRisk'] ?? signals.possibleRisk,
-    possibleIntent: extraction?.['possibleIntent'] ?? signals.possibleIntent,
-    mentionedBudget: extraction?.['mentionedBudget'] ?? signals.mentionedBudget,
+    signals: DETERMINISTIC_SEMANTIC_FALLBACK,
+    reasonCodes: ['canonical_semantics_fallback'],
+    usedFallback: true,
   };
+}
+
+function mapCanonicalResolvedIntentToRuntimeIntent(resolvedIntent: AiPolicyResolvedIntent): string {
+  return RUNTIME_RESOLVED_INTENT_BY_CANONICAL_INTENT[resolvedIntent];
+}
+
+function buildPrequalificationReasonCodes(
+  semantics: { signals: AiPolicySemanticSignals; usedFallback: boolean },
+  engagementMode: AiPolicyEngagementMode,
+): string[] {
+  return dedupeReasonCodes(
+    semantics.usedFallback ? 'canonical_semantics_fallback' : 'canonical_semantics_consumed',
+    `engagement_signal_${engagementMode.toLowerCase()}`,
+  );
+}
+
+function isEnumValue<T extends string>(value: unknown, allowedValues: readonly T[]): value is T {
+  return typeof value === 'string' && allowedValues.includes(value as T);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function enforceRiskFirstEngagementMode(

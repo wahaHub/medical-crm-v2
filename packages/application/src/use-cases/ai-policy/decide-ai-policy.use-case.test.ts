@@ -8,974 +8,359 @@ import { ActionPlannerService } from '../../services/policy-engine/action-planne
 import { RecommendationPolicyService } from '../../services/policy-engine/recommendation-policy.service.js';
 import { EngagementModeResolverService } from '../../services/policy-engine/engagement-mode-resolver.service.js';
 
-describe('DecideAiPolicyUseCase', () => {
-  it('keeps a low-signal greeting on the light path and avoids shortlist push', async () => {
-    const contextBuilder = {
-      build: vi.fn(async () => ({
-        contextDepth: 'light',
-        sessionId: 'session-1',
-        userMessage: 'hello',
-        sessionRef: {
-          id: 'db-session-1',
-          sessionId: 'session-1',
-          patientId: null,
-        },
-        patientId: null,
-        currentEngagementMode: 'LIGHT_DISCOVERY',
-        pendingOffer: { exists: false, type: null },
-        pendingQuestion: { exists: false, type: null },
-        lastAssistantAction: null,
-        safetyFlags: {
-          riskLevel: 'LOW',
-          hasHighRiskSignal: false,
-          requiresSafetyHandling: false,
-        },
-        profile: null,
-        recentMessages: [],
-        recentTimeline: [],
-        activeFollowups: [],
-        recentHandoffs: [],
-      })),
-    } as unknown as ContextBuilderService;
+describe('DecideAiPolicyUseCase canonical semantics', () => {
+  it('consumes valid canonical extraction output directly for primary semantics', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      recommendationResult: {
+        eligible: true,
+        shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+        reasonCodes: ['authoritative_shortlist_ready'],
+      },
+    });
 
-    const useCase = new DecideAiPolicyUseCase(
-      contextBuilder,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
+    const result = await harness.useCase.execute({
       sessionId: 'session-1',
-      userMessage: 'hello',
-      extraction: {},
-      candidateHospitals: [
-        { hospitalId: 'hospital-1', reasonCodes: ['fit'] },
-      ],
+      userMessage: 'Please recommend a hospital for me.',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+        recommendationSignal: 'READY_FOR_RECOMMENDATION',
+        possibleIntent: 'GENERAL_CONSULT',
+        affirmative: true,
+        negative: true,
+      }),
+      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+    });
+
+    expect(result.engagement_mode).toBe('DEEP_WORKFLOW');
+    expect(result.next_action).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(result.shortlist).toEqual([
+      {
+        hospital_id: 'hospital-1',
+        match_type: 'matched',
+        reason_codes: ['fit'],
+      },
+    ]);
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      engagementMode: 'DEEP_WORKFLOW',
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+    }));
+    expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+    }));
+    expect(harness.engagementModeResolver.resolve).not.toHaveBeenCalled();
+    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
+    expect(harness.contextBuilder.build).toHaveBeenCalledTimes(2);
+    expect(harness.contextBuilder.build.mock.calls[0]?.[0]?.depth).toBe('light');
+    expect(harness.contextBuilder.build.mock.calls[1]?.[0]?.depth).toBe('full');
+  });
+
+  it('applies the deterministic fallback when canonical enum values are invalid', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-2',
+      userMessage: 'Please recommend a hospital for me.',
+      extraction: {
+        resolvedIntent: 'NOT_REAL',
+        engagementSignal: 'INVALID',
+        progressionSignal: 'ALMOST_READY',
+        recommendationSignal: 'NOW',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+        possibleIntent: 'ASK_FOR_RECOMMENDATION',
+      },
     });
 
     expect(result.engagement_mode).toBe('LIGHT_DISCOVERY');
     expect(result.next_action).toBe('ANSWER_FAQ');
-    expect(result.shortlist).toEqual([]);
-    expect(result.allowed_tools).toEqual(['search_faq']);
-    expect((contextBuilder.build as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
-    expect((contextBuilder.build as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]?.depth).toBe('light');
+    expect(result.resolved_intent).toBe('UNKNOWN');
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      engagementMode: 'LIGHT_DISCOVERY',
+      resolvedIntent: 'UNKNOWN',
+    }));
+    expect(harness.recommendationPolicy.decide).not.toHaveBeenCalled();
+    expect(harness.contextBuilder.build).toHaveBeenCalledTimes(1);
   });
 
-  it('promotes a careful but high-value user into qualified exploration and loads full context', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => {
-      if (input.depth === 'light') {
-        return {
-          contextDepth: 'light',
-          sessionId: 'session-2',
-          userMessage: 'I want to understand your process and how you choose hospitals before I decide.',
-        sessionRef: { id: 'db-session-2', sessionId: 'session-2', patientId: null },
-        patientId: null,
-        currentEngagementMode: 'LIGHT_DISCOVERY',
-        pendingOffer: { exists: false, type: null },
-        pendingQuestion: { exists: false, type: null },
-        lastAssistantAction: null,
-        safetyFlags: {
-            riskLevel: 'LOW',
-            hasHighRiskSignal: false,
-            requiresSafetyHandling: false,
-          },
-          profile: null,
-          recentMessages: [],
-          recentTimeline: [],
-          activeFollowups: [],
-          recentHandoffs: [],
-        };
-      }
-
-      return {
-        contextDepth: 'full',
-        sessionId: 'session-2',
-        userMessage: 'I want to understand your process and how you choose hospitals before I decide.',
-        sessionRef: { id: 'db-session-2', sessionId: 'session-2', patientId: null },
-        patientId: null,
-        currentEngagementMode: 'QUALIFIED_EXPLORATION',
-        statusSnapshot: {
-          conditionStatus: 'unknown',
-          formStatus: 'not_started',
-          docUploadStatus: 'none',
-          recommendationStatus: 'not_started',
-          consultationStatus: 'not_introduced',
-          packageStatus: 'not_introduced',
-          handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
-          riskLevel: 'low',
-          trustOrObjection: 'none',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'CONSULT_CONVERSION',
-          lastResolvedIntent: 'GENERAL_CONSULT',
-          conversationSummary: 'User is cautious and evaluating trust.',
-          lastPolicyDecisionAt: null,
-          lastUserMessageAt: null,
-          lastAssistantMessageAt: null,
-        },
-        pendingOffer: { exists: false, type: null },
-        pendingQuestion: { exists: false, type: null },
-        lastAssistantAction: 'CONSULT_CONVERSION',
-        safetyFlags: {
-          riskLevel: 'LOW',
-          hasHighRiskSignal: false,
-          requiresSafetyHandling: false,
-        },
-        profile: null,
-        recentMessages: [],
-        recentTimeline: [],
-        activeFollowups: [],
-        recentHandoffs: [],
-      };
+  it('applies the deterministic fallback when canonical fields are missing', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
     });
 
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-2',
-      userMessage: 'I want to understand your process and how you choose hospitals before I decide.',
-      extraction: {},
-    });
-
-    expect(result.engagement_mode).toBe('QUALIFIED_EXPLORATION');
-    expect(result.next_action).not.toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
-    expect(build).toHaveBeenCalledTimes(2);
-    expect(build.mock.calls[0]?.[0]?.depth).toBe('light');
-    expect(build.mock.calls[1]?.[0]?.depth).toBe('full');
-  });
-
-  it('treats form completion as a strong signal without making it the sole gateway', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => ({
-      contextDepth: input.depth === 'full' ? 'full' : 'light',
+    const result = await harness.useCase.execute({
       sessionId: 'session-3',
-      userMessage: 'What happens after the form review?',
-      sessionRef: { id: 'db-session-3', sessionId: 'session-3', patientId: null },
-      patientId: null,
-      currentEngagementMode: input.depth === 'full' ? 'DEEP_WORKFLOW' : 'DEEP_WORKFLOW',
-      pendingOffer: { exists: false, type: null },
-      pendingQuestion: { exists: false, type: null },
-      lastAssistantAction: 'CONSULT_CONVERSION',
-      safetyFlags: {
-        riskLevel: 'LOW',
-        hasHighRiskSignal: false,
-        requiresSafetyHandling: false,
-      },
-      ...(input.depth === 'full'
-        ? {
-            statusSnapshot: {
-              conditionStatus: 'known',
-              formStatus: 'completed',
-              docUploadStatus: 'uploaded',
-              recommendationStatus: 'not_started',
-              consultationStatus: 'not_introduced',
-              packageStatus: 'not_introduced',
-              handoffStatus: 'not_needed',
-              leadMaturity: 'qualified',
-              riskLevel: 'low',
-              trustOrObjection: 'none',
-              pendingOffer: null,
-              pendingQuestion: null,
-              lastNextAction: 'CONSULT_CONVERSION',
-              lastResolvedIntent: 'GENERAL_CONSULT',
-              conversationSummary: 'Form completed and documents uploaded.',
-              lastPolicyDecisionAt: null,
-              lastUserMessageAt: null,
-              lastAssistantMessageAt: null,
-            },
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }
-        : {
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }),
-    }));
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-3',
-      userMessage: 'What happens after the form review?',
-      extraction: {},
-    });
-
-    expect(result.engagement_mode).toBe('DEEP_WORKFLOW');
-    expect(build).toHaveBeenCalledTimes(2);
-  });
-
-  it('keeps qualified exploration on a recommendation-exploration path without producing a shortlist', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => {
-      if (input.depth === 'light') {
-        return {
-          contextDepth: 'light',
-          sessionId: 'session-4',
-          userMessage: 'Can you walk me through how you choose hospitals for someone like me?',
-          sessionRef: { id: 'db-session-4', sessionId: 'session-4', patientId: null },
-          patientId: null,
-          currentEngagementMode: 'LIGHT_DISCOVERY',
-          pendingOffer: { exists: false, type: null },
-          pendingQuestion: { exists: false, type: null },
-          lastAssistantAction: null,
-          safetyFlags: {
-            riskLevel: 'LOW',
-            hasHighRiskSignal: false,
-            requiresSafetyHandling: false,
-          },
-          profile: null,
-          recentMessages: [],
-          recentTimeline: [],
-          activeFollowups: [],
-          recentHandoffs: [],
-        };
-      }
-
-      return {
-        contextDepth: 'full',
-        sessionId: 'session-4',
-        userMessage: 'Can you walk me through how you choose hospitals for someone like me?',
-        sessionRef: { id: 'db-session-4', sessionId: 'session-4', patientId: null },
-        patientId: null,
-        currentEngagementMode: 'QUALIFIED_EXPLORATION',
-        pendingOffer: { exists: false, type: null },
-        pendingQuestion: { exists: false, type: null },
-        lastAssistantAction: 'CONSULT_CONVERSION',
-        safetyFlags: {
-          riskLevel: 'LOW',
-          hasHighRiskSignal: false,
-          requiresSafetyHandling: false,
-        },
-        statusSnapshot: {
-          conditionStatus: 'unknown',
-          formStatus: 'not_started',
-          docUploadStatus: 'uploaded',
-          recommendationStatus: 'not_started',
-          consultationStatus: 'not_introduced',
-          packageStatus: 'shown',
-          handoffStatus: 'not_needed',
-          leadMaturity: 'qualified',
-          riskLevel: 'low',
-          trustOrObjection: 'needs_trust',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'CONSULT_CONVERSION',
-          lastResolvedIntent: 'GENERAL_CONSULT',
-          conversationSummary: 'User wants to understand hospital choice process before deciding.',
-          lastPolicyDecisionAt: null,
-          lastUserMessageAt: null,
-          lastAssistantMessageAt: null,
-        },
-        profile: null,
-        recentMessages: [],
-        recentTimeline: [],
-        activeFollowups: [],
-        recentHandoffs: [],
-      };
-    });
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-4',
-      userMessage: 'Can you walk me through how you choose hospitals for someone like me?',
-      extraction: {},
-      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
-    });
-
-    expect(result.engagement_mode).toBe('QUALIFIED_EXPLORATION');
-    expect(result.next_action).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
-    expect(result.shortlist).toEqual([]);
-    expect(result.allowed_tools).toEqual(['search_hospitals']);
-  });
-
-  it('keeps shortlist tool permissions aligned to the current backend surface', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => ({
-      contextDepth: input.depth === 'full' ? 'full' : 'light',
-      sessionId: 'session-4b',
-      userMessage: 'Please recommend a hospital for me.',
-      sessionRef: { id: 'db-session-4b', sessionId: 'session-4b', patientId: null },
-      patientId: null,
-      currentEngagementMode: 'DEEP_WORKFLOW',
-      pendingOffer: { exists: false, type: null },
-      pendingQuestion: { exists: false, type: null },
-      lastAssistantAction: 'CONSULT_CONVERSION',
-      safetyFlags: {
-        riskLevel: 'LOW',
-        hasHighRiskSignal: false,
-        requiresSafetyHandling: false,
-      },
-      ...(input.depth === 'full'
-        ? {
-            statusSnapshot: {
-              conditionStatus: 'known',
-              formStatus: 'completed',
-              docUploadStatus: 'uploaded',
-              recommendationStatus: 'preliminary_shown',
-              consultationStatus: 'ready',
-              packageStatus: 'shown',
-              handoffStatus: 'not_needed',
-              leadMaturity: 'qualified',
-              riskLevel: 'low',
-              trustOrObjection: 'none',
-              pendingOffer: null,
-              pendingQuestion: null,
-              lastNextAction: 'CONSULT_CONVERSION',
-              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-              conversationSummary: 'User is ready for a shortlist.',
-              lastPolicyDecisionAt: null,
-              lastUserMessageAt: null,
-              lastAssistantMessageAt: null,
-            },
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }
-        : {
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }),
-    }));
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-4b',
-      userMessage: 'Please recommend a hospital for me.',
-      extraction: {},
-      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
-    });
-
-    expect(result.next_action).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
-    expect(result.allowed_tools).toEqual(['search_hospitals']);
-  });
-
-  it('returns selected_hospital_id when the user explicitly accepts a hospital recommendation in the current hospital context', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => ({
-      contextDepth: input.depth === 'full' ? 'full' : 'light',
-      sessionId: 'session-accept-1',
-      userMessage: 'yes, let us go with this hospital',
-      sessionRef: { id: 'db-session-accept-1', sessionId: 'session-accept-1', patientId: null },
-      patientId: null,
-      currentEngagementMode: 'DEEP_WORKFLOW',
-      activeHospitalContext: {
-        hospitalId: 'hospital-accept-1',
-        hospitalName: 'Medora Seoul',
-        source: 'page_context',
-      },
-      pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-      pendingQuestion: { exists: false, type: null },
-      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      safetyFlags: {
-        riskLevel: 'LOW',
-        hasHighRiskSignal: false,
-        requiresSafetyHandling: false,
-      },
-      ...(input.depth === 'full'
-        ? {
-            statusSnapshot: {
-              conditionStatus: 'known',
-              formStatus: 'completed',
-              docUploadStatus: 'uploaded',
-              recommendationStatus: 'preliminary_shown',
-              consultationStatus: 'not_introduced',
-              packageStatus: 'shown',
-              handoffStatus: 'not_needed',
-              leadMaturity: 'qualified',
-              riskLevel: 'low',
-              trustOrObjection: 'none',
-              engagementMode: 'DEEP_WORKFLOW',
-              prequalificationReasonCodes: [],
-              enteredDeepWorkflowAt: null,
-              pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
-              pendingQuestion: null,
-              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-              conversationSummary: 'User is reviewing a shortlist and focusing on one hospital.',
-              lastPolicyDecisionAt: null,
-              lastUserMessageAt: null,
-              lastAssistantMessageAt: null,
-            },
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }
-        : {
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }),
-    }));
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-accept-1',
-      userMessage: 'yes, let us go with this hospital',
-      extraction: {},
-    });
-
-    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
-    expect(result.selected_hospital_id).toBe('hospital-accept-1');
-  });
-
-  it('does not persist selected_hospital_id when acceptance only has a shortlist-derived hospital focus', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => ({
-      contextDepth: input.depth === 'full' ? 'full' : 'light',
-      sessionId: 'session-accept-2',
-      userMessage: 'yes, let us do that',
-      sessionRef: { id: 'db-session-accept-2', sessionId: 'session-accept-2', patientId: null },
-      patientId: null,
-      currentEngagementMode: 'DEEP_WORKFLOW',
-      activeHospitalContext: {
-        hospitalId: 'hospital-shortlist-1',
-        hospitalName: null,
-        source: 'recent_shortlist',
-      },
-      pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-      pendingQuestion: { exists: false, type: null },
-      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      safetyFlags: {
-        riskLevel: 'LOW',
-        hasHighRiskSignal: false,
-        requiresSafetyHandling: false,
-      },
-      ...(input.depth === 'full'
-        ? {
-            statusSnapshot: {
-              conditionStatus: 'known',
-              formStatus: 'completed',
-              docUploadStatus: 'uploaded',
-              recommendationStatus: 'preliminary_shown',
-              consultationStatus: 'not_introduced',
-              packageStatus: 'shown',
-              handoffStatus: 'not_needed',
-              leadMaturity: 'qualified',
-              riskLevel: 'low',
-              trustOrObjection: 'none',
-              engagementMode: 'DEEP_WORKFLOW',
-              prequalificationReasonCodes: [],
-              enteredDeepWorkflowAt: null,
-              pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
-              pendingQuestion: null,
-              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-              conversationSummary: 'User has only seen a shortlist so far.',
-              lastPolicyDecisionAt: null,
-              lastUserMessageAt: null,
-              lastAssistantMessageAt: null,
-            },
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }
-        : {
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }),
-    }));
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-accept-2',
-      userMessage: 'yes, let us do that',
-      extraction: {},
-    });
-
-    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
-    expect(result.selected_hospital_id).toBeUndefined();
-  });
-
-  it('rehydrates selected_hospital_id from persisted session memory on later acceptance turns', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => ({
-      contextDepth: input.depth === 'full' ? 'full' : 'light',
-      sessionId: 'session-accept-3',
-      userMessage: 'yes, continue with that hospital',
-      sessionRef: { id: 'db-session-accept-3', sessionId: 'session-accept-3', patientId: null },
-      patientId: null,
-      currentEngagementMode: 'DEEP_WORKFLOW',
-      activeHospitalContext: {
-        hospitalId: 'hospital-selected-2',
-        hospitalName: null,
-        source: 'selected_hospital',
-      },
-      pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-      pendingQuestion: { exists: false, type: null },
-      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      safetyFlags: {
-        riskLevel: 'LOW',
-        hasHighRiskSignal: false,
-        requiresSafetyHandling: false,
-      },
-      ...(input.depth === 'full'
-        ? {
-            statusSnapshot: {
-              conditionStatus: 'known',
-              formStatus: 'completed',
-              docUploadStatus: 'uploaded',
-              recommendationStatus: 'preliminary_shown',
-              selectedHospitalId: 'hospital-selected-2',
-              consultationStatus: 'not_introduced',
-              packageStatus: 'shown',
-              handoffStatus: 'not_needed',
-              leadMaturity: 'qualified',
-              riskLevel: 'low',
-              trustOrObjection: 'none',
-              engagementMode: 'DEEP_WORKFLOW',
-              prequalificationReasonCodes: [],
-              enteredDeepWorkflowAt: null,
-              pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
-              pendingQuestion: null,
-              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-              lastResolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
-              conversationSummary: 'User already selected a hospital earlier.',
-              lastPolicyDecisionAt: null,
-              lastUserMessageAt: null,
-              lastAssistantMessageAt: null,
-            },
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }
-        : {
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }),
-    }));
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-accept-3',
-      userMessage: 'yes, continue with that hospital',
-      extraction: {},
-    });
-
-    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
-    expect(result.selected_hospital_id).toBe('hospital-selected-2');
-  });
-
-  it('does not reopen shortlist display when the session already has a selected hospital and the user did not ask for alternatives', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => ({
-      contextDepth: input.depth === 'full' ? 'full' : 'light',
-      sessionId: 'session-selected-1',
-      userMessage: 'Can you remind me why this hospital fits my case?',
-      sessionRef: { id: 'db-session-selected-1', sessionId: 'session-selected-1', patientId: null },
-      patientId: null,
-      currentEngagementMode: 'DEEP_WORKFLOW',
-      activeHospitalContext: {
-        hospitalId: 'hospital-selected-2',
-        hospitalName: 'Seoul Aesthetic Center',
-        source: 'selected_hospital',
-      },
-      pendingOffer: { exists: false, type: null },
-      pendingQuestion: { exists: false, type: null },
-      lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      safetyFlags: {
-        riskLevel: 'LOW',
-        hasHighRiskSignal: false,
-        requiresSafetyHandling: false,
-      },
-      ...(input.depth === 'full'
-        ? {
-            statusSnapshot: {
-              conditionStatus: 'known',
-              formStatus: 'completed',
-              docUploadStatus: 'uploaded',
-              recommendationStatus: 'preliminary_shown',
-              selectedHospitalId: 'hospital-selected-2',
-              consultationStatus: 'ready',
-              packageStatus: 'shown',
-              handoffStatus: 'not_needed',
-              leadMaturity: 'qualified',
-              riskLevel: 'low',
-              trustOrObjection: 'none',
-              engagementMode: 'DEEP_WORKFLOW',
-              prequalificationReasonCodes: [],
-              enteredDeepWorkflowAt: null,
-              pendingOffer: null,
-              pendingQuestion: null,
-              lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-              lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-              conversationSummary: 'User already selected a hospital and is now asking follow-up questions about that choice.',
-              lastPolicyDecisionAt: null,
-              lastUserMessageAt: null,
-              lastAssistantMessageAt: null,
-            },
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }
-        : {
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }),
-    }));
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-selected-1',
-      userMessage: 'Can you remind me why this hospital fits my case?',
-      extraction: {},
-      candidateHospitals: [
-        { hospitalId: 'hospital-other-1', reasonCodes: ['fit'] },
-        { hospitalId: 'hospital-other-2', reasonCodes: ['fit'] },
-      ],
-    });
-
-    expect(result.selected_hospital_id).toBeUndefined();
-    expect(result.next_action).not.toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
-    expect(result.shortlist).toEqual([]);
-  });
-
-  it('keeps explicit document questions in qualified exploration on an explanation path', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => {
-      if (input.depth === 'light') {
-        return {
-          contextDepth: 'light',
-          sessionId: 'session-5',
-          userMessage: 'What documents do you need before recommending hospitals?',
-          sessionRef: { id: 'db-session-5', sessionId: 'session-5', patientId: null },
-          patientId: null,
-          currentEngagementMode: 'QUALIFIED_EXPLORATION',
-          pendingOffer: { exists: false, type: null },
-          pendingQuestion: { exists: false, type: null },
-          lastAssistantAction: 'CONSULT_CONVERSION',
-          safetyFlags: {
-            riskLevel: 'LOW',
-            hasHighRiskSignal: false,
-            requiresSafetyHandling: false,
-          },
-        };
-      }
-
-      return {
-        contextDepth: 'full',
-        sessionId: 'session-5',
-        userMessage: 'What documents do you need before recommending hospitals?',
-        sessionRef: { id: 'db-session-5', sessionId: 'session-5', patientId: null },
-        patientId: null,
-        currentEngagementMode: 'QUALIFIED_EXPLORATION',
-        pendingOffer: { exists: false, type: null },
-        pendingQuestion: { exists: false, type: null },
-        lastAssistantAction: 'CONSULT_CONVERSION',
-        safetyFlags: {
-          riskLevel: 'LOW',
-          hasHighRiskSignal: false,
-          requiresSafetyHandling: false,
-        },
-        statusSnapshot: {
-          conditionStatus: 'unknown',
-          formStatus: 'not_started',
-          docUploadStatus: 'none',
-          recommendationStatus: 'not_started',
-          consultationStatus: 'not_introduced',
-          packageStatus: 'shown',
-          handoffStatus: 'not_needed',
-          leadMaturity: 'qualified',
-          riskLevel: 'low',
-          trustOrObjection: 'needs_trust',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'CONSULT_CONVERSION',
-          lastResolvedIntent: 'GENERAL_CONSULT',
-          conversationSummary: 'User is asking what materials are needed before the next step.',
-          lastPolicyDecisionAt: null,
-          lastUserMessageAt: null,
-          lastAssistantMessageAt: null,
-        },
-        profile: null,
-        recentMessages: [],
-        recentTimeline: [],
-        activeFollowups: [],
-        recentHandoffs: [],
-      };
-    });
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-5',
-      userMessage: 'What documents do you need before recommending hospitals?',
-      extraction: {},
-    });
-
-    expect(result.engagement_mode).toBe('QUALIFIED_EXPLORATION');
-    expect(result.next_action).toBe('EXPLAIN_DOC_UPLOAD');
-    expect(result.allowed_tools).toEqual(['search_faq']);
-    expect(result.shortlist).toEqual([]);
-  });
-
-  it('keeps package tool permissions aligned to the current backend surface', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => ({
-      contextDepth: input.depth === 'full' ? 'full' : 'light',
-      sessionId: 'session-5b',
-      userMessage: 'Can you show me package options?',
-      sessionRef: { id: 'db-session-5b', sessionId: 'session-5b', patientId: null },
-      patientId: null,
-      currentEngagementMode: 'DEEP_WORKFLOW',
-      pendingOffer: { exists: false, type: null },
-      pendingQuestion: { exists: false, type: null },
-      lastAssistantAction: 'CONSULT_CONVERSION',
-      safetyFlags: {
-        riskLevel: 'LOW',
-        hasHighRiskSignal: false,
-        requiresSafetyHandling: false,
-      },
-      ...(input.depth === 'full'
-        ? {
-            statusSnapshot: {
-              conditionStatus: 'known',
-              formStatus: 'completed',
-              docUploadStatus: 'uploaded',
-              recommendationStatus: 'not_started',
-              consultationStatus: 'ready',
-              packageStatus: 'not_introduced',
-              handoffStatus: 'not_needed',
-              leadMaturity: 'qualified',
-              riskLevel: 'low',
-              trustOrObjection: 'none',
-              pendingOffer: null,
-              pendingQuestion: null,
-              lastNextAction: 'CONSULT_CONVERSION',
-              lastResolvedIntent: 'PACKAGE_INTEREST',
-              conversationSummary: 'User wants package options.',
-              lastPolicyDecisionAt: null,
-              lastUserMessageAt: null,
-              lastAssistantMessageAt: null,
-            },
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }
-        : {
-            profile: null,
-            recentMessages: [],
-            recentTimeline: [],
-            activeFollowups: [],
-            recentHandoffs: [],
-          }),
-    }));
-
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-5b',
-      userMessage: 'Can you show me package options?',
+      userMessage: 'What documents do you need?',
       extraction: {
-        topicHint: 'PACKAGE',
+        resolvedIntent: 'REQUEST_DOC_UPLOAD',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+        recommendationSignal: 'NONE',
+        mentionsCondition: true,
       },
     });
 
-    expect(result.next_action).toBe('SHOW_PACKAGE');
-    expect(result.allowed_tools).toEqual(['list_packages']);
+    expect(result.engagement_mode).toBe('LIGHT_DISCOVERY');
+    expect(result.next_action).toBe('ANSWER_FAQ');
+    expect(result.resolved_intent).toBe('UNKNOWN');
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      engagementMode: 'LIGHT_DISCOVERY',
+      resolvedIntent: 'UNKNOWN',
+    }));
+    expect(harness.contextBuilder.build).toHaveBeenCalledTimes(1);
   });
 
-  it('blocks shortlist progression in deep workflow when documents are still missing or only requested', async () => {
-    const build = vi.fn(async (input: { depth?: string }) => {
-      if (input.depth === 'light') {
-        return {
-          contextDepth: 'light',
-          sessionId: 'session-6',
-          userMessage: 'Can you recommend hospitals for me now?',
-          sessionRef: { id: 'db-session-6', sessionId: 'session-6', patientId: null },
-          patientId: null,
-          currentEngagementMode: 'DEEP_WORKFLOW',
-          pendingOffer: { exists: false, type: null },
-          pendingQuestion: { exists: false, type: null },
-          lastAssistantAction: 'REQUEST_DOC_UPLOAD',
-          safetyFlags: {
-            riskLevel: 'LOW',
-            hasHighRiskSignal: false,
-            requiresSafetyHandling: false,
-          },
-          profile: null,
-          recentMessages: [],
-          recentTimeline: [],
-          activeFollowups: [],
-          recentHandoffs: [],
-        };
-      }
-
-      return {
-        contextDepth: 'full',
-        sessionId: 'session-6',
-        userMessage: 'Can you recommend hospitals for me now?',
-        sessionRef: { id: 'db-session-6', sessionId: 'session-6', patientId: null },
-        patientId: null,
-        currentEngagementMode: 'DEEP_WORKFLOW',
-        pendingOffer: { exists: false, type: null },
-        pendingQuestion: { exists: false, type: null },
-        lastAssistantAction: 'REQUEST_DOC_UPLOAD',
-        safetyFlags: {
-          riskLevel: 'LOW',
-          hasHighRiskSignal: false,
-          requiresSafetyHandling: false,
-        },
-        statusSnapshot: {
-          conditionStatus: 'known',
-          formStatus: 'completed',
-          docUploadStatus: 'REQUESTED',
-          recommendationStatus: 'not_started',
-          consultationStatus: 'ready',
-          packageStatus: 'shown',
-          handoffStatus: 'not_needed',
-          leadMaturity: 'qualified',
-          riskLevel: 'low',
-          trustOrObjection: 'none',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'REQUEST_DOC_UPLOAD',
-          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-          conversationSummary: 'User still owes documents before recommendation can proceed.',
-          lastPolicyDecisionAt: null,
-          lastUserMessageAt: null,
-          lastAssistantMessageAt: null,
-        },
-        profile: null,
-        recentMessages: [],
-        recentTimeline: [],
-        activeFollowups: [],
-        recentHandoffs: [],
-      };
+  it('does not let old weak fields alone drive semantic meaning in the main path', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
     });
 
-    const useCase = new DecideAiPolicyUseCase(
-      { build } as unknown as ContextBuilderService,
-      new SignalResolverService(),
-      new EngagementModeResolverService(),
-      new IntentResolverService(),
-      new RiskResolverService(),
-      new ActionPlannerService(),
-      new RecommendationPolicyService(),
-    );
-
-    const result = await useCase.execute({
-      sessionId: 'session-6',
-      userMessage: 'Can you recommend hospitals for me now?',
-      extraction: {},
-      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+    const result = await harness.useCase.execute({
+      sessionId: 'session-4',
+      userMessage: 'Please recommend a hospital for me.',
+      extraction: {
+        possibleIntent: 'ASK_FOR_RECOMMENDATION',
+        possibleRisk: 'LOW',
+        affirmative: true,
+        negative: false,
+      },
     });
 
-    expect(result.engagement_mode).toBe('DEEP_WORKFLOW');
-    expect(result.next_action).toBe('REQUEST_DOC_UPLOAD');
-    expect(result.shortlist).toEqual([]);
+    expect(result.engagement_mode).toBe('LIGHT_DISCOVERY');
+    expect(result.next_action).toBe('ANSWER_FAQ');
+    expect(result.resolved_intent).toBe('UNKNOWN');
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      engagementMode: 'LIGHT_DISCOVERY',
+      resolvedIntent: 'UNKNOWN',
+    }));
+    expect(harness.contextBuilder.build).toHaveBeenCalledTimes(1);
+  });
+
+  it('no longer depends on legacy intent and engagement resolver output for primary semantics', async () => {
+    const harness = createHarness({
+      engagementResolution: {
+        engagementMode: 'DEEP_WORKFLOW',
+        reasonCodes: ['legacy_engagement'],
+      },
+      intentResolution: {
+        resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
+        reasonCodes: ['legacy_intent'],
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-5',
+      userMessage: 'hello',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'GENERAL_INFO',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+        progressionSignal: 'NONE',
+        recommendationSignal: 'NONE',
+      }),
+    });
+
+    expect(result.engagement_mode).toBe('QUALIFIED_EXPLORATION');
+    expect(result.next_action).toBe('ANSWER_FAQ');
+    expect(result.resolved_intent).toBe('GENERAL_CONSULT');
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      resolvedIntent: 'GENERAL_CONSULT',
+    }));
+    expect(harness.engagementModeResolver.resolve).not.toHaveBeenCalled();
+    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 });
+
+type HarnessOptions = {
+  failOnLegacyResolverCall?: boolean;
+  engagementResolution?: {
+    engagementMode: 'LIGHT_DISCOVERY' | 'QUALIFIED_EXPLORATION' | 'DEEP_WORKFLOW';
+    reasonCodes: string[];
+  };
+  intentResolution?: {
+    resolvedIntent: string;
+    reasonCodes: string[];
+  };
+  recommendationResult?: {
+    eligible: boolean;
+    shortlist: Array<{ hospitalId: string; reasonCodes: string[] }>;
+    reasonCodes: string[];
+  };
+};
+
+function createHarness(options: HarnessOptions = {}) {
+  const lightContext = buildLightContext();
+  const fullContext = buildFullContext();
+
+  const contextBuilder = {
+    build: vi.fn(async (input: { depth?: string }) => (
+      input.depth === 'full' ? fullContext : lightContext
+    )),
+  } as unknown as ContextBuilderService & {
+    build: ReturnType<typeof vi.fn>;
+  };
+
+  const signalResolver = new SignalResolverService();
+
+  const engagementModeResolver = {
+    resolve: options.failOnLegacyResolverCall
+      ? vi.fn(() => {
+          throw new Error('legacy engagement resolver should not be called');
+        })
+      : vi.fn(() => options.engagementResolution ?? {
+          engagementMode: 'DEEP_WORKFLOW',
+          reasonCodes: ['legacy_engagement'],
+        }),
+  } as unknown as EngagementModeResolverService & {
+    resolve: ReturnType<typeof vi.fn>;
+  };
+
+  const intentResolver = {
+    resolve: options.failOnLegacyResolverCall
+      ? vi.fn(async () => {
+          throw new Error('legacy intent resolver should not be called');
+        })
+      : vi.fn(async () => options.intentResolution ?? {
+          resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
+          reasonCodes: ['legacy_intent'],
+        }),
+  } as unknown as IntentResolverService & {
+    resolve: ReturnType<typeof vi.fn>;
+  };
+
+  const riskResolver = {
+    resolve: vi.fn(async () => ({
+      riskLevel: 'LOW',
+      overrideAction: null,
+      reasonCodes: ['risk_low'],
+    })),
+  } as unknown as RiskResolverService & {
+    resolve: ReturnType<typeof vi.fn>;
+  };
+
+  const actionPlanner = {
+    plan: vi.fn(() => ({
+      nextAction: 'ANSWER_FAQ',
+      secondaryAction: null,
+      reasonCodes: ['planned'],
+    })),
+  } as unknown as ActionPlannerService & {
+    plan: ReturnType<typeof vi.fn>;
+  };
+
+  const recommendationPolicy = {
+    decide: vi.fn(async () => options.recommendationResult ?? {
+      eligible: false,
+      shortlist: [],
+      reasonCodes: ['recommendation_deferred'],
+    }),
+  } as unknown as RecommendationPolicyService & {
+    decide: ReturnType<typeof vi.fn>;
+  };
+
+  return {
+    useCase: new DecideAiPolicyUseCase(
+      contextBuilder,
+      signalResolver,
+      engagementModeResolver,
+      intentResolver,
+      riskResolver,
+      actionPlanner,
+      recommendationPolicy,
+    ),
+    contextBuilder,
+    engagementModeResolver,
+    intentResolver,
+    riskResolver,
+    actionPlanner,
+    recommendationPolicy,
+  };
+}
+
+function buildCanonicalExtraction(overrides: Record<string, unknown> = {}) {
+  return {
+    resolvedIntent: 'GENERAL_INFO',
+    engagementSignal: 'LIGHT_DISCOVERY',
+    progressionSignal: 'NONE',
+    recommendationSignal: 'NONE',
+    mentionsCondition: false,
+    mentionsDoctorOrHospitalNeed: false,
+    ...overrides,
+  };
+}
+
+function buildLightContext() {
+  return {
+    contextDepth: 'light',
+    sessionId: 'session-1',
+    userMessage: 'hello',
+    sessionRef: { id: 'db-session-1', sessionId: 'session-1', patientId: null },
+    patientId: null,
+    currentEngagementMode: 'LIGHT_DISCOVERY',
+    hospitalType: 'REGULAR',
+    activeHospitalContext: null,
+    pendingOffer: { exists: false, type: null },
+    pendingQuestion: { exists: false, type: null },
+    lastAssistantAction: null,
+    safetyFlags: {
+      riskLevel: 'LOW',
+      hasHighRiskSignal: false,
+      requiresSafetyHandling: false,
+    },
+    profile: null,
+    recentMessages: [],
+    recentTimeline: [],
+    activeFollowups: [],
+    recentHandoffs: [],
+  };
+}
+
+function buildFullContext() {
+  return {
+    contextDepth: 'full',
+    sessionId: 'session-1',
+    userMessage: 'hello',
+    sessionRef: { id: 'db-session-1', sessionId: 'session-1', patientId: null },
+    patientId: null,
+    currentEngagementMode: 'DEEP_WORKFLOW',
+    hospitalType: 'REGULAR',
+    activeHospitalContext: null,
+    pendingOffer: { exists: false, type: null },
+    pendingQuestion: { exists: false, type: null },
+    lastAssistantAction: 'CONSULT_CONVERSION',
+    safetyFlags: {
+      riskLevel: 'LOW',
+      hasHighRiskSignal: false,
+      requiresSafetyHandling: false,
+    },
+    statusSnapshot: {
+      conditionStatus: 'known',
+      formStatus: 'completed',
+      docUploadStatus: 'uploaded',
+      recommendationStatus: 'preliminary_shown',
+      consultationStatus: 'ready',
+      packageStatus: 'shown',
+      handoffStatus: 'not_needed',
+      leadMaturity: 'qualified',
+      riskLevel: 'low',
+      trustOrObjection: 'none',
+      pendingOffer: null,
+      pendingQuestion: null,
+      lastNextAction: 'CONSULT_CONVERSION',
+      lastResolvedIntent: 'GENERAL_CONSULT',
+      conversationSummary: 'Existing qualified context.',
+      lastPolicyDecisionAt: null,
+      lastUserMessageAt: null,
+      lastAssistantMessageAt: null,
+    },
+    profile: null,
+    recentMessages: [],
+    recentTimeline: [],
+    activeFollowups: [],
+    recentHandoffs: [],
+  };
+}

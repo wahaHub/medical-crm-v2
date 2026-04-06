@@ -1,10 +1,7 @@
 import { ActionPlannerService } from '../../services/policy-engine/action-planner.service.js';
 import { ContextBuilderService } from '../../services/policy-engine/context-builder.service.js';
-import { EngagementModeResolverService } from '../../services/policy-engine/engagement-mode-resolver.service.js';
-import { IntentResolverService } from '../../services/policy-engine/intent-resolver.service.js';
 import { RecommendationPolicyService } from '../../services/policy-engine/recommendation-policy.service.js';
 import { RiskResolverService } from '../../services/policy-engine/risk-resolver.service.js';
-import { SignalResolverService } from '../../services/policy-engine/signal-resolver.service.js';
 import { isMissingDocumentStatus } from '../../services/policy-engine/status-normalization.js';
 import {
   AI_POLICY_ENGAGEMENT_SIGNALS,
@@ -58,9 +55,6 @@ export interface DecideAiPolicyInput {
 export class DecideAiPolicyUseCase {
   constructor(
     private readonly contextBuilder: ContextBuilderService,
-    _signalResolver: SignalResolverService,
-    _engagementModeResolver: EngagementModeResolverService,
-    _intentResolver: IntentResolverService,
     private readonly riskResolver: RiskResolverService,
     private readonly actionPlanner: ActionPlannerService,
     private readonly recommendationPolicy: RecommendationPolicyService,

@@ -193,9 +193,6 @@ import {
   GetTranslationStatusUseCase,
   AiSyncTaskService,
   ContextBuilderService,
-  SignalResolverService,
-  EngagementModeResolverService,
-  IntentResolverService,
   RiskResolverService,
   ActionPlannerService,
   RecommendationPolicyService,
@@ -756,9 +753,6 @@ export function getServices(): AppServices {
       aiFollowupTriggerRepo,
       aiHandoffRepo,
     );
-    const signalResolverService = new SignalResolverService();
-    const engagementModeResolverService = new EngagementModeResolverService();
-    const intentResolverService = new IntentResolverService();
     const riskResolverService = new RiskResolverService();
     const actionPlannerService = new ActionPlannerService();
     const recommendationPolicyService = new RecommendationPolicyService();
@@ -984,9 +978,6 @@ export function getServices(): AppServices {
       getAiPolicyContext: new GetAiPolicyContextUseCase(contextBuilderService),
       decideAiPolicy: new DecideAiPolicyUseCase(
         contextBuilderService,
-        signalResolverService,
-        engagementModeResolverService,
-        intentResolverService,
         riskResolverService,
         actionPlannerService,
         recommendationPolicyService,

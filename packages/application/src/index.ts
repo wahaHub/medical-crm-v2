@@ -12,9 +12,6 @@ export {
   renderPackageSyncDocument,
 } from './services/ai-sync-task.service.js';
 export { ContextBuilderService } from './services/policy-engine/context-builder.service.js';
-export { SignalResolverService } from './services/policy-engine/signal-resolver.service.js';
-export { EngagementModeResolverService } from './services/policy-engine/engagement-mode-resolver.service.js';
-export { IntentResolverService } from './services/policy-engine/intent-resolver.service.js';
 export { RiskResolverService } from './services/policy-engine/risk-resolver.service.js';
 export { ActionPlannerService } from './services/policy-engine/action-planner.service.js';
 export { RecommendationPolicyService } from './services/policy-engine/recommendation-policy.service.js';

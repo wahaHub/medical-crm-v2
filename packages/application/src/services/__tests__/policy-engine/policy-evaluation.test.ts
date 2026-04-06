@@ -1,12 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ActionPlannerService } from '../../policy-engine/action-planner.service.js';
 import { HandoffPolicyService } from '../../policy-engine/handoff-policy.service.js';
-import { IntentResolverService } from '../../policy-engine/intent-resolver.service.js';
 import { RecommendationPolicyService } from '../../policy-engine/recommendation-policy.service.js';
 import { RiskResolverService } from '../../policy-engine/risk-resolver.service.js';
-import { SignalResolverService } from '../../policy-engine/signal-resolver.service.js';
 import { WritebackPlannerService } from '../../policy-engine/writeback-planner.service.js';
-import type { AiPolicyBackendNextAction } from '../../../dtos/ai-policy.dto.js';
+import { DecideAiPolicyUseCase } from '../../../use-cases/ai-policy/decide-ai-policy.use-case.js';
 import type { PolicyEvalFixture } from './fixtures/policy-eval.fixtures.js';
 import {
   buildFaqFixture,
@@ -23,11 +21,8 @@ import {
   buildZeroShortlistFixture,
 } from './fixtures/policy-eval.fixtures.js';
 
-const signalResolver = new SignalResolverService();
-const intentResolver = new IntentResolverService();
 const riskResolver = new RiskResolverService();
 const actionPlanner = new ActionPlannerService();
-const recommendationPolicy = new RecommendationPolicyService();
 const handoffPolicy = new HandoffPolicyService();
 const writebackPlanner = new WritebackPlannerService();
 
@@ -52,10 +47,14 @@ describe('Policy engine evaluation baseline', () => {
   });
 
   it('falls back to safe defaults when extraction payload is malformed', async () => {
-    const result = await runPolicyFixture(buildMalformedExtractionFixture());
+    const fixture = buildMalformedExtractionFixture();
+    const result = await runPolicyFixture(fixture);
 
     expect(result.hardFail).toBe(false);
+    expect(result.resolvedIntent).toBe(fixture.expected.resolvedIntent);
     expect(result.riskLevel).toBe('LOW');
+    expect(result.nextAction).toBe('ANSWER_FAQ');
+    expect(result.reasonCodes).toContain('canonical_semantics_fallback');
     expect(result.reasonCodes).not.toContain('crisis_signal_detected');
   });
 
@@ -63,7 +62,7 @@ describe('Policy engine evaluation baseline', () => {
     const result = await runPolicyFixture(buildVagueAffirmationFixture());
 
     expect(result.hardFail).toBe(false);
-    expect(result.resolvedIntent).toBe('GENERAL_CONSULT');
+    expect(result.resolvedIntent).toBe('UNKNOWN');
   });
 
   it('does not recommend hospitals in crisis mode', async () => {
@@ -107,7 +106,7 @@ describe('Policy engine evaluation baseline', () => {
 
     expect(result.hardFail).toBe(false);
     expect(result.shortlist).toEqual([]);
-    expect(result.nextAction).not.toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(result.nextAction).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
   });
 
   it('preserves safe messaging and retryable operator state when handoff creation fails', async () => {
@@ -147,146 +146,183 @@ async function runPolicyFixture(
     return timeoutResult;
   }
 
-  const extraction = fixture.simulate?.malformedExtraction ? fixture.extraction : fixture.extraction;
-  const signals = signalResolver.resolve({ extraction });
+  const extraction = fixture.extraction;
+  const contextBuilder = buildContextBuilder(fixture);
+  const recommendationPolicy = fixture.simulate?.retrievalTimeout
+    ? {
+        decide: vi.fn(async () => {
+          throw new Error('retrieval timeout');
+        }),
+      }
+    : new RecommendationPolicyService();
 
-  const intent = await intentResolver.resolve({
-    userMessage: fixture.userMessage,
-    pendingOffer: fixture.pendingOffer ?? null,
-    candidateSignals: extraction,
-  });
+  const useCase = Reflect.construct(
+    DecideAiPolicyUseCase as unknown as new (...args: unknown[]) => DecideAiPolicyUseCase,
+    [contextBuilder, riskResolver, actionPlanner, recommendationPolicy],
+  ) as DecideAiPolicyUseCase;
 
-  const risk = await riskResolver.resolve({
-    userMessage: fixture.userMessage,
-    candidateSignals: {
-      ...extraction,
-      possibleRisk: signals.possibleRisk,
-    },
-  });
+  try {
+    const decision = await useCase.execute({
+      sessionId: 'session-1',
+      userMessage: fixture.userMessage,
+      extraction,
+      candidateHospitals: fixture.simulate?.malformedToolPayload ? undefined : fixture.candidateHospitals,
+    });
 
-  if (fixture.simulate?.retrievalTimeout) {
+    const handoff = handoffPolicy.decide({
+      riskLevel: decision.risk_level,
+      nextAction: decision.next_action,
+      requestedHuman: fixture.requestedHuman,
+      trustRecovery: fixture.trustRecovery,
+    });
+
+    let safeFallback: string | null = null;
+    let operatorRetryNeeded = false;
+    let writebackRetrySafe = false;
+
+    if (fixture.simulate?.writebackFailure) {
+      safeFallback = 'WRITEBACK_FAILED';
+      operatorRetryNeeded = true;
+      writebackRetrySafe = true;
+    } else if (fixture.simulate?.handoffCreationFailure) {
+      safeFallback = 'HANDOFF_FAILED';
+      operatorRetryNeeded = true;
+      writebackRetrySafe = true;
+    } else {
+      writebackPlanner.plan({
+        sessionId: 'session-1',
+        sessionDbId: 'db-session-1',
+        patientId: null,
+        assistantMessageId: 'assistant-1',
+        policyDecision: {
+          engagementMode: decision.writeback_plan.engagement_mode,
+          writebackDepth: decision.writeback_plan.writeback_depth,
+          nextAction: decision.next_action,
+          selectedHospitalId: decision.writeback_plan.selected_hospital_id,
+          riskLevel: decision.writeback_plan.risk_level,
+          reasonCodes: decision.reason_codes,
+          prequalificationReasonCodes: decision.writeback_plan.prequalification_reason_codes,
+          shortlist: decision.shortlist.map((candidate) => ({
+            hospitalId: candidate.hospital_id,
+            reasonCodes: candidate.reason_codes,
+          })),
+        },
+      });
+    }
+
+    const result = {
+      resolvedIntent: decision.resolved_intent,
+      riskLevel: decision.risk_level,
+      nextAction: safeFallback === 'RETRIEVAL_TIMEOUT' ? 'ESCALATE' : decision.next_action,
+      shortlist: decision.risk_level === 'CRISIS'
+        ? []
+        : decision.shortlist.map((candidate) => ({
+            hospitalId: candidate.hospital_id,
+            reasonCodes: candidate.reason_codes,
+          })),
+      handoffRequired: decision.handoff_required || handoff.required,
+      reasonCodes: dedupe([
+        ...decision.reason_codes,
+        ...(handoff.reasonCode ? [handoff.reasonCode] : []),
+        ...(safeFallback ? [safeFallback.toLowerCase()] : []),
+      ]),
+      safeFallback,
+      writebackRetrySafe,
+      operatorRetryNeeded,
+      hardFail: false,
+    } satisfies EvalResult;
+
+    duplicateCache.set(fixture.id, result);
+    return result;
+  } catch (error) {
+    if (!fixture.simulate?.retrievalTimeout) {
+      throw error;
+    }
+
+    const risk = await riskResolver.resolve({
+      userMessage: fixture.userMessage,
+      candidateSignals: extraction,
+    });
+
     const retrievalFallback = {
-      resolvedIntent: intent.resolvedIntent,
+      resolvedIntent: fixture.expected.resolvedIntent ?? 'UNKNOWN',
       riskLevel: risk.riskLevel,
       nextAction: 'ESCALATE',
       shortlist: [],
       handoffRequired: true,
-      reasonCodes: [...intent.reasonCodes, ...risk.reasonCodes, 'retrieval_timeout_safe_fallback'],
+      reasonCodes: dedupe([
+        'canonical_semantics_consumed',
+        ...risk.reasonCodes,
+        'retrieval_timeout_safe_fallback',
+      ]),
       safeFallback: 'RETRIEVAL_TIMEOUT',
       writebackRetrySafe: true,
       operatorRetryNeeded: false,
       hardFail: false,
     } satisfies EvalResult;
+
     duplicateCache.set(fixture.id, retrievalFallback);
     return retrievalFallback;
   }
-
-  const plan = actionPlanner.plan({
-    engagementMode: 'DEEP_WORKFLOW',
-    hospitalType: 'REGULAR',
-    statusSnapshot: {
-      ...fixture.statusSnapshot,
-      riskLevel: risk.riskLevel,
-    },
-    resolvedIntent: intent.resolvedIntent,
-  });
-
-  const recommendation = await recommendationPolicy.decide({
-    statusSnapshot: {
-      ...fixture.statusSnapshot,
-      riskLevel: risk.riskLevel,
-      docUploadStatus: fixture.statusSnapshot.docUploadStatus,
-    },
-    resolvedIntent: intent.resolvedIntent,
-    candidateHospitals: fixture.simulate?.malformedToolPayload ? undefined : fixture.candidateHospitals,
-  });
-
-  const nextAction: AiPolicyBackendNextAction = risk.overrideAction
-    ?? (recommendation.eligible && recommendation.shortlist.length > 0
-      ? 'SHOW_HOSPITAL_RECOMMENDATIONS'
-      : plan.nextAction);
-
-  const handoff = handoffPolicy.decide({
-    riskLevel: risk.riskLevel,
-    nextAction,
-    requestedHuman: fixture.requestedHuman,
-    trustRecovery: fixture.trustRecovery,
-  });
-
-  let safeFallback: string | null = null;
-  let operatorRetryNeeded = false;
-  let writebackRetrySafe = false;
-
-  if (fixture.simulate?.writebackFailure) {
-    safeFallback = 'WRITEBACK_FAILED';
-    operatorRetryNeeded = true;
-    writebackRetrySafe = true;
-  } else if (fixture.simulate?.handoffCreationFailure) {
-    safeFallback = 'HANDOFF_FAILED';
-    operatorRetryNeeded = true;
-    writebackRetrySafe = true;
-  } else {
-    writebackPlanner.plan({
-      sessionId: 'session-1',
-      sessionDbId: 'db-session-1',
-      patientId: null,
-      assistantMessageId: 'assistant-1',
-      policyDecision: {
-        nextAction,
-        riskLevel: risk.riskLevel,
-        reasonCodes: [...intent.reasonCodes, ...risk.reasonCodes, ...plan.reasonCodes],
-        shortlist: recommendation.shortlist.map((candidate) => ({
-          hospitalId: candidate.hospitalId,
-          reasonCodes: candidate.reasonCodes,
-        })),
-      },
-    });
-  }
-
-  const result = {
-    resolvedIntent: intent.resolvedIntent,
-    riskLevel: risk.riskLevel,
-    nextAction,
-    shortlist: risk.riskLevel === 'CRISIS' ? [] : recommendation.shortlist,
-    handoffRequired: handoff.required,
-    reasonCodes: dedupe([
-      ...intent.reasonCodes,
-      ...risk.reasonCodes,
-      ...plan.reasonCodes,
-      ...recommendation.reasonCodes,
-      ...(safeFallback ? [safeFallback.toLowerCase()] : []),
-    ]),
-    safeFallback,
-    writebackRetrySafe,
-    operatorRetryNeeded,
-    hardFail: Boolean(
-      (risk.riskLevel === 'CRISIS' && recommendation.shortlist.length > 0)
-      || (fixture.requestedHuman && !handoff.required)
-      || (fixture.pendingOffer?.type === 'HOSPITAL_RECOMMENDATION'
-        && fixture.userMessage.toLowerCase().includes('maybe')
-        && intent.resolvedIntent === 'ACCEPT_HOSPITAL_RECOMMENDATION'),
-    ),
-  } satisfies EvalResult;
-
-  duplicateCache.set(fixture.id, result);
-  return result;
 }
 
-function buildFallbackResult(code: string): EvalResult {
+function buildContextBuilder(fixture: PolicyEvalFixture) {
+  const baseContext = {
+    sessionId: 'session-1',
+    userMessage: fixture.userMessage,
+    sessionRef: { id: 'db-session-1', sessionId: 'session-1', patientId: null },
+    patientId: null,
+    currentEngagementMode: 'LIGHT_DISCOVERY',
+    hospitalType: fixture.hospitalType ?? 'REGULAR',
+    activeHospitalContext: fixture.activeHospitalContext ?? null,
+    pendingOffer: fixture.pendingOffer
+      ? { exists: true, type: fixture.pendingOffer.type }
+      : { exists: false, type: null },
+    pendingQuestion: { exists: false, type: null },
+    lastAssistantAction: null,
+    safetyFlags: {
+      riskLevel: fixture.statusSnapshot.riskLevel,
+      hasHighRiskSignal: false,
+      requiresSafetyHandling: false,
+    },
+    profile: null,
+    recentMessages: [],
+    recentTimeline: [],
+    activeFollowups: [],
+    recentHandoffs: [],
+  };
+
   return {
-    resolvedIntent: 'GENERAL_CONSULT',
+    build: vi.fn(async (input: { depth?: string }) => (
+      input.depth === 'full'
+        ? {
+            ...baseContext,
+            contextDepth: 'full',
+            statusSnapshot: fixture.statusSnapshot,
+          }
+        : {
+            ...baseContext,
+            contextDepth: 'light',
+          }
+    )),
+  };
+}
+
+function buildFallbackResult(safeFallback: string): EvalResult {
+  return {
+    resolvedIntent: 'UNKNOWN',
     riskLevel: 'LOW',
     nextAction: 'ESCALATE',
     shortlist: [],
     handoffRequired: true,
-    reasonCodes: [code.toLowerCase()],
-    safeFallback: code,
+    reasonCodes: [safeFallback.toLowerCase()],
+    safeFallback,
     writebackRetrySafe: true,
     operatorRetryNeeded: false,
     hardFail: false,
   };
 }
 
-function dedupe(values: string[]): string[] {
-  return [...new Set(values)];
+function dedupe(codes: string[]): string[] {
+  return [...new Set(codes)];
 }

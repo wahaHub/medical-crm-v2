@@ -1,17 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DecideAiPolicyUseCase } from './decide-ai-policy.use-case.js';
 import { ContextBuilderService } from '../../services/policy-engine/context-builder.service.js';
-import { SignalResolverService } from '../../services/policy-engine/signal-resolver.service.js';
-import { IntentResolverService } from '../../services/policy-engine/intent-resolver.service.js';
 import { RiskResolverService } from '../../services/policy-engine/risk-resolver.service.js';
 import { ActionPlannerService } from '../../services/policy-engine/action-planner.service.js';
 import { RecommendationPolicyService } from '../../services/policy-engine/recommendation-policy.service.js';
-import { EngagementModeResolverService } from '../../services/policy-engine/engagement-mode-resolver.service.js';
 
 describe('DecideAiPolicyUseCase canonical semantics', () => {
   it('consumes valid canonical extraction output directly for primary semantics', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       recommendationResult: {
         eligible: true,
         shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
@@ -51,17 +47,13 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
       resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     }));
-    expect(harness.engagementModeResolver.resolve).not.toHaveBeenCalled();
-    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
     expect(harness.contextBuilder.build).toHaveBeenCalledTimes(2);
     expect(harness.contextBuilder.build.mock.calls[0]?.[0]?.depth).toBe('light');
     expect(harness.contextBuilder.build.mock.calls[1]?.[0]?.depth).toBe('full');
   });
 
   it('applies the deterministic fallback when canonical enum values are invalid', async () => {
-    const harness = createHarness({
-      failOnLegacyResolverCall: true,
-    });
+    const harness = createHarness();
 
     const result = await harness.useCase.execute({
       sessionId: 'session-2',
@@ -89,9 +81,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
   });
 
   it('applies the deterministic fallback when canonical fields are missing', async () => {
-    const harness = createHarness({
-      failOnLegacyResolverCall: true,
-    });
+    const harness = createHarness();
 
     const result = await harness.useCase.execute({
       sessionId: 'session-3',
@@ -116,9 +106,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
   });
 
   it('does not let old weak fields alone drive semantic meaning in the main path', async () => {
-    const harness = createHarness({
-      failOnLegacyResolverCall: true,
-    });
+    const harness = createHarness();
 
     const result = await harness.useCase.execute({
       sessionId: 'session-4',
@@ -142,16 +130,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
   });
 
   it('no longer depends on legacy intent and engagement resolver output for primary semantics', async () => {
-    const harness = createHarness({
-      engagementResolution: {
-        engagementMode: 'DEEP_WORKFLOW',
-        reasonCodes: ['legacy_engagement'],
-      },
-      intentResolution: {
-        resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
-        reasonCodes: ['legacy_intent'],
-      },
-    });
+    const harness = createHarness();
 
     const result = await harness.useCase.execute({
       sessionId: 'session-5',
@@ -172,13 +151,10 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       progressionSignal: 'NONE',
       resolvedIntent: 'GENERAL_INFO',
     }));
-    expect(harness.engagementModeResolver.resolve).not.toHaveBeenCalled();
-    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('passes canonical ACCEPT_DOC_UPLOAD through to the planner so uploaded docs can advance by workflow state', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       useRealActionPlanner: true,
       fullContextOverrides: {
         statusSnapshot: {
@@ -206,7 +182,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('passes canonical progression readiness to the planner for consult-process requests', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       useRealActionPlanner: true,
       fullContextOverrides: {
         statusSnapshot: {
@@ -234,7 +209,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('keeps canonical hospital recommendation requests on an intent-first path even in light discovery', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       useRealActionPlanner: true,
       fullContextOverrides: {
         statusSnapshot: {
@@ -262,7 +236,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('downgrades light-discovery canonical recommendation asks to exploration when shortlist gating has no shortlist', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       useRealActionPlanner: true,
       fullContextOverrides: {
         statusSnapshot: {
@@ -291,7 +264,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('passes canonical doctor-or-hospital direction into recommendation gating on the live path', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       recommendationResult: {
         eligible: true,
         shortlist: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
@@ -318,7 +290,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('downgrades ACCEPT_DOC_UPLOAD with completed docs when shortlist gating has no shortlist', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       useRealActionPlanner: true,
       fullContextOverrides: {
         statusSnapshot: {
@@ -347,7 +318,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('marks requested-human canonical routing as handoff-required when next action is HUMAN_HANDOFF', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       useRealActionPlanner: true,
     });
 
@@ -366,7 +336,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('persists selected_hospital_id when a recommendation offer is accepted in a persistent hospital context', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       lightContextOverrides: {
         activeHospitalContext: {
           hospitalId: 'hospital-accept-1',
@@ -406,12 +375,10 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
     expect(result.selected_hospital_id).toBe('hospital-accept-1');
-    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('does not persist selected_hospital_id when acceptance only has shortlist-derived hospital focus', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       lightContextOverrides: {
         activeHospitalContext: {
           hospitalId: 'hospital-shortlist-1',
@@ -451,12 +418,10 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
     expect(result.selected_hospital_id).toBeUndefined();
-    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('bridges recommendation asks to alternative-shortlist intent when a hospital is already selected', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       recommendationResult: {
         eligible: true,
         shortlist: [{ hospitalId: 'hospital-alt-1', reasonCodes: ['fit'] }],
@@ -497,7 +462,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('keeps missing-doc recommendation requests on the doc-upload path even when a hospital is already selected', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       useRealActionPlanner: true,
       fullContextOverrides: {
         activeHospitalContext: {
@@ -535,7 +499,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('recovers ACCEPT_HOSPITAL_RECOMMENDATION for commitment-like acceptance context even when canonical intent is general info', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       lightContextOverrides: {
         activeHospitalContext: {
           hospitalId: 'hospital-accept-2',
@@ -575,12 +538,10 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
     expect(result.selected_hospital_id).toBe('hospital-accept-2');
-    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('does not misclassify a next-steps follow-up as hospital acceptance under pending recommendation context', async () => {
     const harness = createHarness({
-      failOnLegacyResolverCall: true,
       lightContextOverrides: {
         activeHospitalContext: {
           hospitalId: 'hospital-followup-1',
@@ -621,20 +582,10 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(result.resolved_intent).toBe('GENERAL_CONSULT');
     expect(result.selected_hospital_id).toBeUndefined();
     expect(result.next_action).toBe('ANSWER_FAQ');
-    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 });
 
 type HarnessOptions = {
-  failOnLegacyResolverCall?: boolean;
-  engagementResolution?: {
-    engagementMode: 'LIGHT_DISCOVERY' | 'QUALIFIED_EXPLORATION' | 'DEEP_WORKFLOW';
-    reasonCodes: string[];
-  };
-  intentResolution?: {
-    resolvedIntent: string;
-    reasonCodes: string[];
-  };
   recommendationResult?: {
     eligible: boolean;
     shortlist: Array<{ hospitalId: string; reasonCodes: string[] }>;
@@ -655,34 +606,6 @@ function createHarness(options: HarnessOptions = {}) {
     )),
   } as unknown as ContextBuilderService & {
     build: ReturnType<typeof vi.fn>;
-  };
-
-  const signalResolver = new SignalResolverService();
-
-  const engagementModeResolver = {
-    resolve: options.failOnLegacyResolverCall
-      ? vi.fn(() => {
-          throw new Error('legacy engagement resolver should not be called');
-        })
-      : vi.fn(() => options.engagementResolution ?? {
-          engagementMode: 'DEEP_WORKFLOW',
-          reasonCodes: ['legacy_engagement'],
-        }),
-  } as unknown as EngagementModeResolverService & {
-    resolve: ReturnType<typeof vi.fn>;
-  };
-
-  const intentResolver = {
-    resolve: options.failOnLegacyResolverCall
-      ? vi.fn(async () => {
-          throw new Error('legacy intent resolver should not be called');
-        })
-      : vi.fn(async () => options.intentResolution ?? {
-          resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
-          reasonCodes: ['legacy_intent'],
-        }),
-  } as unknown as IntentResolverService & {
-    resolve: ReturnType<typeof vi.fn>;
   };
 
   const riskResolver = {
@@ -720,16 +643,11 @@ function createHarness(options: HarnessOptions = {}) {
   return {
     useCase: new DecideAiPolicyUseCase(
       contextBuilder,
-      signalResolver,
-      engagementModeResolver,
-      intentResolver,
       riskResolver,
       actionPlanner,
       recommendationPolicy,
     ),
     contextBuilder,
-    engagementModeResolver,
-    intentResolver,
     riskResolver,
     actionPlanner,
     recommendationPolicy,

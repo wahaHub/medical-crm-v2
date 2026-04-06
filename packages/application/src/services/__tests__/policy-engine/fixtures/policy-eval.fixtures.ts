@@ -2,15 +2,23 @@ export interface PolicyEvalFixture {
   id: string;
   bucket: string;
   userMessage: string;
+  hospitalType?: 'REGULAR' | 'COSMETIC';
   statusSnapshot: {
     docUploadStatus: string;
     packageStatus: string;
     recommendationStatus: string;
     riskLevel: string;
+    selectedHospitalId?: string | null;
+    consultationStatus?: string;
   };
   pendingOffer?: {
     type: string;
     payload?: Record<string, unknown>;
+  } | null;
+  activeHospitalContext?: {
+    hospitalId: string;
+    hospitalName?: string;
+    source: string;
   } | null;
   extraction?: Record<string, unknown>;
   candidateHospitals?: Array<{
@@ -39,6 +47,18 @@ export interface PolicyEvalFixture {
   };
 }
 
+function buildCanonicalExtraction(overrides: Record<string, unknown> = {}) {
+  return {
+    resolvedIntent: 'GENERAL_INFO',
+    engagementSignal: 'LIGHT_DISCOVERY',
+    progressionSignal: 'NONE',
+    recommendationSignal: 'NONE',
+    mentionsCondition: false,
+    mentionsDoctorOrHospitalNeed: false,
+    ...overrides,
+  };
+}
+
 export function buildFaqFixture(): PolicyEvalFixture {
   return {
     id: 'faq-grounded',
@@ -50,13 +70,11 @@ export function buildFaqFixture(): PolicyEvalFixture {
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
     },
-    extraction: {
-      possibleIntent: 'FAQ',
-    },
+    extraction: buildCanonicalExtraction(),
     expected: {
       resolvedIntent: 'GENERAL_CONSULT',
       riskLevel: 'LOW',
-      nextAction: 'SHOW_PACKAGE',
+      nextAction: 'ANSWER_FAQ',
       handoffRequired: false,
       shortlistLength: 0,
       safeFallback: null,
@@ -79,6 +97,17 @@ export function buildPendingOfferFixture(): PolicyEvalFixture {
       type: 'HOSPITAL_RECOMMENDATION',
       payload: { shortlistId: 'rec-1' },
     },
+    hospitalType: 'COSMETIC',
+    activeHospitalContext: {
+      hospitalId: 'hospital-1',
+      hospitalName: 'Hospital 1',
+      source: 'selected_hospital',
+    },
+    extraction: buildCanonicalExtraction({
+      engagementSignal: 'QUALIFIED_EXPLORATION',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'READY_FOR_RECOMMENDATION',
+    }),
     candidateHospitals: [
       { hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] },
       { hospitalId: 'hospital-2', reasonCodes: ['language_supported'] },
@@ -105,9 +134,13 @@ export function buildRecommendationFixture(): PolicyEvalFixture {
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
     },
-    extraction: {
-      possibleIntent: 'ASK_FOR_RECOMMENDATION',
-    },
+    extraction: buildCanonicalExtraction({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'READY_FOR_RECOMMENDATION',
+      mentionsDoctorOrHospitalNeed: true,
+    }),
     candidateHospitals: [
       { hospitalId: 'hospital-1', reasonCodes: ['condition_fit', 'language_supported'] },
       { hospitalId: 'hospital-2', reasonCodes: ['destination_match'] },
@@ -134,6 +167,12 @@ export function buildRequestDocsFixture(): PolicyEvalFixture {
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
     },
+    extraction: buildCanonicalExtraction({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      mentionsCondition: true,
+    }),
     expected: {
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
       riskLevel: 'LOW',
@@ -158,10 +197,11 @@ export function buildTrustRecoveryFixture(): PolicyEvalFixture {
     },
     requestedHuman: true,
     trustRecovery: true,
+    extraction: buildCanonicalExtraction(),
     expected: {
       resolvedIntent: 'GENERAL_CONSULT',
       riskLevel: 'LOW',
-      nextAction: 'SHOW_PACKAGE',
+      nextAction: 'ANSWER_FAQ',
       handoffRequired: true,
       shortlistLength: 0,
       safeFallback: null,
@@ -180,6 +220,10 @@ export function buildSafetyFixture(): PolicyEvalFixture {
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
     },
+    extraction: buildCanonicalExtraction({
+      resolvedIntent: 'GENERAL_INFO',
+      engagementSignal: 'LIGHT_DISCOVERY',
+    }),
     candidateHospitals: [
       { hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] },
     ],
@@ -213,7 +257,9 @@ export function buildMalformedExtractionFixture(): PolicyEvalFixture {
       malformedExtraction: true,
     },
     expected: {
+      resolvedIntent: 'UNKNOWN',
       riskLevel: 'LOW',
+      nextAction: 'ANSWER_FAQ',
       handoffRequired: false,
       safeFallback: null,
     },
@@ -231,10 +277,19 @@ export function buildRetrievalTimeoutFixture(): PolicyEvalFixture {
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
     },
+    extraction: buildCanonicalExtraction({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'READY_FOR_RECOMMENDATION',
+      mentionsDoctorOrHospitalNeed: true,
+    }),
     simulate: {
       retrievalTimeout: true,
     },
     expected: {
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      riskLevel: 'LOW',
       safeFallback: 'RETRIEVAL_TIMEOUT',
       handoffRequired: true,
       nextAction: 'ESCALATE',
@@ -254,10 +309,18 @@ export function buildWritebackFailureFixture(): PolicyEvalFixture {
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
     },
+    extraction: buildCanonicalExtraction({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      mentionsCondition: true,
+    }),
     simulate: {
       writebackFailure: true,
     },
     expected: {
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      riskLevel: 'LOW',
       nextAction: 'REQUEST_DOC_UPLOAD',
       safeFallback: 'WRITEBACK_FAILED',
       writebackRetrySafe: true,
@@ -276,11 +339,20 @@ export function buildZeroShortlistFixture(): PolicyEvalFixture {
       packageStatus: 'NOT_SHOWN',
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
+      selectedHospitalId: null,
     },
     candidateHospitals: [],
+    extraction: buildCanonicalExtraction({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'READY_FOR_RECOMMENDATION',
+      mentionsDoctorOrHospitalNeed: true,
+    }),
     expected: {
       resolvedIntent: 'ASK_FOR_RECOMMENDATION',
-      nextAction: 'SHOW_PACKAGE',
+      riskLevel: 'LOW',
+      nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
       shortlistLength: 0,
       handoffRequired: false,
       safeFallback: null,
@@ -299,11 +371,17 @@ export function buildHandoffFailureFixture(): PolicyEvalFixture {
       recommendationStatus: 'NOT_SHOWN',
       riskLevel: 'LOW',
     },
-    requestedHuman: true,
+    extraction: buildCanonicalExtraction({
+      resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
+      engagementSignal: 'QUALIFIED_EXPLORATION',
+    }),
     simulate: {
       handoffCreationFailure: true,
     },
     expected: {
+      resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
+      riskLevel: 'LOW',
+      nextAction: 'HUMAN_HANDOFF',
       handoffRequired: true,
       safeFallback: 'HANDOFF_FAILED',
       operatorRetryNeeded: true,
@@ -327,8 +405,11 @@ export function buildVagueAffirmationFixture(): PolicyEvalFixture {
       type: 'HOSPITAL_RECOMMENDATION',
       payload: { shortlistId: 'rec-1' },
     },
+    extraction: {
+      affirmative: true,
+    },
     expected: {
-      resolvedIntent: 'GENERAL_CONSULT',
+      resolvedIntent: 'UNKNOWN',
       handoffRequired: false,
       shortlistLength: 0,
       safeFallback: null,

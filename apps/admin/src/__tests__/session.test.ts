@@ -611,4 +611,14 @@ describe('admin middleware', () => {
     const response = middleware(requestWrongCookie);
     expect(response.status).toBe(307);
   });
+
+  it('does not redirect public assets like the login logo', async () => {
+    const { middleware } = await import('@/middleware');
+
+    const request = new NextRequest('https://admin.example.com/medora_logo.png');
+    const response = middleware(request);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+  });
 });

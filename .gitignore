@@ -10,3 +10,4 @@ BabelDOC/
 dify/
 .worktrees/
 .vercel
+__pycache__/

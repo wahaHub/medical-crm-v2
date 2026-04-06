@@ -1,6 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+const PUBLIC_FILE_PATTERN = /\.[^/]+$/;
+
 export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/_next') ||
+    pathname === '/favicon.ico' ||
+    PUBLIC_FILE_PATTERN.test(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
   // Check for session cookie — if absent, redirect to login.
   // We do NOT verify the JWT here (too slow at edge) — the Hono API does that.
   const sessionCookie = request.cookies.get('medical-crm-admin-session');
@@ -15,6 +29,6 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Protect all routes except auth pages, public registration, public assets, and Next.js internals
-    '/((?!auth|api/auth/login|api/auth/hospital/register|_next/static|_next/image|favicon.ico).*)',
+    '/((?!auth|api|_next/static|_next/image|favicon.ico|.*\\..*).*)',
   ],
 };

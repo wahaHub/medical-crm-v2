@@ -239,7 +239,7 @@ describe('Chatbot routes', () => {
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        resolvedIntent: null,
+        resolvedIntent: 'CONSULT',
         nextAction: 'REQUEST_DOC_UPLOAD',
         secondaryAction: 'REQUEST_DOCS',
         responseMode: 'grounded_plus_guidance',
@@ -950,7 +950,7 @@ describe('Chatbot routes', () => {
 
     const persistedPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
     expect(persistedPatch.intent).toBe('CONSULT');
-    expect(persistedPatch.resolvedIntent).toBeNull();
+    expect(persistedPatch.resolvedIntent).toBe('CONSULT');
     expect(persistedPatch.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(persistedPatch.metadata).toMatchObject({
       publicNextAction: 'REQUEST_DOC_UPLOAD',
@@ -2271,6 +2271,50 @@ describe('Chatbot routes', () => {
       publicNextAction: 'REQUEST_DOC_UPLOAD',
       internalNextAction: 'REQUEST_DOCS',
     });
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} keeps legacy intent-only assistant metadata strict in public serialization', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-legacy-intent-only',
+        role: 'ASSISTANT',
+        content: 'Please upload your reports first.',
+        intent: 'CONSULT',
+        metadata: {
+          resolvedIntent: 'CONSULT',
+          publicNextAction: 'REQUEST_DOC_UPLOAD',
+          structuredOutput: {
+            resolvedIntent: 'CONSULT',
+            nextAction: 'REQUEST_DOC_UPLOAD',
+            metadata: {
+              resolvedIntent: 'CONSULT',
+              publicNextAction: 'REQUEST_DOC_UPLOAD',
+            },
+          },
+        },
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.messages[0]?.intent).toBe('CONSULT');
+    expect(json.messages[0]?.metadata.resolvedIntent).toBe('UNKNOWN');
+    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).resolvedIntent).toBe('UNKNOWN');
+    expect(json.messages[0]?.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction).toBe('REQUEST_DOC_UPLOAD');
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} emits deterministic canonical fallback metadata and strips invalid raw semantic overlays', async () => {

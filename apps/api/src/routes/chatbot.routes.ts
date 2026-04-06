@@ -224,7 +224,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
     intent: normalized.intent,
-    resolvedIntent: normalized.resolvedIntent ?? null,
+    resolvedIntent: normalized.resolvedIntent ?? normalized.intent ?? null,
     riskLevel: normalized.riskLevel,
     canAnswer: normalized.canAnswer,
     nextAction: normalized.nextAction,

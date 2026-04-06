@@ -5,6 +5,7 @@ import { IntentResolverService } from '../../services/policy-engine/intent-resol
 import { RecommendationPolicyService } from '../../services/policy-engine/recommendation-policy.service.js';
 import { RiskResolverService } from '../../services/policy-engine/risk-resolver.service.js';
 import { SignalResolverService } from '../../services/policy-engine/signal-resolver.service.js';
+import { isMissingDocumentStatus } from '../../services/policy-engine/status-normalization.js';
 import {
   AI_POLICY_ENGAGEMENT_SIGNALS,
   AI_POLICY_PROGRESSION_SIGNALS,
@@ -31,6 +32,7 @@ type RuntimeIntentBridgeContext = {
   }>;
   statusSnapshot?: {
     selectedHospitalId?: string | null;
+    docUploadStatus?: string;
   };
 };
 
@@ -199,7 +201,7 @@ export class DecideAiPolicyUseCase {
       };
     }
 
-    if (!shouldBridgeAcceptedHospitalRecommendation(runtimeResolvedIntent, input.context)) {
+    if (!shouldBridgeAcceptedHospitalRecommendation(runtimeResolvedIntent, input.semantics, input.context)) {
       return {
         resolvedIntent: runtimeResolvedIntent,
         reasonCodes: [],
@@ -306,11 +308,19 @@ function mapCanonicalResolvedIntentToRuntimeIntent(resolvedIntent: AiPolicyResol
 
 function shouldBridgeAcceptedHospitalRecommendation(
   runtimeResolvedIntent: string,
+  semantics: AiPolicySemanticSignals,
   context: RuntimeIntentBridgeContext,
 ): boolean {
-  return runtimeResolvedIntent === 'UNKNOWN'
-    && context.pendingOffer.exists
-    && context.pendingOffer.type === 'HOSPITAL_RECOMMENDATION';
+  if (!(context.pendingOffer.exists && context.pendingOffer.type === 'HOSPITAL_RECOMMENDATION')) {
+    return false;
+  }
+
+  if (runtimeResolvedIntent === 'UNKNOWN') {
+    return true;
+  }
+
+  return runtimeResolvedIntent === 'GENERAL_CONSULT'
+    && isCommitmentLikeProgression(semantics.progressionSignal);
 }
 
 function shouldBridgeAlternativeRecommendations(
@@ -320,7 +330,12 @@ function shouldBridgeAlternativeRecommendations(
   return runtimeResolvedIntent === 'ASK_FOR_RECOMMENDATION'
     && context.contextDepth === 'full'
     && typeof context.statusSnapshot?.selectedHospitalId === 'string'
-    && context.statusSnapshot.selectedHospitalId.length > 0;
+    && context.statusSnapshot.selectedHospitalId.length > 0
+    && !isMissingDocumentStatus(context.statusSnapshot.docUploadStatus);
+}
+
+function isCommitmentLikeProgression(value: AiPolicySemanticSignals['progressionSignal']): boolean {
+  return ['OPEN_TO_NEXT_STEP', 'READY_TO_PROCEED', 'EXPLICITLY_COMMITTING'].includes(value);
 }
 
 function buildPrequalificationReasonCodes(

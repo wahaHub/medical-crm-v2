@@ -306,6 +306,92 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       resolvedIntent: 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS',
     }));
   });
+
+  it('keeps missing-doc recommendation requests on the doc-upload path even when a hospital is already selected', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      useRealActionPlanner: true,
+      fullContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-selected-2',
+          hospitalName: 'Seoul Aesthetic Center',
+          source: 'selected_hospital',
+        },
+        statusSnapshot: {
+          selectedHospitalId: 'hospital-selected-2',
+          docUploadStatus: 'none',
+          recommendationStatus: 'preliminary_shown',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-selected-2',
+      userMessage: 'Can you show me other hospitals?',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        recommendationSignal: 'READY_FOR_RECOMMENDATION',
+      }),
+      candidateHospitals: [{ hospitalId: 'hospital-alt-1', reasonCodes: ['fit'] }],
+    });
+
+    expect(result.resolved_intent).toBe('ASK_FOR_RECOMMENDATION');
+    expect(result.next_action).toBe('REQUEST_DOC_UPLOAD');
+    expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+    }));
+  });
+
+  it('recovers ACCEPT_HOSPITAL_RECOMMENDATION for commitment-like acceptance context even when canonical intent is general info', async () => {
+    const harness = createHarness({
+      intentResolution: {
+        resolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
+        reasonCodes: ['pending_offer_confirmed'],
+      },
+      lightContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-accept-2',
+          hospitalName: 'Medora Seoul',
+          source: 'page_context',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      },
+      fullContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-accept-2',
+          hospitalName: 'Medora Seoul',
+          source: 'page_context',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        statusSnapshot: {
+          recommendationStatus: 'preliminary_shown',
+          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
+          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-accept-3',
+      userMessage: 'okay, let us proceed with this one',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'GENERAL_INFO',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'EXPLICITLY_COMMITTING',
+        recommendationSignal: 'READY_FOR_RECOMMENDATION',
+      }),
+    });
+
+    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
+    expect(result.selected_hospital_id).toBe('hospital-accept-2');
+    expect(harness.intentResolver.resolve).toHaveBeenCalledTimes(1);
+  });
 });
 
 type HarnessOptions = {
@@ -323,6 +409,7 @@ type HarnessOptions = {
     shortlist: Array<{ hospitalId: string; reasonCodes: string[] }>;
     reasonCodes: string[];
   };
+  useRealActionPlanner?: boolean;
   lightContextOverrides?: Record<string, unknown>;
   fullContextOverrides?: Record<string, unknown>;
 };
@@ -378,11 +465,13 @@ function createHarness(options: HarnessOptions = {}) {
   };
 
   const actionPlanner = {
-    plan: vi.fn(() => ({
-      nextAction: 'ANSWER_FAQ',
-      secondaryAction: null,
-      reasonCodes: ['planned'],
-    })),
+    plan: options.useRealActionPlanner
+      ? vi.fn((input) => new ActionPlannerService().plan(input))
+      : vi.fn(() => ({
+          nextAction: 'ANSWER_FAQ',
+          secondaryAction: null,
+          reasonCodes: ['planned'],
+        })),
   } as unknown as ActionPlannerService & {
     plan: ReturnType<typeof vi.fn>;
   };

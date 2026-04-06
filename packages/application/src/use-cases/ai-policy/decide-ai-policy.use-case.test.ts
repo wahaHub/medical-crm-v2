@@ -153,6 +153,142 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     }));
   });
 
+  it.each([
+    {
+      name: 'service-overview prompts',
+      canonicalResolvedIntent: 'GENERAL_INFO',
+      englishMessage: 'Can you give me a service overview?',
+      chineseMessage: '可以介绍一下服务内容吗？',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'GENERAL_INFO',
+        engagementSignal: 'LIGHT_DISCOVERY',
+      }),
+      harnessOptions: {},
+      expectedNextAction: 'ANSWER_FAQ',
+      expectedResolvedIntent: 'GENERAL_CONSULT',
+    },
+    {
+      name: 'consult-process prompts',
+      canonicalResolvedIntent: 'ASK_CONSULT_PROCESS',
+      englishMessage: 'How does the online consult work?',
+      chineseMessage: '线上问诊流程是怎样的？',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_CONSULT_PROCESS',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+      }),
+      harnessOptions: {
+        useRealActionPlanner: true,
+        fullContextOverrides: {
+          statusSnapshot: {
+            consultationStatus: 'not_introduced',
+          },
+        },
+      },
+      expectedNextAction: 'INVITE_ONLINE_CONSULT',
+      expectedResolvedIntent: 'ASK_CONSULT_PROCESS',
+    },
+    {
+      name: 'doctor/hospital-direction prompts',
+      canonicalResolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+      englishMessage: 'Which doctor or hospital should I talk to?',
+      chineseMessage: '我应该找哪位医生或哪家医院？',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        recommendationSignal: 'SEEKING_DIRECTION',
+      }),
+      harnessOptions: {
+        recommendationResult: {
+          eligible: true,
+          shortlist: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
+          reasonCodes: ['authoritative_shortlist_ready'],
+        },
+      },
+      candidateHospitals: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
+      expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      assertRecommendationPolicy: true,
+    },
+    {
+      name: 'recommendation asks',
+      canonicalResolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+      englishMessage: 'Please recommend a hospital for me.',
+      chineseMessage: '请推荐一家医院给我。',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        recommendationSignal: 'SEEKING_RECOMMENDATION',
+      }),
+      harnessOptions: {
+        recommendationResult: {
+          eligible: true,
+          shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+          reasonCodes: ['authoritative_shortlist_ready'],
+        },
+        fullContextOverrides: {
+          statusSnapshot: {
+            docUploadStatus: 'uploaded',
+            recommendationStatus: 'not_shown',
+          },
+        },
+      },
+      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
+      expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      assertRecommendationPolicy: true,
+    },
+  ])(
+    'keeps Chinese and English $name on the same canonical action path',
+    async ({
+      canonicalResolvedIntent,
+      chineseMessage,
+      englishMessage,
+      extraction,
+      harnessOptions,
+      candidateHospitals,
+      expectedNextAction,
+      expectedResolvedIntent,
+      assertRecommendationPolicy,
+    }) => {
+      const englishHarness = createHarness(harnessOptions);
+      const englishResult = await englishHarness.useCase.execute({
+        sessionId: 'session-multilingual-regression',
+        userMessage: englishMessage,
+        extraction,
+        candidateHospitals,
+      });
+
+      const chineseHarness = createHarness(harnessOptions);
+      const chineseResult = await chineseHarness.useCase.execute({
+        sessionId: 'session-multilingual-regression',
+        userMessage: chineseMessage,
+        extraction,
+        candidateHospitals,
+      });
+
+      expect(chineseResult).toEqual(englishResult);
+      expect(englishResult.next_action).toBe(expectedNextAction);
+      expect(chineseResult.next_action).toBe(expectedNextAction);
+      expect(englishResult.resolved_intent).toBe(expectedResolvedIntent);
+      expect(englishHarness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+        resolvedIntent: canonicalResolvedIntent,
+      }));
+      expect(chineseHarness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+        resolvedIntent: canonicalResolvedIntent,
+      }));
+
+      if (assertRecommendationPolicy) {
+        expect(englishHarness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+          resolvedIntent: canonicalResolvedIntent,
+        }));
+        expect(chineseHarness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+          resolvedIntent: canonicalResolvedIntent,
+        }));
+      }
+    },
+  );
+
   it('passes canonical ACCEPT_DOC_UPLOAD through to the planner so uploaded docs can advance by workflow state', async () => {
     const harness = createHarness({
       useRealActionPlanner: true,

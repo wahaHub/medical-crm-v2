@@ -123,7 +123,7 @@ export class DecideAiPolicyUseCase {
           ...context.statusSnapshot,
           riskLevel: risk.riskLevel,
         },
-        resolvedIntent: runtimeResolvedIntent,
+        resolvedIntent: resolveRecommendationIntentForPolicy(semantics.signals.resolvedIntent, runtimeResolvedIntent),
         candidateHospitals: input.candidateHospitals,
       })
       : {
@@ -252,6 +252,15 @@ function requiresFullWorkflowContext(resolvedIntent: AiPolicyResolvedIntent): bo
     'REQUEST_DOC_UPLOAD',
     'ACCEPT_DOC_UPLOAD',
   ].includes(resolvedIntent);
+}
+
+function resolveRecommendationIntentForPolicy(
+  canonicalResolvedIntent: AiPolicyResolvedIntent,
+  runtimeResolvedIntent: string,
+): string {
+  return runtimeResolvedIntent === 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS'
+    ? runtimeResolvedIntent
+    : canonicalResolvedIntent;
 }
 
 function parseCanonicalSemanticSignals(

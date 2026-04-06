@@ -49,7 +49,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     }));
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     }));
     expect(harness.engagementModeResolver.resolve).not.toHaveBeenCalled();
     expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
@@ -260,6 +260,33 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     }));
   });
 
+  it('passes canonical doctor-or-hospital direction into recommendation gating on the live path', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      recommendationResult: {
+        eligible: true,
+        shortlist: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
+        reasonCodes: ['authoritative_shortlist_ready'],
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-direction-1',
+      userMessage: 'Which doctor or hospital should I talk to?',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        recommendationSignal: 'SEEKING_DIRECTION',
+      }),
+      candidateHospitals: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
+    });
+
+    expect(result.next_action).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    }));
+  });
+
   it('marks requested-human canonical routing as handoff-required when next action is HUMAN_HANDOFF', async () => {
     const harness = createHarness({
       failOnLegacyResolverCall: true,
@@ -444,7 +471,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(result.resolved_intent).toBe('ASK_FOR_RECOMMENDATION');
     expect(result.next_action).toBe('REQUEST_DOC_UPLOAD');
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     }));
   });
 

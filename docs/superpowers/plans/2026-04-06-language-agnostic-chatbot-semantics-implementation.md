@@ -139,9 +139,11 @@ git commit -m "feat: add canonical chatbot semantic contract"
 - [ ] **Step 1: Add failing contract tests**
 
 Extend the Dify workflow contract test to assert that the extraction output schema:
-- no longer treats `possibleIntent`, `possibleRisk`, `affirmative`, or `negative` as the primary extraction contract
+- promotes the six canonical fields as the primary extraction contract
 - includes the six canonical fields
-- constrains enum fields to the approved values
+- constrains canonical enum fields to the approved values
+- removes `affirmative` and `negative` from the shipped extraction contract
+- preserves only the explicitly transitional compatibility outputs still required by current backend consumers
 
 - [ ] **Step 2: Run the focused workflow contract test**
 
@@ -160,25 +162,20 @@ In the existing extraction node:
 - add multilingual examples for the same semantic intent classes
 - explicitly instruct the model that semantically equivalent messages across languages must map to the same enums
 - keep this in the existing node rather than adding a new node
+- keep `possibleIntent`, `possibleRisk`, `mentionedBudget`, and `topicHint` only as explicit transitional compatibility outputs until later backend tasks remove those consumers
+- mark those compatibility outputs as deprecated support, not part of the canonical semantic contract
 
-- [ ] **Step 4: Audit the DSL for old weak semantic-field references**
+- [ ] **Step 4: Audit the DSL for compatibility scope**
 
-Verify that `possibleIntent`, `possibleRisk`, `affirmative`, and `negative` no longer appear anywhere in the shipped DSL after the extraction rewrite.
+Verify that:
+- `affirmative` and `negative` no longer appear anywhere in the shipped DSL
+- `possibleIntent`, `possibleRisk`, `mentionedBudget`, and `topicHint` remain only in the extraction prompt as explicitly labeled transitional compatibility outputs
 
 - [ ] **Step 5: Re-run the focused workflow contract test**
 
 Run the same command and expect PASS.
 
-- [ ] **Step 6: Re-import and publish the updated DSL in Dify**
-
-After the DSL file and contract test are green:
-
-- import `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/dify-config/medora-ai-chatbot-v1.dsl.yml` into the local Dify app
-- publish the workflow so the running chatbot actually uses the new extraction contract
-
-This is required before any later live smoke.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
@@ -446,6 +443,11 @@ Avoid adding new heuristic text rules.
 Expect PASS.
 
 - [ ] **Step 5: Run a live local smoke**
+
+Before the live smoke:
+- import `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/dify-config/medora-ai-chatbot-v1.dsl.yml` into the local Dify app
+- publish the workflow
+- only do this after Task 3 and Task 6 are complete, so the backend is ready for the canonical-primary plus compatibility-output transitional payload
 
 Run a real local chat flow against:
 - `POST /api/v2/chatbot/chat`

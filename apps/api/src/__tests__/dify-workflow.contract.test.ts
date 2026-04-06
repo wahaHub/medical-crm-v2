@@ -554,4 +554,33 @@ describe('Dify workflow contract', () => {
     expect(prompt).toContain('Do not append a conversion-style CTA on SAFETY_HANDOFF or any HIGH_RISK/CRISIS turn');
     expect(prompt).toContain('On LIGHT_DISCOVERY, keep any CTA especially soft, optional, and trust-building rather than salesy');
   });
+
+  it('pins extraction_llm to the canonical semantic contract with multilingual examples only', () => {
+    const dsl = loadDsl();
+    const extractionNode = findNode(dsl.workflow.graph.nodes, 'extraction_llm');
+    const prompt = systemPrompt(extractionNode);
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+
+    expect(prompt).toContain('"resolvedIntent": "GENERAL_INFO|ASK_MEDICAL_TRAVEL_PROCESS|ASK_CONSULT_PROCESS|ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION|ASK_FOR_HOSPITAL_RECOMMENDATION|REQUEST_DOC_UPLOAD|ACCEPT_DOC_UPLOAD|ACCEPT_ONLINE_CONSULT_INVITE|REQUEST_HUMAN_HANDOFF|ASK_PACKAGE_INFO|SMALL_TALK_OR_GREETING|UNKNOWN"');
+    expect(prompt).toContain('"engagementSignal": "LIGHT_DISCOVERY|QUALIFIED_EXPLORATION|DEEP_WORKFLOW"');
+    expect(prompt).toContain('"progressionSignal": "NONE|CURIOUS|OPEN_TO_NEXT_STEP|READY_TO_PROCEED|EXPLICITLY_COMMITTING"');
+    expect(prompt).toContain('"recommendationSignal": "NONE|SEEKING_DIRECTION|SEEKING_RECOMMENDATION|READY_FOR_RECOMMENDATION"');
+    expect(prompt).toContain('"mentionsCondition": false');
+    expect(prompt).toContain('"mentionsDoctorOrHospitalNeed": false');
+
+    expect(prompt).toContain('English: "Can you recommend which hospital or doctor I should talk to?"');
+    expect(prompt).toContain('Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟"');
+    expect(prompt).toContain('Chinese: "你能推荐适合我的医院或医生吗？"');
+    expect(prompt).toContain('Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?"');
+
+    expect(prompt).not.toContain('possibleIntent');
+    expect(prompt).not.toContain('possibleRisk');
+    expect(prompt).not.toContain('"affirmative"');
+    expect(prompt).not.toContain('"negative"');
+
+    expect(yaml).not.toContain('possibleIntent');
+    expect(yaml).not.toContain('possibleRisk');
+    expect(yaml).not.toContain('"affirmative"');
+    expect(yaml).not.toContain('"negative"');
+  });
 });

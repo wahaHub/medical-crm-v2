@@ -200,6 +200,9 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       expectedResolvedIntent: 'ASK_CONSULT_PROCESS',
       expectedPlannerNextAction: 'INVITE_ONLINE_CONSULT',
       expectedPlannerReasonCodes: ['consult_invite_ready'],
+      expectedPlannerStatusSnapshot: {
+        consultationStatus: 'not_introduced',
+      },
     },
     {
       name: 'doctor/hospital-direction prompts',
@@ -217,6 +220,12 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       }),
       harnessOptions: {
         useRealActionPlanner: true,
+        fullContextOverrides: {
+          statusSnapshot: {
+            docUploadStatus: 'uploaded',
+            recommendationStatus: 'not_shown',
+          },
+        },
         recommendationResult: {
           eligible: true,
           shortlist: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
@@ -228,6 +237,10 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
       expectedPlannerNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       expectedPlannerReasonCodes: ['canonical_recommendation_ready'],
+      expectedPlannerStatusSnapshot: {
+        docUploadStatus: 'uploaded',
+        recommendationStatus: 'not_shown',
+      },
       assertRecommendationPolicy: true,
     },
     {
@@ -263,6 +276,10 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
       expectedPlannerNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       expectedPlannerReasonCodes: ['canonical_recommendation_ready'],
+      expectedPlannerStatusSnapshot: {
+        docUploadStatus: 'uploaded',
+        recommendationStatus: 'not_shown',
+      },
       assertRecommendationPolicy: true,
     },
   ])(
@@ -278,6 +295,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       expectedResolvedIntent,
       expectedPlannerNextAction,
       expectedPlannerReasonCodes,
+      expectedPlannerStatusSnapshot,
       assertRecommendationPolicy,
     }) => {
       expect(englishExtraction).toEqual(chineseExtraction);
@@ -310,6 +328,12 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
         nextAction: expectedPlannerNextAction,
         reasonCodes: expectedPlannerReasonCodes,
       }));
+
+      if (expectedPlannerStatusSnapshot) {
+        expect(englishPlannerInput?.statusSnapshot).toEqual(expect.objectContaining(
+          expectedPlannerStatusSnapshot,
+        ));
+      }
 
       if (assertRecommendationPolicy) {
         const englishRecommendationInput = englishHarness.recommendationPolicy.decide.mock.calls[0]?.[0];

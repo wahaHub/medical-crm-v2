@@ -156,10 +156,13 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
   it.each([
     {
       name: 'service-overview prompts',
-      canonicalResolvedIntent: 'GENERAL_INFO',
       englishMessage: 'Can you give me a service overview?',
       chineseMessage: '可以介绍一下服务内容吗？',
-      extraction: buildCanonicalExtraction({
+      englishExtraction: buildCanonicalExtraction({
+        resolvedIntent: 'GENERAL_INFO',
+        engagementSignal: 'LIGHT_DISCOVERY',
+      }),
+      chineseExtraction: buildCanonicalExtraction({
         resolvedIntent: 'GENERAL_INFO',
         engagementSignal: 'LIGHT_DISCOVERY',
       }),
@@ -169,10 +172,14 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     },
     {
       name: 'consult-process prompts',
-      canonicalResolvedIntent: 'ASK_CONSULT_PROCESS',
       englishMessage: 'How does the online consult work?',
       chineseMessage: '线上问诊流程是怎样的？',
-      extraction: buildCanonicalExtraction({
+      englishExtraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_CONSULT_PROCESS',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+      }),
+      chineseExtraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_CONSULT_PROCESS',
         engagementSignal: 'DEEP_WORKFLOW',
         progressionSignal: 'READY_TO_PROCEED',
@@ -190,10 +197,14 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     },
     {
       name: 'doctor/hospital-direction prompts',
-      canonicalResolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
       englishMessage: 'Which doctor or hospital should I talk to?',
       chineseMessage: '我应该找哪位医生或哪家医院？',
-      extraction: buildCanonicalExtraction({
+      englishExtraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        recommendationSignal: 'SEEKING_DIRECTION',
+      }),
+      chineseExtraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
         engagementSignal: 'DEEP_WORKFLOW',
         recommendationSignal: 'SEEKING_DIRECTION',
@@ -212,10 +223,14 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     },
     {
       name: 'recommendation asks',
-      canonicalResolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
       englishMessage: 'Please recommend a hospital for me.',
       chineseMessage: '请推荐一家医院给我。',
-      extraction: buildCanonicalExtraction({
+      englishExtraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        recommendationSignal: 'SEEKING_RECOMMENDATION',
+      }),
+      chineseExtraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
         engagementSignal: 'DEEP_WORKFLOW',
         recommendationSignal: 'SEEKING_RECOMMENDATION',
@@ -239,23 +254,26 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       assertRecommendationPolicy: true,
     },
   ])(
-    'keeps Chinese and English $name on the same canonical action path',
+    'keeps English and Chinese $name on the same planner path when canonical semantics are already aligned',
     async ({
-      canonicalResolvedIntent,
       chineseMessage,
       englishMessage,
-      extraction,
+      englishExtraction,
+      chineseExtraction,
       harnessOptions,
       candidateHospitals,
       expectedNextAction,
       expectedResolvedIntent,
       assertRecommendationPolicy,
     }) => {
+      expect(englishExtraction).toEqual(chineseExtraction);
+      expect(englishExtraction).not.toBe(chineseExtraction);
+
       const englishHarness = createHarness(harnessOptions);
       const englishResult = await englishHarness.useCase.execute({
         sessionId: 'session-multilingual-regression',
         userMessage: englishMessage,
-        extraction,
+        extraction: englishExtraction,
         candidateHospitals,
       });
 
@@ -263,7 +281,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       const chineseResult = await chineseHarness.useCase.execute({
         sessionId: 'session-multilingual-regression',
         userMessage: chineseMessage,
-        extraction,
+        extraction: chineseExtraction,
         candidateHospitals,
       });
 
@@ -271,20 +289,17 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       expect(englishResult.next_action).toBe(expectedNextAction);
       expect(chineseResult.next_action).toBe(expectedNextAction);
       expect(englishResult.resolved_intent).toBe(expectedResolvedIntent);
-      expect(englishHarness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
-        resolvedIntent: canonicalResolvedIntent,
-      }));
-      expect(chineseHarness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
-        resolvedIntent: canonicalResolvedIntent,
-      }));
+
+      const englishPlannerInput = englishHarness.actionPlanner.plan.mock.calls[0]?.[0];
+      const chinesePlannerInput = chineseHarness.actionPlanner.plan.mock.calls[0]?.[0];
+
+      expect(chinesePlannerInput).toEqual(englishPlannerInput);
 
       if (assertRecommendationPolicy) {
-        expect(englishHarness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
-          resolvedIntent: canonicalResolvedIntent,
-        }));
-        expect(chineseHarness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
-          resolvedIntent: canonicalResolvedIntent,
-        }));
+        const englishRecommendationInput = englishHarness.recommendationPolicy.decide.mock.calls[0]?.[0];
+        const chineseRecommendationInput = chineseHarness.recommendationPolicy.decide.mock.calls[0]?.[0];
+
+        expect(chineseRecommendationInput).toEqual(englishRecommendationInput);
       }
     },
   );

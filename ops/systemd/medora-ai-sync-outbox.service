@@ -1,0 +1,9 @@
+[Unit]
+Description=Process Medora CRM v2 AI sync outbox
+After=network-online.target medora-crm-v2-api.service
+Wants=network-online.target medora-crm-v2-api.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/medora/medical-crm-v2/.env
+ExecStart=/bin/bash -lc '/usr/bin/curl --fail --silent --show-error -X POST -H "X-Internal-Secret: ${INTERNAL_API_SECRET}" http://127.0.0.1:3001/api/v2/internal/process-ai-sync-outbox'

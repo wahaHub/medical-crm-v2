@@ -1655,8 +1655,33 @@ describe('Chatbot routes', () => {
     expectedPublicMetadata,
     expectedBlocks,
   }) => {
+    const expectedStatusSnapshot = {
+      conditionStatus: 'unknown',
+      formStatus: 'not_started',
+      docUploadStatus: 'none',
+      recommendationStatus: 'not_started',
+      selectedHospitalId: null,
+      consultationStatus: 'not_started',
+      packageStatus: 'not_introduced',
+      handoffStatus: 'not_needed',
+      leadMaturity: 'browsing',
+      riskLevel: 'low',
+      trustOrObjection: 'none',
+      engagementMode: 'LIGHT_DISCOVERY',
+      prequalificationReasonCodes: [],
+      enteredDeepWorkflowAt: null,
+      pendingOffer: null,
+      pendingQuestion: null,
+      lastNextAction: null,
+      lastResolvedIntent: null,
+      conversationSummary: 'overview-state',
+      lastPolicyDecisionAt: null,
+      lastUserMessageAt: null,
+      lastAssistantMessageAt: null,
+    };
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
       sessionId,
+      statusSnapshot: expectedStatusSnapshot,
     }));
 
     for (const prompt of prompts) {
@@ -1675,19 +1700,29 @@ describe('Chatbot routes', () => {
       expect(res.status).toBe(200);
       const json = chatbotChatResponseSchema.parse(await res.json());
       const difyPayload = mockServices.difyApi.createChatMessage.mock.calls.at(-1)?.[0] as Record<string, unknown>;
-      const difyInputs = difyPayload.inputs as Record<string, unknown>;
       const structuredOutput = json.metadata.structuredOutput as Record<string, unknown>;
       const structuredOutputMetadata = (structuredOutput.metadata as Record<string, unknown>);
 
       expect(json.nextAction).toBe(expectedNextAction);
-      expect(difyPayload.query).toBe(prompt);
-      expect(difyInputs).toMatchObject({
-        hospitalType: 'COSMETIC',
-        sessionId,
-        assistantMessageId: expect.any(String),
-        attachmentsJson: '[]',
-        pageContextJson: 'null',
+      expect(difyPayload).toEqual({
+        inputs: {
+          hospitalType: 'COSMETIC',
+          sessionId,
+          assistantMessageId: expect.any(String),
+          attachmentsJson: '[]',
+          pageContextJson: 'null',
+          currentStatus: expectedStatusSnapshot,
+          conversationSummary: expectedStatusSnapshot.conversationSummary,
+          pendingOffer: expectedStatusSnapshot.pendingOffer,
+          pendingQuestion: expectedStatusSnapshot.pendingQuestion,
+          attachments: [],
+          pageContext: null,
+        },
+        query: prompt,
+        user: sessionId,
+        conversationId: null,
       });
+      expect(json.metadata).toMatchObject(expectedPublicMetadata);
       for (const key of [
         'language',
         'messageLanguage',
@@ -1697,37 +1732,50 @@ describe('Chatbot routes', () => {
         'promptFamily',
         'prompt_family',
         'family',
-        'resolvedIntent',
-        'resolved_intent',
-        'canonicalResolvedIntent',
-        'canonical_resolved_intent',
-        'engagementSignal',
-        'engagement_signal',
-        'progressionSignal',
-        'progression_signal',
-        'recommendationSignal',
-        'recommendation_signal',
-        'mentionsCondition',
-        'mentions_condition',
-        'mentionsDoctorOrHospitalNeed',
-        'mentions_doctor_or_hospital_need',
-        'possibleIntent',
-        'possibleRisk',
-        'mentionedBudget',
-        'topicHint',
+        'resolvedIntentHint',
+        'resolved_intent_hint',
+        'engagementSignalHint',
+        'engagement_signal_hint',
+        'progressionSignalHint',
+        'progression_signal_hint',
+        'recommendationSignalHint',
+        'recommendation_signal_hint',
+        'canonicalHints',
+        'canonical_hints',
+        'promptHints',
+        'prompt_hints',
       ]) {
-        expect(difyInputs).not.toHaveProperty(key);
+        expect(json.metadata).not.toHaveProperty(key);
       }
-      expect(json.metadata).toMatchObject(expectedPublicMetadata);
-      expect(json.metadata).not.toHaveProperty('language');
-      expect(json.metadata).not.toHaveProperty('promptFamily');
       expect(structuredOutput).toMatchObject({
         resolvedIntent: expectedResolvedIntent,
         nextAction: expectedNextAction,
       });
       expect(structuredOutputMetadata).toMatchObject(expectedPublicMetadata);
-      expect(structuredOutputMetadata).not.toHaveProperty('language');
-      expect(structuredOutputMetadata).not.toHaveProperty('promptFamily');
+      for (const key of [
+        'language',
+        'messageLanguage',
+        'message_language',
+        'detectedLanguage',
+        'detected_language',
+        'promptFamily',
+        'prompt_family',
+        'family',
+        'resolvedIntentHint',
+        'resolved_intent_hint',
+        'engagementSignalHint',
+        'engagement_signal_hint',
+        'progressionSignalHint',
+        'progression_signal_hint',
+        'recommendationSignalHint',
+        'recommendation_signal_hint',
+        'canonicalHints',
+        'canonical_hints',
+        'promptHints',
+        'prompt_hints',
+      ]) {
+        expect(structuredOutputMetadata).not.toHaveProperty(key);
+      }
       expect(json.blocks ?? []).toEqual(expectedBlocks);
     }
   });
@@ -2508,7 +2556,7 @@ describe('Chatbot routes', () => {
   it('GET /api/v2/chatbot/history/{sessionId} normalizes the persisted convert workflow row into the public consult contract', async () => {
     const secret = 'secret-123';
     const secretHash = createHash('sha256').update(secret).digest('hex');
-    const persistedMessages: AiChatMessage[] = [];
+    const persistedMessages: Array<ReturnType<typeof makeMessage>> = [];
 
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
       sessionId: 'session-actual-persisted-workflow',
@@ -2539,10 +2587,42 @@ describe('Chatbot routes', () => {
     });
     mockServices.caseRepo.save.mockImplementation(async (entity: unknown) => entity);
     mockServices.aiChatMessageRepo.create.mockImplementation(async (entity: AiChatMessage) => {
-      persistedMessages.push(entity);
-      return entity;
+      const persistedMessage = makeMessage({
+        id: entity.id,
+        sessionId: entity.sessionId,
+        role: entity.role,
+        content: entity.content,
+        intent: entity.intent,
+        riskLevel: entity.riskLevel,
+        canAnswer: entity.canAnswer,
+        nextAction: entity.nextAction,
+        secondaryAction: entity.secondaryAction,
+        responseMode: entity.responseMode,
+        citations: JSON.parse(JSON.stringify(entity.citations)),
+        reasonCodes: JSON.parse(JSON.stringify(entity.reasonCodes)),
+        shortlist: JSON.parse(JSON.stringify(entity.shortlist)),
+        metadata: JSON.parse(JSON.stringify(entity.metadata)),
+        createdAt: new Date(entity.createdAt.toISOString()),
+      });
+      persistedMessages.push(persistedMessage);
+      return makeMessage({
+        ...persistedMessage,
+        metadata: JSON.parse(JSON.stringify(persistedMessage.metadata)),
+        citations: JSON.parse(JSON.stringify(persistedMessage.citations)),
+        reasonCodes: JSON.parse(JSON.stringify(persistedMessage.reasonCodes)),
+        shortlist: JSON.parse(JSON.stringify(persistedMessage.shortlist)),
+      }) as unknown as AiChatMessage;
     });
-    mockServices.aiChatMessageRepo.listBySession.mockImplementation(async () => persistedMessages);
+    mockServices.aiChatMessageRepo.listBySession.mockImplementation(async () => (
+      persistedMessages.map((message) => makeMessage({
+        ...message,
+        metadata: JSON.parse(JSON.stringify(message.metadata)),
+        citations: JSON.parse(JSON.stringify(message.citations)),
+        reasonCodes: JSON.parse(JSON.stringify(message.reasonCodes)),
+        shortlist: JSON.parse(JSON.stringify(message.shortlist)),
+        createdAt: new Date(message.createdAt.toISOString()),
+      }))
+    ));
 
     const convertRes = await app.request('/api/v2/chatbot/convert', {
       method: 'POST',
@@ -2550,16 +2630,16 @@ describe('Chatbot routes', () => {
         'Content-Type': 'application/json',
         Cookie: `chatbot_session_secret=${secret}`,
       },
-        body: JSON.stringify({
-          sessionId: 'session-actual-persisted-workflow',
-          name: 'Alice',
-          email: 'alice@example.com',
-          country: 'Singapore',
-          conditionSummary: 'Revision rhinoplasty consultation',
-          budget: 'USD 8000',
-          requestedAction: 'INVITE_ONLINE_CONSULT',
-        }),
-      });
+      body: JSON.stringify({
+        sessionId: 'session-actual-persisted-workflow',
+        name: 'Alice',
+        email: 'alice@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Revision rhinoplasty consultation',
+        budget: 'USD 8000',
+        requestedAction: 'INVITE_ONLINE_CONSULT',
+      }),
+    });
 
     expect(convertRes.status).toBe(200);
     expect(persistedMessages).toHaveLength(1);

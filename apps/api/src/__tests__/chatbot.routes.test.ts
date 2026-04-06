@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { AiChatMessage } from '@medical-crm/domain';
 import {
   chatbotChatResponseSchema,
   chatbotConvertResponseSchema,
@@ -1388,6 +1389,191 @@ describe('Chatbot routes', () => {
     });
   });
 
+  it.each([
+    {
+      family: 'service-overview',
+      sessionId: 'session-multilingual-service-overview',
+      prompts: [
+        'I want to understand your services.',
+        '我想来了解下你们的服务内容。',
+      ],
+      difyResponse: {
+        conversation_id: 'dify-conv-service-overview',
+        answer: JSON.stringify({
+          answer: 'We can walk you through how the process works.',
+          intent: 'FAQ',
+          resolvedIntent: 'ASK_MEDICAL_TRAVEL_PROCESS',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+          responseMode: 'light_discovery_guidance',
+          engagementMode: 'LIGHT_DISCOVERY',
+          metadata: {
+            internalNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+          },
+          reasonCodes: ['service_overview'],
+          citations: [],
+        }),
+        metadata: { retriever_resources: [] },
+      },
+      expectedNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+      expectedBlocks: [
+        expect.objectContaining({
+          type: 'PROCESS_MODAL_TRIGGER',
+          modalKey: 'MEDICAL_TRAVEL_PROCESS',
+        }),
+      ],
+    },
+    {
+      family: 'consult-process',
+      sessionId: 'session-multilingual-consult-process',
+      prompts: [
+        'I want to understand the consultation process.',
+        '我想知道咨询流程。',
+      ],
+      difyResponse: {
+        conversation_id: 'dify-conv-consult-process',
+        answer: JSON.stringify({
+          answer: 'We can explain how consultation usually works.',
+          intent: 'CONSULT',
+          resolvedIntent: 'ASK_CONSULT_PROCESS',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'EXPLAIN_CONSULT_PROCESS',
+          responseMode: 'consult_explanation',
+          engagementMode: 'QUALIFIED_EXPLORATION',
+          metadata: {
+            internalNextAction: 'EXPLAIN_CONSULT_PROCESS',
+          },
+          reasonCodes: ['consult_process'],
+          citations: [],
+        }),
+        metadata: { retriever_resources: [] },
+      },
+      expectedNextAction: 'EXPLAIN_CONSULT_PROCESS',
+      expectedBlocks: [],
+    },
+    {
+      family: 'doctor-or-hospital-direction',
+      sessionId: 'session-multilingual-direction',
+      prompts: [
+        'I need help finding the right doctor or hospital.',
+        '我得了颈椎病，我想找颈椎病方向的医生。',
+      ],
+      difyResponse: {
+        conversation_id: 'dify-conv-direction',
+        answer: JSON.stringify({
+          answer: 'We can help you compare a few good options.',
+          intent: 'CONSULT',
+          resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+          responseMode: 'grounded_plus_guidance',
+          engagementMode: 'QUALIFIED_EXPLORATION',
+          metadata: {
+            internalNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+          },
+          reasonCodes: ['direction_request'],
+          shortlist: [
+            {
+              hospitalId: 'hospital-direction-1',
+              name: 'Direction Hospital',
+              reason: 'Good starting point for comparison',
+              matchType: 'matched',
+              reasonCodes: ['direction_fit'],
+            },
+          ],
+          citations: [],
+        }),
+        metadata: { retriever_resources: [] },
+      },
+      expectedNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+      expectedBlocks: [],
+    },
+    {
+      family: 'recommendation-ask',
+      sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+      prompts: [
+        'Can you recommend which hospital I should talk to?',
+        '你能推荐适合我的医院吗？',
+      ],
+      difyResponse: {
+        conversation_id: 'dify-conv-recommendation',
+        answer: JSON.stringify({
+          answer: 'Here are a few hospitals that look like a fit.',
+          intent: 'CONSULT',
+          resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+          riskLevel: 'NORMAL',
+          canAnswer: true,
+          nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          responseMode: 'grounded_plus_guidance',
+          engagementMode: 'QUALIFIED_EXPLORATION',
+          metadata: {
+            internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          },
+          reasonCodes: ['recommendation_request'],
+          shortlist: [
+            {
+              hospitalId: '550e8400-e29b-41d4-a716-446655440001',
+              name: 'Recommendation Hospital',
+              reason: 'Strong fit for the current profile',
+              matchType: 'matched',
+              reasonCodes: ['recommendation_fit'],
+            },
+          ],
+          citations: [],
+        }),
+        metadata: { retriever_resources: [] },
+      },
+      expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      expectedBlocks: [
+        expect.objectContaining({
+          type: 'HOSPITAL_RECOMMENDATION_CARDS',
+          caseId: '550e8400-e29b-41d4-a716-446655440000',
+        }),
+      ],
+    },
+  ])('POST /api/v2/chatbot/chat keeps $family prompts aligned across English and Chinese', async ({
+    sessionId,
+    prompts,
+    difyResponse,
+    expectedNextAction,
+    expectedBlocks,
+  }) => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId,
+    }));
+
+    for (const prompt of prompts) {
+      mockServices.difyApi.createChatMessage.mockResolvedValueOnce(difyResponse);
+
+      const res = await app.request('/api/v2/chatbot/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          hospitalType: 'COSMETIC',
+          message: prompt,
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = chatbotChatResponseSchema.parse(await res.json());
+      expect(json.nextAction).toBe(expectedNextAction);
+      expect(json.metadata).toMatchObject({
+        resolvedIntent: expect.any(String),
+        internalNextAction: expectedNextAction,
+      });
+      expect(json.blocks ?? []).toEqual(expectedBlocks);
+      expect(mockServices.difyApi.createChatMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          query: prompt,
+        }),
+      );
+    }
+  });
+
   it('POST /api/v2/chatbot/chat returns 409 when an existing session is reused with a mismatched hospitalType', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -2159,6 +2345,87 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
     expect(json.messages[1]?.nextAction).toBe('HUMAN_HANDOFF');
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} normalizes the persisted convert workflow row into the public consult contract', async () => {
+    const secret = 'secret-123';
+    const secretHash = createHash('sha256').update(secret).digest('hex');
+    const persistedMessages: AiChatMessage[] = [];
+
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'session-actual-persisted-workflow',
+      sessionSecretHash: secretHash,
+      patientId: null,
+    }));
+    mockServices.aiChatSessionRepo.attachPatient.mockResolvedValue(makeSession({
+      sessionId: 'session-actual-persisted-workflow',
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.initOnboarding.execute.mockResolvedValue({
+      token: 'patient-token-1',
+      restoreCookie: 'restore-cookie-1',
+      patientId: 'patient-1',
+      caseId: 'case-1',
+      isExistingPatient: false,
+      restoreToken: 'restore-token-1',
+    });
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-1',
+      patientId: 'patient-1',
+      patientName: null,
+      patientCountry: null,
+      conditionSummary: null,
+      structuredData: {},
+    });
+    mockServices.caseRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.aiChatMessageRepo.create.mockImplementation(async (entity: AiChatMessage) => {
+      persistedMessages.push(entity);
+      return entity;
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockImplementation(async () => persistedMessages);
+
+    const convertRes = await app.request('/api/v2/chatbot/convert', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${secret}`,
+      },
+        body: JSON.stringify({
+          sessionId: 'session-actual-persisted-workflow',
+          name: 'Alice',
+          email: 'alice@example.com',
+          country: 'Singapore',
+          conditionSummary: 'Revision rhinoplasty consultation',
+          budget: 'USD 8000',
+          requestedAction: 'INVITE_ONLINE_CONSULT',
+        }),
+      });
+
+    expect(convertRes.status).toBe(200);
+    expect(persistedMessages).toHaveLength(1);
+    expect(persistedMessages[0]?.metadata).toMatchObject({
+      workflow: {
+        kind: 'CONVERT',
+        requestedAction: 'INVITE_ONLINE_CONSULT',
+        patientId: 'patient-1',
+        caseId: 'case-1',
+      },
+    });
+
+    const historyRes = await app.request('/api/v2/chatbot/history/session-actual-persisted-workflow?limit=10', {
+      method: 'GET',
+      headers: {
+        Cookie: `chatbot_session_secret=${secret}`,
+      },
+    });
+
+    expect(historyRes.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await historyRes.json());
+    expect(json.messages).toHaveLength(1);
+    expect(json.messages[0]?.nextAction).toBe('INVITE_ONLINE_CONSULT');
+    expect(((json.messages[0]?.metadata.workflow) as Record<string, unknown>).requestedAction).toBe('INVITE_ONLINE_CONSULT');
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy metadata nextAction fields before public serialization', async () => {

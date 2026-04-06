@@ -58,6 +58,67 @@ describe('ActionPlannerService', () => {
     expect(plan.reasonCodes).toContain('light_discovery_soft_guidance');
   });
 
+  it('keeps explicit document-upload requests on the document-upload path even in light discovery', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'LIGHT_DISCOVERY',
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        docUploadStatus: 'NONE',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+    });
+
+    expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
+  });
+
+  it.each([
+    'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    'ASK_FOR_HOSPITAL_RECOMMENDATION',
+  ])(
+    'keeps canonical recommendation intents on an intent-first path in light discovery (%s)',
+    (resolvedIntent) => {
+      const planner = new ActionPlannerService();
+
+      const plan = planner.plan({
+        engagementMode: 'LIGHT_DISCOVERY',
+        hospitalType: 'COSMETIC',
+        statusSnapshot: {
+          docUploadStatus: 'NOT_STARTED',
+          packageStatus: 'NOT_SHOWN',
+          recommendationStatus: 'NOT_SHOWN',
+          riskLevel: 'LOW',
+        },
+        resolvedIntent,
+      });
+
+      expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
+      expect(plan.secondaryAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    },
+  );
+
+  it('advances ACCEPT_DOC_UPLOAD past re-requesting documents when docs are already complete', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'LIGHT_DISCOVERY',
+      hospitalType: 'COSMETIC',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'NOT_SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+    });
+
+    expect(plan.nextAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+  });
+
   it('allows package exploration once the user is in qualified exploration without a consult-style intent', () => {
     const planner = new ActionPlannerService();
 
@@ -252,6 +313,7 @@ describe('ActionPlannerService', () => {
     const plan = planner.plan({
       engagementMode: 'DEEP_WORKFLOW',
       hospitalType: 'REGULAR',
+      progressionSignal: 'READY_TO_PROCEED',
       statusSnapshot: {
         docUploadStatus: 'UPLOADED',
         packageStatus: 'SHOWN',

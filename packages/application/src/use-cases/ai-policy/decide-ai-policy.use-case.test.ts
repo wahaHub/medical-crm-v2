@@ -45,7 +45,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     ]);
     expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
       engagementMode: 'DEEP_WORKFLOW',
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      progressionSignal: 'READY_TO_PROCEED',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     }));
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
       resolvedIntent: 'ASK_FOR_RECOMMENDATION',
@@ -168,10 +169,114 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(result.resolved_intent).toBe('GENERAL_CONSULT');
     expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
       engagementMode: 'QUALIFIED_EXPLORATION',
-      resolvedIntent: 'GENERAL_CONSULT',
+      progressionSignal: 'NONE',
+      resolvedIntent: 'GENERAL_INFO',
     }));
     expect(harness.engagementModeResolver.resolve).not.toHaveBeenCalled();
     expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
+  });
+
+  it('passes canonical ACCEPT_DOC_UPLOAD through to the planner so uploaded docs can advance by workflow state', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      useRealActionPlanner: true,
+      fullContextOverrides: {
+        statusSnapshot: {
+          docUploadStatus: 'uploaded',
+          recommendationStatus: 'not_shown',
+          consultationStatus: 'not_introduced',
+        },
+      },
+    });
+
+    await harness.useCase.execute({
+      sessionId: 'session-docs-complete-1',
+      userMessage: 'Okay, I can send the records now.',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+      }),
+    });
+
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+    }));
+  });
+
+  it('passes canonical progression readiness to the planner for consult-process requests', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      useRealActionPlanner: true,
+      fullContextOverrides: {
+        statusSnapshot: {
+          consultationStatus: 'not_introduced',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-consult-ready-1',
+      userMessage: 'How does the online consult work? I am ready to proceed.',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_CONSULT_PROCESS',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+      }),
+    });
+
+    expect(result.next_action).toBe('INVITE_ONLINE_CONSULT');
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ASK_CONSULT_PROCESS',
+      progressionSignal: 'READY_TO_PROCEED',
+    }));
+  });
+
+  it('keeps canonical hospital recommendation requests on an intent-first path even in light discovery', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      useRealActionPlanner: true,
+      fullContextOverrides: {
+        statusSnapshot: {
+          docUploadStatus: 'not_started',
+          recommendationStatus: 'not_shown',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-light-recommendation-1',
+      userMessage: 'Please recommend a hospital for me.',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'LIGHT_DISCOVERY',
+        recommendationSignal: 'SEEKING_RECOMMENDATION',
+      }),
+    });
+
+    expect(result.next_action).toBe('REQUEST_DOC_UPLOAD');
+    expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+    }));
+  });
+
+  it('marks requested-human canonical routing as handoff-required when next action is HUMAN_HANDOFF', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      useRealActionPlanner: true,
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-human-handoff-1',
+      userMessage: 'I want to talk to a human.',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+      }),
+    });
+
+    expect(result.next_action).toBe('HUMAN_HANDOFF');
+    expect(result.handoff_required).toBe(true);
   });
 
   it('persists selected_hospital_id when a recommendation offer is accepted in a persistent hospital context', async () => {

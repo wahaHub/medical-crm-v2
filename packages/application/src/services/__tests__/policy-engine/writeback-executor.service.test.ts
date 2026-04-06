@@ -325,4 +325,83 @@ describe('WritebackExecutorService', () => {
       lastNextAction: 'ANSWER_FAQ',
     }));
   });
+
+  it('creates the requested-human handoff side effect when the final action is HUMAN_HANDOFF', async () => {
+    const sessionRepo = {
+      findBySessionId: vi.fn(async () => new AiChatSession({
+        id: 'db-session-handoff',
+        sessionId: 'session-handoff',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'REGULAR',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          conditionStatus: 'known',
+          formStatus: 'completed',
+          docUploadStatus: 'uploaded',
+          recommendationStatus: 'preliminary_shown',
+          consultationStatus: 'ready',
+          packageStatus: 'shown',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'qualified',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          engagementMode: 'QUALIFIED_EXPLORATION',
+          prequalificationReasonCodes: [],
+          enteredDeepWorkflowAt: null,
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: 'ANSWER_FAQ',
+          lastResolvedIntent: 'GENERAL_CONSULT',
+          conversationSummary: '',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
+      patchStatus: vi.fn(async (_sessionId: string, patch: Record<string, unknown>) => patch),
+    };
+    const profileRepo = { patch: vi.fn(async () => null) };
+    const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
+    const timelineRepo = { append: vi.fn(async (event) => event) };
+    const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
+    const handoffRepo = { save: vi.fn(async (handoff) => ({ ...handoff, id: 'handoff-1' })) };
+
+    const executor = new WritebackExecutorService(
+      sessionRepo as any,
+      profileRepo as any,
+      messageRepo as any,
+      timelineRepo as any,
+      followupRepo as any,
+      handoffRepo as any,
+      new WritebackPlannerService(),
+      new HandoffPolicyService(),
+    );
+
+    const result = await executor.execute({
+      sessionId: 'session-handoff',
+      sessionDbId: 'db-session-handoff',
+      patientId: null,
+      assistantMessageId: 'assistant-handoff',
+      policyDecision: {
+        engagementMode: 'QUALIFIED_EXPLORATION',
+        writebackDepth: 'moderate',
+        nextAction: 'HUMAN_HANDOFF',
+        riskLevel: 'LOW',
+        reasonCodes: ['human_handoff_requested'],
+        prequalificationReasonCodes: ['trust_building_question'],
+      },
+    });
+
+    expect(handoffRepo.save).toHaveBeenCalledTimes(1);
+    expect(handoffRepo.save.mock.calls[0]?.[0]).toMatchObject({
+      handoffType: 'REQUESTED_HUMAN',
+      priority: 'MEDIUM',
+      reasonCode: 'user_requested_human',
+    });
+    expect(result.handoffCreated).toBe('handoff-1');
+  });
 });

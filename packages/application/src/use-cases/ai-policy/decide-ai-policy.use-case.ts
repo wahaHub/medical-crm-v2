@@ -87,7 +87,7 @@ export class DecideAiPolicyUseCase {
       risk.riskLevel,
     );
 
-    const context = effectiveEngagementMode === 'LIGHT_DISCOVERY'
+    const context = effectiveEngagementMode === 'LIGHT_DISCOVERY' && !requiresFullWorkflowContext(semantics.signals.resolvedIntent)
       ? lightContext
       : await this.contextBuilder.build({
         sessionId: input.sessionId,
@@ -104,6 +104,7 @@ export class DecideAiPolicyUseCase {
 
     const plan = this.actionPlanner.plan({
       hospitalType: context.hospitalType,
+      progressionSignal: semantics.signals.progressionSignal,
       statusSnapshot: context.contextDepth === 'full'
         ? {
             ...context.statusSnapshot,
@@ -113,7 +114,7 @@ export class DecideAiPolicyUseCase {
             riskLevel: risk.riskLevel,
           },
       engagementMode: effectiveEngagementMode,
-      resolvedIntent: runtimeResolvedIntent,
+      resolvedIntent: semantics.signals.resolvedIntent,
     });
 
     const recommendation = effectiveEngagementMode === 'DEEP_WORKFLOW' && context.contextDepth === 'full'
@@ -174,7 +175,7 @@ export class DecideAiPolicyUseCase {
         match_type: 'matched',
         reason_codes: candidate.reasonCodes,
       })),
-      handoff_required: resolvedNextAction === 'SAFETY_HANDOFF',
+      handoff_required: ['SAFETY_HANDOFF', 'HUMAN_HANDOFF'].includes(resolvedNextAction),
       writeback_plan: {
         context_depth: context.contextDepth,
         writeback_depth: determineWritebackDepth(effectiveEngagementMode),
@@ -241,6 +242,16 @@ const RUNTIME_RESOLVED_INTENT_BY_CANONICAL_INTENT: Record<AiPolicyResolvedIntent
 
 function buildCandidateSignals(extraction: Record<string, unknown> | undefined): Record<string, unknown> {
   return isRecord(extraction) ? { ...extraction } : {};
+}
+
+function requiresFullWorkflowContext(resolvedIntent: AiPolicyResolvedIntent): boolean {
+  return [
+    'ASK_CONSULT_PROCESS',
+    'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    'ASK_FOR_HOSPITAL_RECOMMENDATION',
+    'REQUEST_DOC_UPLOAD',
+    'ACCEPT_DOC_UPLOAD',
+  ].includes(resolvedIntent);
 }
 
 function parseCanonicalSemanticSignals(

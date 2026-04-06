@@ -84,6 +84,7 @@ export class WritebackExecutorService {
     const handoffDecision = this.handoffPolicy.decide({
       riskLevel: input.policyDecision.riskLevel,
       nextAction: input.policyDecision.nextAction,
+      requestedHuman: input.policyDecision.nextAction === 'HUMAN_HANDOFF',
     });
 
     let handoffCreated: string | null = null;

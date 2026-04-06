@@ -8,6 +8,7 @@ import { isMissingDocumentStatus, normalizePolicyState } from './status-normaliz
 export interface ActionPlannerInput {
   engagementMode: AiPolicyEngagementMode;
   hospitalType: HospitalType;
+  progressionSignal?: string;
   statusSnapshot: {
     docUploadStatus?: string;
     packageStatus?: string;
@@ -58,11 +59,23 @@ export class ActionPlannerService {
 }
 
 function planLightDiscovery(input: ActionPlannerInput): ActionPlan {
+  if (input.resolvedIntent === 'ASK_CONSULT_PROCESS') {
+    return planConsultProcess(input);
+  }
+
+  if (isDocumentUploadPathIntent(input.resolvedIntent)) {
+    return planDocumentUploadPath(input, 'light_discovery_document_path_requested');
+  }
+
+  if (isCanonicalRecommendationIntent(input.resolvedIntent)) {
+    return planCanonicalRecommendationPath(input);
+  }
+
   if (input.resolvedIntent === 'REQUEST_DOC_UPLOAD') {
     return {
-      nextAction: 'ANSWER_FAQ',
+      nextAction: 'REQUEST_DOC_UPLOAD',
       secondaryAction: null,
-      reasonCodes: ['light_discovery_docs_explanation'],
+      reasonCodes: ['light_discovery_document_path_requested'],
     };
   }
 
@@ -91,41 +104,15 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
   }
 
   if (input.resolvedIntent === 'ASK_CONSULT_PROCESS') {
-    return {
-      nextAction: 'EXPLAIN_CONSULT_PROCESS',
-      secondaryAction: null,
-      reasonCodes: ['consult_process_requested'],
-    };
+    return planConsultProcess(input);
   }
 
   if (isDocumentUploadPathIntent(input.resolvedIntent)) {
-    return {
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      secondaryAction: null,
-      reasonCodes: ['document_upload_path_requested'],
-    };
+    return planDocumentUploadPath(input, 'document_upload_path_requested');
   }
 
-  if (
-    isCanonicalRecommendationIntent(input.resolvedIntent)
-    && isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
-  ) {
-    return {
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      secondaryAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      reasonCodes: ['documents_required_before_recommendation'],
-    };
-  }
-
-  if (
-    isCanonicalRecommendationIntent(input.resolvedIntent)
-    && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
-  ) {
-    return {
-      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      secondaryAction: null,
-      reasonCodes: ['canonical_recommendation_ready'],
-    };
+  if (isCanonicalRecommendationIntent(input.resolvedIntent)) {
+    return planCanonicalRecommendationPath(input);
   }
 
   if (input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)) {
@@ -186,19 +173,7 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
   }
 
   if (input.resolvedIntent === 'ASK_CONSULT_PROCESS') {
-    if (consultationReadyForInvite(input.statusSnapshot.consultationStatus)) {
-      return {
-        nextAction: 'INVITE_ONLINE_CONSULT',
-        secondaryAction: null,
-        reasonCodes: ['consult_invite_ready'],
-      };
-    }
-
-    return {
-      nextAction: 'EXPLAIN_CONSULT_PROCESS',
-      secondaryAction: null,
-      reasonCodes: ['consult_process_requested'],
-    };
+    return planConsultProcess(input);
   }
 
   if (
@@ -213,33 +188,11 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
   }
 
   if (isDocumentUploadPathIntent(input.resolvedIntent)) {
-    return {
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      secondaryAction: null,
-      reasonCodes: ['explicit_document_request'],
-    };
+    return planDocumentUploadPath(input, 'explicit_document_request');
   }
 
-  if (
-    isCanonicalRecommendationIntent(input.resolvedIntent)
-    && isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
-  ) {
-    return {
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      secondaryAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      reasonCodes: ['documents_required_before_recommendation'],
-    };
-  }
-
-  if (
-    isCanonicalRecommendationIntent(input.resolvedIntent)
-    && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
-  ) {
-    return {
-      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      secondaryAction: null,
-      reasonCodes: ['canonical_recommendation_ready'],
-    };
+  if (isCanonicalRecommendationIntent(input.resolvedIntent)) {
+    return planCanonicalRecommendationPath(input);
   }
 
   if (
@@ -276,8 +229,56 @@ function consultationCanBeInvited(value: string | undefined): boolean {
   return !['SCHEDULED', 'BOOKED', 'COMPLETED', 'CANCELLED'].includes(normalized);
 }
 
-function consultationReadyForInvite(value: string | undefined): boolean {
-  return normalizePolicyState(value) === 'READY';
+function planConsultProcess(input: ActionPlannerInput): ActionPlan {
+  if (isProgressionReadyForConsultInvite(input.progressionSignal) && consultationCanBeInvited(input.statusSnapshot.consultationStatus)) {
+    return {
+      nextAction: 'INVITE_ONLINE_CONSULT',
+      secondaryAction: null,
+      reasonCodes: ['consult_invite_ready'],
+    };
+  }
+
+  return {
+    nextAction: 'EXPLAIN_CONSULT_PROCESS',
+    secondaryAction: null,
+    reasonCodes: ['consult_process_requested'],
+  };
+}
+
+function planCanonicalRecommendationPath(input: ActionPlannerInput): ActionPlan {
+  if (isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)) {
+    return {
+      nextAction: 'REQUEST_DOC_UPLOAD',
+      secondaryAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      reasonCodes: ['documents_required_before_recommendation'],
+    };
+  }
+
+  return {
+    nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+    secondaryAction: null,
+    reasonCodes: ['canonical_recommendation_ready'],
+  };
+}
+
+function planDocumentUploadPath(input: ActionPlannerInput, reasonCode: string): ActionPlan {
+  if (input.resolvedIntent === 'ACCEPT_DOC_UPLOAD' && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)) {
+    return {
+      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      secondaryAction: null,
+      reasonCodes: ['documents_already_complete_progressed'],
+    };
+  }
+
+  return {
+    nextAction: 'REQUEST_DOC_UPLOAD',
+    secondaryAction: null,
+    reasonCodes: [reasonCode],
+  };
+}
+
+function isProgressionReadyForConsultInvite(value: string | undefined): boolean {
+  return ['READY_TO_PROCEED', 'EXPLICITLY_COMMITTING'].includes(normalizePolicyState(value));
 }
 
 function isCanonicalRecommendationIntent(resolvedIntent: string): boolean {

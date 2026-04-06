@@ -117,7 +117,12 @@ export class DecideAiPolicyUseCase {
       resolvedIntent: semantics.signals.resolvedIntent,
     });
 
-    const recommendation = effectiveEngagementMode === 'DEEP_WORKFLOW' && context.contextDepth === 'full'
+    const shouldGateRecommendations = context.contextDepth === 'full' && shouldRunRecommendationGating({
+      engagementMode: effectiveEngagementMode,
+      planNextAction: plan.nextAction,
+    });
+
+    const recommendation = shouldGateRecommendations
       ? await this.recommendationPolicy.decide({
         statusSnapshot: {
           ...context.statusSnapshot,
@@ -132,11 +137,8 @@ export class DecideAiPolicyUseCase {
         reasonCodes: ['recommendation_deferred_by_engagement_mode'],
       };
 
-    const resolvedNextAction: AiPolicyBackendNextAction = risk.overrideAction ?? (
-      recommendation.eligible && recommendation.shortlist.length > 0
-        ? 'SHOW_HOSPITAL_RECOMMENDATIONS'
-        : plan.nextAction
-    );
+    const resolvedNextAction: AiPolicyBackendNextAction = risk.overrideAction
+      ?? resolveNextActionFromRecommendationOutcome(plan.nextAction, recommendation);
 
     const reasonCodes = dedupeReasonCodes(
       ...semantics.reasonCodes,
@@ -261,6 +263,32 @@ function resolveRecommendationIntentForPolicy(
   return runtimeResolvedIntent === 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS'
     ? runtimeResolvedIntent
     : canonicalResolvedIntent;
+}
+
+function shouldRunRecommendationGating(input: {
+  engagementMode: AiPolicyEngagementMode;
+  planNextAction: AiPolicyBackendNextAction;
+}): boolean {
+  return input.engagementMode === 'DEEP_WORKFLOW'
+    || input.planNextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS';
+}
+
+function resolveNextActionFromRecommendationOutcome(
+  plannedNextAction: AiPolicyBackendNextAction,
+  recommendation: {
+    eligible: boolean;
+    shortlist: Array<unknown>;
+  },
+): AiPolicyBackendNextAction {
+  if (recommendation.eligible && recommendation.shortlist.length > 0) {
+    return 'SHOW_HOSPITAL_RECOMMENDATIONS';
+  }
+
+  if (plannedNextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS') {
+    return 'EXPLORE_HOSPITAL_RECOMMENDATIONS';
+  }
+
+  return plannedNextAction;
 }
 
 function parseCanonicalSemanticSignals(

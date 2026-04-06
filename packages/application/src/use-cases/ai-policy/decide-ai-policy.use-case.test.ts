@@ -260,6 +260,35 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     }));
   });
 
+  it('downgrades light-discovery canonical recommendation asks to exploration when shortlist gating has no shortlist', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      useRealActionPlanner: true,
+      fullContextOverrides: {
+        statusSnapshot: {
+          docUploadStatus: 'uploaded',
+          recommendationStatus: 'not_shown',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-light-shortlist-miss-1',
+      userMessage: 'Please recommend a hospital for me.',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'LIGHT_DISCOVERY',
+        recommendationSignal: 'SEEKING_RECOMMENDATION',
+      }),
+    });
+
+    expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+    }));
+    expect(result.next_action).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.shortlist).toEqual([]);
+  });
+
   it('passes canonical doctor-or-hospital direction into recommendation gating on the live path', async () => {
     const harness = createHarness({
       failOnLegacyResolverCall: true,
@@ -285,6 +314,35 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
       resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
     }));
+  });
+
+  it('downgrades ACCEPT_DOC_UPLOAD with completed docs when shortlist gating has no shortlist', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      useRealActionPlanner: true,
+      fullContextOverrides: {
+        statusSnapshot: {
+          docUploadStatus: 'uploaded',
+          recommendationStatus: 'not_shown',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-accept-docs-shortlist-miss-1',
+      userMessage: 'Okay, I can send the records now.',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+      }),
+    });
+
+    expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+    }));
+    expect(result.next_action).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.shortlist).toEqual([]);
   });
 
   it('marks requested-human canonical routing as handoff-required when next action is HUMAN_HANDOFF', async () => {

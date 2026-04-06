@@ -190,6 +190,112 @@ describe('Internal routes', () => {
         candidateHospitals: [],
       });
     });
+
+    it('does not treat candidate_signals as a fallback canonical semantic source when semantic_signals is absent', async () => {
+      mockServices.decideAiPolicy.execute.mockResolvedValue({
+        next_action: 'ANSWER_FAQ',
+      });
+
+      const res = await app.request('/api/v2/internal/ai-policy/decide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          version: 'v1',
+          request_id: 'req-3',
+          session_id: 'session-3',
+          actor: 'DIFY',
+          source_channel: 'chatflow',
+          hospital_type: 'COSMETIC',
+          payload: {
+            user_message: 'hello',
+            candidate_signals: {
+              resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+              engagementSignal: 'QUALIFIED_EXPLORATION',
+              progressionSignal: 'OPEN_TO_NEXT_STEP',
+              recommendationSignal: 'SEEKING_RECOMMENDATION',
+              mentionsCondition: true,
+              mentionsDoctorOrHospitalNeed: true,
+              possibleRisk: 'SENSITIVE',
+            },
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.decideAiPolicy.execute).toHaveBeenCalledWith({
+        sessionId: 'session-3',
+        userMessage: 'hello',
+        extraction: {
+          possibleRisk: 'SENSITIVE',
+        },
+        pageContext: null,
+        candidateHospitals: [],
+      });
+    });
+
+    it('forwards only the transitional compatibility keys from candidate_signals', async () => {
+      mockServices.decideAiPolicy.execute.mockResolvedValue({
+        next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      });
+
+      const res = await app.request('/api/v2/internal/ai-policy/decide', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          version: 'v1',
+          request_id: 'req-4',
+          session_id: 'session-4',
+          actor: 'DIFY',
+          source_channel: 'chatflow',
+          hospital_type: 'COSMETIC',
+          payload: {
+            user_message: 'Can you recommend a hospital for me?',
+            candidate_signals: {
+              possibleIntent: 'ASK_FOR_RECOMMENDATION',
+              possibleRisk: 'SENSITIVE',
+              mentionedBudget: '$5000',
+              topicHint: 'rhinoplasty',
+              arbitraryText: 'drop me',
+              freeformObject: { note: 'drop me too' },
+            },
+            semantic_signals: {
+              resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+              engagementSignal: 'QUALIFIED_EXPLORATION',
+              progressionSignal: 'OPEN_TO_NEXT_STEP',
+              recommendationSignal: 'SEEKING_RECOMMENDATION',
+              mentionsCondition: true,
+              mentionsDoctorOrHospitalNeed: true,
+            },
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.decideAiPolicy.execute).toHaveBeenCalledWith({
+        sessionId: 'session-4',
+        userMessage: 'Can you recommend a hospital for me?',
+        extraction: {
+          possibleIntent: 'ASK_FOR_RECOMMENDATION',
+          possibleRisk: 'SENSITIVE',
+          mentionedBudget: '$5000',
+          topicHint: 'rhinoplasty',
+          resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+          engagementSignal: 'QUALIFIED_EXPLORATION',
+          progressionSignal: 'OPEN_TO_NEXT_STEP',
+          recommendationSignal: 'SEEKING_RECOMMENDATION',
+          mentionsCondition: true,
+          mentionsDoctorOrHospitalNeed: true,
+        },
+        pageContext: null,
+        candidateHospitals: [],
+      });
+    });
   });
 
   describe('POST /api/v2/internal/ai-policy/context', () => {
@@ -362,6 +468,68 @@ describe('Internal routes', () => {
           prequalificationReasonCodes: ['form_completed'],
           shortlist: [{
             hospitalId: 'hospital-2',
+            matchType: 'matched',
+            reasonCodes: ['best_fit'],
+          }],
+        },
+      });
+    });
+
+    it('normalizes shortlist items in writeback ingress before forwarding', async () => {
+      mockServices.applyAiPolicyWriteback.execute.mockResolvedValue({
+        statusUpdated: { recommendationStatus: 'PRELIMINARY_SHOWN', engagementMode: 'DEEP_WORKFLOW' },
+        timelineEventsWritten: [],
+        messageMetadata: { engagementMode: 'DEEP_WORKFLOW', writebackDepth: 'complete' },
+        followupCreated: null,
+        handoffCreated: null,
+      });
+
+      const res = await app.request('/api/v2/internal/ai-policy/writeback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          version: 'v1',
+          request_id: 'req-writeback-3',
+          session_id: 'session-3',
+          actor: 'DIFY',
+          source_channel: 'chatflow',
+          hospital_type: 'COSMETIC',
+          payload: {
+            assistant_message_id: 'assistant-3',
+            idempotency_key: 'session-3:assistant-3:v1',
+            policy_decision: {
+              engagement_mode: 'DEEP_WORKFLOW',
+              writeback_depth: 'complete',
+              next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+              shortlist: [{
+                hospital_id: 'hospital-3',
+                match_type: 'matched',
+                reason_codes: ['best_fit', 123, null],
+                extra_field: 'drop me',
+              }],
+            },
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.applyAiPolicyWriteback.execute).toHaveBeenCalledWith({
+        sessionId: 'session-3',
+        assistantMessageId: 'assistant-3',
+        idempotencyKey: 'session-3:assistant-3:v1',
+        policyDecision: {
+          engagementMode: 'DEEP_WORKFLOW',
+          writebackDepth: 'complete',
+          nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          selectedHospitalId: undefined,
+          riskLevel: undefined,
+          reasonCodes: [],
+          prequalificationReasonCodes: [],
+          shortlist: [{
+            hospitalId: 'hospital-3',
             matchType: 'matched',
             reasonCodes: ['best_fit'],
           }],

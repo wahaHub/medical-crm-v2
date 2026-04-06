@@ -47,6 +47,12 @@ const aiPolicyNextActionSchema = z.enum([
 ]);
 
 const aiPolicyWritebackDepthSchema = z.enum(['minimal', 'moderate', 'complete']);
+const aiPolicyCompatibilitySignalKeys = [
+  'possibleIntent',
+  'possibleRisk',
+  'mentionedBudget',
+  'topicHint',
+] as const;
 
 function isAuthorized(secret: string | undefined): boolean {
   const { INTERNAL_API_SECRET } = getServerEnv();
@@ -231,7 +237,7 @@ app.openapi(aiPolicyWritebackRoute, async (c) => {
       prequalificationReasonCodes: readStringArray(
         decision.prequalificationReasonCodes ?? decision.prequalification_reason_codes,
       ),
-      shortlist: decision.shortlist ?? [],
+      shortlist: readShortlistItems(decision.shortlist),
     },
   });
 
@@ -337,13 +343,26 @@ app.route('/', internalFaqEvalRoutes);
 
 function readAiPolicyExtraction(payload: unknown): Record<string, unknown> {
   const record = asRecord(payload);
-  const candidateSignals = parseRecord(record.candidate_signals) ?? {};
-  const semanticSignals = readCanonicalSemanticSignals(record.semantic_signals)
-    ?? readCanonicalSemanticSignals(record.candidate_signals);
+  const candidateSignals = readCompatibilityCandidateSignals(record.candidate_signals);
+  const semanticSignals = readCanonicalSemanticSignals(record.semantic_signals);
 
   return semanticSignals
     ? { ...candidateSignals, ...semanticSignals }
     : candidateSignals;
+}
+
+function readCompatibilityCandidateSignals(value: unknown): Record<string, unknown> {
+  const record = parseRecord(value) ?? {};
+  const compatibilitySignals: Record<string, unknown> = {};
+
+  for (const key of aiPolicyCompatibilitySignalKeys) {
+    const normalized = readOptionalString(record[key]);
+    if (normalized !== null) {
+      compatibilitySignals[key] = normalized;
+    }
+  }
+
+  return compatibilitySignals;
 }
 
 function readCanonicalSemanticSignals(
@@ -368,6 +387,40 @@ function readCanonicalSemanticSignals(
 
 function readAiPolicyWritebackDecision(value: unknown): Record<string, unknown> {
   return parseRecord(value) ?? {};
+}
+
+function readShortlistItems(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      const record = parseRecord(item);
+      if (!record) {
+        return null;
+      }
+
+      const shortlistItem: Record<string, unknown> = {};
+      const hospitalId = readOptionalString(record.hospitalId ?? record.hospital_id);
+      const matchType = readOptionalString(record.matchType ?? record.match_type);
+      const reasonCodes = readStringArray(record.reasonCodes ?? record.reason_codes);
+
+      if (hospitalId !== null) {
+        shortlistItem.hospitalId = hospitalId;
+      }
+
+      if (matchType !== null) {
+        shortlistItem.matchType = matchType;
+      }
+
+      if (reasonCodes.length > 0) {
+        shortlistItem.reasonCodes = reasonCodes;
+      }
+
+      return Object.keys(shortlistItem).length > 0 ? shortlistItem : null;
+    })
+    .filter((item): item is Record<string, unknown> => item !== null);
 }
 
 function parseRecord(value: unknown): Record<string, unknown> | null {

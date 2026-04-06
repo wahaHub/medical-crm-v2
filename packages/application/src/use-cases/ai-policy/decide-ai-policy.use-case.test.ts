@@ -176,10 +176,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('persists selected_hospital_id when a recommendation offer is accepted in a persistent hospital context', async () => {
     const harness = createHarness({
-      intentResolution: {
-        resolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
-        reasonCodes: ['pending_offer_confirmed'],
-      },
+      failOnLegacyResolverCall: true,
       lightContextOverrides: {
         activeHospitalContext: {
           hospitalId: 'hospital-accept-1',
@@ -208,24 +205,23 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-accept-1',
-      userMessage: 'yes, let us go with this hospital',
+      userMessage: 'let us proceed with this hospital',
       extraction: buildCanonicalExtraction({
-        resolvedIntent: 'UNKNOWN',
+        resolvedIntent: 'GENERAL_INFO',
         engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'EXPLICITLY_COMMITTING',
+        recommendationSignal: 'READY_FOR_RECOMMENDATION',
       }),
     });
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
     expect(result.selected_hospital_id).toBe('hospital-accept-1');
-    expect(harness.intentResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('does not persist selected_hospital_id when acceptance only has shortlist-derived hospital focus', async () => {
     const harness = createHarness({
-      intentResolution: {
-        resolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
-        reasonCodes: ['pending_offer_confirmed'],
-      },
+      failOnLegacyResolverCall: true,
       lightContextOverrides: {
         activeHospitalContext: {
           hospitalId: 'hospital-shortlist-1',
@@ -254,16 +250,18 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-accept-2',
-      userMessage: 'yes, let us do that',
+      userMessage: 'okay, proceed with this one',
       extraction: buildCanonicalExtraction({
-        resolvedIntent: 'UNKNOWN',
+        resolvedIntent: 'SMALL_TALK_OR_GREETING',
         engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'READY_TO_PROCEED',
+        recommendationSignal: 'READY_FOR_RECOMMENDATION',
       }),
     });
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
     expect(result.selected_hospital_id).toBeUndefined();
-    expect(harness.intentResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 
   it('bridges recommendation asks to alternative-shortlist intent when a hospital is already selected', async () => {
@@ -347,10 +345,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
   it('recovers ACCEPT_HOSPITAL_RECOMMENDATION for commitment-like acceptance context even when canonical intent is general info', async () => {
     const harness = createHarness({
-      intentResolution: {
-        resolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
-        reasonCodes: ['pending_offer_confirmed'],
-      },
+      failOnLegacyResolverCall: true,
       lightContextOverrides: {
         activeHospitalContext: {
           hospitalId: 'hospital-accept-2',
@@ -390,7 +385,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
     expect(result.selected_hospital_id).toBe('hospital-accept-2');
-    expect(harness.intentResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
 });
 

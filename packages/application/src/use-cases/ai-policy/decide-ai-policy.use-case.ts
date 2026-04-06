@@ -21,6 +21,10 @@ import type {
 
 type RuntimeIntentBridgeContext = {
   contextDepth: 'light' | 'full';
+  activeHospitalContext: {
+    hospitalId: string;
+    source: string;
+  } | null;
   pendingOffer: {
     exists: boolean;
     type: string | null;
@@ -56,7 +60,7 @@ export class DecideAiPolicyUseCase {
     private readonly contextBuilder: ContextBuilderService,
     _signalResolver: SignalResolverService,
     _engagementModeResolver: EngagementModeResolverService,
-    private readonly intentResolver: IntentResolverService,
+    _intentResolver: IntentResolverService,
     private readonly riskResolver: RiskResolverService,
     private readonly actionPlanner: ActionPlannerService,
     private readonly recommendationPolicy: RecommendationPolicyService,
@@ -92,11 +96,9 @@ export class DecideAiPolicyUseCase {
         pageContext: input.pageContext,
       });
 
-    const runtimeIntentBridge = await this.resolveRuntimeIntent({
-      userMessage: input.userMessage,
+    const runtimeIntentBridge = this.resolveRuntimeIntent({
       semantics: semantics.signals,
       context,
-      candidateSignals,
     });
     const runtimeResolvedIntent = runtimeIntentBridge.resolvedIntent;
 
@@ -186,12 +188,10 @@ export class DecideAiPolicyUseCase {
     };
   }
 
-  private async resolveRuntimeIntent(input: {
-    userMessage: string;
+  private resolveRuntimeIntent(input: {
     semantics: AiPolicySemanticSignals;
     context: RuntimeIntentBridgeContext;
-    candidateSignals: Record<string, unknown>;
-  }): Promise<{ resolvedIntent: string; reasonCodes: string[] }> {
+  }): { resolvedIntent: string; reasonCodes: string[] } {
     const runtimeResolvedIntent = mapCanonicalResolvedIntentToRuntimeIntent(input.semantics.resolvedIntent);
 
     if (shouldBridgeAlternativeRecommendations(runtimeResolvedIntent, input.context)) {
@@ -208,31 +208,9 @@ export class DecideAiPolicyUseCase {
       };
     }
 
-    const legacyIntent = await this.intentResolver.resolve({
-      userMessage: input.userMessage,
-      pendingOffer: input.context.pendingOffer.exists
-        ? { type: input.context.pendingOffer.type ?? 'UNKNOWN' }
-        : null,
-      recentMessages: input.context.contextDepth === 'full'
-        ? (input.context.recentMessages ?? []).map((message) => ({
-            role: message.role,
-            content: message.content,
-            nextAction: message.nextAction,
-          }))
-        : [],
-      candidateSignals: input.candidateSignals,
-    });
-
-    if (legacyIntent.resolvedIntent === 'ACCEPT_HOSPITAL_RECOMMENDATION') {
-      return {
-        resolvedIntent: legacyIntent.resolvedIntent,
-        reasonCodes: ['pending_recommendation_acceptance_bridge'],
-      };
-    }
-
     return {
-      resolvedIntent: runtimeResolvedIntent,
-      reasonCodes: [],
+      resolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
+      reasonCodes: ['pending_recommendation_acceptance_bridge'],
     };
   }
 }
@@ -311,15 +289,15 @@ function shouldBridgeAcceptedHospitalRecommendation(
   semantics: AiPolicySemanticSignals,
   context: RuntimeIntentBridgeContext,
 ): boolean {
-  if (!(context.pendingOffer.exists && context.pendingOffer.type === 'HOSPITAL_RECOMMENDATION')) {
+  if (
+    !context.pendingOffer.exists
+    || context.pendingOffer.type !== 'HOSPITAL_RECOMMENDATION'
+    || context.activeHospitalContext === null
+  ) {
     return false;
   }
 
-  if (runtimeResolvedIntent === 'UNKNOWN') {
-    return true;
-  }
-
-  return runtimeResolvedIntent === 'GENERAL_CONSULT'
+  return ['UNKNOWN', 'GENERAL_CONSULT'].includes(runtimeResolvedIntent)
     && isCommitmentLikeProgression(semantics.progressionSignal);
 }
 

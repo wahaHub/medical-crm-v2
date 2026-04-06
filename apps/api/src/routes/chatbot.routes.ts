@@ -1144,8 +1144,8 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     ?? asString(structuredMetadata.internal_next_action)
     ?? null;
   const canonicalResolvedIntent = normalizeCanonicalResolvedIntent(
-    parsedAnswer?.canonicalResolvedIntent
-    ?? parsedAnswer?.resolvedIntent
+    parsedAnswer?.resolvedIntent
+    ?? parsedAnswer?.canonicalResolvedIntent
     ?? asString(structuredMetadata.resolvedIntent)
     ?? asString(structuredMetadata.resolved_intent),
   );

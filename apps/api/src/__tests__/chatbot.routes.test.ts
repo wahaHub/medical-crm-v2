@@ -732,6 +732,58 @@ describe('Chatbot routes', () => {
     );
   });
 
+  it('POST /api/v2/chatbot/chat prefers top-level resolvedIntent over deprecated canonicalResolvedIntent when both are present', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-resolved-intent-conflict',
+      answer: JSON.stringify({
+        answer: 'I can explain package options for that.',
+        intent: 'CONSULT',
+        resolvedIntent: 'ASK_PACKAGE_INFO',
+        canonicalResolvedIntent: 'ASK_CONSULT_PROCESS',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'SHOW_PACKAGE',
+        responseMode: 'package_guidance',
+        engagementSignal: 'QUALIFIED_EXPLORATION',
+        progressionSignal: 'OPEN_TO_NEXT_STEP',
+        recommendationSignal: 'NONE',
+        mentionsCondition: false,
+        mentionsDoctorOrHospitalNeed: false,
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-resolved-intent-conflict',
+        hospitalType: 'COSMETIC',
+        message: 'Do you have a package for this?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.metadata).toMatchObject({
+      resolvedIntent: 'ASK_PACKAGE_INFO',
+      semanticSignals: expect.objectContaining({
+        resolvedIntent: 'ASK_PACKAGE_INFO',
+      }),
+    });
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        resolvedIntent: 'ASK_PACKAGE_INFO',
+        metadata: expect.objectContaining({
+          resolvedIntent: 'ASK_PACKAGE_INFO',
+        }),
+      }),
+    );
+  });
+
   it('POST /api/v2/chatbot/chat persists canonical public nextAction when provider exposes it only through metadata', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({

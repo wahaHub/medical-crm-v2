@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 interface TokenData {
@@ -46,6 +46,32 @@ function BrandHeader() {
 }
 
 export default function HospitalRegisterPage() {
+  return (
+    <Suspense fallback={<RegisterPageLoading />}>
+      <HospitalRegisterPageContent />
+    </Suspense>
+  );
+}
+
+function RegisterPageLoading() {
+  return (
+    <PageWrapper>
+      <Card>
+        <div className="flex flex-col items-center gap-4 p-8">
+          <img
+            src="/medora_logo.png"
+            alt="Medora"
+            className="h-12 w-auto"
+          />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-500 border-t-transparent" />
+          <p className="text-slate-600 text-sm">Verifying your registration link...</p>
+        </div>
+      </Card>
+    </PageWrapper>
+  );
+}
+
+function HospitalRegisterPageContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
 
@@ -154,21 +180,7 @@ export default function HospitalRegisterPage() {
 
   // ---- Loading ----
   if (state === 'loading') {
-    return (
-      <PageWrapper>
-        <Card>
-          <div className="flex flex-col items-center gap-4 p-8">
-            <img
-              src="/medora_logo.png"
-              alt="Medora"
-              className="h-12 w-auto"
-            />
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-500 border-t-transparent" />
-            <p className="text-slate-600 text-sm">Verifying your registration link...</p>
-          </div>
-        </Card>
-      </PageWrapper>
-    );
+    return <RegisterPageLoading />;
   }
 
   // ---- Error (invalid token) ----

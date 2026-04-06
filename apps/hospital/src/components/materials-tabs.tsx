@@ -1375,7 +1375,6 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       procedureName: (item['procedureName'] as string | undefined) ?? undefined,
       duration: (item['duration'] as string | undefined) ?? undefined,
     })));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raw]);
 
   if (isLoading) {
@@ -1470,12 +1469,12 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     setSaving(true);
     let failedTargetKey: string | undefined;
     let nextHeroImage = heroImageStorageKey ?? (form.heroImage || null);
-    let nextPhotos = [...photos];
-    let nextPromotionalVideos = [...promotionalVideos];
-    let nextVideoTestimonials = [...videoTestimonials];
-    let nextDepartmentImages = { ...deptImages };
-    let nextDepartmentImageStorageKeys = { ...deptImageStorageKeys };
-    let nextEquipment = [...equipment];
+    const nextPhotos = [...photos];
+    const nextPromotionalVideos = [...promotionalVideos];
+    const nextVideoTestimonials = [...videoTestimonials];
+    const nextDepartmentImages = { ...deptImages };
+    const nextDepartmentImageStorageKeys = { ...deptImageStorageKeys };
+    const nextEquipment = [...equipment];
 
     const uploadTasks: Array<{
       id: string;

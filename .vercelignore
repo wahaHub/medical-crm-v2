@@ -1,0 +1,12 @@
+.git
+.worktrees
+BabelDOC
+dify
+node_modules
+.turbo
+coverage
+dist
+.next
+.env
+.env.local
+apps/api

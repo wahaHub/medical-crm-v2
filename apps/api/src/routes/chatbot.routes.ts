@@ -1531,8 +1531,12 @@ function isCanonicalOverlayKey(key: string): boolean {
 function normalizePublicMetadataForHistory(value: Record<string, unknown>): Record<string, unknown> {
   const normalized = normalizeHistoryMetadataValue(sanitizeUnknownValue(value));
   const normalizedRecord = asRecord(normalized);
-  const structuredOutputSource = asRecord(normalizedRecord.structuredOutput);
+  const structuredOutputSource = asRecord(
+    normalizedRecord.structuredOutput
+    ?? normalizedRecord.structured_output,
+  );
   const root = applyStrictHistoryCanonicalEnvelope(normalizedRecord);
+  delete root.structured_output;
   if (Object.keys(structuredOutputSource).length > 0) {
     root.structuredOutput = applyStrictHistoryStructuredOutput(structuredOutputSource);
   }

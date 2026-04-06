@@ -2185,6 +2185,63 @@ describe('Chatbot routes', () => {
     expect((nested.child as Record<string, unknown>).internal_next_action).toBeUndefined();
   });
 
+  it('GET /api/v2/chatbot/history/{sessionId} canonicalizes legacy structured_output records through the strict structuredOutput envelope', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-legacy-structured-output',
+        role: 'ASSISTANT',
+        content: 'I can help with that.',
+        nextAction: null,
+        metadata: {
+          structured_output: {
+            resolved_intent: 'NOT_REAL',
+            next_action: 'FREEFORM_ACTION',
+            metadata: {
+              engagement_signal: 'INVALID',
+              public_next_action: 'FREEFORM_ACTION',
+              nested: {
+                internal_next_action: 'FREEFORM_ACTION',
+              },
+            },
+          },
+        },
+        createdAt: new Date('2026-03-26T09:10:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect((json.messages[0]?.metadata as Record<string, unknown>).structured_output).toBeUndefined();
+    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'UNKNOWN',
+      resolved_intent: 'UNKNOWN',
+    });
+    expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>)).toMatchObject({
+      engagementSignal: 'LIGHT_DISCOVERY',
+      progressionSignal: 'NONE',
+      recommendationSignal: 'NONE',
+      mentionsCondition: false,
+      mentionsDoctorOrHospitalNeed: false,
+    });
+    expect(((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction)).toBeUndefined();
+    const structuredOutputMetadata = (((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>);
+    expect(structuredOutputMetadata.publicNextAction).toBeUndefined();
+    const nested = (structuredOutputMetadata.nested as Record<string, unknown>);
+    expect(nested.internal_next_action).toBeUndefined();
+  });
+
   it('GET /api/v2/chatbot/history/{sessionId} normalizes legacy workflow requestedAction fields in public metadata', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({

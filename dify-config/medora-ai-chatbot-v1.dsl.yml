@@ -716,8 +716,8 @@ workflow:
               "recommendationSignal": "NONE|SEEKING_DIRECTION|SEEKING_RECOMMENDATION|READY_FOR_RECOMMENDATION",
               "mentionsCondition": false,
               "mentionsDoctorOrHospitalNeed": false,
-              "possibleIntent": "ASK_FOR_RECOMMENDATION|REQUEST_DOC_UPLOAD|GENERAL_CONSULT|FAQ|null",
-              "possibleRisk": "CRISIS|SENSITIVE|LOW|null",
+              "possibleIntent": "FAQ|ASK_FOR_RECOMMENDATION|GENERAL_CONSULT|CONSULT_CONVERSION|CREATE_CASE|REQUEST_DOCS|DEEP_WORKFLOW|null",
+              "possibleRisk": "CRISIS|HIGH_RISK|HIGH|SENSITIVE|LOW|null",
               "mentionedBudget": "string|null",
               "topicHint": "string|null"
             }
@@ -732,12 +732,12 @@ workflow:
             - These compatibility fields are transitional/deprecated support and are not the canonical semantic contract.
 
             Multilingual examples:
-            - English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
-            - Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
-            - Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
-            - Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}
-            - English: "I have my reports ready, where should I upload them?" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false}
-            - Chinese: "我已经准备好检查报告了，怎么上传给你们？" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false}
+            - English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
+            - Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
+            - Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
+            - Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
+            - English: "I have my reports ready, where should I upload them?" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}
+            - Chinese: "我已经准备好检查报告了，怎么上传给你们？" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}
         memory:
           query_prompt_template: '{{#sys.query#}}'
           role_prefix:

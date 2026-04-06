@@ -567,10 +567,10 @@ describe('Dify workflow contract', () => {
     expect(prompt).toContain('"recommendationSignal": "NONE|SEEKING_DIRECTION|SEEKING_RECOMMENDATION|READY_FOR_RECOMMENDATION"');
     expect(prompt).toContain('"mentionsCondition": false');
     expect(prompt).toContain('"mentionsDoctorOrHospitalNeed": false');
-    expect(prompt).toContain('"possibleIntent":');
-    expect(prompt).toContain('"possibleRisk":');
-    expect(prompt).toContain('"mentionedBudget":');
-    expect(prompt).toContain('"topicHint":');
+    expect(prompt).toContain('"possibleIntent": "FAQ|ASK_FOR_RECOMMENDATION|GENERAL_CONSULT|CONSULT_CONVERSION|CREATE_CASE|REQUEST_DOCS|DEEP_WORKFLOW|null"');
+    expect(prompt).toContain('"possibleRisk": "CRISIS|HIGH_RISK|HIGH|SENSITIVE|LOW|null"');
+    expect(prompt).toContain('"mentionedBudget": "string|null"');
+    expect(prompt).toContain('"topicHint": "string|null"');
     expect(prompt).not.toContain('non-authoritative candidate signals');
     expect(prompt).not.toContain('only a hint for the backend policy engine');
     expect(prompt).toContain('Compatibility-only fields for the current backend');
@@ -580,10 +580,12 @@ describe('Dify workflow contract', () => {
     expect(prompt).toContain('Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟"');
     expect(prompt).toContain('Chinese: "你能推荐适合我的医院或医生吗？"');
     expect(prompt).toContain('Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?"');
-    expect(prompt).toContain('English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}');
-    expect(prompt).toContain('Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}');
-    expect(prompt).toContain('Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}');
-    expect(prompt).toContain('Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true}');
+    expect(prompt).toContain('English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
+    expect(prompt).toContain('Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
+    expect(prompt).toContain('Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
+    expect(prompt).toContain('Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
+    expect(prompt).toContain('English: "I have my reports ready, where should I upload them?" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}');
+    expect(prompt).toContain('Chinese: "我已经准备好检查报告了，怎么上传给你们？" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}');
 
     expect(prompt).not.toContain('"affirmative"');
     expect(prompt).not.toContain('"negative"');

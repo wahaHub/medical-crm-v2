@@ -1131,51 +1131,102 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
   const citations = parsedAnswer?.citations ?? deriveCitations(metadata);
   const topic = parsedAnswer?.topic ?? null;
   const structuredMetadata = asRecord(parsedAnswer?.metadata ?? {});
-  const rawNextAction = parsedAnswer?.nextAction ?? null;
-  const rawPublicNextAction = asString(structuredMetadata.publicNextAction)
-    ?? asString(structuredMetadata.public_next_action)
-    ?? rawNextAction;
   const engagementMode = parsedAnswer?.engagementMode
     ?? asString(structuredMetadata.engagementMode)
     ?? asString(structuredMetadata.engagement_mode)
     ?? null;
-  const internalNextAction = parsedAnswer?.internalNextAction
-    ?? asString(structuredMetadata.internalNextAction)
-    ?? asString(structuredMetadata.internal_next_action)
-    ?? null;
-  const canonicalResolvedIntent = normalizeCanonicalResolvedIntent(
-    parsedAnswer?.resolvedIntent
-    ?? parsedAnswer?.canonicalResolvedIntent
-    ?? asString(structuredMetadata.resolvedIntent)
-    ?? asString(structuredMetadata.resolved_intent),
+  const canonicalResolvedIntent = selectFirstNormalizedValue(
+    [
+      parsedAnswer?.resolvedIntent,
+      parsedAnswer?.canonicalResolvedIntent,
+      asString(structuredMetadata.resolvedIntent),
+      asString(structuredMetadata.resolved_intent),
+      asString(metadata.resolvedIntent),
+      asString(metadata.resolved_intent),
+    ],
+    normalizeCanonicalResolvedIntent,
   );
-  const canonicalSemanticMetadata = buildCanonicalSemanticMetadata({
+  const canonicalEngagementSignal = selectFirstNormalizedValue(
+    [
+      parsedAnswer?.engagementSignal,
+      asString(structuredMetadata.engagementSignal),
+      asString(structuredMetadata.engagement_signal),
+      asString(metadata.engagementSignal),
+      asString(metadata.engagement_signal),
+    ],
+    normalizeCanonicalEngagementSignal,
+  );
+  const canonicalProgressionSignal = selectFirstNormalizedValue(
+    [
+      parsedAnswer?.progressionSignal,
+      asString(structuredMetadata.progressionSignal),
+      asString(structuredMetadata.progression_signal),
+      asString(metadata.progressionSignal),
+      asString(metadata.progression_signal),
+    ],
+    normalizeCanonicalProgressionSignal,
+  );
+  const canonicalRecommendationSignal = selectFirstNormalizedValue(
+    [
+      parsedAnswer?.recommendationSignal,
+      asString(structuredMetadata.recommendationSignal),
+      asString(structuredMetadata.recommendation_signal),
+      asString(metadata.recommendationSignal),
+      asString(metadata.recommendation_signal),
+    ],
+    normalizeCanonicalRecommendationSignal,
+  );
+  const mentionsCondition = selectFirstPresentBoolean([
+    parsedAnswer?.mentionsCondition,
+    asBoolean(structuredMetadata.mentionsCondition),
+    asBoolean(structuredMetadata.mentions_condition),
+    asBoolean(metadata.mentionsCondition),
+    asBoolean(metadata.mentions_condition),
+  ]);
+  const mentionsDoctorOrHospitalNeed = selectFirstPresentBoolean([
+    parsedAnswer?.mentionsDoctorOrHospitalNeed,
+    asBoolean(structuredMetadata.mentionsDoctorOrHospitalNeed),
+    asBoolean(structuredMetadata.mentions_doctor_or_hospital_need),
+    asBoolean(metadata.mentionsDoctorOrHospitalNeed),
+    asBoolean(metadata.mentions_doctor_or_hospital_need),
+  ]);
+  const storedCanonicalSemanticMetadata = buildCanonicalSemanticMetadata({
     resolvedIntent: canonicalResolvedIntent,
-    engagementSignal: parsedAnswer?.engagementSignal
-      ?? asString(structuredMetadata.engagementSignal)
-      ?? asString(structuredMetadata.engagement_signal),
-    progressionSignal: parsedAnswer?.progressionSignal
-      ?? asString(structuredMetadata.progressionSignal)
-      ?? asString(structuredMetadata.progression_signal),
-    recommendationSignal: parsedAnswer?.recommendationSignal
-      ?? asString(structuredMetadata.recommendationSignal)
-      ?? asString(structuredMetadata.recommendation_signal),
-    mentionsCondition: parsedAnswer?.mentionsCondition
-      ?? asBoolean(structuredMetadata.mentionsCondition)
-      ?? asBoolean(structuredMetadata.mentions_condition),
-    mentionsDoctorOrHospitalNeed: parsedAnswer?.mentionsDoctorOrHospitalNeed
-      ?? asBoolean(structuredMetadata.mentionsDoctorOrHospitalNeed)
-      ?? asBoolean(structuredMetadata.mentions_doctor_or_hospital_need),
-  });
-  const normalizedInternalNextAction = normalizeNextAction(internalNextAction ?? undefined);
-  const publicNextAction = normalizePublicNextAction(rawPublicNextAction ?? undefined);
+    engagementSignal: canonicalEngagementSignal,
+    progressionSignal: canonicalProgressionSignal,
+    recommendationSignal: canonicalRecommendationSignal,
+    mentionsCondition,
+    mentionsDoctorOrHospitalNeed,
+  }, { strictFallback: false });
+  const normalizedInternalNextAction = selectFirstNormalizedValue(
+    [
+      parsedAnswer?.internalNextAction,
+      asString(structuredMetadata.internalNextAction),
+      asString(structuredMetadata.internal_next_action),
+      asString(metadata.internalNextAction),
+      asString(metadata.internal_next_action),
+    ],
+    normalizeNextAction,
+  );
+  const publicNextAction = selectFirstNormalizedValue(
+    [
+      asString(structuredMetadata.publicNextAction),
+      asString(structuredMetadata.public_next_action),
+      parsedAnswer?.nextAction,
+      asString(metadata.publicNextAction),
+      asString(metadata.public_next_action),
+      asString(metadata.nextAction),
+      asString(metadata.next_action),
+    ],
+    normalizePublicNextAction,
+  );
   const canonicalActionMetadata = buildCanonicalActionMetadata({
     nextAction: publicNextAction,
     internalNextAction: normalizedInternalNextAction,
   });
   const normalizedStructuredMetadata = composeCanonicalMetadataEnvelope(
     structuredMetadata,
-    canonicalSemanticMetadata,
+    storedCanonicalSemanticMetadata,
     canonicalActionMetadata,
   );
   const normalizedMetadata = composeCanonicalMetadataEnvelope(
@@ -1183,7 +1234,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
       ...metadata,
       ...structuredMetadata,
     },
-    canonicalSemanticMetadata,
+    storedCanonicalSemanticMetadata,
     canonicalActionMetadata,
   );
   const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
@@ -1191,11 +1242,11 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
   const recommendedProviders = sanitizeRecordArray(parsedAnswer?.recommendedProviders);
   const shortlist = sanitizeRecordArray(parsedAnswer?.shortlist);
   const citationsSafe = sanitizeCitationArray(citations);
-  const publicStructuredOutput = parsedAnswer
+  const storedStructuredOutput = parsedAnswer
     ? {
         answer: parsedAnswer.answer ?? asString(response.answer) ?? '',
         intent: normalizeIntent(parsedAnswer.intent),
-        resolvedIntent: canonicalSemanticMetadata['resolvedIntent'] as string,
+        ...(canonicalResolvedIntent ? { resolvedIntent: canonicalResolvedIntent } : {}),
         topic,
         riskLevel: publicRiskLevel,
         canAnswer: parsedAnswer.canAnswer ?? null,
@@ -1220,7 +1271,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
     intent: normalizeIntent(parsedAnswer?.intent),
-    resolvedIntent: canonicalSemanticMetadata['resolvedIntent'] as string,
+    resolvedIntent: canonicalResolvedIntent,
     topic,
     riskLevel: publicRiskLevel,
     canAnswer: parsedAnswer?.canAnswer ?? null,
@@ -1241,7 +1292,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
       engagementMode,
       internalRiskLevel: parsedAnswer?.riskLevel ?? null,
       topic,
-      structuredOutput: publicStructuredOutput,
+      structuredOutput: storedStructuredOutput,
     },
     storedNextAction: publicNextAction,
   };
@@ -1406,6 +1457,28 @@ function normalizeCanonicalRecommendationSignal(value: string | undefined): impo
   return isAllowedEnumValue(value, AI_POLICY_RECOMMENDATION_SIGNALS) ? value : null;
 }
 
+function selectFirstNormalizedValue<T>(
+  candidates: Array<string | null | undefined>,
+  normalize: (value: string | undefined) => T | null,
+): T | null {
+  for (const candidate of candidates) {
+    const normalized = normalize(candidate ?? undefined);
+    if (normalized !== null) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function selectFirstPresentBoolean(candidates: Array<boolean | null | undefined>): boolean | undefined {
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 function buildCanonicalSemanticMetadata(input: {
   resolvedIntent?: string | null;
   engagementSignal?: string | null;
@@ -1413,42 +1486,85 @@ function buildCanonicalSemanticMetadata(input: {
   recommendationSignal?: string | null;
   mentionsCondition?: boolean;
   mentionsDoctorOrHospitalNeed?: boolean;
+}, options?: {
+  strictFallback?: boolean;
 }): Record<string, unknown> {
-  const resolvedIntent = normalizeCanonicalResolvedIntent(input.resolvedIntent ?? undefined)
-    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.resolvedIntent;
-  const engagementSignal = normalizeCanonicalEngagementSignal(input.engagementSignal ?? undefined)
-    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.engagementSignal;
-  const progressionSignal = normalizeCanonicalProgressionSignal(input.progressionSignal ?? undefined)
-    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.progressionSignal;
-  const recommendationSignal = normalizeCanonicalRecommendationSignal(input.recommendationSignal ?? undefined)
-    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.recommendationSignal;
-  const mentionsCondition = input.mentionsCondition
-    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.mentionsCondition;
-  const mentionsDoctorOrHospitalNeed = input.mentionsDoctorOrHospitalNeed
-    ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.mentionsDoctorOrHospitalNeed;
+  const strictFallback = options?.strictFallback ?? true;
+  const resolvedIntent = normalizeCanonicalResolvedIntent(input.resolvedIntent ?? undefined);
+  const engagementSignal = normalizeCanonicalEngagementSignal(input.engagementSignal ?? undefined);
+  const progressionSignal = normalizeCanonicalProgressionSignal(input.progressionSignal ?? undefined);
+  const recommendationSignal = normalizeCanonicalRecommendationSignal(input.recommendationSignal ?? undefined);
 
-  const normalized: Record<string, unknown> = {
-    resolvedIntent,
-    resolved_intent: resolvedIntent,
-    engagementSignal,
-    engagement_signal: engagementSignal,
-    progressionSignal,
-    progression_signal: progressionSignal,
-    recommendationSignal,
-    recommendation_signal: recommendationSignal,
-    mentionsCondition,
-    mentions_condition: mentionsCondition,
-    mentionsDoctorOrHospitalNeed,
-    mentions_doctor_or_hospital_need: mentionsDoctorOrHospitalNeed,
-    semanticSignals: {
-      resolvedIntent,
-      engagementSignal,
-      progressionSignal,
-      recommendationSignal,
-      mentionsCondition,
-      mentionsDoctorOrHospitalNeed,
-    },
-  };
+  if (strictFallback) {
+    const strictResolvedIntent = resolvedIntent ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.resolvedIntent;
+    const strictEngagementSignal = engagementSignal ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.engagementSignal;
+    const strictProgressionSignal = progressionSignal ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.progressionSignal;
+    const strictRecommendationSignal = recommendationSignal ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.recommendationSignal;
+    const strictMentionsCondition = input.mentionsCondition
+      ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.mentionsCondition;
+    const strictMentionsDoctorOrHospitalNeed = input.mentionsDoctorOrHospitalNeed
+      ?? DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK.mentionsDoctorOrHospitalNeed;
+
+    return {
+      resolvedIntent: strictResolvedIntent,
+      resolved_intent: strictResolvedIntent,
+      engagementSignal: strictEngagementSignal,
+      engagement_signal: strictEngagementSignal,
+      progressionSignal: strictProgressionSignal,
+      progression_signal: strictProgressionSignal,
+      recommendationSignal: strictRecommendationSignal,
+      recommendation_signal: strictRecommendationSignal,
+      mentionsCondition: strictMentionsCondition,
+      mentions_condition: strictMentionsCondition,
+      mentionsDoctorOrHospitalNeed: strictMentionsDoctorOrHospitalNeed,
+      mentions_doctor_or_hospital_need: strictMentionsDoctorOrHospitalNeed,
+      semanticSignals: {
+        resolvedIntent: strictResolvedIntent,
+        engagementSignal: strictEngagementSignal,
+        progressionSignal: strictProgressionSignal,
+        recommendationSignal: strictRecommendationSignal,
+        mentionsCondition: strictMentionsCondition,
+        mentionsDoctorOrHospitalNeed: strictMentionsDoctorOrHospitalNeed,
+      },
+    };
+  }
+
+  const normalized: Record<string, unknown> = {};
+  const semanticSignals: Record<string, unknown> = {};
+
+  if (resolvedIntent) {
+    normalized['resolvedIntent'] = resolvedIntent;
+    normalized['resolved_intent'] = resolvedIntent;
+    semanticSignals['resolvedIntent'] = resolvedIntent;
+  }
+  if (engagementSignal) {
+    normalized['engagementSignal'] = engagementSignal;
+    normalized['engagement_signal'] = engagementSignal;
+    semanticSignals['engagementSignal'] = engagementSignal;
+  }
+  if (progressionSignal) {
+    normalized['progressionSignal'] = progressionSignal;
+    normalized['progression_signal'] = progressionSignal;
+    semanticSignals['progressionSignal'] = progressionSignal;
+  }
+  if (recommendationSignal) {
+    normalized['recommendationSignal'] = recommendationSignal;
+    normalized['recommendation_signal'] = recommendationSignal;
+    semanticSignals['recommendationSignal'] = recommendationSignal;
+  }
+  if (input.mentionsCondition !== undefined) {
+    normalized['mentionsCondition'] = input.mentionsCondition;
+    normalized['mentions_condition'] = input.mentionsCondition;
+    semanticSignals['mentionsCondition'] = input.mentionsCondition;
+  }
+  if (input.mentionsDoctorOrHospitalNeed !== undefined) {
+    normalized['mentionsDoctorOrHospitalNeed'] = input.mentionsDoctorOrHospitalNeed;
+    normalized['mentions_doctor_or_hospital_need'] = input.mentionsDoctorOrHospitalNeed;
+    semanticSignals['mentionsDoctorOrHospitalNeed'] = input.mentionsDoctorOrHospitalNeed;
+  }
+  if (Object.keys(semanticSignals).length > 0) {
+    normalized['semanticSignals'] = semanticSignals;
+  }
 
   return normalized;
 }

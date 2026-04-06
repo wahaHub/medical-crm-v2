@@ -239,7 +239,7 @@ describe('Chatbot routes', () => {
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        resolvedIntent: 'UNKNOWN',
+        resolvedIntent: null,
         nextAction: 'REQUEST_DOC_UPLOAD',
         secondaryAction: 'REQUEST_DOCS',
         responseMode: 'grounded_plus_guidance',
@@ -782,6 +782,184 @@ describe('Chatbot routes', () => {
         }),
       }),
     );
+  });
+
+  it('POST /api/v2/chatbot/chat prefers the first valid canonical semantic and action values over invalid higher-priority fields', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-first-valid-fallback',
+      answer: JSON.stringify({
+        answer: 'Please upload your reports first.',
+        intent: 'CONSULT',
+        resolvedIntent: 'NOT_REAL',
+        engagementSignal: 'INVALID',
+        progressionSignal: 'INVALID',
+        recommendationSignal: 'INVALID',
+        nextAction: 'FREEFORM_ACTION',
+        internalNextAction: 'FREEFORM_ACTION',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        metadata: {
+          resolved_intent: 'REQUEST_DOC_UPLOAD',
+          engagement_signal: 'DEEP_WORKFLOW',
+          progression_signal: 'READY_TO_PROCEED',
+          recommendation_signal: 'NONE',
+          public_next_action: 'REQUEST_DOC_UPLOAD',
+          internal_next_action: 'REQUEST_DOCS',
+        },
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-first-valid-fallback',
+        hospitalType: 'COSMETIC',
+        message: 'Where do I upload my reports?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata).toMatchObject({
+      resolvedIntent: 'REQUEST_DOC_UPLOAD',
+      engagementSignal: 'DEEP_WORKFLOW',
+      progressionSignal: 'READY_TO_PROCEED',
+      recommendationSignal: 'NONE',
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+      internalNextAction: 'REQUEST_DOCS',
+    });
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        resolvedIntent: 'REQUEST_DOC_UPLOAD',
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        metadata: expect.objectContaining({
+          resolvedIntent: 'REQUEST_DOC_UPLOAD',
+          engagementSignal: 'DEEP_WORKFLOW',
+          progressionSignal: 'READY_TO_PROCEED',
+          recommendationSignal: 'NONE',
+          publicNextAction: 'REQUEST_DOC_UPLOAD',
+          internalNextAction: 'REQUEST_DOCS',
+        }),
+      }),
+    );
+  });
+
+  it('POST /api/v2/chatbot/chat keeps root metadata and structuredOutput semantically aligned on the same canonical values', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-structured-output-alignment',
+      answer: JSON.stringify({
+        answer: 'I can explain package options for that.',
+        intent: 'CONSULT',
+        resolvedIntent: 'NOT_REAL',
+        nextAction: 'FREEFORM_ACTION',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        citations: [],
+      }),
+      metadata: {
+        retriever_resources: [],
+        resolved_intent: 'ASK_PACKAGE_INFO',
+        engagement_signal: 'QUALIFIED_EXPLORATION',
+        progression_signal: 'OPEN_TO_NEXT_STEP',
+        recommendation_signal: 'NONE',
+        public_next_action: 'SHOW_PACKAGE',
+        internal_next_action: 'SHOW_PACKAGE',
+      },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-structured-output-alignment',
+        hospitalType: 'COSMETIC',
+        message: 'Do you have a package for this?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.nextAction).toBe('SHOW_PACKAGE');
+    expect(json.metadata).toMatchObject({
+      resolvedIntent: 'ASK_PACKAGE_INFO',
+      engagementSignal: 'QUALIFIED_EXPLORATION',
+      progressionSignal: 'OPEN_TO_NEXT_STEP',
+      recommendationSignal: 'NONE',
+      publicNextAction: 'SHOW_PACKAGE',
+      internalNextAction: 'SHOW_PACKAGE',
+    });
+    expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'ASK_PACKAGE_INFO',
+      nextAction: 'SHOW_PACKAGE',
+    });
+    expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'ASK_PACKAGE_INFO',
+      engagementSignal: 'QUALIFIED_EXPLORATION',
+      progressionSignal: 'OPEN_TO_NEXT_STEP',
+      recommendationSignal: 'NONE',
+      publicNextAction: 'SHOW_PACKAGE',
+      internalNextAction: 'SHOW_PACKAGE',
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat keeps legacy intent-only payload persistence meaningful while public canonical metadata stays strict', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-legacy-intent-only',
+      answer: JSON.stringify({
+        answer: 'Please upload your reports first.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        responseMode: 'grounded_plus_guidance',
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-legacy-intent-only',
+        hospitalType: 'COSMETIC',
+        message: 'Where do I upload my reports?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.intent).toBe('CONSULT');
+    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata).toMatchObject({
+      resolvedIntent: 'UNKNOWN',
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+    });
+    expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
+      resolvedIntent: 'UNKNOWN',
+      nextAction: 'REQUEST_DOC_UPLOAD',
+    });
+
+    const persistedPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(persistedPatch.intent).toBe('CONSULT');
+    expect(persistedPatch.resolvedIntent).toBeNull();
+    expect(persistedPatch.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(persistedPatch.metadata).toMatchObject({
+      publicNextAction: 'REQUEST_DOC_UPLOAD',
+      structuredOutput: expect.objectContaining({
+        nextAction: 'REQUEST_DOC_UPLOAD',
+      }),
+    });
+    expect((persistedPatch.metadata as Record<string, unknown>).resolvedIntent).toBeUndefined();
+    expect(((persistedPatch.metadata as Record<string, unknown>).structuredOutput as Record<string, unknown>).resolvedIntent).toBeUndefined();
   });
 
   it('POST /api/v2/chatbot/chat persists canonical public nextAction when provider exposes it only through metadata', async () => {

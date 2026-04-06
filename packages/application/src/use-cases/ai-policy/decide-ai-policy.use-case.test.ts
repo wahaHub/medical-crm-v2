@@ -173,6 +173,139 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(harness.engagementModeResolver.resolve).not.toHaveBeenCalled();
     expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
+
+  it('persists selected_hospital_id when a recommendation offer is accepted in a persistent hospital context', async () => {
+    const harness = createHarness({
+      intentResolution: {
+        resolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
+        reasonCodes: ['pending_offer_confirmed'],
+      },
+      lightContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-accept-1',
+          hospitalName: 'Medora Seoul',
+          source: 'page_context',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      },
+      fullContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-accept-1',
+          hospitalName: 'Medora Seoul',
+          source: 'page_context',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        statusSnapshot: {
+          recommendationStatus: 'preliminary_shown',
+          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
+          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-accept-1',
+      userMessage: 'yes, let us go with this hospital',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'UNKNOWN',
+        engagementSignal: 'DEEP_WORKFLOW',
+      }),
+    });
+
+    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
+    expect(result.selected_hospital_id).toBe('hospital-accept-1');
+    expect(harness.intentResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not persist selected_hospital_id when acceptance only has shortlist-derived hospital focus', async () => {
+    const harness = createHarness({
+      intentResolution: {
+        resolvedIntent: 'ACCEPT_HOSPITAL_RECOMMENDATION',
+        reasonCodes: ['pending_offer_confirmed'],
+      },
+      lightContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-shortlist-1',
+          hospitalName: null,
+          source: 'recent_shortlist',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      },
+      fullContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-shortlist-1',
+          hospitalName: null,
+          source: 'recent_shortlist',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        statusSnapshot: {
+          recommendationStatus: 'preliminary_shown',
+          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
+          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-accept-2',
+      userMessage: 'yes, let us do that',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'UNKNOWN',
+        engagementSignal: 'DEEP_WORKFLOW',
+      }),
+    });
+
+    expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
+    expect(result.selected_hospital_id).toBeUndefined();
+    expect(harness.intentResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('bridges recommendation asks to alternative-shortlist intent when a hospital is already selected', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      recommendationResult: {
+        eligible: true,
+        shortlist: [{ hospitalId: 'hospital-alt-1', reasonCodes: ['fit'] }],
+        reasonCodes: ['authoritative_shortlist_ready'],
+      },
+      fullContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-selected-2',
+          hospitalName: 'Seoul Aesthetic Center',
+          source: 'selected_hospital',
+        },
+        statusSnapshot: {
+          selectedHospitalId: 'hospital-selected-2',
+          recommendationStatus: 'preliminary_shown',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-selected-1',
+      userMessage: 'Can you show me other hospital options?',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        engagementSignal: 'DEEP_WORKFLOW',
+        recommendationSignal: 'READY_FOR_RECOMMENDATION',
+      }),
+      candidateHospitals: [{ hospitalId: 'hospital-alt-1', reasonCodes: ['fit'] }],
+    });
+
+    expect(result.resolved_intent).toBe('ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.next_action).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
+      resolvedIntent: 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS',
+    }));
+  });
 });
 
 type HarnessOptions = {
@@ -190,11 +323,13 @@ type HarnessOptions = {
     shortlist: Array<{ hospitalId: string; reasonCodes: string[] }>;
     reasonCodes: string[];
   };
+  lightContextOverrides?: Record<string, unknown>;
+  fullContextOverrides?: Record<string, unknown>;
 };
 
 function createHarness(options: HarnessOptions = {}) {
-  const lightContext = buildLightContext();
-  const fullContext = buildFullContext();
+  const lightContext = buildLightContext(options.lightContextOverrides);
+  const fullContext = buildFullContext(options.fullContextOverrides);
 
   const contextBuilder = {
     build: vi.fn(async (input: { depth?: string }) => (
@@ -293,7 +428,7 @@ function buildCanonicalExtraction(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildLightContext() {
+function buildLightContext(overrides: Record<string, unknown> = {}) {
   return {
     contextDepth: 'light',
     sessionId: 'session-1',
@@ -316,11 +451,12 @@ function buildLightContext() {
     recentTimeline: [],
     activeFollowups: [],
     recentHandoffs: [],
+    ...overrides,
   };
 }
 
-function buildFullContext() {
-  return {
+function buildFullContext(overrides: Record<string, unknown> = {}) {
+  const base = {
     contextDepth: 'full',
     sessionId: 'session-1',
     userMessage: 'hello',
@@ -362,5 +498,22 @@ function buildFullContext() {
     recentTimeline: [],
     activeFollowups: [],
     recentHandoffs: [],
+  };
+
+  if (!('statusSnapshot' in overrides)) {
+    return {
+      ...base,
+      ...overrides,
+    };
+  }
+
+  const overrideStatusSnapshot = overrides.statusSnapshot as Record<string, unknown>;
+  return {
+    ...base,
+    ...overrides,
+    statusSnapshot: {
+      ...base.statusSnapshot,
+      ...overrideStatusSnapshot,
+    },
   };
 }

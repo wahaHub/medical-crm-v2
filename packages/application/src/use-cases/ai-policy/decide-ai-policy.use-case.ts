@@ -18,6 +18,22 @@ import type {
   AiPolicyEngagementMode,
 } from '../../dtos/ai-policy.dto.js';
 
+type RuntimeIntentBridgeContext = {
+  contextDepth: 'light' | 'full';
+  pendingOffer: {
+    exists: boolean;
+    type: string | null;
+  };
+  recentMessages?: Array<{
+    role: string;
+    content: string;
+    nextAction?: string | null;
+  }>;
+  statusSnapshot?: {
+    selectedHospitalId?: string | null;
+  };
+};
+
 export interface DecideAiPolicyInput {
   sessionId: string;
   userMessage: string;
@@ -38,7 +54,7 @@ export class DecideAiPolicyUseCase {
     private readonly contextBuilder: ContextBuilderService,
     _signalResolver: SignalResolverService,
     _engagementModeResolver: EngagementModeResolverService,
-    _intentResolver: IntentResolverService,
+    private readonly intentResolver: IntentResolverService,
     private readonly riskResolver: RiskResolverService,
     private readonly actionPlanner: ActionPlannerService,
     private readonly recommendationPolicy: RecommendationPolicyService,
@@ -74,7 +90,13 @@ export class DecideAiPolicyUseCase {
         pageContext: input.pageContext,
       });
 
-    const runtimeResolvedIntent = mapCanonicalResolvedIntentToRuntimeIntent(semantics.signals.resolvedIntent);
+    const runtimeIntentBridge = await this.resolveRuntimeIntent({
+      userMessage: input.userMessage,
+      semantics: semantics.signals,
+      context,
+      candidateSignals,
+    });
+    const runtimeResolvedIntent = runtimeIntentBridge.resolvedIntent;
 
     const plan = this.actionPlanner.plan({
       hospitalType: context.hospitalType,
@@ -113,6 +135,7 @@ export class DecideAiPolicyUseCase {
 
     const reasonCodes = dedupeReasonCodes(
       ...semantics.reasonCodes,
+      ...runtimeIntentBridge.reasonCodes,
       ...risk.reasonCodes,
       ...plan.reasonCodes,
       ...recommendation.reasonCodes,
@@ -158,6 +181,56 @@ export class DecideAiPolicyUseCase {
         risk_level: risk.riskLevel,
         reason_codes: reasonCodes,
       },
+    };
+  }
+
+  private async resolveRuntimeIntent(input: {
+    userMessage: string;
+    semantics: AiPolicySemanticSignals;
+    context: RuntimeIntentBridgeContext;
+    candidateSignals: Record<string, unknown>;
+  }): Promise<{ resolvedIntent: string; reasonCodes: string[] }> {
+    const runtimeResolvedIntent = mapCanonicalResolvedIntentToRuntimeIntent(input.semantics.resolvedIntent);
+
+    if (shouldBridgeAlternativeRecommendations(runtimeResolvedIntent, input.context)) {
+      return {
+        resolvedIntent: 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS',
+        reasonCodes: ['selected_hospital_alternative_recommendation_bridge'],
+      };
+    }
+
+    if (!shouldBridgeAcceptedHospitalRecommendation(runtimeResolvedIntent, input.context)) {
+      return {
+        resolvedIntent: runtimeResolvedIntent,
+        reasonCodes: [],
+      };
+    }
+
+    const legacyIntent = await this.intentResolver.resolve({
+      userMessage: input.userMessage,
+      pendingOffer: input.context.pendingOffer.exists
+        ? { type: input.context.pendingOffer.type ?? 'UNKNOWN' }
+        : null,
+      recentMessages: input.context.contextDepth === 'full'
+        ? (input.context.recentMessages ?? []).map((message) => ({
+            role: message.role,
+            content: message.content,
+            nextAction: message.nextAction,
+          }))
+        : [],
+      candidateSignals: input.candidateSignals,
+    });
+
+    if (legacyIntent.resolvedIntent === 'ACCEPT_HOSPITAL_RECOMMENDATION') {
+      return {
+        resolvedIntent: legacyIntent.resolvedIntent,
+        reasonCodes: ['pending_recommendation_acceptance_bridge'],
+      };
+    }
+
+    return {
+      resolvedIntent: runtimeResolvedIntent,
+      reasonCodes: [],
     };
   }
 }
@@ -229,6 +302,25 @@ function parseCanonicalSemanticSignals(
 
 function mapCanonicalResolvedIntentToRuntimeIntent(resolvedIntent: AiPolicyResolvedIntent): string {
   return RUNTIME_RESOLVED_INTENT_BY_CANONICAL_INTENT[resolvedIntent];
+}
+
+function shouldBridgeAcceptedHospitalRecommendation(
+  runtimeResolvedIntent: string,
+  context: RuntimeIntentBridgeContext,
+): boolean {
+  return runtimeResolvedIntent === 'UNKNOWN'
+    && context.pendingOffer.exists
+    && context.pendingOffer.type === 'HOSPITAL_RECOMMENDATION';
+}
+
+function shouldBridgeAlternativeRecommendations(
+  runtimeResolvedIntent: string,
+  context: RuntimeIntentBridgeContext,
+): boolean {
+  return runtimeResolvedIntent === 'ASK_FOR_RECOMMENDATION'
+    && context.contextDepth === 'full'
+    && typeof context.statusSnapshot?.selectedHospitalId === 'string'
+    && context.statusSnapshot.selectedHospitalId.length > 0;
 }
 
 function buildPrequalificationReasonCodes(

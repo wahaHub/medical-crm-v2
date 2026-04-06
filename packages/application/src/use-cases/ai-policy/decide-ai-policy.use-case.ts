@@ -298,7 +298,8 @@ function shouldBridgeAcceptedHospitalRecommendation(
   }
 
   return ['UNKNOWN', 'GENERAL_CONSULT'].includes(runtimeResolvedIntent)
-    && isCommitmentLikeProgression(semantics.progressionSignal);
+    && semantics.recommendationSignal === 'READY_FOR_RECOMMENDATION'
+    && isAcceptanceLikeProgression(semantics.progressionSignal);
 }
 
 function shouldBridgeAlternativeRecommendations(
@@ -312,8 +313,8 @@ function shouldBridgeAlternativeRecommendations(
     && !isMissingDocumentStatus(context.statusSnapshot.docUploadStatus);
 }
 
-function isCommitmentLikeProgression(value: AiPolicySemanticSignals['progressionSignal']): boolean {
-  return ['OPEN_TO_NEXT_STEP', 'READY_TO_PROCEED', 'EXPLICITLY_COMMITTING'].includes(value);
+function isAcceptanceLikeProgression(value: AiPolicySemanticSignals['progressionSignal']): boolean {
+  return ['READY_TO_PROCEED', 'EXPLICITLY_COMMITTING'].includes(value);
 }
 
 function buildPrequalificationReasonCodes(

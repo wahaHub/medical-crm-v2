@@ -387,6 +387,52 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(result.selected_hospital_id).toBe('hospital-accept-2');
     expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
   });
+
+  it('does not misclassify a next-steps follow-up as hospital acceptance under pending recommendation context', async () => {
+    const harness = createHarness({
+      failOnLegacyResolverCall: true,
+      lightContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-followup-1',
+          hospitalName: 'Medora Seoul',
+          source: 'page_context',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      },
+      fullContextOverrides: {
+        activeHospitalContext: {
+          hospitalId: 'hospital-followup-1',
+          hospitalName: 'Medora Seoul',
+          source: 'page_context',
+        },
+        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
+        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        statusSnapshot: {
+          recommendationStatus: 'preliminary_shown',
+          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
+          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+        },
+      },
+    });
+
+    const result = await harness.useCase.execute({
+      sessionId: 'session-followup-1',
+      userMessage: 'what are the next steps?',
+      extraction: buildCanonicalExtraction({
+        resolvedIntent: 'GENERAL_INFO',
+        engagementSignal: 'DEEP_WORKFLOW',
+        progressionSignal: 'OPEN_TO_NEXT_STEP',
+        recommendationSignal: 'NONE',
+      }),
+    });
+
+    expect(result.resolved_intent).toBe('GENERAL_CONSULT');
+    expect(result.selected_hospital_id).toBeUndefined();
+    expect(result.next_action).toBe('ANSWER_FAQ');
+    expect(harness.intentResolver.resolve).not.toHaveBeenCalled();
+  });
 });
 
 type HarnessOptions = {

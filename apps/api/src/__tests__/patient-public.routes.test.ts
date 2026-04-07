@@ -4,6 +4,7 @@ import {
   PatientAlreadyExistsError,
   VerifyPatientEntryTokenAuthError,
 } from '@medical-crm/application';
+import { NotFoundError } from '@medical-crm/utils';
 import patientPublicRoutes from '../routes/patient-public.routes.js';
 
 const { mockGetServices } = vi.hoisted(() => ({
@@ -20,6 +21,18 @@ describe('patientPublicRoutes', () => {
       initOnboarding: { execute: vi.fn() },
       patientAuthService: {
         verifySessionToken: vi.fn(),
+      },
+      getProfile: {
+        execute: vi.fn().mockResolvedValue({
+          id: 'patient-123',
+          email: 'existing@example.com',
+          name: 'Existing User',
+          role: 'PATIENT',
+          phone: null,
+          preferredLanguage: 'en',
+          hospitalId: null,
+          notificationSettings: null,
+        }),
       },
       verifyPatientEntryToken: {
         execute: vi.fn(),
@@ -467,6 +480,118 @@ describe('patientPublicRoutes', () => {
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({
       email: 'existing@example.com',
       authenticatedPatientId: 'patient-123',
+    }));
+  });
+
+  it('ignores an authenticated patient session when the submitted onboarding email does not match the logged-in patient email', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-999',
+      caseId: 'case-9',
+      nextStep: 'select-hospitals',
+      token: 'session-token-999',
+      restoreToken: 'restore-token-999',
+      restoreCookie: 'restore-cookie-999',
+      isExistingPatient: false,
+    });
+    const verifySessionToken = vi.fn().mockResolvedValue({
+      userId: 'patient-123',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    const getPatientSessionState = {
+      execute: vi.fn().mockResolvedValue({
+        email: 'existing@example.com',
+        id: 'patient-123',
+        name: 'Existing User',
+        role: 'PATIENT',
+        phone: null,
+        preferredLanguage: 'en',
+        hospitalId: null,
+        notificationSettings: null,
+      }),
+    };
+    mockGetServices.mockReturnValue(createBaseServices({
+      initOnboarding: { execute },
+      patientAuthService: { verifySessionToken },
+      getProfile: getPatientSessionState,
+    }));
+
+    const res = await patientPublicRoutes.request('/onboarding/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=session-cookie-abc',
+      },
+      body: JSON.stringify({
+        email: 'brand-new@example.com',
+        name: 'Brand New User',
+        preferredLanguage: 'en',
+        captchaToken: 'captcha-token',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(verifySessionToken).toHaveBeenCalledWith('session-cookie-abc');
+    expect(getPatientSessionState.execute).toHaveBeenCalledWith({
+      userId: 'patient-123',
+      email: '',
+      role: 'PATIENT',
+      hospitalId: null,
+    });
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'brand-new@example.com',
+      authenticatedPatientId: undefined,
+    }));
+  });
+
+  it('ignores a stale authenticated patient session when the underlying patient can no longer be loaded', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-999',
+      caseId: 'case-10',
+      nextStep: 'select-hospitals',
+      token: 'session-token-999',
+      restoreToken: 'restore-token-999',
+      restoreCookie: 'restore-cookie-999',
+      isExistingPatient: false,
+    });
+    const verifySessionToken = vi.fn().mockResolvedValue({
+      userId: 'patient-deleted-123',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    const getPatientSessionState = {
+      execute: vi.fn().mockRejectedValue(new NotFoundError('User patient-deleted-123 not found')),
+    };
+    mockGetServices.mockReturnValue(createBaseServices({
+      initOnboarding: { execute },
+      patientAuthService: { verifySessionToken },
+      getProfile: getPatientSessionState,
+    }));
+
+    const res = await patientPublicRoutes.request('/onboarding/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=session-cookie-abc',
+      },
+      body: JSON.stringify({
+        email: 'brand-new@example.com',
+        name: 'Recovered User',
+        preferredLanguage: 'en',
+        captchaToken: 'captcha-token',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(getPatientSessionState.execute).toHaveBeenCalledWith({
+      userId: 'patient-deleted-123',
+      email: '',
+      role: 'PATIENT',
+      hospitalId: null,
+    });
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'brand-new@example.com',
+      authenticatedPatientId: undefined,
     }));
   });
 

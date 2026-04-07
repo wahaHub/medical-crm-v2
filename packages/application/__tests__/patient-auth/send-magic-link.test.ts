@@ -8,6 +8,10 @@ describe('SendMagicLinkUseCase', () => {
   let mockEmailService: any;
 
   beforeEach(() => {
+    delete process.env.FRONTEND_URL;
+    delete process.env.PATIENT_APP_ORIGIN;
+    delete process.env.CHINA_ORIGIN;
+
     mockPatientRepo = {
       findById: vi.fn(),
       findByEmail: vi.fn(),
@@ -37,6 +41,21 @@ describe('SendMagicLinkUseCase', () => {
     expect(mockEmailService.sendMagicLink).toHaveBeenCalledWith(
       'test@example.com',
       expect.stringContaining('magic-token-abc'),
+      'en',
+    );
+  });
+
+  it('prefers CHINA_ORIGIN when FRONTEND_URL is not configured', async () => {
+    process.env.CHINA_ORIGIN = 'https://www.medicaltourismchina.health';
+    mockPatientRepo.findByEmail.mockResolvedValue({
+      id: 'patient-1', patientCode: 'P001', preferredLanguage: 'en',
+    });
+
+    await useCase.execute({ email: 'test@example.com' });
+
+    expect(mockEmailService.sendMagicLink).toHaveBeenCalledWith(
+      'test@example.com',
+      'https://www.medicaltourismchina.health/dashboard?token=magic-token-abc',
       'en',
     );
   });

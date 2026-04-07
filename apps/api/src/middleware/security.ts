@@ -42,13 +42,16 @@ function getClientIp(c: { req: { header: (name: string) => string | undefined } 
 }
 
 export function applySecurityMiddleware(app: Hono) {
+  const allowedOrigins = [
+    process.env.ADMIN_ORIGIN,
+    process.env.HOSPITAL_ORIGIN,
+    process.env.CHINA_ORIGIN,
+  ].filter((origin): origin is string => Boolean(origin));
+
   app.use('*', requestId());
   app.use('*', logger());
   app.use('*', cors({
-    origin: [
-      process.env.ADMIN_ORIGIN!,
-      process.env.HOSPITAL_ORIGIN!,
-    ],
+    origin: allowedOrigins,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
     credentials: true,

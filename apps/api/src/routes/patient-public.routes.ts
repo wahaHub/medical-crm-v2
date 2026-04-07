@@ -5,6 +5,7 @@ import {
   PatientAlreadyExistsError,
   VerifyPatientEntryTokenAuthError,
 } from '@medical-crm/application';
+import { NotFoundError } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { rateLimitByIp } from '../middleware/rate-limit.middleware.js';
 import { initOnboardingSchema, matchHospitalsSchema } from '@medical-crm/validation';
@@ -149,6 +150,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
   const {
     initOnboarding,
     patientAuthService,
+    getProfile,
     verifyPatientEntryToken,
   } = getServices();
 
@@ -157,7 +159,25 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
   if (sessionToken) {
     try {
       const session = await patientAuthService.verifySessionToken(sessionToken);
-      authenticatedPatientId = session.userId;
+      try {
+        const profile = await getProfile.execute({
+          userId: session.userId,
+          email: '',
+          role: 'PATIENT',
+          hospitalId: null,
+        });
+        const normalizedSubmittedEmail = body.email.trim().toLowerCase();
+        const normalizedSessionEmail = profile.email.trim().toLowerCase();
+
+        authenticatedPatientId = normalizedSubmittedEmail === normalizedSessionEmail
+          ? session.userId
+          : undefined;
+      } catch (error) {
+        if (!(error instanceof NotFoundError)) {
+          throw error;
+        }
+        authenticatedPatientId = undefined;
+      }
     } catch {
       authenticatedPatientId = undefined;
     }

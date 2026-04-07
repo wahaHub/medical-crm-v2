@@ -98,3 +98,60 @@ python3 scripts/deploy_v2.py \
 - If that branch is not the current checked-out branch, the script creates a temporary git worktree
 - The script expects a clean worktree unless `--allow-dirty` is passed
 - During Next.js builds you may still see `Dynamic server usage` warnings in Vercel logs for authenticated pages; these did not block production deployment in the verified run
+
+## Dify API Key Rotation
+
+The CRM API server uses Dify keys from the remote file:
+
+- `/opt/medora/medical-crm-v2/.env`
+
+### Current key layout
+
+- `DIFY_APP_API_KEY`: Dify app API key used for chatbot requests
+- `DIFY_API_KEY`: kept in sync with `DIFY_APP_API_KEY` for compatibility
+- `DIFY_DATASET_API_KEY`: Dify dataset key used for FAQ and package knowledge sync
+
+### Current production values
+
+- Stored only on the API server in `/opt/medora/medical-crm-v2/.env`
+- Do not commit live key values into this repository
+
+### How to rotate the Dify app key later
+
+1. Generate a new app key in Dify for the published chatbot app.
+2. SSH into the API server.
+3. Update both `DIFY_APP_API_KEY` and `DIFY_API_KEY` in `/opt/medora/medical-crm-v2/.env`.
+4. Restart the API service.
+5. Verify API health.
+
+Example:
+
+```bash
+ssh -i /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem ubuntu@44.253.141.97
+cd /opt/medora/medical-crm-v2
+cp .env .env.bak.$(date +%Y%m%d%H%M%S)
+sed -i.bak 's/^DIFY_APP_API_KEY=.*/DIFY_APP_API_KEY=app-REPLACE_ME/' .env
+sed -i.bak 's/^DIFY_API_KEY=.*/DIFY_API_KEY=app-REPLACE_ME/' .env
+sudo systemctl restart medora-crm-v2-api
+curl -fsS http://127.0.0.1:3001/health
+```
+
+### How to check or rotate the dataset key
+
+The dataset key is separate from the app key. It is used by the CRM FAQ sync worker to write documents into Dify knowledge bases.
+
+Current production dataset key:
+
+- Stored only on the API server in `/opt/medora/medical-crm-v2/.env`
+
+If you create a new dataset key in Dify, update only:
+
+```bash
+DIFY_DATASET_API_KEY=ds-REPLACE_ME
+```
+
+Then restart:
+
+```bash
+sudo systemctl restart medora-crm-v2-api
+```

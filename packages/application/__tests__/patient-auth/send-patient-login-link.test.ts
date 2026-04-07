@@ -15,6 +15,10 @@ describe('SendPatientLoginLinkUseCase', () => {
   };
 
   beforeEach(() => {
+    delete process.env.FRONTEND_URL;
+    delete process.env.PATIENT_APP_ORIGIN;
+    delete process.env.CHINA_ORIGIN;
+
     lookupRepo = {
       findEmailState: vi.fn(),
     };
@@ -59,6 +63,37 @@ describe('SendPatientLoginLinkUseCase', () => {
     expect(emailService.sendMagicLink).toHaveBeenCalledWith(
       'new@test.com',
       'http://localhost:3000/free-quote?token=patient-register-token',
+    );
+  });
+
+  it('prefers CHINA_ORIGIN when FRONTEND_URL is not configured', async () => {
+    process.env.CHINA_ORIGIN = 'https://www.medicaltourismchina.health';
+    lookupRepo.findEmailState.mockResolvedValue({
+      state: 'PATIENT',
+      userId: 'patient-1',
+    });
+
+    await useCase.execute({ email: 'patient@test.com' });
+
+    expect(emailService.sendMagicLink).toHaveBeenCalledWith(
+      'patient@test.com',
+      'https://www.medicaltourismchina.health/dashboard?token=patient-login-token',
+    );
+  });
+
+  it('prefers PATIENT_APP_ORIGIN over CHINA_ORIGIN', async () => {
+    process.env.CHINA_ORIGIN = 'https://www.medicaltourismchina.health';
+    process.env.PATIENT_APP_ORIGIN = 'https://portal.medicaltourismchina.health';
+    lookupRepo.findEmailState.mockResolvedValue({
+      state: 'PATIENT',
+      userId: 'patient-1',
+    });
+
+    await useCase.execute({ email: 'patient@test.com' });
+
+    expect(emailService.sendMagicLink).toHaveBeenCalledWith(
+      'patient@test.com',
+      'https://portal.medicaltourismchina.health/dashboard?token=patient-login-token',
     );
   });
 

@@ -115,16 +115,14 @@ app.get('/me', async (c) => {
   const result = await getPatientSessionState.execute({ patientId: session.userId });
 
   if (result.nextStep === 'select-hospitals' && result.caseId) {
-    try {
-      await seedWidgetStarterMessage({
-        services,
-        widgetSessionId: result.widgetChatTarget?.sessionId,
-        caseId: result.caseId,
-        destination: result.destination,
-      });
-    } catch (error) {
+    void seedWidgetStarterMessage({
+      services,
+      widgetSessionId: result.widgetChatTarget?.sessionId,
+      caseId: result.caseId,
+      destination: result.destination,
+    }).catch((error) => {
       console.warn('Failed to backfill widget starter message during patient restore:', error);
-    }
+    });
   }
 
   return c.json(result);

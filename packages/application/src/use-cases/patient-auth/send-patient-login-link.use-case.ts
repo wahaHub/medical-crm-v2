@@ -1,6 +1,7 @@
 import type { PatientAuthService, IUserEmailLookupRepository } from '@medical-crm/domain';
 import { EmailRoleConflictError } from './patient-entry-auth.errors.js';
 import type { IMagicLinkEmailService } from './send-magic-link.use-case.js';
+import { getPatientAppOrigin } from './patient-app-origin.js';
 
 export class SendPatientLoginLinkUseCase {
   constructor(
@@ -11,7 +12,7 @@ export class SendPatientLoginLinkUseCase {
 
   async execute(input: { email: string }): Promise<{ delivery: 'dashboard-login' | 'register'; token: string }> {
     const emailState = await this.userEmailLookupRepo.findEmailState(input.email);
-    const frontendUrl = process.env['FRONTEND_URL'] ?? 'http://localhost:3000';
+    const frontendUrl = getPatientAppOrigin();
 
     if (emailState.state === 'PATIENT') {
       const token = await this.authService.createPatientLoginToken(input.email);

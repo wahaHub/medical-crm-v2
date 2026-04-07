@@ -10,7 +10,9 @@ import { SubmitIntakeUseCase } from '../src/use-cases/patient-intake/submit-inta
 import { SubmitPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/submit-patient-qc-response.use-case.js';
 import { GetPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/get-patient-qc-response.use-case.js';
 import type { ICaseRepository, IConversationRepository, IQuoteRepository, ICHCRepository, IQuestionCollectorRepository } from '@medical-crm/domain';
-import { Case, CaseNumber, Conversation, Quote, QuoteNumber, CaseHospitalContact, QCResponse, QCTemplate } from '@medical-crm/domain';
+import { AiChatMessage, AiChatSession, Case, CaseNumber, Conversation, Quote, QuoteNumber, CaseHospitalContact, QCResponse, QCTemplate } from '@medical-crm/domain';
+import type { IAiChatMessageRepository, IAiChatSessionRepository } from '@medical-crm/domain';
+import type { TransactionRunner } from '@medical-crm/domain';
 
 // ——— Factories ———
 function makeMockCase(overrides: Partial<ConstructorParameters<typeof Case>[0]> = {}): Case {
@@ -682,17 +684,52 @@ function makeMockQCRepo(): IQuestionCollectorRepository {
   };
 }
 
+function makeMockAiChatSessionRepo(): IAiChatSessionRepository {
+  return {
+    findBySessionId: vi.fn(),
+    findByDifyConversationId: vi.fn(),
+    save: vi.fn(async (session) => session),
+    setDifyConversationId: vi.fn(),
+    attachPatient: vi.fn(),
+    updateStatus: vi.fn(),
+    patchStatus: vi.fn(),
+  };
+}
+
+function makeMockAiChatMessageRepo(): IAiChatMessageRepository {
+  return {
+    create: vi.fn(async (message) => message),
+    listBySession: vi.fn(),
+    listRecentBySession: vi.fn(),
+    updateMessage: vi.fn(),
+    updateWritebackMetadata: vi.fn(),
+    deleteById: vi.fn(),
+  };
+}
+
+function makeMockTransactionRunner(): TransactionRunner {
+  return {
+    run: vi.fn(async (fn) => fn({})),
+  };
+}
+
 // ——— SubmitPatientQCResponseUseCase tests ———
 
 describe('SubmitPatientQCResponseUseCase', () => {
   let caseRepo: ICaseRepository;
   let qcRepo: IQuestionCollectorRepository;
+  let aiChatSessionRepo: IAiChatSessionRepository;
+  let aiChatMessageRepo: IAiChatMessageRepository;
+  let txRunner: TransactionRunner;
   let useCase: SubmitPatientQCResponseUseCase;
 
   beforeEach(() => {
     caseRepo = makeMockCaseRepo();
     qcRepo = makeMockQCRepo();
-    useCase = new SubmitPatientQCResponseUseCase(qcRepo, caseRepo);
+    aiChatSessionRepo = makeMockAiChatSessionRepo();
+    aiChatMessageRepo = makeMockAiChatMessageRepo();
+    txRunner = makeMockTransactionRunner();
+    useCase = new SubmitPatientQCResponseUseCase(qcRepo, caseRepo, aiChatSessionRepo, aiChatMessageRepo, txRunner);
   });
 
   it('patient can submit response for their own case', async () => {
@@ -738,6 +775,129 @@ describe('SubmitPatientQCResponseUseCase', () => {
     expect(selection?.['medicalFormStatus']).toBe('SUBMITTED');
     expect(selection?.['medicalFormSubmittedAt']).toBeDefined();
     expect(selection?.['medicalFormResponseId']).toBe('qcr-1');
+  });
+
+  it('persists a fixed questionnaire confirmation message and clears widget questionnaire state after submit', async () => {
+    const caseEntity = makeMockCase();
+    const widgetSessionId = 'widget-chat:patient-1:case-1';
+    const widgetSession = new AiChatSession({
+      id: 'db-widget-session-1',
+      sessionId: widgetSessionId,
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'IN_PROGRESS',
+        docUploadStatus: 'REQUESTED',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        leadMaturity: 'browsing',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'QUALIFIED_EXPLORATION',
+        prequalificationReasonCodes: [],
+        enteredDeepWorkflowAt: null,
+        pendingOffer: null,
+        pendingQuestion: {
+          type: 'QUESTIONNAIRE',
+          payload: { templateId: 'template-1' },
+        },
+        lastNextAction: 'REQUEST_DOC_UPLOAD',
+        lastResolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: new Date('2026-04-05'),
+      updatedAt: new Date('2026-04-05'),
+    });
+
+    vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findTemplateById).mockResolvedValue(makeMockQCTemplate());
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(null);
+    const savedResponse = makeMockQCResponse();
+    vi.mocked(qcRepo.saveResponse).mockResolvedValue(savedResponse);
+    vi.mocked(caseRepo.save).mockResolvedValue(caseEntity);
+    vi.mocked(aiChatSessionRepo.findBySessionId).mockResolvedValue(widgetSession);
+    vi.mocked(aiChatSessionRepo.patchStatus).mockResolvedValue(widgetSession);
+    vi.mocked(aiChatMessageRepo.create).mockImplementation(async (message) => message);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: { q1: 'my answer' },
+    });
+
+    expect(aiChatMessageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'db-widget-session-1',
+      role: 'SYSTEM',
+      content: 'Your medical intake form has been submitted successfully. The care team will review it shortly.',
+      metadata: expect.objectContaining({
+        eventType: 'QUESTIONNAIRE_SUBMITTED',
+        caseId: 'case-1',
+        patientId: 'patient-1',
+        templateId: 'template-1',
+      }),
+    }), expect.anything());
+    expect(aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
+      widgetSessionId,
+      expect.objectContaining({
+        pendingQuestion: null,
+        formStatus: 'COMPLETED',
+      }),
+      expect.anything(),
+    );
+    const statusPatch = vi.mocked(aiChatSessionRepo.patchStatus).mock.calls[0]?.[1] as Record<string, unknown> | undefined;
+    expect(statusPatch).toBeTruthy();
+    expect(statusPatch).not.toHaveProperty('docUploadStatus');
+  });
+
+  it('provisions the deterministic widget session when missing and still writes the confirmation message', async () => {
+    const caseEntity = makeMockCase();
+    vi.mocked(caseRepo.findById).mockResolvedValue(caseEntity);
+    vi.mocked(qcRepo.findTemplateById).mockResolvedValue(makeMockQCTemplate());
+    vi.mocked(qcRepo.findResponseByCaseId).mockResolvedValue(null);
+    const savedResponse = makeMockQCResponse();
+    vi.mocked(qcRepo.saveResponse).mockResolvedValue(savedResponse);
+    vi.mocked(caseRepo.save).mockResolvedValue(caseEntity);
+    vi.mocked(aiChatSessionRepo.findBySessionId).mockResolvedValue(null);
+    vi.mocked(aiChatSessionRepo.save).mockImplementation(async (session) => session);
+    vi.mocked(aiChatSessionRepo.patchStatus).mockResolvedValue(null);
+    vi.mocked(aiChatMessageRepo.create).mockImplementation(async (message) => message);
+
+    await useCase.execute({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      templateId: 'template-1',
+      responses: { q1: 'my answer' },
+    });
+
+    expect(aiChatSessionRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+      status: 'ACTIVE',
+    }), expect.anything());
+    expect(aiChatMessageRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: expect.any(String),
+      role: 'SYSTEM',
+      content: 'Your medical intake form has been submitted successfully. The care team will review it shortly.',
+    }), expect.anything());
+    expect(aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
+      'widget-chat:patient-1:case-1',
+      expect.objectContaining({
+        pendingQuestion: null,
+        formStatus: 'COMPLETED',
+      }),
+      expect.anything(),
+    );
   });
 
   it('throws ConflictError when medical form is already SUBMITTED', async () => {

@@ -60,6 +60,9 @@ const skipMedicalFormSchema = z.object({ caseId: z.string().uuid() });
 const qcTemplateByDiseaseQuerySchema = z.object({
   disease: z.string().min(1).max(100),
 });
+const qcTemplateIdParamSchema = z.object({
+  templateId: z.string().uuid(),
+});
 const submitPatientQCResponseSchema = z.object({
   templateId: z.string().uuid(),
   responses: z.unknown(),
@@ -135,6 +138,19 @@ app.get('/qc-templates/by-disease', async (c) => {
   const query = qcTemplateByDiseaseQuerySchema.parse(c.req.query());
   const { getTemplateByDisease } = getServices();
   const result = await getTemplateByDisease.execute(query.disease);
+  return c.json(result);
+});
+
+// GET /qc-templates/:templateId
+// Patient-safe read-only endpoint: resolves the requested active QC template by id.
+app.get('/qc-templates/:templateId', async (c) => {
+  const { templateId } = qcTemplateIdParamSchema.parse({ templateId: c.req.param('templateId') });
+  const session = c.get('patientSession');
+  const { getTemplate } = getServices();
+  const result = await getTemplate.execute(templateId, toPatientActor(session));
+  if (!result.template.isActive) {
+    return c.json({ error: 'Template not found' }, 404);
+  }
   return c.json(result);
 });
 

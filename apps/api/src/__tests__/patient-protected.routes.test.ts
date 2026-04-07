@@ -183,4 +183,88 @@ describe('patientProtectedRoutes', () => {
     });
     expect(await res.json()).toEqual({ ok: true, contacts: [] });
   });
+
+  it('returns a patient-safe questionnaire template by templateId', async () => {
+    const templateId = '11111111-1111-4111-8111-111111111111';
+    const execute = vi.fn().mockResolvedValue({
+      template: {
+        id: templateId,
+        templateName: 'Cancer Intake Template',
+        category: 'CANCER',
+        procedureTypes: [],
+        questions: {
+          steps: [
+            {
+              id: 'step-1',
+              title: 'Symptoms',
+              questions: [
+                { id: 'q-1', prompt: 'Main concern', type: 'TEXT', required: true },
+              ],
+            },
+          ],
+        },
+        translations: {},
+        isActive: true,
+        createdAt: '2026-04-07T00:00:00.000Z',
+        updatedAt: '2026-04-07T00:00:00.000Z',
+      },
+    });
+    mockGetServices.mockReturnValue({ getTemplate: { execute } });
+
+    const res = await patientProtectedRoutes.request(`/qc-templates/${templateId}`);
+
+    expect(res.status).toBe(200);
+    expect(execute).toHaveBeenCalledWith(templateId, {
+      role: 'PATIENT',
+      userId: 'patient-1',
+      email: '',
+      hospitalId: null,
+    });
+    expect(await res.json()).toEqual({
+      template: {
+        id: templateId,
+        templateName: 'Cancer Intake Template',
+        category: 'CANCER',
+        procedureTypes: [],
+        questions: {
+          steps: [
+            {
+              id: 'step-1',
+              title: 'Symptoms',
+              questions: [
+                { id: 'q-1', prompt: 'Main concern', type: 'TEXT', required: true },
+              ],
+            },
+          ],
+        },
+        translations: {},
+        isActive: true,
+        createdAt: '2026-04-07T00:00:00.000Z',
+        updatedAt: '2026-04-07T00:00:00.000Z',
+      },
+    });
+  });
+
+  it('does not expose inactive questionnaire templates to patients', async () => {
+    const templateId = '11111111-1111-4111-8111-111111111111';
+    const execute = vi.fn().mockResolvedValue({
+      template: {
+        id: templateId,
+        templateName: 'Inactive Template',
+        category: 'CANCER',
+        procedureTypes: [],
+        questions: { steps: [] },
+        translations: {},
+        isActive: false,
+        createdAt: '2026-04-07T00:00:00.000Z',
+        updatedAt: '2026-04-07T00:00:00.000Z',
+      },
+    });
+    mockGetServices.mockReturnValue({ getTemplate: { execute } });
+
+    const res = await patientProtectedRoutes.request(`/qc-templates/${templateId}`);
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Template not found' });
+  });
 });

@@ -26,10 +26,13 @@ export class GetTemplateUseCase {
     // For PATIENT role with a caseId, resolve customization if case is ASSIGNED
     if (actor.role === 'PATIENT' && caseId) {
       const caseEntity = await this.caseRepo.findById(caseId);
-      if (caseEntity && caseEntity.patientId !== actor.userId) {
+      if (!caseEntity) {
+        throw new NotFoundError(`Case ${caseId} not found`);
+      }
+      if (caseEntity.patientId !== actor.userId) {
         throw new ForbiddenError('Access denied to this case');
       }
-      if (caseEntity && caseEntity.assignmentStatus === 'ASSIGNED' && caseEntity.assignedHospitalId) {
+      if (caseEntity.assignmentStatus === 'ASSIGNED' && caseEntity.assignedHospitalId) {
         const customization = await this.qcRepo.findCustomization(id, caseEntity.assignedHospitalId);
         if (customization) {
           result.customization = toQCCustomizationDTO(customization);

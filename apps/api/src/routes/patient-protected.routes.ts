@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { z } from '@hono/zod-openapi';
+import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
 import { wsManager } from '../ws/ws-manager.js';
@@ -62,6 +63,9 @@ const qcTemplateByDiseaseQuerySchema = z.object({
 });
 const qcTemplateIdParamSchema = z.object({
   templateId: z.string().uuid(),
+});
+const qcTemplateByIdQuerySchema = z.object({
+  caseId: z.string().uuid(),
 });
 const submitPatientQCResponseSchema = z.object({
   templateId: z.string().uuid(),
@@ -145,9 +149,21 @@ app.get('/qc-templates/by-disease', async (c) => {
 // Patient-safe read-only endpoint: resolves the requested active QC template by id.
 app.get('/qc-templates/:templateId', async (c) => {
   const { templateId } = qcTemplateIdParamSchema.parse({ templateId: c.req.param('templateId') });
+  const query = qcTemplateByIdQuerySchema.parse(c.req.query());
   const session = c.get('patientSession');
   const { getTemplate } = getServices();
-  const result = await getTemplate.execute(templateId, toPatientActor(session));
+  let result;
+  try {
+    result = await getTemplate.execute(templateId, toPatientActor(session), query.caseId);
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      return c.json({ error: 'Template not found' }, 404);
+    }
+    if (error instanceof ForbiddenError) {
+      return c.json({ error: 'Access denied to this case' }, 403);
+    }
+    throw error;
+  }
   if (!result.template.isActive) {
     return c.json({ error: 'Template not found' }, 404);
   }

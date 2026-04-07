@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NotFoundError } from '@medical-crm/utils';
 import patientProtectedRoutes from '../routes/patient-protected.routes.js';
 
 const { mockGetServices, mockSeedWidgetStarterMessage } = vi.hoisted(() => ({
@@ -211,7 +212,8 @@ describe('patientProtectedRoutes', () => {
     });
     mockGetServices.mockReturnValue({ getTemplate: { execute } });
 
-    const res = await patientProtectedRoutes.request(`/qc-templates/${templateId}`);
+    const caseId = '22222222-2222-4222-8222-222222222222';
+    const res = await patientProtectedRoutes.request(`/qc-templates/${templateId}?caseId=${caseId}`);
 
     expect(res.status).toBe(200);
     expect(execute).toHaveBeenCalledWith(templateId, {
@@ -219,7 +221,7 @@ describe('patientProtectedRoutes', () => {
       userId: 'patient-1',
       email: '',
       hospitalId: null,
-    });
+    }, caseId);
     expect(await res.json()).toEqual({
       template: {
         id: templateId,
@@ -247,6 +249,7 @@ describe('patientProtectedRoutes', () => {
 
   it('does not expose inactive questionnaire templates to patients', async () => {
     const templateId = '11111111-1111-4111-8111-111111111111';
+    const caseId = '22222222-2222-4222-8222-222222222222';
     const execute = vi.fn().mockResolvedValue({
       template: {
         id: templateId,
@@ -262,8 +265,26 @@ describe('patientProtectedRoutes', () => {
     });
     mockGetServices.mockReturnValue({ getTemplate: { execute } });
 
-    const res = await patientProtectedRoutes.request(`/qc-templates/${templateId}`);
+    const res = await patientProtectedRoutes.request(`/qc-templates/${templateId}?caseId=${caseId}`);
 
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Template not found' });
+  });
+
+  it('fails closed when the requested caseId does not exist', async () => {
+    const templateId = '11111111-1111-4111-8111-111111111111';
+    const caseId = '33333333-3333-4333-8333-333333333333';
+    const execute = vi.fn().mockRejectedValue(new NotFoundError(`Case ${caseId} not found`));
+    mockGetServices.mockReturnValue({ getTemplate: { execute } });
+
+    const res = await patientProtectedRoutes.request(`/qc-templates/${templateId}?caseId=${caseId}`);
+
+    expect(execute).toHaveBeenCalledWith(templateId, {
+      role: 'PATIENT',
+      userId: 'patient-1',
+      email: '',
+      hospitalId: null,
+    }, caseId);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'Template not found' });
   });

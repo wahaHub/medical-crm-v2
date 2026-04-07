@@ -13,7 +13,7 @@ Medora CRM v2 monorepo.
 
 The verified deployment entrypoint is:
 
-- [scripts/deploy_v2.py](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/scripts/deploy_v2.py)
+- [scripts/deploy_v2.py](scripts/deploy_v2.py)
 
 ### What it does
 
@@ -29,11 +29,11 @@ The verified deployment entrypoint is:
 ### Verified production command
 
 ```bash
-cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
+cd "$(git rev-parse --show-toplevel)"
 python3 scripts/deploy_v2.py \
   --targets all \
   --branch feature/phase-2bc \
-  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem
+  --ssh-key "$SSH_KEY_PATH"
 ```
 
 This command was verified against the current production setup:
@@ -48,11 +48,11 @@ This command was verified against the current production setup:
 Use this before a release if you want a fast preflight without deploying:
 
 ```bash
-cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
+cd "$(git rev-parse --show-toplevel)"
 python3 scripts/deploy_v2.py \
   --targets all \
   --branch feature/phase-2bc \
-  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --ssh-key "$SSH_KEY_PATH" \
   --validate
 ```
 
@@ -72,7 +72,7 @@ Deploy only the API:
 python3 scripts/deploy_v2.py \
   --targets api \
   --branch feature/phase-2bc \
-  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem
+  --ssh-key "$SSH_KEY_PATH"
 ```
 
 Deploy a different branch:
@@ -81,7 +81,7 @@ Deploy a different branch:
 python3 scripts/deploy_v2.py \
   --targets all \
   --branch your-branch-name \
-  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem
+  --ssh-key "$SSH_KEY_PATH"
 ```
 
 ### Prerequisites
@@ -127,7 +127,7 @@ The CRM API server uses Dify keys from the remote file:
 Example:
 
 ```bash
-ssh -i /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem ubuntu@44.253.141.97
+ssh -i "$SSH_KEY_PATH" "$REMOTE_USER@$REMOTE_HOST"
 cd /opt/medora/medical-crm-v2
 cp .env .env.bak.$(date +%Y%m%d%H%M%S)
 sed -i.bak 's/^DIFY_APP_API_KEY=.*/DIFY_APP_API_KEY=app-REPLACE_ME/' .env
@@ -154,4 +154,200 @@ Then restart:
 
 ```bash
 sudo systemctl restart medora-crm-v2-api
+```
+
+## Dify Operations and Troubleshooting
+
+When China chatbot behavior diverges between local and production, use the diagnostic script first:
+
+- [scripts/dify_ops.py](scripts/dify_ops.py)
+
+This script is intentionally diagnostic-first:
+
+- it checks state
+- it runs smoke tests
+- it points at likely failure signatures
+- it does **not** mutate remote infrastructure automatically
+- the combined `doctor` command is **read-only by default** unless you explicitly opt into CRM smoke
+
+### Verified production locations
+
+- CRM API env:
+  - `/opt/medora/medical-crm-v2/.env`
+- Dify docker stack:
+  - `/opt/medora/dify/docker`
+- CRM health:
+  - `https://crmapi.medicaltourismchina.health/health`
+- Public Dify base:
+  - `https://ai.medicaltourismchina.health/v1`
+
+### Quick commands
+
+Set these once in your shell:
+
+```bash
+export REPO_ROOT="$(git rev-parse --show-toplevel)"
+export CRM_BASE_URL="https://crmapi.medicaltourismchina.health"
+export DIFY_BASE_URL="https://ai.medicaltourismchina.health/v1"
+export REMOTE_HOST="44.253.141.97"
+export REMOTE_USER="ubuntu"
+export SSH_KEY_PATH="/path/to/LightsailDefaultKey-us-west-2.pem"
+```
+
+Probe the public Dify app endpoint directly:
+
+```bash
+cd "$REPO_ROOT"
+python3 scripts/dify_ops.py dify-chat \
+  --base-url "$DIFY_BASE_URL" \
+  --app-key "app-REPLACE_ME" \
+  --message "Hello, I want to learn about your services"
+```
+
+The direct Dify probe defaults to:
+
+```json
+{"hospitalType":"REGULAR"}
+```
+
+If the workflow input contract changes, override it with `--inputs-json`.
+
+Run the full CRM onboarding -> history -> chatbot smoke flow:
+
+```bash
+cd "$REPO_ROOT"
+python3 scripts/dify_ops.py crm-smoke \
+  --crm-base-url "$CRM_BASE_URL" \
+  --email dify-ops+$(date +%s)@example.com \
+  --message "Hello, I want to learn about your services"
+```
+
+Important:
+
+- `crm-smoke` creates a real patient/case flow
+- always use a disposable email alias
+
+Inspect the live CRM + Dify remote state over SSH:
+
+```bash
+cd "$REPO_ROOT"
+python3 scripts/dify_ops.py remote-check \
+  --ssh-key "$SSH_KEY_PATH" \
+  --host "$REMOTE_HOST" \
+  --user "$REMOTE_USER"
+```
+
+Run the combined doctor pass:
+
+```bash
+cd "$REPO_ROOT"
+python3 scripts/dify_ops.py doctor \
+  --ssh-key "$SSH_KEY_PATH" \
+  --host "$REMOTE_HOST" \
+  --user "$REMOTE_USER" \
+  --app-key "app-REPLACE_ME"
+```
+
+Opt in to a real CRM smoke only when you want to create a live patient/case:
+
+```bash
+cd "$REPO_ROOT"
+python3 scripts/dify_ops.py doctor \
+  --ssh-key "$SSH_KEY_PATH" \
+  --host "$REMOTE_HOST" \
+  --user "$REMOTE_USER" \
+  --app-key "app-REPLACE_ME" \
+  --include-crm-smoke \
+  --crm-base-url "$CRM_BASE_URL" \
+  --email "dify-ops+$(date +%s)@example.com"
+```
+
+### What the script checks
+
+`dify-chat`
+
+- tests the public Dify `/chat-messages` endpoint directly
+- helps separate “Dify is broken” from “CRM integration is broken”
+- a `400 required in input form` result is still useful: it usually means the key/network path is valid, but the workflow expects CRM-supplied inputs such as `sessionId`
+
+`crm-smoke`
+
+- opens a fresh patient onboarding
+- captures the returned patient cookies
+- verifies widget history seeding
+- sends a real chatbot turn through CRM
+
+`remote-check`
+
+- reads the live CRM Dify env values from `/opt/medora/medical-crm-v2/.env`
+- reads Dify sandbox keys from `/opt/medora/dify/docker/.env`
+- checks whether `CODE_EXECUTION_API_KEY` and `SANDBOX_API_KEY` match
+- inspects `docker compose ps`
+- probes public Dify using the live CRM app key
+- probes Dify api container internal health
+
+### Failure signatures we have already hit
+
+If direct Dify `/chat-messages` returns `401 unauthorized`:
+
+- the CRM is using an app key that does not exist on **this** Dify instance
+- or the key was generated on a different Dify environment
+
+If chatbot replies fail with:
+
+- `Failed to execute code`
+- `sandbox service`
+- `status code 401`
+
+then compare:
+
+- `CODE_EXECUTION_API_KEY`
+- `SANDBOX_API_KEY`
+
+These must match in:
+
+- `/opt/medora/dify/docker/.env`
+
+If public Dify returns HTML `502 Bad Gateway` but the Dify api container is internally healthy:
+
+- Dify nginx likely has a stale upstream IP after container recreation
+- the fix is usually:
+
+```bash
+ssh -i "$SSH_KEY_PATH" "$REMOTE_USER@$REMOTE_HOST"
+cd /opt/medora/dify/docker
+sudo docker compose restart nginx
+```
+
+If China local works but cloud submit shows no AI starter reply:
+
+- run `crm-smoke`
+- verify widget history contains at least one assistant message
+- verify that first message contains the expected block such as `QUESTIONNAIRE_MODAL_TRIGGER`
+- if history is empty, check:
+  - CRM Dify key
+  - Dify publish status
+  - CRM API restart after env changes
+
+If a newly published Dify key still does not work:
+
+- confirm the key exists in the **same** production Dify instance
+- a key from another Dify instance will still return `401`, even if the app name looks identical
+
+### Safe recovery steps
+
+Restart only the CRM API:
+
+```bash
+ssh -i "$SSH_KEY_PATH" "$REMOTE_USER@$REMOTE_HOST"
+sudo systemctl restart medora-crm-v2-api
+curl -fsS https://crmapi.medicaltourismchina.health/health
+```
+
+Restart the Dify stack components most relevant to chatbot execution:
+
+```bash
+ssh -i "$SSH_KEY_PATH" "$REMOTE_USER@$REMOTE_HOST"
+cd /opt/medora/dify/docker
+sudo docker compose restart api worker worker_beat sandbox nginx
 ```

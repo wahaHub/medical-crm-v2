@@ -200,22 +200,6 @@ export class WritebackPlannerService {
       };
     }
 
-    if (input.policyDecision.nextAction === 'EXPLORE_HOSPITAL_RECOMMENDATIONS') {
-      return {
-        statusPatch: {
-          ...baseStatusPatch,
-          recommendationStatus: 'EXPLORED',
-          lastNextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
-        },
-        timelineEvents: [],
-        followupTrigger: null,
-        messageMetadata: {
-          ...baseMessageMetadata,
-          reasonCodes,
-        },
-      };
-    }
-
     if (input.policyDecision.nextAction === 'EXPLAIN_DOC_UPLOAD') {
       return {
         statusPatch: {

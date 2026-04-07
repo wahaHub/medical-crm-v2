@@ -78,7 +78,7 @@ describe('Policy engine evaluation baseline', () => {
 
     expect(result.hardFail).toBe(false);
     expect(result.safeFallback).toBe('RETRIEVAL_TIMEOUT');
-    expect(result.nextAction).toBe('ESCALATE');
+    expect(result.nextAction).toBe('HUMAN_HANDOFF');
     expect(result.handoffRequired).toBe(true);
   });
 
@@ -106,7 +106,7 @@ describe('Policy engine evaluation baseline', () => {
 
     expect(result.hardFail).toBe(false);
     expect(result.shortlist).toEqual([]);
-    expect(result.nextAction).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.nextAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
   });
 
   it('preserves safe messaging and retryable operator state when handoff creation fails', async () => {
@@ -213,7 +213,7 @@ async function runPolicyFixture(
     const result = {
       resolvedIntent: decision.resolved_intent,
       riskLevel: decision.risk_level,
-      nextAction: safeFallback === 'RETRIEVAL_TIMEOUT' ? 'ESCALATE' : decision.next_action,
+      nextAction: safeFallback === 'RETRIEVAL_TIMEOUT' ? 'HUMAN_HANDOFF' : decision.next_action,
       shortlist: decision.risk_level === 'CRISIS'
         ? []
         : decision.shortlist.map((candidate) => ({
@@ -241,13 +241,13 @@ async function runPolicyFixture(
 
     const risk = await riskResolver.resolve({
       userMessage: fixture.userMessage,
-      candidateSignals: extraction,
+      extractionSignals: extraction,
     });
 
     const retrievalFallback = {
       resolvedIntent: fixture.expected.resolvedIntent ?? 'UNKNOWN',
       riskLevel: risk.riskLevel,
-      nextAction: 'ESCALATE',
+      nextAction: 'HUMAN_HANDOFF',
       shortlist: [],
       handoffRequired: true,
       reasonCodes: dedupe([
@@ -312,7 +312,7 @@ function buildFallbackResult(safeFallback: string): EvalResult {
   return {
     resolvedIntent: 'UNKNOWN',
     riskLevel: 'LOW',
-    nextAction: 'ESCALATE',
+    nextAction: 'HUMAN_HANDOFF',
     shortlist: [],
     handoffRequired: true,
     reasonCodes: [safeFallback.toLowerCase()],

@@ -119,6 +119,21 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     return rows[0] ? this.rowToEntity(rows[0]) : null;
   }
 
+  async setDifyConversationId(
+    sessionId: string,
+    difyConversationId: string,
+    tx?: unknown,
+  ): Promise<AiChatSession | null> {
+    const db = (tx as CrmDb) ?? this.db;
+    const rows = await db
+      .update(aiChatSessions)
+      .set({ difyConversationId, updatedAt: sql`NOW()` })
+      .where(eq(aiChatSessions.sessionId, sessionId))
+      .returning();
+
+    return rows[0] ? this.rowToEntity(rows[0]) : null;
+  }
+
   async updateStatus(sessionId: string, status: import('@medical-crm/domain').AiChatSessionStatus, tx?: unknown): Promise<AiChatSession | null> {
     const db = (tx as CrmDb) ?? this.db;
     const rows = await db

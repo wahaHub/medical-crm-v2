@@ -86,6 +86,7 @@ describe('patientProtectedRoutes', () => {
     const create = vi.fn().mockResolvedValue({});
     const updateMessage = vi.fn().mockResolvedValue({});
     const save = vi.fn().mockImplementation(async (entity) => entity);
+    const setDifyConversationId = vi.fn().mockResolvedValue(null);
     const createChatMessage = vi.fn().mockResolvedValue({
       conversation_id: 'dify-conversation-restore-1',
       answer: JSON.stringify({
@@ -103,7 +104,7 @@ describe('patientProtectedRoutes', () => {
     });
     mockGetServices.mockReturnValue({
       getPatientSessionState: { execute },
-      aiChatSessionRepo: { findBySessionId, save },
+      aiChatSessionRepo: { findBySessionId, save, setDifyConversationId },
       aiChatMessageRepo: { listBySession, create, updateMessage },
       difyApi: { createChatMessage },
       matchHospitals: { execute: vi.fn() },
@@ -122,7 +123,10 @@ describe('patientProtectedRoutes', () => {
         internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       }),
     }));
-    expect(save).toHaveBeenCalledOnce();
+    expect(setDifyConversationId).toHaveBeenCalledWith(
+      'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      'dify-conversation-restore-1',
+    );
   });
 
   it('does not append duplicate ai-v1 starter messages on /me when the widget session is already seeded', async () => {
@@ -238,7 +242,11 @@ describe('patientProtectedRoutes', () => {
 
     mockGetServices.mockReturnValue({
       getPatientSessionState: { execute },
-      aiChatSessionRepo: { findBySessionId, save: vi.fn().mockImplementation(async (entity) => entity) },
+      aiChatSessionRepo: {
+        findBySessionId,
+        save: vi.fn().mockImplementation(async (entity) => entity),
+        setDifyConversationId: vi.fn().mockResolvedValue(null),
+      },
       aiChatMessageRepo: { listBySession, create, updateMessage },
       difyApi: { createChatMessage },
       matchHospitals: { execute: vi.fn() },

@@ -1,7 +1,7 @@
-import type { z } from 'zod';
-import { chatbotMessageBlockSchema } from '@medical-crm/validation';
-
-type ChatbotMessageBlock = z.infer<typeof chatbotMessageBlockSchema>;
+import {
+  chatbotMessageBlockSchema,
+  type ChatbotMessageBlock,
+} from '@medical-crm/validation';
 
 export interface BlockBuildContext {
   richAction: string | null | undefined;
@@ -51,22 +51,7 @@ export function buildChatbotBlocks(input: BlockBuildContext): ChatbotMessageBloc
       if (input.sessionCaseId) {
         const hospitals = input.shortlist
           .slice(0, 3)
-          .map((item) => ({
-            hospitalId: asString(item['hospitalId']),
-            name: asString(item['name']),
-            reason: asString(item['reason']),
-            summary: asString(item['summary']),
-            ctaUrl: asString(item['ctaUrl']),
-            thumbnailUrl: asString(item['thumbnailUrl']),
-            thumbnailFallbackUrls: asStringArray(item['thumbnailFallbackUrls']),
-            slug: asString(item['slug']),
-            city: asString(item['city']),
-            matchType: asString(item['matchType']),
-            reasonCodes: Array.isArray(item['reasonCodes'])
-              ? item['reasonCodes'].filter((code): code is string => typeof code === 'string')
-              : undefined,
-          }))
-          .filter((item): item is {
+          .reduce<Array<{
             hospitalId: string;
             name?: string;
             reason?: string;
@@ -78,7 +63,30 @@ export function buildChatbotBlocks(input: BlockBuildContext): ChatbotMessageBloc
             city?: string;
             matchType?: string;
             reasonCodes?: string[];
-          } => Boolean(item.hospitalId));
+          }>>((acc, item) => {
+            const hospitalId = asString(item['hospitalId']);
+            if (!hospitalId) {
+              return acc;
+            }
+
+            acc.push({
+              hospitalId,
+              name: asString(item['name']),
+              reason: asString(item['reason']),
+              summary: asString(item['summary']),
+              ctaUrl: asString(item['ctaUrl']),
+              thumbnailUrl: asString(item['thumbnailUrl']),
+              thumbnailFallbackUrls: asStringArray(item['thumbnailFallbackUrls']),
+              slug: asString(item['slug']),
+              city: asString(item['city']),
+              matchType: asString(item['matchType']),
+              reasonCodes: Array.isArray(item['reasonCodes'])
+                ? item['reasonCodes'].filter((code): code is string => typeof code === 'string')
+                : undefined,
+            });
+
+            return acc;
+          }, []);
 
         if (hospitals.length > 0) {
           candidates.push({

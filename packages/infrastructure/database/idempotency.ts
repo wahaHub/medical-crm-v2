@@ -28,9 +28,11 @@ export class IdempotencyGuard {
       const existing = await this.db.execute(
         sql`SELECT result FROM idempotency_keys WHERE key = ${key}`,
       );
-      const row = existing[0] as { result: string | null } | undefined;
+      const row = existing[0] as { result: unknown } | undefined;
       if (row && row.result !== null) {
-        return JSON.parse(row.result) as T; // Completed — return cached result
+        return typeof row.result === 'string'
+          ? JSON.parse(row.result) as T
+          : row.result as T; // Completed — return cached result
       }
       // Still processing (result is NULL) — reject with 409
       throw new ConflictError('Request is already being processed');

@@ -79,14 +79,6 @@ function planLightDiscovery(input: ActionPlannerInput): ActionPlan {
     };
   }
 
-  if (input.resolvedIntent === 'ASK_FOR_RECOMMENDATION') {
-    return {
-      nextAction: 'ANSWER_FAQ',
-      secondaryAction: null,
-      reasonCodes: ['light_discovery_soft_guidance'],
-    };
-  }
-
   return {
     nextAction: 'ANSWER_FAQ',
     secondaryAction: null,
@@ -115,28 +107,9 @@ function planQualifiedExploration(input: ActionPlannerInput): ActionPlan {
     return planCanonicalRecommendationPath(input);
   }
 
-  if (input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' && !isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)) {
-    return {
-      nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
-      secondaryAction: null,
-      reasonCodes: ['qualified_recommendation_exploration'],
-    };
-  }
-
   if (
-    input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' &&
-    isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
-  ) {
-    return {
-      nextAction: 'EXPLAIN_DOC_UPLOAD',
-      secondaryAction: null,
-      reasonCodes: ['qualified_recommendation_needs_documents_explanation'],
-    };
-  }
-
-  if (
-    input.resolvedIntent === 'GENERAL_CONSULT' &&
-    consultationCanBeInvited(input.statusSnapshot.consultationStatus)
+    input.resolvedIntent === 'GENERAL_CONSULT'
+    && consultationCanBeInvited(input.statusSnapshot.consultationStatus)
   ) {
     return {
       nextAction: 'EXPLAIN_CONSULT_PROCESS',
@@ -193,17 +166,6 @@ function planDeepWorkflow(input: ActionPlannerInput): ActionPlan {
 
   if (isCanonicalRecommendationIntent(input.resolvedIntent)) {
     return planCanonicalRecommendationPath(input);
-  }
-
-  if (
-    input.resolvedIntent === 'ASK_FOR_RECOMMENDATION' &&
-    isMissingDocumentStatus(input.statusSnapshot.docUploadStatus)
-  ) {
-    return {
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      secondaryAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      reasonCodes: ['documents_required_before_recommendation'],
-      };
   }
 
   if (

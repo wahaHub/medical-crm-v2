@@ -71,7 +71,6 @@ export class RecommendationPolicyService {
 
 function isRecommendationIntent(resolvedIntent: string): boolean {
   return [
-    'ASK_FOR_RECOMMENDATION',
     'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS',
     'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
     'ASK_FOR_HOSPITAL_RECOMMENDATION',

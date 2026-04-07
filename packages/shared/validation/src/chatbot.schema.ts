@@ -12,7 +12,6 @@ export const chatbotNextActionSchema = z.enum([
   'EXPLAIN_DOC_UPLOAD',
   'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
   'EXPLAIN_CONSULT_PROCESS',
-  'EXPLORE_HOSPITAL_RECOMMENDATIONS',
   'SHOW_HOSPITAL_RECOMMENDATIONS',
   'REQUEST_DOC_UPLOAD',
   'INVITE_ONLINE_CONSULT',
@@ -278,3 +277,4 @@ export type ChatbotChatResponse = z.infer<typeof chatbotChatResponseSchema>;
 export type ChatbotConvertResponse = z.infer<typeof chatbotConvertResponseSchema>;
 export type ChatbotEscalateResponse = z.infer<typeof chatbotEscalateResponseSchema>;
 export type ChatbotHistoryResponse = z.infer<typeof chatbotHistoryResponseSchema>;
+export type ChatbotMessageBlock = z.infer<typeof chatbotMessageBlockSchema>;

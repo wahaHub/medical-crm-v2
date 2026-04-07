@@ -11,7 +11,7 @@ describe('RecommendationPolicyService', () => {
         riskLevel: 'LOW',
         docUploadStatus: 'UPLOADED',
       },
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
       candidateHospitals: [
         { hospitalId: 'hospital-1', reasonCodes: ['condition_fit', 'language_supported'] },
         { hospitalId: 'hospital-2', reasonCodes: ['destination_match'] },
@@ -35,7 +35,7 @@ describe('RecommendationPolicyService', () => {
           riskLevel: 'LOW',
           docUploadStatus,
         },
-        resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+        resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
         candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
       });
 
@@ -79,6 +79,24 @@ describe('RecommendationPolicyService', () => {
         docUploadStatus: 'UPLOADED',
       },
       resolvedIntent: 'ACCEPT_DOC_UPLOAD',
+      candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
+    });
+
+    expect(result.eligible).toBe(false);
+    expect(result.shortlist).toEqual([]);
+    expect(result.reasonCodes).toContain('recommendation_not_requested');
+  });
+
+  it('does not treat legacy ASK_FOR_RECOMMENDATION as a canonical recommendation intent', async () => {
+    const service = new RecommendationPolicyService();
+
+    const result = await service.decide({
+      statusSnapshot: {
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+        docUploadStatus: 'UPLOADED',
+      },
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
       candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
     });
 

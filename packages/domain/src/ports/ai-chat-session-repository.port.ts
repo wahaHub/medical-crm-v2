@@ -5,6 +5,7 @@ export interface IAiChatSessionRepository {
   findBySessionId(sessionId: string, tx?: unknown): Promise<AiChatSession | null>;
   findByDifyConversationId(difyConversationId: string, tx?: unknown): Promise<AiChatSession | null>;
   save(entity: AiChatSession, tx?: unknown): Promise<AiChatSession>;
+  setDifyConversationId?(sessionId: string, difyConversationId: string, tx?: unknown): Promise<AiChatSession | null>;
   attachPatient(sessionId: string, patientId: string, tx?: unknown): Promise<AiChatSession | null>;
   updateStatus(sessionId: string, status: AiChatSessionStatus, tx?: unknown): Promise<AiChatSession | null>;
   patchStatus(sessionId: string, patch: Partial<AiChatSession['statusSnapshot']>, tx?: unknown): Promise<AiChatSession | null>;

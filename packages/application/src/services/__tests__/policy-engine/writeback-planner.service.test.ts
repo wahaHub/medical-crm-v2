@@ -122,7 +122,7 @@ describe('WritebackPlannerService', () => {
     });
   });
 
-  it('marks recommendation exploration without fabricating shortlist audit', () => {
+  it('marks recommendation display without fabricating shortlist audit', () => {
     const planner = new WritebackPlannerService();
 
     const result = planner.plan({
@@ -133,15 +133,15 @@ describe('WritebackPlannerService', () => {
       policyDecision: {
         engagementMode: 'QUALIFIED_EXPLORATION',
         writebackDepth: 'moderate',
-        nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
-        reasonCodes: ['qualified_recommendation_exploration'],
+        nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        reasonCodes: ['authoritative_shortlist_ready'],
         prequalificationReasonCodes: ['trust_building_question'],
       },
     });
 
-    expect(result.statusPatch.recommendationStatus).toBe('EXPLORED');
+    expect(result.statusPatch.recommendationStatus).toBe('PRELIMINARY_SHOWN');
     expect(result.statusPatch.engagementMode).toBe('QUALIFIED_EXPLORATION');
-    expect(result.statusPatch.lastNextAction).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.statusPatch.lastNextAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
   });

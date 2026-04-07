@@ -14,7 +14,7 @@ describe('ActionPlannerService', () => {
         recommendationStatus: 'NOT_SHOWN',
         riskLevel: 'LOW',
       },
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     });
 
     expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
@@ -39,7 +39,7 @@ describe('ActionPlannerService', () => {
     expect(plan.reasonCodes).toContain('explicit_document_request');
   });
 
-  it('keeps low-signal recommendation curiosity in a lightweight answer path', () => {
+  it('keeps low-signal curiosity in a lightweight answer path', () => {
     const planner = new ActionPlannerService();
 
     const plan = planner.plan({
@@ -51,11 +51,30 @@ describe('ActionPlannerService', () => {
         recommendationStatus: 'NOT_SHOWN',
         riskLevel: 'LOW',
       },
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'GENERAL_INFO',
     });
 
     expect(plan.nextAction).toBe('ANSWER_FAQ');
     expect(plan.reasonCodes).toContain('light_discovery_soft_guidance');
+  });
+
+  it('does not treat legacy ASK_FOR_RECOMMENDATION as a canonical recommendation intent in qualified exploration', () => {
+    const planner = new ActionPlannerService();
+
+    const plan = planner.plan({
+      engagementMode: 'QUALIFIED_EXPLORATION',
+      hospitalType: 'REGULAR',
+      statusSnapshot: {
+        docUploadStatus: 'UPLOADED',
+        packageStatus: 'SHOWN',
+        recommendationStatus: 'NOT_SHOWN',
+        riskLevel: 'LOW',
+      },
+      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+    });
+
+    expect(plan.nextAction).toBe('ANSWER_FAQ');
+    expect(plan.reasonCodes).toContain('qualified_guidance_path');
   });
 
   it('keeps explicit document-upload requests on the document-upload path even in light discovery', () => {
@@ -150,11 +169,11 @@ describe('ActionPlannerService', () => {
         recommendationStatus: 'NOT_SHOWN',
         riskLevel: 'LOW',
       },
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     });
 
-    expect(plan.nextAction).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
-    expect(plan.reasonCodes).toContain('qualified_recommendation_exploration');
+    expect(plan.nextAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(plan.reasonCodes).toContain('canonical_recommendation_ready');
   });
 
   it('keeps explicit document questions in qualified exploration on the document-upload path', () => {
@@ -175,7 +194,7 @@ describe('ActionPlannerService', () => {
     expect(plan.nextAction).toBe('REQUEST_DOC_UPLOAD');
   });
 
-  it('keeps consult-style questions in qualified exploration on an explanation path', () => {
+  it('keeps canonical general-info turns on the faq path in qualified exploration', () => {
     const planner = new ActionPlannerService();
 
     const plan = planner.plan({
@@ -188,11 +207,11 @@ describe('ActionPlannerService', () => {
         consultationStatus: 'NOT_INTRODUCED',
         riskLevel: 'LOW',
       },
-      resolvedIntent: 'GENERAL_CONSULT',
+      resolvedIntent: 'GENERAL_INFO',
     });
 
-    expect(plan.nextAction).toBe('EXPLAIN_CONSULT_PROCESS');
-    expect(plan.reasonCodes).toContain('qualified_consult_explanation');
+    expect(plan.nextAction).toBe('ANSWER_FAQ');
+    expect(plan.reasonCodes).toContain('qualified_guidance_path');
   });
 
   it('routes broad journey questions to EXPLAIN_MEDICAL_TRAVEL_PROCESS', () => {
@@ -346,7 +365,7 @@ describe('ActionPlannerService', () => {
     expect(plan.nextAction).toBe('HUMAN_HANDOFF');
   });
 
-  it('does not default REGULAR qualified exploration into SHOW_PACKAGE', () => {
+  it('does not default REGULAR qualified exploration into consult explanation or package promotion for canonical general-info turns', () => {
     const planner = new ActionPlannerService();
 
     const plan = planner.plan({
@@ -359,10 +378,10 @@ describe('ActionPlannerService', () => {
         consultationStatus: 'READY',
         riskLevel: 'LOW',
       },
-      resolvedIntent: 'GENERAL_CONSULT',
+      resolvedIntent: 'GENERAL_INFO',
     });
 
-    expect(plan.nextAction).toBe('EXPLAIN_CONSULT_PROCESS');
+    expect(plan.nextAction).toBe('ANSWER_FAQ');
     expect(plan.reasonCodes).not.toContain('qualified_package_exploration');
   });
 });

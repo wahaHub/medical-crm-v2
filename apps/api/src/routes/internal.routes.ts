@@ -37,7 +37,6 @@ const aiPolicyNextActionSchema = z.enum([
   'EXPLAIN_DOC_UPLOAD',
   'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
   'EXPLAIN_CONSULT_PROCESS',
-  'EXPLORE_HOSPITAL_RECOMMENDATIONS',
   'SHOW_HOSPITAL_RECOMMENDATIONS',
   'REQUEST_DOC_UPLOAD',
   'INVITE_ONLINE_CONSULT',
@@ -47,13 +46,7 @@ const aiPolicyNextActionSchema = z.enum([
 ]);
 
 const aiPolicyWritebackDepthSchema = z.enum(['minimal', 'moderate', 'complete']);
-const aiPolicyCompatibilitySignalKeys = [
-  'possibleIntent',
-  'possibleRisk',
-  'mentionedBudget',
-  'topicHint',
-] as const;
-
+const aiPolicyRiskLevelHintSchema = z.enum(['LOW', 'SENSITIVE', 'HIGH', 'HIGH_RISK', 'CRISIS']);
 function isAuthorized(secret: string | undefined): boolean {
   const { INTERNAL_API_SECRET } = getServerEnv();
   return Boolean(secret && secret === INTERNAL_API_SECRET);
@@ -228,7 +221,7 @@ app.openapi(aiPolicyWritebackRoute, async (c) => {
       nextAction: readOptionalEnum(
         decision.nextAction ?? decision.next_action,
         aiPolicyNextActionSchema,
-      ),
+      ) ?? 'ANSWER_FAQ',
       selectedHospitalId: readOptionalString(
         decision.selectedHospitalId ?? decision.selected_hospital_id,
       ) ?? undefined,
@@ -256,15 +249,8 @@ app.openapi(searchHospitalsRoute, async (c) => {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const body = await c.req.json();
-  const topicHint = readOptionalString(body?.candidate_signals?.topicHint);
-  const query = readOptionalString(body?.query);
-  const category = topicHint ?? inferHospitalCategory(query);
-
   const svc = getServices();
-  const result = await svc.matchHospitals.execute({
-    category: category ?? undefined,
-  });
+  const result = await svc.matchHospitals.execute({});
 
   return c.json({
     ok: true,
@@ -343,26 +329,13 @@ app.route('/', internalFaqEvalRoutes);
 
 function readAiPolicyExtraction(payload: unknown): Record<string, unknown> {
   const record = asRecord(payload);
-  const candidateSignals = readCompatibilityCandidateSignals(record.candidate_signals);
   const semanticSignals = readCanonicalSemanticSignals(record.semantic_signals);
+  const riskLevelHint = readRiskLevelHint(record.semantic_signals);
 
-  return semanticSignals
-    ? { ...candidateSignals, ...semanticSignals }
-    : candidateSignals;
-}
-
-function readCompatibilityCandidateSignals(value: unknown): Record<string, unknown> {
-  const record = parseRecord(value) ?? {};
-  const compatibilitySignals: Record<string, unknown> = {};
-
-  for (const key of aiPolicyCompatibilitySignalKeys) {
-    const normalized = readOptionalString(record[key]);
-    if (normalized !== null) {
-      compatibilitySignals[key] = normalized;
-    }
-  }
-
-  return compatibilitySignals;
+  return {
+    ...(semanticSignals ?? {}),
+    ...(riskLevelHint ? { riskLevelHint } : {}),
+  };
 }
 
 function readCanonicalSemanticSignals(
@@ -383,6 +356,15 @@ function readCanonicalSemanticSignals(
   });
 
   return parsed.success ? parsed.data : null;
+}
+
+function readRiskLevelHint(value: unknown): z.infer<typeof aiPolicyRiskLevelHintSchema> | null {
+  const record = parseRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  return readOptionalEnum(record.riskLevelHint, aiPolicyRiskLevelHintSchema) ?? null;
 }
 
 function readAiPolicyWritebackDecision(value: unknown): Record<string, unknown> {
@@ -459,15 +441,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object'
     ? value as Record<string, unknown>
     : {};
-}
-
-function inferHospitalCategory(query: string | null): string | null {
-  if (!query) return null;
-  const normalized = query.toLowerCase();
-  if (normalized.includes('rhinoplasty')) return 'rhinoplasty';
-  if (normalized.includes('hair') || normalized.includes('transplant')) return 'hair transplant';
-  if (normalized.includes('ivf') || normalized.includes('fertility')) return 'fertility';
-  return null;
 }
 
 export default app;

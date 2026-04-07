@@ -128,11 +128,6 @@ describe('Dify workflow contract', () => {
           sourceHandle: 'show_hospital_recommendations',
           target: 'search_hospitals_http',
         }),
-        expect.objectContaining({
-          source: 'action_gate',
-          sourceHandle: 'explore_hospital_recommendations',
-          target: 'search_hospitals_http',
-        }),
       ]),
     );
   });
@@ -183,7 +178,6 @@ describe('Dify workflow contract', () => {
     expect(explicitActionValues).toEqual([
       'SHOW_PACKAGE',
       'SHOW_HOSPITAL_RECOMMENDATIONS',
-      'EXPLORE_HOSPITAL_RECOMMENDATIONS',
       'ANSWER_FAQ',
     ]);
 
@@ -192,7 +186,6 @@ describe('Dify workflow contract', () => {
       'SHOW_PACKAGE',
       'REQUEST_DOC_UPLOAD',
       'SHOW_HOSPITAL_RECOMMENDATIONS',
-      'EXPLORE_HOSPITAL_RECOMMENDATIONS',
       'EXPLAIN_DOC_UPLOAD',
       'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
       'EXPLAIN_CONSULT_PROCESS',
@@ -278,6 +271,24 @@ describe('Dify workflow contract', () => {
     );
     expect(contextBody).toContain('"page_context": {{#start.pageContextJson#}}');
     expect(decideBody).toContain('"page_context": {{#start.pageContextJson#}}');
+  });
+
+  it('forwards canonical semantic_signals to backend decide without legacy candidate_signals', () => {
+    const dsl = loadDsl();
+    const decideNode = findNode(dsl.workflow.graph.nodes, 'decide_http');
+    const decideBody = decideNode.data?.body?.data?.[0]?.value ?? '';
+
+    expect(decideBody).toContain('"semantic_signals": {{#extraction_llm.text#}}');
+    expect(decideBody).not.toContain('"candidate_signals": {{#extraction_llm.text#}}');
+  });
+
+  it('does not forward candidate_signals on the live hospital search path', () => {
+    const dsl = loadDsl();
+    const searchNode = findNode(dsl.workflow.graph.nodes, 'search_hospitals_http');
+    const searchBody = searchNode.data?.body?.data?.[0]?.value ?? '';
+
+    expect(searchBody).toContain('"query": "{{#sys.query#}}"');
+    expect(searchBody).not.toContain('"candidate_signals": {{#extraction_llm.text#}}');
   });
 
   it('normalizes branch-specific prompt inputs before the response composer reads optional tool outputs', () => {
@@ -540,26 +551,35 @@ describe('Dify workflow contract', () => {
     expect(prompt).toContain('metadata.internalNextAction');
     expect(prompt).toContain('metadata.pathMode');
     expect(prompt).toContain('REQUEST_DOC_UPLOAD');
-    expect(prompt).toContain('EXPLAIN_DOC_UPLOAD');
-    expect(prompt).toContain('EXPLAIN_CONSULT_PROCESS');
     expect(prompt).toContain('SHOW_HOSPITAL_RECOMMENDATIONS');
-    expect(prompt).toContain('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(prompt).toContain('EXPLAIN_DOC_UPLOAD');
+    expect(prompt).toContain('EXPLAIN_MEDICAL_TRAVEL_PROCESS');
+    expect(prompt).toContain('EXPLAIN_CONSULT_PROCESS');
+    expect(prompt).toContain('INVITE_ONLINE_CONSULT');
+    expect(prompt).toContain('SHOW_PACKAGE');
+    expect(prompt).toContain('HUMAN_HANDOFF');
     expect(prompt).toContain('SAFETY_HANDOFF');
     expect(prompt).toContain('explain the upload process without pretending an upload widget has already started');
     expect(prompt).toContain('explain the consult workflow and keep the tone exploratory rather than forceful');
     expect(prompt).toContain('If backend next_action is SAFETY_HANDOFF, keep the response safety-only and direct the user toward human or emergency support without any commercial CTA');
     expect(prompt).toContain('append at most one short soft-confirmation CTA only when it matches the backend next_action');
     expect(prompt).toContain('If you\'d like, I can next...');
-    expect(prompt).toContain('Eligible soft-confirmation CTA actions are REQUEST_DOC_UPLOAD, EXPLAIN_DOC_UPLOAD, EXPLAIN_CONSULT_PROCESS, EXPLORE_HOSPITAL_RECOMMENDATIONS, SHOW_HOSPITAL_RECOMMENDATIONS, and SHOW_PACKAGE');
     expect(prompt).toContain('Do not append a conversion-style CTA on SAFETY_HANDOFF or any HIGH_RISK/CRISIS turn');
     expect(prompt).toContain('On LIGHT_DISCOVERY, keep any CTA especially soft, optional, and trust-building rather than salesy');
+    expect(prompt).not.toContain('next_action ANSWER_FAQ -> nextAction ANSWER');
+    expect(prompt).not.toContain('next_action SHOW_PACKAGE -> nextAction ANSWER');
+    expect(prompt).not.toContain('next_action REQUEST_DOC_UPLOAD -> nextAction REQUEST_DOCS');
+    expect(prompt).not.toContain('next_action EXPLAIN_DOC_UPLOAD -> nextAction ANSWER');
+    expect(prompt).not.toContain('next_action EXPLAIN_CONSULT_PROCESS -> nextAction ANSWER');
+    expect(prompt).not.toContain('next_action EXPLORE_HOSPITAL_RECOMMENDATIONS -> nextAction ANSWER');
+    expect(prompt).not.toContain('next_action SHOW_HOSPITAL_RECOMMENDATIONS -> nextAction CONSULT_CONVERSION');
+    expect(prompt).not.toContain('next_action SAFETY_HANDOFF -> nextAction SAFETY');
   });
 
   it('pins extraction_llm to the canonical semantic contract with multilingual examples only', () => {
     const dsl = loadDsl();
     const extractionNode = findNode(dsl.workflow.graph.nodes, 'extraction_llm');
     const prompt = systemPrompt(extractionNode);
-    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
 
     expect(prompt).toContain('"resolvedIntent": "GENERAL_INFO|ASK_MEDICAL_TRAVEL_PROCESS|ASK_CONSULT_PROCESS|ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION|ASK_FOR_HOSPITAL_RECOMMENDATION|REQUEST_DOC_UPLOAD|ACCEPT_DOC_UPLOAD|ACCEPT_ONLINE_CONSULT_INVITE|REQUEST_HUMAN_HANDOFF|ASK_PACKAGE_INFO|SMALL_TALK_OR_GREETING|UNKNOWN"');
     expect(prompt).toContain('"engagementSignal": "LIGHT_DISCOVERY|QUALIFIED_EXPLORATION|DEEP_WORKFLOW"');
@@ -567,34 +587,32 @@ describe('Dify workflow contract', () => {
     expect(prompt).toContain('"recommendationSignal": "NONE|SEEKING_DIRECTION|SEEKING_RECOMMENDATION|READY_FOR_RECOMMENDATION"');
     expect(prompt).toContain('"mentionsCondition": false');
     expect(prompt).toContain('"mentionsDoctorOrHospitalNeed": false');
-    expect(prompt).toContain('"possibleIntent": "FAQ|ASK_FOR_RECOMMENDATION|GENERAL_CONSULT|CONSULT_CONVERSION|CREATE_CASE|REQUEST_DOCS|DEEP_WORKFLOW|null"');
-    expect(prompt).toContain('"possibleRisk": "CRISIS|HIGH_RISK|HIGH|SENSITIVE|LOW|null"');
-    expect(prompt).toContain('"mentionedBudget": "string|null"');
-    expect(prompt).toContain('"topicHint": "string|null"');
+    expect(prompt).toContain('"riskLevelHint": "LOW|SENSITIVE|HIGH|HIGH_RISK|CRISIS"');
     expect(prompt).not.toContain('non-authoritative candidate signals');
     expect(prompt).not.toContain('only a hint for the backend policy engine');
-    expect(prompt).toContain('Compatibility-only fields for the current backend');
-    expect(prompt).toContain('These compatibility fields are transitional/deprecated support and are not the canonical semantic contract');
+    expect(prompt).not.toContain('possibleIntent');
+    expect(prompt).not.toContain('possibleRisk');
+    expect(prompt).not.toContain('mentionedBudget');
+    expect(prompt).not.toContain('topicHint');
+    expect(prompt).not.toContain('Compatibility-only fields for the current backend');
+    expect(prompt).not.toContain('These compatibility fields are transitional/deprecated support and are not the canonical semantic contract');
 
     expect(prompt).toContain('English: "Can you recommend which hospital or doctor I should talk to?"');
     expect(prompt).toContain('Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟"');
     expect(prompt).toContain('Chinese: "你能推荐适合我的医院或医生吗？"');
     expect(prompt).toContain('Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?"');
-    expect(prompt).toContain('English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
-    expect(prompt).toContain('Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
-    expect(prompt).toContain('Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
-    expect(prompt).toContain('Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}');
-    expect(prompt).toContain('English: "I have my reports ready, where should I upload them?" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}');
-    expect(prompt).toContain('Chinese: "我已经准备好检查报告了，怎么上传给你们？" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}');
+    expect(prompt).toContain('English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}');
+    expect(prompt).toContain('Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}');
+    expect(prompt).toContain('Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}');
+    expect(prompt).toContain('Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}');
+    expect(prompt).toContain('English: "I have my reports ready, where should I upload them?" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"riskLevelHint":"LOW"}');
+    expect(prompt).toContain('Chinese: "我已经准备好检查报告了，怎么上传给你们？" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"riskLevelHint":"LOW"}');
 
     expect(prompt).not.toContain('"affirmative"');
     expect(prompt).not.toContain('"negative"');
-
-    expect(yaml).toContain('possibleIntent');
-    expect(yaml).toContain('possibleRisk');
-    expect(yaml).toContain('mentionedBudget');
-    expect(yaml).toContain('topicHint');
-    expect(yaml).not.toContain('"affirmative"');
-    expect(yaml).not.toContain('"negative"');
+    expect(prompt).not.toContain('possibleIntent');
+    expect(prompt).not.toContain('possibleRisk');
+    expect(prompt).not.toContain('mentionedBudget');
+    expect(prompt).not.toContain('topicHint');
   });
 });

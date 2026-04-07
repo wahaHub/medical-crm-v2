@@ -176,16 +176,6 @@ workflow:
         targetType: http-request
         isInIteration: false
         isInLoop: false
-    - id: action-explore-hospitals
-      source: action_gate
-      sourceHandle: explore_hospital_recommendations
-      target: search_hospitals_http
-      targetHandle: target
-      type: custom
-      data:
-        sourceType: if-else
-        targetType: http-request
-        isInIteration: false
         isInLoop: false
     - id: list-packages-normalize
       source: list_packages_http
@@ -716,28 +706,24 @@ workflow:
               "recommendationSignal": "NONE|SEEKING_DIRECTION|SEEKING_RECOMMENDATION|READY_FOR_RECOMMENDATION",
               "mentionsCondition": false,
               "mentionsDoctorOrHospitalNeed": false,
-              "possibleIntent": "FAQ|ASK_FOR_RECOMMENDATION|GENERAL_CONSULT|CONSULT_CONVERSION|CREATE_CASE|REQUEST_DOCS|DEEP_WORKFLOW|null",
-              "possibleRisk": "CRISIS|HIGH_RISK|HIGH|SENSITIVE|LOW|null",
-              "mentionedBudget": "string|null",
-              "topicHint": "string|null"
+              "riskLevelHint": "LOW|SENSITIVE|HIGH|HIGH_RISK|CRISIS"
             }
 
             Rules:
             - Return only the approved enum values exactly as written above.
             - Map equivalent semantics across languages to the same enum.
             - Keep boolean fields false unless the user clearly expresses that meaning.
+            - Set riskLevelHint to the safest grounded value for the turn: LOW by default, SENSITIVE for emotionally delicate topics, HIGH/HIGH_RISK for serious safety concern, and CRISIS for imminent self-harm or emergency language.
             - Do not output nested wrappers.
             - Treat this output as the canonical semantic contract for this turn.
-            - Compatibility-only fields for the current backend are possibleIntent, possibleRisk, mentionedBudget, and topicHint.
-            - These compatibility fields are transitional/deprecated support and are not the canonical semantic contract.
 
             Multilingual examples:
-            - English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
-            - Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
-            - Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
-            - Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"possibleIntent":"ASK_FOR_RECOMMENDATION","possibleRisk":null,"mentionedBudget":null,"topicHint":null}
-            - English: "I have my reports ready, where should I upload them?" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}
-            - Chinese: "我已经准备好检查报告了，怎么上传给你们？" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"possibleIntent":"REQUEST_DOCS","possibleRisk":null,"mentionedBudget":null,"topicHint":"document upload"}
+            - English: "Can you recommend which hospital or doctor I should talk to?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}
+            - Arabic: "ممكن ترشح لي مستشفى أو دكتور مناسب؟" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}
+            - Chinese: "你能推荐适合我的医院或医生吗？" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}
+            - Spanish: "¿Me pueden recomendar un hospital o doctor adecuado?" -> {"resolvedIntent":"ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION","engagementSignal":"QUALIFIED_EXPLORATION","progressionSignal":"OPEN_TO_NEXT_STEP","recommendationSignal":"SEEKING_DIRECTION","mentionsCondition":false,"mentionsDoctorOrHospitalNeed":true,"riskLevelHint":"LOW"}
+            - English: "I have my reports ready, where should I upload them?" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"riskLevelHint":"LOW"}
+            - Chinese: "我已经准备好检查报告了，怎么上传给你们？" -> {"resolvedIntent":"REQUEST_DOC_UPLOAD","engagementSignal":"DEEP_WORKFLOW","progressionSignal":"READY_TO_PROCEED","recommendationSignal":"NONE","mentionsCondition":true,"mentionsDoctorOrHospitalNeed":false,"riskLevelHint":"LOW"}
         memory:
           query_prompt_template: '{{#sys.query#}}'
           role_prefix:
@@ -778,8 +764,7 @@ workflow:
             value: |
               {
                 "session_id": "{{#start.sessionId#}}",
-                "query": "{{#sys.query#}}",
-                "candidate_signals": {{#extraction_llm.text#}}
+                "query": "{{#sys.query#}}"
               }
         timeout:
           connect: 5
@@ -874,7 +859,7 @@ workflow:
                 "hospital_type": "{{#start.hospitalType#}}",
                 "payload": {
                   "user_message": "{{#sys.query#}}",
-                  "candidate_signals": {{#extraction_llm.text#}},
+                  "semantic_signals": {{#extraction_llm.text#}},
                   "page_context": {{#start.pageContextJson#}}
                 }
               }
@@ -1077,24 +1062,6 @@ workflow:
             value: SHOW_HOSPITAL_RECOMMENDATIONS
             varType: string
           - id: allow-hospital-tool
-            variable_selector:
-            - parse_decide_code
-            - allow_search_hospitals
-            comparison_operator: is
-            value: 'true'
-            varType: string
-        - case_id: explore_hospital_recommendations
-          id: explore_hospital_recommendations
-          logical_operator: and
-          conditions:
-          - id: next-action-explore-hospitals
-            variable_selector:
-            - parse_decide_code
-            - next_action
-            comparison_operator: is
-            value: EXPLORE_HOSPITAL_RECOMMENDATIONS
-            varType: string
-          - id: allow-explore-hospital-tool
             variable_selector:
             - parse_decide_code
             - allow_search_hospitals
@@ -2283,14 +2250,8 @@ workflow:
             - risk_level HIGH_RISK -> riskLevel CRISIS
             - risk_level SENSITIVE -> riskLevel SENSITIVE
             - risk_level LOW -> riskLevel NORMAL
-            - next_action ANSWER_FAQ -> nextAction ANSWER
-            - next_action SHOW_PACKAGE -> nextAction ANSWER
-            - next_action REQUEST_DOC_UPLOAD -> nextAction REQUEST_DOCS
-            - next_action EXPLAIN_DOC_UPLOAD -> nextAction ANSWER
-            - next_action EXPLAIN_CONSULT_PROCESS -> nextAction ANSWER
-            - next_action EXPLORE_HOSPITAL_RECOMMENDATIONS -> nextAction ANSWER
-            - next_action SHOW_HOSPITAL_RECOMMENDATIONS -> nextAction CONSULT_CONVERSION
-            - next_action SAFETY_HANDOFF -> nextAction SAFETY
+            - Use the backend next_action directly as the public nextAction value.
+            - Public nextAction values are ANSWER_FAQ, SHOW_PACKAGE, REQUEST_DOC_UPLOAD, SHOW_HOSPITAL_RECOMMENDATIONS, EXPLAIN_DOC_UPLOAD, EXPLAIN_MEDICAL_TRAVEL_PROCESS, EXPLAIN_CONSULT_PROCESS, INVITE_ONLINE_CONSULT, HUMAN_HANDOFF, and SAFETY_HANDOFF.
 
             Return strict JSON only with this exact shape:
             {
@@ -2300,7 +2261,7 @@ workflow:
               "topic": "string|null",
               "riskLevel": "NORMAL|SENSITIVE|CRISIS|null",
               "canAnswer": true,
-              "nextAction": "ANSWER|CONSULT_CONVERSION|CREATE_CASE|REQUEST_DOCS|ESCALATE|SAFETY|null",
+              "nextAction": "ANSWER_FAQ|SHOW_PACKAGE|REQUEST_DOC_UPLOAD|SHOW_HOSPITAL_RECOMMENDATIONS|EXPLAIN_DOC_UPLOAD|EXPLAIN_MEDICAL_TRAVEL_PROCESS|EXPLAIN_CONSULT_PROCESS|INVITE_ONLINE_CONSULT|HUMAN_HANDOFF|SAFETY_HANDOFF|null",
               "secondaryAction": "string|null",
               "responseMode": "string|null",
               "collectedFields": {
@@ -2326,16 +2287,18 @@ workflow:
             - If backend engagement_mode is LIGHT_DISCOVERY, keep the answer lightweight and trust-building. Do not force conversion, shortlist promotion, or heavy workflow language.
             - If backend next_action is REQUEST_DOC_UPLOAD, ask for documents and set missingItems if grounded sources mention required materials.
             - If backend next_action is EXPLAIN_DOC_UPLOAD, explain the upload process without pretending an upload widget has already started.
+            - If backend next_action is EXPLAIN_MEDICAL_TRAVEL_PROCESS, explain the medical travel process without collapsing it into a generic FAQ answer.
             - If backend next_action is EXPLAIN_CONSULT_PROCESS, explain the consult workflow and keep the tone exploratory rather than forceful.
-            - If backend next_action is EXPLORE_HOSPITAL_RECOMMENDATIONS, explain how hospital matching works and keep shortlist aligned to backend shortlist if one is present.
             - If backend next_action is SHOW_HOSPITAL_RECOMMENDATIONS, use backend shortlist and search_hospitals output together, but do not invent hospitals outside the tool output.
+            - If backend next_action is INVITE_ONLINE_CONSULT, invite the user into the consult flow without renaming the action.
             - If backend next_action is SAFETY_HANDOFF, keep the response safety-only and direct the user toward human or emergency support without any commercial CTA.
             - If backend risk is HIGH_RISK or CRISIS, produce a safety-only response and do not promote services.
             - After answering the user's current question, append at most one short soft-confirmation CTA only when it matches the backend next_action and feels naturally helpful.
             - Use confirmation language such as "If you'd like, I can next..." or "Would it help if I next...".
-            - Eligible soft-confirmation CTA actions are REQUEST_DOC_UPLOAD, EXPLAIN_DOC_UPLOAD, EXPLAIN_CONSULT_PROCESS, EXPLORE_HOSPITAL_RECOMMENDATIONS, SHOW_HOSPITAL_RECOMMENDATIONS, and SHOW_PACKAGE.
-            - For SHOW_HOSPITAL_RECOMMENDATIONS or EXPLORE_HOSPITAL_RECOMMENDATIONS, the CTA should invite the user to let you recommend or compare a few hospitals next.
+            - Eligible soft-confirmation CTA actions are REQUEST_DOC_UPLOAD, EXPLAIN_DOC_UPLOAD, EXPLAIN_MEDICAL_TRAVEL_PROCESS, EXPLAIN_CONSULT_PROCESS, SHOW_HOSPITAL_RECOMMENDATIONS, SHOW_PACKAGE, and INVITE_ONLINE_CONSULT.
+            - For SHOW_HOSPITAL_RECOMMENDATIONS, the CTA should invite the user to let you recommend or compare a few hospitals next.
             - For REQUEST_DOC_UPLOAD or EXPLAIN_DOC_UPLOAD, the CTA should invite the user to let you walk them through the exact document list or upload preparation next.
+            - For EXPLAIN_MEDICAL_TRAVEL_PROCESS, the CTA should invite the user to let you walk through the medical travel process next.
             - For EXPLAIN_CONSULT_PROCESS, the CTA should invite the user to let you walk through how the consultation usually works next.
             - For SHOW_PACKAGE, the CTA should invite the user to let you explain package options next.
             - Do not append a conversion-style CTA on SAFETY_HANDOFF or any HIGH_RISK/CRISIS turn.

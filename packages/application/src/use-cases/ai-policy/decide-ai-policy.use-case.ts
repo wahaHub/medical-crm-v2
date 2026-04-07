@@ -69,11 +69,11 @@ export class DecideAiPolicyUseCase {
     });
 
     const semantics = parseCanonicalSemanticSignals(input.extraction);
-    const candidateSignals = buildCandidateSignals(input.extraction);
+    const riskSignals = buildRiskSignals(input.extraction);
 
     const risk = await this.riskResolver.resolve({
       userMessage: input.userMessage,
-      candidateSignals,
+      extractionSignals: riskSignals,
     });
 
     const effectiveEngagementMode = enforceRiskFirstEngagementMode(
@@ -90,11 +90,11 @@ export class DecideAiPolicyUseCase {
         pageContext: input.pageContext,
       });
 
-    const runtimeIntentBridge = this.resolveRuntimeIntent({
+    const resolvedIntentBridge = this.resolveRuntimeIntent({
       semantics: semantics.signals,
       context,
     });
-    const runtimeResolvedIntent = runtimeIntentBridge.resolvedIntent;
+    const resolvedIntent = resolvedIntentBridge.resolvedIntent;
 
     const plan = this.actionPlanner.plan({
       hospitalType: context.hospitalType,
@@ -122,7 +122,7 @@ export class DecideAiPolicyUseCase {
           ...context.statusSnapshot,
           riskLevel: risk.riskLevel,
         },
-        resolvedIntent: resolveRecommendationIntentForPolicy(semantics.signals.resolvedIntent, runtimeResolvedIntent),
+        resolvedIntent,
         candidateHospitals: input.candidateHospitals,
       })
       : {
@@ -136,14 +136,14 @@ export class DecideAiPolicyUseCase {
 
     const reasonCodes = dedupeReasonCodes(
       ...semantics.reasonCodes,
-      ...runtimeIntentBridge.reasonCodes,
+      ...resolvedIntentBridge.reasonCodes,
       ...risk.reasonCodes,
       ...plan.reasonCodes,
       ...recommendation.reasonCodes,
     );
 
     const allowedTools = buildAllowedTools(resolvedNextAction);
-    const selectedHospitalId = shouldPersistSelectedHospital(runtimeResolvedIntent, context.activeHospitalContext)
+    const selectedHospitalId = shouldPersistSelectedHospital(resolvedIntent, context.activeHospitalContext)
       ? context.activeHospitalContext.hospitalId
       : undefined;
 
@@ -156,7 +156,7 @@ export class DecideAiPolicyUseCase {
             source: context.activeHospitalContext.source,
           }
         : null,
-      resolved_intent: runtimeResolvedIntent,
+      resolved_intent: resolvedIntent,
       risk_level: risk.riskLevel,
       next_action: resolvedNextAction,
       secondary_action: resolvedNextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS'
@@ -189,18 +189,16 @@ export class DecideAiPolicyUseCase {
     semantics: AiPolicySemanticSignals;
     context: RuntimeIntentBridgeContext;
   }): { resolvedIntent: string; reasonCodes: string[] } {
-    const runtimeResolvedIntent = mapCanonicalResolvedIntentToRuntimeIntent(input.semantics.resolvedIntent);
-
-    if (shouldBridgeAlternativeRecommendations(runtimeResolvedIntent, input.context)) {
+    if (shouldBridgeAlternativeRecommendations(input.semantics.resolvedIntent, input.context)) {
       return {
         resolvedIntent: 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS',
         reasonCodes: ['selected_hospital_alternative_recommendation_bridge'],
       };
     }
 
-    if (!shouldBridgeAcceptedHospitalRecommendation(runtimeResolvedIntent, input.semantics, input.context)) {
+    if (!shouldBridgeAcceptedHospitalRecommendation(input.semantics, input.context)) {
       return {
-        resolvedIntent: runtimeResolvedIntent,
+        resolvedIntent: input.semantics.resolvedIntent,
         reasonCodes: [],
       };
     }
@@ -221,23 +219,16 @@ const DETERMINISTIC_SEMANTIC_FALLBACK: AiPolicySemanticSignals = {
   mentionsDoctorOrHospitalNeed: false,
 };
 
-const RUNTIME_RESOLVED_INTENT_BY_CANONICAL_INTENT: Record<AiPolicyResolvedIntent, string> = {
-  GENERAL_INFO: 'GENERAL_CONSULT',
-  ASK_MEDICAL_TRAVEL_PROCESS: 'ASK_MEDICAL_TRAVEL_PROCESS',
-  ASK_CONSULT_PROCESS: 'ASK_CONSULT_PROCESS',
-  ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION: 'ASK_FOR_RECOMMENDATION',
-  ASK_FOR_HOSPITAL_RECOMMENDATION: 'ASK_FOR_RECOMMENDATION',
-  REQUEST_DOC_UPLOAD: 'REQUEST_DOC_UPLOAD',
-  ACCEPT_DOC_UPLOAD: 'REQUEST_DOC_UPLOAD',
-  ACCEPT_ONLINE_CONSULT_INVITE: 'ACCEPT_ONLINE_CONSULT_INVITE',
-  REQUEST_HUMAN_HANDOFF: 'REQUEST_HUMAN_HANDOFF',
-  ASK_PACKAGE_INFO: 'GENERAL_CONSULT',
-  SMALL_TALK_OR_GREETING: 'GENERAL_CONSULT',
-  UNKNOWN: 'UNKNOWN',
-};
+function buildRiskSignals(extraction: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!isRecord(extraction)) {
+    return {};
+  }
 
-function buildCandidateSignals(extraction: Record<string, unknown> | undefined): Record<string, unknown> {
-  return isRecord(extraction) ? { ...extraction } : {};
+  const riskLevelHint = typeof extraction.riskLevelHint === 'string'
+    ? extraction.riskLevelHint
+    : undefined;
+
+  return riskLevelHint ? { riskLevelHint } : {};
 }
 
 function requiresFullWorkflowContext(resolvedIntent: AiPolicyResolvedIntent): boolean {
@@ -248,15 +239,6 @@ function requiresFullWorkflowContext(resolvedIntent: AiPolicyResolvedIntent): bo
     'REQUEST_DOC_UPLOAD',
     'ACCEPT_DOC_UPLOAD',
   ].includes(resolvedIntent);
-}
-
-function resolveRecommendationIntentForPolicy(
-  canonicalResolvedIntent: AiPolicyResolvedIntent,
-  runtimeResolvedIntent: string,
-): string {
-  return runtimeResolvedIntent === 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS'
-    ? runtimeResolvedIntent
-    : canonicalResolvedIntent;
 }
 
 function shouldRunRecommendationGating(input: {
@@ -276,10 +258,6 @@ function resolveNextActionFromRecommendationOutcome(
 ): AiPolicyBackendNextAction {
   if (recommendation.eligible && recommendation.shortlist.length > 0) {
     return 'SHOW_HOSPITAL_RECOMMENDATIONS';
-  }
-
-  if (plannedNextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS') {
-    return 'EXPLORE_HOSPITAL_RECOMMENDATIONS';
   }
 
   return plannedNextAction;
@@ -322,12 +300,7 @@ function parseCanonicalSemanticSignals(
   };
 }
 
-function mapCanonicalResolvedIntentToRuntimeIntent(resolvedIntent: AiPolicyResolvedIntent): string {
-  return RUNTIME_RESOLVED_INTENT_BY_CANONICAL_INTENT[resolvedIntent];
-}
-
 function shouldBridgeAcceptedHospitalRecommendation(
-  runtimeResolvedIntent: string,
   semantics: AiPolicySemanticSignals,
   context: RuntimeIntentBridgeContext,
 ): boolean {
@@ -339,16 +312,24 @@ function shouldBridgeAcceptedHospitalRecommendation(
     return false;
   }
 
-  return ['UNKNOWN', 'GENERAL_CONSULT'].includes(runtimeResolvedIntent)
+  return [
+    'UNKNOWN',
+    'GENERAL_INFO',
+    'GENERAL_CONSULT',
+    'SMALL_TALK_OR_GREETING',
+  ].includes(semantics.resolvedIntent)
     && semantics.recommendationSignal === 'READY_FOR_RECOMMENDATION'
     && isAcceptanceLikeProgression(semantics.progressionSignal);
 }
 
 function shouldBridgeAlternativeRecommendations(
-  runtimeResolvedIntent: string,
+  resolvedIntent: AiPolicyResolvedIntent,
   context: RuntimeIntentBridgeContext,
 ): boolean {
-  return runtimeResolvedIntent === 'ASK_FOR_RECOMMENDATION'
+  return [
+    'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
+    'ASK_FOR_HOSPITAL_RECOMMENDATION',
+  ].includes(resolvedIntent)
     && context.contextDepth === 'full'
     && typeof context.statusSnapshot?.selectedHospitalId === 'string'
     && context.statusSnapshot.selectedHospitalId.length > 0
@@ -405,8 +386,6 @@ function buildAllowedTools(nextAction: AiPolicyBackendNextAction): string[] {
   switch (nextAction) {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
       return ['search_hospitals'];
-    case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
-      return ['search_hospitals'];
     case 'EXPLAIN_DOC_UPLOAD':
     case 'EXPLAIN_MEDICAL_TRAVEL_PROCESS':
     case 'EXPLAIN_CONSULT_PROCESS':
@@ -429,7 +408,6 @@ function buildResponseMode(nextAction: AiPolicyBackendNextAction): string {
   switch (nextAction) {
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
       return 'grounded_with_shortlist';
-    case 'EXPLORE_HOSPITAL_RECOMMENDATIONS':
     case 'EXPLAIN_DOC_UPLOAD':
     case 'EXPLAIN_MEDICAL_TRAVEL_PROCESS':
     case 'EXPLAIN_CONSULT_PROCESS':

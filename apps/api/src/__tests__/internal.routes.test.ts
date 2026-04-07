@@ -136,7 +136,7 @@ describe('Internal routes', () => {
       expect(mockServices.decideAiPolicy.execute).not.toHaveBeenCalled();
     });
 
-    it('forwards canonical semantic_signals as the live decide contract while preserving compatibility fields', async () => {
+    it('forwards semantic_signals only and ignores candidate_signals compatibility noise', async () => {
       mockServices.decideAiPolicy.execute.mockResolvedValue({
         next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       });
@@ -159,6 +159,7 @@ describe('Internal routes', () => {
             candidate_signals: {
               possibleRisk: 'SENSITIVE',
               topicHint: 'rhinoplasty',
+              possibleIntent: 'ASK_FOR_RECOMMENDATION',
             },
             semantic_signals: {
               resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -167,6 +168,7 @@ describe('Internal routes', () => {
               recommendationSignal: 'SEEKING_RECOMMENDATION',
               mentionsCondition: true,
               mentionsDoctorOrHospitalNeed: true,
+              riskLevelHint: 'SENSITIVE',
             },
           },
         }),
@@ -177,21 +179,20 @@ describe('Internal routes', () => {
         sessionId: 'session-2',
         userMessage: 'Can you recommend a hospital for me?',
         extraction: {
-          possibleRisk: 'SENSITIVE',
-          topicHint: 'rhinoplasty',
           resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
           engagementSignal: 'QUALIFIED_EXPLORATION',
           progressionSignal: 'OPEN_TO_NEXT_STEP',
           recommendationSignal: 'SEEKING_RECOMMENDATION',
           mentionsCondition: true,
           mentionsDoctorOrHospitalNeed: true,
+          riskLevelHint: 'SENSITIVE',
         },
         pageContext: null,
         candidateHospitals: [],
       });
     });
 
-    it('does not treat candidate_signals as a fallback canonical semantic source when semantic_signals is absent', async () => {
+    it('ignores candidate_signals when semantic_signals is absent and falls back deterministically', async () => {
       mockServices.decideAiPolicy.execute.mockResolvedValue({
         next_action: 'ANSWER_FAQ',
       });
@@ -219,6 +220,7 @@ describe('Internal routes', () => {
               mentionsCondition: true,
               mentionsDoctorOrHospitalNeed: true,
               possibleRisk: 'SENSITIVE',
+              topicHint: 'rhinoplasty',
             },
           },
         }),
@@ -228,15 +230,13 @@ describe('Internal routes', () => {
       expect(mockServices.decideAiPolicy.execute).toHaveBeenCalledWith({
         sessionId: 'session-3',
         userMessage: 'hello',
-        extraction: {
-          possibleRisk: 'SENSITIVE',
-        },
+        extraction: {},
         pageContext: null,
         candidateHospitals: [],
       });
     });
 
-    it('forwards only the transitional compatibility keys from candidate_signals', async () => {
+    it('ignores transitional compatibility keys in candidate_signals entirely', async () => {
       mockServices.decideAiPolicy.execute.mockResolvedValue({
         next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       });
@@ -264,14 +264,6 @@ describe('Internal routes', () => {
               arbitraryText: 'drop me',
               freeformObject: { note: 'drop me too' },
             },
-            semantic_signals: {
-              resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
-              engagementSignal: 'QUALIFIED_EXPLORATION',
-              progressionSignal: 'OPEN_TO_NEXT_STEP',
-              recommendationSignal: 'SEEKING_RECOMMENDATION',
-              mentionsCondition: true,
-              mentionsDoctorOrHospitalNeed: true,
-            },
           },
         }),
       });
@@ -280,18 +272,7 @@ describe('Internal routes', () => {
       expect(mockServices.decideAiPolicy.execute).toHaveBeenCalledWith({
         sessionId: 'session-4',
         userMessage: 'Can you recommend a hospital for me?',
-        extraction: {
-          possibleIntent: 'ASK_FOR_RECOMMENDATION',
-          possibleRisk: 'SENSITIVE',
-          mentionedBudget: '$5000',
-          topicHint: 'rhinoplasty',
-          resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
-          engagementSignal: 'QUALIFIED_EXPLORATION',
-          progressionSignal: 'OPEN_TO_NEXT_STEP',
-          recommendationSignal: 'SEEKING_RECOMMENDATION',
-          mentionsCondition: true,
-          mentionsDoctorOrHospitalNeed: true,
-        },
+        extraction: {},
         pageContext: null,
         candidateHospitals: [],
       });
@@ -561,9 +542,6 @@ describe('Internal routes', () => {
         body: JSON.stringify({
           session_id: 'session-1',
           query: 'I need help choosing a rhinoplasty hospital',
-          candidate_signals: {
-            topicHint: 'rhinoplasty',
-          },
         }),
       });
 
@@ -581,9 +559,7 @@ describe('Internal routes', () => {
           reasonCodes: ['candidate_pool_match'],
         }],
       });
-      expect(mockServices.matchHospitals.execute).toHaveBeenCalledWith({
-        category: 'rhinoplasty',
-      });
+      expect(mockServices.matchHospitals.execute).toHaveBeenCalledWith({});
     });
   });
 

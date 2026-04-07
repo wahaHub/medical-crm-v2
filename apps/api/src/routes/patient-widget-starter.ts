@@ -59,17 +59,11 @@ function normalizeStarterNextAction(value: string | undefined): AiChatNextAction
     return null;
   }
 
-  if (value === 'CONSULT_CONVERSION') {
-    return 'INVITE_ONLINE_CONSULT';
-  }
-
   if (
-    value === 'ANSWER'
-    || value === 'ANSWER_FAQ'
+    value === 'ANSWER_FAQ'
     || value === 'EXPLAIN_DOC_UPLOAD'
     || value === 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
     || value === 'EXPLAIN_CONSULT_PROCESS'
-    || value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS'
     || value === 'SHOW_HOSPITAL_RECOMMENDATIONS'
     || value === 'REQUEST_DOC_UPLOAD'
     || value === 'INVITE_ONLINE_CONSULT'
@@ -232,21 +226,32 @@ export async function seedWidgetStarterMessage(input: {
     conversationId: session.difyConversationId,
   });
 
+  session = await input.services.aiChatSessionRepo.findBySessionId(session.sessionId) ?? session;
+
   const normalized = normalizeStarterDifyResponse(difyResponse);
   if (!session.difyConversationId && normalized.conversationId) {
-    session = await input.services.aiChatSessionRepo.save(new AiChatSessionEntity({
-      ...session,
-      difyConversationId: normalized.conversationId,
-      updatedAt: new Date(),
-    }));
+    const updatedSession = typeof input.services.aiChatSessionRepo.setDifyConversationId === 'function'
+      ? await input.services.aiChatSessionRepo.setDifyConversationId(session.sessionId, normalized.conversationId)
+      : await input.services.aiChatSessionRepo.save(new AiChatSessionEntity({
+          ...session,
+          difyConversationId: normalized.conversationId,
+          updatedAt: new Date(),
+        }));
+    session = updatedSession ?? session;
   }
 
   const richAction = normalized.internalNextAction ?? normalized.nextAction;
+  const templateId = await resolveQuestionnaireTemplateId(
+    input.services,
+    richAction,
+    session.statusSnapshot?.pendingQuestion ?? null,
+  );
   const blocks = buildChatbotBlocks({
     richAction,
     shortlist: normalized.shortlist,
     sessionCaseId: input.caseId,
-    sessionConsultationStatus: statusSnapshot.consultationStatus,
+    sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+    templateId,
   });
 
   await input.services.aiChatMessageRepo.updateMessage(assistantMessageId, {
@@ -263,4 +268,39 @@ export async function seedWidgetStarterMessage(input: {
       ...(blocks.length > 0 ? { blocks } : {}),
     },
   });
+}
+
+function resolvePendingQuestionTemplateId(
+  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
+): string | null {
+  if (!pendingQuestion || pendingQuestion.type !== 'QUESTIONNAIRE') {
+    return null;
+  }
+
+  const templateId = asString(pendingQuestion.payload['templateId']);
+  return templateId ?? null;
+}
+
+async function resolveQuestionnaireTemplateId(
+  services: ReturnType<typeof getServices>,
+  richAction: string | null | undefined,
+  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
+): Promise<string | null> {
+  const templateId = resolvePendingQuestionTemplateId(pendingQuestion);
+  if (templateId) {
+    return templateId;
+  }
+
+  if (richAction !== 'REQUEST_DOC_UPLOAD') {
+    return null;
+  }
+
+  try {
+    const result = await services.getTemplateByDisease.execute('DEFAULT');
+    return typeof result.template.id === 'string' && result.template.id.length > 0
+      ? result.template.id
+      : null;
+  } catch {
+    return null;
+  }
 }

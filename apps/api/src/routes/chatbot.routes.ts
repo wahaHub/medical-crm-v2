@@ -187,12 +187,17 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   }
 
   const normalized = normalizeDifyChatResponse(difyResponse);
+  session = await svc.aiChatSessionRepo.findBySessionId(session.sessionId) ?? session;
+
   if (!session.difyConversationId && normalized.conversationId) {
-    session = await svc.aiChatSessionRepo.save(new AiChatSessionEntity({
-      ...session,
-      difyConversationId: normalized.conversationId,
-      updatedAt: new Date(),
-    }));
+    const updatedSession = typeof svc.aiChatSessionRepo.setDifyConversationId === 'function'
+      ? await svc.aiChatSessionRepo.setDifyConversationId(session.sessionId, normalized.conversationId)
+      : await svc.aiChatSessionRepo.save(new AiChatSessionEntity({
+          ...session,
+          difyConversationId: normalized.conversationId,
+          updatedAt: new Date(),
+        }));
+    session = updatedSession ?? session;
   }
 
   const richAction = asString((normalized.metadata as Record<string, unknown>).internalNextAction) ?? normalized.nextAction;
@@ -207,12 +212,17 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     ? extractWorkflowState(sessionMessages)
     : { caseId: null, patientId: null, ticketId: null, lastConvertAction: null };
   const sessionCaseId = workflowState.caseId ?? extractWidgetSessionCaseId(session.sessionId);
+  const templateId = await resolveQuestionnaireTemplateId(
+    svc,
+    richAction,
+    session.statusSnapshot?.pendingQuestion ?? null,
+  );
   const blocks = buildChatbotBlocks({
     richAction,
     shortlist: normalized.shortlist,
     sessionCaseId,
-    sessionConsultationStatus: session.statusSnapshot.consultationStatus,
-    templateId: resolvePendingQuestionTemplateId(session.statusSnapshot.pendingQuestion),
+    sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+    templateId,
     conversionDraft: richAction === 'INVITE_ONLINE_CONSULT'
       ? buildConsultConversionDraft(
           session.sessionId,
@@ -576,7 +586,15 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       id: message.id,
       role: message.role,
       content: message.content,
-      intent: message.intent,
+      intent: derivePublicIntent({
+        intent: message.intent,
+        resolvedIntent: message.resolvedIntent
+          ?? asString(message.metadata.resolvedIntent)
+          ?? asString(message.metadata.resolved_intent)
+          ?? null,
+        nextAction: normalizePublicNextAction(message.nextAction ?? undefined),
+        riskLevel: message.riskLevel,
+      }),
       topic: asString(message.metadata.topic) ?? null,
       riskLevel: message.riskLevel,
       canAnswer: message.canAnswer,
@@ -879,8 +897,8 @@ async function recordWorkflowMessage(
     riskLevel: null,
     canAnswer: null,
     nextAction: workflow.kind === 'CONVERT'
-      ? normalizeNextAction(asString(workflow.requestedAction)) ?? 'INVITE_ONLINE_CONSULT'
-      : 'ESCALATE',
+      ? normalizeNextAction(asString(workflow.requestedAction))
+      : 'HUMAN_HANDOFF',
     citations: [],
     metadata: { workflow },
     createdAt: new Date(),
@@ -913,7 +931,7 @@ function extractWorkflowState(messages: AiChatMessage[]): {
     }
     if (kind === 'CONVERT' && !lastConvertAction) {
       const requestedAction = asString(workflow.requestedAction);
-      if (requestedAction === 'CONSULT_CONVERSION' || requestedAction === 'INVITE_ONLINE_CONSULT') {
+      if (requestedAction === 'INVITE_ONLINE_CONSULT') {
         lastConvertAction = 'INVITE_ONLINE_CONSULT';
       } else if (requestedAction === 'CREATE_CASE') {
         lastConvertAction = 'CREATE_CASE';
@@ -1071,6 +1089,30 @@ function resolvePendingQuestionTemplateId(
 
   const templateId = asString(pendingQuestion.payload['templateId']);
   return templateId ?? null;
+}
+
+async function resolveQuestionnaireTemplateId(
+  svc: ReturnType<typeof getServices>,
+  richAction: string | null | undefined,
+  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
+): Promise<string | null> {
+  const templateId = resolvePendingQuestionTemplateId(pendingQuestion);
+  if (templateId) {
+    return templateId;
+  }
+
+  if (richAction !== 'REQUEST_DOC_UPLOAD') {
+    return null;
+  }
+
+  try {
+    const result = await svc.getTemplateByDisease.execute('DEFAULT');
+    return typeof result.template.id === 'string' && result.template.id.length > 0
+      ? result.template.id
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function extractChatbotAttachments(message: AiChatMessage): Array<{
@@ -1238,6 +1280,12 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
     canonicalActionMetadata,
   );
   const publicRiskLevel = normalizeRiskLevel(parsedAnswer?.riskLevel);
+  const publicIntent = derivePublicIntent({
+    intent: parsedAnswer?.intent,
+    resolvedIntent: canonicalResolvedIntent,
+    nextAction: publicNextAction,
+    riskLevel: publicRiskLevel,
+  });
   const collectedFields = sanitizeNullableRecord(parsedAnswer?.collectedFields);
   const recommendedProviders = sanitizeRecordArray(parsedAnswer?.recommendedProviders);
   const shortlist = sanitizeRecordArray(parsedAnswer?.shortlist);
@@ -1245,7 +1293,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
   const storedStructuredOutput = parsedAnswer
     ? {
         answer: parsedAnswer.answer ?? asString(response.answer) ?? '',
-        intent: normalizeIntent(parsedAnswer.intent),
+        intent: publicIntent,
         ...(canonicalResolvedIntent ? { resolvedIntent: canonicalResolvedIntent } : {}),
         topic,
         riskLevel: publicRiskLevel,
@@ -1270,7 +1318,7 @@ function normalizeDifyChatResponse(response: Record<string, unknown>) {
 
   return {
     answer: parsedAnswer?.answer ?? asString(response.answer) ?? '',
-    intent: normalizeIntent(parsedAnswer?.intent),
+    intent: publicIntent,
     resolvedIntent: canonicalResolvedIntent,
     topic,
     riskLevel: publicRiskLevel,
@@ -1395,6 +1443,42 @@ function normalizeIntent(value: string | undefined): import('@medical-crm/domain
   return null;
 }
 
+function derivePublicIntent(input: {
+  intent?: string | null;
+  resolvedIntent?: string | null;
+  nextAction?: import('@medical-crm/domain').AiChatNextAction | null;
+  riskLevel?: import('@medical-crm/domain').AiChatRiskLevel | null;
+}): import('@medical-crm/domain').AiChatIntent | null {
+  const fallbackIntent = normalizeIntent(input.intent ?? undefined);
+  const resolvedIntent = normalizeCanonicalResolvedIntent(input.resolvedIntent ?? undefined);
+
+  if (
+    fallbackIntent === 'SAFETY'
+    || input.nextAction === 'SAFETY_HANDOFF'
+    || input.riskLevel === 'CRISIS'
+  ) {
+    return 'SAFETY';
+  }
+
+  if (!resolvedIntent) {
+    return fallbackIntent;
+  }
+
+  if (resolvedIntent === 'UNKNOWN') {
+    return fallbackIntent ?? 'UNKNOWN';
+  }
+
+  if (
+    resolvedIntent === 'GENERAL_INFO'
+    || resolvedIntent === 'ASK_MEDICAL_TRAVEL_PROCESS'
+    || resolvedIntent === 'SMALL_TALK_OR_GREETING'
+  ) {
+    return 'FAQ';
+  }
+
+  return 'CONSULT';
+}
+
 function normalizeRiskLevel(value: string | undefined): import('@medical-crm/domain').AiChatRiskLevel | null {
   if (value === 'HIGH_RISK' || value === 'HIGH') return 'CRISIS';
   if (value === 'NORMAL' || value === 'SENSITIVE' || value === 'CRISIS') return value;
@@ -1402,39 +1486,40 @@ function normalizeRiskLevel(value: string | undefined): import('@medical-crm/dom
 }
 
 function normalizeNextAction(value: string | undefined): import('@medical-crm/domain').AiChatNextAction | null {
+  if (value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS') {
+    return 'SHOW_HOSPITAL_RECOMMENDATIONS';
+  }
+  if (value === 'ESCALATE') {
+    return 'HUMAN_HANDOFF';
+  }
   if (
-    value === 'ANSWER'
-    || value === 'CREATE_CASE'
-    || value === 'REQUEST_DOCS'
-    || value === 'ESCALATE'
-    || value === 'SAFETY'
-    || value === 'CONSULT_CONVERSION'
+    value === 'CREATE_CASE'
     || value === 'ANSWER_FAQ'
     || value === 'EXPLAIN_DOC_UPLOAD'
     || value === 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
     || value === 'EXPLAIN_CONSULT_PROCESS'
-    || value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS'
     || value === 'SHOW_HOSPITAL_RECOMMENDATIONS'
     || value === 'REQUEST_DOC_UPLOAD'
     || value === 'INVITE_ONLINE_CONSULT'
     || value === 'SHOW_PACKAGE'
     || value === 'HUMAN_HANDOFF'
     || value === 'SAFETY_HANDOFF'
-  ) return value === 'CONSULT_CONVERSION' ? 'INVITE_ONLINE_CONSULT' : value;
+  ) return value;
   return null;
 }
 
 function normalizePublicNextAction(value: string | undefined): import('@medical-crm/domain').AiChatNextAction | null {
-  if (value === 'ANSWER' || value === 'ANSWER_FAQ') return 'ANSWER_FAQ';
-  if (value === 'REQUEST_DOCS' || value === 'REQUEST_DOC_UPLOAD') return 'REQUEST_DOC_UPLOAD';
-  if (value === 'ESCALATE' || value === 'HUMAN_HANDOFF') return 'HUMAN_HANDOFF';
-  if (value === 'SAFETY' || value === 'SAFETY_HANDOFF') return 'SAFETY_HANDOFF';
-  if (value === 'CONSULT_CONVERSION' || value === 'INVITE_ONLINE_CONSULT') return 'INVITE_ONLINE_CONSULT';
+  if (value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS') return 'SHOW_HOSPITAL_RECOMMENDATIONS';
+  if (value === 'ESCALATE') return 'HUMAN_HANDOFF';
+  if (value === 'ANSWER_FAQ') return 'ANSWER_FAQ';
+  if (value === 'REQUEST_DOC_UPLOAD') return 'REQUEST_DOC_UPLOAD';
+  if (value === 'HUMAN_HANDOFF') return 'HUMAN_HANDOFF';
+  if (value === 'SAFETY_HANDOFF') return 'SAFETY_HANDOFF';
+  if (value === 'INVITE_ONLINE_CONSULT') return 'INVITE_ONLINE_CONSULT';
   if (
     value === 'EXPLAIN_DOC_UPLOAD'
     || value === 'EXPLAIN_MEDICAL_TRAVEL_PROCESS'
     || value === 'EXPLAIN_CONSULT_PROCESS'
-    || value === 'EXPLORE_HOSPITAL_RECOMMENDATIONS'
     || value === 'SHOW_HOSPITAL_RECOMMENDATIONS'
     || value === 'SHOW_PACKAGE'
   ) return value;
@@ -1683,14 +1768,6 @@ function normalizeHistoryMetadataValue(value: unknown): unknown {
   const source = value as Record<string, unknown>;
   const sanitized: Record<string, unknown> = {};
   for (const [key, nestedValue] of Object.entries(source)) {
-    if (
-      key === 'requestedAction'
-      || key === 'requested_action'
-    ) {
-      sanitized[key] = normalizePublicNextAction(asString(nestedValue));
-      continue;
-    }
-
     sanitized[key] = normalizeHistoryMetadataValue(nestedValue);
   }
 
@@ -1725,24 +1802,34 @@ function applyStrictHistoryCanonicalEnvelope(source: Record<string, unknown>): R
 
 function applyStrictHistoryStructuredOutput(source: Record<string, unknown>): Record<string, unknown> {
   const metadataSource = asRecord(source.metadata);
+  const nextAction = normalizePublicNextAction(
+    asString(source.publicNextAction)
+    ?? asString(source.public_next_action)
+    ?? asString(source.nextAction)
+    ?? asString(source.next_action),
+  );
   const strictStructuredOutput = composeCanonicalMetadataEnvelope(
     source,
     buildCanonicalSemanticMetadata({
       resolvedIntent: asString(source.resolvedIntent) ?? asString(source.resolved_intent),
     }),
     buildCanonicalActionMetadata({
-      nextAction: normalizePublicNextAction(
-        asString(source.publicNextAction)
-        ?? asString(source.public_next_action)
-        ?? asString(source.nextAction)
-        ?? asString(source.next_action),
-      ),
+      nextAction,
       internalNextAction: normalizeNextAction(
         asString(source.internalNextAction)
         ?? asString(source.internal_next_action),
       ),
     }),
   );
+  const publicIntent = derivePublicIntent({
+    intent: asString(source.intent),
+    resolvedIntent: asString(source.resolvedIntent) ?? asString(source.resolved_intent),
+    nextAction,
+    riskLevel: normalizeRiskLevel(asString(source.riskLevel) ?? asString(source.risk_level)),
+  });
+  if (publicIntent) {
+    strictStructuredOutput.intent = publicIntent;
+  }
   if (Object.keys(metadataSource).length > 0) {
     strictStructuredOutput.metadata = applyStrictHistoryCanonicalEnvelope(metadataSource);
   }

@@ -2,7 +2,7 @@ import type { AiPolicyBackendNextAction } from '../../dtos/ai-policy.dto.js';
 
 export interface RiskResolverInput {
   userMessage: string;
-  candidateSignals?: Record<string, unknown>;
+  extractionSignals?: Record<string, unknown>;
 }
 
 export interface RiskResolution {
@@ -21,10 +21,10 @@ const CRISIS_PATTERNS = [
 
 export class RiskResolverService {
   async resolve(input: RiskResolverInput): Promise<RiskResolution> {
-    const possibleRisk = normalizeRisk(input.candidateSignals?.['possibleRisk']);
+    const riskLevelHint = normalizeRisk(input.extractionSignals?.['riskLevelHint']);
     const userMessage = input.userMessage;
 
-    if (possibleRisk === 'CRISIS' || CRISIS_PATTERNS.some((pattern) => pattern.test(userMessage))) {
+    if (riskLevelHint === 'CRISIS' || CRISIS_PATTERNS.some((pattern) => pattern.test(userMessage))) {
       return {
         riskLevel: 'CRISIS',
         overrideAction: 'SAFETY_HANDOFF',
@@ -32,7 +32,7 @@ export class RiskResolverService {
       };
     }
 
-    if (possibleRisk === 'HIGH_RISK' || possibleRisk === 'HIGH') {
+    if (riskLevelHint === 'HIGH_RISK' || riskLevelHint === 'HIGH') {
       return {
         riskLevel: 'HIGH_RISK',
         overrideAction: 'SAFETY_HANDOFF',
@@ -40,7 +40,7 @@ export class RiskResolverService {
       };
     }
 
-    if (possibleRisk === 'SENSITIVE') {
+    if (riskLevelHint === 'SENSITIVE') {
       return {
         riskLevel: 'SENSITIVE',
         overrideAction: null,

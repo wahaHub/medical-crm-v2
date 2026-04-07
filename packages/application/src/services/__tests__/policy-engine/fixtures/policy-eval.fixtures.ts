@@ -72,7 +72,7 @@ export function buildFaqFixture(): PolicyEvalFixture {
     },
     extraction: buildCanonicalExtraction(),
     expected: {
-      resolvedIntent: 'GENERAL_CONSULT',
+      resolvedIntent: 'GENERAL_INFO',
       riskLevel: 'LOW',
       nextAction: 'ANSWER_FAQ',
       handoffRequired: false,
@@ -146,7 +146,7 @@ export function buildRecommendationFixture(): PolicyEvalFixture {
       { hospitalId: 'hospital-2', reasonCodes: ['destination_match'] },
     ],
     expected: {
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
       riskLevel: 'LOW',
       nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       handoffRequired: false,
@@ -199,7 +199,7 @@ export function buildTrustRecoveryFixture(): PolicyEvalFixture {
     trustRecovery: true,
     extraction: buildCanonicalExtraction(),
     expected: {
-      resolvedIntent: 'GENERAL_CONSULT',
+      resolvedIntent: 'GENERAL_INFO',
       riskLevel: 'LOW',
       nextAction: 'ANSWER_FAQ',
       handoffRequired: true,
@@ -228,7 +228,7 @@ export function buildSafetyFixture(): PolicyEvalFixture {
       { hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] },
     ],
     expected: {
-      resolvedIntent: 'GENERAL_CONSULT',
+      resolvedIntent: 'GENERAL_INFO',
       riskLevel: 'CRISIS',
       nextAction: 'SAFETY_HANDOFF',
       handoffRequired: true,
@@ -288,11 +288,11 @@ export function buildRetrievalTimeoutFixture(): PolicyEvalFixture {
       retrievalTimeout: true,
     },
     expected: {
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
       riskLevel: 'LOW',
       safeFallback: 'RETRIEVAL_TIMEOUT',
       handoffRequired: true,
-      nextAction: 'ESCALATE',
+      nextAction: 'HUMAN_HANDOFF',
       writebackRetrySafe: true,
     },
   };
@@ -350,9 +350,9 @@ export function buildZeroShortlistFixture(): PolicyEvalFixture {
       mentionsDoctorOrHospitalNeed: true,
     }),
     expected: {
-      resolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
       riskLevel: 'LOW',
-      nextAction: 'EXPLORE_HOSPITAL_RECOMMENDATIONS',
+      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       shortlistLength: 0,
       handoffRequired: false,
       safeFallback: null,

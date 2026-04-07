@@ -309,6 +309,101 @@ describe('ContextBuilderService', () => {
     expect(handoffRepo.listRecentBySession).not.toHaveBeenCalled();
   });
 
+  it('does not infer qualified exploration from legacy CONSULT_CONVERSION alone when canonical signals are absent', async () => {
+    const sessionRepo: IAiChatSessionRepository = {
+      findBySessionId: vi.fn(async () => ({
+        id: 'session-legacy-1',
+        sessionId: 'policy-session-legacy-1',
+        sessionSecretHash: null,
+        difyConversationId: null,
+        patientId: null,
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        statusSnapshot: {
+          conditionStatus: 'unknown',
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          selectedHospitalId: null,
+          consultationStatus: 'not_introduced',
+          packageStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          leadMaturity: 'browsing',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          engagementMode: '',
+          prequalificationReasonCodes: [],
+          enteredDeepWorkflowAt: null,
+          pendingOffer: null,
+          pendingQuestion: null,
+          lastNextAction: 'CONSULT_CONVERSION',
+          lastResolvedIntent: null,
+          conversationSummary: '',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }) as AiChatSession),
+      findByDifyConversationId: vi.fn(async () => null),
+      save: vi.fn(),
+      attachPatient: vi.fn(),
+      updateStatus: vi.fn(),
+      patchStatus: vi.fn(),
+    };
+
+    const messageRepo: IAiChatMessageRepository = {
+      create: vi.fn(),
+      listBySession: vi.fn(async () => []),
+      listRecentBySession: vi.fn(async () => []),
+      updateWritebackMetadata: vi.fn(async () => null),
+      updateMessage: vi.fn(async () => null),
+      deleteById: vi.fn(async () => false),
+    };
+
+    const profileRepo: IAiUserProfileRepository = {
+      findByAnonymousKeyOrPatient: vi.fn(async () => null),
+      save: vi.fn(),
+      patch: vi.fn(),
+    };
+
+    const timelineRepo: IAiChatTimelineEventRepository = {
+      listRecentBySession: vi.fn(async () => []),
+      append: vi.fn(),
+    };
+
+    const followupRepo: IAiFollowupTriggerRepository = {
+      listPendingBySession: vi.fn(async () => [] as AiFollowupTrigger[]),
+      createPendingTrigger: vi.fn(),
+      resolvePendingTrigger: vi.fn(),
+    };
+
+    const handoffRepo: IAiHandoffRepository = {
+      listRecentBySession: vi.fn(async () => [] as AiHandoff[]),
+      save: vi.fn(),
+      complete: vi.fn(),
+    };
+
+    const builder = new ContextBuilderService(
+      sessionRepo,
+      messageRepo,
+      profileRepo,
+      timelineRepo,
+      followupRepo,
+      handoffRepo,
+    );
+
+    const context = await builder.build({
+      sessionId: 'policy-session-legacy-1',
+      userMessage: 'hello',
+      depth: 'light',
+    });
+
+    expect(context.currentEngagementMode).toBe('LIGHT_DISCOVERY');
+    expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
+  });
+
   it('ignores provider-failed assistant drafts when deriving light-context lastAssistantAction', async () => {
     const sessionRepo: IAiChatSessionRepository = {
       findBySessionId: vi.fn(async () => new AiChatSession({

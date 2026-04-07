@@ -39,6 +39,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
         reason_codes: ['fit'],
       },
     ]);
+    expect(result.resolved_intent).toBe('ASK_FOR_HOSPITAL_RECOMMENDATION');
     expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
       engagementMode: 'DEEP_WORKFLOW',
       progressionSignal: 'READY_TO_PROCEED',
@@ -145,7 +146,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     expect(result.engagement_mode).toBe('QUALIFIED_EXPLORATION');
     expect(result.next_action).toBe('ANSWER_FAQ');
-    expect(result.resolved_intent).toBe('GENERAL_CONSULT');
+    expect(result.resolved_intent).toBe('GENERAL_INFO');
     expect(harness.actionPlanner.plan).toHaveBeenCalledWith(expect.objectContaining({
       engagementMode: 'QUALIFIED_EXPLORATION',
       progressionSignal: 'NONE',
@@ -170,7 +171,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
         useRealActionPlanner: true,
       },
       expectedNextAction: 'ANSWER_FAQ',
-      expectedResolvedIntent: 'GENERAL_CONSULT',
+      expectedResolvedIntent: 'GENERAL_INFO',
       expectedPlannerNextAction: 'ANSWER_FAQ',
       expectedPlannerReasonCodes: ['light_discovery_soft_guidance'],
     },
@@ -234,7 +235,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       },
       candidateHospitals: [{ hospitalId: 'hospital-2', reasonCodes: ['direction_fit'] }],
       expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      expectedResolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
       expectedPlannerNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       expectedPlannerReasonCodes: ['canonical_recommendation_ready'],
       expectedPlannerStatusSnapshot: {
@@ -273,7 +274,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       },
       candidateHospitals: [{ hospitalId: 'hospital-1', reasonCodes: ['fit'] }],
       expectedNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-      expectedResolvedIntent: 'ASK_FOR_RECOMMENDATION',
+      expectedResolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
       expectedPlannerNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       expectedPlannerReasonCodes: ['canonical_recommendation_ready'],
       expectedPlannerStatusSnapshot: {
@@ -432,7 +433,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     }));
   });
 
-  it('downgrades light-discovery canonical recommendation asks to exploration when shortlist gating has no shortlist', async () => {
+  it('keeps light-discovery canonical recommendation asks on the canonical recommendation action when shortlist gating has no shortlist yet', async () => {
     const harness = createHarness({
       useRealActionPlanner: true,
       fullContextOverrides: {
@@ -456,7 +457,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
       resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
     }));
-    expect(result.next_action).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.next_action).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
     expect(result.shortlist).toEqual([]);
   });
 
@@ -486,7 +487,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     }));
   });
 
-  it('downgrades ACCEPT_DOC_UPLOAD with completed docs when shortlist gating has no shortlist', async () => {
+  it('keeps ACCEPT_DOC_UPLOAD on the canonical recommendation action when shortlist gating has no shortlist yet', async () => {
     const harness = createHarness({
       useRealActionPlanner: true,
       fullContextOverrides: {
@@ -510,7 +511,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
       resolvedIntent: 'ACCEPT_DOC_UPLOAD',
     }));
-    expect(result.next_action).toBe('EXPLORE_HOSPITAL_RECOMMENDATIONS');
+    expect(result.next_action).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
     expect(result.shortlist).toEqual([]);
   });
 
@@ -688,7 +689,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       candidateHospitals: [{ hospitalId: 'hospital-alt-1', reasonCodes: ['fit'] }],
     });
 
-    expect(result.resolved_intent).toBe('ASK_FOR_RECOMMENDATION');
+    expect(result.resolved_intent).toBe('ASK_FOR_HOSPITAL_RECOMMENDATION');
     expect(result.next_action).toBe('REQUEST_DOC_UPLOAD');
     expect(harness.recommendationPolicy.decide).toHaveBeenCalledWith(expect.objectContaining({
       resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -777,7 +778,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       }),
     });
 
-    expect(result.resolved_intent).toBe('GENERAL_CONSULT');
+    expect(result.resolved_intent).toBe('GENERAL_INFO');
     expect(result.selected_hospital_id).toBeUndefined();
     expect(result.next_action).toBe('ANSWER_FAQ');
   });

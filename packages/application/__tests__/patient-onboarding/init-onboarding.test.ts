@@ -157,6 +157,11 @@ describe('InitOnboardingUseCase', () => {
 
   it('rejects an authenticated onboarding submission that tries to fork identity onto a brand-new email', async () => {
     mockEmailState({ state: 'NONE' });
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-123',
+      patientCode: 'P123',
+      preferredLanguage: 'en',
+    });
 
     await expect(useCase.execute({
       email: 'brand-new@test.com',
@@ -168,6 +173,25 @@ describe('InitOnboardingUseCase', () => {
 
     expect(mockPatientRepo.createTempPatient).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('treats a deleted authenticated patient session as stale and allows onboarding for a new email', async () => {
+    mockEmailState({ state: 'NONE' });
+    mockPatientRepo.findById.mockResolvedValue(null);
+
+    const result = await useCase.execute({
+      email: 'brand-new@test.com',
+      name: 'Recovered Patient',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      authenticatedPatientId: 'patient-deleted-123',
+    });
+
+    expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-deleted-123');
+    expect(mockPatientRepo.createTempPatient).toHaveBeenCalledOnce();
+    expect(mockCaseRepo.save).toHaveBeenCalledOnce();
+    expect(result.patientId).toBe('patient-1');
+    expect(result.isExistingPatient).toBe(false);
   });
 
   it('rejects an existing patient email for unauthenticated public onboarding submissions', async () => {

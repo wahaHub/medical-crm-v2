@@ -796,19 +796,10 @@ describe('SubmitPatientQCResponseUseCase', () => {
         consultationStatus: 'not_introduced',
         packageStatus: 'not_introduced',
         handoffStatus: 'not_needed',
-        leadMaturity: 'browsing',
         riskLevel: 'low',
         trustOrObjection: 'none',
         engagementMode: 'QUALIFIED_EXPLORATION',
-        prequalificationReasonCodes: [],
         enteredDeepWorkflowAt: null,
-        pendingOffer: null,
-        pendingQuestion: {
-          type: 'QUESTIONNAIRE',
-          payload: { templateId: 'template-1' },
-        },
-        lastNextAction: 'REQUEST_DOC_UPLOAD',
-        lastResolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
         conversationSummary: '',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
@@ -849,7 +840,6 @@ describe('SubmitPatientQCResponseUseCase', () => {
     expect(aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       widgetSessionId,
       expect.objectContaining({
-        pendingQuestion: null,
         formStatus: 'COMPLETED',
       }),
       expect.anything(),
@@ -893,7 +883,6 @@ describe('SubmitPatientQCResponseUseCase', () => {
     expect(aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'widget-chat:patient-1:case-1',
       expect.objectContaining({
-        pendingQuestion: null,
         formStatus: 'COMPLETED',
       }),
       expect.anything(),

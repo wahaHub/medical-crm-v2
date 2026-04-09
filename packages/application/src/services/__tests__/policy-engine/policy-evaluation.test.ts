@@ -198,10 +198,8 @@ async function runPolicyFixture(
           engagementMode: decision.writeback_plan.engagement_mode,
           writebackDepth: decision.writeback_plan.writeback_depth,
           nextAction: decision.next_action,
-          selectedHospitalId: decision.writeback_plan.selected_hospital_id,
           riskLevel: decision.writeback_plan.risk_level,
           reasonCodes: decision.reason_codes,
-          prequalificationReasonCodes: decision.writeback_plan.prequalification_reason_codes,
           shortlist: decision.shortlist.map((candidate) => ({
             hospitalId: candidate.hospital_id,
             reasonCodes: candidate.reason_codes,
@@ -275,11 +273,6 @@ function buildContextBuilder(fixture: PolicyEvalFixture) {
     currentEngagementMode: 'LIGHT_DISCOVERY',
     hospitalType: fixture.hospitalType ?? 'REGULAR',
     activeHospitalContext: fixture.activeHospitalContext ?? null,
-    pendingOffer: fixture.pendingOffer
-      ? { exists: true, type: fixture.pendingOffer.type }
-      : { exists: false, type: null },
-    pendingQuestion: { exists: false, type: null },
-    lastAssistantAction: null,
     safetyFlags: {
       riskLevel: fixture.statusSnapshot.riskLevel,
       hasHighRiskSignal: false,

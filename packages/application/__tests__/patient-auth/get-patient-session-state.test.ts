@@ -118,10 +118,6 @@ describe('GetPatientSessionStateUseCase', () => {
     mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
       sessionId: 'widget-chat:patient-1:case-2',
       statusSnapshot: {
-        selectedHospitalId: 'hospital-2',
-        pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: { shortlistId: 'shortlist-1' } },
-        pendingQuestion: { type: 'QUESTIONNAIRE', payload: { templateId: 'template-1' } },
-        lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
       },
     });
@@ -148,7 +144,7 @@ describe('GetPatientSessionStateUseCase', () => {
       preferredLanguage: 'en',
       caseId: 'case-2',
       nextStep: 'messages-ready',
-      selectedHospitalId: 'hospital-2',
+      selectedHospitalId: null,
       selectedHospitalIds: ['hospital-1', 'hospital-2'],
       customHospitalRequest: 'Ruijin Hospital',
       medicalFormStatus: 'NOT_STARTED',
@@ -166,13 +162,7 @@ describe('GetPatientSessionStateUseCase', () => {
         conversationIds: [expect.any(String), 'conv-hosp-1'],
       },
       chatbotOrchestrationState: {
-        sessionId: 'widget-chat:patient-1:case-2',
-        selectedHospitalId: 'hospital-2',
-        selectedHospitalIds: ['hospital-1', 'hospital-2'],
         conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
-        pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: { shortlistId: 'shortlist-1' } },
-        pendingQuestion: { type: 'QUESTIONNAIRE', payload: { templateId: 'template-1' } },
-        lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       },
     });
     expect(mockAiChatSessionRepo.findBySessionId).toHaveBeenCalledWith('widget-chat:patient-1:case-2');
@@ -238,13 +228,7 @@ describe('GetPatientSessionStateUseCase', () => {
       conversationIds: ['conv-1'],
     });
     expect(result.chatbotOrchestrationState).toEqual({
-      sessionId: 'widget-chat:patient-1:case-1',
-      selectedHospitalId: null,
-      selectedHospitalIds: [],
       conversationSummary: '',
-      pendingOffer: null,
-      pendingQuestion: null,
-      lastNextAction: null,
     });
     expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
@@ -287,7 +271,9 @@ describe('GetPatientSessionStateUseCase', () => {
       kind: 'CHATBOT_SESSION',
       sessionId: 'widget-chat:patient-1:case-1',
     });
-    expect(result.chatbotOrchestrationState.sessionId).toBe('widget-chat:patient-1:case-1');
+    expect(result.chatbotOrchestrationState).toEqual({
+      conversationSummary: '',
+    });
     expect(mockAiChatSessionRepo.save).toHaveBeenCalledOnce();
     expect(mockAiChatSessionRepo.save.mock.calls[0]?.[0]).toMatchObject({
       sessionId: 'widget-chat:patient-1:case-1',
@@ -399,7 +385,7 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.caseId).toBe('case-4');
   });
 
-  it('nulls out snapshot selectedHospitalId when it is no longer in the active CHC set', async () => {
+  it('uses only active CHC truth when multiple hospitals are selected, ignoring stale chat snapshot state', async () => {
     mockPatientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       patientCode: 'P001',
@@ -434,10 +420,6 @@ describe('GetPatientSessionStateUseCase', () => {
     mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
       sessionId: 'widget-chat:patient-1:case-5',
       statusSnapshot: {
-        selectedHospitalId: 'hospital-stale',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         conversationSummary: 'Previously selected a hospital that is no longer active.',
       },
     });
@@ -446,7 +428,8 @@ describe('GetPatientSessionStateUseCase', () => {
 
     expect(result.selectedHospitalId).toBeNull();
     expect(result.selectedHospitalIds).toEqual(['hospital-1', 'hospital-2']);
-    expect(result.chatbotOrchestrationState.selectedHospitalId).toBeNull();
-    expect(result.chatbotOrchestrationState.selectedHospitalIds).toEqual(['hospital-1', 'hospital-2']);
+    expect(result.chatbotOrchestrationState).toEqual({
+      conversationSummary: 'Previously selected a hospital that is no longer active.',
+    });
   });
 });

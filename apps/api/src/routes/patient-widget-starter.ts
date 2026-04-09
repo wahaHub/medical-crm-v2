@@ -214,8 +214,6 @@ export async function seedWidgetStarterMessage(input: {
       assistantMessageId,
       currentStatus: statusSnapshot,
       conversationSummary: statusSnapshot.conversationSummary,
-      pendingOffer: statusSnapshot.pendingOffer,
-      pendingQuestion: statusSnapshot.pendingQuestion,
       destination: input.destination ?? null,
       category: input.category ?? null,
       procedureId: input.procedureId ?? null,
@@ -244,7 +242,7 @@ export async function seedWidgetStarterMessage(input: {
   const templateId = await resolveQuestionnaireTemplateId(
     input.services,
     richAction,
-    session.statusSnapshot?.pendingQuestion ?? null,
+    input.caseId,
   );
   const blocks = buildChatbotBlocks({
     richAction,
@@ -270,29 +268,24 @@ export async function seedWidgetStarterMessage(input: {
   });
 }
 
-function resolvePendingQuestionTemplateId(
-  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
-): string | null {
-  if (!pendingQuestion || pendingQuestion.type !== 'QUESTIONNAIRE') {
-    return null;
-  }
-
-  const templateId = asString(pendingQuestion.payload['templateId']);
-  return templateId ?? null;
-}
-
 async function resolveQuestionnaireTemplateId(
   services: ReturnType<typeof getServices>,
   richAction: string | null | undefined,
-  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
+  caseId: string | null,
 ): Promise<string | null> {
-  const templateId = resolvePendingQuestionTemplateId(pendingQuestion);
-  if (templateId) {
-    return templateId;
+  if (richAction !== 'REQUEST_DOC_UPLOAD' || !caseId) {
+    return null;
   }
 
-  if (richAction !== 'REQUEST_DOC_UPLOAD') {
+  const caseEntity = typeof services.caseRepo?.findById === 'function'
+    ? await Promise.resolve(services.caseRepo.findById(caseId)).catch(() => null)
+    : null;
+  if (readMedicalFormStatus(caseEntity?.structuredData as Record<string, unknown> | null) === 'SUBMITTED') {
     return null;
+  }
+  const caseTemplateId = asString(caseEntity?.questionCollectorTemplateId);
+  if (caseTemplateId) {
+    return caseTemplateId;
   }
 
   try {
@@ -303,4 +296,10 @@ async function resolveQuestionnaireTemplateId(
   } catch {
     return null;
   }
+}
+
+function readMedicalFormStatus(structuredData: Record<string, unknown> | null): 'NOT_STARTED' | 'SKIPPED' | 'SUBMITTED' {
+  const patientHospitalSelection = asRecord(structuredData?.['patientHospitalSelection']);
+  const rawStatus = asString(patientHospitalSelection['medicalFormStatus']);
+  return rawStatus === 'SKIPPED' || rawStatus === 'SUBMITTED' ? rawStatus : 'NOT_STARTED';
 }

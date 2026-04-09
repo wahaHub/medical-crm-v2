@@ -22,17 +22,12 @@ type RuntimeIntentBridgeContext = {
     hospitalId: string;
     source: string;
   } | null;
-  pendingOffer: {
-    exists: boolean;
-    type: string | null;
-  };
   recentMessages?: Array<{
     role: string;
     content: string;
     nextAction?: string | null;
   }>;
   statusSnapshot?: {
-    selectedHospitalId?: string | null;
     docUploadStatus?: string;
   };
 };
@@ -143,9 +138,6 @@ export class DecideAiPolicyUseCase {
     );
 
     const allowedTools = buildAllowedTools(resolvedNextAction);
-    const selectedHospitalId = shouldPersistSelectedHospital(resolvedIntent, context.activeHospitalContext)
-      ? context.activeHospitalContext.hospitalId
-      : undefined;
 
     return {
       engagement_mode: effectiveEngagementMode,
@@ -165,7 +157,6 @@ export class DecideAiPolicyUseCase {
       response_mode: buildResponseMode(resolvedNextAction),
       allowed_tools: allowedTools,
       reason_codes: reasonCodes,
-      selected_hospital_id: selectedHospitalId,
       shortlist: recommendation.shortlist.map((candidate) => ({
         hospital_id: candidate.hospitalId,
         match_type: 'matched',
@@ -176,9 +167,7 @@ export class DecideAiPolicyUseCase {
         context_depth: context.contextDepth,
         writeback_depth: determineWritebackDepth(effectiveEngagementMode),
         engagement_mode: effectiveEngagementMode,
-        prequalification_reason_codes: buildPrequalificationReasonCodes(semantics, effectiveEngagementMode),
         next_action: resolvedNextAction,
-        selected_hospital_id: selectedHospitalId,
         risk_level: risk.riskLevel,
         reason_codes: reasonCodes,
       },
@@ -305,9 +294,7 @@ function shouldBridgeAcceptedHospitalRecommendation(
   context: RuntimeIntentBridgeContext,
 ): boolean {
   if (
-    !context.pendingOffer.exists
-    || context.pendingOffer.type !== 'HOSPITAL_RECOMMENDATION'
-    || context.activeHospitalContext === null
+    context.activeHospitalContext === null
   ) {
     return false;
   }
@@ -331,23 +318,13 @@ function shouldBridgeAlternativeRecommendations(
     'ASK_FOR_HOSPITAL_RECOMMENDATION',
   ].includes(resolvedIntent)
     && context.contextDepth === 'full'
-    && typeof context.statusSnapshot?.selectedHospitalId === 'string'
-    && context.statusSnapshot.selectedHospitalId.length > 0
+    && context.activeHospitalContext !== null
+    && context.activeHospitalContext.source !== 'recent_shortlist'
     && !isMissingDocumentStatus(context.statusSnapshot.docUploadStatus);
 }
 
 function isAcceptanceLikeProgression(value: AiPolicySemanticSignals['progressionSignal']): boolean {
   return ['READY_TO_PROCEED', 'EXPLICITLY_COMMITTING'].includes(value);
-}
-
-function buildPrequalificationReasonCodes(
-  semantics: { signals: AiPolicySemanticSignals; usedFallback: boolean },
-  engagementMode: AiPolicyEngagementMode,
-): string[] {
-  return dedupeReasonCodes(
-    semantics.usedFallback ? 'canonical_semantics_fallback' : 'canonical_semantics_consumed',
-    `engagement_signal_${engagementMode.toLowerCase()}`,
-  );
 }
 
 function isEnumValue<T extends string>(value: unknown, allowedValues: readonly T[]): value is T {
@@ -425,13 +402,4 @@ function buildResponseMode(nextAction: AiPolicyBackendNextAction): string {
     default:
       return 'grounded_answer';
   }
-}
-
-function shouldPersistSelectedHospital(
-  resolvedIntent: string,
-  activeHospitalContext: { hospitalId: string; source: string } | null,
-): activeHospitalContext is { hospitalId: string; source: 'page_context' | 'recent_user_message' | 'selected_hospital' } {
-  return resolvedIntent === 'ACCEPT_HOSPITAL_RECOMMENDATION'
-    && activeHospitalContext !== null
-    && ['page_context', 'recent_user_message', 'selected_hospital'].includes(activeHospitalContext.source);
 }

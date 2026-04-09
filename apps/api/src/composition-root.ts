@@ -761,7 +761,6 @@ export function getServices(): AppServices {
     const writebackExecutorService = new WritebackExecutorService(
       aiChatSessionRepo,
       aiUserProfileRepo,
-      qcRepo,
       aiChatMessageRepo,
       aiChatTimelineEventRepo,
       aiFollowupTriggerRepo,

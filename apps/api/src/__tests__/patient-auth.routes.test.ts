@@ -140,13 +140,7 @@ describe('patientAuthRoutes', () => {
           conversationIds: ['conv-admin-1'],
         },
         chatbotOrchestrationState: {
-          sessionId: 'widget-chat:patient-1:case-1',
-          selectedHospitalId: null,
-          selectedHospitalIds: [],
           conversationSummary: '',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: null,
         },
       }),
     };
@@ -182,13 +176,7 @@ describe('patientAuthRoutes', () => {
         conversationIds: ['conv-admin-1'],
       },
       chatbotOrchestrationState: {
-        sessionId: 'widget-chat:patient-1:case-1',
-        selectedHospitalId: null,
-        selectedHospitalIds: [],
         conversationSummary: '',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: null,
       },
     });
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-verify');
@@ -240,13 +228,7 @@ describe('patientAuthRoutes', () => {
           conversationIds: ['conv-admin-1'],
         },
         chatbotOrchestrationState: {
-          sessionId: 'widget-chat:patient-1:case-1',
-          selectedHospitalId: null,
-          selectedHospitalIds: [],
           conversationSummary: '',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: null,
         },
       }),
     };
@@ -282,13 +264,7 @@ describe('patientAuthRoutes', () => {
         conversationIds: ['conv-admin-1'],
       },
       chatbotOrchestrationState: {
-        sessionId: 'widget-chat:patient-1:case-1',
-        selectedHospitalId: null,
-        selectedHospitalIds: [],
         conversationSummary: '',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: null,
       },
     });
     expect(execute).toHaveBeenCalledWith({
@@ -410,13 +386,7 @@ describe('patientAuthRoutes', () => {
           conversationIds: ['conv-admin-1', 'conv-hospital-1'],
         },
         chatbotOrchestrationState: {
-          sessionId: 'widget-chat:patient-1:case-1',
-          selectedHospitalId: 'hospital-1',
-          selectedHospitalIds: ['hospital-1'],
           conversationSummary: 'Patient selected hospital-1 and can continue.',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         },
       }),
     };
@@ -455,13 +425,7 @@ describe('patientAuthRoutes', () => {
         conversationIds: ['conv-admin-1', 'conv-hospital-1'],
       },
       chatbotOrchestrationState: {
-        sessionId: 'widget-chat:patient-1:case-1',
-        selectedHospitalId: 'hospital-1',
-        selectedHospitalIds: ['hospital-1'],
         conversationSummary: 'Patient selected hospital-1 and can continue.',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       },
     });
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-restored');

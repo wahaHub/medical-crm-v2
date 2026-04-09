@@ -150,7 +150,6 @@ export class SubmitPatientQCResponseUseCase {
     }), input.tx);
 
     await this.aiChatSessionRepo.patchStatus(widgetSessionId, {
-      pendingQuestion: null,
       formStatus: 'COMPLETED',
       lastAssistantMessageAt: input.submittedAt,
     }, input.tx);

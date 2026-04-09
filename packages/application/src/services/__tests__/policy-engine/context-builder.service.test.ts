@@ -18,7 +18,7 @@ import type {
 import { ContextBuilderService } from '../../policy-engine/context-builder.service.js';
 
 describe('ContextBuilderService', () => {
-  it('assembles context from session, profile, timeline, and pending state', async () => {
+  it('assembles context from session, profile, timeline, and summary state', async () => {
     const sessionRepo: IAiChatSessionRepository = {
       findBySessionId: vi.fn(async () => new AiChatSession({
         id: 'session-1',
@@ -36,16 +36,8 @@ describe('ContextBuilderService', () => {
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
-          pendingOffer: {
-            type: 'HOSPITAL_RECOMMENDATION',
-            payload: { shortlistId: 'rec-1' },
-          },
-          pendingQuestion: null,
-          lastNextAction: null,
-          lastResolvedIntent: null,
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -179,7 +171,7 @@ describe('ContextBuilderService', () => {
       userMessage: 'Can we continue with the recommendation you mentioned earlier?',
     });
 
-    expect(context.statusSnapshot.pendingOffer?.type).toBe('HOSPITAL_RECOMMENDATION');
+    expect(context.statusSnapshot.conversationSummary).toBe('');
     expect(context.profile?.memorySummary).toContain('Korea');
     expect(context.recentTimeline[0]?.eventType).toBeDefined();
   });
@@ -203,11 +195,6 @@ describe('ContextBuilderService', () => {
           consultationStatus: 'not_introduced',
           handoffStatus: 'not_needed',
           riskLevel: 'low',
-          pendingOffer: {
-            type: 'HOSPITAL_RECOMMENDATION',
-            payload: {},
-          },
-          lastNextAction: 'CONSULT_CONVERSION',
         },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -290,8 +277,6 @@ describe('ContextBuilderService', () => {
     expect(context.contextDepth).toBe('light');
     expect(context.patientId).toBe('patient-2');
     expect(context.currentEngagementMode).toBe('QUALIFIED_EXPLORATION');
-    expect(context.pendingOffer.type).toBe('HOSPITAL_RECOMMENDATION');
-    expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
     expect(context.sessionRef).toEqual({
       id: 'session-2',
       sessionId: 'policy-session-2',
@@ -324,20 +309,13 @@ describe('ContextBuilderService', () => {
           formStatus: 'not_started',
           docUploadStatus: 'none',
           recommendationStatus: 'not_started',
-          selectedHospitalId: null,
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: '',
-          prequalificationReasonCodes: [],
           enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'CONSULT_CONVERSION',
-          lastResolvedIntent: null,
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -401,10 +379,9 @@ describe('ContextBuilderService', () => {
     });
 
     expect(context.currentEngagementMode).toBe('LIGHT_DISCOVERY');
-    expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
   });
 
-  it('ignores provider-failed assistant drafts when deriving light-context lastAssistantAction', async () => {
+  it('ignores provider-failed assistant drafts when deriving light-context hospital focus', async () => {
     const sessionRepo: IAiChatSessionRepository = {
       findBySessionId: vi.fn(async () => new AiChatSession({
         id: 'session-3',
@@ -416,7 +393,6 @@ describe('ContextBuilderService', () => {
         status: 'ACTIVE',
         statusSnapshot: {
           engagementMode: 'QUALIFIED_EXPLORATION',
-          lastNextAction: 'CONSULT_CONVERSION',
         },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -476,7 +452,7 @@ describe('ContextBuilderService', () => {
       depth: 'light',
     });
 
-    expect(context.lastAssistantAction).toBe('CONSULT_CONVERSION');
+    expect(context.activeHospitalContext).toBeNull();
   });
 
   it('excludes provider-failed assistant drafts from full-context recentMessages', async () => {
@@ -589,9 +565,6 @@ describe('ContextBuilderService', () => {
           consultationStatus: 'not_introduced',
           handoffStatus: 'not_needed',
           riskLevel: 'low',
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: null,
         },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -732,9 +705,8 @@ describe('ContextBuilderService', () => {
     });
   });
 
-  it('rehydrates active hospital context from persisted selectedHospitalId before falling back to shortlist', async () => {
+  it('still prefers page context over shortlist-derived hospital focus', async () => {
     const builder = buildContextBuilder({
-      selectedHospitalId: 'hospital-selected-1',
       recentMessages: [
         makeContextMessage({
           id: 'assistant-msg-2',
@@ -743,24 +715,6 @@ describe('ContextBuilderService', () => {
           shortlist: [{ hospitalId: 'hospital-shortlist-2' }],
         }),
       ],
-    });
-
-    const context = await builder.build({
-      sessionId: 'policy-session-ctx-1',
-      userMessage: 'Can we continue?',
-      depth: 'full',
-    });
-
-    expect(context.activeHospitalContext).toEqual({
-      hospitalId: 'hospital-selected-1',
-      hospitalName: null,
-      source: 'selected_hospital',
-    });
-  });
-
-  it('still prefers page context over a persisted selectedHospitalId', async () => {
-    const builder = buildContextBuilder({
-      selectedHospitalId: 'hospital-selected-1',
     });
 
     const context = await builder.build({
@@ -798,7 +752,6 @@ describe('ContextBuilderService', () => {
 
 function buildContextBuilder(overrides: {
   recentMessages?: AiChatMessage[];
-  selectedHospitalId?: string | null;
 } = {}) {
   const sessionRepo: IAiChatSessionRepository = {
     findBySessionId: vi.fn(async () => new AiChatSession({
@@ -814,15 +767,10 @@ function buildContextBuilder(overrides: {
         formStatus: 'not_started',
         docUploadStatus: 'none',
         recommendationStatus: 'not_started',
-        selectedHospitalId: overrides.selectedHospitalId ?? null,
         consultationStatus: 'not_introduced',
         packageStatus: 'not_introduced',
         handoffStatus: 'not_needed',
         riskLevel: 'low',
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: null,
-        lastResolvedIntent: null,
         conversationSummary: '',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,

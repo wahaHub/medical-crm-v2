@@ -13,7 +13,6 @@ export interface ActionPlannerInput {
     docUploadStatus?: string;
     packageStatus?: string;
     recommendationStatus?: string;
-    selectedHospitalId?: string | null;
     consultationStatus?: string;
     formStatus?: string;
     riskLevel?: string;

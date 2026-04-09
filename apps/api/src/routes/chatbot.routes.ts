@@ -164,8 +164,6 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
         pageContextJson: body.pageContext ? JSON.stringify(body.pageContext) : 'null',
         currentStatus: session.statusSnapshot,
         conversationSummary: session.statusSnapshot.conversationSummary,
-        pendingOffer: session.statusSnapshot.pendingOffer,
-        pendingQuestion: session.statusSnapshot.pendingQuestion,
         attachments: userAttachments,
         pageContext: body.pageContext ?? null,
       },
@@ -215,7 +213,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const templateId = await resolveQuestionnaireTemplateId(
     svc,
     richAction,
-    session.statusSnapshot?.pendingQuestion ?? null,
+    sessionCaseId,
   );
   const blocks = buildChatbotBlocks({
     richAction,
@@ -1080,29 +1078,24 @@ function buildEscalationDescription(
   return sections.join('\n');
 }
 
-function resolvePendingQuestionTemplateId(
-  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
-): string | null {
-  if (!pendingQuestion || pendingQuestion.type !== 'QUESTIONNAIRE') {
-    return null;
-  }
-
-  const templateId = asString(pendingQuestion.payload['templateId']);
-  return templateId ?? null;
-}
-
 async function resolveQuestionnaireTemplateId(
   svc: ReturnType<typeof getServices>,
   richAction: string | null | undefined,
-  pendingQuestion: { type: string; payload: Record<string, unknown> } | null,
+  caseId: string | null,
 ): Promise<string | null> {
-  const templateId = resolvePendingQuestionTemplateId(pendingQuestion);
-  if (templateId) {
-    return templateId;
+  if (richAction !== 'REQUEST_DOC_UPLOAD' || !caseId) {
+    return null;
   }
 
-  if (richAction !== 'REQUEST_DOC_UPLOAD') {
+  const caseEntity = typeof svc.caseRepo?.findById === 'function'
+    ? await Promise.resolve(svc.caseRepo.findById(caseId)).catch(() => null)
+    : null;
+  if (readMedicalFormStatus(caseEntity?.structuredData as Record<string, unknown> | null) === 'SUBMITTED') {
     return null;
+  }
+  const caseTemplateId = asString(caseEntity?.questionCollectorTemplateId);
+  if (caseTemplateId) {
+    return caseTemplateId;
   }
 
   try {
@@ -1113,6 +1106,12 @@ async function resolveQuestionnaireTemplateId(
   } catch {
     return null;
   }
+}
+
+function readMedicalFormStatus(structuredData: Record<string, unknown> | null): 'NOT_STARTED' | 'SKIPPED' | 'SUBMITTED' {
+  const patientHospitalSelection = asRecord(structuredData?.['patientHospitalSelection']);
+  const rawStatus = asString(patientHospitalSelection['medicalFormStatus']);
+  return rawStatus === 'SKIPPED' || rawStatus === 'SUBMITTED' ? rawStatus : 'NOT_STARTED';
 }
 
 function extractChatbotAttachments(message: AiChatMessage): Array<{

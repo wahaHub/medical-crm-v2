@@ -17,10 +17,8 @@ export interface ApplyAiPolicyWritebackInput {
     nextAction: AiPolicyBackendNextAction;
     engagementMode?: AiPolicyEngagementMode;
     writebackDepth?: 'minimal' | 'moderate' | 'complete';
-    selectedHospitalId?: string;
     riskLevel?: string;
     reasonCodes?: string[];
-    prequalificationReasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
   };
 }

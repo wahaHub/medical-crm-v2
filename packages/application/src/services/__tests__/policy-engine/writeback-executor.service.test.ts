@@ -23,16 +23,10 @@ describe('WritebackExecutorService', () => {
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: 'LIGHT_DISCOVERY',
-          prequalificationReasonCodes: [],
           enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: null,
-          lastResolvedIntent: 'GENERAL_CONSULT',
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -57,16 +51,10 @@ describe('WritebackExecutorService', () => {
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: (patch['engagementMode'] as string | undefined) ?? 'LIGHT_DISCOVERY',
-          prequalificationReasonCodes: (patch['prequalificationReasonCodes'] as string[] | undefined) ?? [],
           enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: (patch['lastNextAction'] as string | undefined) ?? 'ANSWER_FAQ',
-          lastResolvedIntent: 'GENERAL_CONSULT',
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -77,7 +65,6 @@ describe('WritebackExecutorService', () => {
       })),
     };
     const profileRepo = { patch: vi.fn(async () => null) };
-    const qcRepo = { findActiveTemplateByCategory: vi.fn(async () => null) };
     const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
     const timelineRepo = { append: vi.fn(async (event) => event) };
     const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
@@ -86,7 +73,6 @@ describe('WritebackExecutorService', () => {
     const executor = new WritebackExecutorService(
       sessionRepo as any,
       profileRepo as any,
-      qcRepo as any,
       messageRepo as any,
       timelineRepo as any,
       followupRepo as any,
@@ -106,14 +92,11 @@ describe('WritebackExecutorService', () => {
         nextAction: 'ANSWER_FAQ',
         riskLevel: 'LOW',
         reasonCodes: ['light_discovery_soft_guidance'],
-        prequalificationReasonCodes: ['greeting_detected'],
       },
     });
 
     expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-0', expect.objectContaining({
       engagementMode: 'LIGHT_DISCOVERY',
-      prequalificationReasonCodes: ['greeting_detected'],
-      lastNextAction: 'ANSWER_FAQ',
     }));
     expect(timelineRepo.append).not.toHaveBeenCalled();
     expect(followupRepo.createPendingTrigger).not.toHaveBeenCalled();
@@ -121,7 +104,6 @@ describe('WritebackExecutorService', () => {
       metadata: expect.objectContaining({
         engagementMode: 'LIGHT_DISCOVERY',
         writebackDepth: 'minimal',
-        prequalificationReasonCodes: ['greeting_detected'],
       }),
       writebackStatus: 'completed',
     });
@@ -147,16 +129,10 @@ describe('WritebackExecutorService', () => {
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: 'LIGHT_DISCOVERY',
-          prequalificationReasonCodes: [],
           enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: null,
-          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -181,18 +157,12 @@ describe('WritebackExecutorService', () => {
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: (patch['engagementMode'] as string | undefined) ?? 'DEEP_WORKFLOW',
-          prequalificationReasonCodes: (patch['prequalificationReasonCodes'] as string[] | undefined) ?? [],
           enteredDeepWorkflowAt: patch['enteredDeepWorkflowAt'] instanceof Date
             ? patch['enteredDeepWorkflowAt'] as Date
             : null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -203,7 +173,6 @@ describe('WritebackExecutorService', () => {
       })),
     };
     const profileRepo = { patch: vi.fn(async () => null) };
-    const qcRepo = { findActiveTemplateByCategory: vi.fn(async () => null) };
     const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
     const timelineRepo = { append: vi.fn(async (event) => event) };
     const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
@@ -212,7 +181,6 @@ describe('WritebackExecutorService', () => {
     const executor = new WritebackExecutorService(
       sessionRepo as any,
       profileRepo as any,
-      qcRepo as any,
       messageRepo as any,
       timelineRepo as any,
       followupRepo as any,
@@ -232,7 +200,6 @@ describe('WritebackExecutorService', () => {
         nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         riskLevel: 'LOW',
         reasonCodes: ['condition_fit'],
-        prequalificationReasonCodes: ['form_completed', 'recommendation_requested'],
         shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
       },
     });
@@ -245,7 +212,6 @@ describe('WritebackExecutorService', () => {
       metadata: expect.objectContaining({
         engagementMode: 'DEEP_WORKFLOW',
         writebackDepth: 'complete',
-        prequalificationReasonCodes: ['form_completed', 'recommendation_requested'],
         shortlist: [{ hospitalId: 'hospital-1', reasonCodes: ['condition_fit'] }],
       }),
       writebackStatus: 'completed',
@@ -253,8 +219,7 @@ describe('WritebackExecutorService', () => {
     expect(result.messageMetadata.shortlist?.[0]?.hospitalId).toBe('hospital-1');
   });
 
-  it('hydrates a default questionnaire pendingQuestion when REQUEST_DOC_UPLOAD needs a rich block trigger', async () => {
-    const defaultTemplateId = '11111111-1111-4111-8111-111111111111';
+  it('does not persist questionnaire shadow state when REQUEST_DOC_UPLOAD is chosen', async () => {
     const sessionRepo = {
       findBySessionId: vi.fn(async () => new AiChatSession({
         id: 'db-session-docs',
@@ -272,16 +237,10 @@ describe('WritebackExecutorService', () => {
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: 'LIGHT_DISCOVERY',
-          prequalificationReasonCodes: [],
           enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: null,
-          lastResolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -306,16 +265,10 @@ describe('WritebackExecutorService', () => {
           consultationStatus: 'not_introduced',
           packageStatus: 'not_introduced',
           handoffStatus: 'not_needed',
-          leadMaturity: 'browsing',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: (patch['engagementMode'] as string | undefined) ?? 'LIGHT_DISCOVERY',
-          prequalificationReasonCodes: (patch['prequalificationReasonCodes'] as string[] | undefined) ?? [],
           enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: (patch['pendingQuestion'] as { type: string; payload: Record<string, unknown> } | null | undefined) ?? null,
-          lastNextAction: (patch['lastNextAction'] as string | undefined) ?? 'REQUEST_DOC_UPLOAD',
-          lastResolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -326,9 +279,6 @@ describe('WritebackExecutorService', () => {
       })),
     };
     const profileRepo = { patch: vi.fn(async () => null) };
-    const qcRepo = {
-      findActiveTemplateByCategory: vi.fn(async () => ({ id: defaultTemplateId })),
-    };
     const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
     const timelineRepo = { append: vi.fn(async (event) => event) };
     const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
@@ -337,7 +287,6 @@ describe('WritebackExecutorService', () => {
     const executor = new WritebackExecutorService(
       sessionRepo as any,
       profileRepo as any,
-      qcRepo as any,
       messageRepo as any,
       timelineRepo as any,
       followupRepo as any,
@@ -357,98 +306,11 @@ describe('WritebackExecutorService', () => {
         nextAction: 'REQUEST_DOC_UPLOAD',
         riskLevel: 'LOW',
         reasonCodes: ['documents_required_before_recommendation'],
-        prequalificationReasonCodes: ['engagement_signal_light_discovery'],
       },
     });
 
-    expect(qcRepo.findActiveTemplateByCategory).toHaveBeenCalledWith('DEFAULT');
-    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-docs', expect.objectContaining({
-      pendingQuestion: {
-        type: 'QUESTIONNAIRE',
-        payload: {
-          templateId: defaultTemplateId,
-        },
-      },
-      lastNextAction: 'REQUEST_DOC_UPLOAD',
-    }));
-  });
-
-  it('persists selectedHospitalId onto the session snapshot when writeback carries an explicit hospital choice', async () => {
-    const sessionRepo = {
-      findBySessionId: vi.fn(async () => new AiChatSession({
-        id: 'db-session-selected',
-        sessionId: 'session-selected',
-        sessionSecretHash: null,
-        difyConversationId: null,
-        patientId: null,
-        hospitalType: 'COSMETIC',
-        status: 'ACTIVE',
-        statusSnapshot: {
-          conditionStatus: 'known',
-          formStatus: 'completed',
-          docUploadStatus: 'uploaded',
-          recommendationStatus: 'preliminary_shown',
-          consultationStatus: 'not_introduced',
-          packageStatus: 'shown',
-          handoffStatus: 'not_needed',
-          leadMaturity: 'qualified',
-          riskLevel: 'low',
-          trustOrObjection: 'none',
-          engagementMode: 'DEEP_WORKFLOW',
-          prequalificationReasonCodes: [],
-          enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-          lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-          conversationSummary: '',
-          lastPolicyDecisionAt: null,
-          lastUserMessageAt: null,
-          lastAssistantMessageAt: null,
-        },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })),
-      patchStatus: vi.fn(async (_sessionId: string, patch: Record<string, unknown>) => patch),
-    };
-    const profileRepo = { patch: vi.fn(async () => null) };
-    const qcRepo = { findActiveTemplateByCategory: vi.fn(async () => null) };
-    const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
-    const timelineRepo = { append: vi.fn(async (event) => event) };
-    const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
-    const handoffRepo = { save: vi.fn(async (handoff) => handoff) };
-
-    const executor = new WritebackExecutorService(
-      sessionRepo as any,
-      profileRepo as any,
-      qcRepo as any,
-      messageRepo as any,
-      timelineRepo as any,
-      followupRepo as any,
-      handoffRepo as any,
-      new WritebackPlannerService(),
-      new HandoffPolicyService(),
-    );
-
-    await executor.execute({
-      sessionId: 'session-selected',
-      sessionDbId: 'db-session-selected',
-      patientId: null,
-      assistantMessageId: 'assistant-selected',
-      policyDecision: {
-        engagementMode: 'DEEP_WORKFLOW',
-        writebackDepth: 'complete',
-        nextAction: 'ANSWER_FAQ',
-        selectedHospitalId: 'hospital-selected-1',
-        riskLevel: 'LOW',
-        reasonCodes: ['pending_offer_confirmed'],
-        prequalificationReasonCodes: ['recommendation_requested'],
-      },
-    });
-
-    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-selected', expect.objectContaining({
-      selectedHospitalId: 'hospital-selected-1',
-      lastNextAction: 'ANSWER_FAQ',
+    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-docs', expect.not.objectContaining({
+      pendingQuestion: expect.anything(),
     }));
   });
 
@@ -470,16 +332,10 @@ describe('WritebackExecutorService', () => {
           consultationStatus: 'ready',
           packageStatus: 'shown',
           handoffStatus: 'not_needed',
-          leadMaturity: 'qualified',
           riskLevel: 'low',
           trustOrObjection: 'none',
           engagementMode: 'QUALIFIED_EXPLORATION',
-          prequalificationReasonCodes: [],
           enteredDeepWorkflowAt: null,
-          pendingOffer: null,
-          pendingQuestion: null,
-          lastNextAction: 'ANSWER_FAQ',
-          lastResolvedIntent: 'GENERAL_CONSULT',
           conversationSummary: '',
           lastPolicyDecisionAt: null,
           lastUserMessageAt: null,
@@ -491,7 +347,6 @@ describe('WritebackExecutorService', () => {
       patchStatus: vi.fn(async (_sessionId: string, patch: Record<string, unknown>) => patch),
     };
     const profileRepo = { patch: vi.fn(async () => null) };
-    const qcRepo = { findActiveTemplateByCategory: vi.fn(async () => null) };
     const messageRepo = { updateWritebackMetadata: vi.fn(async (_messageId: string, patch: Record<string, unknown>) => patch) };
     const timelineRepo = { append: vi.fn(async (event) => event) };
     const followupRepo = { createPendingTrigger: vi.fn(async (trigger) => trigger) };
@@ -500,7 +355,6 @@ describe('WritebackExecutorService', () => {
     const executor = new WritebackExecutorService(
       sessionRepo as any,
       profileRepo as any,
-      qcRepo as any,
       messageRepo as any,
       timelineRepo as any,
       followupRepo as any,
@@ -520,7 +374,6 @@ describe('WritebackExecutorService', () => {
         nextAction: 'HUMAN_HANDOFF',
         riskLevel: 'LOW',
         reasonCodes: ['human_handoff_requested'],
-        prequalificationReasonCodes: ['trust_building_question'],
       },
     });
 

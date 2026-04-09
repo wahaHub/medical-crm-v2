@@ -45,22 +45,13 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         formStatus: entity.statusSnapshot.formStatus,
         docUploadStatus: entity.statusSnapshot.docUploadStatus,
         recommendationStatus: entity.statusSnapshot.recommendationStatus,
-        selectedHospitalId: entity.statusSnapshot.selectedHospitalId,
         consultationStatus: entity.statusSnapshot.consultationStatus,
         packageStatus: entity.statusSnapshot.packageStatus,
         handoffStatus: entity.statusSnapshot.handoffStatus,
-        leadMaturity: entity.statusSnapshot.leadMaturity,
         riskLevel: entity.statusSnapshot.riskLevel,
         trustOrObjection: entity.statusSnapshot.trustOrObjection,
         engagementMode: entity.statusSnapshot.engagementMode,
-        prequalificationReasonCodes: entity.statusSnapshot.prequalificationReasonCodes,
         enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
-        pendingOfferType: entity.statusSnapshot.pendingOffer?.type ?? null,
-        pendingOfferPayload: entity.statusSnapshot.pendingOffer?.payload ?? {},
-        pendingQuestionType: entity.statusSnapshot.pendingQuestion?.type ?? null,
-        pendingQuestionPayload: entity.statusSnapshot.pendingQuestion?.payload ?? {},
-        lastNextAction: entity.statusSnapshot.lastNextAction,
-        lastResolvedIntent: entity.statusSnapshot.lastResolvedIntent,
         conversationSummary: entity.statusSnapshot.conversationSummary,
         lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
         lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -80,22 +71,13 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           formStatus: entity.statusSnapshot.formStatus,
           docUploadStatus: entity.statusSnapshot.docUploadStatus,
           recommendationStatus: entity.statusSnapshot.recommendationStatus,
-          selectedHospitalId: entity.statusSnapshot.selectedHospitalId,
           consultationStatus: entity.statusSnapshot.consultationStatus,
           packageStatus: entity.statusSnapshot.packageStatus,
           handoffStatus: entity.statusSnapshot.handoffStatus,
-          leadMaturity: entity.statusSnapshot.leadMaturity,
           riskLevel: entity.statusSnapshot.riskLevel,
           trustOrObjection: entity.statusSnapshot.trustOrObjection,
           engagementMode: entity.statusSnapshot.engagementMode,
-          prequalificationReasonCodes: entity.statusSnapshot.prequalificationReasonCodes,
           enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
-          pendingOfferType: entity.statusSnapshot.pendingOffer?.type ?? null,
-          pendingOfferPayload: entity.statusSnapshot.pendingOffer?.payload ?? {},
-          pendingQuestionType: entity.statusSnapshot.pendingQuestion?.type ?? null,
-          pendingQuestionPayload: entity.statusSnapshot.pendingQuestion?.payload ?? {},
-          lastNextAction: entity.statusSnapshot.lastNextAction,
-          lastResolvedIntent: entity.statusSnapshot.lastResolvedIntent,
           conversationSummary: entity.statusSnapshot.conversationSummary,
           lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
           lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -159,30 +141,15 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.formStatus !== undefined) updates.formStatus = patch.formStatus;
     if (patch.docUploadStatus !== undefined) updates.docUploadStatus = patch.docUploadStatus;
     if (patch.recommendationStatus !== undefined) updates.recommendationStatus = patch.recommendationStatus;
-    if (patch.selectedHospitalId !== undefined) updates.selectedHospitalId = patch.selectedHospitalId;
     if (patch.consultationStatus !== undefined) updates.consultationStatus = patch.consultationStatus;
     if (patch.packageStatus !== undefined) updates.packageStatus = patch.packageStatus;
     if (patch.handoffStatus !== undefined) updates.handoffStatus = patch.handoffStatus;
-    if (patch.leadMaturity !== undefined) updates.leadMaturity = patch.leadMaturity;
     if (patch.riskLevel !== undefined) updates.riskLevel = patch.riskLevel;
     if (patch.trustOrObjection !== undefined) updates.trustOrObjection = patch.trustOrObjection;
     if (patch.engagementMode !== undefined) updates.engagementMode = patch.engagementMode;
-    if (patch.prequalificationReasonCodes !== undefined) {
-      updates.prequalificationReasonCodes = patch.prequalificationReasonCodes;
-    }
     if (patch.enteredDeepWorkflowAt !== undefined) {
       updates.enteredDeepWorkflowAt = patch.enteredDeepWorkflowAt?.toISOString() ?? null;
     }
-    if (patch.pendingOffer !== undefined) {
-      updates.pendingOfferType = patch.pendingOffer?.type ?? null;
-      updates.pendingOfferPayload = patch.pendingOffer?.payload ?? {};
-    }
-    if (patch.pendingQuestion !== undefined) {
-      updates.pendingQuestionType = patch.pendingQuestion?.type ?? null;
-      updates.pendingQuestionPayload = patch.pendingQuestion?.payload ?? {};
-    }
-    if (patch.lastNextAction !== undefined) updates.lastNextAction = patch.lastNextAction;
-    if (patch.lastResolvedIntent !== undefined) updates.lastResolvedIntent = patch.lastResolvedIntent;
     if (patch.conversationSummary !== undefined) updates.conversationSummary = patch.conversationSummary;
     if (patch.lastPolicyDecisionAt !== undefined) {
       updates.lastPolicyDecisionAt = patch.lastPolicyDecisionAt?.toISOString() ?? null;
@@ -217,30 +184,13 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         formStatus: row.formStatus,
         docUploadStatus: row.docUploadStatus,
         recommendationStatus: row.recommendationStatus,
-        selectedHospitalId: row.selectedHospitalId ?? null,
         consultationStatus: row.consultationStatus,
         packageStatus: row.packageStatus,
         handoffStatus: row.handoffStatus,
-        leadMaturity: row.leadMaturity,
         riskLevel: row.riskLevel,
         trustOrObjection: row.trustOrObjection,
         engagementMode: row.engagementMode,
-        prequalificationReasonCodes: ((row.prequalificationReasonCodes as unknown[]) ?? []) as string[],
         enteredDeepWorkflowAt: row.enteredDeepWorkflowAt ? new Date(row.enteredDeepWorkflowAt) : null,
-        pendingOffer: row.pendingOfferType
-          ? {
-              type: row.pendingOfferType,
-              payload: (row.pendingOfferPayload as Record<string, unknown> | null) ?? {},
-            }
-          : null,
-        pendingQuestion: row.pendingQuestionType
-          ? {
-              type: row.pendingQuestionType,
-              payload: (row.pendingQuestionPayload as Record<string, unknown> | null) ?? {},
-            }
-          : null,
-        lastNextAction: row.lastNextAction ?? null,
-        lastResolvedIntent: row.lastResolvedIntent ?? null,
         conversationSummary: row.conversationSummary,
         lastPolicyDecisionAt: row.lastPolicyDecisionAt ? new Date(row.lastPolicyDecisionAt) : null,
         lastUserMessageAt: row.lastUserMessageAt ? new Date(row.lastUserMessageAt) : null,

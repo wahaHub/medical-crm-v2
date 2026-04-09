@@ -533,7 +533,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     expect(result.handoff_required).toBe(true);
   });
 
-  it('persists selected_hospital_id when a recommendation offer is accepted in a persistent hospital context', async () => {
+  it('bridges to acceptance when a recommendation is accepted in a persistent hospital context', async () => {
     const harness = createHarness({
       lightContextOverrides: {
         activeHospitalContext: {
@@ -541,8 +541,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: 'Medora Seoul',
           source: 'page_context',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       },
       fullContextOverrides: {
         activeHospitalContext: {
@@ -550,12 +548,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: 'Medora Seoul',
           source: 'page_context',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         statusSnapshot: {
           recommendationStatus: 'preliminary_shown',
-          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
           lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
         },
       },
@@ -573,10 +567,9 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     });
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
-    expect(result.selected_hospital_id).toBe('hospital-accept-1');
   });
 
-  it('does not persist selected_hospital_id when acceptance only has shortlist-derived hospital focus', async () => {
+  it('does not persist selected hospital state when acceptance only has shortlist-derived hospital focus', async () => {
     const harness = createHarness({
       lightContextOverrides: {
         activeHospitalContext: {
@@ -584,8 +577,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: null,
           source: 'recent_shortlist',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       },
       fullContextOverrides: {
         activeHospitalContext: {
@@ -593,12 +584,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: null,
           source: 'recent_shortlist',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         statusSnapshot: {
           recommendationStatus: 'preliminary_shown',
-          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
           lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
         },
       },
@@ -616,7 +603,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     });
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
-    expect(result.selected_hospital_id).toBeUndefined();
   });
 
   it('bridges recommendation asks to alternative-shortlist intent when a hospital is already selected', async () => {
@@ -633,10 +619,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           source: 'selected_hospital',
         },
         statusSnapshot: {
-          selectedHospitalId: 'hospital-selected-2',
           recommendationStatus: 'preliminary_shown',
           lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         },
       },
     });
@@ -669,11 +653,9 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           source: 'selected_hospital',
         },
         statusSnapshot: {
-          selectedHospitalId: 'hospital-selected-2',
           docUploadStatus: 'none',
           recommendationStatus: 'preliminary_shown',
           lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         },
       },
     });
@@ -704,8 +686,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: 'Medora Seoul',
           source: 'page_context',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       },
       fullContextOverrides: {
         activeHospitalContext: {
@@ -713,12 +693,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: 'Medora Seoul',
           source: 'page_context',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         statusSnapshot: {
           recommendationStatus: 'preliminary_shown',
-          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
           lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
         },
       },
@@ -736,7 +712,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     });
 
     expect(result.resolved_intent).toBe('ACCEPT_HOSPITAL_RECOMMENDATION');
-    expect(result.selected_hospital_id).toBe('hospital-accept-2');
   });
 
   it('does not misclassify a next-steps follow-up as hospital acceptance under pending recommendation context', async () => {
@@ -747,8 +722,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: 'Medora Seoul',
           source: 'page_context',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       },
       fullContextOverrides: {
         activeHospitalContext: {
@@ -756,12 +729,8 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
           hospitalName: 'Medora Seoul',
           source: 'page_context',
         },
-        pendingOffer: { exists: true, type: 'HOSPITAL_RECOMMENDATION' },
-        lastAssistantAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         statusSnapshot: {
           recommendationStatus: 'preliminary_shown',
-          pendingOffer: { type: 'HOSPITAL_RECOMMENDATION', payload: {} },
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
           lastResolvedIntent: 'ASK_FOR_RECOMMENDATION',
         },
       },
@@ -779,7 +748,6 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
     });
 
     expect(result.resolved_intent).toBe('GENERAL_INFO');
-    expect(result.selected_hospital_id).toBeUndefined();
     expect(result.next_action).toBe('ANSWER_FAQ');
   });
 });
@@ -875,9 +843,6 @@ function buildLightContext(overrides: Record<string, unknown> = {}) {
     currentEngagementMode: 'LIGHT_DISCOVERY',
     hospitalType: 'REGULAR',
     activeHospitalContext: null,
-    pendingOffer: { exists: false, type: null },
-    pendingQuestion: { exists: false, type: null },
-    lastAssistantAction: null,
     safetyFlags: {
       riskLevel: 'LOW',
       hasHighRiskSignal: false,
@@ -902,9 +867,6 @@ function buildFullContext(overrides: Record<string, unknown> = {}) {
     currentEngagementMode: 'DEEP_WORKFLOW',
     hospitalType: 'REGULAR',
     activeHospitalContext: null,
-    pendingOffer: { exists: false, type: null },
-    pendingQuestion: { exists: false, type: null },
-    lastAssistantAction: 'CONSULT_CONVERSION',
     safetyFlags: {
       riskLevel: 'LOW',
       hasHighRiskSignal: false,
@@ -918,12 +880,8 @@ function buildFullContext(overrides: Record<string, unknown> = {}) {
       consultationStatus: 'ready',
       packageStatus: 'shown',
       handoffStatus: 'not_needed',
-      leadMaturity: 'qualified',
       riskLevel: 'low',
       trustOrObjection: 'none',
-      pendingOffer: null,
-      pendingQuestion: null,
-      lastNextAction: 'CONSULT_CONVERSION',
       lastResolvedIntent: 'GENERAL_CONSULT',
       conversationSummary: 'Existing qualified context.',
       lastPolicyDecisionAt: null,

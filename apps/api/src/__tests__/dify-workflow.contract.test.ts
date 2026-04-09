@@ -234,7 +234,8 @@ describe('Dify workflow contract', () => {
     expect(writebackBody).toContain('"policy_decision": {{#parse_decide_code.writeback_policy_decision#}}');
     expect(writebackBody).toContain('"final_response_metadata": {{#response_composer.text#}}');
     expect(finalAnswerNode.data?.answer).toBe('{{#response_composer.text#}}');
-    expect(yaml).toContain('"selected_hospital_id": data.get("selected_hospital_id") or writeback_plan.get("selected_hospital_id")');
+    expect(yaml).not.toContain('selected_hospital_id');
+    expect(yaml).not.toContain('prequalification_reason_codes');
   });
 
   it('avoids stale http body.data selectors and parses decide_http before field-level branching', () => {
@@ -251,6 +252,10 @@ describe('Dify workflow contract', () => {
     expect(yaml).toContain('{{#prompt_inputs_aggregator.HospitalsBody.output#}}');
     expect(yaml).toContain('{{#prompt_inputs_aggregator.PackagesBody.output#}}');
     expect(yaml).toContain('"page_context": {{#start.pageContextJson#}}');
+    expect(yaml).not.toContain('pendingOffer');
+    expect(yaml).not.toContain('pendingQuestion');
+    expect(yaml).not.toContain('lead_maturity');
+    expect(yaml).not.toContain('last_next_action');
   });
 
   it('forwards CRM page context through workflow start inputs into both decide and context requests', () => {

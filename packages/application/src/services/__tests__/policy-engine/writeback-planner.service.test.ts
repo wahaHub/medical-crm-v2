@@ -15,21 +15,17 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'minimal',
         nextAction: 'ANSWER_FAQ',
         reasonCodes: ['light_discovery_soft_guidance'],
-        prequalificationReasonCodes: ['greeting_detected'],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'LIGHT_DISCOVERY',
-      prequalificationReasonCodes: ['greeting_detected'],
-      lastNextAction: 'ANSWER_FAQ',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
     expect(result.messageMetadata).toMatchObject({
       engagementMode: 'LIGHT_DISCOVERY',
       writebackDepth: 'minimal',
-      prequalificationReasonCodes: ['greeting_detected'],
       reasonCodes: ['light_discovery_soft_guidance'],
     });
   });
@@ -47,14 +43,11 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'minimal',
         nextAction: 'REQUEST_DOC_UPLOAD',
         reasonCodes: ['documents_requested'],
-        prequalificationReasonCodes: ['low_signal_docs_question'],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'LIGHT_DISCOVERY',
-      prequalificationReasonCodes: ['low_signal_docs_question'],
-      lastNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
@@ -73,26 +66,22 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'complete',
         nextAction: 'REQUEST_DOC_UPLOAD',
         reasonCodes: ['documents_requested'],
-        prequalificationReasonCodes: ['low_signal_docs_question'],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'LIGHT_DISCOVERY',
-      prequalificationReasonCodes: ['low_signal_docs_question'],
-      lastNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
     expect(result.messageMetadata).toMatchObject({
       engagementMode: 'LIGHT_DISCOVERY',
       writebackDepth: 'minimal',
-      prequalificationReasonCodes: ['low_signal_docs_question'],
       reasonCodes: ['documents_requested'],
     });
   });
 
-  it('clears prequalification reason codes when latest truth is empty', () => {
+  it('keeps light discovery writeback free of deleted prequalification fields', () => {
     const planner = new WritebackPlannerService();
 
     const result = planner.plan({
@@ -105,19 +94,15 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'minimal',
         nextAction: 'ANSWER_FAQ',
         reasonCodes: ['light_discovery_soft_guidance'],
-        prequalificationReasonCodes: [],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'LIGHT_DISCOVERY',
-      prequalificationReasonCodes: [],
-      lastNextAction: 'ANSWER_FAQ',
     });
     expect(result.messageMetadata).toMatchObject({
       engagementMode: 'LIGHT_DISCOVERY',
       writebackDepth: 'minimal',
-      prequalificationReasonCodes: [],
       reasonCodes: ['light_discovery_soft_guidance'],
     });
   });
@@ -135,13 +120,12 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'moderate',
         nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         reasonCodes: ['authoritative_shortlist_ready'],
-        prequalificationReasonCodes: ['trust_building_question'],
       },
     });
 
     expect(result.statusPatch.recommendationStatus).toBe('PRELIMINARY_SHOWN');
     expect(result.statusPatch.engagementMode).toBe('QUALIFIED_EXPLORATION');
-    expect(result.statusPatch.lastNextAction).toBe('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(result.statusPatch).not.toHaveProperty('lastNextAction');
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
   });
@@ -159,15 +143,12 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'moderate',
         nextAction: 'REQUEST_DOC_UPLOAD',
         reasonCodes: ['documents_required_before_recommendation'],
-        prequalificationReasonCodes: ['trust_building_question'],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'QUALIFIED_EXPLORATION',
       docUploadStatus: 'REQUESTED',
-      prequalificationReasonCodes: ['trust_building_question'],
-      lastNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
@@ -186,14 +167,11 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'moderate',
         nextAction: 'EXPLAIN_CONSULT_PROCESS',
         reasonCodes: ['qualified_consult_explanation'],
-        prequalificationReasonCodes: ['trust_building_question'],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'QUALIFIED_EXPLORATION',
-      prequalificationReasonCodes: ['trust_building_question'],
-      lastNextAction: 'EXPLAIN_CONSULT_PROCESS',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
@@ -212,13 +190,11 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'complete',
         nextAction: 'INVITE_ONLINE_CONSULT',
         reasonCodes: ['consult_invite_ready'],
-        prequalificationReasonCodes: ['engagement_signal_deep_workflow'],
       },
     });
 
     expect(result.statusPatch).toMatchObject({
       engagementMode: 'DEEP_WORKFLOW',
-      lastNextAction: 'INVITE_ONLINE_CONSULT',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
@@ -237,14 +213,11 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'moderate',
         nextAction: 'HUMAN_HANDOFF',
         reasonCodes: ['human_handoff_requested'],
-        prequalificationReasonCodes: ['trust_building_question'],
       },
     });
 
     expect(result.statusPatch).toEqual({
       engagementMode: 'QUALIFIED_EXPLORATION',
-      prequalificationReasonCodes: ['trust_building_question'],
-      lastNextAction: 'HUMAN_HANDOFF',
     });
     expect(result.timelineEvents).toEqual([]);
     expect(result.followupTrigger).toBeNull();
@@ -263,15 +236,12 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'complete',
         nextAction: 'REQUEST_DOC_UPLOAD',
         reasonCodes: ['documents_required_before_recommendation'],
-        prequalificationReasonCodes: ['form_completed', 'documents_missing'],
       },
     });
 
     expect(result.statusPatch).toMatchObject({
       engagementMode: 'DEEP_WORKFLOW',
-      prequalificationReasonCodes: ['form_completed', 'documents_missing'],
       docUploadStatus: 'REQUESTED',
-      lastNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(result.timelineEvents[0]?.eventType).toBe('DOC_UPLOAD_REQUESTED');
     expect(result.followupTrigger?.triggerType).toBe('DOC_UPLOAD_PENDING');
@@ -281,7 +251,7 @@ describe('WritebackPlannerService', () => {
     });
   });
 
-  it('persists selectedHospitalId when the user has explicitly chosen a hospital', () => {
+  it('does not persist selectedHospitalId after state truth consolidation', () => {
     const planner = new WritebackPlannerService();
 
     const result = planner.plan({
@@ -293,16 +263,12 @@ describe('WritebackPlannerService', () => {
         engagementMode: 'DEEP_WORKFLOW',
         writebackDepth: 'complete',
         nextAction: 'ANSWER_FAQ',
-        selectedHospitalId: 'hospital-selected-1',
         reasonCodes: ['pending_offer_confirmed'],
-        prequalificationReasonCodes: ['recommendation_requested'],
       },
     });
 
-    expect(result.statusPatch).toMatchObject({
+    expect(result.statusPatch).toEqual({
       engagementMode: 'DEEP_WORKFLOW',
-      selectedHospitalId: 'hospital-selected-1',
-      lastNextAction: 'ANSWER_FAQ',
     });
     expect(result.messageMetadata).toMatchObject({
       reasonCodes: ['pending_offer_confirmed'],
@@ -322,14 +288,12 @@ describe('WritebackPlannerService', () => {
         writebackDepth: 'minimal',
         nextAction: 'REQUEST_DOC_UPLOAD',
         reasonCodes: ['documents_required_before_recommendation'],
-        prequalificationReasonCodes: ['form_completed'],
       },
     });
 
     expect(result.statusPatch).toMatchObject({
       engagementMode: 'DEEP_WORKFLOW',
       docUploadStatus: 'REQUESTED',
-      lastNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(result.timelineEvents[0]?.eventType).toBe('DOC_UPLOAD_REQUESTED');
     expect(result.followupTrigger?.triggerType).toBe('DOC_UPLOAD_PENDING');

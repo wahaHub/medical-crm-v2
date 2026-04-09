@@ -10,7 +10,6 @@ export interface RecommendationDecisionInput {
     recommendationStatus?: string;
     riskLevel?: string;
     docUploadStatus?: string;
-    selectedHospitalId?: string | null;
   };
   resolvedIntent: string;
   candidateHospitals?: RecommendationCandidate[];
@@ -38,17 +37,6 @@ export class RecommendationPolicyService {
         eligible: false,
         shortlist: [],
         reasonCodes: ['insufficient_readiness_missing_documents'],
-      };
-    }
-
-    if (
-      input.statusSnapshot.selectedHospitalId
-      && input.resolvedIntent !== 'ASK_ALTERNATIVE_HOSPITAL_RECOMMENDATIONS'
-    ) {
-      return {
-        eligible: false,
-        shortlist: [],
-        reasonCodes: ['recommendation_suppressed_selected_hospital_exists'],
       };
     }
 

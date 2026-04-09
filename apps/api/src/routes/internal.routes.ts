@@ -222,14 +222,8 @@ app.openapi(aiPolicyWritebackRoute, async (c) => {
         decision.nextAction ?? decision.next_action,
         aiPolicyNextActionSchema,
       ) ?? 'ANSWER_FAQ',
-      selectedHospitalId: readOptionalString(
-        decision.selectedHospitalId ?? decision.selected_hospital_id,
-      ) ?? undefined,
       riskLevel: readOptionalString(decision.riskLevel ?? decision.risk_level) ?? undefined,
       reasonCodes: readStringArray(decision.reasonCodes ?? decision.reason_codes),
-      prequalificationReasonCodes: readStringArray(
-        decision.prequalificationReasonCodes ?? decision.prequalification_reason_codes,
-      ),
       shortlist: readShortlistItems(decision.shortlist),
     },
   });

@@ -248,7 +248,6 @@ describe('patientPublicRoutes', () => {
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
-              pendingQuestion: null,
               consultationStatus: 'not_introduced',
             },
           })
@@ -258,12 +257,6 @@ describe('patientPublicRoutes', () => {
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
-              pendingQuestion: {
-                type: 'QUESTIONNAIRE',
-                payload: {
-                  templateId: questionnaireTemplateId,
-                },
-              },
               consultationStatus: 'not_introduced',
             },
           }),
@@ -279,6 +272,23 @@ describe('patientPublicRoutes', () => {
             internalNextAction: 'REQUEST_DOC_UPLOAD',
           }),
           metadata: { retriever_resources: [] },
+        }),
+      },
+      caseRepo: {
+        findById: vi.fn().mockResolvedValue({
+          id: '11111111-1111-4111-8111-111111111111',
+          structuredData: {
+            patientHospitalSelection: {
+              medicalFormStatus: 'NOT_STARTED',
+            },
+          },
+        }),
+      },
+      getTemplateByDisease: {
+        execute: vi.fn().mockResolvedValue({
+          template: {
+            id: questionnaireTemplateId,
+          },
         }),
       },
     });
@@ -317,7 +327,7 @@ describe('patientPublicRoutes', () => {
     );
   });
 
-  it('builds REQUEST_DOC_UPLOAD starter blocks from the default questionnaire when pendingQuestion has not landed yet', async () => {
+  it('builds REQUEST_DOC_UPLOAD starter blocks from the default questionnaire when questionnaire truth is still not submitted', async () => {
     const questionnaireTemplateId = '66666666-6666-4666-8666-666666666666';
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
@@ -342,7 +352,6 @@ describe('patientPublicRoutes', () => {
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
-              pendingQuestion: null,
               consultationStatus: 'not_introduced',
             },
           })
@@ -352,7 +361,6 @@ describe('patientPublicRoutes', () => {
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
-              pendingQuestion: null,
               consultationStatus: 'not_introduced',
             },
           }),
@@ -374,6 +382,16 @@ describe('patientPublicRoutes', () => {
         execute: vi.fn().mockResolvedValue({
           template: {
             id: questionnaireTemplateId,
+          },
+        }),
+      },
+      caseRepo: {
+        findById: vi.fn().mockResolvedValue({
+          id: '11111111-1111-4111-8111-111111111111',
+          structuredData: {
+            patientHospitalSelection: {
+              medicalFormStatus: 'NOT_STARTED',
+            },
           },
         }),
       },
@@ -408,6 +426,101 @@ describe('patientPublicRoutes', () => {
       }),
     );
     expect(services.getTemplateByDisease.execute).toHaveBeenCalledWith('DEFAULT');
+  });
+
+  it('prefers a case-specific questionnaire template when seeding REQUEST_DOC_UPLOAD starter blocks', async () => {
+    const questionnaireTemplateId = '77777777-7777-4777-8777-777777777777';
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'select-hospitals',
+      token: 'session-token-123',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+      isExistingPatient: false,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const services = createBaseServices({
+      initOnboarding: { execute },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn()
+          .mockResolvedValueOnce({
+            id: 'ai-session-1',
+            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            difyConversationId: null,
+            hospitalType: 'REGULAR',
+            statusSnapshot: {
+              consultationStatus: 'not_introduced',
+            },
+          })
+          .mockResolvedValueOnce({
+            id: 'ai-session-1',
+            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            difyConversationId: null,
+            hospitalType: 'REGULAR',
+            statusSnapshot: {
+              consultationStatus: 'not_introduced',
+            },
+          }),
+        save: vi.fn().mockImplementation(async (entity) => entity),
+        setDifyConversationId: vi.fn().mockResolvedValue(null),
+      },
+      difyApi: {
+        createChatMessage: vi.fn().mockResolvedValue({
+          conversation_id: 'dify-conversation-docs-case-template',
+          answer: JSON.stringify({
+            answer: 'Please upload your reports so I can guide the next step.',
+            nextAction: 'REQUEST_DOC_UPLOAD',
+            internalNextAction: 'REQUEST_DOC_UPLOAD',
+          }),
+          metadata: { retriever_resources: [] },
+        }),
+      },
+      caseRepo: {
+        findById: vi.fn().mockResolvedValue({
+          id: '11111111-1111-4111-8111-111111111111',
+          questionCollectorTemplateId: questionnaireTemplateId,
+          structuredData: {
+            patientHospitalSelection: {
+              medicalFormStatus: 'NOT_STARTED',
+            },
+          },
+        }),
+      },
+    });
+    mockGetServices.mockReturnValue(services);
+
+    const res = await patientPublicRoutes.request('/onboarding/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        destination: 'Shenzhen',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        metadata: expect.objectContaining({
+          internalNextAction: 'REQUEST_DOC_UPLOAD',
+          blocks: [
+            expect.objectContaining({
+              type: 'QUESTIONNAIRE_MODAL_TRIGGER',
+              templateId: questionnaireTemplateId,
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(services.getTemplateByDisease.execute).not.toHaveBeenCalledWith('DEFAULT');
   });
 
   it('allows onboarding without a captcha token while captcha is temporarily disabled', async () => {

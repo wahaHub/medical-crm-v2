@@ -1,5 +1,4 @@
 import type {
-  AiChatPendingState,
   IAiChatSessionRepository,
   ICaseRepository,
   ICHCRepository,
@@ -50,13 +49,7 @@ export interface PatientSessionState {
     conversationIds: string[];
   };
   chatbotOrchestrationState: {
-    sessionId: string;
-    selectedHospitalId: string | null;
-    selectedHospitalIds: string[];
     conversationSummary: string;
-    pendingOffer: AiChatPendingState | null;
-    pendingQuestion: AiChatPendingState | null;
-    lastNextAction: string | null;
   };
 }
 
@@ -107,10 +100,7 @@ export class GetPatientSessionStateUseCase {
         updatedAt: new Date(),
       }));
     }
-    const snapshotSelectedHospitalId = aiChatSession?.statusSnapshot.selectedHospitalId ?? null;
-    const selectedHospitalId = snapshotSelectedHospitalId && selectedHospitalIds.includes(snapshotSelectedHospitalId)
-      ? snapshotSelectedHospitalId
-      : (selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null);
+    const selectedHospitalId = selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null;
     const nextStep = selectedHospitalIds.length > 0 ? 'messages-ready' : 'select-hospitals';
 
     return {
@@ -148,13 +138,7 @@ export class GetPatientSessionStateUseCase {
       },
       formalConversationState: conversationState,
       chatbotOrchestrationState: {
-        sessionId: widgetSessionId,
-        selectedHospitalId,
-        selectedHospitalIds,
         conversationSummary: aiChatSession?.statusSnapshot.conversationSummary ?? '',
-        pendingOffer: aiChatSession?.statusSnapshot.pendingOffer ?? null,
-        pendingQuestion: aiChatSession?.statusSnapshot.pendingQuestion ?? null,
-        lastNextAction: aiChatSession?.statusSnapshot.lastNextAction ?? null,
       },
     };
   }

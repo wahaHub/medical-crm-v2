@@ -285,8 +285,6 @@ describe('Internal routes', () => {
         profile: null,
         status_snapshot: { risk_level: 'LOW' },
         conversation_summary: '',
-        pending_offer: null,
-        pending_question: null,
         recent_messages: [],
         active_followups: [],
       });
@@ -317,8 +315,6 @@ describe('Internal routes', () => {
           profile: null,
           status_snapshot: { risk_level: 'LOW' },
           conversation_summary: '',
-          pending_offer: null,
-          pending_question: null,
           recent_messages: [],
           active_followups: [],
         },
@@ -351,8 +347,6 @@ describe('Internal routes', () => {
             engagement_mode: 'DEEP_WORKFLOW',
             writeback_depth: 'complete',
             next_action: 'REQUEST_DOC_UPLOAD',
-            selected_hospital_id: 'hospital-1',
-            prequalification_reason_codes: ['form_completed'],
           },
           tool_results: [],
           final_response_metadata: {},
@@ -384,8 +378,6 @@ describe('Internal routes', () => {
         policyDecision: expect.objectContaining({
           engagementMode: 'DEEP_WORKFLOW',
           writebackDepth: 'complete',
-          selectedHospitalId: 'hospital-1',
-          prequalificationReasonCodes: ['form_completed'],
           nextAction: 'REQUEST_DOC_UPLOAD',
         }),
       }));
@@ -420,10 +412,8 @@ describe('Internal routes', () => {
               engagementMode: 'DEEP_WORKFLOW',
               writebackDepth: 'complete',
               nextAction: 'REQUEST_DOC_UPLOAD',
-              selectedHospitalId: 'hospital-2',
               riskLevel: 'LOW',
               reasonCodes: ['canonical_semantics_consumed'],
-              prequalificationReasonCodes: ['form_completed'],
               shortlist: [{
                 hospitalId: 'hospital-2',
                 matchType: 'matched',
@@ -443,10 +433,8 @@ describe('Internal routes', () => {
           engagementMode: 'DEEP_WORKFLOW',
           writebackDepth: 'complete',
           nextAction: 'REQUEST_DOC_UPLOAD',
-          selectedHospitalId: 'hospital-2',
           riskLevel: 'LOW',
           reasonCodes: ['canonical_semantics_consumed'],
-          prequalificationReasonCodes: ['form_completed'],
           shortlist: [{
             hospitalId: 'hospital-2',
             matchType: 'matched',
@@ -505,10 +493,8 @@ describe('Internal routes', () => {
           engagementMode: 'DEEP_WORKFLOW',
           writebackDepth: 'complete',
           nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-          selectedHospitalId: undefined,
           riskLevel: undefined,
           reasonCodes: [],
-          prequalificationReasonCodes: [],
           shortlist: [{
             hospitalId: 'hospital-3',
             matchType: 'matched',

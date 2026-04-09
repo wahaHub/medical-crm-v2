@@ -10,10 +10,8 @@ export interface WritebackPlannerInput {
     engagementMode?: AiPolicyEngagementMode;
     writebackDepth?: 'minimal' | 'moderate' | 'complete';
     nextAction: AiPolicyBackendNextAction;
-    selectedHospitalId?: string;
     riskLevel?: string;
     reasonCodes?: string[];
-    prequalificationReasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
   };
 }
@@ -44,7 +42,6 @@ export interface WritebackPlan {
   messageMetadata: {
     engagementMode?: AiPolicyEngagementMode;
     writebackDepth?: 'minimal' | 'moderate' | 'complete';
-    prequalificationReasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
     reasonCodes?: string[];
   };
@@ -59,19 +56,12 @@ export class WritebackPlannerService {
       engagementMode,
       input.policyDecision.writebackDepth,
     );
-    const hasPrequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes !== undefined;
-    const prequalificationReasonCodes = input.policyDecision.prequalificationReasonCodes ?? [];
     const baseStatusPatch = {
       ...(engagementMode ? { engagementMode } : {}),
-      ...(input.policyDecision.selectedHospitalId !== undefined
-        ? { selectedHospitalId: input.policyDecision.selectedHospitalId }
-        : {}),
-      ...(hasPrequalificationReasonCodes ? { prequalificationReasonCodes } : {}),
     };
     const baseMessageMetadata = {
       ...(engagementMode ? { engagementMode } : {}),
       ...(writebackDepth ? { writebackDepth } : {}),
-      ...(hasPrequalificationReasonCodes ? { prequalificationReasonCodes } : {}),
     };
     const minimalOnly = writebackDepth === 'minimal';
     const moderateOnly = writebackDepth === 'moderate';
@@ -79,10 +69,7 @@ export class WritebackPlannerService {
     if (input.policyDecision.nextAction === 'SHOW_HOSPITAL_RECOMMENDATIONS') {
       if (minimalOnly) {
         return {
-          statusPatch: {
-            ...baseStatusPatch,
-            lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-          },
+          statusPatch: baseStatusPatch,
           timelineEvents: [],
           followupTrigger: null,
           messageMetadata: {
@@ -98,7 +85,6 @@ export class WritebackPlannerService {
           statusPatch: {
             ...baseStatusPatch,
             recommendationStatus: 'PRELIMINARY_SHOWN',
-            lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
           },
           timelineEvents: [],
           followupTrigger: null,
@@ -114,7 +100,6 @@ export class WritebackPlannerService {
         statusPatch: {
           ...baseStatusPatch,
           recommendationStatus: 'PRELIMINARY_SHOWN',
-          lastNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         },
         timelineEvents: [
           {
@@ -139,10 +124,7 @@ export class WritebackPlannerService {
     if (input.policyDecision.nextAction === 'REQUEST_DOC_UPLOAD') {
       if (minimalOnly) {
         return {
-          statusPatch: {
-            ...baseStatusPatch,
-            lastNextAction: 'REQUEST_DOC_UPLOAD',
-          },
+          statusPatch: baseStatusPatch,
           timelineEvents: [],
           followupTrigger: null,
           messageMetadata: {
@@ -157,7 +139,6 @@ export class WritebackPlannerService {
           statusPatch: {
             ...baseStatusPatch,
             docUploadStatus: 'REQUESTED',
-            lastNextAction: 'REQUEST_DOC_UPLOAD',
           },
           timelineEvents: [],
           followupTrigger: null,
@@ -172,7 +153,6 @@ export class WritebackPlannerService {
         statusPatch: {
           ...baseStatusPatch,
           docUploadStatus: 'REQUESTED',
-          lastNextAction: 'REQUEST_DOC_UPLOAD',
         },
         timelineEvents: [
           {
@@ -202,10 +182,7 @@ export class WritebackPlannerService {
 
     if (input.policyDecision.nextAction === 'EXPLAIN_DOC_UPLOAD') {
       return {
-        statusPatch: {
-          ...baseStatusPatch,
-          lastNextAction: 'EXPLAIN_DOC_UPLOAD',
-        },
+        statusPatch: baseStatusPatch,
         timelineEvents: [],
         followupTrigger: null,
         messageMetadata: {
@@ -217,10 +194,7 @@ export class WritebackPlannerService {
 
     if (input.policyDecision.nextAction === 'EXPLAIN_CONSULT_PROCESS') {
       return {
-        statusPatch: {
-          ...baseStatusPatch,
-          lastNextAction: 'EXPLAIN_CONSULT_PROCESS',
-        },
+        statusPatch: baseStatusPatch,
         timelineEvents: [],
         followupTrigger: null,
         messageMetadata: {
@@ -231,10 +205,7 @@ export class WritebackPlannerService {
     }
 
     return {
-      statusPatch: {
-        ...baseStatusPatch,
-        lastNextAction: input.policyDecision.nextAction,
-      },
+      statusPatch: baseStatusPatch,
       timelineEvents: [],
       followupTrigger: null,
       messageMetadata: {

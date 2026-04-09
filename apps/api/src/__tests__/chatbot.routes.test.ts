@@ -1676,20 +1676,13 @@ describe('Chatbot routes', () => {
       formStatus: 'not_started',
       docUploadStatus: 'none',
       recommendationStatus: 'not_started',
-      selectedHospitalId: null,
       consultationStatus: 'not_started',
       packageStatus: 'not_introduced',
       handoffStatus: 'not_needed',
-      leadMaturity: 'browsing',
       riskLevel: 'low',
       trustOrObjection: 'none',
       engagementMode: 'LIGHT_DISCOVERY',
-      prequalificationReasonCodes: [],
       enteredDeepWorkflowAt: null,
-      pendingOffer: null,
-      pendingQuestion: null,
-      lastNextAction: null,
-      lastResolvedIntent: null,
       conversationSummary: 'overview-state',
       lastPolicyDecisionAt: null,
       lastUserMessageAt: null,
@@ -1730,8 +1723,6 @@ describe('Chatbot routes', () => {
           pageContextJson: 'null',
           currentStatus: expectedStatusSnapshot,
           conversationSummary: expectedStatusSnapshot.conversationSummary,
-          pendingOffer: expectedStatusSnapshot.pendingOffer,
-          pendingQuestion: expectedStatusSnapshot.pendingQuestion,
           attachments: [],
           pageContext: null,
         },
@@ -1805,8 +1796,6 @@ describe('Chatbot routes', () => {
       hospitalType: 'COSMETIC',
       statusSnapshot: {
         conversationSummary: null,
-        pendingOffer: null,
-        pendingQuestion: null,
       },
     }));
 
@@ -1837,20 +1826,13 @@ describe('Chatbot routes', () => {
         formStatus: 'not_started',
         docUploadStatus: 'none',
         recommendationStatus: 'not_started',
-        selectedHospitalId: null,
         consultationStatus: 'not_introduced',
         packageStatus: 'not_introduced',
         handoffStatus: 'not_needed',
-        leadMaturity: 'browsing',
         riskLevel: 'low',
         trustOrObjection: 'none',
         engagementMode: 'LIGHT_DISCOVERY',
-        prequalificationReasonCodes: [],
         enteredDeepWorkflowAt: null,
-        pendingOffer: null,
-        pendingQuestion: null,
-        lastNextAction: null,
-        lastResolvedIntent: null,
         conversationSummary: '',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
@@ -2072,7 +2054,6 @@ describe('Chatbot routes', () => {
         patientId: 'patient-1',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: null,
           consultationStatus: 'not_introduced',
         },
       }))
@@ -2081,15 +2062,22 @@ describe('Chatbot routes', () => {
         patientId: 'patient-1',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: {
-            type: 'QUESTIONNAIRE',
-            payload: {
-              templateId: questionnaireTemplateId,
-            },
-          },
           consultationStatus: 'not_introduced',
         },
       }));
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      structuredData: {
+        patientHospitalSelection: {
+          medicalFormStatus: 'NOT_STARTED',
+        },
+      },
+    });
+    mockServices.getTemplateByDisease.execute.mockResolvedValue({
+      template: {
+        id: questionnaireTemplateId,
+      },
+    });
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
       userId: 'patient-1',
       role: 'PATIENT',
@@ -2142,7 +2130,6 @@ describe('Chatbot routes', () => {
         patientId: 'patient-3',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: null,
           consultationStatus: 'not_introduced',
         },
       }))
@@ -2151,10 +2138,17 @@ describe('Chatbot routes', () => {
         patientId: 'patient-3',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: null,
           consultationStatus: 'not_introduced',
         },
       }));
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      structuredData: {
+        patientHospitalSelection: {
+          medicalFormStatus: 'NOT_STARTED',
+        },
+      },
+    });
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
       userId: 'patient-3',
       role: 'PATIENT',
@@ -2205,15 +2199,85 @@ describe('Chatbot routes', () => {
     expect(mockServices.getTemplateByDisease.execute).toHaveBeenCalledWith('DEFAULT');
   });
 
+  it('POST /api/v2/chatbot/chat prefers a case-specific questionnaire template over the default fallback', async () => {
+    const questionnaireTemplateId = '77777777-7777-4777-8777-777777777777';
+    mockServices.aiChatSessionRepo.findBySessionId
+      .mockResolvedValueOnce(makeSession({
+        sessionId: 'widget-chat:patient-7:550e8400-e29b-41d4-a716-446655440000',
+        patientId: 'patient-7',
+        hospitalType: 'REGULAR',
+        statusSnapshot: {
+          consultationStatus: 'not_introduced',
+        },
+      }))
+      .mockResolvedValueOnce(makeSession({
+        sessionId: 'widget-chat:patient-7:550e8400-e29b-41d4-a716-446655440000',
+        patientId: 'patient-7',
+        hospitalType: 'REGULAR',
+        statusSnapshot: {
+          consultationStatus: 'not_introduced',
+        },
+      }));
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      questionCollectorTemplateId: questionnaireTemplateId,
+      structuredData: {
+        patientHospitalSelection: {
+          medicalFormStatus: 'NOT_STARTED',
+        },
+      },
+    });
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-7',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-docs-case-template',
+      answer: JSON.stringify({
+        answer: 'Please upload your records so I can guide the next step more accurately.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'REQUEST_DOC_UPLOAD',
+        responseMode: 'grounded_with_guidance',
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-cookie-7',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-7:550e8400-e29b-41d4-a716-446655440000',
+        hospitalType: 'REGULAR',
+        message: 'Please recommend a hospital for me',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.blocks).toEqual([
+      expect.objectContaining({
+        type: 'QUESTIONNAIRE_MODAL_TRIGGER',
+        templateId: questionnaireTemplateId,
+      }),
+    ]);
+    expect(mockServices.getTemplateByDisease.execute).not.toHaveBeenCalledWith('DEFAULT');
+  });
+
   it('POST /api/v2/chatbot/chat derives public intent from canonical resolvedIntent when provider intent drifts', async () => {
-    const questionnaireTemplateId = '44444444-4444-4444-8444-444444444444';
     mockServices.aiChatSessionRepo.findBySessionId
       .mockResolvedValueOnce(makeSession({
         sessionId: 'widget-chat:patient-4:550e8400-e29b-41d4-a716-446655440000',
         patientId: 'patient-4',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: null,
           consultationStatus: 'not_introduced',
         },
       }))
@@ -2222,12 +2286,6 @@ describe('Chatbot routes', () => {
         patientId: 'patient-4',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: {
-            type: 'QUESTIONNAIRE',
-            payload: {
-              templateId: questionnaireTemplateId,
-            },
-          },
           consultationStatus: 'not_introduced',
         },
       }));
@@ -2278,14 +2336,12 @@ describe('Chatbot routes', () => {
   });
 
   it('POST /api/v2/chatbot/chat refreshes session state before saving difyConversationId so writeback status is not overwritten', async () => {
-    const questionnaireTemplateId = '22222222-2222-4222-8222-222222222222';
     mockServices.aiChatSessionRepo.findBySessionId
       .mockResolvedValueOnce(makeSession({
         sessionId: 'widget-chat:patient-2:550e8400-e29b-41d4-a716-446655440000',
         patientId: 'patient-2',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: null,
           consultationStatus: 'not_introduced',
         },
       }))
@@ -2294,12 +2350,6 @@ describe('Chatbot routes', () => {
         patientId: 'patient-2',
         hospitalType: 'REGULAR',
         statusSnapshot: {
-          pendingQuestion: {
-            type: 'QUESTIONNAIRE',
-            payload: {
-              templateId: questionnaireTemplateId,
-            },
-          },
           consultationStatus: 'not_introduced',
         },
       }))
@@ -2309,12 +2359,6 @@ describe('Chatbot routes', () => {
         hospitalType: 'REGULAR',
         difyConversationId: 'dify-conv-docs-preserve',
         statusSnapshot: {
-          pendingQuestion: {
-            type: 'QUESTIONNAIRE',
-            payload: {
-              templateId: questionnaireTemplateId,
-            },
-          },
           consultationStatus: 'not_introduced',
         },
       }));

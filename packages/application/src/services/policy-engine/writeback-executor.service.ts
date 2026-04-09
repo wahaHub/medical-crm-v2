@@ -4,7 +4,6 @@ import {
   AiFollowupTrigger,
   AiHandoff,
   type IAiChatMessageRepository,
-  type IQuestionCollectorRepository,
   type IAiChatSessionRepository,
   type IAiChatTimelineEventRepository,
   type IAiFollowupTriggerRepository,
@@ -23,7 +22,6 @@ export interface WritebackExecutorResult {
   messageMetadata: {
     engagementMode?: string;
     writebackDepth?: 'minimal' | 'moderate' | 'complete';
-    prequalificationReasonCodes?: string[];
     shortlist?: Array<Record<string, unknown>>;
     reasonCodes?: string[];
   };
@@ -35,7 +33,6 @@ export class WritebackExecutorService {
   constructor(
     private readonly sessionRepo: IAiChatSessionRepository,
     private readonly _profileRepo: IAiUserProfileRepository,
-    private readonly qcRepo: IQuestionCollectorRepository,
     private readonly messageRepo: IAiChatMessageRepository,
     private readonly timelineRepo: IAiChatTimelineEventRepository,
     private readonly followupRepo: IAiFollowupTriggerRepository,
@@ -52,13 +49,8 @@ export class WritebackExecutorService {
     }
 
     const plan = this.planner.plan(input);
-    const questionnairePendingQuestion = await this.resolveQuestionnairePendingQuestion(
-      currentSession.statusSnapshot.pendingQuestion,
-      input.policyDecision.nextAction,
-    );
     const statusUpdated = {
       ...plan.statusPatch,
-      ...(questionnairePendingQuestion ? { pendingQuestion: questionnairePendingQuestion } : {}),
       ...(shouldStampDeepWorkflowEntry(currentSession.statusSnapshot.enteredDeepWorkflowAt, input.policyDecision)
         ? { enteredDeepWorkflowAt: new Date() }
         : {}),
@@ -123,34 +115,6 @@ export class WritebackExecutorService {
       messageMetadata: plan.messageMetadata,
       followupCreated,
       handoffCreated,
-    };
-  }
-
-  private async resolveQuestionnairePendingQuestion(
-    currentPendingQuestion: { type: string; payload: Record<string, unknown> } | null,
-    nextAction: WritebackPlannerInput['policyDecision']['nextAction'],
-  ): Promise<{ type: string; payload: Record<string, unknown> } | null> {
-    if (nextAction !== 'REQUEST_DOC_UPLOAD') {
-      return null;
-    }
-
-    const currentTemplateId = currentPendingQuestion?.type === 'QUESTIONNAIRE'
-      ? currentPendingQuestion.payload['templateId']
-      : null;
-    if (typeof currentTemplateId === 'string' && currentTemplateId.length > 0) {
-      return currentPendingQuestion;
-    }
-
-    const defaultTemplate = await this.qcRepo.findActiveTemplateByCategory('DEFAULT');
-    if (!defaultTemplate) {
-      return null;
-    }
-
-    return {
-      type: 'QUESTIONNAIRE',
-      payload: {
-        templateId: defaultTemplate.id,
-      },
     };
   }
 }

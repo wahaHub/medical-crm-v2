@@ -22,11 +22,6 @@ export interface BuildPolicyContextInput {
   pageContext?: PolicyPageContext | null;
 }
 
-export interface PolicyPendingStateSummary {
-  exists: boolean;
-  type: string | null;
-}
-
 export interface PolicySafetyFlags {
   riskLevel: string;
   hasHighRiskSignal: boolean;
@@ -42,7 +37,7 @@ export interface PolicyPageContext {
 export interface ActiveHospitalContext {
   hospitalId: string;
   hospitalName: string | null;
-  source: 'page_context' | 'recent_user_message' | 'selected_hospital' | 'recent_shortlist';
+  source: 'page_context' | 'recent_user_message' | 'recent_shortlist';
 }
 
 export interface PolicyConversationContext {
@@ -58,9 +53,6 @@ export interface PolicyConversationContext {
   patientId: string | null;
   currentEngagementMode: AiPolicyEngagementMode | null;
   activeHospitalContext: ActiveHospitalContext | null;
-  pendingOffer: PolicyPendingStateSummary;
-  pendingQuestion: PolicyPendingStateSummary;
-  lastAssistantAction: string | null;
   safetyFlags: PolicySafetyFlags;
 }
 
@@ -110,9 +102,6 @@ export class ContextBuilderService {
       patientId: session.patientId,
       currentEngagementMode: inferCurrentEngagementMode(session.statusSnapshot),
       activeHospitalContext: null,
-      pendingOffer: summarizePendingState(session.statusSnapshot.pendingOffer),
-      pendingQuestion: summarizePendingState(session.statusSnapshot.pendingQuestion),
-      lastAssistantAction: session.statusSnapshot.lastNextAction,
       safetyFlags: buildSafetyFlags(session.statusSnapshot),
     } satisfies PolicyConversationContext;
 
@@ -129,9 +118,7 @@ export class ContextBuilderService {
         activeHospitalContext: deriveActiveHospitalContext({
           pageContext: input.pageContext,
           recentMessages,
-          selectedHospitalId: session.statusSnapshot.selectedHospitalId,
         }),
-        lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
       };
     }
 
@@ -151,18 +138,16 @@ export class ContextBuilderService {
       .reverse()
       .find((message) => message.role.toUpperCase() === 'ASSISTANT');
 
-    return {
-      ...baseContext,
-      contextDepth: 'full',
-      activeHospitalContext: deriveActiveHospitalContext({
-        pageContext: input.pageContext,
+      return {
+        ...baseContext,
+        contextDepth: 'full',
+        activeHospitalContext: deriveActiveHospitalContext({
+          pageContext: input.pageContext,
+          recentMessages,
+        }),
+        statusSnapshot: session.statusSnapshot,
+        profile,
         recentMessages,
-        selectedHospitalId: session.statusSnapshot.selectedHospitalId,
-      }),
-      lastAssistantAction: lastAssistantMessage?.nextAction ?? baseContext.lastAssistantAction,
-      statusSnapshot: session.statusSnapshot,
-      profile,
-      recentMessages,
       recentTimeline,
       activeFollowups,
       recentHandoffs,
@@ -173,7 +158,6 @@ export class ContextBuilderService {
 function deriveActiveHospitalContext(input: {
   pageContext?: PolicyPageContext | null;
   recentMessages: AiChatMessage[];
-  selectedHospitalId?: string | null;
 }): ActiveHospitalContext | null {
   if (input.pageContext?.type === 'HOSPITAL_DETAIL' && input.pageContext.hospitalId) {
     return {
@@ -197,14 +181,6 @@ function deriveActiveHospitalContext(input: {
     }
   }
 
-  if (input.selectedHospitalId) {
-    return {
-      hospitalId: input.selectedHospitalId,
-      hospitalName: null,
-      source: 'selected_hospital',
-    };
-  }
-
   for (const message of [...input.recentMessages].reverse()) {
     const shortlistHospitalId = readShortlistHospitalId(message.shortlist);
     if (shortlistHospitalId) {
@@ -218,16 +194,6 @@ function deriveActiveHospitalContext(input: {
 
   return null;
 }
-
-function summarizePendingState(
-  pendingState: AiChatStatusSnapshot['pendingOffer'] | AiChatStatusSnapshot['pendingQuestion'],
-): PolicyPendingStateSummary {
-  return {
-    exists: Boolean(pendingState),
-    type: pendingState?.type ?? null,
-  };
-}
-
 function buildSafetyFlags(statusSnapshot: AiChatStatusSnapshot): PolicySafetyFlags {
   const riskLevel = normalize(statusSnapshot.riskLevel);
   return {
@@ -257,17 +223,8 @@ function inferCurrentEngagementMode(statusSnapshot: AiChatStatusSnapshot): AiPol
   }
 
   if (
-    statusSnapshot.pendingOffer
-    || statusSnapshot.pendingQuestion
-    || isStarted(statusSnapshot.recommendationStatus, ['NOT_SHOWN', 'PRELIMINARY_SHOWN', 'SHORTLIST_SHOWN', 'EXPLORED'])
+    isStarted(statusSnapshot.recommendationStatus, ['NOT_SHOWN', 'PRELIMINARY_SHOWN', 'SHORTLIST_SHOWN', 'EXPLORED'])
     || isStarted(statusSnapshot.packageStatus, ['NOT_SHOWN', 'SHOWN', 'INTERESTED', 'EXPLORED'])
-    || [
-      'CREATE_CASE',
-      'SHOW_PACKAGE',
-      'EXPLORE_HOSPITAL_RECOMMENDATIONS',
-      'EXPLAIN_DOC_UPLOAD',
-      'EXPLAIN_CONSULT_PROCESS',
-    ].includes(statusSnapshot.lastNextAction ?? '')
   ) {
     return 'QUALIFIED_EXPLORATION';
   }

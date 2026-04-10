@@ -375,6 +375,14 @@ Skip when:
 
 - the selected package path does not require online consult
 
+If online consult is skipped:
+
+- the journey remains in `RECOMMENDATION.post` as the terminal recommendation-confirmed state for that path, unless:
+  - a human follow-up is requested, or
+  - the business process explicitly transitions to `HUMAN_HANDOFF`
+
+This avoids creating an undefined gap for package-driven flows that do not need consult.
+
 ### Entry into `HUMAN_HANDOFF`
 
 Allowed from any stage when:
@@ -624,6 +632,44 @@ When a user interacts with a resource:
 
 This keeps resource updates and journey progression in one place.
 
+### Step 7: CRM owns session resume
+
+When a session is reopened, CRM should rebuild the active chat context in this precedence order:
+
+1. CRM truth
+2. `currentStage` and `currentPhase` derived from that truth
+3. allowed resources derived from stage/phase and truth
+4. recent messages
+5. conversation summary
+
+This means:
+
+- CRM truth is authoritative
+- recent messages are contextual only
+- summary is advisory only
+
+If a restored client state references an outdated resource:
+
+- CRM should either refresh it to the current valid resource representation, or
+- reject it as stale and return the currently valid resource set
+
+Session resume must never trust stale widgets, recent-message inference, or summary text over current CRM truth.
+
+### Resource update idempotency
+
+All resource updates should support:
+
+- idempotent retry
+- duplicate-submit protection
+- stale-resource detection
+
+Minimum contract requirements:
+
+- repeated submits against an already-submitted resource must not create a second truth mutation
+- the server should support a resource action idempotency key, or derive a deterministic idempotency key from resource/action context
+- stage progression must happen only once per successful truth-changing resource update
+- stale resource updates must return the current valid resource snapshot instead of silently mutating old state
+
 ## Frontend Contract
 
 The chat widget should become a resource renderer, not a flow engine.
@@ -684,6 +730,11 @@ Behavior:
 - do not advance the stage
 - tell the user what failed and what can be retried
 
+If the client retries after a timeout but the original mutation already succeeded:
+
+- CRM should prefer idempotent success replay over a second mutation or misleading failure
+- the user should receive the current successful state when possible
+
 ### Journey-rule errors
 
 Examples:
@@ -697,6 +748,21 @@ Behavior:
 - do not advance
 - explain the correct current step
 - attach only the actually allowed resources
+
+### Stale widget conflicts
+
+Examples:
+
+- the user clicks an old recommendation card after a newer recommendation replaced it
+- the user resubmits a questionnaire card that was already accepted
+- the user tries to book a consult from an outdated booking resource
+
+Behavior:
+
+- reject the stale resource action in a structured way
+- return the current valid resource snapshot
+- keep the journey on the CRM-truth-derived stage/phase
+- explain the latest valid next step to the user
 
 ## Testing Strategy
 

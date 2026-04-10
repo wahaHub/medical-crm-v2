@@ -118,7 +118,8 @@
   Add tests that model:
   - FAQ during `EXPLAIN_PROCESS.active`
   - status-question turn during `COLLECT_MEDICAL_INPUTS.active`
-  - human-help request that does not yet trigger formal handoff
+  - non-handoff human-assistance phrasing that should stay informational
+  - explicit human-handoff request that must transition immediately
   Expected failure: current system still derives too much from `nextAction`.
 
 - [ ] **Step 3: Add failing assertions that recommendation-pressure turns only surface allowed resources**
@@ -126,6 +127,8 @@
   - recommendation request before medical inputs
   - refusal-to-fill-form follow-up
   - process explanation continuing without immediate questionnaire
+  - query-resource access from `EXPLAIN_PROCESS`, `COLLECT_MEDICAL_INPUTS`, `RECOMMENDATION`, `ONLINE_CONSULT`, and `HUMAN_HANDOFF`
+  - explicit human handoff availability from every stage
   Expected failure: current planner still returns `REQUEST_DOC_UPLOAD` too aggressively.
 
 - [ ] **Step 4: Add failing contract assertions for Dify inputs**
@@ -249,11 +252,9 @@
   - an already-submitted questionnaire resource returning the same successful state
   - a stale recommendation resource resolving to the current valid snapshot
 
-- [ ] **Step 5: Decide `chatbot-block-builder.ts` boundary explicitly**
-  Implement one of these, not both:
-  - keep it as a compatibility adapter from resource references to legacy chat blocks during rollout, or
-  - delete its responsibilities by moving all callers to native resource envelopes
-  Expected output: the plan executor should be able to point to one clear owner for block compatibility.
+- [ ] **Step 5: Keep `chatbot-block-builder.ts` as a narrow compatibility adapter only**
+  During the migration, keep `chatbot-block-builder.ts` solely as a resource-to-legacy-block adapter for old frontend consumers.
+  It must not contain independent progression logic or become a second flow engine.
 
 - [ ] **Step 6: Make questionnaire submission feed resource truth**
   Ensure successful questionnaire submit results in resource state that the registry can read as `submitted`.
@@ -331,7 +332,7 @@
   Remove direct route-local progression heuristics where possible.
 
 - [ ] **Step 2: Replace block-building assumptions with resource references**
-  Keep `chatbot-block-builder.ts` only as a compatibility shim if the response schema still needs legacy block envelopes during rollout.
+  Keep `chatbot-block-builder.ts` as the temporary compatibility shim for legacy block envelopes during rollout, but route all progression decisions through the journey/resource orchestration path first.
 
 - [ ] **Step 3: Update the widget starter to seed `EXPLAIN_PROCESS.active`**
   It should no longer seed questionnaire-first behavior by default.
@@ -480,7 +481,14 @@
   - questionnaire submit is recognized immediately
   - recommendation and query resources render from CRM-owned journey state
 
-- [ ] **Step 5: Commit in small batches during execution**
+- [ ] **Step 5: Validate rollout compatibility order**
+  Verify the implementation can be deployed in this order without breaking production mid-rollout:
+  1. CRM backend exposing both resource envelopes and legacy block compatibility
+  2. Dify workflow switched to CRM-owned journey/resource inputs
+  3. frontend switched to the registry-driven resource renderer
+  Expected: no intermediate deployment should leave the chat widget without a renderable response shape.
+
+- [ ] **Step 6: Commit in small batches during execution**
   Suggested sequence:
   1. `feat: add chat journey schemas and engine`
   2. `feat: add chat resource registry and orchestration`

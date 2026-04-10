@@ -214,25 +214,11 @@ describe('patientPublicRoutes', () => {
           requestClass: 'process_explanation',
           responseIntent: 'process_explanation',
         },
-        blocks: [
-          expect.objectContaining({
-            type: 'HOSPITAL_RECOMMENDATION_CARDS',
-            caseId: '11111111-1111-4111-8111-111111111111',
-          }),
-        ],
       },
     });
     expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).toContain('PROCESS_GUIDE');
     expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
-    const createdBlocks = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1]?.metadata?.blocks;
-    expect(createdBlocks?.[0]?.hospitals).toHaveLength(3);
-    expect(createdBlocks?.[0]?.hospitals?.[0]).toMatchObject({
-      hospitalId: '22222222-2222-4222-8222-222222222222',
-      name: 'Shenzhen ENT Center',
-      reason: 'ENT • International desk',
-      summary: 'ENT • International desk',
-      thumbnailUrl: 'https://example.com/logo.png',
-    });
+    expect(starterUpdate?.metadata?.blocks).toBeUndefined();
     expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
       'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
       'dify-conversation-1',
@@ -411,12 +397,14 @@ describe('patientPublicRoutes', () => {
         nextAction: 'REQUEST_DOC_UPLOAD',
         metadata: expect.objectContaining({
           internalNextAction: 'REQUEST_DOC_UPLOAD',
-          blocks: [
-            expect.objectContaining({
-              type: 'QUESTIONNAIRE_MODAL_TRIGGER',
-              templateId: questionnaireTemplateId,
-            }),
-          ],
+          chatbotV2: expect.objectContaining({
+            journeySnapshot: {
+              currentStage: 'RECOMMENDATION',
+              currentPhase: 'active',
+            },
+            requestClass: 'process_explanation',
+            responseIntent: 'process_explanation',
+          }),
         }),
       }),
     );
@@ -511,12 +499,12 @@ describe('patientPublicRoutes', () => {
         nextAction: 'REQUEST_DOC_UPLOAD',
         metadata: expect.objectContaining({
           internalNextAction: 'REQUEST_DOC_UPLOAD',
-          blocks: [
-            expect.objectContaining({
-              type: 'QUESTIONNAIRE_MODAL_TRIGGER',
-              templateId: questionnaireTemplateId,
-            }),
-          ],
+          chatbotV2: expect.objectContaining({
+            journeySnapshot: {
+              currentStage: 'RECOMMENDATION',
+              currentPhase: 'active',
+            },
+          }),
         }),
       }),
     );
@@ -606,16 +594,16 @@ describe('patientPublicRoutes', () => {
         nextAction: 'REQUEST_DOC_UPLOAD',
         metadata: expect.objectContaining({
           internalNextAction: 'REQUEST_DOC_UPLOAD',
-          blocks: [
-            expect.objectContaining({
-              type: 'QUESTIONNAIRE_MODAL_TRIGGER',
-              templateId: questionnaireTemplateId,
-            }),
-          ],
+          chatbotV2: expect.objectContaining({
+            journeySnapshot: {
+              currentStage: 'RECOMMENDATION',
+              currentPhase: 'active',
+            },
+          }),
         }),
       }),
     );
-    expect(services.getTemplateByDisease.execute).not.toHaveBeenCalledWith('DEFAULT');
+    expect(services.getTemplateByDisease.execute).not.toHaveBeenCalled();
   });
 
   it('allows onboarding without a captcha token while captcha is temporarily disabled', async () => {

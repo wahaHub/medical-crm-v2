@@ -28,10 +28,11 @@ export class RequestClassifierService {
       };
     }
 
-    if (resourceTypes.length > 0 && includesAny(message, STATUS_PATTERNS)) {
+    const statusResourceTypes = resourceTypes.filter((resourceType) => QUERY_RESOURCE_TYPES.includes(resourceType));
+    if (statusResourceTypes.length > 0 && includesAny(message, STATUS_PATTERNS)) {
       return {
         requestClass: 'resource_status_question',
-        targetResourceTypes: resourceTypes,
+        targetResourceTypes: statusResourceTypes,
       };
     }
 
@@ -63,6 +64,10 @@ const HUMAN_HELP_PATTERNS = [
   'agent',
   'staff',
   'real person',
+  '人工',
+  '真人',
+  '客服',
+  '顾问',
 ];
 
 const PROCESS_PATTERNS = [
@@ -72,6 +77,10 @@ const PROCESS_PATTERNS = [
   'process works',
   'service process',
   'how does it work',
+  '流程',
+  '怎么进行',
+  '怎么操作',
+  '怎么安排',
 ];
 
 const STATUS_PATTERNS = [
@@ -80,6 +89,10 @@ const STATUS_PATTERNS = [
   'progress',
   'update',
   'has my',
+  '状态',
+  '进度',
+  '有没有收到',
+  '查看一下',
 ];
 
 const PROGRESSION_PATTERNS = [
@@ -93,7 +106,16 @@ const PROGRESSION_PATTERNS = [
   'proceed',
   'get started',
   'start now',
+  '下一步',
+  '继续',
+  '继续推进',
+  '开始下一步',
+  '现在开始',
+  '开始流程',
+  '开始办理',
 ];
+
+const QUERY_RESOURCE_TYPES: ChatResourceType[] = ['MEDICAL_INVITATION_STATUS'];
 
 function mapLegacyResolvedIntent(resolvedIntent: string | undefined): RequestClassificationResult | null {
   switch (resolvedIntent) {
@@ -122,33 +144,38 @@ function mapLegacyResolvedIntent(resolvedIntent: string | undefined): RequestCla
 function detectResourceTypes(message: string): ChatResourceType[] {
   const resourceTypes = new Set<ChatResourceType>();
 
-  if (includesAny(message, ['questionnaire', 'medical form', 'intake form', 'form'])) {
+  if (includesAny(message, ['questionnaire', 'medical form', 'intake form', 'form', '问卷', '表格'])) {
     resourceTypes.add('QUESTIONNAIRE');
   }
 
-  if (includesAny(message, ['document', 'documents', 'upload', 'medical record', 'records', 'report', 'reports'])) {
+  if (includesAny(message, ['document', 'documents', 'upload', 'medical record', 'records', 'report', 'reports', '病历', '资料', '上传', '报告', '检查'])) {
     resourceTypes.add('MEDICAL_DOC_UPLOAD');
   }
 
-  if (includesAny(message, ['medical invitation', 'invitation'])) {
+  if (includesAny(message, ['medical invitation', 'invitation', '邀请函'])) {
     resourceTypes.add('MEDICAL_INVITATION_STATUS');
   }
 
-  if (includesAny(message, ['consult', 'consultation', 'booking', 'appointment'])) {
+  if (includesAny(message, ['consult', 'consultation', 'booking', 'appointment', '问诊', '预约'])) {
     resourceTypes.add('ONLINE_CONSULT_BOOKING');
   }
 
-  if (includesAny(message, ['package'])) {
+  if (includesAny(message, ['package', '套餐'])) {
     resourceTypes.add('PACKAGE_RECOMMENDATION');
   }
 
   if (
     includesAny(message, [
       'hospital recommendation',
+      'hospital recommendations',
       'doctor recommendation',
+      'doctor recommendations',
       'recommendation',
+      '医院推荐',
+      '医生推荐',
+      '推荐',
     ])
-    || (includesAny(message, ['hospital']) && !includesAny(message, ['invitation']))
+    || (includesAny(message, ['hospital', 'hospitals', 'doctor', 'doctors', '医院', '医生']) && !includesAny(message, ['invitation', '邀请函']))
   ) {
     resourceTypes.add('HOSPITAL_RECOMMENDATION');
   }
@@ -161,6 +188,10 @@ function includesAny(message: string, patterns: string[]): boolean {
 }
 
 function includesPattern(message: string, pattern: string): boolean {
+  if (/[^\x00-\x7F]/.test(pattern)) {
+    return message.includes(pattern);
+  }
+
   const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`\\b${escapedPattern}\\b`).test(message);
 }

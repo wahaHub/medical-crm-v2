@@ -249,6 +249,8 @@ export async function seedWidgetStarterMessage(input: {
   const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
     foundation: chatbotV2Turn.foundation,
     preTurn: chatbotV2Turn.preTurn,
+    userMessage: 'Explain the process',
+    refreshedStatusSnapshot: session.statusSnapshot,
     assistantNextAction: normalized.nextAction,
     assistantInternalNextAction: richAction,
   });

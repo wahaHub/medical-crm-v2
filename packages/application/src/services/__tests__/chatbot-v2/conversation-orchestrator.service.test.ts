@@ -157,7 +157,7 @@ describe('ConversationOrchestratorService', () => {
     expect(result.journeyUpdate).toBeUndefined();
   });
 
-  it('does not let resource requests bypass stage visibility when a later-stage resource is named directly', () => {
+  it('routes early recommendation requests into medical-input collection instead of exposing later-stage resources directly', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       userMessage: 'Show me hospital recommendations right now.',
@@ -179,10 +179,17 @@ describe('ConversationOrchestratorService', () => {
     });
 
     expect(result.responseIntent).toBe('resource_request');
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'pre',
+    });
     expect(result.allowedResources.map((resource) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
     expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        resourceType: 'PROCESS_GUIDE',
+        resourceType: 'MEDICAL_DOC_UPLOAD',
+      }),
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
       }),
       expect.objectContaining({
         resourceType: 'MEDICAL_INVITATION_STATUS',

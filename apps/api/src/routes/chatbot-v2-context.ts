@@ -1,7 +1,9 @@
 import {
   ConversationOrchestratorService,
+  JourneyEngineService,
   deriveJourneyTruthFromStatusSnapshot,
 } from '@medical-crm/application';
+import type { AiChatStatusSnapshot } from '@medical-crm/domain';
 import type {
   ChatResourceDescriptor,
   JourneySnapshot,
@@ -41,6 +43,7 @@ export type ChatbotV2TurnContext = {
 };
 
 const orchestrator = new ConversationOrchestratorService();
+const journeyEngine = new JourneyEngineService();
 
 export async function buildChatbotV2TurnContext(input: {
   services: Services;
@@ -100,10 +103,73 @@ export async function buildChatbotV2TurnContext(input: {
 export function buildChatbotV2PostTurnContext(input: {
   foundation: ChatbotV2FoundationContext;
   preTurn: ChatbotV2Envelope;
+  userMessage?: string;
+  refreshedStatusSnapshot?: Partial<AiChatStatusSnapshot> | null;
   assistantNextAction?: string | null;
   assistantInternalNextAction?: string | null;
 }): ChatbotV2Envelope {
-  return input.preTurn;
+  const requestClass = input.preTurn.requestClass
+    || input.foundation.requestClass
+    || 'faq';
+  const responseIntent = input.preTurn.responseIntent
+    || input.foundation.responseIntent
+    || requestClass;
+  const refreshedTruth = input.refreshedStatusSnapshot
+    ? deriveJourneyTruthFromStatusSnapshot(input.refreshedStatusSnapshot)
+    : input.foundation.truth;
+  const refreshedJourneySnapshot = journeyEngine.deriveSnapshot(refreshedTruth);
+  const userMessage = input.userMessage?.trim() ?? '';
+
+  if (compareJourneySnapshots(refreshedJourneySnapshot, input.preTurn.journeySnapshot) < 0) {
+    return {
+      ...input.preTurn,
+      requestClass,
+      responseIntent,
+    };
+  }
+
+  if (userMessage.length === 0) {
+    return {
+      journeySnapshot: refreshedJourneySnapshot,
+      resources: input.preTurn.resources,
+      requestClass,
+      responseIntent,
+    };
+  }
+
+  const orchestration = orchestrator.orchestrate({
+    scopeId: input.foundation.scopeId,
+    userMessage,
+    journeySnapshot: refreshedJourneySnapshot,
+    truth: refreshedTruth,
+  });
+
+  return {
+    journeySnapshot: orchestration.journeyUpdate ?? refreshedJourneySnapshot,
+    resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+    requestClass,
+    responseIntent,
+  };
+}
+
+function compareJourneySnapshots(left: JourneySnapshot, right: JourneySnapshot): number {
+  const leftScore = scoreJourneySnapshot(left);
+  const rightScore = scoreJourneySnapshot(right);
+  return leftScore - rightScore;
+}
+
+function scoreJourneySnapshot(snapshot: JourneySnapshot): number {
+  const stageOrder = [
+    'EXPLAIN_PROCESS',
+    'COLLECT_MEDICAL_INPUTS',
+    'RECOMMENDATION',
+    'ONLINE_CONSULT',
+    'HUMAN_HANDOFF',
+  ] as const;
+  const phaseOrder = ['pre', 'active', 'post'] as const;
+  const stageIndex = stageOrder.indexOf(snapshot.currentStage);
+  const phaseIndex = phaseOrder.indexOf(snapshot.currentPhase);
+  return (stageIndex < 0 ? 0 : stageIndex) * 10 + (phaseIndex < 0 ? 0 : phaseIndex);
 }
 
 function readFoundationContext(policyContext: unknown, fallbackSessionId: string): ChatbotV2FoundationContext {

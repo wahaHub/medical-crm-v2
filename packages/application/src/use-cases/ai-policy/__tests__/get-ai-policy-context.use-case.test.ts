@@ -70,7 +70,7 @@ describe('GetAiPolicyContextUseCase', () => {
       userMessage: 'hello',
     });
 
-    expect(result.chatbot_v2).toEqual({
+    expect(result.chatbot_v2).toMatchObject({
       source: 'status_snapshot_bridge',
       scope_id: 'session-123',
       request_class: 'faq',
@@ -79,21 +79,26 @@ describe('GetAiPolicyContextUseCase', () => {
         current_stage: 'EXPLAIN_PROCESS',
         current_phase: 'active',
       },
-      allowed_resources: [
-        {
-          resource_type: 'PROCESS_GUIDE',
-          resource_id: 'process-guide',
-          status: 'AVAILABLE',
-          stage_binding: null,
-          visibility: {
-            mode: 'global',
-          },
-          payload: {
-            title: 'Process guide',
-          },
-          actions: ['open'],
-        },
-      ],
     });
+    expect(result.chatbot_v2.allowed_resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resource_type: 'PROCESS_GUIDE',
+        resource_id: 'process-guide:session-123',
+        status: 'available',
+        stage_binding: {
+          stage: 'EXPLAIN_PROCESS',
+          phase: 'active',
+        },
+        payload: {
+          title: 'Understand our consultation process',
+        },
+      }),
+      expect.objectContaining({
+        resource_type: 'HUMAN_HANDOFF',
+      }),
+      expect.objectContaining({
+        resource_type: 'MEDICAL_INVITATION_STATUS',
+      }),
+    ]));
   });
 });

@@ -67,6 +67,24 @@ describe('RequestClassifierService', () => {
     });
   });
 
+  it('does not treat Chinese symptom narratives containing 开始 as progression requests', () => {
+    expect(service.classify({
+      userMessage: '我最近开始头疼，想了解一下怎么治疗。',
+    })).toEqual({
+      requestClass: 'faq',
+      targetResourceTypes: [],
+    });
+  });
+
+  it('does not treat generic Chinese hospital info requests as status questions', () => {
+    expect(service.classify({
+      userMessage: '我想查看一下医院介绍。',
+    })).toEqual({
+      requestClass: 'resource_request',
+      targetResourceTypes: ['HOSPITAL_RECOMMENDATION'],
+    });
+  });
+
   it('maps legacy resolved intents onto the new v2 request classes for bridge callers', () => {
     expect(service.classify({
       userMessage: 'legacy bridge',

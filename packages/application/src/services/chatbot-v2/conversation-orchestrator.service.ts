@@ -24,7 +24,7 @@ export class ConversationOrchestratorService {
 
     const currentRegistryInput = this.toRegistryInput(input, input.journeySnapshot);
     const currentAllowedResources = this.resourceRegistry.listResources(currentRegistryInput);
-    const journeyUpdate = this.computeJourneyUpdate(input, classification.requestClass);
+    const journeyUpdate = this.computeJourneyUpdate(input, classification);
     const projectedSnapshot = journeyUpdate ?? input.journeySnapshot;
     const projectedRegistryInput = this.toRegistryInput(input, projectedSnapshot);
     const projectedAllowedResources = this.resourceRegistry.listResources(projectedRegistryInput);
@@ -53,10 +53,24 @@ export class ConversationOrchestratorService {
 
   private computeJourneyUpdate(
     input: ConversationOrchestratorInput,
-    requestClass: ConversationOrchestrationResult['requestClass'],
+    classification: {
+      requestClass: ConversationOrchestrationResult['requestClass'];
+      targetResourceTypes: string[];
+    },
   ): JourneySnapshot | undefined {
     if (
-      requestClass === 'progression_request'
+      (
+        classification.requestClass === 'progression_request'
+        || (
+          classification.requestClass === 'resource_request'
+          && classification.targetResourceTypes.some((resourceType) =>
+            resourceType === 'MEDICAL_DOC_UPLOAD'
+            || resourceType === 'QUESTIONNAIRE'
+            || resourceType === 'HOSPITAL_RECOMMENDATION'
+            || resourceType === 'PACKAGE_RECOMMENDATION'
+          )
+        )
+      )
       && input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
     ) {
       return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
@@ -65,7 +79,7 @@ export class ConversationOrchestratorService {
     }
 
     if (
-      requestClass === 'human_help_request'
+      classification.requestClass === 'human_help_request'
       && input.journeySnapshot.currentStage !== 'HUMAN_HANDOFF'
     ) {
       return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {

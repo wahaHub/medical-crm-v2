@@ -1411,12 +1411,19 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.blocks).toEqual([
+    expect(json.blocks).toEqual([]);
+    expect(json.journeySnapshot).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'pre',
+    });
+    expect(json.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        type: 'HOSPITAL_RECOMMENDATION_CARDS',
-        caseId: '550e8400-e29b-41d4-a716-446655440000',
+        resourceType: 'MEDICAL_DOC_UPLOAD',
       }),
-    ]);
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
+      }),
+    ]));
   });
 
   it('POST /api/v2/chatbot/chat rejects invalid pageContext payloads', async () => {
@@ -1688,6 +1695,10 @@ describe('Chatbot routes', () => {
       family: 'service-overview',
       sessionId: 'session-multilingual-service-overview',
       expectedIntent: 'FAQ',
+      expectedChatbotV2Journey: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
       prompts: [
         'I want to understand your services.',
         '我想来了解下你们的服务内容。',
@@ -1751,6 +1762,10 @@ describe('Chatbot routes', () => {
       family: 'consult-process',
       sessionId: 'session-multilingual-consult-process',
       expectedIntent: 'CONSULT',
+      expectedChatbotV2Journey: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
       prompts: [
         'I want to understand the consultation process.',
         '我想知道咨询流程。',
@@ -1809,6 +1824,10 @@ describe('Chatbot routes', () => {
       family: 'doctor-or-hospital-direction',
       sessionId: 'session-multilingual-direction',
       expectedIntent: 'CONSULT',
+      expectedChatbotV2Journey: {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'pre',
+      },
       prompts: [
         'I need help finding the right doctor or hospital.',
         '我得了颈椎病，我想找颈椎病方向的医生。',
@@ -1876,6 +1895,10 @@ describe('Chatbot routes', () => {
       family: 'recommendation-ask',
       sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
       expectedIntent: 'CONSULT',
+      expectedChatbotV2Journey: {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'pre',
+      },
       prompts: [
         'Can you recommend which hospital I should talk to?',
         '你能推荐适合我的医院吗？',
@@ -1937,16 +1960,12 @@ describe('Chatbot routes', () => {
         internal_next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         engagementMode: 'QUALIFIED_EXPLORATION',
       },
-      expectedBlocks: [
-        expect.objectContaining({
-          type: 'HOSPITAL_RECOMMENDATION_CARDS',
-          caseId: '550e8400-e29b-41d4-a716-446655440000',
-        }),
-      ],
+      expectedBlocks: [],
     },
   ])('POST /api/v2/chatbot/chat keeps $family prompts aligned across English and Chinese', async ({
     sessionId,
     expectedIntent,
+    expectedChatbotV2Journey,
     prompts,
     difyResponse,
     expectedNextAction,
@@ -2009,10 +2028,7 @@ describe('Chatbot routes', () => {
           attachments: [],
           pageContext: null,
           chatbotV2: expect.objectContaining({
-            journeySnapshot: {
-              currentStage: 'EXPLAIN_PROCESS',
-              currentPhase: 'active',
-            },
+            journeySnapshot: expectedChatbotV2Journey,
             resources: expect.any(Array),
           }),
         },

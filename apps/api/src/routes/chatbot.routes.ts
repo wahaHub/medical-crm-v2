@@ -223,6 +223,10 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
     foundation: chatbotV2Turn.foundation,
     preTurn: chatbotV2Turn.preTurn,
+    userMessage: body.message.trim().length > 0
+      ? body.message
+      : (userAttachments.length > 0 ? 'Uploaded attachments' : ''),
+    refreshedStatusSnapshot: session.statusSnapshot,
     assistantNextAction: normalized.nextAction,
     assistantInternalNextAction: richAction,
   });

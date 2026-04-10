@@ -146,9 +146,9 @@ function buildWidgetStarterPrompt(input: {
     'The patient has just completed the basic intake form and opened their case in the patient widget.',
     contextBits.join(' '),
     'Start the conversation proactively as the assistant.',
-    'Briefly thank them, explain the most helpful next step, and decide whether hospital selection should begin now.',
-    'Only trigger hospital recommendations if it is appropriate to begin hospital selection now.',
-    'If you do trigger hospital recommendations, first explain why choosing preferred hospitals helps continue the case.',
+    'Briefly thank them and explain the most helpful CRM-approved next step.',
+    'Use the CRM chatbotV2 context as the source of truth for what can be shown next.',
+    'Do not decide whether hospital selection should begin. Only describe recommendations or selection if CRM already exposes those resources.',
   ].filter(Boolean).join(' ');
 }
 
@@ -211,7 +211,7 @@ export async function seedWidgetStarterMessage(input: {
   const chatbotV2Turn = await buildChatbotV2TurnContext({
     services: input.services,
     sessionId: session.sessionId,
-    userMessage: '',
+    userMessage: 'Explain the process',
   });
   const difyResponse = await input.services.difyApi.createChatMessage({
     inputs: {
@@ -259,6 +259,7 @@ export async function seedWidgetStarterMessage(input: {
   );
   const blocks = buildChatbotBlocks({
     richAction,
+    allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
     shortlist: normalized.shortlist,
     sessionCaseId: input.caseId,
     sessionConsultationStatus: session.statusSnapshot?.consultationStatus,

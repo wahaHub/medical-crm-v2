@@ -19,6 +19,7 @@ export { HandoffPolicyService } from './services/policy-engine/handoff-policy.se
 export { WritebackPlannerService } from './services/policy-engine/writeback-planner.service.js';
 export { WritebackExecutorService } from './services/policy-engine/writeback-executor.service.js';
 export { JourneyEngineService } from './services/chatbot-v2/journey-engine.service.js';
+export { deriveJourneyTruthFromStatusSnapshot } from './services/chatbot-v2/journey-truth.service.js';
 export { ResourceRegistryService } from './services/chatbot-v2/resource-registry.service.js';
 export { RequestClassifierService } from './services/chatbot-v2/request-classifier.service.js';
 export { ConversationOrchestratorService } from './services/chatbot-v2/conversation-orchestrator.service.js';

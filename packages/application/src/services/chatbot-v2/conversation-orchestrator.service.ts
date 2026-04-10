@@ -28,11 +28,8 @@ export class ConversationOrchestratorService {
     const projectedSnapshot = journeyUpdate ?? input.journeySnapshot;
     const projectedRegistryInput = this.toRegistryInput(input, projectedSnapshot);
     const projectedAllowedResources = this.resourceRegistry.listResources(projectedRegistryInput);
-    const targetedResources = classification.targetResourceTypes.map((resourceType) =>
-      this.resourceRegistry.resolveResource({
-        ...projectedRegistryInput,
-        resourceType,
-      }),
+    const targetedResources = projectedAllowedResources.filter((resource) =>
+      classification.targetResourceTypes.includes(resource.resourceType),
     );
     const allowedResources = targetedResources.length > 0
       ? dedupeResources(targetedResources)

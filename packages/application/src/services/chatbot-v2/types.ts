@@ -88,4 +88,6 @@ export interface ChatbotV2FoundationState {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   allowedResources: ChatbotV2ResourceDescriptor[];
+  requestClass?: ChatbotV2RequestClass;
+  responseIntent?: ChatbotV2RequestClass;
 }

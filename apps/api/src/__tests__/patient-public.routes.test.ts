@@ -208,9 +208,11 @@ describe('patientPublicRoutes', () => {
         internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         chatbotV2: {
           journeySnapshot: {
-            currentStage: 'RECOMMENDATION',
+            currentStage: 'EXPLAIN_PROCESS',
             currentPhase: 'active',
           },
+          requestClass: 'process_explanation',
+          responseIntent: 'process_explanation',
         },
         blocks: [
           expect.objectContaining({
@@ -220,8 +222,8 @@ describe('patientPublicRoutes', () => {
         ],
       },
     });
-    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).toContain('HOSPITAL_RECOMMENDATION');
-    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).not.toContain('PROCESS_GUIDE');
+    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).toContain('PROCESS_GUIDE');
+    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
     const createdBlocks = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1]?.metadata?.blocks;
     expect(createdBlocks?.[0]?.hospitals).toHaveLength(3);
     expect(createdBlocks?.[0]?.hospitals?.[0]).toMatchObject({
@@ -242,6 +244,8 @@ describe('patientPublicRoutes', () => {
             currentStage: 'EXPLAIN_PROCESS',
             currentPhase: 'active',
           },
+          requestClass: 'process_explanation',
+          responseIntent: 'process_explanation',
           resources: [{
             resourceType: 'PROCESS_GUIDE',
             resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
@@ -251,7 +255,7 @@ describe('patientPublicRoutes', () => {
               phase: 'active',
             },
             visibility: {
-              mode: 'journey',
+              mode: 'global',
             },
             payload: {
               title: 'Understand our consultation process',

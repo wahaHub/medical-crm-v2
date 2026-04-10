@@ -15,6 +15,7 @@ import type {
 } from '@medical-crm/domain';
 import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
 import { JourneyEngineService } from '../chatbot-v2/journey-engine.service.js';
+import { deriveJourneyTruthFromStatusSnapshot } from '../chatbot-v2/journey-truth.service.js';
 import { ResourceRegistryService } from '../chatbot-v2/resource-registry.service.js';
 import type { ChatbotV2FoundationState, JourneyTruth } from '../chatbot-v2/types.js';
 
@@ -330,37 +331,5 @@ function buildChatbotV2Foundation(input: {
 }
 
 function deriveJourneyTruth(statusSnapshot: AiChatStatusSnapshot): JourneyTruth {
-  const medicalInputsSubmitted = hasPersistedStatus(statusSnapshot.formStatus, ['COMPLETED', 'SUBMITTED']);
-  const recommendationAvailable = hasPersistedStatus(
-    statusSnapshot.recommendationStatus,
-    ['PRELIMINARY_SHOWN', 'SHORTLIST_SHOWN', 'EXPLORED'],
-  ) || hasPersistedStatus(
-    statusSnapshot.packageStatus,
-    ['SHOWN', 'INTERESTED', 'EXPLORED'],
-  );
-  const medicalInputsStarted = medicalInputsSubmitted
-    || hasPersistedStatus(statusSnapshot.formStatus, ['IN_PROGRESS', 'STARTED'])
-    || hasPersistedStatus(statusSnapshot.docUploadStatus, ['REQUESTED', 'UPLOADING', 'UPLOADED', 'IN_PROGRESS', 'SUBMITTED', 'STARTED']);
-  const onlineConsultSubmitted = hasPersistedStatus(statusSnapshot.consultationStatus, ['SCHEDULED', 'BOOKED', 'COMPLETED']);
-  const onlineConsultStarted = onlineConsultSubmitted
-    || hasPersistedStatus(statusSnapshot.consultationStatus, ['INTRODUCED', 'READY']);
-  const humanHandoffActive = hasPersistedStatus(statusSnapshot.handoffStatus, ['REQUESTED', 'OPEN', 'IN_PROGRESS']);
-  const humanHandoffSubmitted = humanHandoffActive
-    || hasPersistedStatus(statusSnapshot.handoffStatus, ['COMPLETED']);
-
-  return {
-    medicalInputsStarted,
-    medicalInputsSubmitted,
-    recommendationAvailable,
-    recommendationConfirmed: false,
-    onlineConsultRequired: onlineConsultStarted || onlineConsultSubmitted,
-    onlineConsultStarted,
-    onlineConsultSubmitted,
-    humanHandoffActive,
-    humanHandoffSubmitted,
-  };
-}
-
-function hasPersistedStatus(value: string | null | undefined, expectedStates: string[]): boolean {
-  return expectedStates.includes(normalize(value));
+  return deriveJourneyTruthFromStatusSnapshot(statusSnapshot);
 }

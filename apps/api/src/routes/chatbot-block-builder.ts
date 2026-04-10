@@ -5,6 +5,7 @@ import {
 
 export interface BlockBuildContext {
   richAction: string | null | undefined;
+  allowedResourceTypes?: string[];
   shortlist: Array<Record<string, unknown>>;
   sessionCaseId?: string | null;
   sessionConsultationStatus?: string | null;
@@ -21,9 +22,13 @@ export interface BlockBuildContext {
 
 export function buildChatbotBlocks(input: BlockBuildContext): ChatbotMessageBlock[] {
   const candidates: unknown[] = [];
+  const allowedResourceTypes = new Set(input.allowedResourceTypes ?? []);
 
   switch (input.richAction) {
     case 'EXPLAIN_MEDICAL_TRAVEL_PROCESS':
+      if (!allowedResourceTypes.has('PROCESS_GUIDE')) {
+        break;
+      }
       candidates.push({
         id: 'process-modal-1',
         type: 'PROCESS_MODAL_TRIGGER',
@@ -35,7 +40,7 @@ export function buildChatbotBlocks(input: BlockBuildContext): ChatbotMessageBloc
       break;
 
     case 'REQUEST_DOC_UPLOAD':
-      if (input.templateId) {
+      if (input.templateId && allowedResourceTypes.has('QUESTIONNAIRE')) {
         candidates.push({
           id: 'questionnaire-trigger-1',
           type: 'QUESTIONNAIRE_MODAL_TRIGGER',
@@ -48,7 +53,7 @@ export function buildChatbotBlocks(input: BlockBuildContext): ChatbotMessageBloc
       break;
 
     case 'SHOW_HOSPITAL_RECOMMENDATIONS':
-      if (input.sessionCaseId) {
+      if (input.sessionCaseId && allowedResourceTypes.has('HOSPITAL_RECOMMENDATION')) {
         const hospitals = input.shortlist
           .slice(0, 3)
           .reduce<Array<{
@@ -103,7 +108,7 @@ export function buildChatbotBlocks(input: BlockBuildContext): ChatbotMessageBloc
       break;
 
     case 'INVITE_ONLINE_CONSULT':
-      if (input.conversionDraft) {
+      if (input.conversionDraft && allowedResourceTypes.has('ONLINE_CONSULT_BOOKING')) {
         candidates.push({
           id: 'consult-booking-1',
           type: 'ONLINE_CONSULT_BOOKING_CARD',

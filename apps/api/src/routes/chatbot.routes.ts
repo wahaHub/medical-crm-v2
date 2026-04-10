@@ -120,13 +120,15 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     return patientSync.error;
   }
   session = patientSync.session;
+  const userAttachments = body.attachments ?? [];
   const chatbotV2Turn = await buildChatbotV2TurnContext({
     services: svc,
     sessionId: session.sessionId,
-    userMessage: body.message,
+    userMessage: body.message.trim().length > 0
+      ? body.message
+      : (userAttachments.length > 0 ? 'Uploaded attachments' : ''),
     pageContext: body.pageContext ?? null,
   });
-  const userAttachments = body.attachments ?? [];
 
   const userMessage = await svc.aiChatMessageRepo.create(new AiChatMessage({
     id: generateId(),
@@ -231,6 +233,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   );
   const blocks = buildChatbotBlocks({
     richAction,
+    allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
     shortlist: normalized.shortlist,
     sessionCaseId,
     sessionConsultationStatus: session.statusSnapshot?.consultationStatus,

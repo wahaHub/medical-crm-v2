@@ -131,13 +131,15 @@ describe('Dify workflow v2 contract', () => {
     ]));
   });
 
-  it('parses chatbotV2 into journey state, allowed resource types, and conservative next-action hints', () => {
+  it('parses chatbotV2 into CRM-owned turn intent, journey state, allowed resource types, and conservative next-action hints', () => {
     const dsl = loadDsl();
     const parseNode = findNode(dsl.workflow.graph.nodes, 'parse_chatbot_v2_context');
     const parseCode = parseNode.data?.code ?? '';
     const outputNames = Object.keys(parseNode.data?.outputs ?? {});
 
     expect(outputNames).toEqual(expect.arrayContaining([
+      'request_class',
+      'response_intent',
       'current_stage',
       'current_phase',
       'allowed_resource_types',
@@ -146,6 +148,10 @@ describe('Dify workflow v2 contract', () => {
 
     expect(parseCode).toContain('journeySnapshot');
     expect(parseCode).toContain('journey_snapshot');
+    expect(parseCode).toContain('requestClass');
+    expect(parseCode).toContain('request_class');
+    expect(parseCode).toContain('responseIntent');
+    expect(parseCode).toContain('response_intent');
     expect(parseCode).toContain('allowedResources');
     expect(parseCode).toContain('allowed_resources');
     expect(parseCode).toContain('PROCESS_GUIDE');
@@ -172,6 +178,8 @@ describe('Dify workflow v2 contract', () => {
     const promptInputs = userPrompt(composerNode);
 
     expect(prompt).toContain('Dify is not the workflow owner');
+    expect(prompt).toContain('request class');
+    expect(prompt).toContain('response intent');
     expect(prompt).toContain('current stage');
     expect(prompt).toContain('current phase');
     expect(prompt).toContain('allowed resources');
@@ -187,6 +195,8 @@ describe('Dify workflow v2 contract', () => {
 
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.current_stage#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.current_phase#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.request_class#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.response_intent#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_resource_types#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_next_action_hints#}}');
     expect(promptInputs).toContain('{{#start.currentStatus#}}');

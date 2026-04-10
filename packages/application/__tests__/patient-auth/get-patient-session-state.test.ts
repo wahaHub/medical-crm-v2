@@ -162,8 +162,8 @@ describe('GetPatientSessionStateUseCase', () => {
         conversationIds: [expect.any(String), 'conv-hosp-1'],
       },
       journeySnapshot: {
-        currentStage: 'EXPLAIN_PROCESS',
-        currentPhase: 'active',
+        currentStage: 'RECOMMENDATION',
+        currentPhase: 'post',
       },
       chatbotOrchestrationState: {
         conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
@@ -393,7 +393,7 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.caseId).toBe('case-4');
     expect(result.journeySnapshot).toEqual({
       currentStage: 'RECOMMENDATION',
-      currentPhase: 'active',
+      currentPhase: 'post',
     });
   });
 

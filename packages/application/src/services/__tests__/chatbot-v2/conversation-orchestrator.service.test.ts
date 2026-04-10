@@ -156,4 +156,37 @@ describe('ConversationOrchestratorService', () => {
     });
     expect(result.journeyUpdate).toBeUndefined();
   });
+
+  it('does not let resource requests bypass stage visibility when a later-stage resource is named directly', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      userMessage: 'Show me hospital recommendations right now.',
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: false,
+        medicalInputsSubmitted: false,
+        recommendationAvailable: false,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    });
+
+    expect(result.responseIntent).toBe('resource_request');
+    expect(result.allowedResources.map((resource) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'PROCESS_GUIDE',
+      }),
+      expect.objectContaining({
+        resourceType: 'MEDICAL_INVITATION_STATUS',
+      }),
+    ]));
+  });
 });

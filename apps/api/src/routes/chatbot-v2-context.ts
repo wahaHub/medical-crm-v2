@@ -1,4 +1,7 @@
-import { ConversationOrchestratorService, ResourceRegistryService } from '@medical-crm/application';
+import {
+  ConversationOrchestratorService,
+  deriveJourneyTruthFromStatusSnapshot,
+} from '@medical-crm/application';
 import type {
   ChatResourceDescriptor,
   JourneySnapshot,
@@ -17,6 +20,8 @@ type PageContext = {
 type ChatbotV2Envelope = {
   journeySnapshot: JourneySnapshot;
   resources: ChatResourceDescriptor[];
+  requestClass: string;
+  responseIntent: string;
 };
 
 type JourneyTruth = ReturnType<typeof deriveJourneyTruth>;
@@ -26,6 +31,8 @@ type ChatbotV2FoundationContext = {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   resources: ChatResourceDescriptor[];
+  requestClass?: string;
+  responseIntent?: string;
 };
 
 export type ChatbotV2TurnContext = {
@@ -34,7 +41,6 @@ export type ChatbotV2TurnContext = {
 };
 
 const orchestrator = new ConversationOrchestratorService();
-const resourceRegistry = new ResourceRegistryService();
 
 export async function buildChatbotV2TurnContext(input: {
   services: Services;
@@ -54,22 +60,38 @@ export async function buildChatbotV2TurnContext(input: {
       preTurn: {
         journeySnapshot: foundation.journeySnapshot,
         resources: foundation.resources,
+        requestClass: 'process_explanation',
+        responseIntent: 'process_explanation',
       },
       foundation,
     };
   }
 
-  const orchestration = orchestrator.orchestrate({
-    scopeId: foundation.scopeId,
-    userMessage: input.userMessage,
-    journeySnapshot: foundation.journeySnapshot,
-    truth: foundation.truth,
-  });
+  if (!foundation.requestClass || !foundation.responseIntent) {
+    const orchestration = orchestrator.orchestrate({
+      scopeId: foundation.scopeId,
+      userMessage: input.userMessage,
+      journeySnapshot: foundation.journeySnapshot,
+      truth: foundation.truth,
+    });
+
+    return {
+      preTurn: {
+        journeySnapshot: orchestration.journeyUpdate ?? foundation.journeySnapshot,
+        resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+        requestClass: orchestration.requestClass,
+        responseIntent: orchestration.responseIntent,
+      },
+      foundation,
+    };
+  }
 
   return {
     preTurn: {
-      journeySnapshot: orchestration.journeyUpdate ?? foundation.journeySnapshot,
-      resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+      journeySnapshot: foundation.journeySnapshot,
+      resources: foundation.resources,
+      requestClass: foundation.requestClass ?? 'faq',
+      responseIntent: foundation.responseIntent ?? foundation.requestClass ?? 'faq',
     },
     foundation,
   };
@@ -81,33 +103,7 @@ export function buildChatbotV2PostTurnContext(input: {
   assistantNextAction?: string | null;
   assistantInternalNextAction?: string | null;
 }): ChatbotV2Envelope {
-  const journeySnapshot = derivePostTurnJourneySnapshot(
-    input.preTurn.journeySnapshot,
-    input.assistantInternalNextAction ?? input.assistantNextAction,
-  );
-  if (
-    journeySnapshot.currentStage === input.preTurn.journeySnapshot.currentStage
-    && journeySnapshot.currentPhase === input.preTurn.journeySnapshot.currentPhase
-  ) {
-    return {
-      journeySnapshot,
-      resources: input.preTurn.resources,
-    };
-  }
-
-  return {
-    journeySnapshot,
-    resources: resourceRegistry.listResources({
-      scopeId: input.foundation.scopeId,
-      journeySnapshot,
-      truth: {
-        medicalInputsSubmitted: input.foundation.truth.medicalInputsSubmitted,
-        recommendationConfirmed: input.foundation.truth.recommendationConfirmed,
-        onlineConsultSubmitted: input.foundation.truth.onlineConsultSubmitted,
-        humanHandoffSubmitted: input.foundation.truth.humanHandoffSubmitted,
-      },
-    }).map((resource) => ChatResourceDescriptorSchema.parse(resource)),
-  };
+  return input.preTurn;
 }
 
 function readFoundationContext(policyContext: unknown, fallbackSessionId: string): ChatbotV2FoundationContext {
@@ -137,6 +133,8 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
     journeySnapshot,
     truth: deriveJourneyTruth(policyContext),
     resources,
+    requestClass: asString(chatbotV2.request_class),
+    responseIntent: asString(chatbotV2.response_intent),
   };
 }
 
@@ -149,88 +147,14 @@ function readScopeId(policyContext: unknown, fallbackSessionId: string): string 
 function deriveJourneyTruth(policyContext: unknown) {
   const root = asRecord(policyContext);
   const statusSnapshot = asRecord(root.status_snapshot);
-
-  const medicalInputsSubmitted = hasStatus(statusSnapshot.form_status, ['COMPLETED', 'SUBMITTED']);
-  const recommendationAvailable = hasStatus(statusSnapshot.recommendation_status, ['PRELIMINARY_SHOWN', 'SHORTLIST_SHOWN', 'EXPLORED'])
-    || hasStatus(statusSnapshot.package_status, ['SHOWN', 'INTERESTED', 'EXPLORED']);
-  const medicalInputsStarted = medicalInputsSubmitted
-    || hasStatus(statusSnapshot.form_status, ['IN_PROGRESS', 'STARTED'])
-    || hasStatus(statusSnapshot.doc_upload_status, ['REQUESTED', 'UPLOADING', 'UPLOADED', 'IN_PROGRESS', 'SUBMITTED', 'STARTED']);
-  const onlineConsultSubmitted = hasStatus(statusSnapshot.consultation_status, ['SCHEDULED', 'BOOKED', 'COMPLETED']);
-  const onlineConsultStarted = onlineConsultSubmitted
-    || hasStatus(statusSnapshot.consultation_status, ['INTRODUCED', 'READY']);
-  const humanHandoffActive = hasStatus(statusSnapshot.handoff_status, ['REQUESTED', 'OPEN', 'IN_PROGRESS']);
-  const humanHandoffSubmitted = humanHandoffActive
-    || hasStatus(statusSnapshot.handoff_status, ['COMPLETED']);
-
-  return {
-    medicalInputsStarted,
-    medicalInputsSubmitted,
-    recommendationAvailable,
-    recommendationConfirmed: false,
-    onlineConsultRequired: onlineConsultStarted || onlineConsultSubmitted,
-    onlineConsultStarted,
-    onlineConsultSubmitted,
-    humanHandoffActive,
-    humanHandoffSubmitted,
-  };
-}
-
-function derivePostTurnJourneySnapshot(current: JourneySnapshot, assistantAction: string | null | undefined): JourneySnapshot {
-  const actionSnapshot = mapAssistantActionToJourneySnapshot(assistantAction);
-  if (!actionSnapshot) {
-    return current;
-  }
-
-  return stageRank(actionSnapshot.currentStage) >= stageRank(current.currentStage)
-    ? actionSnapshot
-    : current;
-}
-
-function mapAssistantActionToJourneySnapshot(action: string | null | undefined): JourneySnapshot | null {
-  switch (action) {
-    case 'REQUEST_DOC_UPLOAD':
-      return {
-        currentStage: 'COLLECT_MEDICAL_INPUTS',
-        currentPhase: 'active',
-      };
-    case 'SHOW_HOSPITAL_RECOMMENDATIONS':
-    case 'SHOW_PACKAGE':
-      return {
-        currentStage: 'RECOMMENDATION',
-        currentPhase: 'active',
-      };
-    case 'INVITE_ONLINE_CONSULT':
-      return {
-        currentStage: 'ONLINE_CONSULT',
-        currentPhase: 'active',
-      };
-    case 'HUMAN_HANDOFF':
-    case 'SAFETY_HANDOFF':
-      return {
-        currentStage: 'HUMAN_HANDOFF',
-        currentPhase: 'active',
-      };
-    default:
-      return null;
-  }
-}
-
-function stageRank(stage: JourneySnapshot['currentStage']): number {
-  switch (stage) {
-    case 'EXPLAIN_PROCESS':
-      return 0;
-    case 'COLLECT_MEDICAL_INPUTS':
-      return 1;
-    case 'RECOMMENDATION':
-      return 2;
-    case 'ONLINE_CONSULT':
-      return 3;
-    case 'HUMAN_HANDOFF':
-      return 4;
-    default:
-      return 0;
-  }
+  return deriveJourneyTruthFromStatusSnapshot({
+    formStatus: normalizeStatus(statusSnapshot.form_status),
+    docUploadStatus: normalizeStatus(statusSnapshot.doc_upload_status),
+    recommendationStatus: normalizeStatus(statusSnapshot.recommendation_status),
+    consultationStatus: normalizeStatus(statusSnapshot.consultation_status),
+    packageStatus: normalizeStatus(statusSnapshot.package_status),
+    handoffStatus: normalizeStatus(statusSnapshot.handoff_status),
+  });
 }
 
 function normalizeVisibility(value: unknown): ChatResourceDescriptor['visibility'] {
@@ -240,11 +164,6 @@ function normalizeVisibility(value: unknown): ChatResourceDescriptor['visibility
   return mode === 'global' && allowedStages.length > 0
     ? { mode, allowedStages: allowedStages as ChatResourceDescriptor['visibility'] extends { allowedStages?: infer T } ? T : never }
     : { mode };
-}
-
-function hasStatus(value: unknown, allowed: string[]): boolean {
-  const normalized = normalizeStatus(value);
-  return normalized.length > 0 && allowed.includes(normalized);
 }
 
 function normalizeStatus(value: unknown): string {

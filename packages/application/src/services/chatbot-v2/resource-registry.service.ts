@@ -17,7 +17,7 @@ export class ResourceRegistryService {
       resourceType: 'PROCESS_GUIDE',
       resourceId: (input) => this.buildScopedResourceId('process-guide', input),
       stageBinding: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      visibility: { mode: 'journey' },
+      visibility: { mode: 'global' },
       status: () => 'available',
       payload: () => ({
         title: 'Understand our consultation process',
@@ -115,6 +115,15 @@ export class ResourceRegistryService {
     }
 
     return this.toDescriptor(definition, input);
+  }
+
+  isResourceVisible(input: ResourceRegistryInput & { resourceType: ChatResourceType }): boolean {
+    const definition = this.resourceDefinitions[input.resourceType];
+    if (!definition) {
+      return false;
+    }
+
+    return this.isVisible(definition, input);
   }
 
   private isVisible(definition: ResourceDefinition, input: ResourceRegistryInput): boolean {

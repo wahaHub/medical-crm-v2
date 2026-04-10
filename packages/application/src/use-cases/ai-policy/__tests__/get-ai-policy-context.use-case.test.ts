@@ -9,6 +9,17 @@ describe('GetAiPolicyContextUseCase', () => {
         chatbotV2Foundation: {
           source: 'status_snapshot_bridge',
           scopeId: 'session-123',
+          truth: {
+            medicalInputsStarted: false,
+            medicalInputsSubmitted: false,
+            recommendationAvailable: false,
+            recommendationConfirmed: false,
+            onlineConsultRequired: false,
+            onlineConsultStarted: false,
+            onlineConsultSubmitted: false,
+            humanHandoffActive: false,
+            humanHandoffSubmitted: false,
+          },
           journeySnapshot: {
             currentStage: 'EXPLAIN_PROCESS',
             currentPhase: 'active',
@@ -62,6 +73,8 @@ describe('GetAiPolicyContextUseCase', () => {
     expect(result.chatbot_v2).toEqual({
       source: 'status_snapshot_bridge',
       scope_id: 'session-123',
+      request_class: 'faq',
+      response_intent: 'faq',
       journey_snapshot: {
         current_stage: 'EXPLAIN_PROCESS',
         current_phase: 'active',

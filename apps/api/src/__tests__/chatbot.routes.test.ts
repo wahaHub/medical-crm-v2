@@ -246,11 +246,12 @@ describe('Chatbot routes', () => {
     expect(json.collectedFields?.country).toBe('Singapore');
     expect(json.missingItems).toEqual(['photo']);
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentStage: 'EXPLAIN_PROCESS',
       currentPhase: 'active',
     });
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('MEDICAL_DOC_UPLOAD');
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
+    expect(json.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
+    expect(json.resources.map((resource) => resource.resourceType)).not.toContain('MEDICAL_DOC_UPLOAD');
+    expect(json.resources.map((resource) => resource.resourceType)).not.toContain('QUESTIONNAIRE');
     expect(json.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
     expect(json.metadata).toMatchObject({
       structuredOutput: expect.objectContaining({
@@ -273,12 +274,14 @@ describe('Chatbot routes', () => {
               currentStage: 'EXPLAIN_PROCESS',
               currentPhase: 'active',
             },
-            resources: [
+            requestClass: 'resource_request',
+            responseIntent: 'resource_request',
+            resources: expect.arrayContaining([
               expect.objectContaining({
-                resourceType: 'ONLINE_CONSULT_BOOKING',
-                resourceId: 'online-consult-booking:session-1',
+                resourceType: 'PROCESS_GUIDE',
+                resourceId: 'process-guide:session-1',
               }),
-            ],
+            ]),
           }),
         }),
       }),
@@ -310,18 +313,20 @@ describe('Chatbot routes', () => {
     const assistantDraft = mockServices.aiChatMessageRepo.create.mock.calls[1]?.[0];
     expect((storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2).toMatchObject({
       journeySnapshot: {
-        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentStage: 'EXPLAIN_PROCESS',
         currentPhase: 'active',
       },
+      requestClass: 'resource_request',
+      responseIntent: 'resource_request',
     });
-    expect(json.resources).not.toEqual(difyPayload.inputs.chatbotV2.resources);
+    expect(json.resources).toEqual(difyPayload.inputs.chatbotV2.resources);
     expect(assistantDraft.id).toBe(difyPayload.inputs.assistantMessageId);
     expect(mockServices.aiChatMessageRepo.create.mock.invocationCallOrder[1]).toBeLessThan(
       mockServices.difyApi.createChatMessage.mock.invocationCallOrder[0]!,
     );
   });
 
-  it('POST /api/v2/chatbot/chat stores and returns post-turn chatbotV2 context instead of the pre-turn Dify input', async () => {
+  it('POST /api/v2/chatbot/chat keeps CRM-owned chatbotV2 context even when the assistant suggests a later-stage action', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-journey-123',
@@ -354,39 +359,47 @@ describe('Chatbot routes', () => {
     const difyChatbotV2 = (difyPayload.inputs as Record<string, unknown>).chatbotV2 as {
       journeySnapshot: { currentStage: string; currentPhase: string };
       resources: Array<{ resourceType: string }>;
+      requestClass: string;
+      responseIntent: string;
     };
     const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
       journeySnapshot: { currentStage: string; currentPhase: string };
       resources: Array<{ resourceType: string }>;
+      requestClass: string;
+      responseIntent: string;
     };
 
     expect(difyChatbotV2.journeySnapshot).toEqual({
       currentStage: 'EXPLAIN_PROCESS',
       currentPhase: 'active',
     });
-    expect(difyChatbotV2.resources).toEqual([
+    expect(difyChatbotV2.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        resourceType: 'ONLINE_CONSULT_BOOKING',
-        resourceId: 'online-consult-booking:session-1',
+        resourceType: 'PROCESS_GUIDE',
+        resourceId: 'process-guide:session-1',
       }),
-    ]);
+    ]));
+    expect(difyChatbotV2.requestClass).toBe('resource_request');
+    expect(difyChatbotV2.responseIntent).toBe('resource_request');
 
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
+      currentStage: 'EXPLAIN_PROCESS',
       currentPhase: 'active',
     });
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('HOSPITAL_RECOMMENDATION');
-    expect(json.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
+    expect(json.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
+    expect(json.resources.map((resource) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
 
     expect(storedChatbotV2.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
+      currentStage: 'EXPLAIN_PROCESS',
       currentPhase: 'active',
     });
-    expect(storedChatbotV2.resources.map((resource) => resource.resourceType)).toContain('HOSPITAL_RECOMMENDATION');
-    expect(storedChatbotV2.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
+    expect(storedChatbotV2.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
+    expect(storedChatbotV2.resources.map((resource) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
+    expect(storedChatbotV2.requestClass).toBe('resource_request');
+    expect(storedChatbotV2.responseIntent).toBe('resource_request');
 
-    expect(json.resources).not.toEqual(difyChatbotV2.resources);
-    expect(storedChatbotV2).not.toEqual(difyChatbotV2);
+    expect(json.resources).toEqual(difyChatbotV2.resources);
+    expect(storedChatbotV2).toEqual(difyChatbotV2);
   });
 
   it('POST /api/v2/chatbot/chat preserves targeted process resources after same-stage replies', async () => {

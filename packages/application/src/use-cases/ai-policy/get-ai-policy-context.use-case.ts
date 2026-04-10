@@ -20,6 +20,28 @@ export class GetAiPolicyContextUseCase {
 
     return {
       profile: context.profile,
+      chatbot_v2: {
+        source: context.chatbotV2Foundation.source,
+        scope_id: context.chatbotV2Foundation.scopeId,
+        journey_snapshot: {
+          current_stage: context.chatbotV2Foundation.journeySnapshot.currentStage,
+          current_phase: context.chatbotV2Foundation.journeySnapshot.currentPhase,
+        },
+        allowed_resources: context.chatbotV2Foundation.allowedResources.map((resource) => ({
+          resource_type: resource.resourceType,
+          resource_id: resource.resourceId,
+          status: resource.status,
+          stage_binding: resource.stageBinding
+            ? {
+              stage: resource.stageBinding.stage,
+              phase: resource.stageBinding.phase ?? null,
+            }
+            : null,
+          visibility: resource.visibility,
+          payload: resource.payload,
+          actions: resource.actions,
+        })),
+      },
       status_snapshot: {
         condition_status: context.statusSnapshot.conditionStatus,
         form_status: context.statusSnapshot.formStatus,

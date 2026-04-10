@@ -1,0 +1,279 @@
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+type DifyEdge = {
+  source: string;
+  sourceHandle?: string;
+  target: string;
+};
+
+type DifyNode = {
+  id: string;
+  data?: {
+    variables?: Array<{
+      variable?: string;
+    }>;
+    prompt_template?: Array<{
+      role?: string;
+      text?: string;
+    }>;
+    body?: {
+      type?: string;
+      data?: Array<{
+        key?: string;
+        value?: string;
+      }>;
+    };
+    outputs?: Record<string, { type?: string }>;
+    code?: string;
+    url?: string;
+    answer?: string;
+  };
+};
+
+type DifyWorkflow = {
+  workflow: {
+    graph: {
+      edges: DifyEdge[];
+      nodes: DifyNode[];
+    };
+  };
+};
+
+const dslPath = resolve(
+  import.meta.dirname,
+  '../../../../dify-config/medora-ai-chatbot-v2.dsl.yml',
+);
+const v1DslPath = resolve(
+  import.meta.dirname,
+  '../../../../dify-config/medora-ai-chatbot-v1.dsl.yml',
+);
+
+function loadDsl(path = dslPath): DifyWorkflow {
+  const json = execFileSync(
+    'ruby',
+    [
+      '-e',
+      "require 'yaml'; require 'json'; puts JSON.generate(YAML.load_file(ARGV[0]))",
+      path,
+    ],
+    {
+      encoding: 'utf8',
+    },
+  );
+
+  return JSON.parse(json) as DifyWorkflow;
+}
+
+function findNode(nodes: DifyNode[], id: string): DifyNode {
+  const node = nodes.find((candidate) => candidate.id === id);
+  if (!node) {
+    throw new Error(`Node not found: ${id}`);
+  }
+  return node;
+}
+
+function systemPrompt(node: DifyNode): string {
+  return (node.data?.prompt_template ?? [])
+    .find((item) => item.role === 'system')
+    ?.text ?? '';
+}
+
+function userPrompt(node: DifyNode): string {
+  return (node.data?.prompt_template ?? [])
+    .find((item) => item.role === 'user')
+    ?.text ?? '';
+}
+
+describe('Dify workflow v2 contract', () => {
+  it('defines a CRM-owned chatbotV2 start contract and the minimal v2 node chain', () => {
+    const dsl = loadDsl();
+    const startNode = findNode(dsl.workflow.graph.nodes, 'start');
+    const variableNames = new Set(
+      (startNode.data?.variables ?? [])
+        .map((item) => item.variable)
+        .filter((value): value is string => typeof value === 'string'),
+    );
+
+    expect(Array.from(variableNames)).toEqual(expect.arrayContaining([
+      'chatbotV2',
+      'sessionId',
+      'assistantMessageId',
+      'hospitalType',
+      'currentStatus',
+      'conversationSummary',
+      'pageContext',
+      'attachments',
+    ]));
+
+    expect(dsl.workflow.graph.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: 'start',
+        target: 'parse_chatbot_v2_context',
+      }),
+      expect.objectContaining({
+        source: 'parse_chatbot_v2_context',
+        target: 'response_composer_v2',
+      }),
+      expect.objectContaining({
+        source: 'response_composer_v2',
+        target: 'normalize_response_v2',
+      }),
+      expect.objectContaining({
+        source: 'normalize_response_v2',
+        target: 'writeback_http',
+      }),
+      expect.objectContaining({
+        source: 'writeback_http',
+        target: 'final_answer',
+      }),
+    ]));
+  });
+
+  it('parses chatbotV2 into journey state, allowed resource types, and conservative next-action hints', () => {
+    const dsl = loadDsl();
+    const parseNode = findNode(dsl.workflow.graph.nodes, 'parse_chatbot_v2_context');
+    const parseCode = parseNode.data?.code ?? '';
+    const outputNames = Object.keys(parseNode.data?.outputs ?? {});
+
+    expect(outputNames).toEqual(expect.arrayContaining([
+      'current_stage',
+      'current_phase',
+      'allowed_resource_types',
+      'allowed_next_action_hints',
+    ]));
+
+    expect(parseCode).toContain('journeySnapshot');
+    expect(parseCode).toContain('journey_snapshot');
+    expect(parseCode).toContain('allowedResources');
+    expect(parseCode).toContain('allowed_resources');
+    expect(parseCode).toContain('PROCESS_GUIDE');
+    expect(parseCode).toContain('MEDICAL_DOC_UPLOAD');
+    expect(parseCode).toContain('QUESTIONNAIRE');
+    expect(parseCode).toContain('ONLINE_CONSULT_BOOKING');
+    expect(parseCode).toContain('HUMAN_HANDOFF');
+    expect(parseCode).toContain('allowed_next_action_hints');
+    expect(parseCode).not.toContain('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(parseCode).not.toContain('SHOW_PACKAGE');
+    expect(parseCode).not.toContain('or "EXPLAIN_PROCESS"');
+    expect(parseCode).not.toContain('or "active"');
+    expect(parseCode).not.toContain('allowed_next_action_hints = ["ANSWER_FAQ"]');
+    expect(parseCode).not.toContain('if current_stage == "EXPLAIN_PROCESS"');
+    expect(parseCode).not.toContain('if current_stage == "COLLECT_MEDICAL_INPUTS"');
+    expect(parseCode).not.toContain('if current_stage == "ONLINE_CONSULT"');
+    expect(parseCode).not.toContain('if current_stage == "HUMAN_HANDOFF"');
+  });
+
+  it('grounds the v2 composer prompt in CRM journey state and forbids Dify-owned progression', () => {
+    const dsl = loadDsl();
+    const composerNode = findNode(dsl.workflow.graph.nodes, 'response_composer_v2');
+    const prompt = systemPrompt(composerNode);
+    const promptInputs = userPrompt(composerNode);
+
+    expect(prompt).toContain('Dify is not the workflow owner');
+    expect(prompt).toContain('current stage');
+    expect(prompt).toContain('current phase');
+    expect(prompt).toContain('allowed resources');
+    expect(prompt).toContain('current status');
+    expect(prompt).toContain('conversation summary');
+    expect(prompt).toContain('must not invent widgets');
+    expect(prompt).toContain('must not invent');
+    expect(prompt).toContain('allowed next-action hints');
+    expect(prompt).toContain('Return strict JSON only');
+    expect(prompt).not.toContain('SAFETY_HANDOFF');
+    expect(prompt).not.toContain('SHOW_HOSPITAL_RECOMMENDATIONS');
+    expect(prompt).not.toContain('SHOW_PACKAGE');
+
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.current_stage#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.current_phase#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_resource_types#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_next_action_hints#}}');
+    expect(promptInputs).toContain('{{#start.currentStatus#}}');
+    expect(promptInputs).toContain('{{#start.conversationSummary#}}');
+    expect(promptInputs).toContain('{{#start.pageContext#}}');
+    expect(promptInputs).toContain('{{#start.attachments#}}');
+  });
+
+  it('normalizes composer output before writeback and final answer', () => {
+    const dsl = loadDsl();
+    const normalizeNode = findNode(dsl.workflow.graph.nodes, 'normalize_response_v2');
+    const normalizeCode = normalizeNode.data?.code ?? '';
+    const outputNames = Object.keys(normalizeNode.data?.outputs ?? {});
+
+    expect(outputNames).toEqual(expect.arrayContaining([
+      'policy_decision_json',
+      'final_answer_json',
+    ]));
+    expect(normalizeCode).toContain('json.loads');
+    expect(normalizeCode).toContain('```');
+    expect(normalizeCode).toContain('safe minimal object');
+    expect(normalizeCode).toContain('policy_decision_json');
+    expect(normalizeCode).toContain('final_answer_json');
+    expect(normalizeCode).toContain('"answer"');
+    expect(normalizeCode).toContain('"nextAction"');
+  });
+
+  it('writes back through the internal v2 route with assistant_message_id, idempotency_key, and normalized policy data', () => {
+    const dsl = loadDsl();
+    const writebackNode = findNode(dsl.workflow.graph.nodes, 'writeback_http');
+    const finalAnswerNode = findNode(dsl.workflow.graph.nodes, 'final_answer');
+    const writebackBody = writebackNode.data?.body?.data?.[0]?.value ?? '';
+
+    expect(writebackNode.data?.url).toBe('{{#env.crm_base_url#}}/api/v2/internal/ai-policy/writeback');
+    expect(writebackBody).toContain('"version": "v1"');
+    expect(writebackBody).toContain('"session_id": "{{#start.sessionId#}}"');
+    expect(writebackBody).toContain('"payload": {');
+    expect(writebackBody).toContain('"assistant_message_id": "{{#start.assistantMessageId#}}"');
+    expect(writebackBody).toContain('"idempotency_key": "{{#start.sessionId#}}:{{#start.assistantMessageId#}}:chatbot-v2"');
+    expect(writebackBody).toContain('"policy_decision": {{#normalize_response_v2.policy_decision_json#}}');
+    expect(writebackBody).not.toContain('"request_id"');
+    expect(writebackBody).not.toContain('"actor"');
+    expect(writebackBody).not.toContain('"source_channel"');
+    expect(writebackBody).not.toContain('"hospital_type"');
+    expect(writebackBody).not.toContain('"final_response_metadata"');
+    expect(finalAnswerNode.data?.answer).toBe('{{#normalize_response_v2.final_answer_json#}}');
+  });
+
+  it('stays free of old v1 heuristic nodes and fields', () => {
+    const dsl = loadDsl();
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+    const nodeIds = new Set(dsl.workflow.graph.nodes.map((node) => node.id));
+
+    expect(yaml).not.toContain('pendingOffer');
+    expect(yaml).not.toContain('pendingQuestion');
+    expect(yaml).not.toContain('lead_maturity');
+    expect(yaml).not.toContain('selected_hospital_id');
+    expect(yaml).not.toContain('decide_http');
+    expect(yaml).not.toContain('action_gate');
+    expect(yaml).not.toContain('search_hospitals_http');
+    expect(yaml).not.toContain('list_packages_http');
+    expect(nodeIds.has('decide_http')).toBe(false);
+    expect(nodeIds.has('action_gate')).toBe(false);
+    expect(nodeIds.has('search_hospitals_http')).toBe(false);
+    expect(nodeIds.has('list_packages_http')).toBe(false);
+  });
+
+  it('keeps the legacy v1 file intact while v2 carries the new CRM-owned chain', () => {
+    const v1Dsl = loadDsl(v1DslPath);
+    const v2Dsl = loadDsl();
+    const v1Yaml = execFileSync('cat', [v1DslPath], { encoding: 'utf8' });
+    const v2Yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+    const v1NodeIds = new Set(v1Dsl.workflow.graph.nodes.map((node) => node.id));
+    const v2NodeIds = new Set(v2Dsl.workflow.graph.nodes.map((node) => node.id));
+
+    expect(v1Yaml).toContain('decide_http');
+    expect(v1Yaml).toContain('action_gate');
+    expect(v1Yaml).toContain('search_hospitals_http');
+    expect(v1Yaml).toContain('list_packages_http');
+    expect(v1NodeIds.has('decide_http')).toBe(true);
+    expect(v1NodeIds.has('action_gate')).toBe(true);
+
+    expect(v2Yaml).toContain('parse_chatbot_v2_context');
+    expect(v2Yaml).toContain('response_composer_v2');
+    expect(v2Yaml).toContain('normalize_response_v2');
+    expect(v2NodeIds.has('parse_chatbot_v2_context')).toBe(true);
+    expect(v2NodeIds.has('response_composer_v2')).toBe(true);
+    expect(v2NodeIds.has('normalize_response_v2')).toBe(true);
+  });
+});

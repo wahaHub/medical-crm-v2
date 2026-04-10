@@ -195,6 +195,7 @@ import {
   ContextBuilderService,
   RiskResolverService,
   ActionPlannerService,
+  JourneyEngineService,
   RecommendationPolicyService,
   HandoffPolicyService,
   WritebackPlannerService,
@@ -755,6 +756,7 @@ export function getServices(): AppServices {
     );
     const riskResolverService = new RiskResolverService();
     const actionPlannerService = new ActionPlannerService();
+    const journeyEngineService = new JourneyEngineService();
     const recommendationPolicyService = new RecommendationPolicyService();
     const handoffPolicyService = new HandoffPolicyService();
     const writebackPlannerService = new WritebackPlannerService();
@@ -800,7 +802,7 @@ export function getServices(): AppServices {
       listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
       getHospital: new GetHospitalUseCase(hospitalManagementRepo, userRepo),
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
-      updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo),
+      updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo, syncService),
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
       generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo, emailService),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
@@ -945,7 +947,15 @@ export function getServices(): AppServices {
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
       loginWithPassword: new LoginWithPasswordUseCase(patientRepo, patientAuthService),
       restoreGuestSession: new RestoreGuestSessionUseCase(patientRepo, patientAuthService),
-      getPatientSessionState: new GetPatientSessionStateUseCase(patientRepo, userRepo, caseRepo, chcRepo, conversationRepo, aiChatSessionRepo),
+      getPatientSessionState: new GetPatientSessionStateUseCase(
+        patientRepo,
+        userRepo,
+        caseRepo,
+        chcRepo,
+        conversationRepo,
+        aiChatSessionRepo,
+        journeyEngineService,
+      ),
       setPassword: new SetPasswordUseCase(patientRepo),
 
       createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),

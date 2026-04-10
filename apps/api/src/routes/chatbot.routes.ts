@@ -23,6 +23,7 @@ import {
 } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
+import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
 export const chatbotPublicRoutes = new OpenAPIHono();
 export const chatbotProtectedRoutes = new OpenAPIHono();
@@ -119,6 +120,12 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     return patientSync.error;
   }
   session = patientSync.session;
+  const chatbotV2Turn = await buildChatbotV2TurnContext({
+    services: svc,
+    sessionId: session.sessionId,
+    userMessage: body.message,
+    pageContext: body.pageContext ?? null,
+  });
   const userAttachments = body.attachments ?? [];
 
   const userMessage = await svc.aiChatMessageRepo.create(new AiChatMessage({
@@ -166,6 +173,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
         conversationSummary: session.statusSnapshot.conversationSummary,
         attachments: userAttachments,
         pageContext: body.pageContext ?? null,
+        chatbotV2: chatbotV2Turn.preTurn,
       },
       query: body.message.trim().length > 0 ? body.message : 'Uploaded attachments',
       user: body.sessionId,
@@ -210,6 +218,12 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     ? extractWorkflowState(sessionMessages)
     : { caseId: null, patientId: null, ticketId: null, lastConvertAction: null };
   const sessionCaseId = workflowState.caseId ?? extractWidgetSessionCaseId(session.sessionId);
+  const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
+    foundation: chatbotV2Turn.foundation,
+    preTurn: chatbotV2Turn.preTurn,
+    assistantNextAction: normalized.nextAction,
+    assistantInternalNextAction: richAction,
+  });
   const templateId = await resolveQuestionnaireTemplateId(
     svc,
     richAction,
@@ -243,6 +257,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     shortlist: normalized.shortlist,
     metadata: {
       ...normalized.metadata,
+      chatbotV2: postTurnChatbotV2,
       ...(blocks.length > 0 ? { blocks } : {}),
     },
   });
@@ -272,6 +287,8 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     recommendedProviders: normalized.recommendedProviders,
     reasonCodes: assistantMessage.reasonCodes,
     shortlist: assistantMessage.shortlist,
+    journeySnapshot: postTurnChatbotV2.journeySnapshot,
+    resources: postTurnChatbotV2.resources,
     blocks,
     metadata: normalizePublicMetadataForHistory(assistantMessage.metadata),
     history: {

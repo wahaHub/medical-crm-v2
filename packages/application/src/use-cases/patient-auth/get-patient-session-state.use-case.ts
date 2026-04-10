@@ -10,6 +10,8 @@ import { AiChatSession, Conversation } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
 import { asRecord, asNullableString, asNullableDate } from '../../utils/structured-data.js';
 import type { MedicalFormStatus } from '../../utils/structured-data.js';
+import { JourneyEngineService } from '../../services/chatbot-v2/journey-engine.service.js';
+import type { JourneySnapshot, JourneyTruth } from '../../services/chatbot-v2/types.js';
 
 export interface PatientSessionState {
   id: string;
@@ -48,6 +50,7 @@ export interface PatientSessionState {
     activeConversationId: string | null;
     conversationIds: string[];
   };
+  journeySnapshot: JourneySnapshot;
   chatbotOrchestrationState: {
     conversationSummary: string;
   };
@@ -61,6 +64,7 @@ export class GetPatientSessionStateUseCase {
     private readonly chcRepo: ICHCRepository,
     private readonly conversationRepo: IConversationRepository,
     private readonly aiChatSessionRepo: IAiChatSessionRepository,
+    private readonly journeyEngine: JourneyEngineService = new JourneyEngineService(),
   ) {}
 
   async execute(input: { patientId: string }): Promise<PatientSessionState> {
@@ -102,6 +106,9 @@ export class GetPatientSessionStateUseCase {
     }
     const selectedHospitalId = selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null;
     const nextStep = selectedHospitalIds.length > 0 ? 'messages-ready' : 'select-hospitals';
+    const journeySnapshot = this.journeyEngine.deriveSnapshot(
+      deriveJourneyTruth(medicalFormMetadata, aiChatSession),
+    );
 
     return {
       id: patient.id,
@@ -137,6 +144,7 @@ export class GetPatientSessionStateUseCase {
         sessionId: widgetSessionId,
       },
       formalConversationState: conversationState,
+      journeySnapshot,
       chatbotOrchestrationState: {
         conversationSummary: aiChatSession?.statusSnapshot.conversationSummary ?? '',
       },
@@ -186,6 +194,45 @@ export class GetPatientSessionStateUseCase {
       conversationIds: [conversation.id, ...hospitalConversationIds],
     };
   }
+}
+
+function deriveJourneyTruth(
+  medicalFormMetadata: MedicalFormMetadata,
+  aiChatSession: AiChatSession | null,
+): JourneyTruth {
+  const statusSnapshot = aiChatSession?.statusSnapshot;
+  const medicalInputsSubmitted = medicalFormMetadata.medicalFormStatus === 'SUBMITTED'
+    || hasPersistedStatus(statusSnapshot?.formStatus, ['COMPLETED', 'SUBMITTED']);
+  const recommendationAvailable = hasPersistedStatus(
+    statusSnapshot?.recommendationStatus,
+    ['PRELIMINARY_SHOWN', 'SHORTLIST_SHOWN', 'EXPLORED'],
+  ) || hasPersistedStatus(
+    statusSnapshot?.packageStatus,
+    ['SHOWN', 'INTERESTED', 'EXPLORED'],
+  );
+  const medicalInputsStarted = medicalInputsSubmitted
+    || hasPersistedStatus(statusSnapshot?.formStatus, ['IN_PROGRESS', 'STARTED'])
+    || hasPersistedStatus(statusSnapshot?.docUploadStatus, ['REQUESTED', 'UPLOADING', 'UPLOADED', 'IN_PROGRESS', 'SUBMITTED', 'STARTED']);
+  const onlineConsultSubmitted = hasPersistedStatus(statusSnapshot?.consultationStatus, ['SCHEDULED', 'BOOKED', 'COMPLETED']);
+  const onlineConsultStarted = onlineConsultSubmitted
+    || hasPersistedStatus(statusSnapshot?.consultationStatus, ['INTRODUCED', 'READY']);
+  const humanHandoffActive = hasPersistedStatus(statusSnapshot?.handoffStatus, ['REQUESTED', 'OPEN', 'IN_PROGRESS']);
+  const humanHandoffSubmitted = humanHandoffActive
+    || hasPersistedStatus(statusSnapshot?.handoffStatus, ['COMPLETED']);
+
+  return {
+    medicalInputsStarted,
+    medicalInputsSubmitted,
+    recommendationAvailable,
+    // Legacy restore can reconstruct actionable recommendation/consult phases
+    // without treating existing case selections as a canonical v2 confirmation.
+    recommendationConfirmed: false,
+    onlineConsultRequired: onlineConsultStarted || onlineConsultSubmitted,
+    onlineConsultStarted,
+    onlineConsultSubmitted,
+    humanHandoffActive,
+    humanHandoffSubmitted,
+  };
 }
 
 type EntryProfile = {
@@ -251,4 +298,12 @@ function getMedicalFormMetadata(structuredData: Record<string, unknown> | null):
     medicalFormSubmittedAt: asNullableDate(patientHospitalSelection?.['medicalFormSubmittedAt']),
     medicalFormResponseId: asNullableString(patientHospitalSelection?.['medicalFormResponseId']),
   };
+}
+
+function hasPersistedStatus(value: string | null | undefined, activeStates: string[]): boolean {
+  return activeStates.includes(normalizeStatus(value));
+}
+
+function normalizeStatus(value: string | null | undefined): string {
+  return (value ?? '').trim().toUpperCase();
 }

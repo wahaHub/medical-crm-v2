@@ -320,6 +320,7 @@ function shouldBridgeAlternativeRecommendations(
     && context.contextDepth === 'full'
     && context.activeHospitalContext !== null
     && context.activeHospitalContext.source !== 'recent_shortlist'
+    && context.statusSnapshot != null
     && !isMissingDocumentStatus(context.statusSnapshot.docUploadStatus);
 }
 

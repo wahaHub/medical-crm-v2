@@ -748,6 +748,33 @@ describe('ContextBuilderService', () => {
 
     expect(context.activeHospitalContext).toBeNull();
   });
+
+  it('exposes chatbot-v2 foundation state so policy callers do not need route-local journey heuristics', async () => {
+    const builder = buildContextBuilder();
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'What should I do next?',
+      depth: 'light',
+    });
+
+    expect(context.chatbotV2Foundation).toMatchObject({
+      scopeId: 'policy-session-ctx-1',
+      source: 'status_snapshot_bridge',
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+    });
+    expect(context.chatbotV2Foundation.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'PROCESS_GUIDE',
+      }),
+      expect.objectContaining({
+        resourceType: 'MEDICAL_INVITATION_STATUS',
+      }),
+    ]));
+  });
 });
 
 function buildContextBuilder(overrides: {

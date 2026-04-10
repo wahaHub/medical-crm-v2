@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   chatbotChatSchema,
+  chatbotChatResponseSchema,
   chatbotConvertSchema,
   chatbotHistoryResponseSchema,
   chatbotMessageBlockSchema,
@@ -184,6 +185,60 @@ describe('chatbotChatSchema', () => {
       sessionId: 'session-123',
       message: '',
     }).success).toBe(false);
+  });
+});
+
+describe('chatbotChatResponseSchema', () => {
+  it('accepts the additive chatbot-v2 journey snapshot and resource envelope while keeping legacy blocks', () => {
+    expect(chatbotChatResponseSchema.safeParse({
+      sessionId: 'session-123',
+      messageId: 'assistant-123',
+      answer: 'The next step is to share your records.',
+      intent: 'CONSULT',
+      topic: 'DOCUMENTS',
+      riskLevel: 'NORMAL',
+      canAnswer: true,
+      nextAction: 'REQUEST_DOC_UPLOAD',
+      secondaryAction: null,
+      responseMode: 'grounded_plus_guidance',
+      citations: [],
+      collectedFields: null,
+      missingItems: ['report'],
+      recommendedProviders: [],
+      reasonCodes: ['collect_medical_inputs'],
+      shortlist: [],
+      journeySnapshot: {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'active',
+      },
+      resources: [{
+        resourceType: 'QUESTIONNAIRE',
+        resourceId: 'questionnaire:session-123',
+        status: 'available',
+        stageBinding: {
+          stage: 'COLLECT_MEDICAL_INPUTS',
+          phase: 'active',
+        },
+        visibility: {
+          mode: 'journey',
+        },
+        payload: {
+          title: 'Complete your medical questionnaire',
+        },
+        actions: ['open', 'submit'],
+      }],
+      blocks: [{
+        id: 'questionnaire-trigger-1',
+        type: 'QUESTIONNAIRE_MODAL_TRIGGER',
+        templateId: '7f8e26b8-4ea1-40b4-9145-327fde0fe4e6',
+        title: 'Complete your medical questionnaire',
+      }],
+      metadata: {},
+      history: {
+        userMessageId: 'user-123',
+        assistantMessageId: 'assistant-123',
+      },
+    }).success).toBe(true);
   });
 });
 

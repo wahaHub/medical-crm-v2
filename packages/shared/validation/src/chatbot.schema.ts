@@ -5,6 +5,10 @@ import {
   AI_POLICY_RECOMMENDATION_SIGNALS,
   AI_POLICY_RESOLVED_INTENTS,
 } from '@medical-crm/utils';
+import {
+  ChatResourceDescriptorSchema,
+  JourneySnapshotSchema,
+} from './chatbot-v2/chat-journey.schema.js';
 
 export const chatbotHospitalTypeSchema = z.enum(['COSMETIC', 'REGULAR']);
 export const chatbotNextActionSchema = z.enum([
@@ -201,6 +205,8 @@ export const chatbotChatResponseSchema = z.object({
   recommendedProviders: z.array(chatbotRecommendedProviderSchema),
   reasonCodes: z.array(z.string()),
   shortlist: z.array(chatbotShortlistItemSchema),
+  journeySnapshot: JourneySnapshotSchema,
+  resources: z.array(ChatResourceDescriptorSchema).default([]),
   blocks: z.array(chatbotMessageBlockSchema).default([]),
   metadata: z.record(z.string(), z.unknown()),
   history: z.object({

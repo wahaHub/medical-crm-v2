@@ -1,0 +1,532 @@
+app:
+  name: Medora AI Chatbot v2
+  description: Minimal CRM-owned chatbot v2 workflow scaffold that reads journey/resource context from chatbotV2 start inputs, composes a guarded response, and writes back a conservative policy decision.
+  mode: advanced-chat
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.7.0
+dependencies: []
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - id: env-crm-base-url
+    name: crm_base_url
+    selector:
+    - env
+    - crm_base_url
+    value: REPLACE_ME_CRM_BASE_URL
+    value_type: string
+  - id: env-internal-api-secret
+    name: internal_api_secret
+    selector:
+    - env
+    - internal_api_secret
+    value: REPLACE_ME_INTERNAL_API_SECRET
+    value_type: secret
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - id: start-parse-chatbot-v2
+      source: start
+      sourceHandle: source
+      target: parse_chatbot_v2_context
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: start
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: parse-compose-v2
+      source: parse_chatbot_v2_context
+      sourceHandle: source
+      target: response_composer_v2
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: compose-writeback-v2
+      source: response_composer_v2
+      sourceHandle: source
+      target: normalize_response_v2
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: normalize-writeback-v2
+      source: normalize_response_v2
+      sourceHandle: source
+      target: writeback_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: writeback-final-v2
+      source: writeback_http
+      sourceHandle: source
+      target: final_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: http-request
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    nodes:
+    - id: start
+      type: custom
+      position:
+        x: 80
+        y: 240
+      data:
+        title: Start
+        desc: CRM-owned route inputs for the isolated chatbot v2 workflow.
+        type: start
+        variables:
+        - variable: chatbotV2
+          label: chatbotV2
+          type: text-input
+          required: true
+          max_length: 20000
+          placeholder: JSON stringified CRM chatbotV2 journey/resource context
+        - variable: sessionId
+          label: sessionId
+          type: text-input
+          required: true
+          max_length: 255
+          placeholder: CRM chatbot session id
+        - variable: assistantMessageId
+          label: assistantMessageId
+          type: text-input
+          required: true
+          max_length: 255
+          placeholder: Pre-generated CRM assistant message id
+        - variable: hospitalType
+          label: hospitalType
+          type: select
+          required: true
+          options:
+          - COSMETIC
+          - REGULAR
+          default: COSMETIC
+          max_length: 48
+          placeholder: Select hospital type
+        - variable: currentStatus
+          label: currentStatus
+          type: text-input
+          required: false
+          max_length: 8000
+          placeholder: JSON stringified current CRM status snapshot
+        - variable: conversationSummary
+          label: conversationSummary
+          type: text-input
+          required: false
+          max_length: 8000
+          placeholder: CRM conversation summary text
+        - variable: pageContext
+          label: pageContext
+          type: text-input
+          required: false
+          max_length: 8000
+          placeholder: JSON stringified CRM page context, or null
+        - variable: attachments
+          label: attachments
+          type: text-input
+          required: false
+          max_length: 8000
+          placeholder: JSON stringified attachment descriptors, or []
+    - id: parse_chatbot_v2_context
+      type: custom
+      position:
+        x: 430
+        y: 240
+      data:
+        title: Parse Chatbot V2 Context
+        desc: Extract the CRM-owned journey state and conservative allowed next-action hints from chatbotV2.
+        type: code
+        code_language: python3
+        code: |
+          import json
+
+          RESOURCE_TO_HINTS = {
+              "PROCESS_GUIDE": ["EXPLAIN_MEDICAL_TRAVEL_PROCESS", "EXPLAIN_CONSULT_PROCESS"],
+              "MEDICAL_DOC_UPLOAD": ["REQUEST_DOC_UPLOAD"],
+              "QUESTIONNAIRE": ["REQUEST_DOC_UPLOAD"],
+              "ONLINE_CONSULT_BOOKING": ["INVITE_ONLINE_CONSULT"],
+              "HUMAN_HANDOFF": ["HUMAN_HANDOFF"],
+          }
+
+          def _parse_json(value):
+              if isinstance(value, (dict, list)):
+                  return value
+              if not isinstance(value, str):
+                  return {}
+              text = value.strip()
+              if not text:
+                  return {}
+              try:
+                  return json.loads(text)
+              except Exception:
+                  return {}
+
+          def _pick(mapping, *keys):
+              if not isinstance(mapping, dict):
+                  return None
+              for key in keys:
+                  if key in mapping:
+                      return mapping.get(key)
+              return None
+
+          def _append_unique(items, value):
+              if isinstance(value, str) and value and value not in items:
+                  items.append(value)
+
+          def main(chatbot_v2: str) -> dict:
+              context = _parse_json(chatbot_v2)
+              journey = _pick(context, "journeySnapshot", "journey_snapshot")
+              if not isinstance(journey, dict):
+                  journey = {}
+
+              allowed_resources = _pick(context, "allowedResources", "allowed_resources")
+              if not isinstance(allowed_resources, list):
+                  allowed_resources = []
+
+              current_stage = _pick(journey, "currentStage", "current_stage")
+              if not isinstance(current_stage, str) or not current_stage:
+                  current_stage = "UNKNOWN"
+
+              current_phase = _pick(journey, "currentPhase", "current_phase")
+              if not isinstance(current_phase, str) or not current_phase:
+                  current_phase = "unknown"
+
+              allowed_resource_types = []
+              allowed_next_action_hints = []
+
+              for resource in allowed_resources:
+                  if not isinstance(resource, dict):
+                      continue
+
+                  resource_type = _pick(resource, "resourceType", "resource_type")
+                  _append_unique(allowed_resource_types, resource_type)
+                  for hint in RESOURCE_TO_HINTS.get(resource_type, []):
+                      _append_unique(allowed_next_action_hints, hint)
+
+              return {
+                  "current_stage": str(current_stage),
+                  "current_phase": str(current_phase),
+                  "allowed_resource_types": json.dumps(allowed_resource_types, ensure_ascii=True),
+                  "allowed_next_action_hints": json.dumps(allowed_next_action_hints, ensure_ascii=True),
+              }
+        outputs:
+          current_stage:
+            type: string
+            children: null
+          current_phase:
+            type: string
+            children: null
+          allowed_resource_types:
+            type: string
+            children: null
+          allowed_next_action_hints:
+            type: string
+            children: null
+        variables:
+        - variable: chatbot_v2
+          value_selector:
+          - start
+          - chatbotV2
+          value_type: string
+    - id: response_composer_v2
+      type: custom
+      position:
+        x: 780
+        y: 240
+      data:
+        title: Response Composer V2
+        desc: Compose a guarded CRM-owned answer and minimal writeback policy payload.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.2
+        prompt_template:
+        - role: system
+          text: |
+            You are the response composer for a CRM-owned medical journey chatbot.
+
+            Dify is not the workflow owner.
+            The CRM-provided chatbotV2 context is the source of truth for the current stage, current phase, allowed resources, and allowed next-action hints.
+            Ground every answer in the current stage, current phase, allowed resources, current status, conversation summary, page context, and attachments when they are relevant.
+
+            You must not invent widgets or progression beyond allowed hints.
+            You must not invent hospitals, packages, questionnaires, upload widgets, booking flows, or human handoff steps that are not present in the CRM inputs.
+
+            Return strict JSON only with this exact shape:
+            {
+              "answer": "string",
+              "nextAction": "ANSWER_FAQ|EXPLAIN_MEDICAL_TRAVEL_PROCESS|EXPLAIN_CONSULT_PROCESS|REQUEST_DOC_UPLOAD|INVITE_ONLINE_CONSULT|HUMAN_HANDOFF|null",
+              "writebackDepth": "minimal",
+              "reasonCodes": ["dify_v2_response"]
+            }
+
+            Rules:
+            - The answer must directly address the user's latest message first.
+            - Only suggest progression that is present in the allowed next-action hints.
+            - If no progression is clearly allowed or needed, set nextAction to ANSWER_FAQ.
+            - Keep writebackDepth set to minimal.
+            - Keep reasonCodes conservative and always include dify_v2_response.
+            - Do not claim a resource is available unless it appears in the allowed resources list.
+            - Do not announce a stage change, booking, upload start, or handoff completion unless CRM already exposed it.
+        - role: user
+          text: |
+            User message:
+            {{#sys.query#}}
+
+            Current stage:
+            {{#parse_chatbot_v2_context.current_stage#}}
+
+            Current phase:
+            {{#parse_chatbot_v2_context.current_phase#}}
+
+            Allowed resources:
+            {{#parse_chatbot_v2_context.allowed_resource_types#}}
+
+            Allowed next-action hints:
+            {{#parse_chatbot_v2_context.allowed_next_action_hints#}}
+
+            Current status:
+            {{#start.currentStatus#}}
+
+            Conversation summary:
+            {{#start.conversationSummary#}}
+
+            Page context:
+            {{#start.pageContext#}}
+
+            Attachments:
+            {{#start.attachments#}}
+        memory:
+          query_prompt_template: '{{#sys.query#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 8
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+        variables: []
+    - id: normalize_response_v2
+      type: custom
+      position:
+        x: 1100
+        y: 240
+      data:
+        title: Normalize Response V2
+        desc: Repair composer JSON into a safe minimal object for writeback and final answer.
+        type: code
+        code_language: python3
+        code: |
+          import json
+
+          ALLOWED_ACTIONS = {
+              "ANSWER_FAQ",
+              "EXPLAIN_MEDICAL_TRAVEL_PROCESS",
+              "EXPLAIN_CONSULT_PROCESS",
+              "REQUEST_DOC_UPLOAD",
+              "INVITE_ONLINE_CONSULT",
+              "HUMAN_HANDOFF",
+          }
+
+          def _extract_json_candidate(text: str) -> str:
+              content = (text or "").strip()
+              if not content:
+                  return ""
+              if "```" in content:
+                  start_fence = content.find("```")
+                  end_fence = content.rfind("```")
+                  if start_fence != -1 and end_fence != -1 and end_fence > start_fence:
+                      content = content[start_fence + 3:end_fence].strip()
+                      if "\n" in content:
+                          first_line, remainder = content.split("\n", 1)
+                          if first_line.strip().lower() in {"json", "javascript"}:
+                              content = remainder.strip()
+              start = content.find("{")
+              end = content.rfind("}")
+              if start != -1 and end != -1 and end > start:
+                  return content[start:end + 1]
+              return content
+
+          def _parse_actions(value: str) -> set[str]:
+              parsed = []
+              try:
+                  loaded = json.loads(value or "[]")
+                  if isinstance(loaded, list):
+                      parsed = loaded
+              except Exception:
+                  parsed = []
+              actions = set()
+              for item in parsed:
+                  if isinstance(item, str) and item:
+                      actions.add(item)
+              return actions
+
+          def main(response_text: str, allowed_next_action_hints: str) -> dict:
+              # Build a safe minimal object if parsing or validation fails.
+              safe_object = {
+                  "answer": "I can help with your current question based on the CRM context available.",
+                  "nextAction": "ANSWER_FAQ",
+                  "writebackDepth": "minimal",
+                  "reasonCodes": ["dify_v2_response", "normalizer_fallback"],
+              }
+
+              candidate = _extract_json_candidate(response_text)
+              parsed = None
+              try:
+                  loaded = json.loads(candidate)
+                  if isinstance(loaded, dict):
+                      parsed = loaded
+              except Exception:
+                  parsed = None
+
+              normalized = dict(safe_object)
+              if isinstance(parsed, dict):
+                  answer = parsed.get("answer")
+                  if isinstance(answer, str) and answer.strip():
+                      normalized["answer"] = answer.strip()
+
+                  reason_codes = parsed.get("reasonCodes")
+                  if isinstance(reason_codes, list):
+                      cleaned_reasons = [
+                          item for item in reason_codes
+                          if isinstance(item, str) and item.strip()
+                      ]
+                      if "dify_v2_response" not in cleaned_reasons:
+                          cleaned_reasons.append("dify_v2_response")
+                      normalized["reasonCodes"] = cleaned_reasons[:5] or ["dify_v2_response"]
+
+              allowed_hints = _parse_actions(allowed_next_action_hints)
+              next_action = parsed.get("nextAction") if isinstance(parsed, dict) else None
+              if isinstance(next_action, str) and next_action in ALLOWED_ACTIONS:
+                  if next_action == "ANSWER_FAQ" or next_action in allowed_hints:
+                      normalized["nextAction"] = next_action
+
+              writeback_depth = parsed.get("writebackDepth") if isinstance(parsed, dict) else None
+              if writeback_depth == "minimal":
+                  normalized["writebackDepth"] = "minimal"
+
+              normalized_json = json.dumps(normalized, ensure_ascii=True)
+              return {
+                  "policy_decision_json": normalized_json,
+                  "final_answer_json": normalized_json,
+              }
+        outputs:
+          policy_decision_json:
+            type: string
+            children: null
+          final_answer_json:
+            type: string
+            children: null
+        variables:
+        - variable: response_text
+          value_selector:
+          - response_composer_v2
+          - text
+          value_type: string
+        - variable: allowed_next_action_hints
+          value_selector:
+          - parse_chatbot_v2_context
+          - allowed_next_action_hints
+          value_type: string
+    - id: writeback_http
+      type: custom
+      position:
+        x: 1440
+        y: 240
+      data:
+        title: Backend Writeback
+        desc: Persist the assistant message id and a minimal policy decision back into CRM.
+        type: http-request
+        method: post
+        url: '{{#env.crm_base_url#}}/api/v2/internal/ai-policy/writeback'
+        authorization:
+          type: no-auth
+          config: null
+        headers: |-
+          Content-Type: application/json
+          X-Internal-Secret: {{#env.internal_api_secret#}}
+        params: ''
+        body:
+          type: json
+          data:
+          - key: ''
+            type: text
+            value: |
+              {
+                "version": "v1",
+                "session_id": "{{#start.sessionId#}}",
+                "payload": {
+                  "assistant_message_id": "{{#start.assistantMessageId#}}",
+                  "idempotency_key": "{{#start.sessionId#}}:{{#start.assistantMessageId#}}:chatbot-v2",
+                  "policy_decision": {{#normalize_response_v2.policy_decision_json#}}
+                }
+              }
+        timeout:
+          connect: 5
+          read: 10
+          write: 10
+        retry_config:
+          enabled: false
+          max_retries: 1
+          retry_interval: 500
+          exponential_backoff:
+            enabled: false
+            multiplier: 2
+            max_interval: 2000
+    - id: final_answer
+      type: custom
+      position:
+        x: 1780
+        y: 240
+      data:
+        title: Final Answer
+        desc: Return the normalized response JSON unchanged.
+        type: answer
+        variables: []
+        answer: '{{#normalize_response_v2.final_answer_json#}}'
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.88

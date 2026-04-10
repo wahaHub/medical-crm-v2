@@ -17,5 +17,6 @@ export * from './booking-request.schema.js';
 export * from './patient.schema.js';
 export * from './chatbot-faq.schema.js';
 export * from './chatbot.schema.js';
+export * from './chatbot-v2/chat-journey.schema.js';
 export * from './user-settings.schema.js';
 export * from './email-template.schema.js';

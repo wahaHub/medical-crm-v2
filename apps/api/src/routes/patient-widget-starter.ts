@@ -2,6 +2,7 @@ import { AiChatMessage, AiChatSession as AiChatSessionEntity, type AiChatNextAct
 import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
+import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
 const GENERIC_WIDGET_STARTER_CONTENT = 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.';
 const WIDGET_STARTER_VERSION = 'ai-v1';
@@ -207,6 +208,11 @@ export async function seedWidgetStarterMessage(input: {
   }
 
   const statusSnapshot = session.statusSnapshot ?? {};
+  const chatbotV2Turn = await buildChatbotV2TurnContext({
+    services: input.services,
+    sessionId: session.sessionId,
+    userMessage: '',
+  });
   const difyResponse = await input.services.difyApi.createChatMessage({
     inputs: {
       hospitalType: session.hospitalType,
@@ -218,6 +224,7 @@ export async function seedWidgetStarterMessage(input: {
       category: input.category ?? null,
       procedureId: input.procedureId ?? null,
       bootstrapMode: 'WIDGET_STARTER',
+      chatbotV2: chatbotV2Turn.preTurn,
     },
     query: buildWidgetStarterPrompt(input),
     user: session.sessionId,
@@ -239,6 +246,12 @@ export async function seedWidgetStarterMessage(input: {
   }
 
   const richAction = normalized.internalNextAction ?? normalized.nextAction;
+  const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
+    foundation: chatbotV2Turn.foundation,
+    preTurn: chatbotV2Turn.preTurn,
+    assistantNextAction: normalized.nextAction,
+    assistantInternalNextAction: richAction,
+  });
   const templateId = await resolveQuestionnaireTemplateId(
     input.services,
     richAction,
@@ -263,6 +276,7 @@ export async function seedWidgetStarterMessage(input: {
       widgetStarterVersion: WIDGET_STARTER_VERSION,
       draftState: 'succeeded',
       internalNextAction: normalized.internalNextAction,
+      chatbotV2: postTurnChatbotV2,
       ...(blocks.length > 0 ? { blocks } : {}),
     },
   });

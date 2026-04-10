@@ -161,6 +161,10 @@ describe('GetPatientSessionStateUseCase', () => {
         activeConversationId: expect.any(String),
         conversationIds: [expect.any(String), 'conv-hosp-1'],
       },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
       chatbotOrchestrationState: {
         conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
       },
@@ -226,6 +230,10 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.formalConversationState).toEqual({
       activeConversationId: 'conv-1',
       conversationIds: ['conv-1'],
+    });
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
     expect(result.chatbotOrchestrationState).toEqual({
       conversationSummary: '',
@@ -383,6 +391,205 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.selectedHospitalId).toBe('hospital-2');
     expect(result.selectedHospitalIds).toEqual(['hospital-2']);
     expect(result.caseId).toBe('case-4');
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'active',
+    });
+  });
+
+  it('restores COLLECT_MEDICAL_INPUTS.active when chatbot truth shows intake is in progress', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-6',
+        patientName: 'Hao Wang',
+        patientCountry: 'China',
+        structuredData: null,
+        createdAt: new Date('2026-03-07T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-6', caseId: 'case-6', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-6',
+      statusSnapshot: {
+        formStatus: 'IN_PROGRESS',
+        docUploadStatus: 'REQUESTED',
+        conversationSummary: 'Patient is filling out the intake.',
+      },
+    });
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'active',
+    });
+  });
+
+  it('restores ONLINE_CONSULT.active when the consult invitation is already underway', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-7',
+        patientName: 'Hao Wang',
+        patientCountry: 'China',
+        structuredData: {
+          patientHospitalSelection: {
+            medicalFormStatus: 'SUBMITTED',
+          },
+        },
+        createdAt: new Date('2026-03-08T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([
+      { hospitalId: 'hospital-3', removedAt: null },
+    ]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-7', caseId: 'case-7', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-7',
+      statusSnapshot: {
+        recommendationStatus: 'PRELIMINARY_SHOWN',
+        consultationStatus: 'READY',
+        conversationSummary: 'Consult scheduling is available.',
+      },
+    });
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'ONLINE_CONSULT',
+      currentPhase: 'active',
+    });
+  });
+
+  it('restores RECOMMENDATION.active when persisted package status shows recommendation content was already shown', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-8',
+        patientName: 'Hao Wang',
+        patientCountry: 'China',
+        structuredData: null,
+        createdAt: new Date('2026-03-09T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-8', caseId: 'case-8', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-8',
+      statusSnapshot: {
+        packageStatus: 'SHOWN',
+        conversationSummary: 'Package options were already presented.',
+      },
+    });
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'active',
+    });
+  });
+
+  it('does not let completed historical handoff override a newer consult phase on restore', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-9',
+        patientName: 'Hao Wang',
+        patientCountry: 'China',
+        structuredData: {
+          patientHospitalSelection: {
+            medicalFormStatus: 'SUBMITTED',
+          },
+        },
+        createdAt: new Date('2026-03-10T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([
+      { hospitalId: 'hospital-4', removedAt: null },
+    ]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-9', caseId: 'case-9', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-9',
+      statusSnapshot: {
+        consultationStatus: 'READY',
+        handoffStatus: 'COMPLETED',
+        conversationSummary: 'A prior handoff closed before consult resumed.',
+      },
+    });
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'ONLINE_CONSULT',
+      currentPhase: 'active',
+    });
   });
 
   it('uses only active CHC truth when multiple hospitals are selected, ignoring stale chat snapshot state', async () => {

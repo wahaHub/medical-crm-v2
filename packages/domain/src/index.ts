@@ -202,7 +202,13 @@ export type { IPackageRepository, PackageListQuery } from './ports/package-repos
 export type { IOrderRepository, OrderListQuery } from './ports/order-repository.port.js';
 
 // Phase 2 M5: Journey Enums
-export type { MilestoneEventType } from './enums/index.js';
+export type {
+  MilestoneEventType,
+  ChatJourneyStage,
+  ChatJourneyPhase,
+  ChatResourceStatus,
+  ChatResourceType,
+} from './enums/index.js';
 
 // Phase 2 M5: Entities
 export { CaseJourney } from './entities/case-journey.entity.js';

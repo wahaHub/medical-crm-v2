@@ -18,6 +18,20 @@ export { RecommendationPolicyService } from './services/policy-engine/recommenda
 export { HandoffPolicyService } from './services/policy-engine/handoff-policy.service.js';
 export { WritebackPlannerService } from './services/policy-engine/writeback-planner.service.js';
 export { WritebackExecutorService } from './services/policy-engine/writeback-executor.service.js';
+export { JourneyEngineService } from './services/chatbot-v2/journey-engine.service.js';
+export { ResourceRegistryService } from './services/chatbot-v2/resource-registry.service.js';
+export { RequestClassifierService } from './services/chatbot-v2/request-classifier.service.js';
+export { ConversationOrchestratorService } from './services/chatbot-v2/conversation-orchestrator.service.js';
+export type {
+  JourneySnapshot as ChatbotV2JourneySnapshot,
+  JourneyTruth as ChatbotV2JourneyTruth,
+  ChatbotV2RequestClass,
+  ChatbotV2ResourceDescriptor,
+  ChatbotV2FoundationState,
+  RequestClassificationInput as ChatbotV2RequestClassificationInput,
+  RequestClassificationResult as ChatbotV2RequestClassificationResult,
+  ConversationOrchestrationResult as ChatbotV2ConversationOrchestrationResult,
+} from './services/chatbot-v2/types.js';
 
 // DTOs
 export type { CaseDTO, HospitalCaseDetailDTO, CaseStatsDTO } from './dtos/case.dto.js';

@@ -87,6 +87,34 @@ describe('patientPublicRoutes', () => {
       getTemplateByDisease: {
         execute: vi.fn().mockRejectedValue(new Error('default questionnaire unavailable')),
       },
+      getAiPolicyContext: {
+        execute: vi.fn().mockResolvedValue({
+          chatbot_v2: {
+            source: 'status_snapshot_bridge',
+            scope_id: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            journey_snapshot: {
+              current_stage: 'RECOMMENDATION',
+              current_phase: 'active',
+            },
+            allowed_resources: [{
+              resource_type: 'HOSPITAL_RECOMMENDATION',
+              resource_id: 'hospital-recommendation:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+              status: 'available',
+              stage_binding: {
+                stage: 'RECOMMENDATION',
+                phase: 'active',
+              },
+              visibility: {
+                mode: 'journey',
+              },
+              payload: {
+                recommendationKind: 'hospital',
+              },
+              actions: ['open', 'submit'],
+            }],
+          },
+        }),
+      },
       ...overrides,
     };
   }
@@ -111,6 +139,34 @@ describe('patientPublicRoutes', () => {
     });
     const services = createBaseServices({
       initOnboarding: { execute },
+      getAiPolicyContext: {
+        execute: vi.fn().mockResolvedValue({
+          chatbot_v2: {
+            source: 'status_snapshot_bridge',
+            scope_id: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            journey_snapshot: {
+              current_stage: 'EXPLAIN_PROCESS',
+              current_phase: 'active',
+            },
+            allowed_resources: [{
+              resource_type: 'PROCESS_GUIDE',
+              resource_id: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+              status: 'available',
+              stage_binding: {
+                stage: 'EXPLAIN_PROCESS',
+                phase: 'active',
+              },
+              visibility: {
+                mode: 'journey',
+              },
+              payload: {
+                title: 'Understand our consultation process',
+              },
+              actions: ['open'],
+            }],
+          },
+        }),
+      },
     });
     mockGetServices.mockReturnValue(services);
 
@@ -143,12 +199,19 @@ describe('patientPublicRoutes', () => {
     expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
     expect(services.matchHospitals.execute).not.toHaveBeenCalled();
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledOnce();
-    expect(services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1]).toMatchObject({
+    const starterUpdate = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];
+    expect(starterUpdate).toMatchObject({
       nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
       metadata: {
         widgetStarterSeed: true,
         widgetStarterVersion: 'ai-v1',
         internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        chatbotV2: {
+          journeySnapshot: {
+            currentStage: 'RECOMMENDATION',
+            currentPhase: 'active',
+          },
+        },
         blocks: [
           expect.objectContaining({
             type: 'HOSPITAL_RECOMMENDATION_CARDS',
@@ -157,6 +220,8 @@ describe('patientPublicRoutes', () => {
         ],
       },
     });
+    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).toContain('HOSPITAL_RECOMMENDATION');
+    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).not.toContain('PROCESS_GUIDE');
     const createdBlocks = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1]?.metadata?.blocks;
     expect(createdBlocks?.[0]?.hospitals).toHaveLength(3);
     expect(createdBlocks?.[0]?.hospitals?.[0]).toMatchObject({
@@ -170,6 +235,32 @@ describe('patientPublicRoutes', () => {
       'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
       'dify-conversation-1',
     );
+    expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      inputs: expect.objectContaining({
+        chatbotV2: {
+          journeySnapshot: {
+            currentStage: 'EXPLAIN_PROCESS',
+            currentPhase: 'active',
+          },
+          resources: [{
+            resourceType: 'PROCESS_GUIDE',
+            resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            status: 'available',
+            stageBinding: {
+              stage: 'EXPLAIN_PROCESS',
+              phase: 'active',
+            },
+            visibility: {
+              mode: 'journey',
+            },
+            payload: {
+              title: 'Understand our consultation process',
+            },
+            actions: ['open'],
+          }],
+        },
+      }),
+    }));
   });
 
   it('does not overwrite an existing ai-v1 widget starter when the session has already been seeded', async () => {

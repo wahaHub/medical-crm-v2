@@ -308,6 +308,7 @@ vi.mock('@medical-crm/application', () => ({
   ContextBuilderService: vi.fn(() => ({})),
   RiskResolverService: vi.fn(() => ({})),
   ActionPlannerService: vi.fn(() => ({})),
+  JourneyEngineService: vi.fn(() => ({})),
   RecommendationPolicyService: vi.fn(() => ({})),
   HandoffPolicyService: vi.fn(() => ({})),
   WritebackPlannerService: vi.fn(() => ({})),

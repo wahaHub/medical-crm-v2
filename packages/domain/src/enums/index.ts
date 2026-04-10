@@ -124,6 +124,23 @@ export type ServiceCatalogCategory =
 // Phase 2 M9: BookingRequest
 export type BookingRequestStatus = 'PENDING' | 'HOSPITALS_MATCHED' | 'SELECTIONS_SAVED' | 'COMPLETED' | 'EXPIRED';
 export type BookingConditionType = 'COSMETIC' | 'MEDICAL' | 'DENTAL' | 'WELLNESS' | 'OTHER';
+export type ChatJourneyStage =
+  | 'EXPLAIN_PROCESS'
+  | 'COLLECT_MEDICAL_INPUTS'
+  | 'RECOMMENDATION'
+  | 'ONLINE_CONSULT'
+  | 'HUMAN_HANDOFF';
+export type ChatJourneyPhase = 'active' | 'pre' | 'post';
+export type ChatResourceStatus = 'available' | 'submitted' | 'failed';
+export type ChatResourceType =
+  | 'PROCESS_GUIDE'
+  | 'MEDICAL_DOC_UPLOAD'
+  | 'QUESTIONNAIRE'
+  | 'HOSPITAL_RECOMMENDATION'
+  | 'PACKAGE_RECOMMENDATION'
+  | 'ONLINE_CONSULT_BOOKING'
+  | 'HUMAN_HANDOFF'
+  | 'MEDICAL_INVITATION_STATUS';
 
 // Unified AI Translation System
 export type { TranslationTaskStatus, SourceDb, SupportedLanguage } from './translation.js';

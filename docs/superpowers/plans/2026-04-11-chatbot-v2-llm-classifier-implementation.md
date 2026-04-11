@@ -101,7 +101,7 @@ This preserves the architecture:
 - `packages/shared/validation/src/chatbot-v2/chat-journey.schema.ts`
   - purpose: add schemas for classifier request/result envelopes if shared validation should own them
 - `packages/application/src/services/chatbot-v2/request-classifier.service.ts`
-  - purpose: remove this old rule-based service and retire its usages
+  - purpose: remove this old rule-based service entirely and retire its usages; do not keep it as a local keyword fallback
 - `packages/application/src/services/chatbot-v2/conversation-orchestrator.service.ts`
   - purpose: accept classifier output as input instead of self-classifying internally
 - `apps/api/src/routes/chatbot-v2-context.ts`
@@ -341,6 +341,7 @@ This preserves the architecture:
 
 - [ ] **Step 4: Keep the composer workflow focused**
   Update `medora-ai-chatbot-v2.dsl.yml` only as needed so it consumes classifier/orchestrator outputs rather than silently re-classifying.
+  The existing composer workflow contract test must also assert that any accepted progression-follow-up signal is passed in as an input and consumed there, not re-derived inside the composer workflow.
 
 - [ ] **Step 5: Run targeted tests**
   Run:

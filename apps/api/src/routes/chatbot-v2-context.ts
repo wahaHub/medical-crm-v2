@@ -252,9 +252,13 @@ async function classifyTurn(input: {
   conversationSummary: string;
   policyContext: unknown;
 }): Promise<ChatbotV2RequestClassificationResult> {
+  const classifierClient = input.services.difyClassifierApi;
+  if (!classifierClient) {
+    throw new Error('DIFY_CLASSIFIER_APP_API_KEY is required for chatbot-v2 classification');
+  }
+
   const classifier = new LlmRequestClassifierService({
     classify: async (classifierInput: ChatbotV2ClassifierInput) => {
-      const classifierClient = input.services.difyClassifierApi ?? input.services.difyApi;
       const latestUserMessage = classifierInput.recentMessages[classifierInput.recentMessages.length - 1]?.content ?? '';
       return classifierClient.createChatMessage({
         inputs: {

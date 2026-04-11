@@ -565,4 +565,13 @@ describe('composition root', () => {
 
     expect(services.difyFaqGroundingApi).toBeUndefined();
   });
+
+  it('does not create a classifier client from the main dify key when dedicated config is missing', async () => {
+    delete process.env['DIFY_CLASSIFIER_APP_API_KEY'];
+
+    const { getServices } = await import('../composition-root');
+    const services = getServices();
+
+    expect(services.difyClassifierApi).toBeUndefined();
+  });
 });

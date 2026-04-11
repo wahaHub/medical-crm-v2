@@ -184,7 +184,7 @@ describe('buildChatbotV2TurnContext', () => {
     }));
   });
 
-  it('uses difyApi as the classifier transport fallback instead of reviving local rule-based classification', async () => {
+  it('fails explicitly when the dedicated classifier client is missing instead of falling back to difyApi', async () => {
     const getAiPolicyContext = {
       execute: vi.fn().mockResolvedValue({
         chatbot_v2: {
@@ -232,15 +232,13 @@ describe('buildChatbotV2TurnContext', () => {
       },
     } as any;
 
-    const result = await buildChatbotV2TurnContext({
+    await expect(buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
       userMessage: 'How does this work?',
-    });
+    })).rejects.toThrow('DIFY_CLASSIFIER_APP_API_KEY is required for chatbot-v2 classification');
 
-    expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
-    expect(result.preTurn.requestClass).toBe('process_explanation');
-    expect(result.preTurn.responseIntent).toBe('process_explanation');
+    expect(services.difyApi.createChatMessage).not.toHaveBeenCalled();
   });
 
   it('includes non-visible progression resources in classifier hints so explicit resource requests can still classify correctly', async () => {

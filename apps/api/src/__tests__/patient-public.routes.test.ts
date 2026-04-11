@@ -210,14 +210,14 @@ describe('patientPublicRoutes', () => {
         widgetStarterSeed: true,
         widgetStarterVersion: 'ai-v1',
         internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        chatbotV2: {
+        chatbotV2: expect.objectContaining({
           journeySnapshot: {
             currentStage: 'EXPLAIN_PROCESS',
             currentPhase: 'active',
           },
           requestClass: 'process_explanation',
           responseIntent: 'process_explanation',
-        },
+        }),
       },
     });
     expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).toContain('PROCESS_GUIDE');
@@ -229,30 +229,32 @@ describe('patientPublicRoutes', () => {
     );
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
-        chatbotV2: {
+        chatbotV2: expect.objectContaining({
           journeySnapshot: {
             currentStage: 'EXPLAIN_PROCESS',
             currentPhase: 'active',
           },
           requestClass: 'process_explanation',
           responseIntent: 'process_explanation',
-          resources: [{
-            resourceType: 'PROCESS_GUIDE',
-            resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            status: 'available',
-            stageBinding: {
-              stage: 'EXPLAIN_PROCESS',
-              phase: 'active',
-            },
-            visibility: {
-              mode: 'global',
-            },
-            payload: {
-              title: 'Understand our consultation process',
-            },
-            actions: ['open'],
-          }],
-        },
+          resources: [
+            expect.objectContaining({
+              resourceType: 'PROCESS_GUIDE',
+              resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+              status: 'available',
+              stageBinding: {
+                stage: 'EXPLAIN_PROCESS',
+                phase: 'active',
+              },
+              visibility: {
+                mode: 'global',
+              },
+              payload: {
+                title: 'Understand our consultation process',
+              },
+              actions: ['open'],
+            }),
+          ],
+        }),
       }),
     }));
   });

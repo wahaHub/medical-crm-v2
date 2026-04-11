@@ -1,0 +1,321 @@
+app:
+  name: Medora AI Chatbot v2 Classifier
+  description: Dedicated multilingual structured classifier for CRM-owned chatbot v2 turns.
+  mode: advanced-chat
+  icon: 🧭
+  icon_background: '#E7F1FF'
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.6.0
+dependencies: []
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - id: start-classifier-llm
+      source: start
+      sourceHandle: source
+      target: classifier_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: start
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: classifier-normalize
+      source: classifier_llm
+      sourceHandle: source
+      target: normalize_classifier_output
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: normalize-final
+      source: normalize_classifier_output
+      sourceHandle: source
+      target: final_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    nodes:
+    - id: start
+      type: custom
+      position:
+        x: 80
+        y: 240
+      data:
+        title: Start
+        desc: Structured classifier inputs prepared by CRM before orchestration.
+        type: start
+        variables:
+        - variable: recentMessages
+          label: recentMessages
+          type: text-input
+          required: true
+          max_length: 20000
+          placeholder: JSON stringified chronological recent messages, latest user turn last
+        - variable: conversationSummary
+          label: conversationSummary
+          type: text-input
+          required: false
+          max_length: 8000
+          placeholder: Earlier conversation summary text
+        - variable: journeySnapshot
+          label: journeySnapshot
+          type: text-input
+          required: true
+          max_length: 4000
+          placeholder: JSON stringified journey snapshot
+        - variable: allowedResourceHints
+          label: allowedResourceHints
+          type: text-input
+          required: true
+          max_length: 12000
+          placeholder: JSON stringified resourceType and description hints
+    - id: classifier_llm
+      type: custom
+      position:
+        x: 430
+        y: 240
+      data:
+        title: Classifier LLM
+        desc: Multilingual, description-driven turn classifier that returns strict structured JSON only.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0
+        prompt_template:
+        - role: system
+          text: |
+            You are a multilingual, description-driven classifier for a CRM-owned medical journey chatbot.
+
+            Your job is to classify the latest user turn only. You do not answer the user, do not write back data, and do not compose assistant copy.
+            Use the recentMessages, conversationSummary, journeySnapshot, and allowedResourceHints as context.
+            The allowedResourceHints list is the only source of allowed resource types. Never invent resource types outside that list.
+
+            Return strict JSON only with this exact shape:
+            {
+              "requestClass": "faq|process_explanation|progression_request|resource_request|resource_status_question|human_help_request",
+              "targetResourceTypes": ["RESOURCE_TYPE"],
+              "includeProgressionFollowUp": true
+            }
+
+            requestClass descriptions:
+            - faq: the user asks for general information or category FAQ content and is not directly requesting a concrete resource. targetResourceTypes must be [].
+            - process_explanation: the user asks how the process works, why a step exists, or what the operational flow is. targetResourceTypes may include PROCESS_GUIDE when allowed.
+            - progression_request: the user asks to continue, move forward, start the next step, or let the system guide the next action, without explicitly naming a concrete resource.
+            - resource_request: the user explicitly wants to open, use, review, submit, or act on a concrete allowed resource. Prefer this over progression_request when a concrete resource is explicitly requested.
+            - resource_status_question: the user asks for the current state or progress of a concrete allowed resource.
+            - human_help_request: the user explicitly wants a human advisor or human takeover. HUMAN_HANDOFF may be targeted when allowed.
+
+            Rules:
+            - Choose exactly one requestClass.
+            - targetResourceTypes must only contain resource types from allowedResourceHints.
+            - faq must always return targetResourceTypes as [].
+            - Only faq and process_explanation may set includeProgressionFollowUp to true.
+            - If the user explicitly names a concrete resource, prefer resource_request over progression_request.
+            - process_explanation can still target PROCESS_GUIDE in later stages, but it is informational only and must not imply a journey rewind.
+            - Keep the output multilingual/general and description-driven. Avoid overfitting to a few examples or raw keywords.
+        - role: user
+          text: |
+            recentMessages:
+            {{#start.recentMessages#}}
+
+            conversationSummary:
+            {{#start.conversationSummary#}}
+
+            journeySnapshot:
+            {{#start.journeySnapshot#}}
+
+            allowedResourceHints:
+            {{#start.allowedResourceHints#}}
+        memory:
+          query_prompt_template: '{{#sys.query#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: false
+            size: 1
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+        variables: []
+    - id: normalize_classifier_output
+      type: custom
+      position:
+        x: 780
+        y: 240
+      data:
+        title: Normalize Classifier Output
+        desc: Repair classifier JSON into the strict structured classifier contract.
+        type: code
+        code_language: python3
+        code: |
+          import json
+
+          ALLOWED_REQUEST_CLASSES = {
+              "faq",
+              "process_explanation",
+              "progression_request",
+              "resource_request",
+              "resource_status_question",
+              "human_help_request",
+          }
+
+          def _extract_json_candidate(text: str) -> str:
+              content = (text or "").strip()
+              if not content:
+                  return ""
+              if "```" in content:
+                  start_fence = content.find("```")
+                  end_fence = content.rfind("```")
+                  if start_fence != -1 and end_fence != -1 and end_fence > start_fence:
+                      content = content[start_fence + 3:end_fence].strip()
+                      if "\n" in content:
+                          first_line, remainder = content.split("\n", 1)
+                          if first_line.strip().lower() in {"json", "javascript"}:
+                              content = remainder.strip()
+              start = content.find("{")
+              end = content.rfind("}")
+              if start != -1 and end != -1 and end > start:
+                  return content[start:end + 1]
+              return content
+
+          def _parse_json(value):
+              if isinstance(value, (dict, list)):
+                  return value
+              if not isinstance(value, str):
+                  return []
+              text = value.strip()
+              if not text:
+                  return []
+              try:
+                  return json.loads(text)
+              except Exception:
+                  return []
+
+          def _allowed_resource_types(resource_hints_text: str) -> set[str]:
+              parsed = _parse_json(resource_hints_text)
+              allowed = set()
+              if isinstance(parsed, list):
+                  for item in parsed:
+                      if isinstance(item, dict):
+                          resource_type = item.get("resourceType") or item.get("resource_type")
+                          if isinstance(resource_type, str) and resource_type:
+                              allowed.add(resource_type)
+              return allowed
+
+          def main(response_text: str, allowed_resource_hints: str) -> dict:
+              allowed_resource_types = _allowed_resource_types(allowed_resource_hints)
+              normalized = {
+                  "requestClass": "faq",
+                  "targetResourceTypes": [],
+                  "includeProgressionFollowUp": False,
+              }
+
+              candidate = _extract_json_candidate(response_text)
+              parsed = None
+              try:
+                  loaded = json.loads(candidate)
+                  if isinstance(loaded, dict):
+                      parsed = loaded
+              except Exception:
+                  parsed = None
+
+              if isinstance(parsed, dict):
+                  request_class = parsed.get("requestClass")
+                  if isinstance(request_class, str) and request_class in ALLOWED_REQUEST_CLASSES:
+                      normalized["requestClass"] = request_class
+
+                  target_resource_types = parsed.get("targetResourceTypes")
+                  if isinstance(target_resource_types, list):
+                      filtered = []
+                      for item in target_resource_types:
+                          if isinstance(item, str) and item in allowed_resource_types and item not in filtered:
+                              filtered.append(item)
+                      normalized["targetResourceTypes"] = filtered
+
+                  include_progression_follow_up = parsed.get("includeProgressionFollowUp")
+                  if isinstance(include_progression_follow_up, bool):
+                      normalized["includeProgressionFollowUp"] = include_progression_follow_up
+
+              if normalized["requestClass"] == "faq":
+                  normalized["targetResourceTypes"] = []
+
+              if normalized["requestClass"] not in {"faq", "process_explanation"}:
+                  normalized["includeProgressionFollowUp"] = False
+
+              return {
+                  "request_class": normalized["requestClass"],
+                  "target_resource_types": json.dumps(normalized["targetResourceTypes"], ensure_ascii=True),
+                  "include_progression_follow_up": "true" if normalized["includeProgressionFollowUp"] else "false",
+              }
+        outputs:
+          request_class:
+            type: string
+            children: null
+          target_resource_types:
+            type: string
+            children: null
+          include_progression_follow_up:
+            type: string
+            children: null
+        variables:
+        - variable: response_text
+          value_selector:
+          - classifier_llm
+          - text
+          value_type: string
+        - variable: allowed_resource_hints
+          value_selector:
+          - start
+          - allowedResourceHints
+          value_type: string
+    - id: final_answer
+      type: custom
+      position:
+        x: 1120
+        y: 240
+      data:
+        title: Final Answer
+        desc: Return the normalized classifier JSON unchanged.
+        type: answer
+        variables: []
+        answer: |
+          {"requestClass":"{{#normalize_classifier_output.request_class#}}","targetResourceTypes":{{#normalize_classifier_output.target_resource_types#}},"includeProgressionFollowUp":{{#normalize_classifier_output.include_progression_follow_up#}}}
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.9

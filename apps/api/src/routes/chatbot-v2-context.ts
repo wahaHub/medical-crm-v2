@@ -29,6 +29,7 @@ type ChatbotV2Envelope = {
   resources: ChatResourceDescriptor[];
   requestClass: string;
   responseIntent: string;
+  includeProgressionFollowUp?: boolean;
 };
 
 type JourneyTruth = ReturnType<typeof deriveJourneyTruth>;
@@ -100,6 +101,7 @@ export async function buildChatbotV2TurnContext(input: {
       resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
       requestClass: orchestration.requestClass,
       responseIntent: orchestration.responseIntent,
+      includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
     },
     foundation: {
       ...foundation,
@@ -133,6 +135,7 @@ export function buildChatbotV2PostTurnContext(input: {
       ...input.preTurn,
       requestClass,
       responseIntent,
+      includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
     };
   }
 
@@ -142,6 +145,7 @@ export function buildChatbotV2PostTurnContext(input: {
       resources: input.preTurn.resources,
       requestClass,
       responseIntent,
+      includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
     };
   }
 
@@ -158,6 +162,7 @@ export function buildChatbotV2PostTurnContext(input: {
     resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
     requestClass,
     responseIntent,
+    includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
   };
 }
 

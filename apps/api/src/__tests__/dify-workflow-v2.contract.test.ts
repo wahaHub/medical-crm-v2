@@ -144,6 +144,7 @@ describe('Dify workflow v2 contract', () => {
       'current_phase',
       'allowed_resource_types',
       'allowed_next_action_hints',
+      'include_progression_follow_up',
     ]));
 
     expect(parseCode).toContain('journeySnapshot');
@@ -160,6 +161,7 @@ describe('Dify workflow v2 contract', () => {
     expect(parseCode).toContain('ONLINE_CONSULT_BOOKING');
     expect(parseCode).toContain('HUMAN_HANDOFF');
     expect(parseCode).toContain('allowed_next_action_hints');
+    expect(parseCode).toContain('includeProgressionFollowUp');
     expect(parseCode).not.toContain('SHOW_HOSPITAL_RECOMMENDATIONS');
     expect(parseCode).not.toContain('SHOW_PACKAGE');
     expect(parseCode).not.toContain('or "EXPLAIN_PROCESS"');
@@ -199,6 +201,7 @@ describe('Dify workflow v2 contract', () => {
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.response_intent#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_resource_types#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_next_action_hints#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.include_progression_follow_up#}}');
     expect(promptInputs).toContain('{{#start.currentStatus#}}');
     expect(promptInputs).toContain('{{#start.conversationSummary#}}');
     expect(promptInputs).toContain('{{#start.pageContext#}}');
@@ -258,10 +261,16 @@ describe('Dify workflow v2 contract', () => {
     expect(yaml).not.toContain('action_gate');
     expect(yaml).not.toContain('search_hospitals_http');
     expect(yaml).not.toContain('list_packages_http');
+    expect(yaml).not.toContain('classifier_llm');
+    expect(yaml).not.toContain('normalize_classifier_output');
+    expect(yaml).not.toContain('recentMessages');
+    expect(yaml).not.toContain('allowedResourceHints');
     expect(nodeIds.has('decide_http')).toBe(false);
     expect(nodeIds.has('action_gate')).toBe(false);
     expect(nodeIds.has('search_hospitals_http')).toBe(false);
     expect(nodeIds.has('list_packages_http')).toBe(false);
+    expect(nodeIds.has('classifier_llm')).toBe(false);
+    expect(nodeIds.has('normalize_classifier_output')).toBe(false);
   });
 
   it('keeps the legacy v1 file intact while v2 carries the new CRM-owned chain', () => {

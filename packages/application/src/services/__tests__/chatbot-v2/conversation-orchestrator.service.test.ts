@@ -257,4 +257,42 @@ describe('ConversationOrchestratorService', () => {
       }),
     ]));
   });
+
+  it('accepts progression follow-up in later stages without rewinding the journey', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'faq',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: true,
+      },
+      journeySnapshot: {
+        currentStage: 'RECOMMENDATION',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: true,
+        medicalInputsSubmitted: true,
+        recommendationAvailable: true,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    });
+
+    expect(result.responseIntent).toBe('faq');
+    expect(result.includeProgressionFollowUpAccepted).toBe(true);
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'PROCESS_GUIDE',
+      }),
+      expect.objectContaining({
+        resourceType: 'HOSPITAL_RECOMMENDATION',
+      }),
+    ]));
+  });
 });

@@ -119,7 +119,7 @@ export class ConversationOrchestratorService {
       return false;
     }
 
-    return input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS';
+    return input.journeySnapshot.currentStage !== 'HUMAN_HANDOFF';
   }
 
   private toRegistryInput(

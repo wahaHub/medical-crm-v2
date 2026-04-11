@@ -121,14 +121,9 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   }
   session = patientSync.session;
   const userAttachments = body.attachments ?? [];
-  const chatbotV2Turn = await buildChatbotV2TurnContext({
-    services: svc,
-    sessionId: session.sessionId,
-    userMessage: body.message.trim().length > 0
-      ? body.message
-      : (userAttachments.length > 0 ? 'Uploaded attachments' : ''),
-    pageContext: body.pageContext ?? null,
-  });
+  const normalizedUserMessage = body.message.trim().length > 0
+    ? body.message
+    : (userAttachments.length > 0 ? 'Uploaded attachments' : '');
 
   const userMessage = await svc.aiChatMessageRepo.create(new AiChatMessage({
     id: generateId(),
@@ -163,7 +158,14 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   }));
 
   let difyResponse: Record<string, unknown>;
+  let chatbotV2Turn: Awaited<ReturnType<typeof buildChatbotV2TurnContext>> | null = null;
   try {
+    chatbotV2Turn = await buildChatbotV2TurnContext({
+      services: svc,
+      sessionId: session.sessionId,
+      userMessage: normalizedUserMessage,
+      pageContext: body.pageContext ?? null,
+    });
     difyResponse = await svc.difyApi.createChatMessage({
       inputs: {
         hospitalType: effectiveHospitalType,
@@ -177,7 +179,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
         pageContext: body.pageContext ?? null,
         chatbotV2: chatbotV2Turn.preTurn,
       },
-      query: body.message.trim().length > 0 ? body.message : 'Uploaded attachments',
+      query: normalizedUserMessage,
       user: body.sessionId,
       conversationId: session.difyConversationId,
     });
@@ -192,6 +194,10 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     return c.json({
       error: error instanceof Error ? error.message : 'Dify request failed',
     }, 502);
+  }
+
+  if (!chatbotV2Turn) {
+    return c.json({ error: 'Chatbot v2 turn context missing after provider response' }, 500);
   }
 
   const normalized = normalizeDifyChatResponse(difyResponse);
@@ -223,9 +229,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
     foundation: chatbotV2Turn.foundation,
     preTurn: chatbotV2Turn.preTurn,
-    userMessage: body.message.trim().length > 0
-      ? body.message
-      : (userAttachments.length > 0 ? 'Uploaded attachments' : ''),
+    userMessage: normalizedUserMessage,
     refreshedStatusSnapshot: session.statusSnapshot,
     assistantNextAction: normalized.nextAction,
     assistantInternalNextAction: richAction,
@@ -265,6 +269,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     metadata: {
       ...normalized.metadata,
       chatbotV2: postTurnChatbotV2,
+      classifierResult: chatbotV2Turn.foundation.classification,
       ...(blocks.length > 0 ? { blocks } : {}),
     },
   });

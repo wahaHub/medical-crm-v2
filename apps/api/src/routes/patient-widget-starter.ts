@@ -212,6 +212,11 @@ export async function seedWidgetStarterMessage(input: {
     services: input.services,
     sessionId: session.sessionId,
     userMessage: 'Explain the process',
+    classifierOverride: {
+      requestClass: 'process_explanation',
+      targetResourceTypes: ['PROCESS_GUIDE'],
+      includeProgressionFollowUp: false,
+    },
   });
   const difyResponse = await input.services.difyApi.createChatMessage({
     inputs: {
@@ -280,6 +285,7 @@ export async function seedWidgetStarterMessage(input: {
       draftState: 'succeeded',
       internalNextAction: normalized.internalNextAction,
       chatbotV2: postTurnChatbotV2,
+      classifierResult: chatbotV2Turn.foundation.classification,
       ...(blocks.length > 0 ? { blocks } : {}),
     },
   });

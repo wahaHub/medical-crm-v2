@@ -260,7 +260,7 @@ async function classifyTurn(input: {
     }),
     conversationSummary: input.conversationSummary,
     journeySnapshot: input.journeySnapshot,
-    allowedResourceHints: buildAllowedResourceHints(input.resources),
+    allowedResourceHints: buildAllowedResourceHints(input.resources, input.journeySnapshot),
   });
 }
 
@@ -294,18 +294,34 @@ async function buildRecentMessages(input: {
   return appendCurrentUserMessage(normalizedRecentMessages, trimmedUserMessage);
 }
 
-function buildAllowedResourceHints(resources: ChatResourceDescriptor[]): ChatbotV2ClassifierResourceHint[] {
-  const deduped = new Map<string, ChatbotV2ClassifierResourceHint>();
-  for (const resource of resources) {
-    if (!deduped.has(resource.resourceType)) {
-      deduped.set(resource.resourceType, {
-        resourceType: resource.resourceType,
-        description: describeResource(resource.resourceType),
-      });
-    }
+function buildAllowedResourceHints(
+  resources: ChatResourceDescriptor[],
+  journeySnapshot: JourneySnapshot,
+): ChatbotV2ClassifierResourceHint[] {
+  const orderedResourceTypes = new Set<ChatResourceDescriptor['resourceType']>([
+    ...resources.map((resource) => resource.resourceType),
+    ...getSupplementalHintResourceTypes(journeySnapshot),
+  ]);
+
+  return [...orderedResourceTypes].map((resourceType) => ({
+    resourceType,
+    description: describeResource(resourceType),
+  }));
+}
+
+function getSupplementalHintResourceTypes(
+  journeySnapshot: JourneySnapshot,
+): ChatResourceDescriptor['resourceType'][] {
+  if (journeySnapshot.currentStage === 'EXPLAIN_PROCESS') {
+    return [
+      'MEDICAL_DOC_UPLOAD',
+      'QUESTIONNAIRE',
+      'HOSPITAL_RECOMMENDATION',
+      'PACKAGE_RECOMMENDATION',
+    ];
   }
 
-  return [...deduped.values()];
+  return [];
 }
 
 function describeResource(resourceType: ChatResourceDescriptor['resourceType']): string {

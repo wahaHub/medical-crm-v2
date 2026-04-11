@@ -53,6 +53,9 @@ describe('buildChatbotV2TurnContext', () => {
       difyApi: {
         createChatMessage: vi.fn(),
       },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue(null),
+      },
       aiChatMessageRepo: {
         listBySession: vi.fn(),
       },
@@ -238,5 +241,89 @@ describe('buildChatbotV2TurnContext', () => {
     expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
     expect(result.preTurn.requestClass).toBe('process_explanation');
     expect(result.preTurn.responseIntent).toBe('process_explanation');
+  });
+
+  it('includes non-visible progression resources in classifier hints so explicit resource requests can still classify correctly', async () => {
+    const getAiPolicyContext = {
+      execute: vi.fn().mockResolvedValue({
+        chatbot_v2: {
+          scope_id: 'widget-chat:patient-1:case-1',
+          journey_snapshot: {
+            current_stage: 'EXPLAIN_PROCESS',
+            current_phase: 'active',
+          },
+          allowed_resources: [
+            {
+              resource_type: 'PROCESS_GUIDE',
+              resource_id: 'process-guide:widget-chat:patient-1:case-1',
+              status: 'available',
+              visibility: {
+                mode: 'global',
+              },
+              payload: {
+                title: 'Understand the process',
+              },
+              actions: ['open'],
+            },
+          ],
+        },
+      }),
+    };
+    const difyClassifierApi = {
+      createChatMessage: vi.fn().mockResolvedValue({
+        answer: JSON.stringify({
+          requestClass: 'resource_request',
+          targetResourceTypes: ['QUESTIONNAIRE'],
+          includeProgressionFollowUp: false,
+        }),
+      }),
+    };
+    const services = {
+      getAiPolicyContext,
+      difyClassifierApi,
+      difyApi: {
+        createChatMessage: vi.fn(),
+      },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue(null),
+      },
+      aiChatMessageRepo: {
+        listBySession: vi.fn(),
+      },
+    } as any;
+
+    const result = await buildChatbotV2TurnContext({
+      services,
+      sessionId: 'widget-chat:patient-1:case-1',
+      userMessage: 'Open the questionnaire for me.',
+    });
+
+    expect(difyClassifierApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      inputs: expect.objectContaining({
+        allowedResourceHints: expect.arrayContaining([
+          expect.objectContaining({
+            resourceType: 'PROCESS_GUIDE',
+          }),
+          expect.objectContaining({
+            resourceType: 'MEDICAL_DOC_UPLOAD',
+          }),
+          expect.objectContaining({
+            resourceType: 'QUESTIONNAIRE',
+          }),
+          expect.objectContaining({
+            resourceType: 'HOSPITAL_RECOMMENDATION',
+          }),
+          expect.objectContaining({
+            resourceType: 'PACKAGE_RECOMMENDATION',
+          }),
+        ]),
+      }),
+    }));
+    expect(result.preTurn.requestClass).toBe('resource_request');
+    expect(result.preTurn.journeySnapshot).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'pre',
+    });
+    expect(result.preTurn.resources.map((resource) => resource.resourceType)).toEqual(['QUESTIONNAIRE']);
   });
 });

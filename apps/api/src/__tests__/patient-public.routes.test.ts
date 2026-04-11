@@ -210,6 +210,11 @@ describe('patientPublicRoutes', () => {
         widgetStarterSeed: true,
         widgetStarterVersion: 'ai-v1',
         internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        classifierResult: {
+          requestClass: 'process_explanation',
+          targetResourceTypes: ['PROCESS_GUIDE'],
+          includeProgressionFollowUp: false,
+        },
         chatbotV2: expect.objectContaining({
           journeySnapshot: {
             currentStage: 'EXPLAIN_PROCESS',

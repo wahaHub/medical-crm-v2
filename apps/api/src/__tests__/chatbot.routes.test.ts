@@ -300,6 +300,22 @@ describe('Chatbot routes', () => {
             resourceType: 'PROCESS_GUIDE',
             description: 'Explains the consultation and treatment process.',
           },
+          {
+            resourceType: 'MEDICAL_DOC_UPLOAD',
+            description: 'Lets the patient upload medical records and reports.',
+          },
+          {
+            resourceType: 'QUESTIONNAIRE',
+            description: 'Lets the patient fill in a medical intake questionnaire.',
+          },
+          {
+            resourceType: 'HOSPITAL_RECOMMENDATION',
+            description: 'Lets the patient review or confirm recommended hospitals.',
+          },
+          {
+            resourceType: 'PACKAGE_RECOMMENDATION',
+            description: 'Lets the patient review or confirm recommended packages.',
+          },
         ],
       },
     }));
@@ -361,6 +377,11 @@ describe('Chatbot routes', () => {
       },
       requestClass: 'resource_request',
       responseIntent: 'resource_request',
+    });
+    expect((storedAssistantPatch.metadata as Record<string, unknown>).classifierResult).toEqual({
+      requestClass: 'resource_request',
+      targetResourceTypes: ['PROCESS_GUIDE'],
+      includeProgressionFollowUp: false,
     });
     expect(json.resources).toEqual(difyPayload.inputs.chatbotV2.resources);
     expect(assistantDraft.id).toBe(difyPayload.inputs.assistantMessageId);
@@ -2892,6 +2913,71 @@ describe('Chatbot routes', () => {
     );
     const failurePatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];
     expect(failurePatch.writebackStatus).toBeUndefined();
+  });
+
+  it('POST /api/v2/chatbot/chat returns 502 when classifier transport fails after the assistant draft is created', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyClassifierApi.createChatMessage.mockRejectedValue(new Error('classifier unavailable'));
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'Please help me continue.',
+      }),
+    });
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'classifier unavailable' });
+    expect(mockServices.aiChatMessageRepo.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        role: 'ASSISTANT',
+        content: '',
+      }),
+    );
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          draftState: 'provider_error',
+          failureStage: 'provider_request',
+        }),
+      }),
+    );
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/chat returns 502 when classifier returns an invalid payload', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: '{"requestClass":"faq","targetResourceTypes":"not-an-array"}',
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'How does this work?',
+      }),
+    });
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'Invalid classifier result payload' });
+    expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          draftState: 'provider_error',
+          failureStage: 'provider_request',
+        }),
+      }),
+    );
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
   });
 
 

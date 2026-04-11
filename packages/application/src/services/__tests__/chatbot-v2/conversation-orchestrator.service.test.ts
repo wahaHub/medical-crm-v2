@@ -4,6 +4,27 @@ import { ConversationOrchestratorService } from '../../chatbot-v2/conversation-o
 describe('ConversationOrchestratorService', () => {
   const service = new ConversationOrchestratorService();
 
+  it('throws when classifier output is missing so local keyword fallback cannot reappear', () => {
+    expect(() => service.orchestrate({
+      scopeId: 'case-1',
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: false,
+        medicalInputsSubmitted: false,
+        recommendationAvailable: false,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    } as never)).toThrow('classifier output is required');
+  });
+
   it('advances progression requests with v2 journey state and returns the next-stage resources', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
@@ -132,6 +153,44 @@ describe('ConversationOrchestratorService', () => {
     expect(result.resourceUpdates).toEqual([
       expect.objectContaining({
         resourceType: 'HUMAN_HANDOFF',
+      }),
+    ]);
+  });
+
+  it('still focuses the handoff resource when human help is requested without a handoff target', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'human_help_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'RECOMMENDATION',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: true,
+        medicalInputsSubmitted: true,
+        recommendationAvailable: true,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    });
+
+    expect(result.responseIntent).toBe('human_help_request');
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'HUMAN_HANDOFF',
+      currentPhase: 'pre',
+    });
+    expect(result.allowedResources).toEqual([
+      expect.objectContaining({
+        resourceType: 'HUMAN_HANDOFF',
+        resourceId: 'human-handoff:case-1',
       }),
     ]);
   });

@@ -27,9 +27,12 @@ export class ConversationOrchestratorService {
     const projectedSnapshot = journeyUpdate ?? input.journeySnapshot;
     const projectedRegistryInput = this.toRegistryInput(input, projectedSnapshot);
     const projectedAllowedResources = this.resourceRegistry.listResources(projectedRegistryInput);
-    const targetedResources = projectedAllowedResources.filter((resource) =>
+    const explicitlyTargetedResources = projectedAllowedResources.filter((resource) =>
       classification.targetResourceTypes.includes(resource.resourceType),
     );
+    const targetedResources = explicitlyTargetedResources.length > 0
+      ? explicitlyTargetedResources
+      : this.resolveImplicitTargetedResources(classification, projectedAllowedResources);
     const allowedResources = targetedResources.length > 0
       ? dedupeResources(targetedResources)
       : projectedAllowedResources;
@@ -147,6 +150,19 @@ export class ConversationOrchestratorService {
     const currentIds = new Set(input.currentAllowedResources.map((resource) => resource.resourceId));
     const updates = input.projectedAllowedResources.filter((resource) => !currentIds.has(resource.resourceId));
     return updates.length > 0 ? updates : undefined;
+  }
+
+  private resolveImplicitTargetedResources(
+    classification: {
+      requestClass: ConversationOrchestrationResult['requestClass'];
+    },
+    projectedAllowedResources: ChatbotV2ResourceDescriptor[],
+  ): ChatbotV2ResourceDescriptor[] {
+    if (classification.requestClass === 'human_help_request') {
+      return projectedAllowedResources.filter((resource) => resource.resourceType === 'HUMAN_HANDOFF');
+    }
+
+    return [];
   }
 }
 

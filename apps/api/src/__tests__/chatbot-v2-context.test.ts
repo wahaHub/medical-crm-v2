@@ -90,6 +90,10 @@ describe('buildChatbotV2TurnContext', () => {
             resourceType: 'PROCESS_GUIDE',
             description: 'Explains the consultation and treatment process.',
           },
+          {
+            resourceType: 'MEDICAL_INVITATION_STATUS',
+            description: 'Lets the patient check the medical invitation status.',
+          },
         ]),
       },
     }));
@@ -304,6 +308,10 @@ describe('buildChatbotV2TurnContext', () => {
             description: 'Explains the consultation and treatment process.',
           },
           {
+            resourceType: 'MEDICAL_INVITATION_STATUS',
+            description: 'Lets the patient check the medical invitation status.',
+          },
+          {
             resourceType: 'MEDICAL_DOC_UPLOAD',
             description: 'Lets the patient upload medical records and reports.',
           },
@@ -328,5 +336,117 @@ describe('buildChatbotV2TurnContext', () => {
       currentPhase: 'pre',
     });
     expect(result.preTurn.resources.map((resource) => resource.resourceType)).toEqual(['QUESTIONNAIRE']);
+  });
+
+  it('keeps a newer stored chatbot_v2 floor from rewinding back to EXPLAIN_PROCESS on follow-up turns', async () => {
+    const getAiPolicyContext = {
+      execute: vi.fn().mockResolvedValue({
+        conversation_summary: 'A human advisor takeover was already requested.',
+        chatbot_v2: {
+          scope_id: 'widget-chat:patient-1:case-1',
+          journey_snapshot: {
+            current_stage: 'EXPLAIN_PROCESS',
+            current_phase: 'active',
+          },
+          truth_summary: {
+            medical_inputs_started: false,
+            medical_inputs_submitted: false,
+            recommendation_available: false,
+            recommendation_confirmed: false,
+            online_consult_required: false,
+            online_consult_started: false,
+            online_consult_submitted: false,
+            human_handoff_active: false,
+            human_handoff_submitted: false,
+          },
+          allowed_resources: [
+            {
+              resource_type: 'PROCESS_GUIDE',
+              resource_id: 'process-guide:widget-chat:patient-1:case-1',
+              status: 'available',
+              visibility: {
+                mode: 'global',
+              },
+              payload: {
+                title: 'Understand the process',
+              },
+              actions: ['open'],
+            },
+          ],
+        },
+        chatbot_v2_floor: {
+          journey_snapshot: {
+            current_stage: 'HUMAN_HANDOFF',
+            current_phase: 'pre',
+          },
+          allowed_resources: [
+            {
+              resource_type: 'HUMAN_HANDOFF',
+              resource_id: 'human-handoff:widget-chat:patient-1:case-1',
+              status: 'available',
+              stage_binding: {
+                stage: 'HUMAN_HANDOFF',
+                phase: 'active',
+              },
+              visibility: {
+                mode: 'global',
+              },
+              payload: {
+                title: 'Talk to a care advisor',
+              },
+              actions: ['request_human'],
+            },
+          ],
+          request_class: 'human_help_request',
+          response_intent: 'human_help_request',
+        },
+      }),
+    };
+    const difyClassifierApi = {
+      createChatMessage: vi.fn().mockResolvedValue({
+        answer: JSON.stringify({
+          requestClass: 'resource_status_question',
+          targetResourceTypes: ['MEDICAL_INVITATION_STATUS'],
+          includeProgressionFollowUp: false,
+        }),
+      }),
+    };
+    const services = {
+      getAiPolicyContext,
+      difyClassifierApi,
+      difyApi: {
+        createChatMessage: vi.fn(),
+      },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue(null),
+      },
+      aiChatMessageRepo: {
+        listBySession: vi.fn(),
+      },
+    } as any;
+
+    const result = await buildChatbotV2TurnContext({
+      services,
+      sessionId: 'widget-chat:patient-1:case-1',
+      userMessage: 'Can you confirm the current status of my medical invitation again?',
+    });
+
+    expect(difyClassifierApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      inputs: expect.objectContaining({
+        journeySnapshot: JSON.stringify({
+          currentStage: 'HUMAN_HANDOFF',
+          currentPhase: 'pre',
+        }),
+      }),
+    }));
+    expect(result.preTurn.journeySnapshot).toEqual({
+      currentStage: 'HUMAN_HANDOFF',
+      currentPhase: 'pre',
+    });
+    expect(result.preTurn.resources).toEqual([
+      expect.objectContaining({
+        resourceType: 'MEDICAL_INVITATION_STATUS',
+      }),
+    ]);
   });
 });

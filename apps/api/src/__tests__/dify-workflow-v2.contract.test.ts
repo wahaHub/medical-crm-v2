@@ -144,6 +144,8 @@ describe('Dify workflow v2 contract', () => {
       'current_stage',
       'current_phase',
       'allowed_resource_types',
+      'allowed_resources_json',
+      'truth_summary_json',
       'allowed_next_action_hints',
       'include_progression_follow_up',
     ]));
@@ -156,6 +158,8 @@ describe('Dify workflow v2 contract', () => {
     expect(parseCode).toContain('response_intent');
     expect(parseCode).toContain('allowedResources');
     expect(parseCode).toContain('allowed_resources');
+    expect(parseCode).toContain('truthSummary');
+    expect(parseCode).toContain('truth_summary');
     expect(parseCode).toContain('PROCESS_GUIDE');
     expect(parseCode).toContain('MEDICAL_DOC_UPLOAD');
     expect(parseCode).toContain('QUESTIONNAIRE');
@@ -186,6 +190,7 @@ describe('Dify workflow v2 contract', () => {
     expect(prompt).toContain('current stage');
     expect(prompt).toContain('current phase');
     expect(prompt).toContain('allowed resources');
+    expect(prompt).toContain('truth summary');
     expect(prompt).toContain('current status');
     expect(prompt).toContain('conversation summary');
     expect(prompt).toContain('faq grounding');
@@ -193,6 +198,9 @@ describe('Dify workflow v2 contract', () => {
     expect(prompt).toContain('must not invent');
     expect(prompt).toContain('allowed next-action hints');
     expect(prompt).toContain('Return strict JSON only');
+    expect(prompt).toContain('Do not say a requested resource is unavailable if it appears in the allowed resources list');
+    expect(prompt).toContain('If truth summary says medicalInputsSubmitted is true');
+    expect(prompt).toContain('must not imply a journey rewind');
     expect(prompt).not.toContain('SAFETY_HANDOFF');
     expect(prompt).not.toContain('SHOW_HOSPITAL_RECOMMENDATIONS');
     expect(prompt).not.toContain('SHOW_PACKAGE');
@@ -202,6 +210,8 @@ describe('Dify workflow v2 contract', () => {
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.request_class#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.response_intent#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_resource_types#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_resources_json#}}');
+    expect(promptInputs).toContain('{{#parse_chatbot_v2_context.truth_summary_json#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_next_action_hints#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.include_progression_follow_up#}}');
     expect(promptInputs).toContain('{{#start.faqGrounding#}}');

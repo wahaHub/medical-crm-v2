@@ -310,6 +310,10 @@ describe('Chatbot routes', () => {
             description: 'Explains the consultation and treatment process.',
           },
           {
+            resourceType: 'MEDICAL_INVITATION_STATUS',
+            description: 'Lets the patient check the medical invitation status.',
+          },
+          {
             resourceType: 'MEDICAL_DOC_UPLOAD',
             description: 'Lets the patient upload medical records and reports.',
           },
@@ -486,6 +490,7 @@ describe('Chatbot routes', () => {
       resources: Array<{ resourceType: string }>;
       requestClass: string;
       responseIntent: string;
+      truthSummary?: { medicalInputsSubmitted?: boolean };
     };
     const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
       journeySnapshot: { currentStage: string; currentPhase: string };
@@ -506,6 +511,9 @@ describe('Chatbot routes', () => {
     ]));
     expect(difyChatbotV2.requestClass).toBe('resource_request');
     expect(difyChatbotV2.responseIntent).toBe('resource_request');
+    expect(difyChatbotV2.truthSummary).toMatchObject({
+      medicalInputsSubmitted: false,
+    });
 
     expect(json.journeySnapshot).toEqual({
       currentStage: 'EXPLAIN_PROCESS',
@@ -522,6 +530,9 @@ describe('Chatbot routes', () => {
     expect(storedChatbotV2.resources.map((resource) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
     expect(storedChatbotV2.requestClass).toBe('resource_request');
     expect(storedChatbotV2.responseIntent).toBe('resource_request');
+    expect((storedChatbotV2 as Record<string, unknown>).truthSummary).toMatchObject({
+      medicalInputsSubmitted: false,
+    });
 
     expect(json.resources).toEqual(difyChatbotV2.resources);
     expect(storedChatbotV2).toEqual(difyChatbotV2);

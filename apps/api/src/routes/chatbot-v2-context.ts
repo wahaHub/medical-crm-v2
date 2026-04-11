@@ -27,6 +27,7 @@ type PageContext = {
 type ChatbotV2Envelope = {
   journeySnapshot: JourneySnapshot;
   resources: ChatResourceDescriptor[];
+  truthSummary: JourneyTruth;
   requestClass: string;
   responseIntent: string;
   includeProgressionFollowUp?: boolean;
@@ -82,6 +83,7 @@ export async function buildChatbotV2TurnContext(input: {
       preTurn: {
         journeySnapshot: foundation.journeySnapshot,
         resources: foundation.resources,
+        truthSummary: foundation.truth,
         requestClass: 'process_explanation',
         responseIntent: 'process_explanation',
       },
@@ -114,6 +116,7 @@ export async function buildChatbotV2TurnContext(input: {
     preTurn: {
       journeySnapshot: orchestration.journeyUpdate ?? foundation.journeySnapshot,
       resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+      truthSummary: foundation.truth,
       requestClass: orchestration.requestClass,
       responseIntent: orchestration.responseIntent,
       includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
@@ -149,6 +152,7 @@ export function buildChatbotV2PostTurnContext(input: {
   if (compareJourneySnapshots(refreshedJourneySnapshot, input.preTurn.journeySnapshot) < 0) {
     return {
       ...input.preTurn,
+      truthSummary: refreshedTruth,
       requestClass,
       responseIntent,
       includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
@@ -159,6 +163,7 @@ export function buildChatbotV2PostTurnContext(input: {
     return {
       journeySnapshot: refreshedJourneySnapshot,
       resources: input.preTurn.resources,
+      truthSummary: refreshedTruth,
       requestClass,
       responseIntent,
       includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
@@ -175,6 +180,7 @@ export function buildChatbotV2PostTurnContext(input: {
   return {
     journeySnapshot: orchestration.journeyUpdate ?? refreshedJourneySnapshot,
     resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+    truthSummary: refreshedTruth,
     requestClass,
     responseIntent,
     includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
@@ -204,11 +210,12 @@ function scoreJourneySnapshot(snapshot: JourneySnapshot): number {
 function readFoundationContext(policyContext: unknown, fallbackSessionId: string): ChatbotV2FoundationContext {
   const root = asRecord(policyContext);
   const chatbotV2 = asRecord(root.chatbot_v2 ?? root.chatbotV2);
-  const journeySnapshot = JourneySnapshotSchema.parse({
+  let journeySnapshot = JourneySnapshotSchema.parse({
     currentStage: asString(asRecord(chatbotV2.journey_snapshot).current_stage) ?? 'EXPLAIN_PROCESS',
     currentPhase: asString(asRecord(chatbotV2.journey_snapshot).current_phase) ?? 'active',
   });
-  const resources = asArray(chatbotV2.allowed_resources).map((resource) => ChatResourceDescriptorSchema.parse({
+  const foundationTruth = deriveJourneyTruth(policyContext);
+  let resources = asArray(chatbotV2.allowed_resources).map((resource) => ChatResourceDescriptorSchema.parse({
     resourceType: asString(resource.resource_type) ?? 'PROCESS_GUIDE',
     resourceId: asString(resource.resource_id) ?? 'process-guide:unknown',
     status: asString(resource.status) ?? 'available',
@@ -222,17 +229,39 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
     payload: asRecord(resource.payload),
     actions: asStringArray(resource.actions),
   }));
+  const floor = asRecord(root.chatbot_v2_floor ?? root.chatbotV2Floor);
+  const floorSnapshot = readJourneySnapshotFromFloor(floor);
+  if (floorSnapshot && compareJourneySnapshots(floorSnapshot, journeySnapshot) > 0) {
+    journeySnapshot = floorSnapshot;
+    resources = dedupeChatResources([
+      ...resources,
+      ...asArray(floor.allowed_resources).map((resource) => ChatResourceDescriptorSchema.parse({
+        resourceType: asString(resource.resource_type) ?? 'PROCESS_GUIDE',
+        resourceId: asString(resource.resource_id) ?? 'process-guide:unknown',
+        status: asString(resource.status) ?? 'available',
+        stageBinding: resource.stage_binding == null
+          ? undefined
+          : {
+              stage: asString(asRecord(resource.stage_binding).stage) ?? 'EXPLAIN_PROCESS',
+              phase: asNullableString(asRecord(resource.stage_binding).phase) ?? undefined,
+            },
+        visibility: normalizeVisibility(resource.visibility),
+        payload: asRecord(resource.payload),
+        actions: asStringArray(resource.actions),
+      })),
+    ]);
+  }
 
   return {
     scopeId: readScopeId(policyContext, fallbackSessionId),
     journeySnapshot,
-    truth: deriveJourneyTruth(policyContext),
+    truth: foundationTruth,
     resources,
     classification: DEFAULT_BOOTSTRAP_CLASSIFICATION,
     requiresFaqGrounding: false,
     activeHospitalContext: readActiveHospitalContext(policyContext),
-    requestClass: asString(chatbotV2.request_class),
-    responseIntent: asString(chatbotV2.response_intent),
+    requestClass: asString(floor.request_class) ?? asString(chatbotV2.request_class),
+    responseIntent: asString(floor.response_intent) ?? asString(chatbotV2.response_intent),
   };
 }
 
@@ -334,8 +363,13 @@ function buildAllowedResourceHints(
 function getSupplementalHintResourceTypes(
   journeySnapshot: JourneySnapshot,
 ): ChatResourceDescriptor['resourceType'][] {
+  const alwaysVisibleQueryResources: ChatResourceDescriptor['resourceType'][] = [
+    'MEDICAL_INVITATION_STATUS',
+  ];
+
   if (journeySnapshot.currentStage === 'EXPLAIN_PROCESS') {
     return [
+      ...alwaysVisibleQueryResources,
       'MEDICAL_DOC_UPLOAD',
       'QUESTIONNAIRE',
       'HOSPITAL_RECOMMENDATION',
@@ -343,7 +377,7 @@ function getSupplementalHintResourceTypes(
     ];
   }
 
-  return [];
+  return alwaysVisibleQueryResources;
 }
 
 function describeResource(resourceType: ChatResourceDescriptor['resourceType']): string {
@@ -439,6 +473,21 @@ function normalizeClassifierRole(value: unknown): ChatbotV2ClassifierMessage['ro
 
 function deriveJourneyTruth(policyContext: unknown) {
   const root = asRecord(policyContext);
+  const chatbotV2 = asRecord(root.chatbot_v2 ?? root.chatbotV2);
+  const truthSummary = asRecord(chatbotV2.truth_summary ?? chatbotV2.truthSummary);
+  if (Object.keys(truthSummary).length > 0) {
+    return {
+      medicalInputsStarted: asBoolean(truthSummary.medical_inputs_started ?? truthSummary.medicalInputsStarted),
+      medicalInputsSubmitted: asBoolean(truthSummary.medical_inputs_submitted ?? truthSummary.medicalInputsSubmitted),
+      recommendationAvailable: asBoolean(truthSummary.recommendation_available ?? truthSummary.recommendationAvailable),
+      recommendationConfirmed: asBoolean(truthSummary.recommendation_confirmed ?? truthSummary.recommendationConfirmed),
+      onlineConsultRequired: asBoolean(truthSummary.online_consult_required ?? truthSummary.onlineConsultRequired),
+      onlineConsultStarted: asBoolean(truthSummary.online_consult_started ?? truthSummary.onlineConsultStarted),
+      onlineConsultSubmitted: asBoolean(truthSummary.online_consult_submitted ?? truthSummary.onlineConsultSubmitted),
+      humanHandoffActive: asBoolean(truthSummary.human_handoff_active ?? truthSummary.humanHandoffActive),
+      humanHandoffSubmitted: asBoolean(truthSummary.human_handoff_submitted ?? truthSummary.humanHandoffSubmitted),
+    };
+  }
   const statusSnapshot = asRecord(root.status_snapshot);
   return deriveJourneyTruthFromStatusSnapshot({
     formStatus: normalizeStatus(statusSnapshot.form_status),
@@ -448,6 +497,28 @@ function deriveJourneyTruth(policyContext: unknown) {
     packageStatus: normalizeStatus(statusSnapshot.package_status),
     handoffStatus: normalizeStatus(statusSnapshot.handoff_status),
   });
+}
+
+function readJourneySnapshotFromFloor(floor: Record<string, unknown>): JourneySnapshot | null {
+  const journey = asRecord(floor.journey_snapshot ?? floor.journeySnapshot);
+  const currentStage = asString(journey.current_stage ?? journey.currentStage);
+  const currentPhase = asString(journey.current_phase ?? journey.currentPhase);
+  if (!currentStage || !currentPhase) {
+    return null;
+  }
+
+  return JourneySnapshotSchema.parse({
+    currentStage,
+    currentPhase,
+  });
+}
+
+function dedupeChatResources(resources: ChatResourceDescriptor[]): ChatResourceDescriptor[] {
+  const byId = new Map<string, ChatResourceDescriptor>();
+  for (const resource of resources) {
+    byId.set(resource.resourceId, resource);
+  }
+  return [...byId.values()];
 }
 
 function normalizeVisibility(value: unknown): ChatResourceDescriptor['visibility'] {
@@ -485,4 +556,8 @@ function asNullableString(value: unknown): string | null | undefined {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true;
 }

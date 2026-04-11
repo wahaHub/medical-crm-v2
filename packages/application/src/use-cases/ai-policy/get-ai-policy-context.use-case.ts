@@ -1,4 +1,5 @@
 import { ContextBuilderService } from '../../services/policy-engine/context-builder.service.js';
+import type { AiChatMessage } from '@medical-crm/domain';
 
 export interface GetAiPolicyContextInput {
   sessionId: string;
@@ -23,6 +24,17 @@ export class GetAiPolicyContextUseCase {
       chatbot_v2: {
         source: context.chatbotV2Foundation.source,
         scope_id: context.chatbotV2Foundation.scopeId,
+        truth_summary: {
+          medical_inputs_started: context.chatbotV2Foundation.truth.medicalInputsStarted,
+          medical_inputs_submitted: context.chatbotV2Foundation.truth.medicalInputsSubmitted,
+          recommendation_available: context.chatbotV2Foundation.truth.recommendationAvailable,
+          recommendation_confirmed: context.chatbotV2Foundation.truth.recommendationConfirmed,
+          online_consult_required: context.chatbotV2Foundation.truth.onlineConsultRequired,
+          online_consult_started: context.chatbotV2Foundation.truth.onlineConsultStarted,
+          online_consult_submitted: context.chatbotV2Foundation.truth.onlineConsultSubmitted,
+          human_handoff_active: context.chatbotV2Foundation.truth.humanHandoffActive,
+          human_handoff_submitted: context.chatbotV2Foundation.truth.humanHandoffSubmitted,
+        },
         journey_snapshot: {
           current_stage: context.chatbotV2Foundation.journeySnapshot.currentStage,
           current_phase: context.chatbotV2Foundation.journeySnapshot.currentPhase,
@@ -42,6 +54,7 @@ export class GetAiPolicyContextUseCase {
           actions: resource.actions,
         })),
       },
+      chatbot_v2_floor: readChatbotV2Floor(context.recentMessages),
       status_snapshot: {
         condition_status: context.statusSnapshot.conditionStatus,
         form_status: context.statusSnapshot.formStatus,
@@ -98,4 +111,62 @@ export class GetAiPolicyContextUseCase {
       })),
     };
   }
+}
+
+function readChatbotV2Floor(messages: AiChatMessage[]) {
+  for (const message of [...messages].reverse()) {
+    if (message.role !== 'ASSISTANT') {
+      continue;
+    }
+
+    const metadata = message.metadata as Record<string, unknown> | null | undefined;
+    const floor = metadata?.['chatbotV2'];
+    if (!floor || typeof floor !== 'object') {
+      continue;
+    }
+
+    const record = floor as Record<string, unknown>;
+    const journeySnapshot = (record['journeySnapshot'] ?? record['journey_snapshot']) as Record<string, unknown> | undefined;
+    const resources = Array.isArray(record['resources'] ?? record['allowed_resources'])
+      ? (record['resources'] ?? record['allowed_resources']) as Array<Record<string, unknown>>
+      : [];
+    const truthSummary = (record['truthSummary'] ?? record['truth_summary']) as Record<string, unknown> | undefined;
+
+    return {
+      journey_snapshot: journeySnapshot
+        ? {
+            current_stage: journeySnapshot['currentStage'] ?? journeySnapshot['current_stage'] ?? null,
+            current_phase: journeySnapshot['currentPhase'] ?? journeySnapshot['current_phase'] ?? null,
+          }
+        : null,
+      allowed_resources: resources.map((resource) => ({
+        resource_type: resource['resourceType'] ?? resource['resource_type'] ?? null,
+        resource_id: resource['resourceId'] ?? resource['resource_id'] ?? null,
+        status: resource['status'] ?? null,
+        stage_binding: resource['stageBinding'] ?? resource['stage_binding'] ?? null,
+        visibility: resource['visibility'] ?? null,
+        payload: resource['payload'] ?? {},
+        actions: resource['actions'] ?? [],
+      })),
+      request_class: record['requestClass'] ?? record['request_class'] ?? null,
+      response_intent: record['responseIntent'] ?? record['response_intent'] ?? null,
+      include_progression_follow_up:
+        record['includeProgressionFollowUp'] ?? record['include_progression_follow_up'] ?? false,
+      truth_summary: truthSummary
+        ? {
+            medical_inputs_started: truthSummary['medicalInputsStarted'] ?? truthSummary['medical_inputs_started'] ?? false,
+            medical_inputs_submitted: truthSummary['medicalInputsSubmitted'] ?? truthSummary['medical_inputs_submitted'] ?? false,
+            recommendation_available: truthSummary['recommendationAvailable'] ?? truthSummary['recommendation_available'] ?? false,
+            recommendation_confirmed: truthSummary['recommendationConfirmed'] ?? truthSummary['recommendation_confirmed'] ?? false,
+            online_consult_required: truthSummary['onlineConsultRequired'] ?? truthSummary['online_consult_required'] ?? false,
+            online_consult_started: truthSummary['onlineConsultStarted'] ?? truthSummary['online_consult_started'] ?? false,
+            online_consult_submitted: truthSummary['onlineConsultSubmitted'] ?? truthSummary['online_consult_submitted'] ?? false,
+            human_handoff_active: truthSummary['humanHandoffActive'] ?? truthSummary['human_handoff_active'] ?? false,
+            human_handoff_submitted: truthSummary['humanHandoffSubmitted'] ?? truthSummary['human_handoff_submitted'] ?? false,
+          }
+        : null,
+    };
+  }
+
+  return null;
 }

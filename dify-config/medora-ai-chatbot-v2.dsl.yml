@@ -252,6 +252,10 @@ workflow:
               else:
                   include_progression_follow_up = "false"
 
+              truth_summary = _pick(context, "truthSummary", "truth_summary")
+              if not isinstance(truth_summary, dict):
+                  truth_summary = {}
+
               allowed_resource_types = []
               allowed_next_action_hints = []
 
@@ -270,6 +274,8 @@ workflow:
                   "current_stage": str(current_stage),
                   "current_phase": str(current_phase),
                   "allowed_resource_types": json.dumps(allowed_resource_types, ensure_ascii=True),
+                  "allowed_resources_json": json.dumps(allowed_resources, ensure_ascii=True),
+                  "truth_summary_json": json.dumps(truth_summary, ensure_ascii=True),
                   "allowed_next_action_hints": json.dumps(allowed_next_action_hints, ensure_ascii=True),
                   "include_progression_follow_up": include_progression_follow_up,
               }
@@ -287,6 +293,12 @@ workflow:
             type: string
             children: null
           allowed_resource_types:
+            type: string
+            children: null
+          allowed_resources_json:
+            type: string
+            children: null
+          truth_summary_json:
             type: string
             children: null
           allowed_next_action_hints:
@@ -322,8 +334,8 @@ workflow:
             You are the response composer for a CRM-owned medical journey chatbot.
 
             Dify is not the workflow owner.
-            The CRM-provided chatbotV2 context is the source of truth for the request class, response intent, current stage, current phase, allowed resources, and allowed next-action hints.
-            Ground every answer in the current stage, current phase, allowed resources, current status, conversation summary, faq grounding, page context, and attachments when they are relevant.
+            The CRM-provided chatbotV2 context is the source of truth for the request class, response intent, current stage, current phase, allowed resources, truth summary, and allowed next-action hints.
+            Ground every answer in the current stage, current phase, allowed resources, truth summary, current status, conversation summary, faq grounding, page context, and attachments when they are relevant.
 
             You must not invent widgets or progression beyond allowed hints.
             You must not invent hospitals, packages, questionnaires, upload widgets, booking flows, or human handoff steps that are not present in the CRM inputs.
@@ -344,7 +356,10 @@ workflow:
             - If no progression is clearly allowed or needed, set nextAction to ANSWER_FAQ.
             - Keep writebackDepth set to minimal.
             - Keep reasonCodes conservative and always include dify_v2_response.
+            - Do not say a requested resource is unavailable if it appears in the allowed resources list for this turn.
             - Do not claim a resource is available unless it appears in the allowed resources list.
+            - If truth summary says medicalInputsSubmitted is true, acknowledge that the questionnaire / medical intake has already been received even if QUESTIONNAIRE is not in the allowed resources list for this turn.
+            - If the current stage is HUMAN_HANDOFF or the truth summary indicates human handoff is active, your answer must not imply a journey rewind back to an earlier stage.
             - Do not announce a stage change, booking, upload start, or handoff completion unless CRM already exposed it.
         - role: user
           text: |
@@ -365,6 +380,12 @@ workflow:
 
             Allowed resources:
             {{#parse_chatbot_v2_context.allowed_resource_types#}}
+
+            Allowed resources JSON:
+            {{#parse_chatbot_v2_context.allowed_resources_json#}}
+
+            Truth summary:
+            {{#parse_chatbot_v2_context.truth_summary_json#}}
 
             Allowed next-action hints:
             {{#parse_chatbot_v2_context.allowed_next_action_hints#}}

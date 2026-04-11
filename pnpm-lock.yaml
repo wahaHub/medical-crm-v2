@@ -188,6 +188,9 @@ importers:
       '@medical-crm/utils':
         specifier: workspace:*
         version: link:../shared/utils
+      '@medical-crm/validation':
+        specifier: workspace:*
+        version: link:../shared/validation
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3

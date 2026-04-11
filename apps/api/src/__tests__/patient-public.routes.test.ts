@@ -244,39 +244,43 @@ describe('patientPublicRoutes', () => {
     );
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
-        faqGrounding: expect.objectContaining({
+        faqGrounding: JSON.stringify({
           faqScope: 'GENERAL_ONLY',
           categories: ['Consultation Process'],
           groundedContext: 'Grounded process context',
         }),
-        chatbotV2: expect.objectContaining({
-          journeySnapshot: {
-            currentStage: 'EXPLAIN_PROCESS',
-            currentPhase: 'active',
-          },
-          requestClass: 'process_explanation',
-          responseIntent: 'process_explanation',
-          resources: [
-            expect.objectContaining({
-              resourceType: 'PROCESS_GUIDE',
-              resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-              status: 'available',
-              stageBinding: {
-                stage: 'EXPLAIN_PROCESS',
-                phase: 'active',
-              },
-              visibility: {
-                mode: 'global',
-              },
-              payload: {
-                title: 'Understand our consultation process',
-              },
-              actions: ['open'],
-            }),
-          ],
-        }),
+        chatbotV2: expect.any(String),
       }),
     }));
+    const starterDifyPayload = services.difyApi.createChatMessage.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(JSON.parse(((starterDifyPayload.inputs as Record<string, unknown>).chatbotV2 as string))).toEqual(
+      expect.objectContaining({
+        journeySnapshot: {
+          currentStage: 'EXPLAIN_PROCESS',
+          currentPhase: 'active',
+        },
+        requestClass: 'process_explanation',
+        responseIntent: 'process_explanation',
+        resources: [
+          expect.objectContaining({
+            resourceType: 'PROCESS_GUIDE',
+            resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            status: 'available',
+            stageBinding: {
+              stage: 'EXPLAIN_PROCESS',
+              phase: 'active',
+            },
+            visibility: {
+              mode: 'global',
+            },
+            payload: {
+              title: 'Understand our consultation process',
+            },
+            actions: ['open'],
+          }),
+        ],
+      }),
+    );
   });
 
   it('does not overwrite an existing ai-v1 widget starter when the session has already been seeded', async () => {

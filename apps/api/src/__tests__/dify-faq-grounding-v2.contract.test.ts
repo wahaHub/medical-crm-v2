@@ -158,6 +158,7 @@ describe('Dify FAQ grounding v2 contract', () => {
   it('preserves faq scope semantics and forbids hospital-aware fallback on general misses', () => {
     const dsl = loadDsl();
     const resolverPrompt = systemPrompt(findNode(dsl.workflow.graph.nodes, 'faq_category_resolver_llm'));
+    const resolverYaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
     const routerCode = findNode(dsl.workflow.graph.nodes, 'faq_retrieval_router').data?.code ?? '';
     const outputNames = Object.keys(findNode(dsl.workflow.graph.nodes, 'normalize_grounded_context').data?.outputs ?? {});
 
@@ -170,12 +171,21 @@ describe('Dify FAQ grounding v2 contract', () => {
     expect(resolverPrompt).toContain('GENERAL_ONLY');
     expect(resolverPrompt).toContain('HOSPITAL_AWARE');
     expect(resolverPrompt).toContain('Use only category names that already exist');
+    expect(resolverYaml).toContain("query_prompt_template: '{{#sys.query#}}'");
+    expect(resolverYaml).toContain('User message:\n            {{#sys.query#}}');
     expect(routerCode).toContain('GENERAL_ONLY');
     expect(routerCode).toContain('HOSPITAL_AWARE');
     expect(routerCode).toContain('active_hospital_id');
     expect(routerCode).toContain('retrieval_path');
     expect(routerCode).not.toContain('fallback to HOSPITAL_AWARE');
     expect(routerCode).not.toContain('faq_scope_gate');
+  });
+
+  it('uses sys.query for faq retrieval inputs so advanced-chat import stays compatible', () => {
+    const yaml = execFileSync('cat', [dslPath], { encoding: 'utf8' });
+
+    expect(yaml.match(/query_variable_selector:\n\s*- sys\n\s*- query/g)?.length ?? 0).toBe(4);
+    expect(yaml).not.toContain('query_variable_selector:\n        - start\n        - query');
   });
 
   it('returns grounded FAQ context instead of final user-facing copy', () => {

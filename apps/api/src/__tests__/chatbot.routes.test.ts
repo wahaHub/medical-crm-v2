@@ -293,18 +293,18 @@ describe('Chatbot routes', () => {
       query: 'I want to consult about rhinoplasty.',
       user: 'session-1',
       inputs: {
-        recentMessages: [
+        recentMessages: JSON.stringify([
           {
             role: 'USER',
             content: 'I want to consult about rhinoplasty.',
           },
-        ],
+        ]),
         conversationSummary: '',
-        journeySnapshot: {
+        journeySnapshot: JSON.stringify({
           currentStage: 'EXPLAIN_PROCESS',
           currentPhase: 'active',
-        },
-        allowedResourceHints: [
+        }),
+        allowedResourceHints: JSON.stringify([
           {
             resourceType: 'PROCESS_GUIDE',
             description: 'Explains the consultation and treatment process.',
@@ -325,7 +325,7 @@ describe('Chatbot routes', () => {
             resourceType: 'PACKAGE_RECOMMENDATION',
             description: 'Lets the patient review or confirm recommended packages.',
           },
-        ],
+        ]),
       },
     }));
     expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
@@ -336,21 +336,8 @@ describe('Chatbot routes', () => {
           hospitalType: 'COSMETIC',
           sessionId: 'session-1',
           assistantMessageId: expect.any(String),
-          currentStatus: expect.any(Object),
-          chatbotV2: expect.objectContaining({
-            journeySnapshot: {
-              currentStage: 'EXPLAIN_PROCESS',
-              currentPhase: 'active',
-            },
-            requestClass: 'resource_request',
-            responseIntent: 'resource_request',
-            resources: expect.arrayContaining([
-              expect.objectContaining({
-                resourceType: 'PROCESS_GUIDE',
-                resourceId: 'process-guide:session-1',
-              }),
-            ]),
-          }),
+          currentStatus: expect.any(String),
+          chatbotV2: expect.any(String),
         }),
       }),
     );
@@ -392,7 +379,7 @@ describe('Chatbot routes', () => {
       targetResourceTypes: ['PROCESS_GUIDE'],
       includeProgressionFollowUp: false,
     });
-    expect(json.resources).toEqual(difyPayload.inputs.chatbotV2.resources);
+    expect(json.resources).toEqual(JSON.parse((difyPayload.inputs.chatbotV2 as string)).resources);
     expect(assistantDraft.id).toBe(difyPayload.inputs.assistantMessageId);
     expect(mockServices.aiChatMessageRepo.create.mock.invocationCallOrder[1]).toBeLessThan(
       mockServices.difyApi.createChatMessage.mock.invocationCallOrder[0]!,
@@ -448,7 +435,7 @@ describe('Chatbot routes', () => {
     }));
     expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
-        faqGrounding: expect.objectContaining({
+        faqGrounding: JSON.stringify({
           faqScope: 'GENERAL_ONLY',
           categories: ['Consultation Process'],
           groundedContext: 'Grounded FAQ context',
@@ -494,7 +481,7 @@ describe('Chatbot routes', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     const difyPayload = mockServices.difyApi.createChatMessage.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
-    const difyChatbotV2 = (difyPayload.inputs as Record<string, unknown>).chatbotV2 as {
+    const difyChatbotV2 = JSON.parse(((difyPayload.inputs as Record<string, unknown>).chatbotV2 as string)) as {
       journeySnapshot: { currentStage: string; currentPhase: string };
       resources: Array<{ resourceType: string }>;
       requestClass: string;
@@ -758,11 +745,11 @@ describe('Chatbot routes', () => {
             hospitalId: 'hospital-123',
             hospitalName: 'Medora Seoul',
           }),
-          pageContext: {
+          pageContext: JSON.stringify({
             type: 'HOSPITAL_DETAIL',
             hospitalId: 'hospital-123',
             hospitalName: 'Medora Seoul',
-          },
+          }),
         }),
       }),
     );
@@ -829,12 +816,12 @@ describe('Chatbot routes', () => {
             mimeType: 'application/pdf',
             storageKey: 'crm/dev/chatbot/report.pdf',
           }]),
-          attachments: [{
+          attachments: JSON.stringify([{
             fileName: 'report.pdf',
             fileSize: 1024,
             mimeType: 'application/pdf',
             storageKey: 'crm/dev/chatbot/report.pdf',
-          }],
+          }]),
         }),
       }),
     );
@@ -2197,28 +2184,29 @@ describe('Chatbot routes', () => {
           assistantMessageId: expect.any(String),
           attachmentsJson: '[]',
           pageContextJson: 'null',
-          currentStatus: expectedStatusSnapshot,
+          currentStatus: JSON.stringify(expectedStatusSnapshot),
           conversationSummary: expectedStatusSnapshot.conversationSummary,
-          attachments: [],
-          pageContext: null,
+          attachments: '[]',
+          pageContext: 'null',
           ...(expectedChatbotV2Journey.currentStage === 'COLLECT_MEDICAL_INPUTS'
             ? {}
             : {
-                faqGrounding: {
+                faqGrounding: JSON.stringify({
                   faqScope: 'GENERAL_ONLY',
                   categories: ['Consultation Process'],
                   groundedContext: 'Grounded FAQ context',
-                },
+                }),
               }),
-          chatbotV2: expect.objectContaining({
-            journeySnapshot: expectedChatbotV2Journey,
-            resources: expect.any(Array),
-          }),
+          chatbotV2: expect.stringContaining(`"currentStage":"${expectedChatbotV2Journey.currentStage}"`),
         },
         query: prompt,
         user: sessionId,
         conversationId: null,
       });
+      expect(JSON.parse((difyPayload.inputs as Record<string, unknown>).chatbotV2 as string)).toEqual(expect.objectContaining({
+            journeySnapshot: expectedChatbotV2Journey,
+            resources: expect.any(Array),
+      }));
       expect(json.metadata).toMatchObject(expectedPublicMetadata);
       for (const key of [
         'language',

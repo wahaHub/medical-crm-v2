@@ -295,7 +295,7 @@ workflow:
         - role: user
           text: |
             User message:
-            {{#start.query#}}
+            {{#sys.query#}}
 
             Active hospital id:
             {{#start.activeHospitalId#}}
@@ -306,7 +306,7 @@ workflow:
             Available CRM category list:
             {{#faq_categories_http.body#}}
         memory:
-          query_prompt_template: '{{#start.query#}}'
+          query_prompt_template: '{{#sys.query#}}'
           role_prefix:
             assistant: ''
             user: ''
@@ -497,7 +497,7 @@ workflow:
         desc: Retrieve general cosmetic FAQ narrowed by CRM category metadata.
         type: knowledge-retrieval
         query_variable_selector:
-        - start
+        - sys
         - query
         query_attachment_selector: []
         dataset_ids: []
@@ -531,7 +531,7 @@ workflow:
         desc: Retrieve general regular FAQ narrowed by CRM category metadata.
         type: knowledge-retrieval
         query_variable_selector:
-        - start
+        - sys
         - query
         query_attachment_selector: []
         dataset_ids: []
@@ -565,7 +565,7 @@ workflow:
         desc: Retrieve hospital-specific cosmetic FAQ narrowed by active hospital and CRM category metadata.
         type: knowledge-retrieval
         query_variable_selector:
-        - start
+        - sys
         - query
         query_attachment_selector: []
         dataset_ids: []
@@ -602,7 +602,7 @@ workflow:
         desc: Retrieve hospital-specific regular FAQ narrowed by active hospital and CRM category metadata.
         type: knowledge-retrieval
         query_variable_selector:
-        - start
+        - sys
         - query
         query_attachment_selector: []
         dataset_ids: []

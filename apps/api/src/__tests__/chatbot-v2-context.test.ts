@@ -72,25 +72,25 @@ describe('buildChatbotV2TurnContext', () => {
       query: 'Why do we still need this step?',
       user: 'widget-chat:patient-1:case-1',
       inputs: {
-        recentMessages: [
+        recentMessages: JSON.stringify([
           { role: 'ASSISTANT', content: 'How can I help?' },
           { role: 'USER', content: 'I want to understand the options.' },
           { role: 'ASSISTANT', content: 'We can guide you step by step.' },
           { role: 'USER', content: 'Okay.' },
           { role: 'ASSISTANT', content: 'We are currently at the recommendation stage.' },
           { role: 'USER', content: 'Why do we still need this step?' },
-        ],
+        ]),
         conversationSummary: 'The patient is already discussing recommendation details.',
-        journeySnapshot: {
+        journeySnapshot: JSON.stringify({
           currentStage: 'RECOMMENDATION',
           currentPhase: 'active',
-        },
-        allowedResourceHints: [
+        }),
+        allowedResourceHints: JSON.stringify([
           {
             resourceType: 'PROCESS_GUIDE',
             description: 'Explains the consultation and treatment process.',
           },
-        ],
+        ]),
       },
     }));
     expect(services.aiChatMessageRepo.listBySession).not.toHaveBeenCalled();
@@ -174,12 +174,12 @@ describe('buildChatbotV2TurnContext', () => {
     expect(services.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 5);
     expect(difyClassifierApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
-        recentMessages: [
+        recentMessages: JSON.stringify([
           { role: 'ASSISTANT', content: 'We can walk through the process.' },
           { role: 'USER', content: 'I want to keep going.' },
           { role: 'ASSISTANT', content: 'What would you like to do next?' },
           { role: 'USER', content: 'Okay, continue.' },
-        ],
+        ]),
       }),
     }));
   });
@@ -298,22 +298,27 @@ describe('buildChatbotV2TurnContext', () => {
 
     expect(difyClassifierApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
-        allowedResourceHints: expect.arrayContaining([
-          expect.objectContaining({
+        allowedResourceHints: JSON.stringify([
+          {
             resourceType: 'PROCESS_GUIDE',
-          }),
-          expect.objectContaining({
+            description: 'Explains the consultation and treatment process.',
+          },
+          {
             resourceType: 'MEDICAL_DOC_UPLOAD',
-          }),
-          expect.objectContaining({
+            description: 'Lets the patient upload medical records and reports.',
+          },
+          {
             resourceType: 'QUESTIONNAIRE',
-          }),
-          expect.objectContaining({
+            description: 'Lets the patient fill in a medical intake questionnaire.',
+          },
+          {
             resourceType: 'HOSPITAL_RECOMMENDATION',
-          }),
-          expect.objectContaining({
+            description: 'Lets the patient review or confirm recommended hospitals.',
+          },
+          {
             resourceType: 'PACKAGE_RECOMMENDATION',
-          }),
+            description: 'Lets the patient review or confirm recommended packages.',
+          },
         ]),
       }),
     }));

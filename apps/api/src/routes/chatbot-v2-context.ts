@@ -262,10 +262,10 @@ async function classifyTurn(input: {
       const latestUserMessage = classifierInput.recentMessages[classifierInput.recentMessages.length - 1]?.content ?? '';
       return classifierClient.createChatMessage({
         inputs: {
-          recentMessages: classifierInput.recentMessages,
+          recentMessages: JSON.stringify(classifierInput.recentMessages),
           conversationSummary: classifierInput.conversationSummary,
-          journeySnapshot: classifierInput.journeySnapshot,
-          allowedResourceHints: classifierInput.allowedResourceHints,
+          journeySnapshot: JSON.stringify(classifierInput.journeySnapshot),
+          allowedResourceHints: JSON.stringify(classifierInput.allowedResourceHints),
         },
         query: latestUserMessage,
         user: input.scopeId,

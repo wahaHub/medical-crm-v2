@@ -136,7 +136,15 @@ describe('Chatbot routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     process.env['DIFY_API_KEY'] = 'test-dify-key';
-    mockServices.difyClassifierApi = undefined;
+    mockServices.difyClassifierApi = {
+      createChatMessage: vi.fn().mockResolvedValue({
+        answer: JSON.stringify({
+          requestClass: 'faq',
+          targetResourceTypes: [],
+          includeProgressionFollowUp: false,
+        }),
+      }),
+    };
     currentSession = {
       userId: 'admin-1',
       email: 'admin@test.com',
@@ -167,6 +175,7 @@ describe('Chatbot routes', () => {
       toolTrace: [],
     }));
     mockServices.aiChatMessageRepo.deleteById.mockResolvedValue(true);
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
     mockServices.patientAuthService.createSessionToken.mockResolvedValue('patient-token');
     mockServices.patientAuthService.createGuestRestoreArtifacts.mockResolvedValue({
       restoreToken: 'restore-token-123',
@@ -362,6 +371,13 @@ describe('Chatbot routes', () => {
 
   it('POST /api/v2/chatbot/chat keeps CRM-owned chatbotV2 context even when the assistant suggests a later-stage action', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'resource_request',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
+      }),
+    });
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-journey-123',
       answer: JSON.stringify({
@@ -438,6 +454,13 @@ describe('Chatbot routes', () => {
 
   it('POST /api/v2/chatbot/chat preserves targeted process resources after same-stage replies', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
+      }),
+    });
     mockServices.getAiPolicyContext.execute.mockResolvedValue({
       chatbot_v2: {
         source: 'status_snapshot_bridge',
@@ -538,6 +561,13 @@ describe('Chatbot routes', () => {
 
   it('POST /api/v2/chatbot/chat keeps the pre-turn journey advance when the assistant omits nextAction', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      }),
+    });
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-continue-123',
       answer: JSON.stringify({
@@ -1408,6 +1438,13 @@ describe('Chatbot routes', () => {
       role: 'PATIENT',
       exp: 9999999999,
     });
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      }),
+    });
     mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-restored-shortlist',
@@ -2030,6 +2067,21 @@ describe('Chatbot routes', () => {
     }));
 
     for (const prompt of prompts) {
+      mockServices.difyClassifierApi.createChatMessage.mockResolvedValueOnce({
+        answer: JSON.stringify(
+          expectedChatbotV2Journey.currentStage === 'COLLECT_MEDICAL_INPUTS'
+            ? {
+                requestClass: 'progression_request',
+                targetResourceTypes: [],
+                includeProgressionFollowUp: false,
+              }
+            : {
+                requestClass: 'faq',
+                targetResourceTypes: [],
+                includeProgressionFollowUp: false,
+              },
+        ),
+      });
       mockServices.difyApi.createChatMessage.mockResolvedValueOnce(difyResponse);
 
       const res = await app.request('/api/v2/chatbot/chat', {
@@ -2423,6 +2475,13 @@ describe('Chatbot routes', () => {
       role: 'PATIENT',
       exp: 9999999999,
     });
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      }),
+    });
     mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-docs-refresh',
@@ -2493,6 +2552,13 @@ describe('Chatbot routes', () => {
       userId: 'patient-3',
       role: 'PATIENT',
       exp: 9999999999,
+    });
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      }),
     });
     mockServices.getTemplateByDisease.execute.mockResolvedValue({
       template: {
@@ -2571,6 +2637,13 @@ describe('Chatbot routes', () => {
       userId: 'patient-7',
       role: 'PATIENT',
       exp: 9999999999,
+    });
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      }),
     });
     mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
@@ -2697,7 +2770,6 @@ describe('Chatbot routes', () => {
         sessionId: 'widget-chat:patient-2:550e8400-e29b-41d4-a716-446655440000',
         patientId: 'patient-2',
         hospitalType: 'REGULAR',
-        difyConversationId: 'dify-conv-docs-preserve',
         statusSnapshot: {
           consultationStatus: 'not_introduced',
         },
@@ -2706,6 +2778,13 @@ describe('Chatbot routes', () => {
       userId: 'patient-2',
       role: 'PATIENT',
       exp: 9999999999,
+    });
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      }),
     });
     mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
     mockServices.difyApi.createChatMessage.mockResolvedValue({

@@ -27,16 +27,35 @@ describe('GetAiPolicyContextUseCase', () => {
           allowedResources: [
             {
               resourceType: 'PROCESS_GUIDE',
-              resourceId: 'process-guide',
-              status: 'AVAILABLE',
-              stageBinding: null,
+              resourceId: 'process-guide:session-123',
+              status: 'available',
+              stageBinding: {
+                stage: 'EXPLAIN_PROCESS',
+                phase: 'active',
+              },
               visibility: {
                 mode: 'global',
               },
               payload: {
-                title: 'Process guide',
+                title: 'Understand our consultation process',
               },
               actions: ['open'],
+            },
+            {
+              resourceType: 'HUMAN_HANDOFF',
+              resourceId: 'human-handoff:session-123',
+              status: 'available',
+              stageBinding: {
+                stage: 'EXPLAIN_PROCESS',
+                phase: 'active',
+              },
+              visibility: {
+                mode: 'global',
+              },
+              payload: {
+                title: 'Talk to a care advisor',
+              },
+              actions: ['request_human'],
             },
           ],
         },
@@ -73,13 +92,13 @@ describe('GetAiPolicyContextUseCase', () => {
     expect(result.chatbot_v2).toMatchObject({
       source: 'status_snapshot_bridge',
       scope_id: 'session-123',
-      request_class: 'faq',
-      response_intent: 'faq',
       journey_snapshot: {
         current_stage: 'EXPLAIN_PROCESS',
         current_phase: 'active',
       },
     });
+    expect(result.chatbot_v2).not.toHaveProperty('request_class');
+    expect(result.chatbot_v2).not.toHaveProperty('response_intent');
     expect(result.chatbot_v2.allowed_resources).toEqual(expect.arrayContaining([
       expect.objectContaining({
         resource_type: 'PROCESS_GUIDE',
@@ -95,9 +114,6 @@ describe('GetAiPolicyContextUseCase', () => {
       }),
       expect.objectContaining({
         resource_type: 'HUMAN_HANDOFF',
-      }),
-      expect.objectContaining({
-        resource_type: 'MEDICAL_INVITATION_STATUS',
       }),
     ]));
   });

@@ -1,5 +1,4 @@
 import { ContextBuilderService } from '../../services/policy-engine/context-builder.service.js';
-import { ConversationOrchestratorService } from '../../services/chatbot-v2/conversation-orchestrator.service.js';
 
 export interface GetAiPolicyContextInput {
   sessionId: string;
@@ -12,35 +11,23 @@ export interface GetAiPolicyContextInput {
 }
 
 export class GetAiPolicyContextUseCase {
-  private readonly orchestrator = new ConversationOrchestratorService();
-
   constructor(
     private readonly contextBuilder: ContextBuilderService,
   ) {}
 
   async execute(input: GetAiPolicyContextInput) {
     const context = await this.contextBuilder.build(input);
-    const orchestration = this.orchestrator.orchestrate({
-      scopeId: context.chatbotV2Foundation.scopeId,
-      userMessage: input.userMessage,
-      journeySnapshot: context.chatbotV2Foundation.journeySnapshot,
-      truth: context.chatbotV2Foundation.truth,
-    });
-    const projectedJourneySnapshot = orchestration.journeyUpdate ?? context.chatbotV2Foundation.journeySnapshot;
-    const projectedAllowedResources = orchestration.allowedResources;
 
     return {
       profile: context.profile,
       chatbot_v2: {
         source: context.chatbotV2Foundation.source,
         scope_id: context.chatbotV2Foundation.scopeId,
-        request_class: orchestration.requestClass,
-        response_intent: orchestration.responseIntent,
         journey_snapshot: {
-          current_stage: projectedJourneySnapshot.currentStage,
-          current_phase: projectedJourneySnapshot.currentPhase,
+          current_stage: context.chatbotV2Foundation.journeySnapshot.currentStage,
+          current_phase: context.chatbotV2Foundation.journeySnapshot.currentPhase,
         },
-        allowed_resources: projectedAllowedResources.map((resource) => ({
+        allowed_resources: context.chatbotV2Foundation.allowedResources.map((resource) => ({
           resource_type: resource.resourceType,
           resource_id: resource.resourceId,
           status: resource.status,

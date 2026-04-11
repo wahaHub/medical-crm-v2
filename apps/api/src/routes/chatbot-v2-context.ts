@@ -1,6 +1,11 @@
 import {
   ConversationOrchestratorService,
   JourneyEngineService,
+  LlmRequestClassifierService,
+  type ChatbotV2ClassifierInput,
+  type ChatbotV2ClassifierResourceHint,
+  type ChatbotV2ClassifierMessage,
+  type ChatbotV2RequestClassificationResult,
   deriveJourneyTruthFromStatusSnapshot,
 } from '@medical-crm/application';
 import type { AiChatStatusSnapshot } from '@medical-crm/domain';
@@ -33,6 +38,7 @@ type ChatbotV2FoundationContext = {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   resources: ChatResourceDescriptor[];
+  classification?: ChatbotV2RequestClassificationResult;
   requestClass?: string;
   responseIntent?: string;
 };
@@ -50,6 +56,7 @@ export async function buildChatbotV2TurnContext(input: {
   sessionId: string;
   userMessage: string;
   pageContext?: PageContext;
+  classifierOverride?: ChatbotV2RequestClassificationResult;
 }): Promise<ChatbotV2TurnContext> {
   const policyContext = await input.services.getAiPolicyContext.execute({
     sessionId: input.sessionId,
@@ -70,33 +77,34 @@ export async function buildChatbotV2TurnContext(input: {
     };
   }
 
-  if (!foundation.requestClass || !foundation.responseIntent) {
-    const orchestration = orchestrator.orchestrate({
-      scopeId: foundation.scopeId,
-      userMessage: input.userMessage,
-      journeySnapshot: foundation.journeySnapshot,
-      truth: foundation.truth,
-    });
-
-    return {
-      preTurn: {
-        journeySnapshot: orchestration.journeyUpdate ?? foundation.journeySnapshot,
-        resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
-        requestClass: orchestration.requestClass,
-        responseIntent: orchestration.responseIntent,
-      },
-      foundation,
-    };
-  }
+  const classification = input.classifierOverride ?? await classifyTurn({
+    services: input.services,
+    sessionId: input.sessionId,
+    scopeId: foundation.scopeId,
+    userMessage: input.userMessage,
+    journeySnapshot: foundation.journeySnapshot,
+    resources: foundation.resources,
+    conversationSummary: readConversationSummary(policyContext),
+    policyContext,
+  });
+  const orchestration = orchestrator.orchestrate({
+    scopeId: foundation.scopeId,
+    journeySnapshot: foundation.journeySnapshot,
+    truth: foundation.truth,
+    classification,
+  });
 
   return {
     preTurn: {
-      journeySnapshot: foundation.journeySnapshot,
-      resources: foundation.resources,
-      requestClass: foundation.requestClass ?? 'faq',
-      responseIntent: foundation.responseIntent ?? foundation.requestClass ?? 'faq',
+      journeySnapshot: orchestration.journeyUpdate ?? foundation.journeySnapshot,
+      resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+      requestClass: orchestration.requestClass,
+      responseIntent: orchestration.responseIntent,
     },
-    foundation,
+    foundation: {
+      ...foundation,
+      classification,
+    },
   };
 }
 
@@ -139,9 +147,10 @@ export function buildChatbotV2PostTurnContext(input: {
 
   const orchestration = orchestrator.orchestrate({
     scopeId: input.foundation.scopeId,
-    userMessage,
     journeySnapshot: refreshedJourneySnapshot,
     truth: refreshedTruth,
+    classification: input.foundation.classification,
+    userMessage,
   });
 
   return {
@@ -208,6 +217,164 @@ function readScopeId(policyContext: unknown, fallbackSessionId: string): string 
   const root = asRecord(policyContext);
   const chatbotV2 = asRecord(root.chatbot_v2 ?? root.chatbotV2);
   return asString(chatbotV2.scope_id) ?? fallbackSessionId;
+}
+
+async function classifyTurn(input: {
+  services: Services;
+  sessionId: string;
+  scopeId: string;
+  userMessage: string;
+  journeySnapshot: JourneySnapshot;
+  resources: ChatResourceDescriptor[];
+  conversationSummary: string;
+  policyContext: unknown;
+}): Promise<ChatbotV2RequestClassificationResult> {
+  const classifier = new LlmRequestClassifierService({
+    classify: async (classifierInput: ChatbotV2ClassifierInput) => {
+      const classifierClient = input.services.difyClassifierApi ?? input.services.difyApi;
+      const latestUserMessage = classifierInput.recentMessages[classifierInput.recentMessages.length - 1]?.content ?? '';
+      return classifierClient.createChatMessage({
+        inputs: {
+          recentMessages: classifierInput.recentMessages,
+          conversationSummary: classifierInput.conversationSummary,
+          journeySnapshot: classifierInput.journeySnapshot,
+          allowedResourceHints: classifierInput.allowedResourceHints,
+        },
+        query: latestUserMessage,
+        user: input.scopeId,
+      });
+    },
+  });
+
+  return classifier.classify({
+    recentMessages: await buildRecentMessages({
+      services: input.services,
+      sessionId: input.sessionId,
+      userMessage: input.userMessage,
+      policyContext: input.policyContext,
+    }),
+    conversationSummary: input.conversationSummary,
+    journeySnapshot: input.journeySnapshot,
+    allowedResourceHints: buildAllowedResourceHints(input.resources),
+  });
+}
+
+async function buildRecentMessages(input: {
+  services: Services;
+  sessionId: string;
+  userMessage: string;
+  policyContext: unknown;
+}): Promise<ChatbotV2ClassifierMessage[]> {
+  const trimmedUserMessage = input.userMessage.trim();
+  const fromPolicyContext = readRecentMessages(input.policyContext);
+  if (fromPolicyContext.length > 0) {
+    return appendCurrentUserMessage(fromPolicyContext, trimmedUserMessage);
+  }
+
+  const session = await input.services.aiChatSessionRepo.findBySessionId(input.sessionId);
+  if (!session) {
+    return appendCurrentUserMessage([], trimmedUserMessage);
+  }
+
+  const recentMessages = await input.services.aiChatMessageRepo.listBySession(session.id, 5);
+  const normalizedRecentMessages = recentMessages
+    .slice(0, 5)
+    .reverse()
+    .map((message) => ({
+      role: normalizeClassifierRole(message.role),
+      content: message.content ?? '',
+    }))
+    .filter((message) => message.content.trim().length > 0) as ChatbotV2ClassifierMessage[];
+
+  return appendCurrentUserMessage(normalizedRecentMessages, trimmedUserMessage);
+}
+
+function buildAllowedResourceHints(resources: ChatResourceDescriptor[]): ChatbotV2ClassifierResourceHint[] {
+  const deduped = new Map<string, ChatbotV2ClassifierResourceHint>();
+  for (const resource of resources) {
+    if (!deduped.has(resource.resourceType)) {
+      deduped.set(resource.resourceType, {
+        resourceType: resource.resourceType,
+        description: describeResource(resource.resourceType),
+      });
+    }
+  }
+
+  return [...deduped.values()];
+}
+
+function describeResource(resourceType: ChatResourceDescriptor['resourceType']): string {
+  switch (resourceType) {
+    case 'PROCESS_GUIDE':
+      return 'Explains the consultation and treatment process.';
+    case 'MEDICAL_DOC_UPLOAD':
+      return 'Lets the patient upload medical records and reports.';
+    case 'QUESTIONNAIRE':
+      return 'Lets the patient fill in a medical intake questionnaire.';
+    case 'HOSPITAL_RECOMMENDATION':
+      return 'Lets the patient review or confirm recommended hospitals.';
+    case 'PACKAGE_RECOMMENDATION':
+      return 'Lets the patient review or confirm recommended packages.';
+    case 'ONLINE_CONSULT_BOOKING':
+      return 'Lets the patient book an online consultation.';
+    case 'HUMAN_HANDOFF':
+      return 'Lets the patient request a human care advisor.';
+    case 'MEDICAL_INVITATION_STATUS':
+      return 'Lets the patient check the medical invitation status.';
+    default:
+      return 'A structured chat resource available for this turn.';
+  }
+}
+
+function readConversationSummary(policyContext: unknown): string {
+  const root = asRecord(policyContext);
+  const chatbotState = asRecord(root.chatbot_orchestration_state ?? root.chatbotOrchestrationState);
+  const statusSnapshot = asRecord(root.status_snapshot);
+  return asString(root.conversation_summary)
+    ?? asString(root.conversationSummary)
+    ?? asString(chatbotState.conversation_summary)
+    ?? asString(chatbotState.conversationSummary)
+    ?? asString(statusSnapshot.conversation_summary)
+    ?? asString(statusSnapshot.conversationSummary)
+    ?? '';
+}
+
+function readRecentMessages(policyContext: unknown): ChatbotV2ClassifierMessage[] {
+  const root = asRecord(policyContext);
+  const recentMessages = asArray(root.recent_messages)
+    .slice(0, 5)
+    .reverse()
+    .map((message) => ({
+      role: normalizeClassifierRole(asString(message.role) ?? 'USER'),
+      content: asString(message.content) ?? '',
+    }))
+    .filter((message) => message.content.trim().length > 0) as ChatbotV2ClassifierMessage[];
+
+  return recentMessages;
+}
+
+function appendCurrentUserMessage(
+  recentMessages: ChatbotV2ClassifierMessage[],
+  trimmedUserMessage: string,
+): ChatbotV2ClassifierMessage[] {
+  if (trimmedUserMessage.length === 0) {
+    return recentMessages.slice(-6);
+  }
+
+  const currentUserMessage: ChatbotV2ClassifierMessage = {
+    role: 'USER',
+    content: trimmedUserMessage,
+  };
+  return [...recentMessages, currentUserMessage].slice(-6);
+}
+
+function normalizeClassifierRole(value: unknown): ChatbotV2ClassifierMessage['role'] {
+  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (normalized === 'ASSISTANT' || normalized === 'SYSTEM') {
+    return normalized;
+  }
+
+  return 'USER';
 }
 
 function deriveJourneyTruth(policyContext: unknown) {

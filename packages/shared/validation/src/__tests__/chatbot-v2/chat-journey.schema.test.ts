@@ -124,8 +124,8 @@ describe('chatbot-v2 journey schemas', () => {
 
     expect(ChatbotV2ClassifierInputSchema.safeParse({
       recentMessages: [
-        { role: 'assistant', content: 'How can I help you today?' },
-        { role: 'user', content: '我想知道这个流程怎么走。' },
+        { role: 'ASSISTANT', content: 'How can I help you today?' },
+        { role: 'USER', content: '我想知道这个流程怎么走。' },
       ],
       conversationSummary: 'The patient is exploring treatment options in China.',
       journeySnapshot: {

@@ -292,6 +292,7 @@ interface AppServices {
   mediaUpload: MediaUploadService;
   difyApi: DifyApiClientService;
   difyClassifierApi?: DifyApiClientService;
+  difyFaqGroundingApi?: DifyApiClientService;
   resolveHospitalType: (hospitalId: string) => Promise<'COSMETIC' | 'REGULAR'>;
 
   // use cases — cases
@@ -635,6 +636,15 @@ export function getServices(): AppServices {
       Number.isFinite(difyRequestTimeoutMs) ? difyRequestTimeoutMs : 90_000,
       null,
     );
+    const difyFaqGroundingApiKey = process.env['DIFY_FAQ_GROUNDING_APP_API_KEY']?.trim() ?? '';
+    const difyFaqGroundingApiClient = difyFaqGroundingApiKey.length > 0
+      ? new DifyApiClientService(
+        process.env['DIFY_API_BASE_URL'] ?? 'https://api.dify.ai/v1',
+        difyFaqGroundingApiKey,
+        Number.isFinite(difyRequestTimeoutMs) ? difyRequestTimeoutMs : 90_000,
+        null,
+      )
+      : undefined;
 
     // Domain services
     const assignmentService = new CaseAssignmentService();
@@ -792,6 +802,7 @@ export function getServices(): AppServices {
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,
       difyClassifierApi: difyClassifierApiClient,
+      difyFaqGroundingApi: difyFaqGroundingApiClient,
       resolveHospitalType,
 
       createCase: new CreateCaseUseCase(caseRepo),

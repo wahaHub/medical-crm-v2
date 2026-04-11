@@ -87,6 +87,15 @@ describe('patientPublicRoutes', () => {
       difyClassifierApi: {
         createChatMessage: vi.fn(),
       },
+      difyFaqGroundingApi: {
+        createChatMessage: vi.fn().mockResolvedValue({
+          answer: JSON.stringify({
+            faqScope: 'GENERAL_ONLY',
+            categories: ['Consultation Process'],
+            groundedContext: 'Grounded process context',
+          }),
+        }),
+      },
       getTemplateByDisease: {
         execute: vi.fn().mockRejectedValue(new Error('default questionnaire unavailable')),
       },
@@ -200,6 +209,7 @@ describe('patientPublicRoutes', () => {
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-123');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
     expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
+    expect(services.difyFaqGroundingApi.createChatMessage).toHaveBeenCalledOnce();
     expect(services.difyClassifierApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.matchHospitals.execute).not.toHaveBeenCalled();
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledOnce();
@@ -234,6 +244,11 @@ describe('patientPublicRoutes', () => {
     );
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
+        faqGrounding: expect.objectContaining({
+          faqScope: 'GENERAL_ONLY',
+          categories: ['Consultation Process'],
+          groundedContext: 'Grounded process context',
+        }),
         chatbotV2: expect.objectContaining({
           journeySnapshot: {
             currentStage: 'EXPLAIN_PROCESS',

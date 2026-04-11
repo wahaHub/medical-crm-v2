@@ -100,6 +100,7 @@ export interface ConversationOrchestrationResult {
   responseIntent: ChatbotV2RequestClass;
   allowedResources: ChatbotV2ResourceDescriptor[];
   includeProgressionFollowUpAccepted?: boolean;
+  requiresFaqGrounding?: boolean;
   journeyUpdate?: JourneySnapshot;
   resourceUpdates?: ChatbotV2ResourceDescriptor[];
 }

@@ -2,6 +2,7 @@ import { AiChatMessage, AiChatSession as AiChatSessionEntity, type AiChatNextAct
 import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
+import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
 const GENERIC_WIDGET_STARTER_CONTENT = 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.';
@@ -218,6 +219,15 @@ export async function seedWidgetStarterMessage(input: {
       includeProgressionFollowUp: false,
     },
   });
+  const faqGrounding = chatbotV2Turn.foundation.requiresFaqGrounding
+    ? await resolveChatbotV2FaqGrounding({
+        services: input.services,
+        scopeId: chatbotV2Turn.foundation.scopeId,
+        hospitalType: session.hospitalType,
+        query: 'Explain the process',
+        activeHospitalContext: chatbotV2Turn.foundation.activeHospitalContext,
+      })
+    : null;
   const difyResponse = await input.services.difyApi.createChatMessage({
     inputs: {
       hospitalType: session.hospitalType,
@@ -229,6 +239,7 @@ export async function seedWidgetStarterMessage(input: {
       category: input.category ?? null,
       procedureId: input.procedureId ?? null,
       bootstrapMode: 'WIDGET_STARTER',
+      ...(faqGrounding ? { faqGrounding } : {}),
       chatbotV2: chatbotV2Turn.preTurn,
     },
     query: buildWidgetStarterPrompt(input),

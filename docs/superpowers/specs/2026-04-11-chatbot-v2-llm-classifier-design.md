@@ -15,6 +15,13 @@ This design is a refinement of:
 
 - `docs/superpowers/specs/2026-04-10-chat-journey-resource-architecture-design.md`
 
+This refinement is additive:
+
+- it preserves the already-approved journey/resource architecture
+- it preserves the existing classifier -> orchestrator -> composer separation
+- it adds a dedicated FAQ grounding stage when FAQ evidence retrieval is needed
+- it does not require rewriting previously completed `chatbot-v2` chunks just to support FAQ grounding
+
 ---
 
 ## Problem
@@ -59,7 +66,8 @@ So the flow becomes:
 
 1. classifier
 2. CRM orchestration
-3. composer
+3. FAQ grounding when required
+4. composer
 
 ### Principle 2: The classifier is structured, not freeform
 
@@ -115,13 +123,15 @@ The request-processing path becomes:
 3. CRM calls a dedicated Dify classifier workflow
 4. classifier returns structured output
 5. CRM conversation orchestrator decides allowed resources and journey updates
-6. CRM calls the Dify composer workflow
-7. CRM assembles the final assistant message
+6. CRM invokes FAQ grounding when the turn requires grounded FAQ evidence
+7. CRM calls the Dify composer workflow
+8. CRM assembles the final assistant message
 
 This keeps the responsibilities clean:
 
 - classifier: understanding
 - orchestrator: decision-making
+- FAQ grounder: category- and scope-based evidence retrieval
 - composer: expression
 
 ---
@@ -143,6 +153,76 @@ It must not:
 - write back message content
 - produce final user-facing replies
 - decide widgets or progression directly
+
+---
+
+## FAQ Grounding Workflow
+
+### Dedicated workflow or subflow
+
+Create a dedicated FAQ grounding workflow or subflow, separate from both:
+
+- the classifier workflow
+- the composer workflow
+
+Suggested file:
+
+- `dify-config/medora-ai-chatbot-v2-faq-grounding.dsl.yml`
+
+Its only responsibility is FAQ grounding before composition.
+
+It should:
+
+- resolve FAQ categories within the CRM-provided category universe
+- preserve `faqScope = GENERAL_ONLY | HOSPITAL_AWARE`
+- retrieve grounded FAQ evidence for the composer
+
+It must not:
+
+- generate the final user-facing answer
+- mutate journey state
+- act as a progression fallback
+
+### Semantics preserved from v1
+
+V2 should preserve the strong semantic parts of the v1 FAQ flow:
+
+- FAQ categories come from CRM, not from unconstrained LLM invention
+- category resolution happens within that allowed set
+- `faqScope` remains:
+  - `GENERAL_ONLY`
+  - `HOSPITAL_AWARE`
+- `HOSPITAL_AWARE` is a semantic scope decision, not a retrieval fallback from `GENERAL_ONLY`
+
+This means:
+
+- if a turn is scoped as `GENERAL_ONLY`, failure to retrieve enough general FAQ evidence must not automatically flip the turn into `HOSPITAL_AWARE`
+- scope is chosen before retrieval, not after retrieval misses
+
+### Simpler node structure than v1
+
+V1 represented FAQ grounding with several visible nodes:
+
+- category fetch
+- category resolver
+- parse/validation
+- scope gate
+- general-vs-hospital-aware gates
+- dataset-family routing
+
+V2 should preserve the decisions but simplify the graph.
+
+Preferred shape:
+
+1. fetch FAQ categories / grounding context
+2. resolve category selection and `faqScope`
+3. use one compact code/router step to choose the retrieval path
+4. retrieve FAQ evidence
+
+In other words:
+
+- keep the semantic decisions
+- reduce the node count
 
 ---
 
@@ -405,6 +485,7 @@ After receiving classifier output, CRM orchestrator decides:
 - `allowedResources`
 - `journeyUpdate`
 - whether to honor `includeProgressionFollowUp`
+- whether FAQ grounding is required for this turn
 
 This is important:
 
@@ -412,6 +493,20 @@ This is important:
 - but CRM decides whether the current journey/truth/resource state actually allows it
 
 So the classifier remains advisory, not authoritative.
+
+For turns classified as:
+
+- `faq`
+- `process_explanation` when grounded FAQ/process evidence is needed
+
+the orchestrator may invoke FAQ grounding before composition.
+
+That keeps the boundary clean:
+
+- classifier understands
+- orchestrator decides whether FAQ grounding is needed
+- FAQ grounding retrieves evidence
+- composer writes the reply
 
 ---
 
@@ -423,6 +518,7 @@ It receives:
 
 - the structured classifier result
 - the CRM orchestration result
+- grounded FAQ context when FAQ grounding was invoked
 - current journey context
 - allowed resources
 - conversation context
@@ -439,6 +535,7 @@ The composer must not:
 - choose new resources
 - change the request class
 - advance the journey by itself
+- perform FAQ category resolution or FAQ scope routing internally
 
 ---
 
@@ -487,6 +584,10 @@ Add a dedicated classifier workflow:
 
 - `dify-config/medora-ai-chatbot-v2-classifier.dsl.yml`
 
+Add a dedicated FAQ grounding workflow:
+
+- `dify-config/medora-ai-chatbot-v2-faq-grounding.dsl.yml`
+
 Keep composer separate:
 
 - `dify-config/medora-ai-chatbot-v2.dsl.yml`
@@ -497,6 +598,9 @@ Add or update tests to cover:
 
 - multilingual intent classification
 - FAQ always returning empty target resources
+- FAQ turns invoking FAQ grounding before composition
+- `faqScope = GENERAL_ONLY | HOSPITAL_AWARE` preserved in v2
+- `HOSPITAL_AWARE` never treated as a retrieval fallback from `GENERAL_ONLY`
 - explicit-resource messages preferring `resource_request`
 - progression requests with empty target resources
 - process-explanation turns optionally targeting `PROCESS_GUIDE`
@@ -513,6 +617,7 @@ This design does not attempt to:
 - redesign the resource registry itself
 - redesign the journey state model
 - migrate every frontend resource renderer in this step
+- rewrite already-completed `chatbot-v2` chunks when a narrow FAQ-grounding addition is sufficient
 - add confidence scores
 - add explanation/reason fields to the classifier output
 - support arbitrary multi-intent output

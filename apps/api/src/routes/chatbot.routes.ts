@@ -23,6 +23,7 @@ import {
 } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
+import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
 export const chatbotPublicRoutes = new OpenAPIHono();
@@ -166,6 +167,15 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       userMessage: normalizedUserMessage,
       pageContext: body.pageContext ?? null,
     });
+    const faqGrounding = chatbotV2Turn.foundation.requiresFaqGrounding
+      ? await resolveChatbotV2FaqGrounding({
+          services: svc,
+          scopeId: chatbotV2Turn.foundation.scopeId,
+          hospitalType: effectiveHospitalType,
+          query: normalizedUserMessage,
+          activeHospitalContext: chatbotV2Turn.foundation.activeHospitalContext,
+        })
+      : null;
     difyResponse = await svc.difyApi.createChatMessage({
       inputs: {
         hospitalType: effectiveHospitalType,
@@ -177,6 +187,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
         conversationSummary: session.statusSnapshot.conversationSummary,
         attachments: userAttachments,
         pageContext: body.pageContext ?? null,
+        ...(faqGrounding ? { faqGrounding } : {}),
         chatbotV2: chatbotV2Turn.preTurn,
       },
       query: normalizedUserMessage,

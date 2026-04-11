@@ -145,6 +145,15 @@ describe('Chatbot routes', () => {
         }),
       }),
     };
+    mockServices.difyFaqGroundingApi = {
+      createChatMessage: vi.fn().mockResolvedValue({
+        answer: JSON.stringify({
+          faqScope: 'GENERAL_ONLY',
+          categories: ['Consultation Process'],
+          groundedContext: 'Grounded FAQ context',
+        }),
+      }),
+    };
     currentSession = {
       userId: 'admin-1',
       email: 'admin@test.com',
@@ -388,6 +397,64 @@ describe('Chatbot routes', () => {
     expect(mockServices.aiChatMessageRepo.create.mock.invocationCallOrder[1]).toBeLessThan(
       mockServices.difyApi.createChatMessage.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('invokes FAQ grounding before composer for faq turns and passes grounded FAQ context downstream', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_started',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: 'overview-state',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+    }));
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        answer: 'Grounded answer',
+        nextAction: 'ANSWER_FAQ',
+      }),
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'How does your consultation process work?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.difyFaqGroundingApi.createChatMessage).toHaveBeenCalledOnce();
+    expect(mockServices.difyFaqGroundingApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      inputs: expect.objectContaining({
+        hospitalType: 'COSMETIC',
+        query: 'How does your consultation process work?',
+      }),
+      query: 'How does your consultation process work?',
+      user: 'session-1',
+    }));
+    expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      inputs: expect.objectContaining({
+        faqGrounding: expect.objectContaining({
+          faqScope: 'GENERAL_ONLY',
+          categories: ['Consultation Process'],
+          groundedContext: 'Grounded FAQ context',
+        }),
+      }),
+    }));
   });
 
   it('POST /api/v2/chatbot/chat keeps CRM-owned chatbotV2 context even when the assistant suggests a later-stage action', async () => {
@@ -2134,6 +2201,15 @@ describe('Chatbot routes', () => {
           conversationSummary: expectedStatusSnapshot.conversationSummary,
           attachments: [],
           pageContext: null,
+          ...(expectedChatbotV2Journey.currentStage === 'COLLECT_MEDICAL_INPUTS'
+            ? {}
+            : {
+                faqGrounding: {
+                  faqScope: 'GENERAL_ONLY',
+                  categories: ['Consultation Process'],
+                  groundedContext: 'Grounded FAQ context',
+                },
+              }),
           chatbotV2: expect.objectContaining({
             journeySnapshot: expectedChatbotV2Journey,
             resources: expect.any(Array),

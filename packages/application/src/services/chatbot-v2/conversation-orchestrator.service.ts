@@ -49,9 +49,16 @@ export class ConversationOrchestratorService {
       responseIntent: classification.requestClass,
       allowedResources,
       includeProgressionFollowUpAccepted,
+      requiresFaqGrounding: this.requiresFaqGrounding(classification.requestClass),
       journeyUpdate,
       resourceUpdates,
     };
+  }
+
+  private requiresFaqGrounding(
+    requestClass: ConversationOrchestrationResult['requestClass'],
+  ): boolean {
+    return requestClass === 'faq' || requestClass === 'process_explanation';
   }
 
   private computeJourneyUpdate(

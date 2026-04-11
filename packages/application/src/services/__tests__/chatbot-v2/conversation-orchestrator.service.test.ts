@@ -229,6 +229,37 @@ describe('ConversationOrchestratorService', () => {
         }),
       ],
     });
+    expect((result as any).requiresFaqGrounding).toBe(true);
+    expect(result.journeyUpdate).toBeUndefined();
+  });
+
+  it('marks faq turns for FAQ grounding without changing the journey', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'faq',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'RECOMMENDATION',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: true,
+        medicalInputsSubmitted: true,
+        recommendationAvailable: true,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    });
+
+    expect(result.responseIntent).toBe('faq');
+    expect((result as any).requiresFaqGrounding).toBe(true);
     expect(result.journeyUpdate).toBeUndefined();
   });
 

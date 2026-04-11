@@ -556,4 +556,13 @@ describe('composition root', () => {
       null,
     );
   });
+
+  it('does not create a faq grounding client from the main dify key when dedicated config is missing', async () => {
+    delete process.env['DIFY_FAQ_GROUNDING_APP_API_KEY'];
+
+    const { getServices } = await import('../composition-root');
+    const services = getServices();
+
+    expect(services.difyFaqGroundingApi).toBeUndefined();
+  });
 });

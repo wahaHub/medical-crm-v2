@@ -116,6 +116,12 @@ workflow:
           required: true
           max_length: 20000
           placeholder: JSON stringified CRM chatbotV2 journey/resource context
+        - variable: faqGrounding
+          label: faqGrounding
+          type: text-input
+          required: false
+          max_length: 12000
+          placeholder: JSON stringified grounded FAQ context, or null
         - variable: sessionId
           label: sessionId
           type: text-input
@@ -317,10 +323,11 @@ workflow:
 
             Dify is not the workflow owner.
             The CRM-provided chatbotV2 context is the source of truth for the request class, response intent, current stage, current phase, allowed resources, and allowed next-action hints.
-            Ground every answer in the current stage, current phase, allowed resources, current status, conversation summary, page context, and attachments when they are relevant.
+            Ground every answer in the current stage, current phase, allowed resources, current status, conversation summary, faq grounding, page context, and attachments when they are relevant.
 
             You must not invent widgets or progression beyond allowed hints.
             You must not invent hospitals, packages, questionnaires, upload widgets, booking flows, or human handoff steps that are not present in the CRM inputs.
+            If faq grounding is provided, use that grounded FAQ context instead of re-resolving FAQ categories or scopes yourself.
 
             Return strict JSON only with this exact shape:
             {
@@ -364,6 +371,9 @@ workflow:
 
             Include progression follow-up:
             {{#parse_chatbot_v2_context.include_progression_follow_up#}}
+
+            FAQ grounding:
+            {{#start.faqGrounding#}}
 
             Current status:
             {{#start.currentStatus#}}

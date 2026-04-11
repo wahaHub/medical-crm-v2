@@ -40,6 +40,11 @@ type ChatbotV2FoundationContext = {
   truth: JourneyTruth;
   resources: ChatResourceDescriptor[];
   classification: ChatbotV2RequestClassificationResult;
+  requiresFaqGrounding: boolean;
+  activeHospitalContext: {
+    hospitalId: string;
+    hospitalName: string | null;
+  } | null;
   requestClass?: string;
   responseIntent?: string;
 };
@@ -83,6 +88,7 @@ export async function buildChatbotV2TurnContext(input: {
       foundation: {
         ...foundation,
         classification: DEFAULT_BOOTSTRAP_CLASSIFICATION,
+        requiresFaqGrounding: true,
       },
     };
   }
@@ -115,6 +121,7 @@ export async function buildChatbotV2TurnContext(input: {
     foundation: {
       ...foundation,
       classification,
+      requiresFaqGrounding: orchestration.requiresFaqGrounding ?? false,
     },
   };
 }
@@ -222,6 +229,8 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
     truth: deriveJourneyTruth(policyContext),
     resources,
     classification: DEFAULT_BOOTSTRAP_CLASSIFICATION,
+    requiresFaqGrounding: false,
+    activeHospitalContext: readActiveHospitalContext(policyContext),
     requestClass: asString(chatbotV2.request_class),
     responseIntent: asString(chatbotV2.response_intent),
   };
@@ -381,6 +390,23 @@ function readRecentMessages(policyContext: unknown): ChatbotV2ClassifierMessage[
     .filter((message) => message.content.trim().length > 0) as ChatbotV2ClassifierMessage[];
 
   return recentMessages;
+}
+
+function readActiveHospitalContext(policyContext: unknown): {
+  hospitalId: string;
+  hospitalName: string | null;
+} | null {
+  const root = asRecord(policyContext);
+  const activeHospitalContext = asRecord(root.active_hospital_context ?? root.activeHospitalContext);
+  const hospitalId = asString(activeHospitalContext.hospital_id ?? activeHospitalContext.hospitalId);
+  if (!hospitalId) {
+    return null;
+  }
+
+  return {
+    hospitalId,
+    hospitalName: asString(activeHospitalContext.hospital_name ?? activeHospitalContext.hospitalName) ?? null,
+  };
 }
 
 function appendCurrentUserMessage(

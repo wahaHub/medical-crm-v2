@@ -1,0 +1,732 @@
+app:
+  name: Medora AI Chatbot v2 FAQ Grounding
+  description: Compact FAQ grounding workflow for chatbot v2 that resolves FAQ scope and categories before composition.
+  mode: advanced-chat
+  icon: 📚
+  icon_background: '#E8FFF1'
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.6.0
+dependencies: []
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - id: env-crm-base-url
+    name: crm_base_url
+    selector:
+    - env
+    - crm_base_url
+    value: REPLACE_ME_CRM_BASE_URL
+    value_type: string
+  - id: env-internal-api-secret
+    name: internal_api_secret
+    selector:
+    - env
+    - internal_api_secret
+    value: REPLACE_ME_INTERNAL_API_SECRET
+    value_type: secret
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - id: start-faq-categories
+      source: start
+      sourceHandle: source
+      target: faq_categories_http
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: start
+        targetType: http-request
+        isInIteration: false
+        isInLoop: false
+    - id: faq-categories-resolver
+      source: faq_categories_http
+      sourceHandle: source
+      target: faq_category_resolver_llm
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: http-request
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+    - id: resolver-router
+      source: faq_category_resolver_llm
+      sourceHandle: source
+      target: faq_retrieval_router
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: router-gate
+      source: faq_retrieval_router
+      sourceHandle: source
+      target: faq_retrieval_gate
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+    - id: gate-general-cosmetic
+      source: faq_retrieval_gate
+      sourceHandle: general_cosmetic
+      target: general_faq_cosmetic_kr
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: gate-general-regular
+      source: faq_retrieval_gate
+      sourceHandle: general_regular
+      target: general_faq_regular_kr
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: gate-hospital-cosmetic
+      source: faq_retrieval_gate
+      sourceHandle: hospital_cosmetic
+      target: hospital_faq_cosmetic_kr
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: gate-hospital-regular
+      source: faq_retrieval_gate
+      sourceHandle: 'false'
+      target: hospital_faq_regular_kr
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+    - id: general-cosmetic-normalize
+      source: general_faq_cosmetic_kr
+      sourceHandle: source
+      target: normalize_grounded_context
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: general-regular-normalize
+      source: general_faq_regular_kr
+      sourceHandle: source
+      target: normalize_grounded_context
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-cosmetic-normalize
+      source: hospital_faq_cosmetic_kr
+      sourceHandle: source
+      target: normalize_grounded_context
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: hospital-regular-normalize
+      source: hospital_faq_regular_kr
+      sourceHandle: source
+      target: normalize_grounded_context
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+    - id: normalize-final
+      source: normalize_grounded_context
+      sourceHandle: source
+      target: final_answer
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: answer
+        isInIteration: false
+        isInLoop: false
+    nodes:
+    - id: start
+      type: custom
+      position:
+        x: 80
+        y: 240
+      data:
+        title: Start
+        desc: FAQ grounding inputs prepared by CRM before composition.
+        type: start
+        variables:
+        - variable: hospitalType
+          label: hospitalType
+          type: select
+          required: true
+          options:
+          - COSMETIC
+          - REGULAR
+          default: COSMETIC
+          max_length: 48
+          placeholder: Select hospital type
+        - variable: query
+          label: query
+          type: text-input
+          required: true
+          max_length: 8000
+          placeholder: Latest user message
+        - variable: activeHospitalId
+          label: activeHospitalId
+          type: text-input
+          required: false
+          max_length: 255
+          placeholder: Optional active hospital id
+        - variable: activeHospitalName
+          label: activeHospitalName
+          type: text-input
+          required: false
+          max_length: 255
+          placeholder: Optional active hospital name
+    - id: faq_categories_http
+      type: custom
+      position:
+        x: 390
+        y: 240
+      data:
+        title: FAQ Categories HTTP
+        desc: Fetch CRM-backed FAQ categories for the current hospital type and optional active hospital context.
+        type: http-request
+        method: get
+        url: '{{#env.crm_base_url#}}/api/v2/internal/mcp/faq-categories?hospitalType={{#start.hospitalType#}}&hospitalId={{#start.activeHospitalId#}}'
+        authorization:
+          type: no-auth
+          config: null
+        headers: |-
+          Content-Type: application/json
+          X-Internal-Secret: {{#env.internal_api_secret#}}
+        params: ''
+        body:
+          type: none
+          data: []
+        timeout:
+          connect: 5
+          read: 10
+          write: 10
+        retry_config:
+          enabled: true
+          max_retries: 1
+          retry_interval: 500
+          exponential_backoff:
+            enabled: false
+            multiplier: 2
+            max_interval: 2000
+    - id: faq_category_resolver_llm
+      type: custom
+      position:
+        x: 720
+        y: 240
+      data:
+        title: FAQ Category Resolver
+        desc: Resolve FAQ categories and faq scope within the CRM-provided category universe.
+        type: llm
+        model:
+          provider: ''
+          name: ''
+          mode: chat
+          completion_params:
+            temperature: 0.1
+        prompt_template:
+        - role: system
+          text: |
+            You are selecting the most relevant CRM FAQ categories for grounding.
+
+            Return strict JSON only with this exact shape:
+            {
+              "categories": ["string"],
+              "faqScope": "GENERAL_ONLY|HOSPITAL_AWARE"
+            }
+
+            Rules:
+            - Use only category names that already exist in the provided category list.
+            - Return 1 to 3 categories ordered from most to least relevant.
+            - Return an empty array if none are relevant.
+            - Set faqScope to HOSPITAL_AWARE only when the user is clearly asking about a currently active hospital.
+            - If there is no active hospital id, prefer GENERAL_ONLY.
+            - HOSPITAL_AWARE is a semantic scope choice, not a fallback after general retrieval misses.
+        - role: user
+          text: |
+            User message:
+            {{#start.query#}}
+
+            Active hospital id:
+            {{#start.activeHospitalId#}}
+
+            Active hospital name:
+            {{#start.activeHospitalName#}}
+
+            Available CRM category list:
+            {{#faq_categories_http.body#}}
+        memory:
+          query_prompt_template: '{{#start.query#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: false
+            size: 1
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+        variables: []
+    - id: faq_retrieval_router
+      type: custom
+      position:
+        x: 1070
+        y: 240
+      data:
+        title: FAQ Retrieval Router
+        desc: Compact router that finalizes faq scope and selects a single retrieval path without producing the final answer.
+        type: code
+        code_language: python3
+        code: |
+          import json
+
+          def _parse_json(value):
+              if isinstance(value, (dict, list)):
+                  return value
+              if not isinstance(value, str):
+                  return {}
+              text = value.strip()
+              if not text:
+                  return {}
+              try:
+                  return json.loads(text)
+              except Exception:
+                  return {}
+
+          def _read_available_categories(categories_body: str) -> list[str]:
+              payload = _parse_json(categories_body)
+              categories = payload.get("categories")
+              if not isinstance(categories, list):
+                  return []
+
+              names = []
+              for item in categories:
+                  if not isinstance(item, dict):
+                      continue
+                  name = item.get("name")
+                  if isinstance(name, str) and name.strip():
+                      names.append(name.strip())
+              return names
+
+          def _build_retrieval_path(faq_scope: str, hospital_type: str) -> str:
+              if faq_scope == "HOSPITAL_AWARE":
+                  if hospital_type == "COSMETIC":
+                      return "hospital_cosmetic"
+                  return "hospital_regular"
+
+              if hospital_type == "COSMETIC":
+                  return "general_cosmetic"
+              return "general_regular"
+
+          def main(resolver_text: str, categories_body: str, active_hospital_id: str, hospital_type: str) -> dict:
+              parsed = _parse_json(resolver_text)
+              available_categories = _read_available_categories(categories_body)
+              allowed = set(available_categories)
+
+              raw_categories = parsed.get("categories")
+              categories = []
+              if isinstance(raw_categories, list):
+                  for item in raw_categories:
+                      if isinstance(item, str) and item.strip() and item.strip() in allowed and item.strip() not in categories:
+                          categories.append(item.strip())
+                      if len(categories) >= 3:
+                          break
+
+              faq_scope = parsed.get("faqScope")
+              if faq_scope not in ("GENERAL_ONLY", "HOSPITAL_AWARE"):
+                  faq_scope = "GENERAL_ONLY"
+
+              if faq_scope == "HOSPITAL_AWARE" and not active_hospital_id:
+                  faq_scope = "GENERAL_ONLY"
+
+              retrieval_path = _build_retrieval_path(faq_scope, hospital_type)
+
+              grounded_context = {
+                  "faqScope": faq_scope,
+                  "categories": categories,
+                  "availableCategories": available_categories,
+                  "activeHospitalId": active_hospital_id or None,
+                  "retrievalPath": retrieval_path,
+                  "notes": [
+                      "HOSPITAL_AWARE is a semantic scope choice chosen before retrieval"
+                  ],
+              }
+
+              return {
+                  "faq_scope": faq_scope,
+                  "retrieval_path": retrieval_path,
+                  "categories": categories,
+                  "grounded_context_json": json.dumps(grounded_context, ensure_ascii=True),
+              }
+        outputs:
+          faq_scope:
+            type: string
+            children: null
+          retrieval_path:
+            type: string
+            children: null
+          categories:
+            type: array[string]
+            children: null
+          grounded_context_json:
+            type: string
+            children: null
+        variables:
+        - variable: resolver_text
+          value_selector:
+          - faq_category_resolver_llm
+          - text
+          value_type: string
+        - variable: categories_body
+          value_selector:
+          - faq_categories_http
+          - body
+          value_type: string
+        - variable: active_hospital_id
+          value_selector:
+          - start
+          - activeHospitalId
+          value_type: string
+        - variable: hospital_type
+          value_selector:
+          - start
+          - hospitalType
+          value_type: string
+    - id: faq_retrieval_gate
+      type: custom
+      position:
+        x: 1380
+        y: 240
+      data:
+        title: FAQ Retrieval Gate
+        desc: Route to exactly one FAQ retrieval path without recreating the old v1 node sprawl.
+        type: if-else
+        cases:
+        - case_id: general_cosmetic
+          id: general_cosmetic
+          logical_operator: and
+          conditions:
+          - id: retrieval-path-general-cosmetic
+            variable_selector:
+            - faq_retrieval_router
+            - retrieval_path
+            comparison_operator: is
+            value: general_cosmetic
+            varType: string
+        - case_id: general_regular
+          id: general_regular
+          logical_operator: and
+          conditions:
+          - id: retrieval-path-general-regular
+            variable_selector:
+            - faq_retrieval_router
+            - retrieval_path
+            comparison_operator: is
+            value: general_regular
+            varType: string
+        - case_id: hospital_cosmetic
+          id: hospital_cosmetic
+          logical_operator: and
+          conditions:
+          - id: retrieval-path-hospital-cosmetic
+            variable_selector:
+            - faq_retrieval_router
+            - retrieval_path
+            comparison_operator: is
+            value: hospital_cosmetic
+            varType: string
+    - id: general_faq_cosmetic_kr
+      type: custom
+      position:
+        x: 1380
+        y: 60
+      data:
+        title: General FAQ Cosmetic
+        desc: Retrieve general cosmetic FAQ narrowed by CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - start
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 4
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: COSMETIC
+          - name: scope
+            comparison_operator: is
+            value: GENERAL
+          - name: category
+            comparison_operator: in
+            value: '{{#faq_retrieval_router.categories#}}'
+        vision:
+          enabled: false
+    - id: general_faq_regular_kr
+      type: custom
+      position:
+        x: 1380
+        y: 180
+      data:
+        title: General FAQ Regular
+        desc: Retrieve general regular FAQ narrowed by CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - start
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 4
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: REGULAR
+          - name: scope
+            comparison_operator: is
+            value: GENERAL
+          - name: category
+            comparison_operator: in
+            value: '{{#faq_retrieval_router.categories#}}'
+        vision:
+          enabled: false
+    - id: hospital_faq_cosmetic_kr
+      type: custom
+      position:
+        x: 1380
+        y: 300
+      data:
+        title: Hospital FAQ Cosmetic
+        desc: Retrieve hospital-specific cosmetic FAQ narrowed by active hospital and CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - start
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 3
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: COSMETIC
+          - name: scope
+            comparison_operator: is
+            value: HOSPITAL
+          - name: hospital_id
+            comparison_operator: is
+            value: '{{#start.activeHospitalId#}}'
+          - name: category
+            comparison_operator: in
+            value: '{{#faq_retrieval_router.categories#}}'
+        vision:
+          enabled: false
+    - id: hospital_faq_regular_kr
+      type: custom
+      position:
+        x: 1380
+        y: 420
+      data:
+        title: Hospital FAQ Regular
+        desc: Retrieve hospital-specific regular FAQ narrowed by active hospital and CRM category metadata.
+        type: knowledge-retrieval
+        query_variable_selector:
+        - start
+        - query
+        query_attachment_selector: []
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 3
+          score_threshold: 0.3
+          reranking_enable: false
+        metadata_filtering_mode: manual
+        metadata_filtering_conditions:
+          logical_operator: and
+          conditions:
+          - name: hospital_type
+            comparison_operator: is
+            value: REGULAR
+          - name: scope
+            comparison_operator: is
+            value: HOSPITAL
+          - name: hospital_id
+            comparison_operator: is
+            value: '{{#start.activeHospitalId#}}'
+          - name: category
+            comparison_operator: in
+            value: '{{#faq_retrieval_router.categories#}}'
+        vision:
+          enabled: false
+    - id: normalize_grounded_context
+      type: custom
+      position:
+        x: 1720
+        y: 240
+      data:
+        title: Normalize Grounded Context
+        desc: Select the scoped retrieval result and return compact grounded FAQ evidence without producing final user-facing copy.
+        type: code
+        code_language: python3
+        code: |
+          import json
+
+          def _pick_result(faq_scope, hospital_type, general_faq_result_cosmetic, general_faq_result_regular, hospital_faq_result_cosmetic, hospital_faq_result_regular):
+              if faq_scope == "HOSPITAL_AWARE":
+                  if hospital_type == "COSMETIC":
+                      return [], hospital_faq_result_cosmetic or []
+                  return [], hospital_faq_result_regular or []
+
+              if hospital_type == "COSMETIC":
+                  return general_faq_result_cosmetic or [], []
+              return general_faq_result_regular or [], []
+
+          def main(faq_scope: str, hospital_type: str, categories: list[str], general_faq_result_cosmetic: list[dict], general_faq_result_regular: list[dict], hospital_faq_result_cosmetic: list[dict], hospital_faq_result_regular: list[dict]) -> dict:
+              general_faq_result, hospital_faq_result = _pick_result(
+                  faq_scope,
+                  hospital_type,
+                  general_faq_result_cosmetic,
+                  general_faq_result_regular,
+                  hospital_faq_result_cosmetic,
+                  hospital_faq_result_regular,
+              )
+
+              grounded_context = {
+                  "faqScope": faq_scope,
+                  "categories": categories or [],
+                  "general_faq_result": general_faq_result,
+                  "hospital_faq_result": hospital_faq_result,
+              }
+
+              return {
+                  "faq_scope": faq_scope,
+                  "categories": categories or [],
+                  "grounded_context_json": json.dumps(grounded_context, ensure_ascii=True),
+              }
+        outputs:
+          faq_scope:
+            type: string
+            children: null
+          categories:
+            type: array[string]
+            children: null
+          grounded_context_json:
+            type: string
+            children: null
+        variables:
+        - variable: faq_scope
+          value_selector:
+          - faq_retrieval_router
+          - faq_scope
+          value_type: string
+        - variable: hospital_type
+          value_selector:
+          - start
+          - hospitalType
+          value_type: string
+        - variable: categories
+          value_selector:
+          - faq_retrieval_router
+          - categories
+          value_type: array[string]
+        - variable: general_faq_result_cosmetic
+          value_selector:
+          - general_faq_cosmetic_kr
+          - result
+          value_type: array[object]
+        - variable: general_faq_result_regular
+          value_selector:
+          - general_faq_regular_kr
+          - result
+          value_type: array[object]
+        - variable: hospital_faq_result_cosmetic
+          value_selector:
+          - hospital_faq_cosmetic_kr
+          - result
+          value_type: array[object]
+        - variable: hospital_faq_result_regular
+          value_selector:
+          - hospital_faq_regular_kr
+          - result
+          value_type: array[object]
+    - id: final_answer
+      type: custom
+      position:
+        x: 2060
+        y: 240
+      data:
+        title: Final Answer
+        desc: Return grounded FAQ context only. Final user-facing composition happens later.
+        type: answer
+        answer: '{{#normalize_grounded_context.grounded_context_json#}}'

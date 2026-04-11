@@ -98,6 +98,7 @@ describe('Dify workflow v2 contract', () => {
 
     expect(Array.from(variableNames)).toEqual(expect.arrayContaining([
       'chatbotV2',
+      'faqGrounding',
       'sessionId',
       'assistantMessageId',
       'hospitalType',
@@ -187,6 +188,7 @@ describe('Dify workflow v2 contract', () => {
     expect(prompt).toContain('allowed resources');
     expect(prompt).toContain('current status');
     expect(prompt).toContain('conversation summary');
+    expect(prompt).toContain('faq grounding');
     expect(prompt).toContain('must not invent widgets');
     expect(prompt).toContain('must not invent');
     expect(prompt).toContain('allowed next-action hints');
@@ -202,6 +204,7 @@ describe('Dify workflow v2 contract', () => {
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_resource_types#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.allowed_next_action_hints#}}');
     expect(promptInputs).toContain('{{#parse_chatbot_v2_context.include_progression_follow_up#}}');
+    expect(promptInputs).toContain('{{#start.faqGrounding#}}');
     expect(promptInputs).toContain('{{#start.currentStatus#}}');
     expect(promptInputs).toContain('{{#start.conversationSummary#}}');
     expect(promptInputs).toContain('{{#start.pageContext#}}');

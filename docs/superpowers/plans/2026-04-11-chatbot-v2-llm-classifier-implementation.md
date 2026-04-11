@@ -12,6 +12,20 @@
 
 ---
 
+## Planning Note
+
+This plan remains incremental.
+
+Chunks 1-6 should stay conceptually intact.
+
+We should not rewrite already-completed classifier/orchestrator/composer work just because FAQ grounding is still missing.
+
+Instead, FAQ grounding is added as a narrow extension after the existing classifier/orchestrator/composer foundation.
+
+That keeps subagent execution stable and avoids unnecessary backtracking.
+
+---
+
 ## What Is Already Implemented and Should Be Reused
 
 This plan is intentionally incremental. We are not rebuilding `chatbot-v2` from scratch.
@@ -48,6 +62,8 @@ This plan is intentionally incremental. We are not rebuilding `chatbot-v2` from 
 
 - `dify-config/medora-ai-chatbot-v2-classifier.dsl.yml`
   - dedicated classifier workflow
+- `dify-config/medora-ai-chatbot-v2-faq-grounding.dsl.yml`
+  - dedicated FAQ grounding workflow
 
 ---
 
@@ -70,13 +86,16 @@ For each user turn:
    - allowed resources
    - journey update
    - whether progression follow-up is accepted
-5. CRM calls the existing composer workflow
-6. CRM assembles final assistant message and metadata
+    - whether FAQ grounding is required
+5. if needed, CRM calls the dedicated FAQ grounding workflow
+6. CRM calls the existing composer workflow
+7. CRM assembles final assistant message and metadata
 
 This preserves the architecture:
 
 - classifier understands
 - orchestrator decides
+- FAQ grounder retrieves evidence
 - composer speaks
 
 ---
@@ -93,6 +112,8 @@ This preserves the architecture:
   - purpose: verify classifier input shaping, result parsing, and invalid-output handling
 - `apps/api/src/__tests__/dify-classifier-v2.contract.test.ts`
   - purpose: lock the dedicated classifier workflow contract
+- `apps/api/src/__tests__/dify-faq-grounding-v2.contract.test.ts`
+  - purpose: lock the dedicated FAQ grounding workflow contract
 
 **Modify**
 
@@ -106,10 +127,12 @@ This preserves the architecture:
   - purpose: accept classifier output as input instead of self-classifying internally
 - `apps/api/src/routes/chatbot-v2-context.ts`
   - purpose: build classifier inputs, invoke classifier service, then invoke orchestrator
+- `packages/application/src/services/chatbot-v2/conversation-orchestrator.service.ts`
+  - purpose: decide when FAQ grounding is required without changing the existing journey ownership model
 - `apps/api/src/routes/chatbot.routes.ts`
-  - purpose: pass the richer classifier-driven v2 context into the composer call and final metadata
+  - purpose: pass the richer classifier-driven v2 context into the FAQ-grounding/composer call chain and final metadata
 - `apps/api/src/routes/patient-widget-starter.ts`
-  - purpose: use the same classifier-orchestrator-composer path for the starter turn where applicable
+  - purpose: use the same classifier-orchestrator-faq-grounding-composer path for the starter turn where applicable
 - `apps/api/src/composition-root.ts`
   - purpose: wire separate classifier/composer Dify configuration and services
 - `packages/infrastructure/services/dify-api-client.service.ts`
@@ -135,11 +158,13 @@ This preserves the architecture:
 
 - `dify-config/medora-ai-chatbot-v2-classifier.dsl.yml`
   - purpose: dedicated structured classifier workflow
+- `dify-config/medora-ai-chatbot-v2-faq-grounding.dsl.yml`
+  - purpose: dedicated FAQ grounding workflow
 
 **Modify**
 
 - `dify-config/medora-ai-chatbot-v2.dsl.yml`
-  - purpose: keep it as composer-only and ensure it consumes classifier/orchestrator outputs cleanly
+  - purpose: keep it as composer-only and ensure it consumes classifier/orchestrator/grounding outputs cleanly
 
 ---
 
@@ -403,6 +428,8 @@ This preserves the architecture:
 
 ### Task 7: Prove the new classifier removes the brittle rule-based behavior
 
+If Chunk 8 is added, rerun this chunk after Chunk 8 completes so the final regression pass covers FAQ grounding too.
+
 **Files**
 
 - Modify: existing chatbot-v2 service tests and route tests as needed
@@ -411,6 +438,9 @@ This preserves the architecture:
 - [ ] **Step 1: Add regression tests for the previously broken behavior**
   Cover:
   - multilingual FAQ that should not map to a resource
+  - FAQ turns that require grounding before composition
+  - FAQ turns preserving `faqScope = GENERAL_ONLY | HOSPITAL_AWARE`
+  - `GENERAL_ONLY` retrieval never silently escalating into `HOSPITAL_AWARE`
   - process explanation targeting `PROCESS_GUIDE`
   - process explanation during later stages remains explanatory only and does not regress journey
   - explicit resource request winning over progression
@@ -429,6 +459,8 @@ This preserves the architecture:
 - [ ] **Step 3: Manual smoke checklist after implementation**
   Verify with live or near-live turns:
   - FAQ-only turn
+  - FAQ turn with category grounding and `GENERAL_ONLY` scope
+  - FAQ turn with category grounding and `HOSPITAL_AWARE` scope
   - process explanation turn
   - “continue / next step” turn
   - explicit questionnaire request
@@ -436,6 +468,66 @@ This preserves the architecture:
   - resource status question
   - human-help request
   - FAQ + progression follow-up turn
+
+---
+
+## Chunk 8: Add FAQ Grounding Without Rewriting Chunks 1-6
+
+### Task 8: Migrate the strong v1 FAQ grounding semantics into v2
+
+This chunk is additive.
+
+Do not revisit or redesign the earlier classifier/orchestrator/composer chunks unless a narrow FAQ-grounding change requires it.
+
+**Files**
+
+- Create: `dify-config/medora-ai-chatbot-v2-faq-grounding.dsl.yml`
+- Create: `apps/api/src/__tests__/dify-faq-grounding-v2.contract.test.ts`
+- Modify: `apps/api/src/routes/chatbot.routes.ts`
+- Modify: `apps/api/src/routes/patient-widget-starter.ts`
+- Modify: `packages/application/src/services/chatbot-v2/conversation-orchestrator.service.ts`
+- Modify: `packages/application/src/services/__tests__/chatbot-v2/conversation-orchestrator.service.test.ts`
+- Modify: `apps/api/src/__tests__/chatbot.routes.test.ts`
+- Modify: `apps/api/src/__tests__/patient-public.routes.test.ts`
+- Modify: `dify-config/medora-ai-chatbot-v2.dsl.yml`
+
+- [ ] **Step 1: Write failing FAQ-grounding contract tests**
+  Cover:
+  - grounding workflow takes CRM-provided FAQ categories/context
+  - grounding workflow preserves `faqScope = GENERAL_ONLY | HOSPITAL_AWARE`
+  - grounding workflow does not generate final user-facing text
+  - grounding workflow uses a smaller node structure than v1
+
+- [ ] **Step 2: Implement the dedicated FAQ grounding workflow**
+  Preferred shape:
+  - `start`
+  - FAQ categories/context fetch
+  - FAQ category + scope resolver
+  - one compact code/router node
+  - FAQ retrieval nodes
+  - grounded output
+
+- [ ] **Step 3: Preserve v1 semantics without preserving v1 graph complexity**
+  Ensure:
+  - category selection stays within CRM-provided categories
+  - `faqScope` stays explicit
+  - `HOSPITAL_AWARE` is semantic scope, not fallback after a general retrieval miss
+  - v1-style multiple visible gate nodes are not recreated unless truly required
+
+- [ ] **Step 4: Thread FAQ grounding through the CRM route path**
+  Ensure:
+  - `faq` turns may invoke FAQ grounding before composition
+  - `process_explanation` turns may invoke FAQ grounding when evidence is needed
+  - later-stage `process_explanation` turns remain explanatory only and do not rewind the journey
+  - composer consumes grounded FAQ context instead of re-resolving categories/scopes internally
+
+- [ ] **Step 5: Run targeted tests**
+  Run:
+  ```bash
+  pnpm --filter @medical-crm/api test -- --runInBand apps/api/src/__tests__/dify-faq-grounding-v2.contract.test.ts apps/api/src/__tests__/chatbot.routes.test.ts apps/api/src/__tests__/patient-public.routes.test.ts
+  pnpm --filter @medical-crm/application test -- --runInBand packages/application/src/services/__tests__/chatbot-v2/conversation-orchestrator.service.test.ts
+  ```
+  Expected: PASS.
 
 ---
 
@@ -460,8 +552,12 @@ This plan is complete when:
 
 1. no rule-based keyword classification remains in `chatbot-v2`
 2. a dedicated Dify classifier workflow exists
-3. CRM calls classifier before orchestration and composer
-4. classifier output is strictly structured and schema-validated
-5. FAQ/resource/process/progression/human turns are classified through the LLM path
-6. the existing journey/resource/composer foundations are reused rather than rebuilt
-7. frontend-facing `journeySnapshot` and `resources` behavior remains compatible
+3. a dedicated FAQ grounding workflow exists for grounded FAQ retrieval
+4. CRM calls classifier before orchestration and composer
+5. FAQ turns invoke grounding before composition when grounding is required
+6. `faqScope = GENERAL_ONLY | HOSPITAL_AWARE` is preserved without recreating the v1 node sprawl
+7. `HOSPITAL_AWARE` is not treated as a retrieval fallback from `GENERAL_ONLY`
+8. classifier output is strictly structured and schema-validated
+9. FAQ/resource/process/progression/human turns are classified through the LLM path
+10. the existing journey/resource/composer foundations are reused rather than rebuilt
+11. frontend-facing `journeySnapshot` and `resources` behavior remains compatible

@@ -10,7 +10,7 @@ import {
 } from '@medical-crm/validation';
 import chatbotRoutes from '../routes/chatbot.routes.js';
 
-const mockServices = {
+const mockServices: any = {
   aiChatSessionRepo: {
     findBySessionId: vi.fn(),
     save: vi.fn(),
@@ -136,6 +136,7 @@ describe('Chatbot routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     process.env['DIFY_API_KEY'] = 'test-dify-key';
+    mockServices.difyClassifierApi = undefined;
     currentSession = {
       userId: 'admin-1',
       email: 'admin@test.com',
@@ -203,6 +204,15 @@ describe('Chatbot routes', () => {
 
   it('POST /api/v2/chatbot/chat returns normalized structured response without exposing dify conversation id', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+    mockServices.difyClassifierApi = {
+      createChatMessage: vi.fn().mockResolvedValue({
+        answer: JSON.stringify({
+          requestClass: 'resource_request',
+          targetResourceTypes: ['PROCESS_GUIDE'],
+          includeProgressionFollowUp: false,
+        }),
+      }),
+    };
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-123',
       answer: JSON.stringify({
@@ -260,6 +270,30 @@ describe('Chatbot routes', () => {
     });
     expect(json.metadata.rawResponse).toBeUndefined();
     expect('difyConversationId' in (json as Record<string, unknown>)).toBe(false);
+    expect(mockServices.difyClassifierApi.createChatMessage).toHaveBeenCalledOnce();
+    expect(mockServices.difyClassifierApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      query: 'I want to consult about rhinoplasty.',
+      user: 'session-1',
+      inputs: {
+        recentMessages: [
+          {
+            role: 'USER',
+            content: 'I want to consult about rhinoplasty.',
+          },
+        ],
+        conversationSummary: '',
+        journeySnapshot: {
+          currentStage: 'EXPLAIN_PROCESS',
+          currentPhase: 'active',
+        },
+        allowedResourceHints: [
+          {
+            resourceType: 'PROCESS_GUIDE',
+            description: 'Explains the consultation and treatment process.',
+          },
+        ],
+      },
+    }));
     expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         user: 'session-1',

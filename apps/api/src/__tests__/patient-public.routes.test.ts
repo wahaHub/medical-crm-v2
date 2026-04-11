@@ -84,6 +84,9 @@ describe('patientPublicRoutes', () => {
           metadata: { retriever_resources: [] },
         }),
       },
+      difyClassifierApi: {
+        createChatMessage: vi.fn(),
+      },
       getTemplateByDisease: {
         execute: vi.fn().mockRejectedValue(new Error('default questionnaire unavailable')),
       },
@@ -197,6 +200,7 @@ describe('patientPublicRoutes', () => {
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-123');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
     expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
+    expect(services.difyClassifierApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.matchHospitals.execute).not.toHaveBeenCalled();
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledOnce();
     const starterUpdate = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];

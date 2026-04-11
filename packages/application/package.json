@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@medical-crm/domain": "workspace:*",
+    "@medical-crm/validation": "workspace:*",
     "@medical-crm/utils": "workspace:*",
     "bcryptjs": "^3.0.3"
   },

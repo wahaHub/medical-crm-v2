@@ -128,6 +128,50 @@ export const ChatbotV2ClassifierResultSchema = z.object({
       path: ['targetResourceTypes'],
     });
   }
+
+  if (
+    value.requestClass === 'process_explanation'
+    && value.targetResourceTypes.some((resourceType) => resourceType !== 'PROCESS_GUIDE')
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'process_explanation may only target PROCESS_GUIDE',
+      path: ['targetResourceTypes'],
+    });
+  }
+
+  if (
+    value.requestClass === 'progression_request'
+    && value.targetResourceTypes.length > 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'progression_request must not target concrete resources',
+      path: ['targetResourceTypes'],
+    });
+  }
+
+  if (
+    (value.requestClass === 'resource_request' || value.requestClass === 'resource_status_question')
+    && value.targetResourceTypes.length === 0
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `${value.requestClass} must target at least one resource`,
+      path: ['targetResourceTypes'],
+    });
+  }
+
+  if (
+    value.requestClass === 'human_help_request'
+    && value.targetResourceTypes.some((resourceType) => resourceType !== 'HUMAN_HANDOFF')
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'human_help_request may only target HUMAN_HANDOFF when target resources are present',
+      path: ['targetResourceTypes'],
+    });
+  }
 });
 
 export const ResourceActionResultSchema = z.object({

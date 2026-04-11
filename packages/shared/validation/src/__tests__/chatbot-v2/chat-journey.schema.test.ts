@@ -165,6 +165,30 @@ describe('chatbot-v2 journey schemas', () => {
       targetResourceTypes: ['MEDICAL_INVITATION_STATUS', 'MEDICAL_INVITATION_STATUS'],
       includeProgressionFollowUp: false,
     }).success).toBe(false);
+
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'process_explanation',
+      targetResourceTypes: ['QUESTIONNAIRE'],
+      includeProgressionFollowUp: false,
+    }).success).toBe(false);
+
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'progression_request',
+      targetResourceTypes: ['QUESTIONNAIRE'],
+      includeProgressionFollowUp: false,
+    }).success).toBe(false);
+
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'resource_request',
+      targetResourceTypes: [],
+      includeProgressionFollowUp: false,
+    }).success).toBe(false);
+
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'human_help_request',
+      targetResourceTypes: ['QUESTIONNAIRE'],
+      includeProgressionFollowUp: false,
+    }).success).toBe(false);
   });
 
   it('accepts the stale-resource error payload used by resource updates', () => {

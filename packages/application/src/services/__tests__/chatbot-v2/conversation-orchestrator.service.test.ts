@@ -7,7 +7,11 @@ describe('ConversationOrchestratorService', () => {
   it('advances progression requests with v2 journey state and returns the next-stage resources', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
-      userMessage: 'I am ready to move forward.',
+      classification: {
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      },
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
         currentPhase: 'active',
@@ -54,7 +58,11 @@ describe('ConversationOrchestratorService', () => {
   it('keeps targeted resource status questions constrained to the requested query resource', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
-      userMessage: 'Has my medical invitation been sent yet?',
+      classification: {
+        requestClass: 'resource_status_question',
+        targetResourceTypes: ['MEDICAL_INVITATION_STATUS'],
+        includeProgressionFollowUp: false,
+      },
       journeySnapshot: {
         currentStage: 'HUMAN_HANDOFF',
         currentPhase: 'active',
@@ -88,7 +96,11 @@ describe('ConversationOrchestratorService', () => {
   it('routes human-help requests to the handoff journey and handoff resource without old widget heuristics', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
-      userMessage: 'Can a real person help me?',
+      classification: {
+        requestClass: 'human_help_request',
+        targetResourceTypes: ['HUMAN_HANDOFF'],
+        includeProgressionFollowUp: false,
+      },
       journeySnapshot: {
         currentStage: 'RECOMMENDATION',
         currentPhase: 'active',
@@ -124,10 +136,14 @@ describe('ConversationOrchestratorService', () => {
     ]);
   });
 
-  it('uses the v2 process guide resource for process explanations even outside the explain stage', () => {
+  it('uses the v2 process guide resource for process explanations even outside the explain stage without rewinding the journey', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
-      userMessage: 'Remind me how this process works.',
+      classification: {
+        requestClass: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
+      },
       journeySnapshot: {
         currentStage: 'COLLECT_MEDICAL_INPUTS',
         currentPhase: 'active',
@@ -160,7 +176,11 @@ describe('ConversationOrchestratorService', () => {
   it('routes early recommendation requests into medical-input collection instead of exposing later-stage resources directly', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
-      userMessage: 'Show me hospital recommendations right now.',
+      classification: {
+        requestClass: 'resource_request',
+        targetResourceTypes: ['HOSPITAL_RECOMMENDATION'],
+        includeProgressionFollowUp: false,
+      },
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
         currentPhase: 'active',
@@ -193,6 +213,47 @@ describe('ConversationOrchestratorService', () => {
       }),
       expect.objectContaining({
         resourceType: 'MEDICAL_INVITATION_STATUS',
+      }),
+    ]));
+  });
+
+  it('accepts FAQ turns that request a progression follow-up without changing the primary response class', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'faq',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: true,
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: false,
+        medicalInputsSubmitted: false,
+        recommendationAvailable: false,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    });
+
+    expect(result.responseIntent).toBe('faq');
+    expect(result.includeProgressionFollowUpAccepted).toBe(true);
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'pre',
+    });
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'MEDICAL_DOC_UPLOAD',
+      }),
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
       }),
     ]));
   });

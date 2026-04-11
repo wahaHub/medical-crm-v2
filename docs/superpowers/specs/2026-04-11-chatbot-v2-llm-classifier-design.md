@@ -373,6 +373,28 @@ It must not be used for:
 - `progression_request`
 - `human_help_request`
 
+### Rule 6: Process explanation is informational and must not rewind the journey
+
+If the user asks about the process, or asks why a given step exists, classification may still return:
+
+- `requestClass = process_explanation`
+- `targetResourceTypes = ["PROCESS_GUIDE"]`
+
+even when the case is already in a later stage such as:
+
+- `COLLECT_MEDICAL_INPUTS`
+- `RECOMMENDATION`
+- `ONLINE_CONSULT`
+- `HUMAN_HANDOFF`
+
+In those cases:
+
+- the system may answer the explanation
+- the system may still surface `PROCESS_GUIDE`
+- but the CRM journey state must not move backward to `EXPLAIN_PROCESS`
+
+So `process_explanation` is a response-understanding class, not a journey-regression signal.
+
 ---
 
 ## CRM Orchestrator Behavior

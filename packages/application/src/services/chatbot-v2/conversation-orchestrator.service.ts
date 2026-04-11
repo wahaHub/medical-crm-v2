@@ -17,14 +17,22 @@ export class ConversationOrchestratorService {
   ) {}
 
   orchestrate(input: ConversationOrchestratorInput): ConversationOrchestrationResult {
-    const classification = this.classifier.classify({
-      userMessage: input.userMessage,
+    const classification = input.classification ?? this.classifier.classify({
+      recentMessages: [{
+        role: 'USER',
+        content: input.userMessage ?? '',
+      }],
+      conversationSummary: '',
+      journeySnapshot: input.journeySnapshot,
+      allowedResourceHints: [],
+      userMessage: input.userMessage ?? '',
       resolvedIntent: input.resolvedIntent,
     });
 
     const currentRegistryInput = this.toRegistryInput(input, input.journeySnapshot);
     const currentAllowedResources = this.resourceRegistry.listResources(currentRegistryInput);
-    const journeyUpdate = this.computeJourneyUpdate(input, classification);
+    const includeProgressionFollowUpAccepted = this.shouldAcceptProgressionFollowUp(input, classification);
+    const journeyUpdate = this.computeJourneyUpdate(input, classification, includeProgressionFollowUpAccepted);
     const projectedSnapshot = journeyUpdate ?? input.journeySnapshot;
     const projectedRegistryInput = this.toRegistryInput(input, projectedSnapshot);
     const projectedAllowedResources = this.resourceRegistry.listResources(projectedRegistryInput);
@@ -46,6 +54,7 @@ export class ConversationOrchestratorService {
       requestClass: classification.requestClass,
       responseIntent: classification.requestClass,
       allowedResources,
+      includeProgressionFollowUpAccepted,
       journeyUpdate,
       resourceUpdates,
     };
@@ -57,10 +66,12 @@ export class ConversationOrchestratorService {
       requestClass: ConversationOrchestrationResult['requestClass'];
       targetResourceTypes: string[];
     },
+    includeProgressionFollowUpAccepted: boolean,
   ): JourneySnapshot | undefined {
     if (
       (
         classification.requestClass === 'progression_request'
+        || includeProgressionFollowUpAccepted
         || (
           classification.requestClass === 'resource_request'
           && classification.targetResourceTypes.some((resourceType) =>
@@ -88,6 +99,27 @@ export class ConversationOrchestratorService {
     }
 
     return undefined;
+  }
+
+  private shouldAcceptProgressionFollowUp(
+    input: ConversationOrchestratorInput,
+    classification: {
+      requestClass: ConversationOrchestrationResult['requestClass'];
+      includeProgressionFollowUp?: boolean;
+    },
+  ): boolean {
+    if (!classification.includeProgressionFollowUp) {
+      return false;
+    }
+
+    if (
+      classification.requestClass !== 'faq'
+      && classification.requestClass !== 'process_explanation'
+    ) {
+      return false;
+    }
+
+    return input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS';
   }
 
   private toRegistryInput(

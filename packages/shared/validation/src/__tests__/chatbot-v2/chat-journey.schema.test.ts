@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   ChatAssistantEnvelopeSchema,
+  ChatbotV2AllowedResourceHintSchema,
+  ChatbotV2ClassifierInputSchema,
+  ChatbotV2ClassifierResultSchema,
+  ChatbotV2RequestClassSchema,
   ChatResourceDescriptorSchema,
   ChatResourceStaleErrorSchema,
   ChatResourceStatusSchema,
@@ -102,6 +106,65 @@ describe('chatbot-v2 journey schemas', () => {
         responseIntent: 'process_explanation',
       },
     }).success).toBe(true);
+  });
+
+  it('accepts the classifier request-class enum and multilingual classifier input shape', () => {
+    expect(ChatbotV2RequestClassSchema.safeParse('faq').success).toBe(true);
+    expect(ChatbotV2RequestClassSchema.safeParse('process_explanation').success).toBe(true);
+    expect(ChatbotV2RequestClassSchema.safeParse('progression_request').success).toBe(true);
+    expect(ChatbotV2RequestClassSchema.safeParse('resource_request').success).toBe(true);
+    expect(ChatbotV2RequestClassSchema.safeParse('resource_status_question').success).toBe(true);
+    expect(ChatbotV2RequestClassSchema.safeParse('human_help_request').success).toBe(true);
+    expect(ChatbotV2RequestClassSchema.safeParse('status_lookup').success).toBe(false);
+
+    expect(ChatbotV2AllowedResourceHintSchema.safeParse({
+      resourceType: 'PROCESS_GUIDE',
+      description: 'Explains the consultation and treatment process.',
+    }).success).toBe(true);
+
+    expect(ChatbotV2ClassifierInputSchema.safeParse({
+      recentMessages: [
+        { role: 'assistant', content: 'How can I help you today?' },
+        { role: 'user', content: '我想知道这个流程怎么走。' },
+      ],
+      conversationSummary: 'The patient is exploring treatment options in China.',
+      journeySnapshot: {
+        currentStage: 'RECOMMENDATION',
+        currentPhase: 'active',
+      },
+      allowedResourceHints: [
+        {
+          resourceType: 'PROCESS_GUIDE',
+          description: 'Explains the consultation and treatment process.',
+        },
+      ],
+    }).success).toBe(true);
+  });
+
+  it('enforces the classifier result invariants from the approved spec', () => {
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'faq',
+      targetResourceTypes: [],
+      includeProgressionFollowUp: true,
+    }).success).toBe(true);
+
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'faq',
+      targetResourceTypes: ['PROCESS_GUIDE'],
+      includeProgressionFollowUp: false,
+    }).success).toBe(false);
+
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'resource_request',
+      targetResourceTypes: ['QUESTIONNAIRE'],
+      includeProgressionFollowUp: true,
+    }).success).toBe(false);
+
+    expect(ChatbotV2ClassifierResultSchema.safeParse({
+      requestClass: 'resource_status_question',
+      targetResourceTypes: ['MEDICAL_INVITATION_STATUS', 'MEDICAL_INVITATION_STATUS'],
+      includeProgressionFollowUp: false,
+    }).success).toBe(false);
   });
 
   it('accepts the stale-resource error payload used by resource updates', () => {

@@ -25,6 +25,14 @@ export const JourneyStageSchema = z.enum(JOURNEY_STAGES);
 export const JourneyPhaseSchema = z.enum(JOURNEY_PHASES);
 export const ChatResourceStatusSchema = z.enum(CHAT_RESOURCE_STATUSES);
 export const ChatResourceTypeSchema = z.enum(CHAT_RESOURCE_TYPES);
+export const ChatbotV2RequestClassSchema = z.enum([
+  'faq',
+  'process_explanation',
+  'progression_request',
+  'resource_request',
+  'resource_status_question',
+  'human_help_request',
+]);
 
 export const JourneySnapshotSchema = z.object({
   currentStage: JourneyStageSchema,
@@ -71,6 +79,57 @@ export const ChatAssistantEnvelopeSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 }).strict();
 
+export const ChatbotV2RecentMessageSchema = z.object({
+  role: z.enum(['USER', 'ASSISTANT', 'SYSTEM']),
+  content: z.string().min(1),
+}).strict();
+
+export const ChatbotV2AllowedResourceHintSchema = z.object({
+  resourceType: ChatResourceTypeSchema,
+  description: z.string().min(1),
+}).strict();
+
+export const ChatbotV2ClassifierInputSchema = z.object({
+  recentMessages: z.array(ChatbotV2RecentMessageSchema).min(1).max(6),
+  conversationSummary: z.string(),
+  journeySnapshot: JourneySnapshotSchema,
+  allowedResourceHints: z.array(ChatbotV2AllowedResourceHintSchema),
+}).strict();
+
+export const ChatbotV2ClassifierResultSchema = z.object({
+  requestClass: ChatbotV2RequestClassSchema,
+  targetResourceTypes: z.array(ChatResourceTypeSchema),
+  includeProgressionFollowUp: z.boolean(),
+}).strict().superRefine((value, ctx) => {
+  if (value.requestClass === 'faq' && value.targetResourceTypes.length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'FAQ classifications must not target resources',
+      path: ['targetResourceTypes'],
+    });
+  }
+
+  if (
+    value.includeProgressionFollowUp
+    && value.requestClass !== 'faq'
+    && value.requestClass !== 'process_explanation'
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Only faq and process_explanation may include progression follow-up',
+      path: ['includeProgressionFollowUp'],
+    });
+  }
+
+  if (new Set(value.targetResourceTypes).size !== value.targetResourceTypes.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'targetResourceTypes must be unique',
+      path: ['targetResourceTypes'],
+    });
+  }
+});
+
 export const ResourceActionResultSchema = z.object({
   resource: ChatResourceDescriptorSchema,
   journeySnapshot: JourneySnapshotSchema,
@@ -88,7 +147,12 @@ export type JourneyStage = z.infer<typeof JourneyStageSchema>;
 export type JourneyPhase = z.infer<typeof JourneyPhaseSchema>;
 export type ChatResourceStatus = z.infer<typeof ChatResourceStatusSchema>;
 export type ChatResourceType = z.infer<typeof ChatResourceTypeSchema>;
+export type ChatbotV2RequestClass = z.infer<typeof ChatbotV2RequestClassSchema>;
 export type JourneySnapshot = z.infer<typeof JourneySnapshotSchema>;
 export type ChatResourceDescriptor = z.infer<typeof ChatResourceDescriptorSchema>;
 export type ChatAssistantEnvelope = z.infer<typeof ChatAssistantEnvelopeSchema>;
 export type ResourceActionResult = z.infer<typeof ResourceActionResultSchema>;
+export type ChatbotV2RecentMessage = z.infer<typeof ChatbotV2RecentMessageSchema>;
+export type ChatbotV2AllowedResourceHint = z.infer<typeof ChatbotV2AllowedResourceHintSchema>;
+export type ChatbotV2ClassifierInput = z.infer<typeof ChatbotV2ClassifierInputSchema>;
+export type ChatbotV2ClassifierResult = z.infer<typeof ChatbotV2ClassifierResultSchema>;

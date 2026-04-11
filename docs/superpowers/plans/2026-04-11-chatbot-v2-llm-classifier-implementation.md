@@ -167,6 +167,7 @@ This preserves the architecture:
   - FAQ + no progression follow-up
   - FAQ + accepted progression follow-up
   - `process_explanation` targeting `PROCESS_GUIDE`
+  - `process_explanation` in a later stage remains informational and does not rewind the journey
   - `progression_request` with empty `targetResourceTypes`
   - explicit `resource_request` beating progression
   - `resource_status_question` remaining distinct from `resource_request`
@@ -303,6 +304,7 @@ This preserves the architecture:
   - classifier does not change stage
   - orchestrator still computes `journeyUpdate`
   - explicit `resource_request` remains separate from `progression_request`
+  - `process_explanation` in later stages may return `PROCESS_GUIDE` but must never rewind `currentStage/currentPhase`
 
 - [ ] **Step 4: Run targeted tests**
   Run:
@@ -410,6 +412,7 @@ This preserves the architecture:
   Cover:
   - multilingual FAQ that should not map to a resource
   - process explanation targeting `PROCESS_GUIDE`
+  - process explanation during later stages remains explanatory only and does not regress journey
   - explicit resource request winning over progression
   - FAQ plus progression follow-up
   - status question for a submitted resource still classifying correctly

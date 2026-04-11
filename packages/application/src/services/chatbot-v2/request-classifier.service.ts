@@ -6,18 +6,22 @@ import type {
 
 export class RequestClassifierService {
   classify(input: RequestClassificationInput): RequestClassificationResult {
+    const userMessage = input.userMessage
+      ?? input.recentMessages[input.recentMessages.length - 1]?.content
+      ?? '';
     const bridged = mapLegacyResolvedIntent(input.resolvedIntent);
     if (bridged) {
       return bridged;
     }
 
-    const message = normalize(input.userMessage);
+    const message = normalize(userMessage);
     const resourceTypes = detectResourceTypes(message);
 
     if (includesAny(message, HUMAN_HELP_PATTERNS)) {
       return {
         requestClass: 'human_help_request',
         targetResourceTypes: ['HUMAN_HANDOFF'],
+        includeProgressionFollowUp: false,
       };
     }
 
@@ -25,6 +29,7 @@ export class RequestClassifierService {
       return {
         requestClass: 'process_explanation',
         targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
       };
     }
 
@@ -33,6 +38,7 @@ export class RequestClassifierService {
       return {
         requestClass: 'resource_status_question',
         targetResourceTypes: statusResourceTypes,
+        includeProgressionFollowUp: false,
       };
     }
 
@@ -40,6 +46,7 @@ export class RequestClassifierService {
       return {
         requestClass: 'progression_request',
         targetResourceTypes: [],
+        includeProgressionFollowUp: false,
       };
     }
 
@@ -47,12 +54,14 @@ export class RequestClassifierService {
       return {
         requestClass: 'resource_request',
         targetResourceTypes: resourceTypes,
+        includeProgressionFollowUp: false,
       };
     }
 
     return {
       requestClass: 'faq',
       targetResourceTypes: [],
+      includeProgressionFollowUp: false,
     };
   }
 }
@@ -123,18 +132,21 @@ function mapLegacyResolvedIntent(resolvedIntent: string | undefined): RequestCla
       return {
         requestClass: 'human_help_request',
         targetResourceTypes: ['HUMAN_HANDOFF'],
+        includeProgressionFollowUp: false,
       };
     case 'ASK_MEDICAL_TRAVEL_PROCESS':
     case 'ASK_CONSULT_PROCESS':
       return {
         requestClass: 'process_explanation',
         targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
       };
     case 'REQUEST_DOC_UPLOAD':
     case 'ACCEPT_DOC_UPLOAD':
       return {
         requestClass: 'resource_request',
         targetResourceTypes: ['MEDICAL_DOC_UPLOAD'],
+        includeProgressionFollowUp: false,
       };
     default:
       return null;

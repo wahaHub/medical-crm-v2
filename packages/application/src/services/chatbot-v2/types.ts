@@ -57,20 +57,43 @@ export interface ResourceRegistryInput {
 }
 
 export interface RequestClassificationInput {
-  userMessage: string;
+  recentMessages: ChatbotV2ClassifierMessage[];
+  conversationSummary: string;
+  journeySnapshot: JourneySnapshot;
+  allowedResourceHints: ChatbotV2ClassifierResourceHint[];
+  userMessage?: string;
   resolvedIntent?: string;
 }
 
 export interface RequestClassificationResult {
   requestClass: ChatbotV2RequestClass;
   targetResourceTypes: ChatResourceType[];
+  includeProgressionFollowUp: boolean;
+}
+
+export interface ChatbotV2ClassifierResourceHint {
+  resourceType: ChatResourceType;
+  description: string;
+}
+
+export interface ChatbotV2ClassifierMessage {
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  content: string;
+}
+
+export interface ChatbotV2ClassifierInput {
+  recentMessages: ChatbotV2ClassifierMessage[];
+  conversationSummary: string;
+  journeySnapshot: JourneySnapshot;
+  allowedResourceHints: ChatbotV2ClassifierResourceHint[];
 }
 
 export interface ConversationOrchestratorInput {
   scopeId: string;
-  userMessage: string;
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
+  classification?: RequestClassificationResult;
+  userMessage?: string;
   resolvedIntent?: string;
 }
 
@@ -78,6 +101,7 @@ export interface ConversationOrchestrationResult {
   requestClass: ChatbotV2RequestClass;
   responseIntent: ChatbotV2RequestClass;
   allowedResources: ChatbotV2ResourceDescriptor[];
+  includeProgressionFollowUpAccepted?: boolean;
   journeyUpdate?: JourneySnapshot;
   resourceUpdates?: ChatbotV2ResourceDescriptor[];
 }

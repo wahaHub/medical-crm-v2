@@ -128,7 +128,7 @@ This keeps the responsibilities clean:
 
 ## Classifier Workflow
 
-## Dedicated Dify app
+### Dedicated Dify app
 
 Create a dedicated classifier workflow, separate from the composer workflow.
 
@@ -406,6 +406,31 @@ The composer must not:
 - choose new resources
 - change the request class
 - advance the journey by itself
+
+---
+
+## Final Assistant Message Shape
+
+CRM remains responsible for assembling the final assistant message returned to the frontend.
+
+Top-level fields should carry the user-facing response contract, including:
+
+- `text`
+- `journeySnapshot`
+- `resources`
+
+`metadata` should stay minimal.
+
+For this classifier-related flow, metadata should contain only what the system needs for restore, inspection, or downstream orchestration support:
+
+- `chatbotV2`
+- `classifierResult`
+
+Do not introduce unrelated metadata such as:
+
+- composer version tags
+- resource render hints
+- extra explanation fields that are not part of the approved contract
 
 ---
 

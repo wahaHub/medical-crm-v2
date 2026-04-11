@@ -164,6 +164,7 @@ describe('Dify classifier v2 contract', () => {
     expect(prompt).toContain('human_help_request');
     expect(prompt).toContain('PROCESS_GUIDE');
     expect(prompt).toContain('HUMAN_HANDOFF');
+    expect(prompt).toContain('If HUMAN_HANDOFF is not present in allowedResourceHints, human_help_request may still return an empty targetResourceTypes array.');
     expect(prompt).not.toContain('writeback_http');
     expect(prompt).not.toContain('response_composer_v2');
     expect(prompt).not.toContain('assistant_message_id');

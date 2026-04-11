@@ -143,6 +143,7 @@ workflow:
             - faq must always return targetResourceTypes as [].
             - Only faq and process_explanation may set includeProgressionFollowUp to true.
             - If the user explicitly names a concrete resource, prefer resource_request over progression_request.
+            - If HUMAN_HANDOFF is not present in allowedResourceHints, human_help_request may still return an empty targetResourceTypes array.
             - process_explanation can still target PROCESS_GUIDE in later stages, but it is informational only and must not imply a journey rewind.
             - Keep the output multilingual/general and description-driven. Avoid overfitting to a few examples or raw keywords.
         - role: user

@@ -195,6 +195,13 @@ The classifier must treat this as the allowed resource universe for this turn.
 
 It may not invent resources outside this list.
 
+CRM should include in this list any resource that is relevant for the current turn, including:
+
+- resources the user may actively open or use now
+- resources the user may ask the current status of now
+
+This means already-submitted progression resources may still appear in `allowedResourceHints` when the user can still ask about their current state.
+
 ---
 
 ## Classifier Output Contract
@@ -225,6 +232,7 @@ Rules:
 - may be empty
 - must only contain resource types provided by CRM
 - for `faq`, it must be `[]`
+- must not contain duplicates
 
 ### `includeProgressionFollowUp`
 
@@ -285,6 +293,7 @@ The user explicitly wants to open, use, submit, review, or act on a concrete all
 Rules:
 
 - if the user explicitly names or clearly refers to a specific resource, prefer this class over `progression_request`
+- use this class when the user is trying to open, use, submit, review, or otherwise act on the resource itself
 - `targetResourceTypes` should include the referenced allowed resources
 - `includeProgressionFollowUp = false`
 
@@ -294,6 +303,7 @@ The user is asking for the current state or progress of a concrete resource or s
 
 Rules:
 
+- use this class when the user primarily wants to know the current state, progress, or receipt status of the resource rather than act on it
 - `targetResourceTypes` should include the referenced allowed resources
 - `includeProgressionFollowUp = false`
 
@@ -304,6 +314,7 @@ The user explicitly wants a human advisor, staff member, or human takeover.
 Rules:
 
 - `targetResourceTypes` should include `HUMAN_HANDOFF` when available
+- if `HUMAN_HANDOFF` is not present in `allowedResourceHints`, the classifier should still return `requestClass = human_help_request` with `targetResourceTypes = []`
 - `includeProgressionFollowUp = false`
 
 ---

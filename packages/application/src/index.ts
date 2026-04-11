@@ -21,7 +21,6 @@ export { WritebackExecutorService } from './services/policy-engine/writeback-exe
 export { JourneyEngineService } from './services/chatbot-v2/journey-engine.service.js';
 export { deriveJourneyTruthFromStatusSnapshot } from './services/chatbot-v2/journey-truth.service.js';
 export { ResourceRegistryService } from './services/chatbot-v2/resource-registry.service.js';
-export { RequestClassifierService } from './services/chatbot-v2/request-classifier.service.js';
 export { LlmRequestClassifierService, parseClassifierResult } from './services/chatbot-v2/llm-request-classifier.service.js';
 export { ConversationOrchestratorService } from './services/chatbot-v2/conversation-orchestrator.service.js';
 export type {

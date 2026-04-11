@@ -6,28 +6,19 @@ import type {
   ResourceRegistryInput,
 } from './types.js';
 import { JourneyEngineService } from './journey-engine.service.js';
-import { RequestClassifierService } from './request-classifier.service.js';
 import { ResourceRegistryService } from './resource-registry.service.js';
 
 export class ConversationOrchestratorService {
   constructor(
-    private readonly classifier: RequestClassifierService = new RequestClassifierService(),
     private readonly journeyEngine: JourneyEngineService = new JourneyEngineService(),
     private readonly resourceRegistry: ResourceRegistryService = new ResourceRegistryService(),
   ) {}
 
   orchestrate(input: ConversationOrchestratorInput): ConversationOrchestrationResult {
-    const classification = input.classification ?? this.classifier.classify({
-      recentMessages: [{
-        role: 'USER',
-        content: input.userMessage ?? '',
-      }],
-      conversationSummary: '',
-      journeySnapshot: input.journeySnapshot,
-      allowedResourceHints: [],
-      userMessage: input.userMessage ?? '',
-      resolvedIntent: input.resolvedIntent,
-    });
+    if (!input.classification) {
+      throw new Error('classifier output is required');
+    }
+    const classification = input.classification;
 
     const currentRegistryInput = this.toRegistryInput(input, input.journeySnapshot);
     const currentAllowedResources = this.resourceRegistry.listResources(currentRegistryInput);

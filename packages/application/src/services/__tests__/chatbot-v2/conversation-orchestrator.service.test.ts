@@ -295,4 +295,25 @@ describe('ConversationOrchestratorService', () => {
       }),
     ]));
   });
+
+  it('requires classifier output instead of reviving local classification fallback', () => {
+    expect(() => service.orchestrate({
+      scopeId: 'case-1',
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: false,
+        medicalInputsSubmitted: false,
+        recommendationAvailable: false,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    } as any)).toThrow('classifier output is required');
+  });
 });

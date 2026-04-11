@@ -39,9 +39,15 @@ type ChatbotV2FoundationContext = {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   resources: ChatResourceDescriptor[];
-  classification?: ChatbotV2RequestClassificationResult;
+  classification: ChatbotV2RequestClassificationResult;
   requestClass?: string;
   responseIntent?: string;
+};
+
+const DEFAULT_BOOTSTRAP_CLASSIFICATION: ChatbotV2RequestClassificationResult = {
+  requestClass: 'process_explanation',
+  targetResourceTypes: ['PROCESS_GUIDE'],
+  includeProgressionFollowUp: false,
 };
 
 export type ChatbotV2TurnContext = {
@@ -74,7 +80,10 @@ export async function buildChatbotV2TurnContext(input: {
         requestClass: 'process_explanation',
         responseIntent: 'process_explanation',
       },
-      foundation,
+      foundation: {
+        ...foundation,
+        classification: DEFAULT_BOOTSTRAP_CLASSIFICATION,
+      },
     };
   }
 
@@ -154,7 +163,6 @@ export function buildChatbotV2PostTurnContext(input: {
     journeySnapshot: refreshedJourneySnapshot,
     truth: refreshedTruth,
     classification: input.foundation.classification,
-    userMessage,
   });
 
   return {
@@ -213,6 +221,7 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
     journeySnapshot,
     truth: deriveJourneyTruth(policyContext),
     resources,
+    classification: DEFAULT_BOOTSTRAP_CLASSIFICATION,
     requestClass: asString(chatbotV2.request_class),
     responseIntent: asString(chatbotV2.response_intent),
   };

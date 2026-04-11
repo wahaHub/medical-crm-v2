@@ -92,9 +92,7 @@ export interface ConversationOrchestratorInput {
   scopeId: string;
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
-  classification?: RequestClassificationResult;
-  userMessage?: string;
-  resolvedIntent?: string;
+  classification: RequestClassificationResult;
 }
 
 export interface ConversationOrchestrationResult {

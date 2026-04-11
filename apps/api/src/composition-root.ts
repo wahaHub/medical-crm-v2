@@ -291,6 +291,7 @@ interface AppServices {
   storage: IStorageService;
   mediaUpload: MediaUploadService;
   difyApi: DifyApiClientService;
+  difyClassifierApi?: DifyApiClientService;
   resolveHospitalType: (hospitalId: string) => Promise<'COSMETIC' | 'REGULAR'>;
 
   // use cases — cases
@@ -625,6 +626,15 @@ export function getServices(): AppServices {
       Number.isFinite(difyRequestTimeoutMs) ? difyRequestTimeoutMs : 90_000,
       process.env['DIFY_DATASET_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? null,
     );
+    const difyClassifierApiClient = new DifyApiClientService(
+      process.env['DIFY_API_BASE_URL'] ?? 'https://api.dify.ai/v1',
+      process.env['DIFY_CLASSIFIER_APP_API_KEY']
+        ?? process.env['DIFY_APP_API_KEY']
+        ?? process.env['DIFY_API_KEY']
+        ?? '',
+      Number.isFinite(difyRequestTimeoutMs) ? difyRequestTimeoutMs : 90_000,
+      null,
+    );
 
     // Domain services
     const assignmentService = new CaseAssignmentService();
@@ -781,6 +791,7 @@ export function getServices(): AppServices {
       storage: routedStorageService,
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,
+      difyClassifierApi: difyClassifierApiClient,
       resolveHospitalType,
 
       createCase: new CreateCaseUseCase(caseRepo),

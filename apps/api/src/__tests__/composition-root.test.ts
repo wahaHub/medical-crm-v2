@@ -343,6 +343,8 @@ describe('composition root', () => {
     expect(services).toHaveProperty('crmDb');
     expect(services).toHaveProperty('mainSupabase');
     expect(services).toHaveProperty('chinaSupabase');
+    expect(services).toHaveProperty('difyApi');
+    expect(services).toHaveProperty('difyClassifierApi');
   });
 
   it('returns all expected use cases', async () => {

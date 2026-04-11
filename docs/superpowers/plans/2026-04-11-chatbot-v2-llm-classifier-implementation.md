@@ -101,7 +101,7 @@ This preserves the architecture:
 - `packages/shared/validation/src/chatbot-v2/chat-journey.schema.ts`
   - purpose: add schemas for classifier request/result envelopes if shared validation should own them
 - `packages/application/src/services/chatbot-v2/request-classifier.service.ts`
-  - purpose: convert from keyword classifier to thin contract/parser or delete entirely if superseded by the new LLM service
+  - purpose: remove this old rule-based service and retire its usages
 - `packages/application/src/services/chatbot-v2/conversation-orchestrator.service.ts`
   - purpose: accept classifier output as input instead of self-classifying internally
 - `apps/api/src/routes/chatbot-v2-context.ts`
@@ -110,8 +110,20 @@ This preserves the architecture:
   - purpose: pass the richer classifier-driven v2 context into the composer call and final metadata
 - `apps/api/src/routes/patient-widget-starter.ts`
   - purpose: use the same classifier-orchestrator-composer path for the starter turn where applicable
+- `apps/api/src/composition-root.ts`
+  - purpose: wire separate classifier/composer Dify configuration and services
+- `packages/infrastructure/services/dify-api-client.service.ts`
+  - purpose: support the dedicated classifier app call path without breaking the composer path
+- `packages/infrastructure/__tests__/unit/dify-api-client.service.test.ts`
+  - purpose: lock classifier/composer transport behavior and app-key handling
+- `.env.example`
+  - purpose: document any additional classifier app configuration
+- `packages/application/src/index.ts`
+  - purpose: remove obsolete request-classifier export and expose the new classifier service
 - `packages/application/src/services/__tests__/chatbot-v2/conversation-orchestrator.service.test.ts`
   - purpose: remove rule-based assumptions and assert classifier-driven orchestration behavior
+- `apps/api/src/__tests__/dify-workflow-v2.contract.test.ts`
+  - purpose: keep the composer workflow contract aligned after classifier extraction
 - `apps/api/src/__tests__/chatbot.routes.test.ts`
 - `apps/api/src/__tests__/patient-public.routes.test.ts`
 - `apps/api/src/__tests__/patient-auth.routes.test.ts`
@@ -221,6 +233,10 @@ This preserves the architecture:
 - Create: `packages/application/src/services/__tests__/chatbot-v2/llm-request-classifier.service.test.ts`
 - Modify: `packages/application/src/services/chatbot-v2/request-classifier.service.ts`
 - Modify: `apps/api/src/composition-root.ts`
+- Modify: `packages/infrastructure/services/dify-api-client.service.ts`
+- Modify: `packages/infrastructure/__tests__/unit/dify-api-client.service.test.ts`
+- Modify: `packages/application/src/index.ts`
+- Modify: `.env.example`
 
 - [ ] **Step 1: Write failing unit tests for the LLM classifier service**
   Cover:
@@ -237,19 +253,28 @@ This preserves the architecture:
   - parse the structured result through shared validation
   - return a typed classifier result
 
-- [ ] **Step 3: Decide the fate of `request-classifier.service.ts`**
-  One of these outcomes should be chosen explicitly:
-  - delete it and replace usages with the LLM service
-  - or keep it only as a result parser / fallback adapter with no keyword logic
-  Do not keep the old keyword matching implementation.
+- [ ] **Step 3: Remove the old rule-based classifier service completely**
+  Do this explicitly:
+  - delete `packages/application/src/services/chatbot-v2/request-classifier.service.ts`
+  - delete or replace its rule-based tests
+  - remove the old export from `packages/application/src/index.ts`
+  - update all consumers to depend on the new classifier path
+  Do not keep a local keyword-matching fallback.
 
 - [ ] **Step 4: Wire the new service through composition root**
   Keep construction narrow and avoid touching unrelated services.
 
-- [ ] **Step 5: Run targeted tests**
+- [ ] **Step 5: Add classifier-app transport and configuration support**
+  Cover:
+  - separate classifier app key/env wiring
+  - composition-root construction for classifier vs composer clients
+  - client tests proving the existing composer call path remains intact
+
+- [ ] **Step 6: Run targeted tests**
   Run:
   ```bash
-  pnpm --filter @medical-crm/application test -- --runInBand packages/application/src/services/__tests__/chatbot-v2/llm-request-classifier.service.test.ts packages/application/src/services/__tests__/chatbot-v2/request-classifier.service.test.ts
+  pnpm --filter @medical-crm/application test -- --runInBand packages/application/src/services/__tests__/chatbot-v2/llm-request-classifier.service.test.ts packages/application/src/services/__tests__/chatbot-v2/conversation-orchestrator.service.test.ts
+  pnpm --filter @medical-crm/infrastructure test -- --runInBand packages/infrastructure/__tests__/unit/dify-api-client.service.test.ts
   ```
   Expected: PASS.
 

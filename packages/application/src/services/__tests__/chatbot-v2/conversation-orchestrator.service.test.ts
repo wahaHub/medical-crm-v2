@@ -276,6 +276,44 @@ describe('ConversationOrchestratorService', () => {
     ]));
   });
 
+  it('keeps explicit resource requests ahead of progression follow-up when both signals are present', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'resource_request',
+        targetResourceTypes: ['QUESTIONNAIRE'],
+        includeProgressionFollowUp: true,
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: {
+        medicalInputsStarted: false,
+        medicalInputsSubmitted: false,
+        recommendationAvailable: false,
+        recommendationConfirmed: false,
+        onlineConsultRequired: false,
+        onlineConsultStarted: false,
+        onlineConsultSubmitted: false,
+        humanHandoffActive: false,
+        humanHandoffSubmitted: false,
+      },
+    });
+
+    expect(result.responseIntent).toBe('resource_request');
+    expect(result.includeProgressionFollowUpAccepted).toBe(false);
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'pre',
+    });
+    expect(result.allowedResources).toEqual([
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
+      }),
+    ]);
+  });
+
   it('accepts FAQ turns that request a progression follow-up without changing the primary response class', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',

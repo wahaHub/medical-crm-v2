@@ -11,20 +11,30 @@ export interface JourneySnapshot {
 }
 
 export interface JourneyTruth {
-  medicalInputsStarted: boolean;
   medicalInputsSubmitted: boolean;
-  recommendationAvailable: boolean;
   recommendationConfirmed: boolean;
-  onlineConsultRequired: boolean;
-  onlineConsultStarted: boolean;
   onlineConsultSubmitted: boolean;
-  humanHandoffActive: boolean;
-  humanHandoffSubmitted: boolean;
 }
 
-export type JourneyTransitionEvent =
-  | { type: 'START_MEDICAL_INPUTS' }
-  | { type: 'REQUEST_HUMAN_HANDOFF' };
+export interface StageCopyReference {
+  stage: ChatJourneyStage;
+  phase: ChatJourneyPhase;
+  referenceText: string;
+}
+
+export type JourneyTransitionDecision =
+  | { type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE' }
+  | { type: 'ENTER_COLLECT_MEDICAL_INPUTS_ACTIVE' }
+  | { type: 'ENTER_COLLECT_MEDICAL_INPUTS_POST' }
+  | { type: 'ENTER_RECOMMENDATION_PRE' }
+  | { type: 'ENTER_RECOMMENDATION_ACTIVE' }
+  | { type: 'ENTER_RECOMMENDATION_POST' }
+  | { type: 'ENTER_ONLINE_CONSULT_PRE' }
+  | { type: 'ENTER_ONLINE_CONSULT_ACTIVE' }
+  | { type: 'ENTER_ONLINE_CONSULT_POST' }
+  | { type: 'ENTER_HUMAN_HANDOFF_PRE' }
+  | { type: 'ENTER_HUMAN_HANDOFF_ACTIVE' }
+  | { type: 'ENTER_HUMAN_HANDOFF_POST' };
 
 export type ChatbotV2RequestClass =
   | 'faq'
@@ -53,7 +63,7 @@ export interface ChatbotV2ResourceDescriptor {
 export interface ResourceRegistryInput {
   scopeId: string;
   journeySnapshot: JourneySnapshot;
-  truth: Pick<JourneyTruth, 'medicalInputsSubmitted' | 'recommendationConfirmed' | 'onlineConsultSubmitted' | 'humanHandoffSubmitted'>;
+  truth: JourneyTruth;
 }
 
 export interface RequestClassificationInput {
@@ -102,15 +112,16 @@ export interface ConversationOrchestrationResult {
   includeProgressionFollowUpAccepted?: boolean;
   requiresFaqGrounding?: boolean;
   journeyUpdate?: JourneySnapshot;
-  resourceUpdates?: ChatbotV2ResourceDescriptor[];
 }
 
 export interface ChatbotV2FoundationState {
-  source: 'status_snapshot_bridge';
+  source: 'bootstrap';
   scopeId: string;
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   allowedResources: ChatbotV2ResourceDescriptor[];
   requestClass?: ChatbotV2RequestClass;
   responseIntent?: ChatbotV2RequestClass;
+  targetResourceTypes?: ChatResourceType[];
+  stageCopy?: StageCopyReference | null;
 }

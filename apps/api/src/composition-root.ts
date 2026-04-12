@@ -195,7 +195,6 @@ import {
   ContextBuilderService,
   RiskResolverService,
   ActionPlannerService,
-  JourneyEngineService,
   RecommendationPolicyService,
   HandoffPolicyService,
   WritebackPlannerService,
@@ -776,7 +775,6 @@ export function getServices(): AppServices {
     );
     const riskResolverService = new RiskResolverService();
     const actionPlannerService = new ActionPlannerService();
-    const journeyEngineService = new JourneyEngineService();
     const recommendationPolicyService = new RecommendationPolicyService();
     const handoffPolicyService = new HandoffPolicyService();
     const writebackPlannerService = new WritebackPlannerService();
@@ -975,8 +973,8 @@ export function getServices(): AppServices {
         caseRepo,
         chcRepo,
         conversationRepo,
+        aiChatMessageRepo,
         aiChatSessionRepo,
-        journeyEngineService,
       ),
       setPassword: new SetPasswordUseCase(patientRepo),
 

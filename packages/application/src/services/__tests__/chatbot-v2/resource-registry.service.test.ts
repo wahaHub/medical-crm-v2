@@ -15,7 +15,6 @@ describe('ResourceRegistryService', () => {
         medicalInputsSubmitted: false,
         recommendationConfirmed: false,
         onlineConsultSubmitted: false,
-        humanHandoffSubmitted: false,
       },
     });
 
@@ -39,7 +38,6 @@ describe('ResourceRegistryService', () => {
         medicalInputsSubmitted: false,
         recommendationConfirmed: false,
         onlineConsultSubmitted: false,
-        humanHandoffSubmitted: false,
       },
     });
 
@@ -66,7 +64,6 @@ describe('ResourceRegistryService', () => {
         medicalInputsSubmitted: true,
         recommendationConfirmed: true,
         onlineConsultSubmitted: false,
-        humanHandoffSubmitted: true,
       },
     });
 
@@ -91,7 +88,6 @@ describe('ResourceRegistryService', () => {
         medicalInputsSubmitted: true,
         recommendationConfirmed: false,
         onlineConsultSubmitted: false,
-        humanHandoffSubmitted: false,
       },
     });
 
@@ -110,7 +106,6 @@ describe('ResourceRegistryService', () => {
         medicalInputsSubmitted: true,
         recommendationConfirmed: false,
         onlineConsultSubmitted: false,
-        humanHandoffSubmitted: false,
       },
     });
 
@@ -137,7 +132,6 @@ describe('ResourceRegistryService', () => {
         medicalInputsSubmitted: false,
         recommendationConfirmed: false,
         onlineConsultSubmitted: false,
-        humanHandoffSubmitted: false,
       },
     });
     const caseTwoResource = service.resolveResource({
@@ -151,7 +145,6 @@ describe('ResourceRegistryService', () => {
         medicalInputsSubmitted: false,
         recommendationConfirmed: false,
         onlineConsultSubmitted: false,
-        humanHandoffSubmitted: false,
       },
     });
 

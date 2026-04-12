@@ -1,70 +1,72 @@
-import type { JourneySnapshot, JourneyTransitionEvent, JourneyTruth } from './types.js';
+import type { JourneySnapshot, JourneyTransitionDecision } from './types.js';
 
 export class JourneyEngineService {
-  deriveSnapshot(truth: JourneyTruth): JourneySnapshot {
-    if (truth.humanHandoffActive) {
-      return {
-        currentStage: 'HUMAN_HANDOFF',
-        currentPhase: 'active',
-      };
+  advanceSnapshot(_current: JourneySnapshot, decision: JourneyTransitionDecision): JourneySnapshot {
+    switch (decision.type) {
+      case 'ENTER_COLLECT_MEDICAL_INPUTS_PRE':
+        return {
+          currentStage: 'COLLECT_MEDICAL_INPUTS',
+          currentPhase: 'pre',
+        };
+      case 'ENTER_COLLECT_MEDICAL_INPUTS_ACTIVE':
+        return {
+          currentStage: 'COLLECT_MEDICAL_INPUTS',
+          currentPhase: 'active',
+        };
+      case 'ENTER_COLLECT_MEDICAL_INPUTS_POST':
+        return {
+          currentStage: 'COLLECT_MEDICAL_INPUTS',
+          currentPhase: 'post',
+        };
+      case 'ENTER_RECOMMENDATION_PRE':
+        return {
+          currentStage: 'RECOMMENDATION',
+          currentPhase: 'pre',
+        };
+      case 'ENTER_RECOMMENDATION_ACTIVE':
+        return {
+          currentStage: 'RECOMMENDATION',
+          currentPhase: 'active',
+        };
+      case 'ENTER_RECOMMENDATION_POST':
+        return {
+          currentStage: 'RECOMMENDATION',
+          currentPhase: 'post',
+        };
+      case 'ENTER_ONLINE_CONSULT_PRE':
+        return {
+          currentStage: 'ONLINE_CONSULT',
+          currentPhase: 'pre',
+        };
+      case 'ENTER_ONLINE_CONSULT_ACTIVE':
+        return {
+          currentStage: 'ONLINE_CONSULT',
+          currentPhase: 'active',
+        };
+      case 'ENTER_ONLINE_CONSULT_POST':
+        return {
+          currentStage: 'ONLINE_CONSULT',
+          currentPhase: 'post',
+        };
+      case 'ENTER_HUMAN_HANDOFF_PRE':
+        return {
+          currentStage: 'HUMAN_HANDOFF',
+          currentPhase: 'pre',
+        };
+      case 'ENTER_HUMAN_HANDOFF_ACTIVE':
+        return {
+          currentStage: 'HUMAN_HANDOFF',
+          currentPhase: 'active',
+        };
+      case 'ENTER_HUMAN_HANDOFF_POST':
+        return {
+          currentStage: 'HUMAN_HANDOFF',
+          currentPhase: 'post',
+        };
+      default: {
+        const exhaustiveCheck: never = decision;
+        return exhaustiveCheck;
+      }
     }
-
-    if (truth.onlineConsultSubmitted) {
-      return {
-        currentStage: 'ONLINE_CONSULT',
-        currentPhase: 'post',
-      };
-    }
-
-    if (truth.onlineConsultStarted) {
-      return {
-        currentStage: 'ONLINE_CONSULT',
-        currentPhase: 'active',
-      };
-    }
-
-    if (truth.recommendationConfirmed) {
-      return {
-        currentStage: truth.onlineConsultRequired ? 'ONLINE_CONSULT' : 'RECOMMENDATION',
-        currentPhase: truth.onlineConsultRequired ? 'active' : 'post',
-      };
-    }
-
-    if (truth.recommendationAvailable || truth.medicalInputsSubmitted) {
-      return {
-        currentStage: 'RECOMMENDATION',
-        currentPhase: 'active',
-      };
-    }
-
-    if (truth.medicalInputsStarted) {
-      return {
-        currentStage: 'COLLECT_MEDICAL_INPUTS',
-        currentPhase: 'active',
-      };
-    }
-
-    return {
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'active',
-    };
-  }
-
-  advanceSnapshot(current: JourneySnapshot, event: JourneyTransitionEvent): JourneySnapshot {
-    if (event.type === 'REQUEST_HUMAN_HANDOFF') {
-      return {
-        currentStage: 'HUMAN_HANDOFF',
-        currentPhase: 'pre',
-      };
-    }
-
-    if (event.type === 'START_MEDICAL_INPUTS' && current.currentStage === 'EXPLAIN_PROCESS') {
-      return {
-        currentStage: 'COLLECT_MEDICAL_INPUTS',
-        currentPhase: 'pre',
-      };
-    }
-
-    return current;
   }
 }

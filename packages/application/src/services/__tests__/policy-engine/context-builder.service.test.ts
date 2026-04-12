@@ -760,7 +760,7 @@ describe('ContextBuilderService', () => {
 
     expect(context.chatbotV2Foundation).toMatchObject({
       scopeId: 'policy-session-ctx-1',
-      source: 'status_snapshot_bridge',
+      source: 'bootstrap',
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
         currentPhase: 'active',
@@ -774,6 +774,37 @@ describe('ContextBuilderService', () => {
         resourceType: 'MEDICAL_INVITATION_STATUS',
       }),
     ]));
+  });
+
+  it('restores chatbot-v2 foundation from the latest assistant chatbotV2 floor before orchestration', async () => {
+    const builder = buildContextBuilder({
+      recentMessages: [
+        makeContextMessage({
+          id: 'assistant-floor-1',
+          role: 'ASSISTANT',
+          content: 'We are ready to move into recommendation.',
+          metadata: {
+            chatbotV2: {
+              journeySnapshot: {
+                currentStage: 'RECOMMENDATION',
+                currentPhase: 'pre',
+              },
+            },
+          },
+        }),
+      ],
+    });
+
+    const context = await builder.build({
+      sessionId: 'policy-session-ctx-1',
+      userMessage: 'Okay, continue.',
+      depth: 'light',
+    });
+
+    expect(context.chatbotV2Foundation.journeySnapshot).toEqual({
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'pre',
+    });
   });
 });
 

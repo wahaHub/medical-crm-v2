@@ -84,7 +84,7 @@ export class ResourceRegistryService {
       resourceId: (input) => this.buildScopedResourceId('human-handoff', input),
       stageBinding: { stage: 'HUMAN_HANDOFF', phase: 'active' },
       visibility: { mode: 'global' },
-      status: ({ truth }) => truth.humanHandoffSubmitted ? 'submitted' : 'available',
+      status: () => 'available',
       payload: () => ({
         title: 'Talk to a human care advisor',
       }),

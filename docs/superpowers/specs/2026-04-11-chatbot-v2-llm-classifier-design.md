@@ -364,6 +364,7 @@ The user is not explicitly requesting a specific resource.
 Rules:
 
 - `targetResourceTypes` may be empty
+- when present, `targetResourceTypes` means candidate next-step resources inferred from the currently allowed resource hints, not explicitly named resources
 - `includeProgressionFollowUp = false`
 
 ### `resource_request`
@@ -418,6 +419,23 @@ not:
 - `progression_request`
 
 This applies even if the message also contains “continue” or “next step” semantics.
+
+### Rule 2A: Progression may still carry candidate next-step resources
+
+If the user is asking the system to move forward, but is not explicitly naming a concrete resource, classification may still return:
+
+- `requestClass = progression_request`
+- `targetResourceTypes = [...]`
+
+In this case, the array means:
+
+- the most likely next-step resources the CRM can use to carry the journey forward
+
+It does not mean:
+
+- the user explicitly requested those resources by name
+
+CRM orchestrator remains the final authority on whether to advance and which of those candidate resources to actually expose or prioritize.
 
 ### Rule 3: FAQ never targets resources
 

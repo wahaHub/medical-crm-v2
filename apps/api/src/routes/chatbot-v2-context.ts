@@ -1,7 +1,7 @@
 import {
   ConversationOrchestratorService,
-  JourneyEngineService,
   LlmRequestClassifierService,
+  StageCopyRegistryService,
   type ChatbotV2ClassifierInput,
   type ChatbotV2ClassifierResourceHint,
   type ChatbotV2ClassifierMessage,
@@ -28,8 +28,14 @@ type ChatbotV2Envelope = {
   journeySnapshot: JourneySnapshot;
   resources: ChatResourceDescriptor[];
   truthSummary: JourneyTruth;
+  stageCopy?: {
+    stage: string;
+    phase: string;
+    referenceText: string;
+  } | null;
   requestClass: string;
   responseIntent: string;
+  targetResourceTypes: string[];
   includeProgressionFollowUp?: boolean;
 };
 
@@ -62,7 +68,7 @@ export type ChatbotV2TurnContext = {
 };
 
 const orchestrator = new ConversationOrchestratorService();
-const journeyEngine = new JourneyEngineService();
+const stageCopyRegistry = new StageCopyRegistryService();
 
 export async function buildChatbotV2TurnContext(input: {
   services: Services;
@@ -84,8 +90,10 @@ export async function buildChatbotV2TurnContext(input: {
         journeySnapshot: foundation.journeySnapshot,
         resources: foundation.resources,
         truthSummary: foundation.truth,
+        stageCopy: readStageCopy(foundation.journeySnapshot),
         requestClass: 'process_explanation',
         responseIntent: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE'],
       },
       foundation: {
         ...foundation,
@@ -117,8 +125,10 @@ export async function buildChatbotV2TurnContext(input: {
       journeySnapshot: orchestration.journeyUpdate ?? foundation.journeySnapshot,
       resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
       truthSummary: foundation.truth,
+      stageCopy: readStageCopy(orchestration.journeyUpdate ?? foundation.journeySnapshot),
       requestClass: orchestration.requestClass,
       responseIntent: orchestration.responseIntent,
+      targetResourceTypes: [...classification.targetResourceTypes],
       includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
     },
     foundation: {
@@ -146,44 +156,50 @@ export function buildChatbotV2PostTurnContext(input: {
   const refreshedTruth = input.refreshedStatusSnapshot
     ? deriveJourneyTruthFromStatusSnapshot(input.refreshedStatusSnapshot)
     : input.foundation.truth;
-  const refreshedJourneySnapshot = journeyEngine.deriveSnapshot(refreshedTruth);
+  const currentJourneySnapshot = input.preTurn.journeySnapshot;
   const userMessage = input.userMessage?.trim() ?? '';
-
-  if (compareJourneySnapshots(refreshedJourneySnapshot, input.preTurn.journeySnapshot) < 0) {
-    return {
-      ...input.preTurn,
-      truthSummary: refreshedTruth,
-      requestClass,
-      responseIntent,
-      includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
-    };
-  }
 
   if (userMessage.length === 0) {
     return {
-      journeySnapshot: refreshedJourneySnapshot,
-      resources: input.preTurn.resources,
+      ...input.preTurn,
       truthSummary: refreshedTruth,
+      stageCopy: readStageCopy(input.preTurn.journeySnapshot),
       requestClass,
       responseIntent,
+      targetResourceTypes: input.preTurn.targetResourceTypes,
       includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
     };
   }
 
   const orchestration = orchestrator.orchestrate({
     scopeId: input.foundation.scopeId,
-    journeySnapshot: refreshedJourneySnapshot,
+    journeySnapshot: currentJourneySnapshot,
     truth: refreshedTruth,
     classification: input.foundation.classification,
   });
 
   return {
-    journeySnapshot: orchestration.journeyUpdate ?? refreshedJourneySnapshot,
+    journeySnapshot: orchestration.journeyUpdate ?? currentJourneySnapshot,
     resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
     truthSummary: refreshedTruth,
+    stageCopy: readStageCopy(orchestration.journeyUpdate ?? currentJourneySnapshot),
     requestClass,
     responseIntent,
+    targetResourceTypes: input.preTurn.targetResourceTypes,
     includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
+  };
+}
+
+function readStageCopy(journeySnapshot: JourneySnapshot) {
+  const reference = stageCopyRegistry.resolve(journeySnapshot);
+  if (!reference) {
+    return null;
+  }
+
+  return {
+    stage: reference.stage,
+    phase: reference.phase,
+    referenceText: reference.referenceText,
   };
 }
 
@@ -231,7 +247,12 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
   }));
   const floor = asRecord(root.chatbot_v2_floor ?? root.chatbotV2Floor);
   const floorSnapshot = readJourneySnapshotFromFloor(floor);
-  if (floorSnapshot && compareJourneySnapshots(floorSnapshot, journeySnapshot) > 0) {
+  if (
+    floorSnapshot
+    && (
+      compareJourneySnapshots(floorSnapshot, journeySnapshot) > 0
+    )
+  ) {
     journeySnapshot = floorSnapshot;
     resources = dedupeChatResources([
       ...resources,
@@ -477,15 +498,9 @@ function deriveJourneyTruth(policyContext: unknown) {
   const truthSummary = asRecord(chatbotV2.truth_summary ?? chatbotV2.truthSummary);
   if (Object.keys(truthSummary).length > 0) {
     return {
-      medicalInputsStarted: asBoolean(truthSummary.medical_inputs_started ?? truthSummary.medicalInputsStarted),
       medicalInputsSubmitted: asBoolean(truthSummary.medical_inputs_submitted ?? truthSummary.medicalInputsSubmitted),
-      recommendationAvailable: asBoolean(truthSummary.recommendation_available ?? truthSummary.recommendationAvailable),
       recommendationConfirmed: asBoolean(truthSummary.recommendation_confirmed ?? truthSummary.recommendationConfirmed),
-      onlineConsultRequired: asBoolean(truthSummary.online_consult_required ?? truthSummary.onlineConsultRequired),
-      onlineConsultStarted: asBoolean(truthSummary.online_consult_started ?? truthSummary.onlineConsultStarted),
       onlineConsultSubmitted: asBoolean(truthSummary.online_consult_submitted ?? truthSummary.onlineConsultSubmitted),
-      humanHandoffActive: asBoolean(truthSummary.human_handoff_active ?? truthSummary.humanHandoffActive),
-      humanHandoffSubmitted: asBoolean(truthSummary.human_handoff_submitted ?? truthSummary.humanHandoffSubmitted),
     };
   }
   const statusSnapshot = asRecord(root.status_snapshot);

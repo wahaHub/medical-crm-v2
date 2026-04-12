@@ -8,6 +8,7 @@ describe('GetPatientSessionStateUseCase', () => {
   let mockCaseRepo: any;
   let mockChcRepo: any;
   let mockConversationRepo: any;
+  let mockAiChatMessageRepo: any;
   let mockAiChatSessionRepo: any;
 
   beforeEach(() => {
@@ -42,6 +43,9 @@ describe('GetPatientSessionStateUseCase', () => {
       findByPatientId: vi.fn().mockResolvedValue([]),
       save: vi.fn(),
     };
+    mockAiChatMessageRepo = {
+      listRecentBySession: vi.fn().mockResolvedValue([]),
+    };
     mockAiChatSessionRepo = {
       findBySessionId: vi.fn().mockResolvedValue(null),
       findByDifyConversationId: vi.fn(),
@@ -57,6 +61,7 @@ describe('GetPatientSessionStateUseCase', () => {
       mockCaseRepo,
       mockChcRepo,
       mockConversationRepo,
+      mockAiChatMessageRepo,
       mockAiChatSessionRepo,
     );
   });
@@ -162,8 +167,8 @@ describe('GetPatientSessionStateUseCase', () => {
         conversationIds: [expect.any(String), 'conv-hosp-1'],
       },
       journeySnapshot: {
-        currentStage: 'RECOMMENDATION',
-        currentPhase: 'post',
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
       },
       chatbotOrchestrationState: {
         conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
@@ -392,12 +397,12 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.selectedHospitalIds).toEqual(['hospital-2']);
     expect(result.caseId).toBe('case-4');
     expect(result.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'post',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
   });
 
-  it('restores COLLECT_MEDICAL_INPUTS.active when chatbot truth shows intake is in progress', async () => {
+  it('restores COLLECT_MEDICAL_INPUTS.active from the latest assistant chatbot-v2 floor', async () => {
     mockPatientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       patientCode: 'P001',
@@ -427,6 +432,7 @@ describe('GetPatientSessionStateUseCase', () => {
       { id: 'conv-6', caseId: 'case-6', category: 'ADMIN_PATIENT' },
     ]);
     mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'session-6',
       sessionId: 'widget-chat:patient-1:case-6',
       statusSnapshot: {
         formStatus: 'IN_PROGRESS',
@@ -434,6 +440,19 @@ describe('GetPatientSessionStateUseCase', () => {
         conversationSummary: 'Patient is filling out the intake.',
       },
     });
+    mockAiChatMessageRepo.listRecentBySession.mockResolvedValue([
+      {
+        role: 'ASSISTANT',
+        metadata: {
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'COLLECT_MEDICAL_INPUTS',
+              currentPhase: 'active',
+            },
+          },
+        },
+      },
+    ]);
 
     const result = await useCase.execute({ patientId: 'patient-1' });
 
@@ -443,7 +462,7 @@ describe('GetPatientSessionStateUseCase', () => {
     });
   });
 
-  it('restores ONLINE_CONSULT.active when the consult invitation is already underway', async () => {
+  it('restores ONLINE_CONSULT.active from the latest assistant chatbot-v2 floor', async () => {
     mockPatientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       patientCode: 'P001',
@@ -479,6 +498,7 @@ describe('GetPatientSessionStateUseCase', () => {
       { id: 'conv-7', caseId: 'case-7', category: 'ADMIN_PATIENT' },
     ]);
     mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'session-7',
       sessionId: 'widget-chat:patient-1:case-7',
       statusSnapshot: {
         recommendationStatus: 'PRELIMINARY_SHOWN',
@@ -486,6 +506,19 @@ describe('GetPatientSessionStateUseCase', () => {
         conversationSummary: 'Consult scheduling is available.',
       },
     });
+    mockAiChatMessageRepo.listRecentBySession.mockResolvedValue([
+      {
+        role: 'ASSISTANT',
+        metadata: {
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'ONLINE_CONSULT',
+              currentPhase: 'active',
+            },
+          },
+        },
+      },
+    ]);
 
     const result = await useCase.execute({ patientId: 'patient-1' });
 
@@ -495,7 +528,7 @@ describe('GetPatientSessionStateUseCase', () => {
     });
   });
 
-  it('restores RECOMMENDATION.active when persisted package status shows recommendation content was already shown', async () => {
+  it('restores RECOMMENDATION.active from the latest assistant chatbot-v2 floor', async () => {
     mockPatientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       patientCode: 'P001',
@@ -525,12 +558,26 @@ describe('GetPatientSessionStateUseCase', () => {
       { id: 'conv-8', caseId: 'case-8', category: 'ADMIN_PATIENT' },
     ]);
     mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'session-8',
       sessionId: 'widget-chat:patient-1:case-8',
       statusSnapshot: {
         packageStatus: 'SHOWN',
         conversationSummary: 'Package options were already presented.',
       },
     });
+    mockAiChatMessageRepo.listRecentBySession.mockResolvedValue([
+      {
+        role: 'ASSISTANT',
+        metadata: {
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'RECOMMENDATION',
+              currentPhase: 'active',
+            },
+          },
+        },
+      },
+    ]);
 
     const result = await useCase.execute({ patientId: 'patient-1' });
 
@@ -540,7 +587,7 @@ describe('GetPatientSessionStateUseCase', () => {
     });
   });
 
-  it('does not let completed historical handoff override a newer consult phase on restore', async () => {
+  it('does not let completed historical handoff override a newer consult phase from the latest assistant floor', async () => {
     mockPatientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       patientCode: 'P001',
@@ -576,6 +623,7 @@ describe('GetPatientSessionStateUseCase', () => {
       { id: 'conv-9', caseId: 'case-9', category: 'ADMIN_PATIENT' },
     ]);
     mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'session-9',
       sessionId: 'widget-chat:patient-1:case-9',
       statusSnapshot: {
         consultationStatus: 'READY',
@@ -583,11 +631,149 @@ describe('GetPatientSessionStateUseCase', () => {
         conversationSummary: 'A prior handoff closed before consult resumed.',
       },
     });
+    mockAiChatMessageRepo.listRecentBySession.mockResolvedValue([
+      {
+        role: 'ASSISTANT',
+        metadata: {
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'ONLINE_CONSULT',
+              currentPhase: 'active',
+            },
+          },
+        },
+      },
+    ]);
 
     const result = await useCase.execute({ patientId: 'patient-1' });
 
     expect(result.journeySnapshot).toEqual({
       currentStage: 'ONLINE_CONSULT',
+      currentPhase: 'active',
+    });
+  });
+
+  it('restores HUMAN_HANDOFF.active from the latest assistant chatbot-v2 floor', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-10',
+        patientName: 'Hao Wang',
+        patientCountry: 'China',
+        structuredData: null,
+        createdAt: new Date('2026-03-11T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-10', caseId: 'case-10', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'session-10',
+      sessionId: 'widget-chat:patient-1:case-10',
+      statusSnapshot: {
+        handoffStatus: 'OPEN',
+        conversationSummary: 'A human advisor is currently taking over.',
+      },
+    });
+    mockAiChatMessageRepo.listRecentBySession.mockResolvedValue([
+      {
+        role: 'ASSISTANT',
+        metadata: {
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'HUMAN_HANDOFF',
+              currentPhase: 'active',
+            },
+          },
+        },
+      },
+    ]);
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'HUMAN_HANDOFF',
+      currentPhase: 'active',
+    });
+  });
+
+  it('lets a live handoff override a consult-ready status when the latest assistant floor is HUMAN_HANDOFF.active', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-11',
+        patientName: 'Hao Wang',
+        patientCountry: 'China',
+        structuredData: {
+          patientHospitalSelection: {
+            medicalFormStatus: 'SUBMITTED',
+          },
+        },
+        createdAt: new Date('2026-03-12T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([
+      { hospitalId: 'hospital-5', removedAt: null },
+    ]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      { id: 'conv-11', caseId: 'case-11', category: 'ADMIN_PATIENT' },
+    ]);
+    mockAiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'session-11',
+      sessionId: 'widget-chat:patient-1:case-11',
+      statusSnapshot: {
+        consultationStatus: 'READY',
+        handoffStatus: 'OPEN',
+        conversationSummary: 'A human advisor stepped in while consult preparation was underway.',
+      },
+    });
+    mockAiChatMessageRepo.listRecentBySession.mockResolvedValue([
+      {
+        role: 'ASSISTANT',
+        metadata: {
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'HUMAN_HANDOFF',
+              currentPhase: 'active',
+            },
+          },
+        },
+      },
+    ]);
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'HUMAN_HANDOFF',
       currentPhase: 'active',
     });
   });

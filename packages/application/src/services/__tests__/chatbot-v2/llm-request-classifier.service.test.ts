@@ -110,6 +110,20 @@ describe('LlmRequestClassifierService', () => {
     });
   });
 
+  it('accepts progression requests that carry candidate next-step resources', () => {
+    expect(parseClassifierResult({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: ['MEDICAL_DOC_UPLOAD', 'QUESTIONNAIRE'],
+        includeProgressionFollowUp: false,
+      }),
+    })).toEqual({
+      requestClass: 'progression_request',
+      targetResourceTypes: ['MEDICAL_DOC_UPLOAD', 'QUESTIONNAIRE'],
+      includeProgressionFollowUp: false,
+    });
+  });
+
   it('preserves multilingual faq turns as faq with no target resources', async () => {
     const gateway = {
       classify: vi.fn().mockResolvedValue({

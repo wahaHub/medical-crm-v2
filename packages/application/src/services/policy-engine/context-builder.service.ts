@@ -14,8 +14,8 @@ import type {
   IAiUserProfileRepository,
 } from '@medical-crm/domain';
 import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
-import { JourneyEngineService } from '../chatbot-v2/journey-engine.service.js';
 import { deriveJourneyTruthFromStatusSnapshot } from '../chatbot-v2/journey-truth.service.js';
+import { resolvePrimaryJourneySnapshot } from '../chatbot-v2/journey-snapshot-restore.service.js';
 import { ResourceRegistryService } from '../chatbot-v2/resource-registry.service.js';
 import type { ChatbotV2FoundationState, JourneyTruth } from '../chatbot-v2/types.js';
 
@@ -83,7 +83,6 @@ export class ContextBuilderService {
     private readonly timelineRepo: IAiChatTimelineEventRepository,
     private readonly followupRepo: IAiFollowupTriggerRepository,
     private readonly handoffRepo: IAiHandoffRepository,
-    private readonly journeyEngine: JourneyEngineService = new JourneyEngineService(),
     private readonly resourceRegistry: ResourceRegistryService = new ResourceRegistryService(),
   ) {}
 
@@ -95,6 +94,8 @@ export class ContextBuilderService {
     if (!session) {
       throw new Error(`AI chat session not found: ${input.sessionId}`);
     }
+    const rawBootstrapMessages = await this.messageRepo.listRecentBySession(session.id, 12);
+    const bootstrapRecentMessages = rawBootstrapMessages.filter((message) => !isProviderFailedDraft(message));
 
     const baseContext = {
       sessionId: input.sessionId,
@@ -113,14 +114,13 @@ export class ContextBuilderService {
       chatbotV2Foundation: buildChatbotV2Foundation({
         scopeId: session.sessionId,
         statusSnapshot: session.statusSnapshot,
-        journeyEngine: this.journeyEngine,
+        recentMessages: bootstrapRecentMessages,
         resourceRegistry: this.resourceRegistry,
       }),
     } satisfies PolicyConversationContext;
 
     if (depth === 'light') {
-      const recentMessages = (await this.messageRepo.listRecentBySession(session.id, 4))
-        .filter((message) => !isProviderFailedDraft(message));
+      const recentMessages = bootstrapRecentMessages.slice(0, 4);
 
       return {
         ...baseContext,
@@ -132,8 +132,7 @@ export class ContextBuilderService {
       };
     }
 
-    const [rawRecentMessages, profile, recentTimeline, activeFollowups, recentHandoffs] = await Promise.all([
-      this.messageRepo.listRecentBySession(session.id, 12),
+    const [profile, recentTimeline, activeFollowups, recentHandoffs] = await Promise.all([
       this.profileRepo.findByAnonymousKeyOrPatient({
         anonymousKey: session.sessionId,
         patientId: session.patientId,
@@ -142,7 +141,7 @@ export class ContextBuilderService {
       this.followupRepo.listPendingBySession(session.id),
       this.handoffRepo.listRecentBySession(session.id, 5),
     ]);
-    const recentMessages = rawRecentMessages.filter((message) => !isProviderFailedDraft(message));
+    const recentMessages = bootstrapRecentMessages;
 
       return {
         ...baseContext,
@@ -173,7 +172,7 @@ function deriveActiveHospitalContext(input: {
     };
   }
 
-  for (const message of [...input.recentMessages].reverse()) {
+  for (const message of input.recentMessages) {
     if (message.role.toUpperCase() !== 'USER') {
       continue;
     }
@@ -187,7 +186,7 @@ function deriveActiveHospitalContext(input: {
     }
   }
 
-  for (const message of [...input.recentMessages].reverse()) {
+  for (const message of input.recentMessages) {
     const shortlistHospitalId = readShortlistHospitalId(message.shortlist);
     if (shortlistHospitalId) {
       return {
@@ -306,26 +305,24 @@ function readShortlistHospitalId(shortlist: Array<Record<string, unknown>>): str
 function buildChatbotV2Foundation(input: {
   scopeId: string;
   statusSnapshot: AiChatStatusSnapshot;
-  journeyEngine: JourneyEngineService;
+  recentMessages: AiChatMessage[];
   resourceRegistry: ResourceRegistryService;
 }): ChatbotV2FoundationState {
   const truth = deriveJourneyTruth(input.statusSnapshot);
-  const journeySnapshot = input.journeyEngine.deriveSnapshot(truth);
+  const journeySnapshot = resolvePrimaryJourneySnapshot({
+    statusSnapshot: input.statusSnapshot,
+    recentMessages: input.recentMessages,
+  });
 
   return {
-    source: 'status_snapshot_bridge',
+    source: 'bootstrap',
     scopeId: input.scopeId,
     truth,
     journeySnapshot,
     allowedResources: input.resourceRegistry.listResources({
       scopeId: input.scopeId,
       journeySnapshot,
-      truth: {
-        medicalInputsSubmitted: truth.medicalInputsSubmitted,
-        recommendationConfirmed: truth.recommendationConfirmed,
-        onlineConsultSubmitted: truth.onlineConsultSubmitted,
-        humanHandoffSubmitted: truth.humanHandoffSubmitted,
-      },
+      truth,
     }),
   };
 }

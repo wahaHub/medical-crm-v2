@@ -176,7 +176,7 @@ describe('chatbot-v2 journey schemas', () => {
       requestClass: 'progression_request',
       targetResourceTypes: ['QUESTIONNAIRE'],
       includeProgressionFollowUp: false,
-    }).success).toBe(false);
+    }).success).toBe(true);
 
     expect(ChatbotV2ClassifierResultSchema.safeParse({
       requestClass: 'resource_request',

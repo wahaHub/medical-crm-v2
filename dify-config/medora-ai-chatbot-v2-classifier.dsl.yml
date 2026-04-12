@@ -132,7 +132,7 @@ workflow:
             requestClass descriptions:
             - faq: the user asks for general information or category FAQ content and is not directly requesting a concrete resource. targetResourceTypes must be [].
             - process_explanation: the user asks how the process works, why a step exists, or what the operational flow is. targetResourceTypes may include PROCESS_GUIDE when allowed.
-            - progression_request: the user asks to continue, move forward, start the next step, or let the system guide the next action, without explicitly naming a concrete resource.
+            - progression_request: the user asks to continue, move forward, start the next step, or let the system guide the next action, without explicitly naming a concrete resource. targetResourceTypes may be empty or may contain candidate next-step resources inferred from the current allowed resource hints.
             - resource_request: the user explicitly wants to open, use, review, submit, or act on a concrete allowed resource. Prefer this over progression_request when a concrete resource is explicitly requested.
             - resource_status_question: the user asks for the current state or progress of a concrete allowed resource.
             - human_help_request: the user explicitly wants a human advisor or human takeover. HUMAN_HANDOFF may be targeted when allowed.
@@ -143,6 +143,7 @@ workflow:
             - faq must always return targetResourceTypes as [].
             - Only faq and process_explanation may set includeProgressionFollowUp to true.
             - If the user explicitly names a concrete resource, prefer resource_request over progression_request.
+            - For progression_request, targetResourceTypes represent candidate next-step resources, not explicitly requested resources.
             - If HUMAN_HANDOFF is not present in allowedResourceHints, human_help_request may still return an empty targetResourceTypes array.
             - process_explanation can still target PROCESS_GUIDE in later stages, but it is informational only and must not imply a journey rewind.
             - Keep the output multilingual/general and description-driven. Avoid overfitting to a few examples or raw keywords.

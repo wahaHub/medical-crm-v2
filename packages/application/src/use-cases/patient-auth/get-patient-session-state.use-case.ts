@@ -1,4 +1,5 @@
 import type {
+  IAiChatMessageRepository,
   IAiChatSessionRepository,
   ICaseRepository,
   ICHCRepository,
@@ -10,9 +11,8 @@ import { AiChatSession, Conversation } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
 import { asRecord, asNullableString, asNullableDate } from '../../utils/structured-data.js';
 import type { MedicalFormStatus } from '../../utils/structured-data.js';
-import { JourneyEngineService } from '../../services/chatbot-v2/journey-engine.service.js';
-import { deriveJourneyTruthFromStatusSnapshot } from '../../services/chatbot-v2/journey-truth.service.js';
-import type { JourneySnapshot, JourneyTruth } from '../../services/chatbot-v2/types.js';
+import type { JourneySnapshot } from '../../services/chatbot-v2/types.js';
+import { resolvePrimaryJourneySnapshot } from '../../services/chatbot-v2/journey-snapshot-restore.service.js';
 
 export interface PatientSessionState {
   id: string;
@@ -64,8 +64,8 @@ export class GetPatientSessionStateUseCase {
     private readonly caseRepo: ICaseRepository,
     private readonly chcRepo: ICHCRepository,
     private readonly conversationRepo: IConversationRepository,
+    private readonly aiChatMessageRepo: IAiChatMessageRepository,
     private readonly aiChatSessionRepo: IAiChatSessionRepository,
-    private readonly journeyEngine: JourneyEngineService = new JourneyEngineService(),
   ) {}
 
   async execute(input: { patientId: string }): Promise<PatientSessionState> {
@@ -105,11 +105,15 @@ export class GetPatientSessionStateUseCase {
         updatedAt: new Date(),
       }));
     }
+    const recentMessages = aiChatSession?.id
+      ? await this.aiChatMessageRepo.listRecentBySession(aiChatSession.id, 12)
+      : [];
     const selectedHospitalId = selectedHospitalIds.length === 1 ? selectedHospitalIds[0] ?? null : null;
     const nextStep = selectedHospitalIds.length > 0 ? 'messages-ready' : 'select-hospitals';
-    const journeySnapshot = this.journeyEngine.deriveSnapshot(
-      deriveJourneyTruth(medicalFormMetadata, aiChatSession, selectedHospitalIds),
-    );
+    const journeySnapshot = resolvePrimaryJourneySnapshot({
+      statusSnapshot: aiChatSession?.statusSnapshot ?? null,
+      recentMessages,
+    });
 
     return {
       id: patient.id,
@@ -195,20 +199,6 @@ export class GetPatientSessionStateUseCase {
       conversationIds: [conversation.id, ...hospitalConversationIds],
     };
   }
-}
-
-function deriveJourneyTruth(
-  medicalFormMetadata: MedicalFormMetadata,
-  aiChatSession: AiChatSession | null,
-  selectedHospitalIds: string[],
-): JourneyTruth {
-  const hasSelectedRecommendations = selectedHospitalIds.length > 0;
-
-  return deriveJourneyTruthFromStatusSnapshot(aiChatSession?.statusSnapshot, {
-    medicalInputsSubmitted: medicalFormMetadata.medicalFormStatus === 'SUBMITTED',
-    recommendationAvailable: hasSelectedRecommendations || undefined,
-    recommendationConfirmed: hasSelectedRecommendations || undefined,
-  });
 }
 
 type EntryProfile = {

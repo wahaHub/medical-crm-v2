@@ -141,17 +141,6 @@ export const ChatbotV2ClassifierResultSchema = z.object({
   }
 
   if (
-    value.requestClass === 'progression_request'
-    && value.targetResourceTypes.length > 0
-  ) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'progression_request must not target concrete resources',
-      path: ['targetResourceTypes'],
-    });
-  }
-
-  if (
     (value.requestClass === 'resource_request' || value.requestClass === 'resource_status_question')
     && value.targetResourceTypes.length === 0
   ) {

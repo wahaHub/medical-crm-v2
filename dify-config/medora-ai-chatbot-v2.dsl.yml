@@ -240,6 +240,10 @@ workflow:
               if not isinstance(response_intent, str) or not response_intent:
                   response_intent = str(request_class)
 
+              target_resource_types = _pick(context, "targetResourceTypes", "target_resource_types")
+              if not isinstance(target_resource_types, list):
+                  target_resource_types = []
+
               include_progression_follow_up = _pick(
                   context,
                   "includeProgressionFollowUp",
@@ -256,6 +260,10 @@ workflow:
               if not isinstance(truth_summary, dict):
                   truth_summary = {}
 
+              stage_copy = _pick(context, "stageCopy", "stage_copy")
+              if not isinstance(stage_copy, dict):
+                  stage_copy = {}
+
               allowed_resource_types = []
               allowed_next_action_hints = []
 
@@ -271,11 +279,13 @@ workflow:
               return {
                   "request_class": str(request_class),
                   "response_intent": str(response_intent),
+                  "target_resource_types": json.dumps(target_resource_types, ensure_ascii=True),
                   "current_stage": str(current_stage),
                   "current_phase": str(current_phase),
                   "allowed_resource_types": json.dumps(allowed_resource_types, ensure_ascii=True),
                   "allowed_resources_json": json.dumps(allowed_resources, ensure_ascii=True),
                   "truth_summary_json": json.dumps(truth_summary, ensure_ascii=True),
+                  "stage_copy_json": json.dumps(stage_copy, ensure_ascii=True),
                   "allowed_next_action_hints": json.dumps(allowed_next_action_hints, ensure_ascii=True),
                   "include_progression_follow_up": include_progression_follow_up,
               }
@@ -284,6 +294,9 @@ workflow:
             type: string
             children: null
           response_intent:
+            type: string
+            children: null
+          target_resource_types:
             type: string
             children: null
           current_stage:
@@ -299,6 +312,9 @@ workflow:
             type: string
             children: null
           truth_summary_json:
+            type: string
+            children: null
+          stage_copy_json:
             type: string
             children: null
           allowed_next_action_hints:
@@ -334,8 +350,8 @@ workflow:
             You are the response composer for a CRM-owned medical journey chatbot.
 
             Dify is not the workflow owner.
-            The CRM-provided chatbotV2 context is the source of truth for the request class, response intent, current stage, current phase, allowed resources, truth summary, and allowed next-action hints.
-            Ground every answer in the current stage, current phase, allowed resources, truth summary, current status, conversation summary, faq grounding, page context, and attachments when they are relevant.
+            The CRM-provided chatbotV2 context is the source of truth for the request class, response intent, target resource types, current stage, current phase, allowed resources, truth summary, and allowed next-action hints.
+            Ground every answer in the request class, target resource types, current stage, current phase, allowed resources, truth summary, stage copy reference, current status, conversation summary, faq grounding, page context, and attachments when they are relevant.
 
             You must not invent widgets or progression beyond allowed hints.
             You must not invent hospitals, packages, questionnaires, upload widgets, booking flows, or human handoff steps that are not present in the CRM inputs.
@@ -356,11 +372,15 @@ workflow:
             - If no progression is clearly allowed or needed, set nextAction to ANSWER_FAQ.
             - Keep writebackDepth set to minimal.
             - Keep reasonCodes conservative and always include dify_v2_response.
+            - If request class is resource_request and target resource types are present, treat them as the user's explicit requested resources for this turn.
+            - If request class is progression_request and target resource types are present, treat them as candidate next-step resources suggested by CRM context, not as explicit user requests.
             - Do not say a requested resource is unavailable if it appears in the allowed resources list for this turn.
             - Do not claim a resource is available unless it appears in the allowed resources list.
+            - If request class is resource_request and a target resource type is present in the allowed resources list, answer as if that resource is available for this turn.
             - If truth summary says medicalInputsSubmitted is true, acknowledge that the questionnaire / medical intake has already been received even if QUESTIONNAIRE is not in the allowed resources list for this turn.
             - If the current stage is HUMAN_HANDOFF or the truth summary indicates human handoff is active, your answer must not imply a journey rewind back to an earlier stage.
             - Do not announce a stage change, booking, upload start, or handoff completion unless CRM already exposed it.
+            - If a stage copy reference is provided, treat it as the canonical explanation for the current pre/post stage and adapt it naturally to the user's exact message instead of quoting it rigidly.
         - role: user
           text: |
             User message:
@@ -371,6 +391,9 @@ workflow:
 
             Response intent:
             {{#parse_chatbot_v2_context.response_intent#}}
+
+            Target resource types:
+            {{#parse_chatbot_v2_context.target_resource_types#}}
 
             Current stage:
             {{#parse_chatbot_v2_context.current_stage#}}
@@ -386,6 +409,9 @@ workflow:
 
             Truth summary:
             {{#parse_chatbot_v2_context.truth_summary_json#}}
+
+            Stage copy reference:
+            {{#parse_chatbot_v2_context.stage_copy_json#}}
 
             Allowed next-action hints:
             {{#parse_chatbot_v2_context.allowed_next_action_hints#}}

@@ -23,6 +23,7 @@ export interface StageCopyReference {
 }
 
 export type JourneyTransitionDecision =
+  | { type: 'ENTER_EXPLAIN_PROCESS_ACTIVE' }
   | { type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE' }
   | { type: 'ENTER_COLLECT_MEDICAL_INPUTS_ACTIVE' }
   | { type: 'ENTER_COLLECT_MEDICAL_INPUTS_POST' }
@@ -103,6 +104,7 @@ export interface ConversationOrchestratorInput {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   classification: RequestClassificationResult;
+  hasCompletedInitialProcessExplanation: boolean;
 }
 
 export interface ConversationOrchestrationResult {
@@ -120,6 +122,7 @@ export interface ChatbotV2FoundationState {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   allowedResources: ChatbotV2ResourceDescriptor[];
+  hasCompletedInitialProcessExplanation?: boolean;
   requestClass?: ChatbotV2RequestClass;
   responseIntent?: ChatbotV2RequestClass;
   targetResourceTypes?: ChatResourceType[];

@@ -1,6 +1,8 @@
 import type { JourneySnapshot, StageCopyReference } from './types.js';
 
 const STAGE_COPY: Record<string, string> = {
+  'EXPLAIN_PROCESS.pre': 'Start by answering the patient initial question about what the service does, then smoothly introduce that the next step is to explain the overall medical journey and how the process works.',
+  'EXPLAIN_PROCESS.active': 'Explain the overall medical journey clearly enough that the patient understands how the process works and why the next step is collecting medical information before formal recommendations.',
   'COLLECT_MEDICAL_INPUTS.pre': 'The next step is to gather the patient medical inputs so the team can review the case with enough context before moving into formal recommendations.',
   'COLLECT_MEDICAL_INPUTS.post': 'The patient medical inputs have been received, and the journey can now move into recommendation guidance based on the submitted information.',
   'RECOMMENDATION.pre': 'The next step is to explain that recommendation is starting, including that the team will use the submitted information to suggest hospitals or packages.',

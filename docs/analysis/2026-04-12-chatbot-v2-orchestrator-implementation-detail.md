@@ -50,7 +50,7 @@ This means:
 
 `ContextBuilderService.buildChatbotV2Foundation()` now bootstraps the foundation snapshot to:
 
-- `EXPLAIN_PROCESS.active`
+- `EXPLAIN_PROCESS.pre`
 
 and marks the foundation source as:
 
@@ -117,9 +117,10 @@ For each turn, the orchestrator currently returns:
 
 Right now:
 
-- `responseIntent = requestClass`
-
-This is intentionally simple and is the current implemented behavior.
+- `responseIntent` is usually equal to `requestClass`
+- but there are two important exceptions:
+  - during `EXPLAIN_PROCESS.active`, a pure `progression_request` is normalized to `process_explanation` until the mandatory initial process explanation has been completed
+  - later repeated `process_explanation` turns are normalized to FAQ-like informational responses so they do not affect the current journey step
 
 ## FAQ grounding rule
 
@@ -140,8 +141,9 @@ This is intentionally simple and is the current implemented behavior.
 If accepted:
 
 - the primary `responseIntent` stays unchanged
-- journey may still advance if the current stage rule allows it
-- targeted resources are merged with projected next-stage resources for the turn
+- journey does not advance because of the follow-up flag alone
+- the flag only gives composer permission to add a light “we can continue” style closing line
+- resource exposure stays anchored to the current CRM-owned journey snapshot
 
 ## Resource selection rule
 
@@ -172,6 +174,7 @@ It now decides whether to call `JourneyEngineService.advanceSnapshot()` with a t
 
 Current transition decisions are:
 
+- `ENTER_EXPLAIN_PROCESS_ACTIVE`
 - `ENTER_COLLECT_MEDICAL_INPUTS_PRE`
 - `ENTER_COLLECT_MEDICAL_INPUTS_ACTIVE`
 - `ENTER_COLLECT_MEDICAL_INPUTS_POST`
@@ -216,15 +219,13 @@ If current snapshot is:
 
 - `HUMAN_HANDOFF.active`
 
-and one of these is true:
+then pre-turn orchestration keeps the journey anchored at `HUMAN_HANDOFF.active`.
 
-- `requestClass = progression_request`
-- `requestClass = human_help_request`
-- `requestClass = resource_request` targeting `HUMAN_HANDOFF`
+Only post-turn reconciliation may move it to:
 
-Then:
+- `HUMAN_HANDOFF.post`
 
-- transition to `HUMAN_HANDOFF.post`
+and only when the assistant execution acknowledgement is explicitly `HUMAN_HANDOFF`
 
 ### 2. Truth-driven post acknowledgements
 
@@ -255,23 +256,39 @@ Then:
 
 - transition to `ONLINE_CONSULT.post`
 
-### 3. From `EXPLAIN_PROCESS`
+### 3. `EXPLAIN_PROCESS.pre`
 
-If current snapshot is `EXPLAIN_PROCESS.*` and one of these is true:
+This is now the initial entry step.
 
-- `requestClass = progression_request`
-- accepted progression follow-up
-- `requestClass = resource_request` targeting:
+Its purpose is:
+
+- answer the patient initial discovery question
+- introduce that the next step is explaining the overall medical journey
+
+Pre-turn orchestration does not leave `EXPLAIN_PROCESS.pre`.
+
+Post-turn reconciliation automatically advances:
+
+- `EXPLAIN_PROCESS.pre -> EXPLAIN_PROCESS.active`
+
+after the first answered user turn.
+
+### 4. `EXPLAIN_PROCESS.active`
+
+This is now the mandatory process explanation step.
+
+Current implemented rule:
+
+- if the patient sends a pure `progression_request` before the initial process explanation has already been completed, the journey stays anchored at `EXPLAIN_PROCESS.active`
+- that same turn is normalized to `responseIntent = process_explanation`, so the assistant explains the process instead of advancing
+- once a prior assistant turn has completed that mandatory process explanation, a later pure `progression_request` may move to `COLLECT_MEDICAL_INPUTS.pre`
+- repeated later `process_explanation` turns become FAQ-like informational turns and do not move the journey
+- explicit `resource_request` targeting:
   - `MEDICAL_DOC_UPLOAD`
   - `QUESTIONNAIRE`
-  - `HOSPITAL_RECOMMENDATION`
-  - `PACKAGE_RECOMMENDATION`
+  may open `COLLECT_MEDICAL_INPUTS.pre` after the initial explain gate has been satisfied
 
-Then:
-
-- transition to `COLLECT_MEDICAL_INPUTS.pre`
-
-### 4. From `COLLECT_MEDICAL_INPUTS.pre`
+### 5. From `COLLECT_MEDICAL_INPUTS.pre`
 
 If:
 
@@ -286,7 +303,7 @@ Then:
 
 - transition to `COLLECT_MEDICAL_INPUTS.active`
 
-### 5. From `COLLECT_MEDICAL_INPUTS.active`
+### 6. From `COLLECT_MEDICAL_INPUTS.active`
 
 If current snapshot is:
 
@@ -299,7 +316,6 @@ and:
 and one of these is true:
 
 - `requestClass = progression_request`
-- accepted progression follow-up
 - `requestClass = resource_request` targeting:
   - `HOSPITAL_RECOMMENDATION`
   - `PACKAGE_RECOMMENDATION`
@@ -310,18 +326,13 @@ Then:
 
 This is the current implemented dismiss behavior for the collect step.
 
-### 6. From `COLLECT_MEDICAL_INPUTS.post`
+### 7. From `COLLECT_MEDICAL_INPUTS.post`
 
 If:
 
 - `requestClass = progression_request`
 
 or:
-
-- accepted progression follow-up
-
-or:
-
 - `requestClass = resource_request`
 - target includes `HOSPITAL_RECOMMENDATION` or `PACKAGE_RECOMMENDATION`
 
@@ -329,7 +340,7 @@ Then:
 
 - transition to `RECOMMENDATION.pre`
 
-### 7. From `RECOMMENDATION.pre`
+### 8. From `RECOMMENDATION.pre`
 
 If:
 
@@ -344,7 +355,7 @@ Then:
 
 - transition to `RECOMMENDATION.active`
 
-### 8. From `RECOMMENDATION.active`
+### 9. From `RECOMMENDATION.active`
 
 If current snapshot is:
 
@@ -357,7 +368,6 @@ and:
 and one of these is true:
 
 - `requestClass = progression_request`
-- accepted progression follow-up
 - `requestClass = resource_request` targeting `ONLINE_CONSULT_BOOKING`
 
 Then:
@@ -366,18 +376,13 @@ Then:
 
 This is the current implemented dismiss behavior for the recommendation step.
 
-### 9. From `RECOMMENDATION.post`
+### 10. From `RECOMMENDATION.post`
 
 If:
 
 - `requestClass = progression_request`
 
 or:
-
-- accepted progression follow-up
-
-or:
-
 - `requestClass = resource_request`
 - target includes `ONLINE_CONSULT_BOOKING`
 
@@ -385,7 +390,7 @@ Then:
 
 - transition to `ONLINE_CONSULT.pre`
 
-### 10. From `ONLINE_CONSULT.pre`
+### 11. From `ONLINE_CONSULT.pre`
 
 If:
 
@@ -406,6 +411,8 @@ Unlike `COLLECT_MEDICAL_INPUTS` and `RECOMMENDATION`, the current implementation
 
 `StageCopyRegistryService` currently returns fixed canonical reference copy for:
 
+- `EXPLAIN_PROCESS.pre`
+- `EXPLAIN_PROCESS.active`
 - `COLLECT_MEDICAL_INPUTS.pre`
 - `COLLECT_MEDICAL_INPUTS.post`
 - `RECOMMENDATION.pre`
@@ -417,6 +424,8 @@ Unlike `COLLECT_MEDICAL_INPUTS` and `RECOMMENDATION`, the current implementation
 
 Notable current wording:
 
+- `EXPLAIN_PROCESS.pre` answers the initial discovery question and introduces that the next step is the overall process explanation
+- `EXPLAIN_PROCESS.active` explains the overall medical journey and why collecting medical information is the next required step
 - `ONLINE_CONSULT.pre` explicitly says the online consultation step is required and cannot be dismissed or skipped
 - `HUMAN_HANDOFF.pre` asks whether the patient wants the case sent to the administrator team now
 - `HUMAN_HANDOFF.post` confirms the case has been sent and says the human team will contact the patient within 24 hours
@@ -431,6 +440,7 @@ It only maps a transition decision to the next snapshot.
 
 Examples:
 
+- `ENTER_EXPLAIN_PROCESS_ACTIVE` -> `EXPLAIN_PROCESS.active`
 - `ENTER_COLLECT_MEDICAL_INPUTS_PRE` -> `COLLECT_MEDICAL_INPUTS.pre`
 - `ENTER_RECOMMENDATION_POST` -> `RECOMMENDATION.post`
 - `ENTER_HUMAN_HANDOFF_PRE` -> `HUMAN_HANDOFF.pre`
@@ -441,12 +451,14 @@ Examples:
 
 1. starts from `preTurn.journeySnapshot`
 2. refreshes minimal truth from the latest status snapshot
-3. re-runs the orchestrator using:
-   - current snapshot
-   - refreshed truth
-   - original turn classification
+3. runs a post-turn reconciliation step that only allows:
+   - truth-driven `active -> post` acknowledgements
+   - explicit `HUMAN_HANDOFF.active -> post` when the assistant action itself is `HUMAN_HANDOFF`
 
-This means post-turn context no longer tries to derive a fresh stage from truth alone.
+This means post-turn context no longer:
+
+- derives a fresh stage from truth alone
+- re-applies the same user classification to advance the journey a second time in the same turn
 
 ## Current limitations
 
@@ -454,9 +466,9 @@ The current implementation is much cleaner than the earlier truth-derived model,
 
 Notable current limits:
 
-- `responseIntent` is still equal to `requestClass`
+- `responseIntent` is still mostly close to `requestClass`, except repeated later `process_explanation` turns are intentionally normalized to FAQ-like informational responses
 - only a limited set of journey transitions is implemented
-- the foundation snapshot still bootstraps at `EXPLAIN_PROCESS.active`
+- the foundation snapshot now bootstraps at `EXPLAIN_PROCESS.pre`
 - stage-copy exists only as fixed canonical reference text for current `pre` / `post` phases; it is not yet personalized or localized beyond composer rephrasing
 
 ## Files that implement this behavior

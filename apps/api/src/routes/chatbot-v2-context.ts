@@ -46,6 +46,7 @@ type ChatbotV2FoundationContext = {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   resources: ChatResourceDescriptor[];
+  hasCompletedInitialProcessExplanation: boolean;
   classification: ChatbotV2RequestClassificationResult;
   requiresFaqGrounding: boolean;
   activeHospitalContext: {
@@ -118,6 +119,7 @@ export async function buildChatbotV2TurnContext(input: {
     journeySnapshot: foundation.journeySnapshot,
     truth: foundation.truth,
     classification,
+    hasCompletedInitialProcessExplanation: foundation.hasCompletedInitialProcessExplanation,
   });
 
   return {
@@ -171,22 +173,23 @@ export function buildChatbotV2PostTurnContext(input: {
     };
   }
 
-  const orchestration = orchestrator.orchestrate({
+  const postTurnOrchestration = orchestrator.orchestratePostTurn({
     scopeId: input.foundation.scopeId,
     journeySnapshot: currentJourneySnapshot,
     truth: refreshedTruth,
-    classification: input.foundation.classification,
+    assistantNextAction: input.assistantNextAction,
+    assistantInternalNextAction: input.assistantInternalNextAction,
   });
 
   return {
-    journeySnapshot: orchestration.journeyUpdate ?? currentJourneySnapshot,
-    resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+    journeySnapshot: postTurnOrchestration.journeyUpdate ?? currentJourneySnapshot,
+    resources: postTurnOrchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
     truthSummary: refreshedTruth,
-    stageCopy: readStageCopy(orchestration.journeyUpdate ?? currentJourneySnapshot),
+    stageCopy: readStageCopy(postTurnOrchestration.journeyUpdate ?? currentJourneySnapshot),
     requestClass,
     responseIntent,
     targetResourceTypes: input.preTurn.targetResourceTypes,
-    includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
+    includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
   };
 }
 
@@ -228,7 +231,7 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
   const chatbotV2 = asRecord(root.chatbot_v2 ?? root.chatbotV2);
   let journeySnapshot = JourneySnapshotSchema.parse({
     currentStage: asString(asRecord(chatbotV2.journey_snapshot).current_stage) ?? 'EXPLAIN_PROCESS',
-    currentPhase: asString(asRecord(chatbotV2.journey_snapshot).current_phase) ?? 'active',
+    currentPhase: asString(asRecord(chatbotV2.journey_snapshot).current_phase) ?? 'pre',
   });
   const foundationTruth = deriveJourneyTruth(policyContext);
   let resources = asArray(chatbotV2.allowed_resources).map((resource) => ChatResourceDescriptorSchema.parse({
@@ -278,12 +281,30 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
     journeySnapshot,
     truth: foundationTruth,
     resources,
+    hasCompletedInitialProcessExplanation: hasCompletedInitialProcessExplanation(journeySnapshot, floor, chatbotV2),
     classification: DEFAULT_BOOTSTRAP_CLASSIFICATION,
     requiresFaqGrounding: false,
     activeHospitalContext: readActiveHospitalContext(policyContext),
     requestClass: asString(floor.request_class) ?? asString(chatbotV2.request_class),
     responseIntent: asString(floor.response_intent) ?? asString(chatbotV2.response_intent),
   };
+}
+
+function hasCompletedInitialProcessExplanation(
+  journeySnapshot: JourneySnapshot,
+  floor: Record<string, unknown>,
+  chatbotV2: Record<string, unknown>,
+): boolean {
+  if (journeySnapshot.currentStage !== 'EXPLAIN_PROCESS') {
+    return true;
+  }
+
+  if (journeySnapshot.currentPhase === 'pre') {
+    return false;
+  }
+
+  const floorResponseIntent = asString(floor.response_intent) ?? asString(chatbotV2.response_intent);
+  return floorResponseIntent === 'process_explanation';
 }
 
 function readScopeId(policyContext: unknown, fallbackSessionId: string): string {
@@ -382,23 +403,23 @@ function buildAllowedResourceHints(
 }
 
 function getSupplementalHintResourceTypes(
-  journeySnapshot: JourneySnapshot,
+  _journeySnapshot: JourneySnapshot,
 ): ChatResourceDescriptor['resourceType'][] {
   const alwaysVisibleQueryResources: ChatResourceDescriptor['resourceType'][] = [
     'MEDICAL_INVITATION_STATUS',
   ];
+  const explicitProgressionResources: ChatResourceDescriptor['resourceType'][] = [
+    'MEDICAL_DOC_UPLOAD',
+    'QUESTIONNAIRE',
+    'HOSPITAL_RECOMMENDATION',
+    'PACKAGE_RECOMMENDATION',
+    'ONLINE_CONSULT_BOOKING',
+  ];
 
-  if (journeySnapshot.currentStage === 'EXPLAIN_PROCESS') {
-    return [
-      ...alwaysVisibleQueryResources,
-      'MEDICAL_DOC_UPLOAD',
-      'QUESTIONNAIRE',
-      'HOSPITAL_RECOMMENDATION',
-      'PACKAGE_RECOMMENDATION',
-    ];
-  }
-
-  return alwaysVisibleQueryResources;
+  return [
+    ...alwaysVisibleQueryResources,
+    ...explicitProgressionResources,
+  ];
 }
 
 function describeResource(resourceType: ChatResourceDescriptor['resourceType']): string {

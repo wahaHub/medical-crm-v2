@@ -15,11 +15,26 @@ describe('StageCopyRegistryService', () => {
     }));
   });
 
-  it('returns null for EXPLAIN_PROCESS.active because that stage does not use pre/post fixed copy', () => {
+  it('returns fixed copy for EXPLAIN_PROCESS.pre to support the first introductory answer', () => {
+    expect(service.resolve({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'pre',
+    })).toEqual(expect.objectContaining({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'pre',
+      referenceText: expect.stringMatching(/initial question|next step|overall medical journey/i),
+    }));
+  });
+
+  it('returns fixed copy for EXPLAIN_PROCESS.active to support the mandatory process explanation step', () => {
     expect(service.resolve({
       currentStage: 'EXPLAIN_PROCESS',
       currentPhase: 'active',
-    })).toBeNull();
+    })).toEqual(expect.objectContaining({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+      referenceText: expect.stringMatching(/overall medical journey|collecting medical information|process works/i),
+    }));
   });
 
   it('states that ONLINE_CONSULT.pre is a required step that cannot be dismissed', () => {

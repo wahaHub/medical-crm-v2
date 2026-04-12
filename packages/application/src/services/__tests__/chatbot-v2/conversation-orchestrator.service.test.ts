@@ -21,12 +21,12 @@ describe('ConversationOrchestratorService', () => {
     } as never)).toThrow('classifier output is required');
   });
 
-  it('advances progression requests from EXPLAIN_PROCESS.active into COLLECT_MEDICAL_INPUTS.pre', () => {
+  it('uses process explanation as the response intent for pure progression requests in EXPLAIN_PROCESS.active until the initial process explanation has been completed', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
         requestClass: 'progression_request',
-        targetResourceTypes: [],
+        targetResourceTypes: ['QUESTIONNAIRE', 'MEDICAL_DOC_UPLOAD'],
         includeProgressionFollowUp: false,
       },
       journeySnapshot: {
@@ -34,18 +34,64 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: false,
     });
 
-    expect(result.responseIntent).toBe('progression_request');
+    expect(result.responseIntent).toBe('process_explanation');
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+      expect.objectContaining({ resourceType: 'MEDICAL_INVITATION_STATUS' }),
+    ]));
+  });
+
+  it('keeps explicit intake resource requests anchored in EXPLAIN_PROCESS.active until the initial process explanation has been completed', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'resource_request',
+        targetResourceTypes: ['QUESTIONNAIRE'],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: false,
+    });
+
+    expect(result.responseIntent).toBe('process_explanation');
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]));
+    expect(result.allowedResources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
+      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
+    ]));
+  });
+
+  it('allows pure progression requests to leave EXPLAIN_PROCESS only after the initial process explanation has already been completed', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'progression_request',
+        targetResourceTypes: ['QUESTIONNAIRE', 'MEDICAL_DOC_UPLOAD'],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
+    });
+
     expect(result.journeyUpdate).toEqual({
       currentStage: 'COLLECT_MEDICAL_INPUTS',
       currentPhase: 'pre',
     });
-    expect(result.allowedResources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
-      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
-      expect.objectContaining({ resourceType: 'MEDICAL_INVITATION_STATUS' }),
-    ]));
   });
 
   it('moves COLLECT_MEDICAL_INPUTS.pre into active when intake resources are explicitly requested', () => {
@@ -61,6 +107,7 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'pre',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -88,6 +135,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         medicalInputsSubmitted: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -109,6 +157,7 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -130,12 +179,38 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toBeUndefined();
     expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
       expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
+    ]));
+  });
+
+  it('does not let process explanations with progression follow-up jump out of COLLECT_MEDICAL_INPUTS.active', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: true,
+      },
+      journeySnapshot: {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'active',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
+    });
+
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.includeProgressionFollowUpAccepted).toBe(true);
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
+      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
+      expect.objectContaining({ resourceType: 'MEDICAL_INVITATION_STATUS' }),
     ]));
   });
 
@@ -155,6 +230,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         medicalInputsSubmitted: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -183,6 +259,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         medicalInputsSubmitted: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -210,6 +287,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         recommendationConfirmed: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -234,6 +312,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         medicalInputsSubmitted: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -258,6 +337,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         medicalInputsSubmitted: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toBeUndefined();
@@ -282,6 +362,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         recommendationConfirmed: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -309,6 +390,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         recommendationConfirmed: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -336,6 +418,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         onlineConsultSubmitted: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -360,6 +443,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         recommendationConfirmed: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.responseIntent).toBe('resource_status_question');
@@ -388,6 +472,7 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         medicalInputsSubmitted: true,
       },
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.responseIntent).toBe('human_help_request');
@@ -416,6 +501,7 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'pre',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -429,7 +515,7 @@ describe('ConversationOrchestratorService', () => {
     ]);
   });
 
-  it('moves HUMAN_HANDOFF.active into post after the handoff execution turn completes', () => {
+  it('keeps HUMAN_HANDOFF.active anchored during pre-turn orchestration until the execution acknowledgement arrives', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -442,6 +528,21 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
+    });
+
+    expect(result.journeyUpdate).toBeUndefined();
+  });
+
+  it('moves HUMAN_HANDOFF.active into post after the handoff execution turn completes', () => {
+    const result = service.orchestratePostTurn({
+      scopeId: 'case-1',
+      journeySnapshot: {
+        currentStage: 'HUMAN_HANDOFF',
+        currentPhase: 'active',
+      },
+      truth: defaultTruth,
+      assistantInternalNextAction: 'HUMAN_HANDOFF',
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -450,7 +551,7 @@ describe('ConversationOrchestratorService', () => {
     });
   });
 
-  it('uses the process guide for process explanations without rewinding the journey', () => {
+  it('uses the process guide for later process explanations without rewinding the journey and treats them as FAQ-like informational turns', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -463,9 +564,10 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
     });
 
-    expect(result.responseIntent).toBe('process_explanation');
+    expect(result.responseIntent).toBe('faq');
     expect(result.allowedResources).toEqual([
       expect.objectContaining({
         resourceType: 'PROCESS_GUIDE',
@@ -489,21 +591,15 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: false,
     });
 
     expect(result.responseIntent).toBe('faq');
     expect(result.includeProgressionFollowUpAccepted).toBe(true);
-    expect(result.journeyUpdate).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
-    });
-    expect(result.allowedResources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
-      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
-    ]));
+    expect(result.journeyUpdate).toBeUndefined();
   });
 
-  it('keeps targeted process-guide resources while still surfacing progression resources for process explanations with follow-up', () => {
+  it('treats repeated process explanations after the initial mandatory explain as FAQ-like informational turns that do not move the journey', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -516,16 +612,16 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
     });
 
-    expect(result.responseIntent).toBe('process_explanation');
+    expect(result.responseIntent).toBe('faq');
     expect(result.includeProgressionFollowUpAccepted).toBe(true);
-    expect(result.journeyUpdate).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
-    });
+    expect(result.journeyUpdate).toBeUndefined();
     expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]));
+    expect(result.allowedResources).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
       expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
     ]));
@@ -544,6 +640,7 @@ describe('ConversationOrchestratorService', () => {
         currentPhase: 'active',
       },
       truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.responseIntent).toBe('resource_request');
@@ -557,5 +654,40 @@ describe('ConversationOrchestratorService', () => {
         resourceType: 'QUESTIONNAIRE',
       }),
     ]);
+  });
+
+  it('does not let process explanations in COLLECT_MEDICAL_INPUTS.active advance into recommendation just because follow-up was accepted', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: true,
+      },
+      journeySnapshot: {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'active',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
+    });
+
+    expect(result.includeProgressionFollowUpAccepted).toBe(true);
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'PROCESS_GUIDE',
+      }),
+      expect.objectContaining({
+        resourceType: 'MEDICAL_DOC_UPLOAD',
+      }),
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
+      }),
+    ]));
+    expect(result.allowedResources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'HOSPITAL_RECOMMENDATION' }),
+      expect.objectContaining({ resourceType: 'PACKAGE_RECOMMENDATION' }),
+    ]));
   });
 });

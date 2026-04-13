@@ -21,23 +21,23 @@ describe('ConversationOrchestratorService', () => {
     } as never)).toThrow('classifier output is required');
   });
 
-  it('uses process explanation as the response intent for pure progression requests in EXPLAIN_PROCESS.active until the initial process explanation has been completed', () => {
+  it('keeps discovery FAQ turns in EXPLAIN_PROCESS.pre', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
-        requestClass: 'progression_request',
-        targetResourceTypes: ['QUESTIONNAIRE', 'MEDICAL_DOC_UPLOAD'],
+        requestClass: 'faq',
+        targetResourceTypes: [],
         includeProgressionFollowUp: false,
       },
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
-        currentPhase: 'active',
+        currentPhase: 'pre',
       },
       truth: defaultTruth,
       hasCompletedInitialProcessExplanation: false,
     });
 
-    expect(result.responseIntent).toBe('process_explanation');
+    expect(result.responseIntent).toBe('faq');
     expect(result.journeyUpdate).toBeUndefined();
     expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
@@ -45,47 +45,40 @@ describe('ConversationOrchestratorService', () => {
     ]));
   });
 
-  it('keeps explicit intake resource requests anchored in EXPLAIN_PROCESS.active until the initial process explanation has been completed', () => {
+  it('moves EXPLAIN_PROCESS.pre into active when the user explicitly agrees to hear the process explanation', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
-        requestClass: 'resource_request',
-        targetResourceTypes: ['QUESTIONNAIRE'],
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
         includeProgressionFollowUp: false,
       },
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
-        currentPhase: 'active',
+        currentPhase: 'pre',
       },
       truth: defaultTruth,
       hasCompletedInitialProcessExplanation: false,
     });
 
     expect(result.responseIntent).toBe('process_explanation');
-    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
     expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
     ]));
-    expect(result.allowedResources).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
-      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
-    ]));
   });
 
-  it('allows pure progression requests to leave EXPLAIN_PROCESS only after the initial process explanation has already been completed', () => {
-    const result = service.orchestrate({
+  it('auto-bridges EXPLAIN_PROCESS.active into COLLECT_MEDICAL_INPUTS.pre after the explanation turn completes', () => {
+    const result = service.orchestratePostTurn({
       scopeId: 'case-1',
-      classification: {
-        requestClass: 'progression_request',
-        targetResourceTypes: ['QUESTIONNAIRE', 'MEDICAL_DOC_UPLOAD'],
-        includeProgressionFollowUp: false,
-      },
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
         currentPhase: 'active',
       },
       truth: defaultTruth,
-      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -144,7 +137,27 @@ describe('ConversationOrchestratorService', () => {
     });
   });
 
-  it('allows COLLECT_MEDICAL_INPUTS.active to be dismissed so the journey can continue to recommendation', () => {
+  it('keeps COLLECT_MEDICAL_INPUTS.pre anchored on FAQ turns until the user explicitly agrees to start intake', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'faq',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'pre',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: true,
+    });
+
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.responseIntent).toBe('faq');
+  });
+
+  it('allows COLLECT_MEDICAL_INPUTS.active to be dismissed into post before the journey bridges to recommendation', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -161,8 +174,8 @@ describe('ConversationOrchestratorService', () => {
     });
 
     expect(result.journeyUpdate).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'pre',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
     });
   });
 
@@ -214,14 +227,9 @@ describe('ConversationOrchestratorService', () => {
     ]));
   });
 
-  it('moves COLLECT_MEDICAL_INPUTS.post into RECOMMENDATION.pre on progression', () => {
-    const result = service.orchestrate({
+  it('auto-bridges COLLECT_MEDICAL_INPUTS.post into RECOMMENDATION.pre after the confirmation turn completes', () => {
+    const result = service.orchestratePostTurn({
       scopeId: 'case-1',
-      classification: {
-        requestClass: 'progression_request',
-        targetResourceTypes: [],
-        includeProgressionFollowUp: false,
-      },
       journeySnapshot: {
         currentStage: 'COLLECT_MEDICAL_INPUTS',
         currentPhase: 'post',
@@ -230,7 +238,6 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         medicalInputsSubmitted: true,
       },
-      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -296,7 +303,30 @@ describe('ConversationOrchestratorService', () => {
     });
   });
 
-  it('allows RECOMMENDATION.active to be dismissed so the journey can continue to online consult', () => {
+  it('keeps RECOMMENDATION.pre anchored on FAQ turns until the user explicitly agrees to review recommendations', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'faq',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'RECOMMENDATION',
+        currentPhase: 'pre',
+      },
+      truth: {
+        ...defaultTruth,
+        medicalInputsSubmitted: true,
+      },
+      hasCompletedInitialProcessExplanation: true,
+    });
+
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.responseIntent).toBe('faq');
+  });
+
+  it('allows RECOMMENDATION.active to be dismissed into post before the journey bridges to online consult', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -316,8 +346,8 @@ describe('ConversationOrchestratorService', () => {
     });
 
     expect(result.journeyUpdate).toEqual({
-      currentStage: 'ONLINE_CONSULT',
-      currentPhase: 'pre',
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'post',
     });
   });
 
@@ -346,14 +376,9 @@ describe('ConversationOrchestratorService', () => {
     ]);
   });
 
-  it('moves RECOMMENDATION.post into ONLINE_CONSULT.pre on progression', () => {
-    const result = service.orchestrate({
+  it('auto-bridges RECOMMENDATION.post into ONLINE_CONSULT.pre after the confirmation turn completes', () => {
+    const result = service.orchestratePostTurn({
       scopeId: 'case-1',
-      classification: {
-        requestClass: 'progression_request',
-        targetResourceTypes: [],
-        includeProgressionFollowUp: false,
-      },
       journeySnapshot: {
         currentStage: 'RECOMMENDATION',
         currentPhase: 'post',
@@ -362,7 +387,6 @@ describe('ConversationOrchestratorService', () => {
         ...defaultTruth,
         recommendationConfirmed: true,
       },
-      hasCompletedInitialProcessExplanation: true,
     });
 
     expect(result.journeyUpdate).toEqual({
@@ -454,6 +478,31 @@ describe('ConversationOrchestratorService', () => {
       }),
     ]);
     expect(result.journeyUpdate).toBeUndefined();
+  });
+
+  it('does not allow ONLINE_CONSULT.active to be dismissed through a progression request', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'progression_request',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'ONLINE_CONSULT',
+        currentPhase: 'active',
+      },
+      truth: {
+        ...defaultTruth,
+        recommendationConfirmed: true,
+      },
+      hasCompletedInitialProcessExplanation: true,
+    });
+
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'ONLINE_CONSULT_BOOKING' }),
+    ]));
   });
 
   it('routes human-help requests to the handoff journey and handoff resource', () => {
@@ -578,7 +627,7 @@ describe('ConversationOrchestratorService', () => {
     expect(result.journeyUpdate).toBeUndefined();
   });
 
-  it('accepts FAQ turns that request a progression follow-up without changing the primary response class', () => {
+  it('keeps FAQ-with-follow-up turns inside EXPLAIN_PROCESS.active focused on the process explanation turn', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -594,12 +643,12 @@ describe('ConversationOrchestratorService', () => {
       hasCompletedInitialProcessExplanation: false,
     });
 
-    expect(result.responseIntent).toBe('faq');
+    expect(result.responseIntent).toBe('process_explanation');
     expect(result.includeProgressionFollowUpAccepted).toBe(true);
     expect(result.journeyUpdate).toBeUndefined();
   });
 
-  it('treats repeated process explanations after the initial mandatory explain as FAQ-like informational turns that do not move the journey', () => {
+  it('keeps repeated process explanations in EXPLAIN_PROCESS.active anchored to the current explanation turn', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -615,7 +664,7 @@ describe('ConversationOrchestratorService', () => {
       hasCompletedInitialProcessExplanation: true,
     });
 
-    expect(result.responseIntent).toBe('faq');
+    expect(result.responseIntent).toBe('process_explanation');
     expect(result.includeProgressionFollowUpAccepted).toBe(true);
     expect(result.journeyUpdate).toBeUndefined();
     expect(result.allowedResources).toEqual(expect.arrayContaining([
@@ -627,7 +676,7 @@ describe('ConversationOrchestratorService', () => {
     ]));
   });
 
-  it('keeps explicit resource requests ahead of progression follow-up when both signals are present', () => {
+  it('keeps explicit intake resource requests anchored behind the explanation turn while EXPLAIN_PROCESS.active is in progress', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -643,17 +692,18 @@ describe('ConversationOrchestratorService', () => {
       hasCompletedInitialProcessExplanation: true,
     });
 
-    expect(result.responseIntent).toBe('resource_request');
+    expect(result.responseIntent).toBe('process_explanation');
     expect(result.includeProgressionFollowUpAccepted).toBe(false);
-    expect(result.journeyUpdate).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
-    });
-    expect(result.allowedResources).toEqual([
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        resourceType: 'QUESTIONNAIRE',
+        resourceType: 'PROCESS_GUIDE',
       }),
-    ]);
+    ]));
+    expect(result.allowedResources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
+      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
+    ]));
   });
 
   it('does not let process explanations in COLLECT_MEDICAL_INPUTS.active advance into recommendation just because follow-up was accepted', () => {

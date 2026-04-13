@@ -49,7 +49,7 @@ export class ConversationOrchestratorService {
       responseIntent,
       allowedResources,
       includeProgressionFollowUpAccepted,
-      requiresFaqGrounding: this.requiresFaqGrounding(classification.requestClass),
+      requiresFaqGrounding: this.requiresFaqGrounding(responseIntent),
       journeyUpdate,
     };
   }
@@ -93,19 +93,16 @@ export class ConversationOrchestratorService {
     }
 
     if (input.journeySnapshot.currentStage === 'HUMAN_HANDOFF') {
-      const isHandoffConfirmation =
-        classification.requestClass === 'human_help_request'
-        || classification.requestClass === 'progression_request'
-        || (
-          classification.requestClass === 'resource_request'
-          && classification.targetResourceTypes.includes('HUMAN_HANDOFF')
-        );
-
-      if (input.journeySnapshot.currentPhase === 'pre' && isHandoffConfirmation) {
+      if (
+        input.journeySnapshot.currentPhase === 'pre'
+        && this.isExplicitHandoffAgreement(classification)
+      ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
           type: 'ENTER_HUMAN_HANDOFF_ACTIVE',
         });
       }
+
+      return undefined;
     }
 
     if (
@@ -140,73 +137,23 @@ export class ConversationOrchestratorService {
 
     if (input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS') {
       if (input.journeySnapshot.currentPhase === 'pre') {
+        if (this.isExplicitExplainAgreement(classification)) {
+          return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
+            type: 'ENTER_EXPLAIN_PROCESS_ACTIVE',
+          });
+        }
+
         return undefined;
       }
 
-      if (!input.hasCompletedInitialProcessExplanation) {
-        return undefined;
-      }
-
-      if (
-        classification.requestClass === 'resource_request'
-        && classification.targetResourceTypes.some((resourceType) =>
-          resourceType === 'MEDICAL_DOC_UPLOAD'
-          || resourceType === 'QUESTIONNAIRE'
-        )
-      ) {
-        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE',
-        });
-      }
-
-      if (
-        input.hasCompletedInitialProcessExplanation
-        && classification.requestClass === 'progression_request'
-      ) {
-        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE',
-        });
-      }
+      return undefined;
     }
 
     if (input.journeySnapshot.currentStage === 'COLLECT_MEDICAL_INPUTS') {
-      const targetsCurrentCollectStep = classification.targetResourceTypes.some((resourceType) =>
-        resourceType === 'MEDICAL_DOC_UPLOAD'
-        || resourceType === 'QUESTIONNAIRE',
-      );
-      if (
-        input.journeySnapshot.currentPhase === 'active'
-        && (
-          (
-            classification.requestClass === 'progression_request'
-            && !targetsCurrentCollectStep
-          )
-          || (
-            classification.requestClass === 'resource_request'
-            && classification.targetResourceTypes.some((resourceType) =>
-              resourceType === 'HOSPITAL_RECOMMENDATION'
-              || resourceType === 'PACKAGE_RECOMMENDATION'
-            )
-          )
-        )
-      ) {
-        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_RECOMMENDATION_PRE',
-        });
-      }
-
+      const targetsCurrentCollectStep = this.targetsCollectMedicalInputs(classification.targetResourceTypes);
       if (
         input.journeySnapshot.currentPhase === 'pre'
-        && (
-          classification.requestClass === 'progression_request'
-          || (
-            classification.requestClass === 'resource_request'
-            && classification.targetResourceTypes.some((resourceType) =>
-              resourceType === 'MEDICAL_DOC_UPLOAD'
-              || resourceType === 'QUESTIONNAIRE'
-            )
-          )
-        )
+        && this.isExplicitStageAgreement(classification, targetsCurrentCollectStep)
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
           type: 'ENTER_COLLECT_MEDICAL_INPUTS_ACTIVE',
@@ -214,61 +161,22 @@ export class ConversationOrchestratorService {
       }
 
       if (
-        input.journeySnapshot.currentPhase === 'post'
-        && (
-          classification.requestClass === 'progression_request'
-          || (
-            classification.requestClass === 'resource_request'
-            && classification.targetResourceTypes.some((resourceType) =>
-              resourceType === 'HOSPITAL_RECOMMENDATION'
-              || resourceType === 'PACKAGE_RECOMMENDATION'
-            )
-          )
-        )
+        input.journeySnapshot.currentPhase === 'active'
+        && this.shouldDismissCollectMedicalInputs(classification, targetsCurrentCollectStep)
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_RECOMMENDATION_PRE',
+          type: 'ENTER_COLLECT_MEDICAL_INPUTS_POST',
         });
       }
+
+      return undefined;
     }
 
     if (input.journeySnapshot.currentStage === 'RECOMMENDATION') {
-      const targetsCurrentRecommendationStep = classification.targetResourceTypes.some((resourceType) =>
-        resourceType === 'HOSPITAL_RECOMMENDATION'
-        || resourceType === 'PACKAGE_RECOMMENDATION',
-      );
-      if (
-        input.journeySnapshot.currentPhase === 'active'
-        && (
-          (
-            classification.requestClass === 'progression_request'
-            && !targetsCurrentRecommendationStep
-          )
-          || (
-            classification.requestClass === 'resource_request'
-            && classification.targetResourceTypes.some((resourceType) =>
-              resourceType === 'ONLINE_CONSULT_BOOKING'
-            )
-          )
-        )
-      ) {
-        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_ONLINE_CONSULT_PRE',
-        });
-      }
-
+      const targetsCurrentRecommendationStep = this.targetsRecommendation(classification.targetResourceTypes);
       if (
         input.journeySnapshot.currentPhase === 'pre'
-        && (
-          classification.requestClass === 'progression_request'
-          || (
-            classification.requestClass === 'resource_request'
-            && classification.targetResourceTypes.some((resourceType) =>
-              resourceType === 'HOSPITAL_RECOMMENDATION'
-              || resourceType === 'PACKAGE_RECOMMENDATION'
-            )
-          )
-        )
+        && this.isExplicitStageAgreement(classification, targetsCurrentRecommendationStep)
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
           type: 'ENTER_RECOMMENDATION_ACTIVE',
@@ -276,37 +184,34 @@ export class ConversationOrchestratorService {
       }
 
       if (
-        input.journeySnapshot.currentPhase === 'post'
-        && (
-          classification.requestClass === 'progression_request'
-          || (
-            classification.requestClass === 'resource_request'
-            && classification.targetResourceTypes.some((resourceType) =>
-              resourceType === 'ONLINE_CONSULT_BOOKING'
-            )
-          )
-        )
+        input.journeySnapshot.currentPhase === 'active'
+        && this.shouldDismissRecommendation(classification, targetsCurrentRecommendationStep)
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_ONLINE_CONSULT_PRE',
+          type: 'ENTER_RECOMMENDATION_POST',
         });
       }
+
+      return undefined;
     }
 
     if (
       input.journeySnapshot.currentStage === 'ONLINE_CONSULT'
-      && input.journeySnapshot.currentPhase === 'pre'
-      && (
-        classification.requestClass === 'progression_request'
-        || (
-          classification.requestClass === 'resource_request'
-          && classification.targetResourceTypes.includes('ONLINE_CONSULT_BOOKING')
-        )
-      )
     ) {
-      return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_ONLINE_CONSULT_ACTIVE',
-      });
+      if (
+        input.journeySnapshot.currentPhase === 'pre'
+        && this.isExplicitStageAgreement(
+          classification,
+          classification.requestClass === 'resource_request'
+            && classification.targetResourceTypes.includes('ONLINE_CONSULT_BOOKING'),
+        )
+      ) {
+        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
+          type: 'ENTER_ONLINE_CONSULT_ACTIVE',
+        });
+      }
+
+      return undefined;
     }
 
     return undefined;
@@ -316,26 +221,31 @@ export class ConversationOrchestratorService {
     input: ConversationOrchestratorInput,
     classification: {
       requestClass: ConversationOrchestrationResult['requestClass'];
+      targetResourceTypes?: string[];
     },
   ): ConversationOrchestrationResult['responseIntent'] {
     if (
       input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
+      && input.journeySnapshot.currentPhase === 'pre'
+      && this.isExplicitExplainAgreement({
+        requestClass: classification.requestClass,
+        targetResourceTypes: classification.targetResourceTypes ?? [],
+      })
+    ) {
+      return 'process_explanation';
+    }
+
+    if (
+      input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
       && input.journeySnapshot.currentPhase === 'active'
-      && !input.hasCompletedInitialProcessExplanation
-      && (
-        classification.requestClass === 'progression_request'
-        || classification.requestClass === 'resource_request'
-      )
+      && classification.requestClass !== 'human_help_request'
     ) {
       return 'process_explanation';
     }
 
     if (
       classification.requestClass === 'process_explanation'
-      && (
-        input.hasCompletedInitialProcessExplanation
-        || input.journeySnapshot.currentStage !== 'EXPLAIN_PROCESS'
-      )
+      && input.journeySnapshot.currentStage !== 'EXPLAIN_PROCESS'
     ) {
       return 'faq';
     }
@@ -372,40 +282,28 @@ export class ConversationOrchestratorService {
   }): JourneySnapshot | undefined {
     if (
       input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
-      && input.journeySnapshot.currentPhase === 'pre'
+      && input.journeySnapshot.currentPhase === 'active'
     ) {
       return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_EXPLAIN_PROCESS_ACTIVE',
+        type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE',
       });
     }
 
     if (
       input.journeySnapshot.currentStage === 'COLLECT_MEDICAL_INPUTS'
-      && input.journeySnapshot.currentPhase === 'active'
-      && input.truth.medicalInputsSubmitted
+      && input.journeySnapshot.currentPhase === 'post'
     ) {
       return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_COLLECT_MEDICAL_INPUTS_POST',
+        type: 'ENTER_RECOMMENDATION_PRE',
       });
     }
 
     if (
       input.journeySnapshot.currentStage === 'RECOMMENDATION'
-      && input.journeySnapshot.currentPhase === 'active'
-      && input.truth.recommendationConfirmed
+      && input.journeySnapshot.currentPhase === 'post'
     ) {
       return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_RECOMMENDATION_POST',
-      });
-    }
-
-    if (
-      input.journeySnapshot.currentStage === 'ONLINE_CONSULT'
-      && input.journeySnapshot.currentPhase === 'active'
-      && input.truth.onlineConsultSubmitted
-    ) {
-      return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_ONLINE_CONSULT_POST',
+        type: 'ENTER_ONLINE_CONSULT_PRE',
       });
     }
 
@@ -421,6 +319,89 @@ export class ConversationOrchestratorService {
     }
 
     return undefined;
+  }
+
+  private isExplicitExplainAgreement(classification: {
+    requestClass: ConversationOrchestrationResult['requestClass'];
+    targetResourceTypes: string[];
+  }): boolean {
+    return classification.requestClass === 'progression_request'
+      || classification.requestClass === 'process_explanation'
+      || (
+        classification.requestClass === 'resource_request'
+        && classification.targetResourceTypes.includes('PROCESS_GUIDE')
+      );
+  }
+
+  private isExplicitHandoffAgreement(classification: {
+    requestClass: ConversationOrchestrationResult['requestClass'];
+    targetResourceTypes: string[];
+  }): boolean {
+    return classification.requestClass === 'human_help_request'
+      || classification.requestClass === 'progression_request'
+      || (
+        classification.requestClass === 'resource_request'
+        && classification.targetResourceTypes.includes('HUMAN_HANDOFF')
+      );
+  }
+
+  private isExplicitStageAgreement(
+    classification: {
+      requestClass: ConversationOrchestrationResult['requestClass'];
+    },
+    targetsCurrentStageResource: boolean,
+  ): boolean {
+    return classification.requestClass === 'progression_request'
+      || (
+        classification.requestClass === 'resource_request'
+        && targetsCurrentStageResource
+      );
+  }
+
+  private shouldDismissCollectMedicalInputs(
+    classification: {
+      requestClass: ConversationOrchestrationResult['requestClass'];
+      targetResourceTypes: string[];
+    },
+    targetsCurrentCollectStep: boolean,
+  ): boolean {
+    return (
+      classification.requestClass === 'progression_request'
+      && !targetsCurrentCollectStep
+    ) || (
+      classification.requestClass === 'resource_request'
+      && this.targetsRecommendation(classification.targetResourceTypes)
+    );
+  }
+
+  private shouldDismissRecommendation(
+    classification: {
+      requestClass: ConversationOrchestrationResult['requestClass'];
+      targetResourceTypes: string[];
+    },
+    targetsCurrentRecommendationStep: boolean,
+  ): boolean {
+    return (
+      classification.requestClass === 'progression_request'
+      && !targetsCurrentRecommendationStep
+    ) || (
+      classification.requestClass === 'resource_request'
+      && classification.targetResourceTypes.includes('ONLINE_CONSULT_BOOKING')
+    );
+  }
+
+  private targetsCollectMedicalInputs(targetResourceTypes: string[]): boolean {
+    return targetResourceTypes.some((resourceType) =>
+      resourceType === 'MEDICAL_DOC_UPLOAD'
+      || resourceType === 'QUESTIONNAIRE',
+    );
+  }
+
+  private targetsRecommendation(targetResourceTypes: string[]): boolean {
+    return targetResourceTypes.some((resourceType) =>
+      resourceType === 'HOSPITAL_RECOMMENDATION'
+      || resourceType === 'PACKAGE_RECOMMENDATION',
+    );
   }
 
   private toRegistryInput(

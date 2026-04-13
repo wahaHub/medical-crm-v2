@@ -3667,6 +3667,8 @@ describe('Chatbot routes', () => {
     });
     expect(json.messages.map((message) => message.id)).toEqual(['msg-old', 'msg-new']);
     expect(json.messages.map((message) => message.content)).toEqual(['First question', 'Latest answer']);
+    expect('nextAction' in (json.messages[1] as Record<string, unknown>)).toBe(false);
+    expect('blocks' in (json.messages[1] as Record<string, unknown>)).toBe(false);
     expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
   });
 
@@ -3774,7 +3776,7 @@ describe('Chatbot routes', () => {
     expect(json.messages[0]?.metadata.semanticSignals).toBeUndefined();
   });
 
-  it('GET /api/v2/chatbot/history/{sessionId} replays stored rich blocks for assistant messages', async () => {
+  it('GET /api/v2/chatbot/history/{sessionId} does not replay stored rich blocks for assistant messages', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
       sessionSecretHash: secretHash,
@@ -3808,12 +3810,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
-    expect(json.messages[0]?.blocks).toEqual([
-      expect.objectContaining({
-        type: 'PROCESS_MODAL_TRIGGER',
-        modalKey: 'MEDICAL_TRAVEL_PROCESS',
-      }),
-    ]);
+    expect('blocks' in (json.messages[0] as Record<string, unknown>)).toBe(false);
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} maps legacy ESCALATE history into HUMAN_HANDOFF while keeping workflow metadata raw', async () => {
@@ -3843,7 +3840,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
-    expect(json.messages[1]?.nextAction).toBe('HUMAN_HANDOFF');
+    expect('nextAction' in (json.messages[1] as Record<string, unknown>)).toBe(false);
     expect(((json.messages[1]?.metadata.workflow) as Record<string, unknown>).kind).toBe('ESCALATE');
     expect(((json.messages[1]?.metadata.workflow) as Record<string, unknown>).ticketId).toBe('ticket-1');
   });
@@ -4002,7 +3999,6 @@ describe('Chatbot routes', () => {
       id: persistedMessages[0]?.id,
       role: 'SYSTEM',
       content: 'Chatbot consultation details submitted.',
-      nextAction: null,
       metadata: {
         workflow: {
           kind: 'CONVERT',
@@ -4055,7 +4051,6 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
-    expect(json.messages[0]?.nextAction).toBeNull();
     expect(json.messages[0]?.metadata.publicNextAction).toBeUndefined();
     expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction).toBeUndefined();
     expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata) as Record<string, unknown>).publicNextAction).toBeUndefined();
@@ -4108,7 +4103,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
-    expect(json.messages[0]?.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect('nextAction' in (json.messages[0] as Record<string, unknown>)).toBe(false);
     expect(json.messages[0]?.metadata).toMatchObject({
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
       engagementSignal: 'DEEP_WORKFLOW',
@@ -4265,7 +4260,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
-    expect(json.messages[0]?.nextAction).toBeNull();
+    expect('nextAction' in (json.messages[0] as Record<string, unknown>)).toBe(false);
     expect(json.messages[0]?.metadata).toMatchObject({
       resolvedIntent: 'UNKNOWN',
       resolved_intent: 'UNKNOWN',
@@ -4454,7 +4449,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotHistoryResponseSchema.parse(await res.json());
-    expect(json.messages[0]?.nextAction).toBeNull();
+    expect('nextAction' in (json.messages[0] as Record<string, unknown>)).toBe(false);
     expect(((json.messages[0]?.metadata.workflow) as Record<string, unknown>).requestedAction).toBe('CONSULT_CONVERSION');
   });
 

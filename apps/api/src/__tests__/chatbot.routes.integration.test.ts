@@ -261,7 +261,8 @@ describe('Chatbot routes integration', () => {
     expect(json.messages).toHaveLength(2);
     expect(json.messages[0]?.content).toBe('First question');
     expect(json.messages[1]?.content).toBe('Second answer');
-    expect(json.messages[1]?.nextAction).toBe('ANSWER_FAQ');
+    expect('nextAction' in (json.messages[1] as Record<string, unknown>)).toBe(false);
+    expect('blocks' in (json.messages[1] as Record<string, unknown>)).toBe(false);
   }, 15000);
 
   it('POST /api/v2/chatbot/chat falls back safely when Dify returns plain text instead of structured JSON', async () => {

@@ -254,7 +254,6 @@ describe('chatbotHistoryResponseSchema', () => {
         topic: null,
         riskLevel: null,
         canAnswer: null,
-        nextAction: null,
         secondaryAction: null,
         responseMode: null,
         citations: [],
@@ -269,6 +268,56 @@ describe('chatbotHistoryResponseSchema', () => {
           size: 1024,
           url: 'https://signed.example.com/report.pdf',
         }],
+        createdAt: '2026-04-05T00:00:00.000Z',
+      }],
+    }).success).toBe(true);
+  });
+
+  it('accepts chatbot-v2 history messages without public nextAction or blocks', () => {
+    expect(chatbotHistoryResponseSchema.safeParse({
+      session: {
+        sessionId: 'session-123',
+        hospitalType: 'COSMETIC',
+        status: 'ACTIVE',
+        patientId: 'patient-1',
+        createdAt: '2026-04-05T00:00:00.000Z',
+        updatedAt: '2026-04-05T00:00:00.000Z',
+      },
+      messages: [{
+        id: 'msg-2',
+        role: 'ASSISTANT',
+        content: 'Here is the next step.',
+        intent: 'CONSULT',
+        topic: 'DOCUMENTS',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        secondaryAction: null,
+        responseMode: 'grounded_plus_guidance',
+        citations: [],
+        metadata: {
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'COLLECT_MEDICAL_INPUTS',
+              currentPhase: 'active',
+            },
+            resources: [{
+              resourceType: 'QUESTIONNAIRE',
+              resourceId: 'questionnaire:session-123',
+              status: 'available',
+              stageBinding: {
+                stage: 'COLLECT_MEDICAL_INPUTS',
+                phase: 'active',
+              },
+              visibility: {
+                mode: 'journey',
+              },
+              payload: {
+                title: 'Complete your questionnaire',
+              },
+              actions: ['open', 'submit'],
+            }],
+          },
+        },
         createdAt: '2026-04-05T00:00:00.000Z',
       }],
     }).success).toBe(true);

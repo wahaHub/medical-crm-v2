@@ -121,7 +121,8 @@ git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/cha
 ### Task 2: Remove `blocks` and public `nextAction` from v2 history payloads
 
 **Files:**
-- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/apps/api/src/__tests__/patient-public.routes.test.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/apps/api/src/__tests__/chatbot.routes.test.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/apps/api/src/__tests__/chatbot.routes.integration.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/apps/api/src/routes/chatbot.routes.ts`
 
 - [ ] **Step 1: Write the failing history assertions**
@@ -141,7 +142,7 @@ and instead only expect:
 Run:
 
 ```bash
-pnpm --filter @medical-crm/api test src/__tests__/patient-public.routes.test.ts
+pnpm --filter @medical-crm/api test src/__tests__/chatbot.routes.test.ts src/__tests__/chatbot.routes.integration.test.ts
 ```
 
 Expected:
@@ -160,7 +161,7 @@ In [`chatbot.routes.ts`](/Users/haowang/Desktop/medora-health-beauty/medical-crm
 Run:
 
 ```bash
-pnpm --filter @medical-crm/api test src/__tests__/patient-public.routes.test.ts
+pnpm --filter @medical-crm/api test src/__tests__/chatbot.routes.test.ts src/__tests__/chatbot.routes.integration.test.ts
 ```
 
 Expected:
@@ -169,7 +170,7 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression add apps/api/src/routes/chatbot.routes.ts apps/api/src/__tests__/patient-public.routes.test.ts
+git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression add apps/api/src/routes/chatbot.routes.ts apps/api/src/__tests__/chatbot.routes.test.ts apps/api/src/__tests__/chatbot.routes.integration.test.ts
 git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression commit -m "Strip legacy chatbot v2 history affordances"
 ```
 

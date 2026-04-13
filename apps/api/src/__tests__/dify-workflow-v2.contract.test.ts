@@ -162,6 +162,7 @@ describe('Dify workflow v2 contract', () => {
     expect(parseCode).toContain('target_resource_types');
     expect(parseCode).toContain('allowedResources');
     expect(parseCode).toContain('allowed_resources');
+    expect(parseCode).toContain('resources');
     expect(parseCode).toContain('truthSummary');
     expect(parseCode).toContain('truth_summary');
     expect(parseCode).toContain('stageCopy');
@@ -182,6 +183,73 @@ describe('Dify workflow v2 contract', () => {
     expect(parseCode).not.toContain('if current_stage == "COLLECT_MEDICAL_INPUTS"');
     expect(parseCode).not.toContain('if current_stage == "ONLINE_CONSULT"');
     expect(parseCode).not.toContain('if current_stage == "HUMAN_HANDOFF"');
+  });
+
+  it('accepts live chatbotV2 resources payloads when parsing allowed resources', () => {
+    const dsl = loadDsl();
+    const parseNode = findNode(dsl.workflow.graph.nodes, 'parse_chatbot_v2_context');
+    const parseCode = parseNode.data?.code ?? '';
+    const samplePayload = JSON.stringify({
+      journeySnapshot: {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'active',
+      },
+      resources: [
+        {
+          resourceType: 'PROCESS_GUIDE',
+          status: 'available',
+        },
+        {
+          resourceType: 'MEDICAL_DOC_UPLOAD',
+          status: 'available',
+        },
+        {
+          resourceType: 'QUESTIONNAIRE',
+          status: 'available',
+        },
+      ],
+      truthSummary: {
+        medicalInputsSubmitted: false,
+        onlineConsultSubmitted: false,
+        recommendationConfirmed: false,
+      },
+      requestClass: 'resource_request',
+      responseIntent: 'resource_request',
+      targetResourceTypes: ['QUESTIONNAIRE'],
+      includeProgressionFollowUp: false,
+    });
+
+    const output = execFileSync(
+      'python3',
+      [
+        '-c',
+        [
+          'import json, sys',
+          'ns = {}',
+          'exec(sys.stdin.read(), ns)',
+          'result = ns["main"](sys.argv[1])',
+          'print(json.dumps(result))',
+        ].join('\n'),
+        samplePayload,
+      ],
+      {
+        input: parseCode,
+        encoding: 'utf8',
+      },
+    );
+
+    const parsed = JSON.parse(output) as Record<string, string>;
+    expect(JSON.parse(parsed.allowed_resource_types)).toEqual([
+      'PROCESS_GUIDE',
+      'MEDICAL_DOC_UPLOAD',
+      'QUESTIONNAIRE',
+    ]);
+    expect(JSON.parse(parsed.allowed_resources_json)).toEqual([
+      { resourceType: 'PROCESS_GUIDE', status: 'available' },
+      { resourceType: 'MEDICAL_DOC_UPLOAD', status: 'available' },
+      { resourceType: 'QUESTIONNAIRE', status: 'available' },
+    ]);
+    expect(JSON.parse(parsed.target_resource_types)).toEqual(['QUESTIONNAIRE']);
   });
 
   it('grounds the v2 composer prompt in CRM journey state and forbids Dify-owned progression', () => {

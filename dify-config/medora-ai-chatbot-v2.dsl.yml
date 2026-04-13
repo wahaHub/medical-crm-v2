@@ -220,7 +220,7 @@ workflow:
               if not isinstance(journey, dict):
                   journey = {}
 
-              allowed_resources = _pick(context, "allowedResources", "allowed_resources")
+              allowed_resources = _pick(context, "allowedResources", "allowed_resources", "resources")
               if not isinstance(allowed_resources, list):
                   allowed_resources = []
 

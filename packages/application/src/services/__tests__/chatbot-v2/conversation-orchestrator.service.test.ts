@@ -71,7 +71,7 @@ describe('ConversationOrchestratorService', () => {
     ]));
   });
 
-  it('moves EXPLAIN_PROCESS.pre into active on an explicit process explanation request', () => {
+  it('keeps EXPLAIN_PROCESS.pre anchored on an explicit process explanation request', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -88,16 +88,13 @@ describe('ConversationOrchestratorService', () => {
     });
 
     expect(result.responseIntent).toBe('process_explanation');
-    expect(result.journeyUpdate).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'active',
-    });
+    expect(result.journeyUpdate).toBeUndefined();
     expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
     ]));
   });
 
-  it('moves EXPLAIN_PROCESS.pre into active on a PROCESS_GUIDE resource request', () => {
+  it('keeps EXPLAIN_PROCESS.pre anchored on a PROCESS_GUIDE resource request', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -113,11 +110,8 @@ describe('ConversationOrchestratorService', () => {
       hasCompletedInitialProcessExplanation: false,
     });
 
-    expect(result.responseIntent).toBe('process_explanation');
-    expect(result.journeyUpdate).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'active',
-    });
+    expect(result.responseIntent).toBe('resource_request');
+    expect(result.journeyUpdate).toBeUndefined();
     expect(result.allowedResources).toEqual([
       expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
     ]);

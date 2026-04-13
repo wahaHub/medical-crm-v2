@@ -325,19 +325,11 @@ export class ConversationOrchestratorService {
     requestClass: ConversationOrchestrationResult['requestClass'];
     targetResourceTypes: string[];
   }): boolean {
-    // The current classifier contract has no dedicated "consent" class.
-    // Inside EXPLAIN_PROCESS.pre, an empty-target progression_request is the
-    // operational proxy for bare consent like "okay", "continue", or "go ahead"
-    // after the invitation to hear the overall process explanation.
-    return classification.requestClass === 'process_explanation'
-      || (
-        classification.requestClass === 'progression_request'
-        && classification.targetResourceTypes.length === 0
-      )
-      || (
-        classification.requestClass === 'resource_request'
-        && classification.targetResourceTypes.includes('PROCESS_GUIDE')
-      );
+    // In EXPLAIN_PROCESS.pre, asking about the process is not the same as
+    // agreeing to move from the invitation into the single active explain turn.
+    // Treat only bare "continue / okay / go ahead" style progression as consent.
+    return classification.requestClass === 'progression_request'
+      && classification.targetResourceTypes.length === 0;
   }
 
   private isExplicitHandoffAgreement(classification: {

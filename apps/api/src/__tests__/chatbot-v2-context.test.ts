@@ -679,6 +679,66 @@ describe('buildChatbotV2TurnContext', () => {
     ]));
   });
 
+  it('keeps EXPLAIN_PROCESS.pre anchored when the first turn is classified as process_explanation', async () => {
+    const getAiPolicyContext = {
+      execute: vi.fn().mockResolvedValue({
+        chatbot_v2: {
+          scope_id: 'widget-chat:patient-1:case-1',
+          journey_snapshot: {
+            current_stage: 'EXPLAIN_PROCESS',
+            current_phase: 'pre',
+          },
+          allowed_resources: [
+            {
+              resource_type: 'PROCESS_GUIDE',
+              resource_id: 'process-guide:widget-chat:patient-1:case-1',
+              status: 'available',
+              visibility: { mode: 'global' },
+              payload: { title: 'Understand the process' },
+              actions: ['open'],
+            },
+          ],
+        },
+      }),
+    };
+    const difyClassifierApi = {
+      createChatMessage: vi.fn().mockResolvedValue({
+        answer: JSON.stringify({
+          requestClass: 'process_explanation',
+          targetResourceTypes: ['PROCESS_GUIDE'],
+          includeProgressionFollowUp: false,
+        }),
+      }),
+    };
+    const services = {
+      getAiPolicyContext,
+      difyClassifierApi,
+      difyApi: { createChatMessage: vi.fn() },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue(null),
+      },
+      aiChatMessageRepo: {
+        listBySession: vi.fn(),
+      },
+    } as any;
+
+    const result = await buildChatbotV2TurnContext({
+      services,
+      sessionId: 'widget-chat:patient-1:case-1',
+      userMessage: 'What do you do?',
+    });
+
+    expect(result.preTurn.requestClass).toBe('process_explanation');
+    expect(result.preTurn.responseIntent).toBe('process_explanation');
+    expect(result.preTurn.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'pre',
+    });
+    expect(result.preTurn.resources).toEqual([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]);
+  });
+
   it('moves an explicit intake resource request into COLLECT_MEDICAL_INPUTS.active once the lifecycle is already parked at collect pre', async () => {
     const getAiPolicyContext = {
       execute: vi.fn().mockResolvedValue({

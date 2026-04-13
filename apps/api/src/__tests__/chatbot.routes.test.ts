@@ -286,6 +286,12 @@ describe('Chatbot routes', () => {
     expect(json.resources.map((resource) => resource.resourceType)).toContain('MEDICAL_DOC_UPLOAD');
     expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
     expect(json.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
+    expect(json.resources.find((resource) => resource.resourceType === 'PROCESS_GUIDE')?.payload).toMatchObject({
+      title: 'How the process works',
+      description: 'See the overall medical travel journey.',
+      ctaLabel: 'Open process guide',
+      modalKey: 'MEDICAL_TRAVEL_PROCESS',
+    });
     expect(json.metadata).toMatchObject({
       structuredOutput: expect.objectContaining({
         topic: 'PROCEDURE',
@@ -378,6 +384,9 @@ describe('Chatbot routes', () => {
     );
     const difyPayload = mockServices.difyApi.createChatMessage.mock.calls[0]?.[0];
     const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1] as Record<string, unknown>;
+    const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
+      resources: Array<{ resourceType: string }>;
+    };
     const assistantDraft = mockServices.aiChatMessageRepo.create.mock.calls[1]?.[0];
     expect((storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2).toMatchObject({
       journeySnapshot: {
@@ -392,11 +401,11 @@ describe('Chatbot routes', () => {
       targetResourceTypes: ['PROCESS_GUIDE'],
       includeProgressionFollowUp: false,
     });
-    expect(json.resources).toEqual(expect.arrayContaining(JSON.parse((difyPayload.inputs.chatbotV2 as string)).resources));
     expect(assistantDraft.id).toBe(difyPayload.inputs.assistantMessageId);
     expect(mockServices.aiChatMessageRepo.create.mock.invocationCallOrder[1]).toBeLessThan(
       mockServices.difyApi.createChatMessage.mock.invocationCallOrder[0]!,
     );
+    expect(json.resources).toEqual(expect.arrayContaining(storedChatbotV2.resources));
   });
 
   it('invokes FAQ grounding before composer for faq turns and passes grounded FAQ context downstream', async () => {
@@ -543,7 +552,7 @@ describe('Chatbot routes', () => {
       medicalInputsSubmitted: false,
     });
 
-    expect(json.resources).toEqual(expect.arrayContaining(difyChatbotV2.resources));
+    expect(json.resources).toEqual(expect.arrayContaining(storedChatbotV2.resources));
     expect(storedChatbotV2).toMatchObject({
       journeySnapshot: {
         currentStage: 'COLLECT_MEDICAL_INPUTS',
@@ -2981,6 +2990,12 @@ describe('Chatbot routes', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
+    expect(json.resources.find((resource) => resource.resourceType === 'QUESTIONNAIRE')?.payload).toMatchObject({
+      title: 'Complete your medical questionnaire',
+      description: 'This helps us guide the next step more accurately.',
+      ctaLabel: 'Open questionnaire',
+      templateId: questionnaireTemplateId,
+    });
   });
 
   it('POST /api/v2/chatbot/chat builds REQUEST_DOC_UPLOAD blocks from the default questionnaire when writeback status is not visible yet', async () => {
@@ -3134,7 +3149,227 @@ describe('Chatbot routes', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
+    expect(json.resources.find((resource) => resource.resourceType === 'QUESTIONNAIRE')?.payload).toMatchObject({
+      title: 'Complete your medical questionnaire',
+      description: 'This helps us guide the next step more accurately.',
+      ctaLabel: 'Open questionnaire',
+      templateId: questionnaireTemplateId,
+    });
     expect(mockServices.getTemplateByDisease.execute).not.toHaveBeenCalledWith('DEFAULT');
+  });
+
+  it('POST /api/v2/chatbot/chat enriches hospital recommendation resources with shortlist payloads when the conversation reaches recommendation', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+      patientId: 'patient-1',
+      statusSnapshot: {
+        consultationStatus: 'ready',
+      },
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.getAiPolicyContext.execute.mockResolvedValue({
+      chatbot_v2: {
+        scope_id: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        journey_snapshot: {
+          current_stage: 'RECOMMENDATION',
+          current_phase: 'pre',
+        },
+        allowed_resources: [
+          {
+            resource_type: 'HOSPITAL_RECOMMENDATION',
+            resource_id: 'hospital-recommendation:widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+            status: 'available',
+            stage_binding: {
+              stage: 'RECOMMENDATION',
+              phase: 'active',
+            },
+            visibility: { mode: 'journey' },
+            payload: {
+              recommendationKind: 'hospital',
+            },
+            actions: ['open', 'submit'],
+          },
+        ],
+      },
+    });
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'resource_request',
+        targetResourceTypes: ['HOSPITAL_RECOMMENDATION'],
+        includeProgressionFollowUp: false,
+      }),
+    });
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-recommendation-resource',
+      answer: JSON.stringify({
+        answer: 'Here are a few hospitals that look like a fit.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        responseMode: 'grounded_plus_guidance',
+        shortlist: [
+          {
+            hospitalId: '550e8400-e29b-41d4-a716-446655440001',
+            name: 'Recommendation Hospital',
+            reason: 'Strong fit for the current profile',
+            matchType: 'matched',
+            reasonCodes: ['recommendation_fit'],
+          },
+        ],
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        hospitalType: 'COSMETIC',
+        message: 'Can you recommend hospitals for me?',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    const hospitalResource = json.resources.find((resource) => resource.resourceType === 'HOSPITAL_RECOMMENDATION');
+    expect(hospitalResource?.payload).toMatchObject({
+      title: 'Recommended hospitals',
+      description: 'Based on your current information, these look like the closest matches.',
+      caseId: '550e8400-e29b-41d4-a716-446655440000',
+      selectPath: '/select-hospitals',
+      hospitals: [
+        expect.objectContaining({
+          hospitalId: '550e8400-e29b-41d4-a716-446655440001',
+          name: 'Recommendation Hospital',
+          reason: 'Strong fit for the current profile',
+          matchType: 'matched',
+          reasonCodes: ['recommendation_fit'],
+        }),
+      ],
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat enriches online consult booking resources with conversion drafts', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+      patientId: 'patient-1',
+      statusSnapshot: {
+        consultationStatus: 'ready',
+      },
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+      role: 'PATIENT',
+      exp: 9999999999,
+    });
+    mockServices.getAiPolicyContext.execute.mockResolvedValue({
+      chatbot_v2: {
+        scope_id: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        journey_snapshot: {
+          current_stage: 'ONLINE_CONSULT',
+          current_phase: 'pre',
+        },
+        allowed_resources: [
+          {
+            resource_type: 'ONLINE_CONSULT_BOOKING',
+            resource_id: 'online-consult-booking:widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+            status: 'available',
+            stage_binding: {
+              stage: 'ONLINE_CONSULT',
+              phase: 'active',
+            },
+            visibility: { mode: 'journey' },
+            payload: {
+              title: 'Book an online consultation',
+            },
+            actions: ['open', 'submit'],
+          },
+        ],
+      },
+    });
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'assistant-history-1',
+        role: 'ASSISTANT',
+        metadata: {
+          structuredOutput: {
+            collectedFields: {
+              name: 'Hao Wang',
+              email: 'hao@example.com',
+              country: 'China',
+              conditionSummary: 'Need a treatment plan for persistent eye pain.',
+            },
+          },
+        },
+      }),
+    ]);
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'resource_request',
+        targetResourceTypes: ['ONLINE_CONSULT_BOOKING'],
+        includeProgressionFollowUp: false,
+      }),
+    });
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-online-consult-resource',
+      answer: JSON.stringify({
+        answer: 'We can move to an online consultation next.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'INVITE_ONLINE_CONSULT',
+        internalNextAction: 'INVITE_ONLINE_CONSULT',
+        responseMode: 'deep_workflow_progression',
+        collectedFields: {
+          budget: 'Flexible',
+        },
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        hospitalType: 'COSMETIC',
+        message: 'Okay, let’s book the online consultation.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    const consultResource = json.resources.find((resource) => resource.resourceType === 'ONLINE_CONSULT_BOOKING');
+    expect(consultResource?.payload).toMatchObject({
+      title: 'Request online consultation',
+      description: 'Submit your consultation request and we will confirm the next step.',
+      requestedAction: 'INVITE_ONLINE_CONSULT',
+      convertPath: '/api/v2/chatbot/convert',
+      consultationStatus: 'ready',
+      conversionDraft: {
+        sessionId: 'widget-chat:patient-1:550e8400-e29b-41d4-a716-446655440000',
+        name: 'Hao Wang',
+        email: 'hao@example.com',
+        country: 'China',
+        conditionSummary: 'Need a treatment plan for persistent eye pain.',
+        budget: 'Flexible',
+      },
+    });
   });
 
   it('POST /api/v2/chatbot/chat derives public intent from canonical resolvedIntent when provider intent drifts', async () => {

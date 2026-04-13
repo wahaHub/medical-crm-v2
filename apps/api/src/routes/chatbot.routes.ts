@@ -22,7 +22,7 @@ import {
   generateId,
 } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
-import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
+import { buildChatbotBlocks } from './chatbot-block-builder.js';
 import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
@@ -237,7 +237,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     ? extractWorkflowState(sessionMessages)
     : { caseId: null, patientId: null, ticketId: null, lastConvertAction: null };
   const sessionCaseId = workflowState.caseId ?? extractWidgetSessionCaseId(session.sessionId);
-  const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
+  const postTurnChatbotV2Base = buildChatbotV2PostTurnContext({
     foundation: chatbotV2Turn.foundation,
     preTurn: chatbotV2Turn.preTurn,
     userMessage: normalizedUserMessage,
@@ -250,6 +250,23 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     richAction,
     sessionCaseId,
   );
+  const conversionDraft = richAction === 'INVITE_ONLINE_CONSULT'
+    ? buildConsultConversionDraft(
+        session.sessionId,
+        mergeConsultCollectedFields(sessionMessages, normalized.collectedFields),
+      )
+    : null;
+  const postTurnChatbotV2 = {
+    ...postTurnChatbotV2Base,
+    resources: enrichChatbotV2Resources({
+      resources: postTurnChatbotV2Base.resources,
+      shortlist: normalized.shortlist,
+      sessionCaseId,
+      sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+      templateId,
+      conversionDraft,
+    }),
+  };
   const blocks = buildChatbotBlocks({
     richAction,
     allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
@@ -257,12 +274,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     sessionCaseId,
     sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
     templateId,
-    conversionDraft: richAction === 'INVITE_ONLINE_CONSULT'
-      ? buildConsultConversionDraft(
-          session.sessionId,
-          mergeConsultCollectedFields(sessionMessages, normalized.collectedFields),
-        )
-      : null,
+    conversionDraft,
   });
 
   const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
@@ -1027,6 +1039,136 @@ function buildConsultConversionDraft(
   }
 
   return draft;
+}
+
+function enrichChatbotV2Resources(input: {
+  resources: Awaited<ReturnType<typeof buildChatbotV2PostTurnContext>>['resources'];
+  shortlist: Array<Record<string, unknown>>;
+  sessionCaseId?: string | null;
+  sessionConsultationStatus?: string | null;
+  templateId?: string | null;
+  conversionDraft?: {
+    sessionId: string;
+    name?: string;
+    email?: string;
+    country?: string;
+    conditionSummary?: string;
+    budget?: string;
+  } | null;
+}): Awaited<ReturnType<typeof buildChatbotV2PostTurnContext>>['resources'] {
+  return input.resources.map((resource) => {
+    if (resource.resourceType === 'PROCESS_GUIDE') {
+      return {
+        ...resource,
+        payload: {
+          ...resource.payload,
+          title: 'How the process works',
+          description: 'See the overall medical travel journey.',
+          ctaLabel: 'Open process guide',
+          modalKey: 'MEDICAL_TRAVEL_PROCESS',
+        },
+      };
+    }
+
+    if (resource.resourceType === 'QUESTIONNAIRE') {
+      if (!input.templateId) {
+        return resource;
+      }
+
+      return {
+        ...resource,
+        payload: {
+          ...resource.payload,
+          title: 'Complete your medical questionnaire',
+          description: 'This helps us guide the next step more accurately.',
+          ctaLabel: 'Open questionnaire',
+          templateId: input.templateId,
+        },
+      };
+    }
+
+    if (resource.resourceType === 'HOSPITAL_RECOMMENDATION') {
+      if (!input.sessionCaseId) {
+        return resource;
+      }
+
+      const hospitals = input.shortlist
+        .slice(0, 3)
+        .reduce<Array<{
+          hospitalId: string;
+          name?: string;
+          reason?: string;
+          summary?: string;
+          ctaUrl?: string;
+          thumbnailUrl?: string;
+          thumbnailFallbackUrls?: string[];
+          slug?: string;
+          city?: string;
+          matchType?: string;
+          reasonCodes?: string[];
+        }>>((acc, item) => {
+          const hospitalId = asString(item['hospitalId']);
+          if (!hospitalId) {
+            return acc;
+          }
+
+          acc.push({
+            hospitalId,
+            name: asString(item['name']),
+            reason: asString(item['reason']),
+            summary: asString(item['summary']),
+            ctaUrl: asString(item['ctaUrl']),
+            thumbnailUrl: asString(item['thumbnailUrl']),
+            thumbnailFallbackUrls: asStringArray(item['thumbnailFallbackUrls']),
+            slug: asString(item['slug']),
+            city: asString(item['city']),
+            matchType: asString(item['matchType']),
+            reasonCodes: Array.isArray(item['reasonCodes'])
+              ? item['reasonCodes'].filter((code): code is string => typeof code === 'string')
+              : undefined,
+          });
+
+          return acc;
+        }, []);
+
+      if (hospitals.length === 0) {
+        return resource;
+      }
+
+      return {
+        ...resource,
+        payload: {
+          ...resource.payload,
+          title: 'Recommended hospitals',
+          description: 'Based on your current information, these look like the closest matches.',
+          caseId: input.sessionCaseId,
+          selectPath: '/select-hospitals',
+          hospitals,
+        },
+      };
+    }
+
+    if (resource.resourceType === 'ONLINE_CONSULT_BOOKING') {
+      if (!input.conversionDraft) {
+        return resource;
+      }
+
+      return {
+        ...resource,
+        payload: {
+          ...resource.payload,
+          title: 'Request online consultation',
+          description: 'Submit your consultation request and we will confirm the next step.',
+          requestedAction: 'INVITE_ONLINE_CONSULT',
+          convertPath: '/api/v2/chatbot/convert',
+          consultationStatus: input.sessionConsultationStatus ?? 'not_started',
+          conversionDraft: input.conversionDraft,
+        },
+      };
+    }
+
+    return resource;
+  });
 }
 
 function mergeConsultCollectedFields(
@@ -1877,6 +2019,15 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const values = value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+  return values.length > 0 ? values : undefined;
 }
 
 function asBoolean(value: unknown): boolean | undefined {

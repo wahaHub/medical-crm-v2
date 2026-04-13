@@ -288,9 +288,7 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
   const floorSnapshot = readJourneySnapshotFromFloor(floor);
   if (
     floorSnapshot
-    && (
-      compareJourneySnapshots(floorSnapshot, journeySnapshot) > 0
-    )
+    && shouldPreferFloorSnapshot(floorSnapshot, journeySnapshot)
   ) {
     journeySnapshot = floorSnapshot;
     resources = dedupeChatResources([
@@ -324,6 +322,22 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
     requestClass: asString(floor.request_class) ?? asString(chatbotV2.request_class),
     responseIntent: asString(floor.response_intent) ?? asString(chatbotV2.response_intent),
   };
+}
+
+function shouldPreferFloorSnapshot(
+  floorSnapshot: JourneySnapshot,
+  foundationSnapshot: JourneySnapshot,
+): boolean {
+  if (compareJourneySnapshots(floorSnapshot, foundationSnapshot) > 0) {
+    return true;
+  }
+
+  return (
+    floorSnapshot.currentStage === 'EXPLAIN_PROCESS'
+    && floorSnapshot.currentPhase === 'pre'
+    && foundationSnapshot.currentStage === 'EXPLAIN_PROCESS'
+    && foundationSnapshot.currentPhase === 'active'
+  );
 }
 
 function hasCompletedInitialProcessExplanation(

@@ -101,6 +101,7 @@ In practice:
 
 - FAQ in `pre` stays in the same `pre`
 - FAQ in `active` stays in the same `active`
+- FAQ or later informational `process_explanation` may also happen during `post`
 - FAQ does not move a stage forward on its own
 - `includeProgressionFollowUp` only allows a light follow-up close, it does not advance the lifecycle by itself
 
@@ -109,6 +110,8 @@ Repeated later `process_explanation` turns outside `EXPLAIN_PROCESS` are normali
 - `responseIntent = faq`
 
 That keeps them informational only and prevents rewind.
+
+When a turn happens during `post`, the answer stays anchored to that current confirmation layer for the turn, and any automatic bridge to the next stage's `pre` still happens afterwards during post-turn reconciliation.
 
 ## Resource Selection Rule
 
@@ -187,6 +190,7 @@ This is the confirmation layer for both completion and dismiss.
 Current behavior:
 
 - pre-turn remains at `COLLECT_MEDICAL_INPUTS.post`
+- FAQ or informational explanation can still be answered while staying anchored to the intake confirmation turn
 - post-turn automatically advances:
   - `COLLECT_MEDICAL_INPUTS.post -> RECOMMENDATION.pre`
 
@@ -222,6 +226,7 @@ This is the confirmation layer for both completion and dismiss.
 Current behavior:
 
 - pre-turn remains at `RECOMMENDATION.post`
+- FAQ or informational explanation can still be answered while staying anchored to the recommendation confirmation turn
 - post-turn automatically advances:
   - `RECOMMENDATION.post -> ONLINE_CONSULT.pre`
 
@@ -254,6 +259,7 @@ This is currently the submitted confirmation phase.
 
 Current behavior:
 
+- FAQ or informational explanation can still be answered while staying anchored to the online consultation confirmation turn
 - the stage remains terminal for now
 - there is no implemented automatic bridge beyond `ONLINE_CONSULT.post`
 
@@ -286,6 +292,7 @@ This is the completed handoff confirmation phase.
 
 Current behavior:
 
+- FAQ or informational explanation can still be answered while staying anchored to the completed handoff confirmation turn
 - the stage remains terminal after handoff confirmation
 
 ## Stage Copy

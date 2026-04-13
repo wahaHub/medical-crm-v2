@@ -124,6 +124,8 @@ git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/cha
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/apps/api/src/__tests__/chatbot.routes.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/apps/api/src/__tests__/chatbot.routes.integration.test.ts`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/apps/api/src/routes/chatbot.routes.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/packages/shared/validation/src/chatbot.schema.ts`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression/packages/shared/validation/src/__tests__/chatbot.schema.test.ts`
 
 - [ ] **Step 1: Write the failing history assertions**
 
@@ -142,6 +144,7 @@ and instead only expect:
 Run:
 
 ```bash
+pnpm --filter @medical-crm/validation test src/__tests__/chatbot.schema.test.ts
 pnpm --filter @medical-crm/api test src/__tests__/chatbot.routes.test.ts src/__tests__/chatbot.routes.integration.test.ts
 ```
 
@@ -155,12 +158,14 @@ In [`chatbot.routes.ts`](/Users/haowang/Desktop/medora-health-beauty/medical-crm
 - stop including stored `blocks` in v2 history payloads
 - stop including public `nextAction` in v2 history payloads
 - keep internal metadata storage untouched until Phase 2
+- update shared history response schemas so history parsing matches the new public contract
 
 - [ ] **Step 4: Run the targeted test and verify it passes**
 
 Run:
 
 ```bash
+pnpm --filter @medical-crm/validation test src/__tests__/chatbot.schema.test.ts
 pnpm --filter @medical-crm/api test src/__tests__/chatbot.routes.test.ts src/__tests__/chatbot.routes.integration.test.ts
 ```
 
@@ -170,7 +175,7 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression add apps/api/src/routes/chatbot.routes.ts apps/api/src/__tests__/chatbot.routes.test.ts apps/api/src/__tests__/chatbot.routes.integration.test.ts
+git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression add apps/api/src/routes/chatbot.routes.ts apps/api/src/__tests__/chatbot.routes.test.ts apps/api/src/__tests__/chatbot.routes.integration.test.ts packages/shared/validation/src/chatbot.schema.ts packages/shared/validation/src/__tests__/chatbot.schema.test.ts
 git -C /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/chatbot-v2-session-regression commit -m "Strip legacy chatbot v2 history affordances"
 ```
 

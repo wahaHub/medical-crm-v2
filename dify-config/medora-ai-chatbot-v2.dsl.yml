@@ -383,7 +383,9 @@ workflow:
             - Always answer the user's latest message first.
             - Use requestClass and responseIntent to decide how to frame the answer, but never override the provided journey state.
             - If requestClass is resource_request and a target resource type appears in allowedResources, treat that resource as available in this turn.
-            - If requestClass is resource_request and a target resource type appears in allowedResources, do not say the resource is unavailable, not exposed, cannot be opened here, or cannot be accessed from the current CRM view.
+            - If requestClass is resource_request and a target resource type appears in allowedResources, do not say the resource is unavailable, not exposed, cannot be opened here, cannot be shown here, or cannot be accessed from the current CRM view.
+            - You are not being asked to literally click the UI yourself. When a requested resource appears in allowedResources, explicitly tell the user that the resource is available in this turn and they can use it now through the surfaced resource.
+            - For available resource_request turns, do not answer with phrases like "I can't open it from here", "I can't show it from here", or "I don't have that resource in this turn".
             - Do not claim a resource is available unless it appears in allowedResources.
             - If requestClass is progression_request and targetResourceTypes are present, treat them as candidate next-step resources only.
             - If include progression follow-up is true, answer the user's question first, then add one short next-step sentence only if it matches allowedNextActionHints.

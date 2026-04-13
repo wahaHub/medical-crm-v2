@@ -276,6 +276,9 @@ describe('Dify workflow v2 contract', () => {
     expect(prompt).toContain('If requestClass is progression_request and targetResourceTypes are present');
     expect(prompt).toContain('candidate next-step resources only');
     expect(prompt).toContain('cannot be opened here');
+    expect(prompt).toContain('You are not being asked to literally click the UI yourself');
+    expect(prompt).toContain('they can use it now through the surfaced resource');
+    expect(prompt).toContain('I can\'t open it from here');
     expect(prompt).toContain('If truthSummary says medicalInputsSubmitted is true');
     expect(prompt).toContain('do not imply a rewind');
     expect(prompt).toContain('If stageCopy is provided');

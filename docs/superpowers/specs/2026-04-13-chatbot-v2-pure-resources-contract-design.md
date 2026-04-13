@@ -153,6 +153,13 @@ The frontend should not inspect:
 
 for rendering, widget choice, or state progression.
 
+This applies both to:
+
+- top-level assistant response fields
+- message metadata fallback paths
+
+The frontend should stop recovering assistant affordances from legacy block copies in message metadata.
+
 ## Resource Rendering Model
 
 The current `chat-v2/resources` layer is the correct long-term direction and should become the only rendering path.
@@ -170,6 +177,15 @@ Typical mappings are:
 Each resource renderer may continue to reuse existing widget UI where appropriate.
 
 This is a contract change, not a visual redesign.
+
+Where reused widgets require interaction handlers, the resource rendering layer must own that integration explicitly.
+
+That means the resource renderer path must either:
+
+- receive the necessary handlers as props
+- or read them from the same patient entry context currently used by block-driven widgets
+
+The old block-only handler wiring must not remain the only place where questionnaire, hospital selection, or consult actions can be triggered.
 
 ## CRM Responsibilities
 

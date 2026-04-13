@@ -31,14 +31,24 @@
 
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/services/api/patient-chatbot.ts`
   - Remove `blocks` and `nextAction` from public chatbot response/history types.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/PatientChatComposer.tsx`
+  - Stop merging response `blocks` into fresh assistant messages and keep only `journeySnapshot + resources`.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/PatientEntryWindow.tsx`
+  - Stop recovering chatbot affordances from legacy block fields in live/history message normalization.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/PatientChatMessageList.tsx`
   - Remove block-based chatbot v2 affordance branching and render only from `resources`.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/contexts/PatientEntryContext.tsx`
+  - Provide the action hooks needed by resource-driven questionnaire/recommendation/consult affordances.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat-v2/ChatV2MessageResources.tsx`
-  - Keep as the primary affordance renderer.
+  - Keep as the primary affordance renderer and thread resource-action handlers into renderers.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat-v2/resources/registry.tsx`
   - Replace placeholder resource shells with actual widget reuse where block-driven widgets were previously used.
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx`
   - Rewrite block-era rendering expectations into resource-only expectations.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/__tests__/PatientEntryWindow.rich-blocks.test.tsx`
+  - Rewrite message normalization/history restoration tests to stop expecting block fallback.
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/__tests__/PatientChatComposer.attachments.test.tsx`
+  - Update fresh assistant reply normalization to stop merging or asserting `blocks` / `nextAction`.
 - Modify: any additional chat message renderer that still branches on `blocks` or `nextAction`
   - likely under `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat*`
 - Modify: frontend tests that still expect `blocks` / `nextAction` in chatbot responses.
@@ -231,9 +241,14 @@ git -C /Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medi
 
 **Files:**
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/PatientChatMessageList.tsx`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/PatientChatComposer.tsx`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/PatientEntryWindow.tsx`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat-v2/ChatV2MessageResources.tsx`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat-v2/resources/registry.tsx`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/contexts/PatientEntryContext.tsx`
 - Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/__tests__/PatientEntryWindow.rich-blocks.test.tsx`
+- Modify: `/Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys/src/components/chat/__tests__/PatientChatComposer.attachments.test.tsx`
 - Modify: any additional chat message components still branching on `blocks` or `nextAction`
 
 - [ ] **Step 1: Write the failing UI/render test**
@@ -244,6 +259,9 @@ Add or update tests that cover:
 - assistant message without `blocks` still renders affordances
 - no branch depends on `nextAction`
 - block-era fallback tests are either removed or rewritten to expect resource-only rendering
+- fresh assistant replies are normalized without `blocks`
+- history restore prefers `resources` and no longer falls back to legacy block metadata
+- resource-driven widgets still receive the handlers they need to open questionnaire / submit hospitals / request consult
 
 - [ ] **Step 2: Run the focused frontend test and verify failure**
 
@@ -265,13 +283,16 @@ Implement:
 - existing widget UI is reused inside resource renderers where block widgets were previously used
 - any `QUESTIONNAIRE_MODAL_TRIGGER` or `REQUEST_DOC_UPLOAD`-specific render branching is removed or migrated into the relevant resource renderer
 - `PatientChatMessageList.tsx` stops preferring legacy blocks over v2 resources
+- `PatientChatComposer.tsx` stops storing `blocks` from send responses
+- `PatientEntryWindow.tsx` stops recovering chatbot affordances from `metadata.blocks`
+- `ChatV2MessageResources` / resource renderers gain the action hooks currently wired through `ChatMessageBlocks`
 
 - [ ] **Step 4: Run tests/typecheck and verify pass**
 
 Run:
 
 ```bash
-pnpm --dir /Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys test src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx -- --runInBand
+pnpm --dir /Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys test src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx src/components/chat/__tests__/PatientEntryWindow.rich-blocks.test.tsx src/components/chat/__tests__/PatientChatComposer.attachments.test.tsx -- --runInBand
 pnpm --dir /Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys typecheck
 ```
 
@@ -281,7 +302,7 @@ Expected:
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys add src/components/chat/PatientChatMessageList.tsx src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx src/components/chat-v2 src/services/api
+git -C /Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys add src/components/chat/PatientChatMessageList.tsx src/components/chat/PatientChatComposer.tsx src/components/chat/PatientEntryWindow.tsx src/components/chat/__tests__/PatientChatMessageList.rich-blocks.test.tsx src/components/chat/__tests__/PatientEntryWindow.rich-blocks.test.tsx src/components/chat/__tests__/PatientChatComposer.attachments.test.tsx src/components/chat-v2 src/contexts/PatientEntryContext.tsx src/services/api
 git -C /Users/haowang/Desktop/medora-health-beauty/medical-china-comb/china-medical-journeys commit -m "Render chatbot affordances from resources only"
 ```
 

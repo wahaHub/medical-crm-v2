@@ -22,12 +22,22 @@ const mockServices = {
   difyApi: {
     createChatMessage: vi.fn(),
   },
+  difyClassifierApi: {
+    createChatMessage: vi.fn(),
+  },
+  difyFaqGroundingApi: {
+    createChatMessage: vi.fn(),
+  },
   patientAuthService: {
     verifySessionToken: vi.fn(),
     createSessionToken: vi.fn(),
+    createGuestRestoreArtifacts: vi.fn(),
   },
   mediaUpload: {
     createUploadIntent: vi.fn(),
+  },
+  storage: {
+    getSignedUrls: vi.fn(),
   },
   initOnboarding: {
     execute: vi.fn(),
@@ -40,6 +50,12 @@ const mockServices = {
     execute: vi.fn(),
   },
   bootstrapAiSync: {
+    execute: vi.fn(),
+  },
+  getTemplateByDisease: {
+    execute: vi.fn(),
+  },
+  getAiPolicyContext: {
     execute: vi.fn(),
   },
 };
@@ -70,6 +86,52 @@ beforeEach(async () => {
   vi.clearAllMocks();
   process.env['DIFY_API_KEY'] = 'integration-dify-key';
   await cleanupAiChatArtifacts();
+  mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+    answer: JSON.stringify({
+      requestClass: 'faq',
+      targetResourceTypes: [],
+      includeProgressionFollowUp: false,
+    }),
+  });
+  mockServices.difyFaqGroundingApi.createChatMessage.mockResolvedValue({
+    answer: JSON.stringify({
+      faqScope: 'GENERAL_ONLY',
+      categories: ['Consultation Process'],
+      groundedContext: 'Grounded FAQ context',
+    }),
+  });
+  mockServices.patientAuthService.createGuestRestoreArtifacts.mockResolvedValue({
+    restoreToken: 'restore-token-123',
+    restoreCookie: 'restore-cookie-123',
+  });
+  mockServices.storage.getSignedUrls.mockResolvedValue({});
+  mockServices.getTemplateByDisease.execute.mockRejectedValue(new Error('default questionnaire unavailable'));
+  mockServices.getAiPolicyContext.execute.mockResolvedValue({
+    chatbot_v2: {
+      source: 'status_snapshot_bridge',
+      scope_id: 'integration-session',
+      journey_snapshot: {
+        current_stage: 'EXPLAIN_PROCESS',
+        current_phase: 'pre',
+      },
+      allowed_resources: [{
+        resource_type: 'PROCESS_GUIDE',
+        resource_id: 'process-guide:integration-session',
+        status: 'available',
+        stage_binding: {
+          stage: 'EXPLAIN_PROCESS',
+          phase: 'pre',
+        },
+        visibility: {
+          mode: 'journey',
+        },
+        payload: {
+          title: 'Understand our consultation process',
+        },
+        actions: ['open'],
+      }],
+    },
+  });
 });
 
 afterAll(async () => {
@@ -112,7 +174,8 @@ describe('Chatbot routes integration', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.sessionId).toBe(sessionId);
     expect(json.topic).toBe('DOCUMENTS');
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect('nextAction' in (json as Record<string, unknown>)).toBe(false);
+    expect('blocks' in (json as Record<string, unknown>)).toBe(false);
     expect(json.secondaryAction).toBe('CONSULT_CONVERSION');
     expect(json.responseMode).toBe('grounded_plus_guidance');
     expect(json.reasonCodes).toEqual(['documents_requested']);
@@ -223,7 +286,8 @@ describe('Chatbot routes integration', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.answer).toBe('We can help you continue this conversation with our team.');
     expect(json.topic).toBeNull();
-    expect(json.nextAction).toBeNull();
+    expect('nextAction' in (json as Record<string, unknown>)).toBe(false);
+    expect('blocks' in (json as Record<string, unknown>)).toBe(false);
     expect(json.reasonCodes).toEqual([]);
     expect(json.shortlist).toEqual([]);
   }, 15000);

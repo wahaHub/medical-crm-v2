@@ -189,7 +189,7 @@ describe('chatbotChatSchema', () => {
 });
 
 describe('chatbotChatResponseSchema', () => {
-  it('accepts the additive chatbot-v2 journey snapshot and resource envelope while keeping legacy blocks', () => {
+  it('accepts the chatbot-v2 journey snapshot and resource envelope without public blocks or nextAction', () => {
     expect(chatbotChatResponseSchema.safeParse({
       sessionId: 'session-123',
       messageId: 'assistant-123',
@@ -198,7 +198,6 @@ describe('chatbotChatResponseSchema', () => {
       topic: 'DOCUMENTS',
       riskLevel: 'NORMAL',
       canAnswer: true,
-      nextAction: 'REQUEST_DOC_UPLOAD',
       secondaryAction: null,
       responseMode: 'grounded_plus_guidance',
       citations: [],
@@ -226,12 +225,6 @@ describe('chatbotChatResponseSchema', () => {
           title: 'Complete your medical questionnaire',
         },
         actions: ['open', 'submit'],
-      }],
-      blocks: [{
-        id: 'questionnaire-trigger-1',
-        type: 'QUESTIONNAIRE_MODAL_TRIGGER',
-        templateId: '7f8e26b8-4ea1-40b4-9145-327fde0fe4e6',
-        title: 'Complete your medical questionnaire',
       }],
       metadata: {},
       history: {

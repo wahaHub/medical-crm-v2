@@ -301,7 +301,6 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     topic: normalized.topic,
     riskLevel: assistantMessage.riskLevel,
     canAnswer: assistantMessage.canAnswer,
-    nextAction: normalized.nextAction,
     secondaryAction: assistantMessage.secondaryAction,
     responseMode: assistantMessage.responseMode,
     citations: assistantMessage.citations,
@@ -312,7 +311,6 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     shortlist: assistantMessage.shortlist,
     journeySnapshot: postTurnChatbotV2.journeySnapshot,
     resources: postTurnChatbotV2.resources,
-    blocks,
     metadata: normalizePublicMetadataForHistory(assistantMessage.metadata),
     history: {
       userMessageId: userMessage.id,

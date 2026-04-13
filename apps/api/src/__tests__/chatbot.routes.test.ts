@@ -132,6 +132,11 @@ function makeEscalationMessage(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function expectNoLegacyChatbotUiFields(json: Record<string, unknown>) {
+  expect('nextAction' in json).toBe(false);
+  expect('blocks' in json).toBe(false);
+}
+
 describe('Chatbot routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -263,10 +268,10 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.sessionId).toBe('session-1');
     expect(json.intent).toBe('CONSULT');
     expect((json as Record<string, unknown>)['topic']).toBe('PROCEDURE');
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.secondaryAction).toBe('REQUEST_DOCS');
     expect((json as Record<string, unknown>)['responseMode']).toBe('grounded_plus_guidance');
     expect(json.reasonCodes).toEqual(['consult_interest_detected']);
@@ -1272,23 +1277,10 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const rawJson = await res.json();
-    expect(rawJson).toMatchObject({
-      blocks: [
-        expect.objectContaining({
-          type: 'PROCESS_MODAL_TRIGGER',
-          modalKey: 'MEDICAL_TRAVEL_PROCESS',
-        }),
-      ],
-    });
+    expectNoLegacyChatbotUiFields(rawJson as Record<string, unknown>);
 
     const json = chatbotChatResponseSchema.parse(rawJson);
-    expect(json.nextAction).toBe('EXPLAIN_MEDICAL_TRAVEL_PROCESS');
-    expect(json.blocks).toEqual([
-      expect.objectContaining({
-        type: 'PROCESS_MODAL_TRIGGER',
-        modalKey: 'MEDICAL_TRAVEL_PROCESS',
-      }),
-    ]);
+    expect(json.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
   });
 
   it('POST /api/v2/chatbot/chat leaves legacy REQUEST_DOCS nextAction out of the public contract', async () => {
@@ -1320,7 +1312,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBeNull();
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -1358,7 +1350,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBeNull();
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
   });
 
   it('POST /api/v2/chatbot/chat keeps canonical nextAction values and ignores legacy metadata overlays', async () => {
@@ -1403,7 +1395,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.metadata.nextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
     expect(json.metadata.next_action).toBe('REQUEST_DOC_UPLOAD');
@@ -1462,7 +1454,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.metadata).toMatchObject({
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
       engagementSignal: 'DEEP_WORKFLOW',
@@ -1675,7 +1667,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.metadata).toMatchObject({
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
       engagementSignal: 'DEEP_WORKFLOW',
@@ -1737,7 +1729,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('SHOW_PACKAGE');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.metadata).toMatchObject({
       resolvedIntent: 'ASK_PACKAGE_INFO',
       engagementSignal: 'QUALIFIED_EXPLORATION',
@@ -1789,7 +1781,7 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.intent).toBe('CONSULT');
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.metadata).toMatchObject({
       resolvedIntent: 'UNKNOWN',
       publicNextAction: 'REQUEST_DOC_UPLOAD',
@@ -1850,7 +1842,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.metadata).toMatchObject({
       nextAction: 'REQUEST_DOC_UPLOAD',
       publicNextAction: 'REQUEST_DOC_UPLOAD',
@@ -1974,7 +1966,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.blocks).toEqual([]);
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.journeySnapshot).toEqual({
       currentStage: 'COLLECT_MEDICAL_INPUTS',
       currentPhase: 'pre',
@@ -2155,7 +2147,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('ANSWER_FAQ');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.responseMode).toBe('light_discovery_guidance');
     expect(json.metadata).toMatchObject({
       engagementMode: 'LIGHT_DISCOVERY',
@@ -2198,7 +2190,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('EXPLAIN_CONSULT_PROCESS');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.responseMode).toBe('consult_explanation');
     expect(json.metadata).toMatchObject({
       engagementMode: 'QUALIFIED_EXPLORATION',
@@ -2241,7 +2233,7 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.secondaryAction).toBe('REQUEST_DOCS');
     expect(json.responseMode).toBe('deep_workflow_progression');
     expect(json.metadata).toMatchObject({
@@ -2590,7 +2582,7 @@ describe('Chatbot routes', () => {
       const structuredOutputMetadata = (structuredOutput.metadata as Record<string, unknown>);
 
       expect(json.intent).toBe(expectedIntent);
-      expect(json.nextAction).toBe(expectedNextAction);
+      expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
       expect(difyPayload).toEqual({
         inputs: {
           hospitalType: 'COSMETIC',
@@ -2674,9 +2666,8 @@ describe('Chatbot routes', () => {
         'promptHints',
         'prompt_hints',
       ]) {
-        expect(structuredOutputMetadata).not.toHaveProperty(key);
+      expect(structuredOutputMetadata).not.toHaveProperty(key);
       }
-      expect(json.blocks ?? []).toEqual(expectedBlocks);
     }
   });
 
@@ -2833,8 +2824,8 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('INVITE_ONLINE_CONSULT');
-    expect(json.blocks).toEqual([]);
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
+    expect(json.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
   });
 
   it('POST /api/v2/chatbot/chat keeps consult booking cards hidden until CRM-owned chatbotV2 resources actually expose online consult booking', async () => {
@@ -2910,7 +2901,8 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.blocks).toEqual([]);
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
+    expect(json.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
   });
 
   it('POST /api/v2/chatbot/chat rebuilds REQUEST_DOC_UPLOAD blocks from refreshed session status after writeback', async () => {
@@ -2987,13 +2979,8 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.blocks).toEqual([
-      expect.objectContaining({
-        type: 'QUESTIONNAIRE_MODAL_TRIGGER',
-        templateId: questionnaireTemplateId,
-      }),
-    ]);
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
+    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
   });
 
   it('POST /api/v2/chatbot/chat builds REQUEST_DOC_UPLOAD blocks from the default questionnaire when writeback status is not visible yet', async () => {
@@ -3070,13 +3057,8 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.blocks).toEqual([
-      expect.objectContaining({
-        type: 'QUESTIONNAIRE_MODAL_TRIGGER',
-        templateId: questionnaireTemplateId,
-      }),
-    ]);
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
+    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
     expect(mockServices.getTemplateByDisease.execute).toHaveBeenCalledWith('DEFAULT');
   });
 
@@ -3150,12 +3132,8 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.blocks).toEqual([
-      expect.objectContaining({
-        type: 'QUESTIONNAIRE_MODAL_TRIGGER',
-        templateId: questionnaireTemplateId,
-      }),
-    ]);
+    expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
+    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
     expect(mockServices.getTemplateByDisease.execute).not.toHaveBeenCalledWith('DEFAULT');
   });
 

@@ -196,7 +196,6 @@ export const chatbotChatResponseSchema = z.object({
   topic: chatbotTopicSchema.nullable(),
   riskLevel: chatbotRiskLevelSchema.nullable(),
   canAnswer: z.boolean().nullable(),
-  nextAction: chatbotNextActionSchema.nullable(),
   secondaryAction: z.string().nullable(),
   responseMode: chatbotResponseModeSchema.nullable(),
   citations: z.array(chatbotCitationSchema),
@@ -207,7 +206,6 @@ export const chatbotChatResponseSchema = z.object({
   shortlist: z.array(chatbotShortlistItemSchema),
   journeySnapshot: JourneySnapshotSchema,
   resources: z.array(ChatResourceDescriptorSchema).default([]),
-  blocks: z.array(chatbotMessageBlockSchema).default([]),
   metadata: z.record(z.string(), z.unknown()),
   history: z.object({
     userMessageId: z.string().min(1),

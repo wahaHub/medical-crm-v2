@@ -147,17 +147,45 @@ describe('ConversationOrchestratorService', () => {
   it('auto-bridges EXPLAIN_PROCESS.active into COLLECT_MEDICAL_INPUTS.pre after the explanation turn completes', () => {
     const result = service.orchestratePostTurn({
       scopeId: 'case-1',
+      previousJourneySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'pre',
+      },
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
         currentPhase: 'active',
       },
       truth: defaultTruth,
-    });
+    } as any);
 
     expect(result.journeyUpdate).toEqual({
       currentStage: 'COLLECT_MEDICAL_INPUTS',
       currentPhase: 'pre',
     });
+  });
+
+  it('does not auto-bridge EXPLAIN_PROCESS.active when the turn was only a sticky FAQ overlay inside explain-active', () => {
+    const result = service.orchestratePostTurn({
+      scopeId: 'case-1',
+      previousJourneySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
+      },
+      truth: defaultTruth,
+    } as any);
+
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]));
+    expect(result.allowedResources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
+      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
+    ]));
   });
 
   it('moves COLLECT_MEDICAL_INPUTS.pre into active when intake resources are explicitly requested', () => {

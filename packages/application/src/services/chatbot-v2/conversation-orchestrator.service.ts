@@ -56,6 +56,7 @@ export class ConversationOrchestratorService {
 
   orchestratePostTurn(input: {
     scopeId: string;
+    previousJourneySnapshot?: JourneySnapshot;
     journeySnapshot: JourneySnapshot;
     truth: ConversationOrchestratorInput['truth'];
     assistantNextAction?: string | null;
@@ -275,6 +276,7 @@ export class ConversationOrchestratorService {
   }
 
   private computePostTurnJourneyUpdate(input: {
+    previousJourneySnapshot?: JourneySnapshot;
     journeySnapshot: JourneySnapshot;
     truth: ConversationOrchestratorInput['truth'];
     assistantNextAction?: string | null;
@@ -283,6 +285,8 @@ export class ConversationOrchestratorService {
     if (
       input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
       && input.journeySnapshot.currentPhase === 'active'
+      && input.previousJourneySnapshot?.currentStage === 'EXPLAIN_PROCESS'
+      && input.previousJourneySnapshot.currentPhase === 'pre'
     ) {
       return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
         type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE',

@@ -38,11 +38,19 @@ describe('buildChatbotV2TurnContext', () => {
     expect(result.requestClass).toBe('process_explanation');
     expect(result.responseIntent).toBe('process_explanation');
     expect(result.targetResourceTypes).toEqual(['PROCESS_GUIDE']);
-    expect(result.resources).toEqual([
+    expect(result.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({
         resourceType: 'PROCESS_GUIDE',
       }),
-    ]);
+    ]));
+    expect(result.resources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
+      }),
+      expect.objectContaining({
+        resourceType: 'MEDICAL_DOC_UPLOAD',
+      }),
+    ]));
   });
 
   it('keeps a stored EXPLAIN_PROCESS.pre starter floor instead of consuming the initial explain gate', async () => {
@@ -125,7 +133,7 @@ describe('buildChatbotV2TurnContext', () => {
         scopeId: 'widget-chat:patient-1:case-1',
         journeySnapshot: {
           currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
+          currentPhase: 'pre',
         },
         truth: {
           medicalInputsSubmitted: false,
@@ -184,6 +192,86 @@ describe('buildChatbotV2TurnContext', () => {
       currentStage: 'COLLECT_MEDICAL_INPUTS',
       currentPhase: 'pre',
     });
+  });
+
+  it('keeps sticky FAQ/process-overlay turns inside EXPLAIN_PROCESS.active from auto-bridging in post-turn', () => {
+    const result = buildChatbotV2PostTurnContext({
+      foundation: {
+        scopeId: 'widget-chat:patient-1:case-1',
+        journeySnapshot: {
+          currentStage: 'EXPLAIN_PROCESS',
+          currentPhase: 'active',
+        },
+        truth: {
+          medicalInputsSubmitted: false,
+          recommendationConfirmed: false,
+          onlineConsultSubmitted: false,
+        },
+        resources: [
+          {
+            resourceType: 'PROCESS_GUIDE',
+            resourceId: 'process-guide:widget-chat:patient-1:case-1',
+            status: 'available',
+            visibility: { mode: 'global' },
+            payload: {},
+            actions: ['open'],
+          },
+        ],
+        hasCompletedInitialProcessExplanation: true,
+        classification: {
+          requestClass: 'faq',
+          targetResourceTypes: [],
+          includeProgressionFollowUp: false,
+        },
+        requiresFaqGrounding: true,
+        activeHospitalContext: null,
+      },
+      preTurn: {
+        journeySnapshot: {
+          currentStage: 'EXPLAIN_PROCESS',
+          currentPhase: 'active',
+        },
+        resources: [
+          {
+            resourceType: 'PROCESS_GUIDE',
+            resourceId: 'process-guide:widget-chat:patient-1:case-1',
+            status: 'available',
+            visibility: { mode: 'global' },
+            payload: {},
+            actions: ['open'],
+          },
+        ],
+        truthSummary: {
+          medicalInputsSubmitted: false,
+          recommendationConfirmed: false,
+          onlineConsultSubmitted: false,
+        },
+        stageCopy: null,
+        requestClass: 'faq',
+        responseIntent: 'process_explanation',
+        targetResourceTypes: [],
+        includeProgressionFollowUp: false,
+      },
+      userMessage: 'Before I upload anything, how long does this usually take?',
+    });
+
+    expect(result.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(result.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'PROCESS_GUIDE',
+      }),
+    ]));
+    expect(result.resources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
+      }),
+      expect.objectContaining({
+        resourceType: 'MEDICAL_DOC_UPLOAD',
+      }),
+    ]));
   });
 
   it('auto-bridges COLLECT_MEDICAL_INPUTS.post into RECOMMENDATION.pre in post-turn', () => {

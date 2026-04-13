@@ -211,6 +211,7 @@ export function buildChatbotV2PostTurnContext(input: {
 
   const postTurnOrchestration = orchestrator.orchestratePostTurn({
     scopeId: input.foundation.scopeId,
+    previousJourneySnapshot: input.foundation.journeySnapshot,
     journeySnapshot: currentJourneySnapshot,
     truth: refreshedTruth,
     assistantNextAction: input.assistantNextAction,

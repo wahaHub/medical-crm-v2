@@ -79,6 +79,57 @@ describe('StageCopyRegistryService', () => {
     }));
   });
 
+  it('supports both confirmed and dismissed outcomes in RECOMMENDATION.post', () => {
+    const referenceText = service.resolve({
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'post',
+    })?.referenceText;
+
+    expect(referenceText).toMatch(/confirmed|accepted/i);
+    expect(referenceText).toMatch(/dismissed|not to proceed right now|not to choose one right now/i);
+    expect(referenceText).toMatch(/online consultation|next step/i);
+  });
+
+  it('provides action-reminder copy for COLLECT_MEDICAL_INPUTS.active', () => {
+    const referenceText = service.resolve({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'active',
+    })?.referenceText;
+
+    expect(referenceText).toMatch(/upload|questionnaire|medical inputs/i);
+    expect(referenceText).toMatch(/current step|right now|this step/i);
+  });
+
+  it('provides action-reminder copy for RECOMMENDATION.active', () => {
+    const referenceText = service.resolve({
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'active',
+    })?.referenceText;
+
+    expect(referenceText).toMatch(/review|confirm/i);
+    expect(referenceText).toMatch(/hospitals|packages|recommendation/i);
+  });
+
+  it('provides action-reminder copy for ONLINE_CONSULT.active', () => {
+    const referenceText = service.resolve({
+      currentStage: 'ONLINE_CONSULT',
+      currentPhase: 'active',
+    })?.referenceText;
+
+    expect(referenceText).toMatch(/book|schedule|submit/i);
+    expect(referenceText).toMatch(/online consultation/i);
+  });
+
+  it('provides action-reminder copy for HUMAN_HANDOFF.active', () => {
+    const referenceText = service.resolve({
+      currentStage: 'HUMAN_HANDOFF',
+      currentPhase: 'active',
+    })?.referenceText;
+
+    expect(referenceText).toMatch(/sending|submit|administrator|human advisor/i);
+    expect(referenceText).toMatch(/take over|case/i);
+  });
+
   it('confirms in HUMAN_HANDOFF.post that the case has been sent to the administrator team', () => {
     expect(service.resolve({
       currentStage: 'HUMAN_HANDOFF',

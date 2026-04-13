@@ -1258,7 +1258,7 @@ describe('Chatbot routes', () => {
     );
   });
 
-  it('POST /api/v2/chatbot/chat serializes blocks on the wire for action-driven responses', async () => {
+  it('POST /api/v2/chatbot/chat keeps action-driven affordances on resources only', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-123',
@@ -1362,7 +1362,7 @@ describe('Chatbot routes', () => {
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
   });
 
-  it('POST /api/v2/chatbot/chat keeps canonical nextAction values and ignores legacy metadata overlays', async () => {
+  it('POST /api/v2/chatbot/chat strips public action overlays from metadata while keeping internal canonical storage', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'dify-conv-public-metadata',
@@ -1405,15 +1405,15 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
-    expect(json.metadata.nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.metadata.next_action).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.metadata.public_next_action).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.metadata.internalNextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.metadata.internal_next_action).toBe('REQUEST_DOC_UPLOAD');
-    expect((json.metadata.structuredOutput as Record<string, unknown>).nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).publicNextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).internalNextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.metadata.nextAction).toBeUndefined();
+    expect(json.metadata.publicNextAction).toBeUndefined();
+    expect(json.metadata.next_action).toBeUndefined();
+    expect(json.metadata.public_next_action).toBeUndefined();
+    expect(json.metadata.internalNextAction).toBeUndefined();
+    expect(json.metadata.internal_next_action).toBeUndefined();
+    expect((json.metadata.structuredOutput as Record<string, unknown>).nextAction).toBeUndefined();
+    expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).publicNextAction).toBeUndefined();
+    expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).internalNextAction).toBeUndefined();
   });
 
   it('POST /api/v2/chatbot/chat persists canonical semantic and action metadata while keeping the public contract aligned', async () => {
@@ -1471,15 +1471,9 @@ describe('Chatbot routes', () => {
       recommendationSignal: 'NONE',
       mentionsCondition: true,
       mentionsDoctorOrHospitalNeed: false,
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      publicNextAction: 'REQUEST_DOC_UPLOAD',
-      public_next_action: 'REQUEST_DOC_UPLOAD',
-      internalNextAction: 'REQUEST_DOC_UPLOAD',
-      internal_next_action: 'REQUEST_DOC_UPLOAD',
     });
     expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
-      nextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>)).toMatchObject({
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
@@ -1488,11 +1482,6 @@ describe('Chatbot routes', () => {
       recommendationSignal: 'NONE',
       mentionsCondition: true,
       mentionsDoctorOrHospitalNeed: false,
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      publicNextAction: 'REQUEST_DOC_UPLOAD',
-      public_next_action: 'REQUEST_DOC_UPLOAD',
-      internalNextAction: 'REQUEST_DOC_UPLOAD',
-      internal_next_action: 'REQUEST_DOC_UPLOAD',
     });
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
@@ -1682,8 +1671,6 @@ describe('Chatbot routes', () => {
       engagementSignal: 'DEEP_WORKFLOW',
       progressionSignal: 'READY_TO_PROCEED',
       recommendationSignal: 'NONE',
-      publicNextAction: 'REQUEST_DOC_UPLOAD',
-      internalNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
@@ -1744,20 +1731,15 @@ describe('Chatbot routes', () => {
       engagementSignal: 'QUALIFIED_EXPLORATION',
       progressionSignal: 'OPEN_TO_NEXT_STEP',
       recommendationSignal: 'NONE',
-      publicNextAction: 'SHOW_PACKAGE',
-      internalNextAction: 'SHOW_PACKAGE',
     });
     expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
       resolvedIntent: 'ASK_PACKAGE_INFO',
-      nextAction: 'SHOW_PACKAGE',
     });
     expect(((json.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>)).toMatchObject({
       resolvedIntent: 'ASK_PACKAGE_INFO',
       engagementSignal: 'QUALIFIED_EXPLORATION',
       progressionSignal: 'OPEN_TO_NEXT_STEP',
       recommendationSignal: 'NONE',
-      publicNextAction: 'SHOW_PACKAGE',
-      internalNextAction: 'SHOW_PACKAGE',
     });
   });
 
@@ -1793,11 +1775,9 @@ describe('Chatbot routes', () => {
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.metadata).toMatchObject({
       resolvedIntent: 'UNKNOWN',
-      publicNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect((json.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
       resolvedIntent: 'UNKNOWN',
-      nextAction: 'REQUEST_DOC_UPLOAD',
     });
 
     const persistedPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
@@ -1852,11 +1832,9 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
-    expect(json.metadata).toMatchObject({
-      nextAction: 'REQUEST_DOC_UPLOAD',
-      publicNextAction: 'REQUEST_DOC_UPLOAD',
-      internalNextAction: 'REQUEST_DOC_UPLOAD',
-    });
+    expect(json.metadata.nextAction).toBeUndefined();
+    expect(json.metadata.publicNextAction).toBeUndefined();
+    expect(json.metadata.internalNextAction).toBeUndefined();
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -2160,7 +2138,6 @@ describe('Chatbot routes', () => {
     expect(json.responseMode).toBe('light_discovery_guidance');
     expect(json.metadata).toMatchObject({
       engagementMode: 'LIGHT_DISCOVERY',
-      internalNextAction: 'ANSWER_FAQ',
     });
   });
 
@@ -2203,7 +2180,6 @@ describe('Chatbot routes', () => {
     expect(json.responseMode).toBe('consult_explanation');
     expect(json.metadata).toMatchObject({
       engagementMode: 'QUALIFIED_EXPLORATION',
-      internalNextAction: 'EXPLAIN_CONSULT_PROCESS',
     });
   });
 
@@ -2247,7 +2223,6 @@ describe('Chatbot routes', () => {
     expect(json.responseMode).toBe('deep_workflow_progression');
     expect(json.metadata).toMatchObject({
       engagementMode: 'DEEP_WORKFLOW',
-      internalNextAction: 'CREATE_CASE',
     });
   });
 
@@ -2305,11 +2280,6 @@ describe('Chatbot routes', () => {
           mentionsCondition: false,
           mentionsDoctorOrHospitalNeed: false,
         },
-        nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
-        publicNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
-        public_next_action: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
-        internalNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
-        internal_next_action: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
         engagementMode: 'LIGHT_DISCOVERY',
       },
       expectedBlocks: [
@@ -2372,11 +2342,6 @@ describe('Chatbot routes', () => {
           mentionsCondition: false,
           mentionsDoctorOrHospitalNeed: false,
         },
-        nextAction: 'EXPLAIN_CONSULT_PROCESS',
-        publicNextAction: 'EXPLAIN_CONSULT_PROCESS',
-        public_next_action: 'EXPLAIN_CONSULT_PROCESS',
-        internalNextAction: 'EXPLAIN_CONSULT_PROCESS',
-        internal_next_action: 'EXPLAIN_CONSULT_PROCESS',
         engagementMode: 'QUALIFIED_EXPLORATION',
       },
       expectedBlocks: [],
@@ -2443,11 +2408,6 @@ describe('Chatbot routes', () => {
           mentionsCondition: false,
           mentionsDoctorOrHospitalNeed: true,
         },
-        nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        publicNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        public_next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        internal_next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         engagementMode: 'QUALIFIED_EXPLORATION',
       },
       expectedBlocks: [],
@@ -2514,11 +2474,6 @@ describe('Chatbot routes', () => {
           mentionsCondition: false,
           mentionsDoctorOrHospitalNeed: true,
         },
-        nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        publicNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        public_next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        internal_next_action: 'SHOW_HOSPITAL_RECOMMENDATIONS',
         engagementMode: 'QUALIFIED_EXPLORATION',
       },
       expectedBlocks: [],
@@ -2650,7 +2605,6 @@ describe('Chatbot routes', () => {
       expect(structuredOutput).toMatchObject({
         intent: expectedIntent,
         resolvedIntent: expectedResolvedIntent,
-        nextAction: expectedNextAction,
       });
       expect(structuredOutputMetadata).toMatchObject(expectedPublicMetadata);
       for (const key of [
@@ -2914,7 +2868,7 @@ describe('Chatbot routes', () => {
     expect(json.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
   });
 
-  it('POST /api/v2/chatbot/chat rebuilds REQUEST_DOC_UPLOAD blocks from refreshed session status after writeback', async () => {
+  it('POST /api/v2/chatbot/chat enriches questionnaire resources from refreshed session status after writeback', async () => {
     const questionnaireTemplateId = '11111111-1111-4111-8111-111111111111';
     mockServices.aiChatSessionRepo.findBySessionId
       .mockResolvedValueOnce(makeSession({
@@ -2998,7 +2952,7 @@ describe('Chatbot routes', () => {
     });
   });
 
-  it('POST /api/v2/chatbot/chat builds REQUEST_DOC_UPLOAD blocks from the default questionnaire when writeback status is not visible yet', async () => {
+  it('POST /api/v2/chatbot/chat enriches questionnaire resources from the default template when writeback status is not visible yet', async () => {
     const questionnaireTemplateId = '33333333-3333-4333-8333-333333333333';
     mockServices.aiChatSessionRepo.findBySessionId
       .mockResolvedValueOnce(makeSession({
@@ -4048,6 +4002,68 @@ describe('Chatbot routes', () => {
     expect('blocks' in (json.messages[0] as Record<string, unknown>)).toBe(false);
   });
 
+  it('GET /api/v2/chatbot/history/{sessionId} strips legacy metadata blocks without corrupting nested resource payload fields', async () => {
+    const secretHash = createHash('sha256').update('secret-123').digest('hex');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionSecretHash: secretHash,
+      patientId: 'patient-1',
+    }));
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([
+      makeMessage({
+        id: 'msg-assistant-nested-resource-payload',
+        role: 'ASSISTANT',
+        content: 'Here is your next step.',
+        metadata: {
+          blocks: [{
+            id: 'legacy-block-1',
+            type: 'PROCESS_MODAL_TRIGGER',
+          }],
+          chatbotV2: {
+            journeySnapshot: {
+              currentStage: 'COLLECT_MEDICAL_INPUTS',
+              currentPhase: 'active',
+            },
+            resources: [{
+              resourceType: 'PROCESS_GUIDE',
+              resourceId: 'process-guide-1',
+              status: 'available',
+              visibility: {
+                mode: 'journey',
+              },
+              payload: {
+                title: 'Process guide',
+                blocks: ['slot-a', 'slot-b'],
+              },
+              actions: ['open'],
+            }],
+          },
+          structuredOutput: {
+            metadata: {
+              blocks: [{
+                id: 'legacy-structured-block',
+                type: 'PROCESS_MODAL_TRIGGER',
+              }],
+            },
+          },
+        },
+        createdAt: new Date('2026-03-26T09:00:00.000Z'),
+      }),
+    ]);
+
+    const res = await app.request('/api/v2/chatbot/history/session-1?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: 'chatbot_session_secret=secret-123',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect((json.messages[0]?.metadata as Record<string, unknown>).blocks).toBeUndefined();
+    expect((((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).metadata as Record<string, unknown>).blocks)).toBeUndefined();
+    expect((((((json.messages[0]?.metadata.chatbotV2 as Record<string, unknown>).resources as Array<Record<string, unknown>>)[0]?.payload as Record<string, unknown>).blocks))).toEqual(['slot-a', 'slot-b']);
+  });
+
   it('GET /api/v2/chatbot/history/{sessionId} maps legacy ESCALATE history into HUMAN_HANDOFF while keeping workflow metadata raw', async () => {
     const secretHash = createHash('sha256').update('secret-123').digest('hex');
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
@@ -4346,8 +4362,6 @@ describe('Chatbot routes', () => {
       recommendationSignal: 'NONE',
       mentionsCondition: true,
       mentionsDoctorOrHospitalNeed: false,
-      publicNextAction: 'REQUEST_DOC_UPLOAD',
-      internalNextAction: 'REQUEST_DOC_UPLOAD',
     });
     expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>)).toMatchObject({
       resolvedIntent: 'REQUEST_DOC_UPLOAD',
@@ -4358,8 +4372,6 @@ describe('Chatbot routes', () => {
       recommendationSignal: 'NONE',
       mentionsCondition: true,
       mentionsDoctorOrHospitalNeed: false,
-      publicNextAction: 'REQUEST_DOC_UPLOAD',
-      internalNextAction: 'REQUEST_DOC_UPLOAD',
     });
   });
 
@@ -4403,8 +4415,8 @@ describe('Chatbot routes', () => {
     expect(json.messages[0]?.intent).toBe('CONSULT');
     expect(json.messages[0]?.metadata.resolvedIntent).toBe('UNKNOWN');
     expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).resolvedIntent).toBe('UNKNOWN');
-    expect(json.messages[0]?.metadata.publicNextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction).toBe('REQUEST_DOC_UPLOAD');
+    expect(json.messages[0]?.metadata.publicNextAction).toBeUndefined();
+    expect((json.messages[0]?.metadata.structuredOutput as Record<string, unknown>).nextAction).toBeUndefined();
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} derives public intent from canonical resolvedIntent when stored intent drifts', async () => {

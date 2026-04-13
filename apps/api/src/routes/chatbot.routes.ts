@@ -22,7 +22,6 @@ import {
   generateId,
 } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
-import { buildChatbotBlocks } from './chatbot-block-builder.js';
 import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
@@ -267,15 +266,6 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       conversionDraft,
     }),
   };
-  const blocks = buildChatbotBlocks({
-    richAction,
-    allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
-    shortlist: normalized.shortlist,
-    sessionCaseId,
-    sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
-    templateId,
-    conversionDraft,
-  });
 
   const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
@@ -293,7 +283,6 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       ...normalized.metadata,
       chatbotV2: postTurnChatbotV2,
       classifierResult: chatbotV2Turn.foundation.classification,
-      ...(blocks.length > 0 ? { blocks } : {}),
     },
   });
 
@@ -1921,7 +1910,7 @@ function normalizePublicMetadataForHistory(value: Record<string, unknown>): Reco
     delete root.structured_output;
     root.structuredOutput = applyStrictHistoryStructuredOutput(structuredOutputSource);
   }
-  return root;
+  return asRecord(stripLegacyHistoryUiFields(root));
 }
 
 function carriesChatbotSemanticHistoryEnvelope(source: Record<string, unknown>): boolean {
@@ -1951,6 +1940,38 @@ function normalizeHistoryMetadataValue(value: unknown): unknown {
   return sanitized;
 }
 
+function stripLegacyHistoryUiFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripLegacyHistoryUiFields(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const source = value as Record<string, unknown>;
+  const sanitized = { ...source };
+
+  delete sanitized.blocks;
+
+  const structuredOutput = asRecord(sanitized.structuredOutput);
+  if (Object.keys(structuredOutput).length > 0) {
+    const nextStructuredOutput = { ...structuredOutput };
+    delete nextStructuredOutput.blocks;
+
+    const structuredMetadata = asRecord(nextStructuredOutput.metadata);
+    if (Object.keys(structuredMetadata).length > 0) {
+      const nextStructuredMetadata = { ...structuredMetadata };
+      delete nextStructuredMetadata.blocks;
+      nextStructuredOutput.metadata = nextStructuredMetadata;
+    }
+
+    sanitized.structuredOutput = nextStructuredOutput;
+  }
+
+  return sanitized;
+}
+
 function applyStrictHistoryCanonicalEnvelope(source: Record<string, unknown>): Record<string, unknown> {
   return composeCanonicalMetadataEnvelope(
     source,
@@ -1962,18 +1983,7 @@ function applyStrictHistoryCanonicalEnvelope(source: Record<string, unknown>): R
       mentionsCondition: asBoolean(source.mentionsCondition) ?? asBoolean(source.mentions_condition),
       mentionsDoctorOrHospitalNeed: asBoolean(source.mentionsDoctorOrHospitalNeed) ?? asBoolean(source.mentions_doctor_or_hospital_need),
     }),
-    buildCanonicalActionMetadata({
-      nextAction: normalizePublicNextAction(
-        asString(source.publicNextAction)
-        ?? asString(source.public_next_action)
-        ?? asString(source.nextAction)
-        ?? asString(source.next_action),
-      ),
-      internalNextAction: normalizeNextAction(
-        asString(source.internalNextAction)
-        ?? asString(source.internal_next_action),
-      ),
-    }),
+    {},
   );
 }
 
@@ -1990,13 +2000,7 @@ function applyStrictHistoryStructuredOutput(source: Record<string, unknown>): Re
     buildCanonicalSemanticMetadata({
       resolvedIntent: asString(source.resolvedIntent) ?? asString(source.resolved_intent),
     }),
-    buildCanonicalActionMetadata({
-      nextAction,
-      internalNextAction: normalizeNextAction(
-        asString(source.internalNextAction)
-        ?? asString(source.internal_next_action),
-      ),
-    }),
+    {},
   );
   const publicIntent = derivePublicIntent({
     intent: asString(source.intent),

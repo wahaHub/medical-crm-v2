@@ -3,7 +3,7 @@ import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
 import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
-import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
+import { buildChatbotV2StarterEnvelope, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
 const GENERIC_WIDGET_STARTER_CONTENT = 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.';
 const WIDGET_STARTER_VERSION = 'ai-v1';
@@ -212,12 +212,10 @@ export async function seedWidgetStarterMessage(input: {
   const chatbotV2Turn = await buildChatbotV2TurnContext({
     services: input.services,
     sessionId: session.sessionId,
-    userMessage: 'Explain the process',
-    classifierOverride: {
-      requestClass: 'process_explanation',
-      targetResourceTypes: ['PROCESS_GUIDE'],
-      includeProgressionFollowUp: false,
-    },
+    userMessage: '',
+  });
+  const starterChatbotV2 = buildChatbotV2StarterEnvelope({
+    foundation: chatbotV2Turn.foundation,
   });
   const faqGrounding = chatbotV2Turn.foundation.requiresFaqGrounding
     ? await resolveChatbotV2FaqGrounding({
@@ -240,7 +238,7 @@ export async function seedWidgetStarterMessage(input: {
       procedureId: input.procedureId ?? null,
       bootstrapMode: 'WIDGET_STARTER',
       ...(faqGrounding ? { faqGrounding: JSON.stringify(faqGrounding) } : {}),
-      chatbotV2: JSON.stringify(chatbotV2Turn.preTurn),
+      chatbotV2: JSON.stringify(starterChatbotV2),
     },
     query: buildWidgetStarterPrompt(input),
     user: session.sessionId,
@@ -262,14 +260,6 @@ export async function seedWidgetStarterMessage(input: {
   }
 
   const richAction = normalized.internalNextAction ?? normalized.nextAction;
-  const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
-    foundation: chatbotV2Turn.foundation,
-    preTurn: chatbotV2Turn.preTurn,
-    userMessage: 'Explain the process',
-    refreshedStatusSnapshot: session.statusSnapshot,
-    assistantNextAction: normalized.nextAction,
-    assistantInternalNextAction: richAction,
-  });
   const templateId = await resolveQuestionnaireTemplateId(
     input.services,
     richAction,
@@ -277,7 +267,7 @@ export async function seedWidgetStarterMessage(input: {
   );
   const blocks = buildChatbotBlocks({
     richAction,
-    allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
+    allowedResourceTypes: starterChatbotV2.resources.map((resource) => resource.resourceType),
     shortlist: normalized.shortlist,
     sessionCaseId: input.caseId,
     sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
@@ -295,7 +285,7 @@ export async function seedWidgetStarterMessage(input: {
       widgetStarterVersion: WIDGET_STARTER_VERSION,
       draftState: 'succeeded',
       internalNextAction: normalized.internalNextAction,
-      chatbotV2: postTurnChatbotV2,
+      chatbotV2: starterChatbotV2,
       classifierResult: chatbotV2Turn.foundation.classification,
       ...(blocks.length > 0 ? { blocks } : {}),
     },

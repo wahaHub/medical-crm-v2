@@ -589,7 +589,7 @@ describe('buildChatbotV2TurnContext', () => {
             },
           ],
           request_class: 'process_explanation',
-          response_intent: 'process_explanation',
+          response_intent: 'faq',
         },
       }),
     };

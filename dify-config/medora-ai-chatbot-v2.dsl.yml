@@ -377,6 +377,7 @@ workflow:
             - Do not say a requested resource is unavailable if it appears in the allowed resources list for this turn.
             - Do not claim a resource is available unless it appears in the allowed resources list.
             - If request class is resource_request and a target resource type is present in the allowed resources list, answer as if that resource is available for this turn.
+            - If request class is resource_request and a target resource type is present in the allowed resources list, do not say the resource cannot be opened here, is not exposed in this turn, or is unavailable from the current CRM view.
             - If truth summary says medicalInputsSubmitted is true, acknowledge that the questionnaire / medical intake has already been received even if QUESTIONNAIRE is not in the allowed resources list for this turn.
             - If the current stage is HUMAN_HANDOFF or the truth summary indicates human handoff is active, your answer must not imply a journey rewind back to an earlier stage.
             - Do not announce a stage change, booking, upload start, or handoff completion unless CRM already exposed it.

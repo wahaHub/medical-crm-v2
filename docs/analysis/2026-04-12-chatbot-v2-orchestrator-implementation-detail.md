@@ -469,6 +469,8 @@ Notable current limits:
 - `responseIntent` is still mostly close to `requestClass`, except repeated later `process_explanation` turns are intentionally normalized to FAQ-like informational responses
 - only a limited set of journey transitions is implemented
 - the foundation snapshot now bootstraps at `EXPLAIN_PROCESS.pre`
+- the widget starter now preserves `EXPLAIN_PROCESS.pre` instead of consuming the first mandatory explain step
+- initial explain completion is now read from the stored `requestClass = process_explanation`, not from `responseIntent`, because the first real explain turn may intentionally normalize `responseIntent` to FAQ-like output
 - stage-copy exists only as fixed canonical reference text for current `pre` / `post` phases; it is not yet personalized or localized beyond composer rephrasing
 
 ## Files that implement this behavior

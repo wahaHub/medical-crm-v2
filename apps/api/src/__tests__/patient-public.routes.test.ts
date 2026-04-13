@@ -228,7 +228,7 @@ describe('patientPublicRoutes', () => {
         chatbotV2: expect.objectContaining({
           journeySnapshot: {
             currentStage: 'EXPLAIN_PROCESS',
-            currentPhase: 'active',
+            currentPhase: 'pre',
           },
           requestClass: 'process_explanation',
           responseIntent: 'process_explanation',
@@ -257,10 +257,11 @@ describe('patientPublicRoutes', () => {
       expect.objectContaining({
         journeySnapshot: {
           currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
+          currentPhase: 'pre',
         },
         requestClass: 'process_explanation',
         responseIntent: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE'],
         resources: [
           expect.objectContaining({
             resourceType: 'PROCESS_GUIDE',
@@ -429,8 +430,8 @@ describe('patientPublicRoutes', () => {
           internalNextAction: 'REQUEST_DOC_UPLOAD',
           chatbotV2: expect.objectContaining({
             journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
+              currentStage: 'EXPLAIN_PROCESS',
+              currentPhase: 'pre',
             },
             requestClass: 'process_explanation',
             responseIntent: 'process_explanation',
@@ -531,8 +532,8 @@ describe('patientPublicRoutes', () => {
           internalNextAction: 'REQUEST_DOC_UPLOAD',
           chatbotV2: expect.objectContaining({
             journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
+              currentStage: 'EXPLAIN_PROCESS',
+              currentPhase: 'pre',
             },
           }),
         }),
@@ -626,8 +627,8 @@ describe('patientPublicRoutes', () => {
           internalNextAction: 'REQUEST_DOC_UPLOAD',
           chatbotV2: expect.objectContaining({
             journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
+              currentStage: 'EXPLAIN_PROCESS',
+              currentPhase: 'pre',
             },
           }),
         }),

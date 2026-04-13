@@ -71,6 +71,42 @@ export type ChatbotV2TurnContext = {
 const orchestrator = new ConversationOrchestratorService();
 const stageCopyRegistry = new StageCopyRegistryService();
 
+export function buildChatbotV2StarterEnvelope(input: {
+  foundation: ChatbotV2FoundationContext;
+}): ChatbotV2Envelope {
+  const starterJourneySnapshot: JourneySnapshot = {
+    currentStage: 'EXPLAIN_PROCESS',
+    currentPhase: 'pre',
+  };
+  const starterResources = [{
+    resourceType: 'PROCESS_GUIDE' as const,
+    resourceId: `process-guide:${input.foundation.scopeId}`,
+    status: 'available' as const,
+    stageBinding: {
+      stage: 'EXPLAIN_PROCESS' as const,
+      phase: 'active' as const,
+    },
+    visibility: {
+      mode: 'global' as const,
+    },
+    payload: {
+      title: 'Understand our consultation process',
+    },
+    actions: ['open'],
+  }];
+
+  return {
+    journeySnapshot: starterJourneySnapshot,
+    resources: starterResources,
+    truthSummary: input.foundation.truth,
+    stageCopy: readStageCopy(starterJourneySnapshot),
+    requestClass: 'process_explanation',
+    responseIntent: 'process_explanation',
+    targetResourceTypes: ['PROCESS_GUIDE'],
+    includeProgressionFollowUp: false,
+  };
+}
+
 export async function buildChatbotV2TurnContext(input: {
   services: Services;
   sessionId: string;
@@ -303,8 +339,8 @@ function hasCompletedInitialProcessExplanation(
     return false;
   }
 
-  const floorResponseIntent = asString(floor.response_intent) ?? asString(chatbotV2.response_intent);
-  return floorResponseIntent === 'process_explanation';
+  const floorRequestClass = asString(floor.request_class) ?? asString(chatbotV2.request_class);
+  return floorRequestClass === 'process_explanation';
 }
 
 function readScopeId(policyContext: unknown, fallbackSessionId: string): string {

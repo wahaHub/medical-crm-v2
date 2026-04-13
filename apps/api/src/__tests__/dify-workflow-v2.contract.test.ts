@@ -209,6 +209,7 @@ describe('Dify workflow v2 contract', () => {
     expect(prompt).toContain('If request class is resource_request and target resource types are present');
     expect(prompt).toContain('If request class is progression_request and target resource types are present');
     expect(prompt).toContain('candidate next-step resources suggested by CRM context');
+    expect(prompt).toContain('do not say the resource cannot be opened here');
     expect(prompt).toContain('If truth summary says medicalInputsSubmitted is true');
     expect(prompt).toContain('must not imply a journey rewind');
     expect(prompt).toContain('canonical explanation for the current pre/post stage');

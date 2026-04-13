@@ -4,6 +4,19 @@ import { JourneyEngineService } from '../../chatbot-v2/journey-engine.service.js
 describe('JourneyEngineService', () => {
   const service = new JourneyEngineService();
 
+  it('can move EXPLAIN_PROCESS from pre to active', () => {
+    expect(service.advanceSnapshot(
+      {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'pre',
+      },
+      { type: 'ENTER_EXPLAIN_PROCESS_ACTIVE' },
+    )).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+  });
+
   it('enters COLLECT_MEDICAL_INPUTS.pre from an explain-stage decision', () => {
     expect(service.advanceSnapshot(
       {
@@ -30,7 +43,20 @@ describe('JourneyEngineService', () => {
     });
   });
 
-  it('can move COLLECT_MEDICAL_INPUTS from active to post', () => {
+  it('can move COLLECT_MEDICAL_INPUTS from active to post after completion', () => {
+    expect(service.advanceSnapshot(
+      {
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        currentPhase: 'active',
+      },
+      { type: 'ENTER_COLLECT_MEDICAL_INPUTS_POST' },
+    )).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
+    });
+  });
+
+  it('can move COLLECT_MEDICAL_INPUTS from active to post after dismissal', () => {
     expect(service.advanceSnapshot(
       {
         currentStage: 'COLLECT_MEDICAL_INPUTS',
@@ -69,7 +95,20 @@ describe('JourneyEngineService', () => {
     });
   });
 
-  it('can move RECOMMENDATION from active to post', () => {
+  it('can move RECOMMENDATION from active to post after confirmation', () => {
+    expect(service.advanceSnapshot(
+      {
+        currentStage: 'RECOMMENDATION',
+        currentPhase: 'active',
+      },
+      { type: 'ENTER_RECOMMENDATION_POST' },
+    )).toEqual({
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'post',
+    });
+  });
+
+  it('can move RECOMMENDATION from active to post after dismissal', () => {
     expect(service.advanceSnapshot(
       {
         currentStage: 'RECOMMENDATION',

@@ -22,8 +22,12 @@ describe('StageCopyRegistryService', () => {
     })).toEqual(expect.objectContaining({
       stage: 'EXPLAIN_PROCESS',
       phase: 'pre',
-      referenceText: expect.stringMatching(/initial question|next step|overall medical journey/i),
+      referenceText: expect.stringContaining('what the service does'),
     }));
+    expect(service.resolve({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'pre',
+    })?.referenceText).toMatch(/if you'd like|next i can walk you through/i);
   });
 
   it('returns fixed copy for EXPLAIN_PROCESS.active to support the mandatory process explanation step', () => {
@@ -33,8 +37,35 @@ describe('StageCopyRegistryService', () => {
     })).toEqual(expect.objectContaining({
       stage: 'EXPLAIN_PROCESS',
       phase: 'active',
-      referenceText: expect.stringMatching(/overall medical journey|collecting medical information|process works/i),
+      referenceText: expect.stringContaining('overall medical journey'),
     }));
+    expect(service.resolve({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    })?.referenceText).toMatch(/before formal recommendations/i);
+    expect(service.resolve({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    })?.referenceText).toMatch(/next step is collecting medical information/i);
+  });
+
+  it('supports both submitted and dismissed confirmation language in COLLECT_MEDICAL_INPUTS.post', () => {
+    expect(service.resolve({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
+    })).toEqual(expect.objectContaining({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'post',
+      referenceText: expect.stringContaining('received'),
+    }));
+    expect(service.resolve({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
+    })?.referenceText).toMatch(/chose not to submit right now|dismissed/i);
+    expect(service.resolve({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
+    })?.referenceText).toMatch(/come back later/i);
   });
 
   it('states that ONLINE_CONSULT.pre is a required step that cannot be dismissed', () => {

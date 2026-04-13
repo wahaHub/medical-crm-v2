@@ -325,6 +325,10 @@ export class ConversationOrchestratorService {
     requestClass: ConversationOrchestrationResult['requestClass'];
     targetResourceTypes: string[];
   }): boolean {
+    // The current classifier contract has no dedicated "consent" class.
+    // Inside EXPLAIN_PROCESS.pre, an empty-target progression_request is the
+    // operational proxy for bare consent like "okay", "continue", or "go ahead"
+    // after the invitation to hear the overall process explanation.
     return classification.requestClass === 'process_explanation'
       || (
         classification.requestClass === 'progression_request'

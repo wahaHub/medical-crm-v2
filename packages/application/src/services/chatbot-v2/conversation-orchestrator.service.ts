@@ -325,8 +325,11 @@ export class ConversationOrchestratorService {
     requestClass: ConversationOrchestrationResult['requestClass'];
     targetResourceTypes: string[];
   }): boolean {
-    return classification.requestClass === 'progression_request'
-      || classification.requestClass === 'process_explanation'
+    return classification.requestClass === 'process_explanation'
+      || (
+        classification.requestClass === 'progression_request'
+        && classification.targetResourceTypes.length === 0
+      )
       || (
         classification.requestClass === 'resource_request'
         && classification.targetResourceTypes.includes('PROCESS_GUIDE')

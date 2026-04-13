@@ -71,6 +71,33 @@ describe('ConversationOrchestratorService', () => {
     ]));
   });
 
+  it('keeps EXPLAIN_PROCESS.pre anchored when a progression request already points at next-step intake resources', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'progression_request',
+        targetResourceTypes: ['QUESTIONNAIRE', 'MEDICAL_DOC_UPLOAD'],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'pre',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: false,
+    });
+
+    expect(result.responseIntent).toBe('progression_request');
+    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]));
+    expect(result.allowedResources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
+      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
+    ]));
+  });
+
   it('auto-bridges EXPLAIN_PROCESS.active into COLLECT_MEDICAL_INPUTS.pre after the explanation turn completes', () => {
     const result = service.orchestratePostTurn({
       scopeId: 'case-1',

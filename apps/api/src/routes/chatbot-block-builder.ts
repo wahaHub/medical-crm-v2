@@ -40,7 +40,7 @@ export function buildChatbotBlocks(input: BlockBuildContext): ChatbotMessageBloc
       break;
 
     case 'REQUEST_DOC_UPLOAD':
-      if (input.templateId) {
+      if (input.templateId && allowedResourceTypes.has('QUESTIONNAIRE')) {
         candidates.push({
           id: 'questionnaire-trigger-1',
           type: 'QUESTIONNAIRE_MODAL_TRIGGER',

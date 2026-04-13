@@ -260,14 +260,16 @@ export async function seedWidgetStarterMessage(input: {
   }
 
   const richAction = normalized.internalNextAction ?? normalized.nextAction;
+  const starterAllowedResourceTypes = starterChatbotV2.resources.map((resource) => resource.resourceType);
   const templateId = await resolveQuestionnaireTemplateId(
     input.services,
     richAction,
     input.caseId,
+    starterAllowedResourceTypes.includes('QUESTIONNAIRE'),
   );
   const blocks = buildChatbotBlocks({
     richAction,
-    allowedResourceTypes: starterChatbotV2.resources.map((resource) => resource.resourceType),
+    allowedResourceTypes: starterAllowedResourceTypes,
     shortlist: normalized.shortlist,
     sessionCaseId: input.caseId,
     sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
@@ -296,8 +298,9 @@ async function resolveQuestionnaireTemplateId(
   services: ReturnType<typeof getServices>,
   richAction: string | null | undefined,
   caseId: string | null,
+  questionnaireAllowed: boolean,
 ): Promise<string | null> {
-  if (richAction !== 'REQUEST_DOC_UPLOAD' || !caseId) {
+  if (richAction !== 'REQUEST_DOC_UPLOAD' || !caseId || !questionnaireAllowed) {
     return null;
   }
 

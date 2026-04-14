@@ -228,7 +228,7 @@ describe('patientPublicRoutes', () => {
         chatbotV2: expect.objectContaining({
           journeySnapshot: {
             currentStage: 'EXPLAIN_PROCESS',
-            currentPhase: 'pre',
+            currentPhase: 'active',
           },
           requestClass: 'process_explanation',
           responseIntent: 'process_explanation',
@@ -257,11 +257,10 @@ describe('patientPublicRoutes', () => {
       expect.objectContaining({
         journeySnapshot: {
           currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'pre',
+          currentPhase: 'active',
         },
         requestClass: 'process_explanation',
         responseIntent: 'process_explanation',
-        targetResourceTypes: ['PROCESS_GUIDE'],
         resources: [
           expect.objectContaining({
             resourceType: 'PROCESS_GUIDE',
@@ -430,8 +429,8 @@ describe('patientPublicRoutes', () => {
           internalNextAction: 'REQUEST_DOC_UPLOAD',
           chatbotV2: expect.objectContaining({
             journeySnapshot: {
-              currentStage: 'EXPLAIN_PROCESS',
-              currentPhase: 'pre',
+              currentStage: 'RECOMMENDATION',
+              currentPhase: 'active',
             },
             requestClass: 'process_explanation',
             responseIntent: 'process_explanation',
@@ -441,7 +440,7 @@ describe('patientPublicRoutes', () => {
     );
   });
 
-  it('does not expose questionnaire starter blocks before CRM allows questionnaire resources', async () => {
+  it('builds REQUEST_DOC_UPLOAD starter blocks from the default questionnaire when questionnaire truth is still not submitted', async () => {
     const questionnaireTemplateId = '66666666-6666-4666-8666-666666666666';
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
@@ -532,25 +531,17 @@ describe('patientPublicRoutes', () => {
           internalNextAction: 'REQUEST_DOC_UPLOAD',
           chatbotV2: expect.objectContaining({
             journeySnapshot: {
-              currentStage: 'EXPLAIN_PROCESS',
-              currentPhase: 'pre',
+              currentStage: 'RECOMMENDATION',
+              currentPhase: 'active',
             },
           }),
         }),
       }),
     );
-    expect(services.getTemplateByDisease.execute).not.toHaveBeenCalled();
-    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        metadata: expect.not.objectContaining({
-          blocks: expect.anything(),
-        }),
-      }),
-    );
+    expect(services.getTemplateByDisease.execute).toHaveBeenCalledWith('DEFAULT');
   });
 
-  it('does not resolve case questionnaire templates before CRM allows questionnaire starter resources', async () => {
+  it('prefers a case-specific questionnaire template when seeding REQUEST_DOC_UPLOAD starter blocks', async () => {
     const questionnaireTemplateId = '77777777-7777-4777-8777-777777777777';
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
@@ -635,23 +626,14 @@ describe('patientPublicRoutes', () => {
           internalNextAction: 'REQUEST_DOC_UPLOAD',
           chatbotV2: expect.objectContaining({
             journeySnapshot: {
-              currentStage: 'EXPLAIN_PROCESS',
-              currentPhase: 'pre',
+              currentStage: 'RECOMMENDATION',
+              currentPhase: 'active',
             },
           }),
         }),
       }),
     );
-    expect(services.caseRepo.findById).not.toHaveBeenCalled();
     expect(services.getTemplateByDisease.execute).not.toHaveBeenCalled();
-    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        metadata: expect.not.objectContaining({
-          blocks: expect.anything(),
-        }),
-      }),
-    );
   });
 
   it('allows onboarding without a captcha token while captcha is temporarily disabled', async () => {

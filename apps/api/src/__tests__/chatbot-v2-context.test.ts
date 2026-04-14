@@ -1,426 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  buildChatbotV2StarterEnvelope,
   buildChatbotV2PostTurnContext,
   buildChatbotV2TurnContext,
 } from '../routes/chatbot-v2-context.js';
 
 describe('buildChatbotV2TurnContext', () => {
-  it('builds the starter envelope at EXPLAIN_PROCESS.pre with process-guide targeting', () => {
-    const result = buildChatbotV2StarterEnvelope({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'pre',
-        },
-        truth: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [],
-        hasCompletedInitialProcessExplanation: false,
-        classification: {
-          requestClass: 'process_explanation',
-          targetResourceTypes: ['PROCESS_GUIDE'],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: true,
-        activeHospitalContext: null,
-      },
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'pre',
-    });
-    expect(result.requestClass).toBe('process_explanation');
-    expect(result.responseIntent).toBe('process_explanation');
-    expect(result.targetResourceTypes).toEqual(['PROCESS_GUIDE']);
-    expect(result.resources).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        resourceType: 'PROCESS_GUIDE',
-      }),
-    ]));
-    expect(result.resources).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        resourceType: 'QUESTIONNAIRE',
-      }),
-      expect.objectContaining({
-        resourceType: 'MEDICAL_DOC_UPLOAD',
-      }),
-    ]));
-  });
-
-  it('keeps a stored EXPLAIN_PROCESS.pre starter floor instead of consuming the initial explain gate', async () => {
-    const getAiPolicyContext = {
-      execute: vi.fn().mockResolvedValue({
-        chatbot_v2: {
-          scope_id: 'widget-chat:patient-1:case-1',
-          journey_snapshot: {
-            current_stage: 'EXPLAIN_PROCESS',
-            current_phase: 'active',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'PROCESS_GUIDE',
-              resource_id: 'process-guide:widget-chat:patient-1:case-1',
-              status: 'available',
-              visibility: { mode: 'global' },
-              payload: { title: 'Understand the process' },
-              actions: ['open'],
-            },
-          ],
-        },
-        chatbot_v2_floor: {
-          journey_snapshot: {
-            current_stage: 'EXPLAIN_PROCESS',
-            current_phase: 'pre',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'PROCESS_GUIDE',
-              resource_id: 'process-guide:widget-chat:patient-1:case-1',
-              status: 'available',
-              visibility: { mode: 'global' },
-              payload: { title: 'Understand the process' },
-              actions: ['open'],
-            },
-          ],
-          request_class: 'process_explanation',
-          response_intent: 'process_explanation',
-        },
-      }),
-    };
-    const difyClassifierApi = {
-      createChatMessage: vi.fn().mockResolvedValue({
-        answer: JSON.stringify({
-          requestClass: 'faq',
-          targetResourceTypes: [],
-          includeProgressionFollowUp: false,
-        }),
-      }),
-    };
-    const services = {
-      getAiPolicyContext,
-      difyClassifierApi,
-      difyApi: { createChatMessage: vi.fn() },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn().mockResolvedValue(null),
-      },
-      aiChatMessageRepo: {
-        listBySession: vi.fn(),
-      },
-    } as any;
-
-    const result = await buildChatbotV2TurnContext({
-      services,
-      sessionId: 'widget-chat:patient-1:case-1',
-      userMessage: 'What kind of support do you offer?',
-    });
-
-    expect(result.foundation.hasCompletedInitialProcessExplanation).toBe(false);
-    expect(result.preTurn.journeySnapshot).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'pre',
-    });
-  });
-
-  it('auto-bridges EXPLAIN_PROCESS.active into COLLECT_MEDICAL_INPUTS.pre in post-turn', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'pre',
-        },
-        truth: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [
-          {
-            resourceType: 'PROCESS_GUIDE',
-            resourceId: 'process-guide:widget-chat:patient-1:case-1',
-            status: 'available',
-            visibility: { mode: 'global' },
-            payload: {},
-            actions: ['open'],
-          },
-        ],
-        hasCompletedInitialProcessExplanation: true,
-        classification: {
-          requestClass: 'process_explanation',
-          targetResourceTypes: ['PROCESS_GUIDE'],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: true,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
-        },
-        resources: [
-          {
-            resourceType: 'PROCESS_GUIDE',
-            resourceId: 'process-guide:widget-chat:patient-1:case-1',
-            status: 'available',
-            visibility: { mode: 'global' },
-            payload: {},
-            actions: ['open'],
-          },
-        ],
-        truthSummary: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        stageCopy: null,
-        requestClass: 'process_explanation',
-        responseIntent: 'process_explanation',
-        targetResourceTypes: ['PROCESS_GUIDE'],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'Okay, explain the process.',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
-    });
-  });
-
-  it('keeps sticky FAQ/process-overlay turns inside EXPLAIN_PROCESS.active from auto-bridging in post-turn', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
-        },
-        truth: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [
-          {
-            resourceType: 'PROCESS_GUIDE',
-            resourceId: 'process-guide:widget-chat:patient-1:case-1',
-            status: 'available',
-            visibility: { mode: 'global' },
-            payload: {},
-            actions: ['open'],
-          },
-        ],
-        hasCompletedInitialProcessExplanation: true,
-        classification: {
-          requestClass: 'faq',
-          targetResourceTypes: [],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: true,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
-        },
-        resources: [
-          {
-            resourceType: 'PROCESS_GUIDE',
-            resourceId: 'process-guide:widget-chat:patient-1:case-1',
-            status: 'available',
-            visibility: { mode: 'global' },
-            payload: {},
-            actions: ['open'],
-          },
-        ],
-        truthSummary: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        stageCopy: null,
-        requestClass: 'faq',
-        responseIntent: 'process_explanation',
-        targetResourceTypes: [],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'Before I upload anything, how long does this usually take?',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'active',
-    });
-    expect(result.resources).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        resourceType: 'PROCESS_GUIDE',
-      }),
-    ]));
-    expect(result.resources).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        resourceType: 'QUESTIONNAIRE',
-      }),
-      expect.objectContaining({
-        resourceType: 'MEDICAL_DOC_UPLOAD',
-      }),
-    ]));
-  });
-
-  it('auto-bridges COLLECT_MEDICAL_INPUTS.post into RECOMMENDATION.pre in post-turn', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'COLLECT_MEDICAL_INPUTS',
-          currentPhase: 'post',
-        },
-        truth: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [],
-        hasCompletedInitialProcessExplanation: true,
-        classification: {
-          requestClass: 'progression_request',
-          targetResourceTypes: ['HOSPITAL_RECOMMENDATION'],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: false,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'COLLECT_MEDICAL_INPUTS',
-          currentPhase: 'post',
-        },
-        resources: [],
-        truthSummary: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        stageCopy: null,
-        requestClass: 'progression_request',
-        responseIntent: 'progression_request',
-        targetResourceTypes: ['HOSPITAL_RECOMMENDATION'],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'Okay, let us move on.',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'pre',
-    });
-  });
-
-  it('auto-bridges RECOMMENDATION.post into ONLINE_CONSULT.pre in post-turn', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'RECOMMENDATION',
-          currentPhase: 'post',
-        },
-        truth: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: true,
-          onlineConsultSubmitted: false,
-        },
-        resources: [],
-        hasCompletedInitialProcessExplanation: true,
-        classification: {
-          requestClass: 'progression_request',
-          targetResourceTypes: ['ONLINE_CONSULT_BOOKING'],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: false,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'RECOMMENDATION',
-          currentPhase: 'post',
-        },
-        resources: [],
-        truthSummary: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: true,
-          onlineConsultSubmitted: false,
-        },
-        stageCopy: null,
-        requestClass: 'progression_request',
-        responseIntent: 'progression_request',
-        targetResourceTypes: ['ONLINE_CONSULT_BOOKING'],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'I understand. What is the next step?',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'ONLINE_CONSULT',
-      currentPhase: 'pre',
-    });
-  });
-
-  it('keeps FAQ overlay in COLLECT_MEDICAL_INPUTS.pre from corrupting the lifecycle bridge', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'COLLECT_MEDICAL_INPUTS',
-          currentPhase: 'pre',
-        },
-        truth: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [],
-        hasCompletedInitialProcessExplanation: true,
-        classification: {
-          requestClass: 'faq',
-          targetResourceTypes: [],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: true,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'COLLECT_MEDICAL_INPUTS',
-          currentPhase: 'pre',
-        },
-        resources: [],
-        truthSummary: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        stageCopy: null,
-        requestClass: 'faq',
-        responseIntent: 'faq',
-        targetResourceTypes: [],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'Why do you need these medical records?',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
-    });
-  });
-
   it('classifies even when policy context projects legacy request fields and keeps later-stage process explanations from rewinding the journey', async () => {
     const getAiPolicyContext = {
       execute: vi.fn().mockResolvedValue({
@@ -487,40 +71,39 @@ describe('buildChatbotV2TurnContext', () => {
     });
 
     expect(difyClassifierApi.createChatMessage).toHaveBeenCalledOnce();
-    const firstClassifierCall = difyClassifierApi.createChatMessage.mock.calls[0]?.[0];
-    expect(firstClassifierCall.query).toBe('Why do we still need this step?');
-    expect(firstClassifierCall.user).toBe('widget-chat:patient-1:case-1');
-    expect(firstClassifierCall.inputs.recentMessages).toBe(JSON.stringify([
-      { role: 'ASSISTANT', content: 'How can I help?' },
-      { role: 'USER', content: 'I want to understand the options.' },
-      { role: 'ASSISTANT', content: 'We can guide you step by step.' },
-      { role: 'USER', content: 'Okay.' },
-      { role: 'ASSISTANT', content: 'We are currently at the recommendation stage.' },
-      { role: 'USER', content: 'Why do we still need this step?' },
-    ]));
-    expect(firstClassifierCall.inputs.conversationSummary).toBe('The patient is already discussing recommendation details.');
-    expect(firstClassifierCall.inputs.journeySnapshot).toBe(JSON.stringify({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'active',
+    expect(difyClassifierApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      query: 'Why do we still need this step?',
+      user: 'widget-chat:patient-1:case-1',
+      inputs: {
+        recentMessages: JSON.stringify([
+          { role: 'ASSISTANT', content: 'How can I help?' },
+          { role: 'USER', content: 'I want to understand the options.' },
+          { role: 'ASSISTANT', content: 'We can guide you step by step.' },
+          { role: 'USER', content: 'Okay.' },
+          { role: 'ASSISTANT', content: 'We are currently at the recommendation stage.' },
+          { role: 'USER', content: 'Why do we still need this step?' },
+        ]),
+        conversationSummary: 'The patient is already discussing recommendation details.',
+        journeySnapshot: JSON.stringify({
+          currentStage: 'RECOMMENDATION',
+          currentPhase: 'active',
+        }),
+        allowedResourceHints: JSON.stringify([
+          {
+            resourceType: 'PROCESS_GUIDE',
+            description: 'Explains the consultation and treatment process.',
+          },
+          {
+            resourceType: 'MEDICAL_INVITATION_STATUS',
+            description: 'Lets the patient check the medical invitation status.',
+          },
+        ]),
+      },
     }));
-    expect(JSON.parse(firstClassifierCall.inputs.allowedResourceHints)).toEqual(expect.arrayContaining([
-      {
-        resourceType: 'PROCESS_GUIDE',
-        description: 'Explains the consultation and treatment process.',
-      },
-      {
-        resourceType: 'MEDICAL_INVITATION_STATUS',
-        description: 'Lets the patient check the medical invitation status.',
-      },
-      {
-        resourceType: 'QUESTIONNAIRE',
-        description: 'Lets the patient fill in a medical intake questionnaire.',
-      },
-    ]));
     expect(services.aiChatMessageRepo.listBySession).not.toHaveBeenCalled();
 
     expect(result.preTurn.requestClass).toBe('process_explanation');
-    expect(result.preTurn.responseIntent).toBe('faq');
+    expect(result.preTurn.responseIntent).toBe('process_explanation');
     expect(result.preTurn.journeySnapshot).toEqual({
       currentStage: 'RECOMMENDATION',
       currentPhase: 'active',
@@ -720,441 +303,43 @@ describe('buildChatbotV2TurnContext', () => {
       userMessage: 'Open the questionnaire for me.',
     });
 
-    const secondClassifierCall = difyClassifierApi.createChatMessage.mock.calls[0]?.[0];
-    expect(JSON.parse(secondClassifierCall.inputs.allowedResourceHints)).toEqual([
-      {
-        resourceType: 'PROCESS_GUIDE',
-        description: 'Explains the consultation and treatment process.',
-      },
-      {
-        resourceType: 'MEDICAL_INVITATION_STATUS',
-        description: 'Lets the patient check the medical invitation status.',
-      },
-      {
-        resourceType: 'MEDICAL_DOC_UPLOAD',
-        description: 'Lets the patient upload medical records and reports.',
-      },
-      {
-        resourceType: 'QUESTIONNAIRE',
-        description: 'Lets the patient fill in a medical intake questionnaire.',
-      },
-      {
-        resourceType: 'HOSPITAL_RECOMMENDATION',
-        description: 'Lets the patient review or confirm recommended hospitals.',
-      },
-      {
-        resourceType: 'PACKAGE_RECOMMENDATION',
-        description: 'Lets the patient review or confirm recommended packages.',
-      },
-      {
-        resourceType: 'ONLINE_CONSULT_BOOKING',
-        description: 'Lets the patient book an online consultation.',
-      },
-    ]);
+    expect(difyClassifierApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      inputs: expect.objectContaining({
+        allowedResourceHints: JSON.stringify([
+          {
+            resourceType: 'PROCESS_GUIDE',
+            description: 'Explains the consultation and treatment process.',
+          },
+          {
+            resourceType: 'MEDICAL_INVITATION_STATUS',
+            description: 'Lets the patient check the medical invitation status.',
+          },
+          {
+            resourceType: 'MEDICAL_DOC_UPLOAD',
+            description: 'Lets the patient upload medical records and reports.',
+          },
+          {
+            resourceType: 'QUESTIONNAIRE',
+            description: 'Lets the patient fill in a medical intake questionnaire.',
+          },
+          {
+            resourceType: 'HOSPITAL_RECOMMENDATION',
+            description: 'Lets the patient review or confirm recommended hospitals.',
+          },
+          {
+            resourceType: 'PACKAGE_RECOMMENDATION',
+            description: 'Lets the patient review or confirm recommended packages.',
+          },
+        ]),
+      }),
+    }));
     expect(result.preTurn.requestClass).toBe('resource_request');
-    expect(result.preTurn.responseIntent).toBe('process_explanation');
     expect(result.preTurn.targetResourceTypes).toEqual(['QUESTIONNAIRE']);
     expect(result.preTurn.journeySnapshot).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'active',
-    });
-    expect(result.preTurn.resources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
-    ]));
-    expect(result.preTurn.resources).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
-      expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
-    ]));
-  });
-
-  it('moves a PROCESS_GUIDE-only process explanation through EXPLAIN_PROCESS.active and into COLLECT_MEDICAL_INPUTS.pre', async () => {
-    const getAiPolicyContext = {
-      execute: vi.fn().mockResolvedValue({
-        chatbot_v2: {
-          scope_id: 'widget-chat:patient-1:case-1',
-          journey_snapshot: {
-            current_stage: 'EXPLAIN_PROCESS',
-            current_phase: 'pre',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'PROCESS_GUIDE',
-              resource_id: 'process-guide:widget-chat:patient-1:case-1',
-              status: 'available',
-              visibility: { mode: 'global' },
-              payload: { title: 'Understand the process' },
-              actions: ['open'],
-            },
-          ],
-        },
-      }),
-    };
-    const difyClassifierApi = {
-      createChatMessage: vi.fn().mockResolvedValue({
-        answer: JSON.stringify({
-          requestClass: 'process_explanation',
-          targetResourceTypes: ['PROCESS_GUIDE'],
-          includeProgressionFollowUp: false,
-        }),
-      }),
-    };
-    const services = {
-      getAiPolicyContext,
-      difyClassifierApi,
-      difyApi: { createChatMessage: vi.fn() },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn().mockResolvedValue(null),
-      },
-      aiChatMessageRepo: {
-        listBySession: vi.fn(),
-      },
-    } as any;
-
-    const result = await buildChatbotV2TurnContext({
-      services,
-      sessionId: 'widget-chat:patient-1:case-1',
-      userMessage: 'What do you do?',
-    });
-
-    expect(result.preTurn.requestClass).toBe('process_explanation');
-    expect(result.preTurn.responseIntent).toBe('process_explanation');
-    expect(result.preTurn.journeySnapshot).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'active',
-    });
-    expect(result.preTurn.resources).toEqual([
-      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
-    ]);
-
-    const postTurnResult = buildChatbotV2PostTurnContext({
-      foundation: result.foundation,
-      preTurn: result.preTurn,
-      userMessage: 'What do you do?',
-    });
-
-    expect(postTurnResult.journeySnapshot).toEqual({
       currentStage: 'COLLECT_MEDICAL_INPUTS',
       currentPhase: 'pre',
     });
-  });
-
-  it('keeps EXPLAIN_PROCESS.pre anchored when a process explanation turn mixes PROCESS_GUIDE with intake resources', async () => {
-    const getAiPolicyContext = {
-      execute: vi.fn().mockResolvedValue({
-        chatbot_v2: {
-          scope_id: 'widget-chat:patient-1:case-1',
-          journey_snapshot: {
-            current_stage: 'EXPLAIN_PROCESS',
-            current_phase: 'pre',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'PROCESS_GUIDE',
-              resource_id: 'process-guide:widget-chat:patient-1:case-1',
-              status: 'available',
-              visibility: { mode: 'global' },
-              payload: { title: 'Understand the process' },
-              actions: ['open'],
-            },
-          ],
-        },
-      }),
-    };
-    const services = {
-      getAiPolicyContext,
-      difyClassifierApi: {
-        createChatMessage: vi.fn(),
-      },
-      difyApi: { createChatMessage: vi.fn() },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn().mockResolvedValue(null),
-      },
-      aiChatMessageRepo: {
-        listBySession: vi.fn(),
-      },
-    } as any;
-
-    const result = await buildChatbotV2TurnContext({
-      services,
-      sessionId: 'widget-chat:patient-1:case-1',
-      userMessage: 'Can you explain the process and the questionnaire?',
-      classifierOverride: {
-        requestClass: 'process_explanation',
-        targetResourceTypes: ['PROCESS_GUIDE', 'QUESTIONNAIRE'],
-        includeProgressionFollowUp: false,
-      },
-    });
-
-    expect(result.preTurn.requestClass).toBe('process_explanation');
-    expect(result.preTurn.responseIntent).toBe('process_explanation');
-    expect(result.preTurn.journeySnapshot).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'pre',
-    });
-    expect(result.preTurn.resources).toEqual([
-      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
-    ]);
-  });
-
-  it('moves an explicit intake resource request into COLLECT_MEDICAL_INPUTS.active once the lifecycle is already parked at collect pre', async () => {
-    const getAiPolicyContext = {
-      execute: vi.fn().mockResolvedValue({
-        chatbot_v2: {
-          scope_id: 'widget-chat:patient-1:case-1',
-          journey_snapshot: {
-            current_stage: 'COLLECT_MEDICAL_INPUTS',
-            current_phase: 'pre',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'QUESTIONNAIRE',
-              resource_id: 'questionnaire:widget-chat:patient-1:case-1',
-              status: 'available',
-              stage_binding: {
-                stage: 'COLLECT_MEDICAL_INPUTS',
-                phase: 'active',
-              },
-              visibility: { mode: 'journey' },
-              payload: { title: 'Complete the questionnaire' },
-              actions: ['open', 'submit'],
-            },
-          ],
-        },
-      }),
-    };
-    const difyClassifierApi = {
-      createChatMessage: vi.fn().mockResolvedValue({
-        answer: JSON.stringify({
-          requestClass: 'resource_request',
-          targetResourceTypes: ['QUESTIONNAIRE'],
-          includeProgressionFollowUp: false,
-        }),
-      }),
-    };
-    const services = {
-      getAiPolicyContext,
-      difyClassifierApi,
-      difyApi: { createChatMessage: vi.fn() },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn().mockResolvedValue(null),
-      },
-      aiChatMessageRepo: {
-        listBySession: vi.fn(),
-      },
-    } as any;
-
-    const result = await buildChatbotV2TurnContext({
-      services,
-      sessionId: 'widget-chat:patient-1:case-1',
-      userMessage: 'Open the questionnaire for me.',
-    });
-
-    expect(result.preTurn.responseIntent).toBe('resource_request');
-    expect(result.preTurn.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'active',
-    });
-    expect(result.preTurn.resources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
-    ]));
-  });
-
-  it('keeps the first process explanation mandatory by anchoring pure progression in EXPLAIN_PROCESS until a prior explain turn has been completed', async () => {
-    const getAiPolicyContext = {
-      execute: vi.fn().mockResolvedValue({
-        chatbot_v2: {
-          scope_id: 'widget-chat:patient-1:case-1',
-          journey_snapshot: {
-            current_stage: 'EXPLAIN_PROCESS',
-            current_phase: 'active',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'PROCESS_GUIDE',
-              resource_id: 'process-guide:widget-chat:patient-1:case-1',
-              status: 'available',
-              visibility: { mode: 'global' },
-              payload: { title: 'Understand the process' },
-              actions: ['open'],
-            },
-          ],
-        },
-      }),
-    };
-    const difyClassifierApi = {
-      createChatMessage: vi.fn().mockResolvedValue({
-        answer: JSON.stringify({
-          requestClass: 'progression_request',
-          targetResourceTypes: ['QUESTIONNAIRE', 'MEDICAL_DOC_UPLOAD'],
-          includeProgressionFollowUp: false,
-        }),
-      }),
-    };
-    const services = {
-      getAiPolicyContext,
-      difyClassifierApi,
-      difyApi: { createChatMessage: vi.fn() },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn().mockResolvedValue(null),
-      },
-      aiChatMessageRepo: {
-        listBySession: vi.fn(),
-      },
-    } as any;
-
-    const result = await buildChatbotV2TurnContext({
-      services,
-      sessionId: 'widget-chat:patient-1:case-1',
-      userMessage: 'Before I upload anything, how long does this usually take?',
-    });
-
-    expect(result.preTurn.journeySnapshot).toEqual({
-      currentStage: 'EXPLAIN_PROCESS',
-      currentPhase: 'active',
-    });
-    expect(result.preTurn.resources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
-    ]));
-  });
-
-  it('lets a later pure progression advance COLLECT_MEDICAL_INPUTS.pre into active once the explain lifecycle has already completed', async () => {
-    const getAiPolicyContext = {
-      execute: vi.fn().mockResolvedValue({
-        chatbot_v2: {
-          scope_id: 'widget-chat:patient-1:case-1',
-          journey_snapshot: {
-            current_stage: 'COLLECT_MEDICAL_INPUTS',
-            current_phase: 'pre',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'QUESTIONNAIRE',
-              resource_id: 'questionnaire:widget-chat:patient-1:case-1',
-              status: 'available',
-              stage_binding: {
-                stage: 'COLLECT_MEDICAL_INPUTS',
-                phase: 'active',
-              },
-              visibility: { mode: 'journey' },
-              payload: { title: 'Complete the questionnaire' },
-              actions: ['open', 'submit'],
-            },
-          ],
-        },
-      }),
-    };
-    const difyClassifierApi = {
-      createChatMessage: vi.fn().mockResolvedValue({
-        answer: JSON.stringify({
-          requestClass: 'progression_request',
-          targetResourceTypes: ['QUESTIONNAIRE', 'MEDICAL_DOC_UPLOAD'],
-          includeProgressionFollowUp: false,
-        }),
-      }),
-    };
-    const services = {
-      getAiPolicyContext,
-      difyClassifierApi,
-      difyApi: { createChatMessage: vi.fn() },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn().mockResolvedValue(null),
-      },
-      aiChatMessageRepo: {
-        listBySession: vi.fn(),
-      },
-    } as any;
-
-    const result = await buildChatbotV2TurnContext({
-      services,
-      sessionId: 'widget-chat:patient-1:case-1',
-      userMessage: 'Okay, then what information do you need next?',
-    });
-
-    expect(result.preTurn.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'active',
-    });
-  });
-
-  it('keeps explicit questionnaire and upload hints available even after the journey has moved past EXPLAIN_PROCESS', async () => {
-    const getAiPolicyContext = {
-      execute: vi.fn().mockResolvedValue({
-        chatbot_v2: {
-          scope_id: 'widget-chat:patient-1:case-1',
-          journey_snapshot: {
-            current_stage: 'RECOMMENDATION',
-            current_phase: 'pre',
-          },
-          allowed_resources: [
-            {
-              resource_type: 'PROCESS_GUIDE',
-              resource_id: 'process-guide:widget-chat:patient-1:case-1',
-              status: 'available',
-              visibility: {
-                mode: 'global',
-              },
-              payload: {
-                title: 'Understand the process',
-              },
-              actions: ['open'],
-            },
-          ],
-        },
-      }),
-    };
-    const difyClassifierApi = {
-      createChatMessage: vi.fn().mockResolvedValue({
-        answer: JSON.stringify({
-          requestClass: 'resource_request',
-          targetResourceTypes: ['QUESTIONNAIRE'],
-          includeProgressionFollowUp: false,
-        }),
-      }),
-    };
-    const services = {
-      getAiPolicyContext,
-      difyClassifierApi,
-      difyApi: {
-        createChatMessage: vi.fn(),
-      },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn().mockResolvedValue(null),
-      },
-      aiChatMessageRepo: {
-        listBySession: vi.fn(),
-      },
-    } as any;
-
-    await buildChatbotV2TurnContext({
-      services,
-      sessionId: 'widget-chat:patient-1:case-1',
-      userMessage: 'Open the questionnaire for me.',
-    });
-
-    const classifierCall = difyClassifierApi.createChatMessage.mock.calls[0]?.[0];
-    const allowedResourceHints = JSON.parse(classifierCall.inputs.allowedResourceHints);
-    expect(allowedResourceHints).toEqual(expect.arrayContaining([
-      {
-        resourceType: 'MEDICAL_DOC_UPLOAD',
-        description: 'Lets the patient upload medical records and reports.',
-      },
-      {
-        resourceType: 'QUESTIONNAIRE',
-        description: 'Lets the patient fill in a medical intake questionnaire.',
-      },
-      {
-        resourceType: 'HOSPITAL_RECOMMENDATION',
-        description: 'Lets the patient review or confirm recommended hospitals.',
-      },
-      {
-        resourceType: 'PACKAGE_RECOMMENDATION',
-        description: 'Lets the patient review or confirm recommended packages.',
-      },
-      {
-        resourceType: 'ONLINE_CONSULT_BOOKING',
-        description: 'Lets the patient book an online consultation.',
-      },
-    ]));
+    expect(result.preTurn.resources.map((resource) => resource.resourceType)).toEqual(['QUESTIONNAIRE']);
   });
 
   it('keeps a newer stored chatbot_v2 floor from rewinding back to EXPLAIN_PROCESS on follow-up turns', async () => {
@@ -1578,7 +763,7 @@ describe('buildChatbotV2TurnContext', () => {
     });
   });
 
-  it('auto-bridges a COLLECT_MEDICAL_INPUTS.post floor into RECOMMENDATION.pre after the confirmation turn completes', () => {
+  it('preserves a COLLECT_MEDICAL_INPUTS.post floor over truth-derived RECOMMENDATION.active until the post acknowledgement has been delivered', () => {
     const result = buildChatbotV2PostTurnContext({
       foundation: {
         scopeId: 'widget-chat:patient-1:case-1',
@@ -1641,12 +826,12 @@ describe('buildChatbotV2TurnContext', () => {
     });
 
     expect(result.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'pre',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
     });
   });
 
-  it('auto-bridges a RECOMMENDATION.post floor into ONLINE_CONSULT.pre after the confirmation turn completes', () => {
+  it('preserves a RECOMMENDATION.post floor over truth-derived ONLINE_CONSULT.pre until the recommendation confirmation has been acknowledged', () => {
     const result = buildChatbotV2PostTurnContext({
       foundation: {
         scopeId: 'widget-chat:patient-1:case-1',
@@ -1710,12 +895,12 @@ describe('buildChatbotV2TurnContext', () => {
     });
 
     expect(result.journeySnapshot).toEqual({
-      currentStage: 'ONLINE_CONSULT',
-      currentPhase: 'pre',
+      currentStage: 'RECOMMENDATION',
+      currentPhase: 'post',
     });
   });
 
-  it('still bridges a COLLECT_MEDICAL_INPUTS.post floor into RECOMMENDATION.pre even if refreshed truth has already moved further ahead', () => {
+  it('preserves a COLLECT_MEDICAL_INPUTS.post floor over truth-derived ONLINE_CONSULT.pre until the intake acknowledgement has been delivered', () => {
     const result = buildChatbotV2PostTurnContext({
       foundation: {
         scopeId: 'widget-chat:patient-1:case-1',
@@ -1779,209 +964,8 @@ describe('buildChatbotV2TurnContext', () => {
     });
 
     expect(result.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'pre',
-    });
-  });
-
-  it('does not apply progression advancement twice in the same turn when preTurn already moved into recommendation pre', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'COLLECT_MEDICAL_INPUTS',
-          currentPhase: 'post',
-        },
-        truth: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [
-          {
-            resourceType: 'HOSPITAL_RECOMMENDATION',
-            resourceId: 'hospital-recommendation:widget-chat:patient-1:case-1',
-            status: 'available',
-            stageBinding: { stage: 'RECOMMENDATION', phase: 'active' },
-            visibility: { mode: 'journey' },
-            payload: {},
-            actions: ['open', 'submit'],
-          },
-        ],
-        classification: {
-          requestClass: 'progression_request',
-          targetResourceTypes: ['PROCESS_GUIDE'],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: false,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'RECOMMENDATION',
-          currentPhase: 'pre',
-        },
-        resources: [
-          {
-            resourceType: 'HOSPITAL_RECOMMENDATION',
-            resourceId: 'hospital-recommendation:widget-chat:patient-1:case-1',
-            status: 'available',
-            stageBinding: { stage: 'RECOMMENDATION', phase: 'active' },
-            visibility: { mode: 'journey' },
-            payload: {},
-            actions: ['open', 'submit'],
-          },
-        ],
-        truthSummary: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        requestClass: 'progression_request',
-        responseIntent: 'progression_request',
-        targetResourceTypes: ['PROCESS_GUIDE'],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'Can you open the questionnaire for me?',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'pre',
-    });
-  });
-
-  it('does not apply a second progression advancement in postTurn after preTurn already moved recommendation pre into active', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'RECOMMENDATION',
-          currentPhase: 'pre',
-        },
-        truth: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [
-          {
-            resourceType: 'HOSPITAL_RECOMMENDATION',
-            resourceId: 'hospital-recommendation:widget-chat:patient-1:case-1',
-            status: 'available',
-            stageBinding: { stage: 'RECOMMENDATION', phase: 'active' },
-            visibility: { mode: 'journey' },
-            payload: {},
-            actions: ['open', 'submit'],
-          },
-        ],
-        classification: {
-          requestClass: 'progression_request',
-          targetResourceTypes: ['PROCESS_GUIDE'],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: false,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'RECOMMENDATION',
-          currentPhase: 'active',
-        },
-        resources: [
-          {
-            resourceType: 'HOSPITAL_RECOMMENDATION',
-            resourceId: 'hospital-recommendation:widget-chat:patient-1:case-1',
-            status: 'available',
-            stageBinding: { stage: 'RECOMMENDATION', phase: 'active' },
-            visibility: { mode: 'journey' },
-            payload: {},
-            actions: ['open', 'submit'],
-          },
-        ],
-        truthSummary: {
-          medicalInputsSubmitted: true,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        requestClass: 'progression_request',
-        responseIntent: 'progression_request',
-        targetResourceTypes: ['PROCESS_GUIDE'],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'Can you open the questionnaire for me?',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'active',
-    });
-  });
-
-  it('keeps a handoff confirmation turn anchored at active before any explicit post-turn execution acknowledgement', () => {
-    const result = buildChatbotV2PostTurnContext({
-      foundation: {
-        scopeId: 'widget-chat:patient-1:case-1',
-        journeySnapshot: {
-          currentStage: 'HUMAN_HANDOFF',
-          currentPhase: 'pre',
-        },
-        truth: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        resources: [
-          {
-            resourceType: 'HUMAN_HANDOFF',
-            resourceId: 'human-handoff:widget-chat:patient-1:case-1',
-            status: 'available',
-            stageBinding: { stage: 'HUMAN_HANDOFF', phase: 'active' },
-            visibility: { mode: 'global' },
-            payload: {},
-            actions: ['request_human'],
-          },
-        ],
-        classification: {
-          requestClass: 'progression_request',
-          targetResourceTypes: [],
-          includeProgressionFollowUp: false,
-        },
-        requiresFaqGrounding: false,
-        activeHospitalContext: null,
-      },
-      preTurn: {
-        journeySnapshot: {
-          currentStage: 'HUMAN_HANDOFF',
-          currentPhase: 'active',
-        },
-        resources: [
-          {
-            resourceType: 'HUMAN_HANDOFF',
-            resourceId: 'human-handoff:widget-chat:patient-1:case-1',
-            status: 'available',
-            stageBinding: { stage: 'HUMAN_HANDOFF', phase: 'active' },
-            visibility: { mode: 'global' },
-            payload: {},
-            actions: ['request_human'],
-          },
-        ],
-        truthSummary: {
-          medicalInputsSubmitted: false,
-          recommendationConfirmed: false,
-          onlineConsultSubmitted: false,
-        },
-        requestClass: 'progression_request',
-        responseIntent: 'progression_request',
-        targetResourceTypes: [],
-        includeProgressionFollowUp: false,
-      },
-      userMessage: 'Yes, please send my case to the administrator team now.',
-    });
-
-    expect(result.journeySnapshot).toEqual({
-      currentStage: 'HUMAN_HANDOFF',
-      currentPhase: 'active',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
     });
   });
 });

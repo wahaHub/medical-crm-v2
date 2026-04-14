@@ -319,7 +319,6 @@ function buildChatbotV2Foundation(input: {
     scopeId: input.scopeId,
     truth,
     journeySnapshot,
-    hasCompletedInitialProcessExplanation: false,
     allowedResources: input.resourceRegistry.listResources({
       scopeId: input.scopeId,
       journeySnapshot,

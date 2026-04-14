@@ -22,6 +22,7 @@ import {
   generateId,
 } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
+import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
 import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
@@ -236,7 +237,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     ? extractWorkflowState(sessionMessages)
     : { caseId: null, patientId: null, ticketId: null, lastConvertAction: null };
   const sessionCaseId = workflowState.caseId ?? extractWidgetSessionCaseId(session.sessionId);
-  const postTurnChatbotV2Base = buildChatbotV2PostTurnContext({
+  const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
     foundation: chatbotV2Turn.foundation,
     preTurn: chatbotV2Turn.preTurn,
     userMessage: normalizedUserMessage,
@@ -249,23 +250,20 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     richAction,
     sessionCaseId,
   );
-  const conversionDraft = richAction === 'INVITE_ONLINE_CONSULT'
-    ? buildConsultConversionDraft(
-        session.sessionId,
-        mergeConsultCollectedFields(sessionMessages, normalized.collectedFields),
-      )
-    : null;
-  const postTurnChatbotV2 = {
-    ...postTurnChatbotV2Base,
-    resources: enrichChatbotV2Resources({
-      resources: postTurnChatbotV2Base.resources,
-      shortlist: normalized.shortlist,
-      sessionCaseId,
-      sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
-      templateId,
-      conversionDraft,
-    }),
-  };
+  const blocks = buildChatbotBlocks({
+    richAction,
+    allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
+    shortlist: normalized.shortlist,
+    sessionCaseId,
+    sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+    templateId,
+    conversionDraft: richAction === 'INVITE_ONLINE_CONSULT'
+      ? buildConsultConversionDraft(
+          session.sessionId,
+          mergeConsultCollectedFields(sessionMessages, normalized.collectedFields),
+        )
+      : null,
+  });
 
   const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
@@ -283,6 +281,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       ...normalized.metadata,
       chatbotV2: postTurnChatbotV2,
       classifierResult: chatbotV2Turn.foundation.classification,
+      ...(blocks.length > 0 ? { blocks } : {}),
     },
   });
 
@@ -302,6 +301,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     topic: normalized.topic,
     riskLevel: assistantMessage.riskLevel,
     canAnswer: assistantMessage.canAnswer,
+    nextAction: normalized.nextAction,
     secondaryAction: assistantMessage.secondaryAction,
     responseMode: assistantMessage.responseMode,
     citations: assistantMessage.citations,
@@ -312,6 +312,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     shortlist: assistantMessage.shortlist,
     journeySnapshot: postTurnChatbotV2.journeySnapshot,
     resources: postTurnChatbotV2.resources,
+    blocks,
     metadata: normalizePublicMetadataForHistory(assistantMessage.metadata),
     history: {
       userMessageId: userMessage.id,
@@ -635,11 +636,13 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       topic: asString(message.metadata.topic) ?? null,
       riskLevel: message.riskLevel,
       canAnswer: message.canAnswer,
+      nextAction: normalizePublicNextAction(message.nextAction ?? undefined),
       secondaryAction: message.secondaryAction,
       responseMode: message.responseMode,
       citations: message.citations,
       reasonCodes: message.reasonCodes,
       shortlist: message.shortlist,
+      blocks: extractStoredChatbotBlocks(message.metadata),
       metadata: normalizePublicMetadataForHistory(message.metadata),
       attachments: toPublicChatbotAttachments(extractChatbotAttachments(message), signedUrls),
       createdAt: message.createdAt.toISOString(),
@@ -1028,136 +1031,6 @@ function buildConsultConversionDraft(
   }
 
   return draft;
-}
-
-function enrichChatbotV2Resources(input: {
-  resources: Awaited<ReturnType<typeof buildChatbotV2PostTurnContext>>['resources'];
-  shortlist: Array<Record<string, unknown>>;
-  sessionCaseId?: string | null;
-  sessionConsultationStatus?: string | null;
-  templateId?: string | null;
-  conversionDraft?: {
-    sessionId: string;
-    name?: string;
-    email?: string;
-    country?: string;
-    conditionSummary?: string;
-    budget?: string;
-  } | null;
-}): Awaited<ReturnType<typeof buildChatbotV2PostTurnContext>>['resources'] {
-  return input.resources.map((resource) => {
-    if (resource.resourceType === 'PROCESS_GUIDE') {
-      return {
-        ...resource,
-        payload: {
-          ...resource.payload,
-          title: 'How the process works',
-          description: 'See the overall medical travel journey.',
-          ctaLabel: 'Open process guide',
-          modalKey: 'MEDICAL_TRAVEL_PROCESS',
-        },
-      };
-    }
-
-    if (resource.resourceType === 'QUESTIONNAIRE') {
-      if (!input.templateId) {
-        return resource;
-      }
-
-      return {
-        ...resource,
-        payload: {
-          ...resource.payload,
-          title: 'Complete your medical questionnaire',
-          description: 'This helps us guide the next step more accurately.',
-          ctaLabel: 'Open questionnaire',
-          templateId: input.templateId,
-        },
-      };
-    }
-
-    if (resource.resourceType === 'HOSPITAL_RECOMMENDATION') {
-      if (!input.sessionCaseId) {
-        return resource;
-      }
-
-      const hospitals = input.shortlist
-        .slice(0, 3)
-        .reduce<Array<{
-          hospitalId: string;
-          name?: string;
-          reason?: string;
-          summary?: string;
-          ctaUrl?: string;
-          thumbnailUrl?: string;
-          thumbnailFallbackUrls?: string[];
-          slug?: string;
-          city?: string;
-          matchType?: string;
-          reasonCodes?: string[];
-        }>>((acc, item) => {
-          const hospitalId = asString(item['hospitalId']);
-          if (!hospitalId) {
-            return acc;
-          }
-
-          acc.push({
-            hospitalId,
-            name: asString(item['name']),
-            reason: asString(item['reason']),
-            summary: asString(item['summary']),
-            ctaUrl: asString(item['ctaUrl']),
-            thumbnailUrl: asString(item['thumbnailUrl']),
-            thumbnailFallbackUrls: asStringArray(item['thumbnailFallbackUrls']),
-            slug: asString(item['slug']),
-            city: asString(item['city']),
-            matchType: asString(item['matchType']),
-            reasonCodes: Array.isArray(item['reasonCodes'])
-              ? item['reasonCodes'].filter((code): code is string => typeof code === 'string')
-              : undefined,
-          });
-
-          return acc;
-        }, []);
-
-      if (hospitals.length === 0) {
-        return resource;
-      }
-
-      return {
-        ...resource,
-        payload: {
-          ...resource.payload,
-          title: 'Recommended hospitals',
-          description: 'Based on your current information, these look like the closest matches.',
-          caseId: input.sessionCaseId,
-          selectPath: '/select-hospitals',
-          hospitals,
-        },
-      };
-    }
-
-    if (resource.resourceType === 'ONLINE_CONSULT_BOOKING') {
-      if (!input.conversionDraft) {
-        return resource;
-      }
-
-      return {
-        ...resource,
-        payload: {
-          ...resource.payload,
-          title: 'Request online consultation',
-          description: 'Submit your consultation request and we will confirm the next step.',
-          requestedAction: 'INVITE_ONLINE_CONSULT',
-          convertPath: '/api/v2/chatbot/convert',
-          consultationStatus: input.sessionConsultationStatus ?? 'not_started',
-          conversionDraft: input.conversionDraft,
-        },
-      };
-    }
-
-    return resource;
-  });
 }
 
 function mergeConsultCollectedFields(
@@ -1910,7 +1783,7 @@ function normalizePublicMetadataForHistory(value: Record<string, unknown>): Reco
     delete root.structured_output;
     root.structuredOutput = applyStrictHistoryStructuredOutput(structuredOutputSource);
   }
-  return asRecord(stripLegacyHistoryUiFields(root));
+  return root;
 }
 
 function carriesChatbotSemanticHistoryEnvelope(source: Record<string, unknown>): boolean {
@@ -1940,38 +1813,6 @@ function normalizeHistoryMetadataValue(value: unknown): unknown {
   return sanitized;
 }
 
-function stripLegacyHistoryUiFields(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => stripLegacyHistoryUiFields(item));
-  }
-
-  if (!value || typeof value !== 'object') {
-    return value;
-  }
-
-  const source = value as Record<string, unknown>;
-  const sanitized = { ...source };
-
-  delete sanitized.blocks;
-
-  const structuredOutput = asRecord(sanitized.structuredOutput);
-  if (Object.keys(structuredOutput).length > 0) {
-    const nextStructuredOutput = { ...structuredOutput };
-    delete nextStructuredOutput.blocks;
-
-    const structuredMetadata = asRecord(nextStructuredOutput.metadata);
-    if (Object.keys(structuredMetadata).length > 0) {
-      const nextStructuredMetadata = { ...structuredMetadata };
-      delete nextStructuredMetadata.blocks;
-      nextStructuredOutput.metadata = nextStructuredMetadata;
-    }
-
-    sanitized.structuredOutput = nextStructuredOutput;
-  }
-
-  return sanitized;
-}
-
 function applyStrictHistoryCanonicalEnvelope(source: Record<string, unknown>): Record<string, unknown> {
   return composeCanonicalMetadataEnvelope(
     source,
@@ -1983,7 +1824,18 @@ function applyStrictHistoryCanonicalEnvelope(source: Record<string, unknown>): R
       mentionsCondition: asBoolean(source.mentionsCondition) ?? asBoolean(source.mentions_condition),
       mentionsDoctorOrHospitalNeed: asBoolean(source.mentionsDoctorOrHospitalNeed) ?? asBoolean(source.mentions_doctor_or_hospital_need),
     }),
-    {},
+    buildCanonicalActionMetadata({
+      nextAction: normalizePublicNextAction(
+        asString(source.publicNextAction)
+        ?? asString(source.public_next_action)
+        ?? asString(source.nextAction)
+        ?? asString(source.next_action),
+      ),
+      internalNextAction: normalizeNextAction(
+        asString(source.internalNextAction)
+        ?? asString(source.internal_next_action),
+      ),
+    }),
   );
 }
 
@@ -2000,7 +1852,13 @@ function applyStrictHistoryStructuredOutput(source: Record<string, unknown>): Re
     buildCanonicalSemanticMetadata({
       resolvedIntent: asString(source.resolvedIntent) ?? asString(source.resolved_intent),
     }),
-    {},
+    buildCanonicalActionMetadata({
+      nextAction,
+      internalNextAction: normalizeNextAction(
+        asString(source.internalNextAction)
+        ?? asString(source.internal_next_action),
+      ),
+    }),
   );
   const publicIntent = derivePublicIntent({
     intent: asString(source.intent),
@@ -2023,15 +1881,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function asStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  const values = value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
-  return values.length > 0 ? values : undefined;
 }
 
 function asBoolean(value: unknown): boolean | undefined {

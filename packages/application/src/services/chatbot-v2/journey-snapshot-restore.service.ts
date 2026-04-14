@@ -54,7 +54,7 @@ export function resolvePrimaryJourneySnapshot(input: {
 
   return input.fallback ?? {
     currentStage: 'EXPLAIN_PROCESS',
-    currentPhase: 'pre',
+    currentPhase: 'active',
   };
 }
 

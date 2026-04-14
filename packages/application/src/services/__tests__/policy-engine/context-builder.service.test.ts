@@ -763,9 +763,8 @@ describe('ContextBuilderService', () => {
       source: 'bootstrap',
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
-        currentPhase: 'pre',
+        currentPhase: 'active',
       },
-      hasCompletedInitialProcessExplanation: false,
     });
     expect(context.chatbotV2Foundation.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({

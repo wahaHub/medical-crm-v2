@@ -21,8 +21,7 @@ export class ConversationOrchestratorService {
     const classification = input.classification;
 
     const includeProgressionFollowUpAccepted = this.shouldAcceptProgressionFollowUp(input, classification);
-    const journeyUpdate = this.computeJourneyUpdate(input, classification);
-    const responseIntent = this.computeResponseIntent(input, classification);
+    const journeyUpdate = this.computeJourneyUpdate(input, classification, includeProgressionFollowUpAccepted);
     const projectedSnapshot = journeyUpdate ?? input.journeySnapshot;
     const projectedRegistryInput = this.toRegistryInput(input, projectedSnapshot);
     const projectedAllowedResources = this.resourceRegistry.listResources(projectedRegistryInput);
@@ -46,28 +45,11 @@ export class ConversationOrchestratorService {
       : projectedAllowedResources;
     return {
       requestClass: classification.requestClass,
-      responseIntent,
+      responseIntent: classification.requestClass,
       allowedResources,
       includeProgressionFollowUpAccepted,
-      requiresFaqGrounding: this.requiresFaqGrounding(responseIntent),
+      requiresFaqGrounding: this.requiresFaqGrounding(classification.requestClass),
       journeyUpdate,
-    };
-  }
-
-  orchestratePostTurn(input: {
-    scopeId: string;
-    previousJourneySnapshot?: JourneySnapshot;
-    journeySnapshot: JourneySnapshot;
-    truth: ConversationOrchestratorInput['truth'];
-    assistantNextAction?: string | null;
-    assistantInternalNextAction?: string | null;
-  }): Pick<ConversationOrchestrationResult, 'allowedResources' | 'journeyUpdate'> {
-    const journeyUpdate = this.computePostTurnJourneyUpdate(input);
-    const projectedSnapshot = journeyUpdate ?? input.journeySnapshot;
-    const projectedRegistryInput = this.toRegistryInput(input, projectedSnapshot);
-    return {
-      journeyUpdate,
-      allowedResources: this.resourceRegistry.listResources(projectedRegistryInput),
     };
   }
 
@@ -83,6 +65,7 @@ export class ConversationOrchestratorService {
       requestClass: ConversationOrchestrationResult['requestClass'];
       targetResourceTypes: string[];
     },
+    includeProgressionFollowUpAccepted: boolean,
   ): JourneySnapshot | undefined {
     if (
       classification.requestClass === 'human_help_request'
@@ -94,16 +77,25 @@ export class ConversationOrchestratorService {
     }
 
     if (input.journeySnapshot.currentStage === 'HUMAN_HANDOFF') {
-      if (
-        input.journeySnapshot.currentPhase === 'pre'
-        && this.isExplicitHandoffAgreement(classification)
-      ) {
+      const isHandoffConfirmation =
+        classification.requestClass === 'human_help_request'
+        || classification.requestClass === 'progression_request'
+        || (
+          classification.requestClass === 'resource_request'
+          && classification.targetResourceTypes.includes('HUMAN_HANDOFF')
+        );
+
+      if (input.journeySnapshot.currentPhase === 'pre' && isHandoffConfirmation) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
           type: 'ENTER_HUMAN_HANDOFF_ACTIVE',
         });
       }
 
-      return undefined;
+      if (input.journeySnapshot.currentPhase === 'active' && isHandoffConfirmation) {
+        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
+          type: 'ENTER_HUMAN_HANDOFF_POST',
+        });
+      }
     }
 
     if (
@@ -137,24 +129,64 @@ export class ConversationOrchestratorService {
     }
 
     if (input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS') {
-      if (input.journeySnapshot.currentPhase === 'pre') {
-        if (this.isExplicitExplainAgreement(classification)) {
-          return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-            type: 'ENTER_EXPLAIN_PROCESS_ACTIVE',
-          });
-        }
-
-        return undefined;
+      if (
+        classification.requestClass === 'progression_request'
+        || includeProgressionFollowUpAccepted
+        || (
+          classification.requestClass === 'resource_request'
+          && classification.targetResourceTypes.some((resourceType) =>
+            resourceType === 'MEDICAL_DOC_UPLOAD'
+            || resourceType === 'QUESTIONNAIRE'
+            || resourceType === 'HOSPITAL_RECOMMENDATION'
+            || resourceType === 'PACKAGE_RECOMMENDATION'
+          )
+        )
+      ) {
+        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
+          type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE',
+        });
       }
-
-      return undefined;
     }
 
     if (input.journeySnapshot.currentStage === 'COLLECT_MEDICAL_INPUTS') {
-      const targetsCurrentCollectStep = this.targetsCollectMedicalInputs(classification.targetResourceTypes);
+      const targetsCurrentCollectStep = classification.targetResourceTypes.some((resourceType) =>
+        resourceType === 'MEDICAL_DOC_UPLOAD'
+        || resourceType === 'QUESTIONNAIRE',
+      );
+      if (
+        input.journeySnapshot.currentPhase === 'active'
+        && (
+          (
+            classification.requestClass === 'progression_request'
+            && !targetsCurrentCollectStep
+          )
+          || includeProgressionFollowUpAccepted
+          || (
+            classification.requestClass === 'resource_request'
+            && classification.targetResourceTypes.some((resourceType) =>
+              resourceType === 'HOSPITAL_RECOMMENDATION'
+              || resourceType === 'PACKAGE_RECOMMENDATION'
+            )
+          )
+        )
+      ) {
+        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
+          type: 'ENTER_RECOMMENDATION_PRE',
+        });
+      }
+
       if (
         input.journeySnapshot.currentPhase === 'pre'
-        && this.isExplicitStageAgreement(classification, targetsCurrentCollectStep)
+        && (
+          classification.requestClass === 'progression_request'
+          || (
+            classification.requestClass === 'resource_request'
+            && classification.targetResourceTypes.some((resourceType) =>
+              resourceType === 'MEDICAL_DOC_UPLOAD'
+              || resourceType === 'QUESTIONNAIRE'
+            )
+          )
+        )
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
           type: 'ENTER_COLLECT_MEDICAL_INPUTS_ACTIVE',
@@ -162,22 +194,63 @@ export class ConversationOrchestratorService {
       }
 
       if (
-        input.journeySnapshot.currentPhase === 'active'
-        && this.shouldDismissCollectMedicalInputs(classification, targetsCurrentCollectStep)
+        input.journeySnapshot.currentPhase === 'post'
+        && (
+          classification.requestClass === 'progression_request'
+          || includeProgressionFollowUpAccepted
+          || (
+            classification.requestClass === 'resource_request'
+            && classification.targetResourceTypes.some((resourceType) =>
+              resourceType === 'HOSPITAL_RECOMMENDATION'
+              || resourceType === 'PACKAGE_RECOMMENDATION'
+            )
+          )
+        )
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_COLLECT_MEDICAL_INPUTS_POST',
+          type: 'ENTER_RECOMMENDATION_PRE',
         });
       }
-
-      return undefined;
     }
 
     if (input.journeySnapshot.currentStage === 'RECOMMENDATION') {
-      const targetsCurrentRecommendationStep = this.targetsRecommendation(classification.targetResourceTypes);
+      const targetsCurrentRecommendationStep = classification.targetResourceTypes.some((resourceType) =>
+        resourceType === 'HOSPITAL_RECOMMENDATION'
+        || resourceType === 'PACKAGE_RECOMMENDATION',
+      );
+      if (
+        input.journeySnapshot.currentPhase === 'active'
+        && (
+          (
+            classification.requestClass === 'progression_request'
+            && !targetsCurrentRecommendationStep
+          )
+          || includeProgressionFollowUpAccepted
+          || (
+            classification.requestClass === 'resource_request'
+            && classification.targetResourceTypes.some((resourceType) =>
+              resourceType === 'ONLINE_CONSULT_BOOKING'
+            )
+          )
+        )
+      ) {
+        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
+          type: 'ENTER_ONLINE_CONSULT_PRE',
+        });
+      }
+
       if (
         input.journeySnapshot.currentPhase === 'pre'
-        && this.isExplicitStageAgreement(classification, targetsCurrentRecommendationStep)
+        && (
+          classification.requestClass === 'progression_request'
+          || (
+            classification.requestClass === 'resource_request'
+            && classification.targetResourceTypes.some((resourceType) =>
+              resourceType === 'HOSPITAL_RECOMMENDATION'
+              || resourceType === 'PACKAGE_RECOMMENDATION'
+            )
+          )
+        )
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
           type: 'ENTER_RECOMMENDATION_ACTIVE',
@@ -185,73 +258,41 @@ export class ConversationOrchestratorService {
       }
 
       if (
-        input.journeySnapshot.currentPhase === 'active'
-        && this.shouldDismissRecommendation(classification, targetsCurrentRecommendationStep)
+        input.journeySnapshot.currentPhase === 'post'
+        && (
+          classification.requestClass === 'progression_request'
+          || includeProgressionFollowUpAccepted
+          || (
+            classification.requestClass === 'resource_request'
+            && classification.targetResourceTypes.some((resourceType) =>
+              resourceType === 'ONLINE_CONSULT_BOOKING'
+            )
+          )
+        )
       ) {
         return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_RECOMMENDATION_POST',
+          type: 'ENTER_ONLINE_CONSULT_PRE',
         });
       }
-
-      return undefined;
     }
 
     if (
       input.journeySnapshot.currentStage === 'ONLINE_CONSULT'
-    ) {
-      if (
-        input.journeySnapshot.currentPhase === 'pre'
-        && this.isExplicitStageAgreement(
-          classification,
+      && input.journeySnapshot.currentPhase === 'pre'
+      && (
+        classification.requestClass === 'progression_request'
+        || (
           classification.requestClass === 'resource_request'
-            && classification.targetResourceTypes.includes('ONLINE_CONSULT_BOOKING'),
+          && classification.targetResourceTypes.includes('ONLINE_CONSULT_BOOKING')
         )
-      ) {
-        return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-          type: 'ENTER_ONLINE_CONSULT_ACTIVE',
-        });
-      }
-
-      return undefined;
+      )
+    ) {
+      return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
+        type: 'ENTER_ONLINE_CONSULT_ACTIVE',
+      });
     }
 
     return undefined;
-  }
-
-  private computeResponseIntent(
-    input: ConversationOrchestratorInput,
-    classification: {
-      requestClass: ConversationOrchestrationResult['requestClass'];
-      targetResourceTypes?: string[];
-    },
-  ): ConversationOrchestrationResult['responseIntent'] {
-    if (
-      input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
-      && input.journeySnapshot.currentPhase === 'pre'
-      && this.isExplicitExplainAgreement({
-        requestClass: classification.requestClass,
-        targetResourceTypes: classification.targetResourceTypes ?? [],
-      })
-    ) {
-      return 'process_explanation';
-    }
-
-    if (
-      input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
-      && input.journeySnapshot.currentPhase === 'active'
-      && classification.requestClass !== 'human_help_request'
-    ) {
-      return 'process_explanation';
-    }
-
-    if (
-      classification.requestClass === 'process_explanation'
-      && input.journeySnapshot.currentStage !== 'EXPLAIN_PROCESS'
-    ) {
-      return 'faq';
-    }
-
-    return classification.requestClass;
   }
 
   private shouldAcceptProgressionFollowUp(
@@ -275,149 +316,8 @@ export class ConversationOrchestratorService {
     return input.journeySnapshot.currentStage !== 'HUMAN_HANDOFF';
   }
 
-  private computePostTurnJourneyUpdate(input: {
-    previousJourneySnapshot?: JourneySnapshot;
-    journeySnapshot: JourneySnapshot;
-    truth: ConversationOrchestratorInput['truth'];
-    assistantNextAction?: string | null;
-    assistantInternalNextAction?: string | null;
-  }): JourneySnapshot | undefined {
-    if (
-      input.journeySnapshot.currentStage === 'EXPLAIN_PROCESS'
-      && input.journeySnapshot.currentPhase === 'active'
-      && input.previousJourneySnapshot?.currentStage === 'EXPLAIN_PROCESS'
-      && input.previousJourneySnapshot.currentPhase === 'pre'
-    ) {
-      return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_COLLECT_MEDICAL_INPUTS_PRE',
-      });
-    }
-
-    if (
-      input.journeySnapshot.currentStage === 'COLLECT_MEDICAL_INPUTS'
-      && input.journeySnapshot.currentPhase === 'post'
-    ) {
-      return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_RECOMMENDATION_PRE',
-      });
-    }
-
-    if (
-      input.journeySnapshot.currentStage === 'RECOMMENDATION'
-      && input.journeySnapshot.currentPhase === 'post'
-    ) {
-      return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_ONLINE_CONSULT_PRE',
-      });
-    }
-
-    const normalizedAction = input.assistantInternalNextAction ?? input.assistantNextAction ?? null;
-    if (
-      input.journeySnapshot.currentStage === 'HUMAN_HANDOFF'
-      && input.journeySnapshot.currentPhase === 'active'
-      && normalizedAction === 'HUMAN_HANDOFF'
-    ) {
-      return this.journeyEngine.advanceSnapshot(input.journeySnapshot, {
-        type: 'ENTER_HUMAN_HANDOFF_POST',
-      });
-    }
-
-    return undefined;
-  }
-
-  private isExplicitExplainAgreement(classification: {
-    requestClass: ConversationOrchestrationResult['requestClass'];
-    targetResourceTypes: string[];
-  }): boolean {
-    // In EXPLAIN_PROCESS.pre, asking about the process is not the same as
-    // agreeing to move from the invitation into the single active explain turn.
-    // Treat bare progression, PROCESS_GUIDE-only acceptance, or a
-    // PROCESS_GUIDE-only process explanation as consent.
-    const targetsProcessGuideOnly = classification.targetResourceTypes.length > 0
-      && classification.targetResourceTypes.every((resourceType) => resourceType === 'PROCESS_GUIDE');
-
-    if (classification.requestClass === 'process_explanation') {
-      return targetsProcessGuideOnly;
-    }
-
-    return classification.requestClass === 'progression_request'
-      ? classification.targetResourceTypes.length === 0 || targetsProcessGuideOnly
-      : classification.requestClass === 'resource_request' && targetsProcessGuideOnly;
-  }
-
-  private isExplicitHandoffAgreement(classification: {
-    requestClass: ConversationOrchestrationResult['requestClass'];
-    targetResourceTypes: string[];
-  }): boolean {
-    return classification.requestClass === 'human_help_request'
-      || classification.requestClass === 'progression_request'
-      || (
-        classification.requestClass === 'resource_request'
-        && classification.targetResourceTypes.includes('HUMAN_HANDOFF')
-      );
-  }
-
-  private isExplicitStageAgreement(
-    classification: {
-      requestClass: ConversationOrchestrationResult['requestClass'];
-    },
-    targetsCurrentStageResource: boolean,
-  ): boolean {
-    return classification.requestClass === 'progression_request'
-      || (
-        classification.requestClass === 'resource_request'
-        && targetsCurrentStageResource
-      );
-  }
-
-  private shouldDismissCollectMedicalInputs(
-    classification: {
-      requestClass: ConversationOrchestrationResult['requestClass'];
-      targetResourceTypes: string[];
-    },
-    targetsCurrentCollectStep: boolean,
-  ): boolean {
-    return (
-      classification.requestClass === 'progression_request'
-      && !targetsCurrentCollectStep
-    ) || (
-      classification.requestClass === 'resource_request'
-      && this.targetsRecommendation(classification.targetResourceTypes)
-    );
-  }
-
-  private shouldDismissRecommendation(
-    classification: {
-      requestClass: ConversationOrchestrationResult['requestClass'];
-      targetResourceTypes: string[];
-    },
-    targetsCurrentRecommendationStep: boolean,
-  ): boolean {
-    return (
-      classification.requestClass === 'progression_request'
-      && !targetsCurrentRecommendationStep
-    ) || (
-      classification.requestClass === 'resource_request'
-      && classification.targetResourceTypes.includes('ONLINE_CONSULT_BOOKING')
-    );
-  }
-
-  private targetsCollectMedicalInputs(targetResourceTypes: string[]): boolean {
-    return targetResourceTypes.some((resourceType) =>
-      resourceType === 'MEDICAL_DOC_UPLOAD'
-      || resourceType === 'QUESTIONNAIRE',
-    );
-  }
-
-  private targetsRecommendation(targetResourceTypes: string[]): boolean {
-    return targetResourceTypes.some((resourceType) =>
-      resourceType === 'HOSPITAL_RECOMMENDATION'
-      || resourceType === 'PACKAGE_RECOMMENDATION',
-    );
-  }
-
   private toRegistryInput(
-    input: Pick<ConversationOrchestratorInput, 'scopeId' | 'journeySnapshot' | 'truth'>,
+    input: ConversationOrchestratorInput,
     journeySnapshot: JourneySnapshot,
   ): ResourceRegistryInput {
     return {

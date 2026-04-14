@@ -342,4 +342,110 @@ describe('GetAiPolicyContextUseCase', () => {
       response_intent: 'human_help_request',
     });
   });
+
+  it('prefers a stored chatbotV2Floor over the current-turn chatbotV2 envelope when restoring the next-turn floor', async () => {
+    const contextBuilder = {
+      build: vi.fn(async () => ({
+        profile: null,
+        chatbotV2Foundation: {
+          source: 'bootstrap',
+          scopeId: 'session-123',
+          truth: {
+            medicalInputsSubmitted: false,
+            recommendationConfirmed: false,
+            onlineConsultSubmitted: false,
+          },
+          journeySnapshot: {
+            currentStage: 'EXPLAIN_PROCESS',
+            currentPhase: 'active',
+          },
+          allowedResources: [],
+        },
+        statusSnapshot: {
+          conditionStatus: 'unknown',
+          formStatus: 'not_started',
+          docUploadStatus: 'none',
+          recommendationStatus: 'not_started',
+          consultationStatus: 'not_introduced',
+          packageStatus: 'not_introduced',
+          handoffStatus: 'not_needed',
+          riskLevel: 'low',
+          trustOrObjection: 'none',
+          lastPolicyDecisionAt: null,
+          lastUserMessageAt: null,
+          lastAssistantMessageAt: null,
+          conversationSummary: '',
+        },
+        activeHospitalContext: null,
+        activeFollowups: [],
+        recentTimeline: [],
+        recentHandoffs: [],
+        recentMessages: [
+          {
+            id: 'assistant-1',
+            role: 'ASSISTANT',
+            content: 'Here is how the process works.',
+            resolvedIntent: null,
+            nextAction: null,
+            secondaryAction: null,
+            responseMode: null,
+            createdAt: new Date('2026-04-14T10:00:00.000Z'),
+            metadata: {
+              chatbotV2: {
+                journeySnapshot: {
+                  currentStage: 'EXPLAIN_PROCESS',
+                  currentPhase: 'active',
+                },
+                resources: [{
+                  resourceType: 'PROCESS_GUIDE',
+                  resourceId: 'process-guide:session-123',
+                  status: 'available',
+                  visibility: { mode: 'global' },
+                  payload: { title: 'Understand our consultation process' },
+                  actions: ['open'],
+                }],
+                requestClass: 'progression_request',
+                responseIntent: 'process_explanation',
+              },
+              chatbotV2Floor: {
+                journeySnapshot: {
+                  currentStage: 'COLLECT_MEDICAL_INPUTS',
+                  currentPhase: 'pre',
+                },
+                resources: [{
+                  resourceType: 'QUESTIONNAIRE',
+                  resourceId: 'questionnaire:session-123',
+                  status: 'available',
+                  visibility: { mode: 'journey' },
+                  payload: { title: 'Complete your medical questionnaire' },
+                  actions: ['open'],
+                }],
+                requestClass: 'progression_request',
+                responseIntent: 'process_explanation',
+              },
+            },
+          },
+        ],
+      })),
+    } as const;
+
+    const useCase = new GetAiPolicyContextUseCase(contextBuilder as never);
+
+    const result = await useCase.execute({
+      sessionId: 'session-123',
+      userMessage: 'What happens next?',
+    });
+
+    expect(result.chatbot_v2_floor).toMatchObject({
+      journey_snapshot: {
+        current_stage: 'COLLECT_MEDICAL_INPUTS',
+        current_phase: 'pre',
+      },
+      allowed_resources: [
+        expect.objectContaining({
+          resource_type: 'QUESTIONNAIRE',
+        }),
+      ],
+    });
+  });
 });

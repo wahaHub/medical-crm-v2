@@ -279,12 +279,10 @@ describe('Chatbot routes', () => {
     expect(json.collectedFields?.country).toBe('Singapore');
     expect(json.missingItems).toEqual(['photo']);
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('MEDICAL_DOC_UPLOAD');
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
+    expect(json.resources.map((resource) => resource.resourceType)).toEqual(['PROCESS_GUIDE']);
     expect(json.resources.map((resource) => resource.resourceType)).not.toContain('ONLINE_CONSULT_BOOKING');
     expect(json.resources.find((resource) => resource.resourceType === 'PROCESS_GUIDE')?.payload).toMatchObject({
       title: 'How the process works',
@@ -390,8 +388,8 @@ describe('Chatbot routes', () => {
     const assistantDraft = mockServices.aiChatMessageRepo.create.mock.calls[1]?.[0];
     expect((storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2).toMatchObject({
       journeySnapshot: {
-        currentStage: 'COLLECT_MEDICAL_INPUTS',
-        currentPhase: 'pre',
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
       },
       requestClass: 'resource_request',
       responseIntent: 'process_explanation',
@@ -534,15 +532,15 @@ describe('Chatbot routes', () => {
     });
 
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
     expect(json.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
     expect(json.resources.map((resource) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
 
     expect(storedChatbotV2.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
     expect(storedChatbotV2.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
     expect(storedChatbotV2.resources.map((resource) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
@@ -555,16 +553,14 @@ describe('Chatbot routes', () => {
     expect(json.resources).toEqual(expect.arrayContaining(storedChatbotV2.resources));
     expect(storedChatbotV2).toMatchObject({
       journeySnapshot: {
-        currentStage: 'COLLECT_MEDICAL_INPUTS',
-        currentPhase: 'pre',
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'active',
       },
       requestClass: 'resource_request',
       responseIntent: 'process_explanation',
       targetResourceTypes: ['PROCESS_GUIDE'],
       resources: expect.arrayContaining([
         expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
-        expect.objectContaining({ resourceType: 'MEDICAL_DOC_UPLOAD' }),
-        expect.objectContaining({ resourceType: 'QUESTIONNAIRE' }),
       ]),
     });
   });
@@ -714,19 +710,30 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('PROCESS_GUIDE');
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('MEDICAL_DOC_UPLOAD');
+    expect(json.resources.map((resource) => resource.resourceType)).toEqual([
+      'PROCESS_GUIDE',
+      'HUMAN_HANDOFF',
+      'MEDICAL_INVITATION_STATUS',
+    ]);
 
     const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
-    const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
+    const storedMetadata = storedAssistantPatch.metadata as Record<string, unknown>;
+    const storedChatbotV2 = storedMetadata.chatbotV2 as {
+      journeySnapshot: { currentStage: string; currentPhase: string };
+    };
+    const storedChatbotV2Floor = storedMetadata.chatbotV2Floor as {
       journeySnapshot: { currentStage: string; currentPhase: string };
     };
     expect(storedChatbotV2.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(storedChatbotV2Floor.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
   });
 
@@ -814,7 +821,11 @@ describe('Chatbot routes', () => {
     const difyPayload = mockServices.difyApi.createChatMessage.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const difyChatbotV2 = JSON.parse(((difyPayload.inputs as Record<string, unknown>).chatbotV2 as string));
     const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
-    const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
+    const storedMetadata = storedAssistantPatch.metadata as Record<string, unknown>;
+    const storedChatbotV2 = storedMetadata.chatbotV2 as {
+      journeySnapshot: { currentStage: string; currentPhase: string };
+    };
+    const storedChatbotV2Floor = storedMetadata.chatbotV2Floor as {
       journeySnapshot: { currentStage: string; currentPhase: string };
     };
 
@@ -916,7 +927,11 @@ describe('Chatbot routes', () => {
     const difyPayload = mockServices.difyApi.createChatMessage.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const difyChatbotV2 = JSON.parse(((difyPayload.inputs as Record<string, unknown>).chatbotV2 as string));
     const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
-    const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
+    const storedMetadata = storedAssistantPatch.metadata as Record<string, unknown>;
+    const storedChatbotV2 = storedMetadata.chatbotV2 as {
+      journeySnapshot: { currentStage: string; currentPhase: string };
+    };
+    const storedChatbotV2Floor = storedMetadata.chatbotV2Floor as {
       journeySnapshot: { currentStage: string; currentPhase: string };
     };
 
@@ -925,13 +940,146 @@ describe('Chatbot routes', () => {
       currentPhase: 'active',
     });
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
     expect(storedChatbotV2.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat keeps the current assistant message aligned to EXPLAIN_PROCESS.active while storing the next-turn floor separately', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession());
+    mockServices.getAiPolicyContext.execute.mockResolvedValue({
+      chatbot_v2: {
+        scope_id: 'session-1',
+        journey_snapshot: {
+          current_stage: 'EXPLAIN_PROCESS',
+          current_phase: 'active',
+        },
+        allowed_resources: [{
+          resource_type: 'PROCESS_GUIDE',
+          resource_id: 'process-guide:session-1',
+          status: 'available',
+          stage_binding: {
+            stage: 'EXPLAIN_PROCESS',
+            phase: 'active',
+          },
+          visibility: { mode: 'journey' },
+          payload: {
+            title: 'Understand our consultation process',
+          },
+          actions: ['open'],
+        }],
+      },
+      chatbot_v2_floor: {
+        journey_snapshot: {
+          current_stage: 'EXPLAIN_PROCESS',
+          current_phase: 'pre',
+        },
+        allowed_resources: [{
+          resource_type: 'PROCESS_GUIDE',
+          resource_id: 'process-guide:session-1',
+          status: 'available',
+          stage_binding: {
+            stage: 'EXPLAIN_PROCESS',
+            phase: 'active',
+          },
+          visibility: { mode: 'journey' },
+          payload: {
+            title: 'Understand our consultation process',
+          },
+          actions: ['open'],
+        }],
+        request_class: 'process_explanation',
+        response_intent: 'process_explanation',
+      },
+    });
+    mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        requestClass: 'progression_request',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
+      }),
+    });
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'dify-conv-process-guide-only',
+      answer: JSON.stringify({
+        answer: 'How the process works.',
+        intent: 'CONSULT',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: null,
+        responseMode: 'grounded_plus_guidance',
+        reasonCodes: ['process_explained'],
+        shortlist: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        hospitalType: 'COSMETIC',
+        message: 'Okay.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    const storedMetadata = storedAssistantPatch.metadata as Record<string, unknown>;
+    const storedChatbotV2 = storedMetadata.chatbotV2 as {
+      journeySnapshot: { currentStage: string; currentPhase: string };
+      resources: Array<{ resourceType: string }>;
+    };
+    const storedChatbotV2Floor = storedMetadata.chatbotV2Floor as {
+      journeySnapshot: { currentStage: string; currentPhase: string };
+      resources: Array<{ resourceType: string }>;
+    };
+
+    expect(json.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(json.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'PROCESS_GUIDE',
+      }),
+    ]));
+    expect(json.resources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
+      }),
+      expect.objectContaining({
+        resourceType: 'MEDICAL_DOC_UPLOAD',
+      }),
+    ]));
+
+    expect(storedChatbotV2.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(storedChatbotV2.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'PROCESS_GUIDE',
+      }),
+    ]));
+    expect(storedChatbotV2Floor.journeySnapshot).toEqual({
       currentStage: 'COLLECT_MEDICAL_INPUTS',
       currentPhase: 'pre',
     });
+    expect(storedChatbotV2Floor.resources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        resourceType: 'QUESTIONNAIRE',
+      }),
+      expect.objectContaining({
+        resourceType: 'MEDICAL_DOC_UPLOAD',
+      }),
+    ]));
   });
 
   it('POST /api/v2/chatbot/chat keeps FAQ overlay in COLLECT_MEDICAL_INPUTS.pre without corrupting the lifecycle gate', async () => {
@@ -1008,7 +1156,11 @@ describe('Chatbot routes', () => {
     const difyPayload = mockServices.difyApi.createChatMessage.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const difyChatbotV2 = JSON.parse(((difyPayload.inputs as Record<string, unknown>).chatbotV2 as string));
     const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
-    const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
+    const storedMetadata = storedAssistantPatch.metadata as Record<string, unknown>;
+    const storedChatbotV2 = storedMetadata.chatbotV2 as {
+      journeySnapshot: { currentStage: string; currentPhase: string };
+    };
+    const storedChatbotV2Floor = storedMetadata.chatbotV2Floor as {
       journeySnapshot: { currentStage: string; currentPhase: string };
     };
 
@@ -1100,7 +1252,11 @@ describe('Chatbot routes', () => {
     const difyPayload = mockServices.difyApi.createChatMessage.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     const difyChatbotV2 = JSON.parse(((difyPayload.inputs as Record<string, unknown>).chatbotV2 as string));
     const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
-    const storedChatbotV2 = (storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2 as {
+    const storedMetadata = storedAssistantPatch.metadata as Record<string, unknown>;
+    const storedChatbotV2 = storedMetadata.chatbotV2 as {
+      journeySnapshot: { currentStage: string; currentPhase: string };
+    };
+    const storedChatbotV2Floor = storedMetadata.chatbotV2Floor as {
       journeySnapshot: { currentStage: string; currentPhase: string };
     };
 
@@ -1109,10 +1265,14 @@ describe('Chatbot routes', () => {
       currentPhase: 'post',
     });
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'RECOMMENDATION',
-      currentPhase: 'pre',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
     });
     expect(storedChatbotV2.journeySnapshot).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'post',
+    });
+    expect(storedChatbotV2Floor.journeySnapshot).toEqual({
       currentStage: 'RECOMMENDATION',
       currentPhase: 'pre',
     });
@@ -1955,8 +2115,8 @@ describe('Chatbot routes', () => {
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
     expect(json.journeySnapshot).toEqual({
-      currentStage: 'COLLECT_MEDICAL_INPUTS',
-      currentPhase: 'pre',
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
     });
     expect(json.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -2943,13 +3103,15 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
-    expect(json.resources.find((resource) => resource.resourceType === 'QUESTIONNAIRE')?.payload).toMatchObject({
-      title: 'Complete your medical questionnaire',
-      description: 'This helps us guide the next step more accurately.',
-      ctaLabel: 'Open questionnaire',
-      templateId: questionnaireTemplateId,
+    const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    const storedChatbotV2Floor = ((storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2Floor as {
+      resources: Array<{ resourceType: string; payload?: Record<string, unknown> }>;
     });
+    expect(storedChatbotV2Floor.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(storedChatbotV2Floor.resources.map((resource) => resource.resourceType)).not.toContain('QUESTIONNAIRE');
   });
 
   it('POST /api/v2/chatbot/chat enriches questionnaire resources from the default template when writeback status is not visible yet', async () => {
@@ -3027,7 +3189,15 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
+    const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    const storedChatbotV2Floor = ((storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2Floor as {
+      resources: Array<{ resourceType: string }>;
+    });
+    expect(storedChatbotV2Floor.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(storedChatbotV2Floor.resources.map((resource) => resource.resourceType)).not.toContain('QUESTIONNAIRE');
     expect(mockServices.getTemplateByDisease.execute).toHaveBeenCalledWith('DEFAULT');
   });
 
@@ -3102,13 +3272,15 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotChatResponseSchema.parse(await res.json());
     expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
-    expect(json.resources.map((resource) => resource.resourceType)).toContain('QUESTIONNAIRE');
-    expect(json.resources.find((resource) => resource.resourceType === 'QUESTIONNAIRE')?.payload).toMatchObject({
-      title: 'Complete your medical questionnaire',
-      description: 'This helps us guide the next step more accurately.',
-      ctaLabel: 'Open questionnaire',
-      templateId: questionnaireTemplateId,
+    const storedAssistantPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    const storedChatbotV2Floor = ((storedAssistantPatch.metadata as Record<string, unknown>).chatbotV2Floor as {
+      resources: Array<{ resourceType: string; payload?: Record<string, unknown> }>;
     });
+    expect(storedChatbotV2Floor.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(storedChatbotV2Floor.resources.map((resource) => resource.resourceType)).not.toContain('QUESTIONNAIRE');
     expect(mockServices.getTemplateByDisease.execute).not.toHaveBeenCalledWith('DEFAULT');
   });
 

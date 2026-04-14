@@ -114,7 +114,9 @@ function readChatbotV2Floor(messages: AiChatMessage[]) {
     }
 
     const metadata = message.metadata as Record<string, unknown> | null | undefined;
-    const floor = metadata?.['chatbotV2'];
+    const floor = metadata?.['chatbotV2Floor']
+      ?? metadata?.['chatbot_v2_floor']
+      ?? metadata?.['chatbotV2'];
     if (!floor || typeof floor !== 'object') {
       continue;
     }

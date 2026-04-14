@@ -236,6 +236,17 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     ? extractWorkflowState(sessionMessages)
     : { caseId: null, patientId: null, ticketId: null, lastConvertAction: null };
   const sessionCaseId = workflowState.caseId ?? extractWidgetSessionCaseId(session.sessionId);
+  const publicChatbotV2 = {
+    ...chatbotV2Turn.preTurn,
+    resources: enrichChatbotV2Resources({
+      resources: chatbotV2Turn.preTurn.resources,
+      shortlist: normalized.shortlist,
+      sessionCaseId,
+      sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+      templateId: null,
+      conversionDraft: null,
+    }),
+  };
   const postTurnChatbotV2Base = buildChatbotV2PostTurnContext({
     foundation: chatbotV2Turn.foundation,
     preTurn: chatbotV2Turn.preTurn,
@@ -281,7 +292,18 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     shortlist: normalized.shortlist,
     metadata: {
       ...normalized.metadata,
-      chatbotV2: postTurnChatbotV2,
+      chatbotV2: {
+        ...publicChatbotV2,
+        resources: enrichChatbotV2Resources({
+          resources: publicChatbotV2.resources,
+          shortlist: normalized.shortlist,
+          sessionCaseId,
+          sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+          templateId,
+          conversionDraft,
+        }),
+      },
+      chatbotV2Floor: postTurnChatbotV2,
       classifierResult: chatbotV2Turn.foundation.classification,
     },
   });
@@ -310,8 +332,15 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     recommendedProviders: normalized.recommendedProviders,
     reasonCodes: assistantMessage.reasonCodes,
     shortlist: assistantMessage.shortlist,
-    journeySnapshot: postTurnChatbotV2.journeySnapshot,
-    resources: postTurnChatbotV2.resources,
+    journeySnapshot: publicChatbotV2.journeySnapshot,
+    resources: enrichChatbotV2Resources({
+      resources: publicChatbotV2.resources,
+      shortlist: normalized.shortlist,
+      sessionCaseId,
+      sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+      templateId,
+      conversionDraft,
+    }),
     metadata: normalizePublicMetadataForHistory(assistantMessage.metadata),
     history: {
       userMessageId: userMessage.id,
@@ -1953,6 +1982,8 @@ function stripLegacyHistoryUiFields(value: unknown): unknown {
   const sanitized = { ...source };
 
   delete sanitized.blocks;
+  delete sanitized.chatbotV2Floor;
+  delete sanitized.chatbot_v2_floor;
 
   const structuredOutput = asRecord(sanitized.structuredOutput);
   if (Object.keys(structuredOutput).length > 0) {

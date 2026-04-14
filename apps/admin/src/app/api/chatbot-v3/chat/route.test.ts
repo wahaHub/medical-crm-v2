@@ -40,7 +40,7 @@ describe('admin chatbot-v3 chat proxy route', () => {
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(apiFetchMock).toHaveBeenCalledWith(
-      '/api/chatbot/v3/chat',
+      '/api/v3/chatbot/chat',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ sessionId: 'session-1', message: 'hello' }),

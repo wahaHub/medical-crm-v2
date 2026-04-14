@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { apiFetch } from '@/lib/api-fetch';
 
-const CHATBOT_V3_PATH = '/api/chatbot/v3/chat';
+const CHATBOT_V3_PATH = '/api/v3/chatbot/chat';
 
 export async function POST(request: NextRequest): Promise<Response> {
   const body = await request.text();

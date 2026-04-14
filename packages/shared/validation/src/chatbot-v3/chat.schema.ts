@@ -32,7 +32,7 @@ const chatbotV3MessageSchema = z.object({
   text: z.string().min(1),
 }).strict();
 
-const chatbotV3TurnOutcomeSchema = z.object({
+export const chatbotV3TurnOutcomeSchema = z.object({
   status: z.enum(['ok', 'degraded']),
   recoverableErrorCode: z.enum(['TIMEOUT', 'UPSTREAM_UNAVAILABLE', 'UNKNOWN']).nullable(),
 }).strict();

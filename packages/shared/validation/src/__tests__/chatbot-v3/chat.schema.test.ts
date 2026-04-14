@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   chatbotV3ChatRequestSchema,
   chatbotV3ChatResponseSchema,
-  chatbotV3CardSchema,
 } from '../../chatbot-v3/chat.schema';
 
 describe('chatbot-v3 chat schemas', () => {
@@ -82,14 +81,32 @@ describe('chatbot-v3 chat schemas', () => {
     }).success).toBe(false);
   });
 
-  it('rejects the missing prerequisite card type', () => {
-    expect(chatbotV3CardSchema.safeParse({
-      cardId: 'card-missing-prereq-1',
-      cardType: 'MISSING_PREREQUISITE',
-      payload: {
-        stage: 'RECOMMENDATION',
+  it('rejects the missing prerequisite card type in the full response contract', () => {
+    expect(chatbotV3ChatResponseSchema.safeParse({
+      messages: [{
+        role: 'assistant',
+        text: 'Please upload records first.',
+      }],
+      turnOutcome: {
+        status: 'degraded',
+        recoverableErrorCode: 'UNKNOWN',
       },
-      actions: [],
+      cards: [{
+        cardId: 'card-missing-prereq-1',
+        cardType: 'MISSING_PREREQUISITE',
+        payload: {
+          stage: 'RECOMMENDATION',
+        },
+        actions: [],
+      }],
+      journey: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      handoff: {
+        required: false,
+        ticketId: null,
+      },
     }).success).toBe(false);
   });
 });

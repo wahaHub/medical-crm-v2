@@ -822,7 +822,7 @@ export function getServices(): AppServices {
       listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
       getHospital: new GetHospitalUseCase(hospitalManagementRepo, userRepo),
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
-      updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo, syncService),
+      updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo),
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
       generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo, emailService),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),

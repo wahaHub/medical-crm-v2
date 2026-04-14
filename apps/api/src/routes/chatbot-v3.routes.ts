@@ -1,10 +1,15 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
+import { getCookie, setCookie } from 'hono/cookie';
 import {
   deriveJourneyTruthFromStatusSnapshot,
   OrchestratorV3Service,
   SupervisorService,
 } from '@medical-crm/application';
+import {
+  AiChatSession as AiChatSessionEntity,
+} from '@medical-crm/domain';
 import type {
   AiChatSession,
   AiChatStatusSnapshot,
@@ -36,18 +41,27 @@ import { createToolGateway, type ToolResult } from './chatbot-v3/tool-gateway.js
 type AppServices = ReturnType<typeof getServices>;
 
 let chatbotV3RuntimeSingleton: ConversationOrchestratorV3RuntimeService | null = null;
+const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 
 export const chatbotV3PublicRoutes = new Hono();
 
 chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   const body = chatbotV3ChatRequestSchema.parse(await c.req.json());
   const services = getServices();
-  const session = await services.aiChatSessionRepo.findBySessionId(body.sessionId);
+  let session = await services.aiChatSessionRepo.findBySessionId(body.sessionId);
+  if (!session) {
+    return c.json({ error: 'Chatbot session not found' }, 404);
+  }
+  const authorization = await authorizeOrBootstrapSessionAccess(c, services, session);
+  if (!authorization.ok) {
+    return authorization.response;
+  }
+  session = authorization.session;
   const current = resolveCurrentStage(session?.statusSnapshot);
 
   const result = await getChatbotV3Runtime().handleTurn({
     sessionId: body.sessionId,
-    turnId: createDeterministicTurnId(body),
+    turnId: resolveTurnId(c),
     message: body.message,
     attachments: body.attachments,
     current,
@@ -61,6 +75,9 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   });
 
   const response = chatbotV3ChatResponseSchema.parse(buildResponse(body, result, session));
+  if (authorization.sessionSecretToSet) {
+    setChatbotSessionSecretCookie(c, authorization.sessionSecretToSet);
+  }
   return c.json(response);
 });
 
@@ -75,12 +92,18 @@ function getChatbotV3Runtime(): ConversationOrchestratorV3RuntimeService {
 function createChatbotV3Runtime(services: AppServices): ConversationOrchestratorV3RuntimeService {
   const gateway = createToolGateway({
     handlers: {
+      faq: {
+        search: async ({ query, sessionId }) => searchFaqHits(services, sessionId, query),
+      },
       records: {
         status: async ({ sessionId }) => ({
           state: deriveRecordsState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
         }),
       },
       recommendation: {
+        generate: async ({ sessionId }) => ({
+          recommendations: await generateRecommendations(services, sessionId),
+        }),
         status: async ({ sessionId }) => ({
           state: deriveRecommendationState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
         }),
@@ -96,6 +119,9 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
             await services.aiChatSessionRepo.findBySessionId(sessionId),
           ),
         }),
+      },
+      handoff: {
+        create: async ({ sessionId, reason }) => createHandoff(services, sessionId, reason),
       },
     },
   });
@@ -117,15 +143,10 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
   });
 }
 
-function createDeterministicTurnId(body: ChatbotV3ChatRequest): string {
-  return createHash('sha256')
-    .update(JSON.stringify({
-      sessionId: body.sessionId,
-      message: body.message,
-      attachments: body.attachments ?? [],
-      pageContext: body.pageContext ?? null,
-    }))
-    .digest('hex');
+function resolveTurnId(c: Context): string {
+  return c.req.header('Idempotency-Key')
+    ?? c.req.header('X-Idempotency-Key')
+    ?? randomUUID();
 }
 
 function resolveCurrentStage(
@@ -524,4 +545,159 @@ function asArray(value: unknown): unknown[] {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+async function authorizeOrBootstrapSessionAccess(
+  c: Context,
+  services: AppServices,
+  session: AiChatSession,
+): Promise<
+  | { ok: true; session: AiChatSession; sessionSecretToSet: string | null }
+  | { ok: false; response: Response }
+> {
+  if (!session.sessionSecretHash) {
+    const sessionSecretToSet = createSessionSecret();
+    const updatedSession = await services.aiChatSessionRepo.save(new AiChatSessionEntity({
+      ...session,
+      sessionSecretHash: hashSessionSecret(sessionSecretToSet),
+      updatedAt: new Date(),
+    }));
+
+    return {
+      ok: true,
+      session: updatedSession ?? session,
+      sessionSecretToSet,
+    };
+  }
+
+  const rawSecret = getCookie(c, CHATBOT_SESSION_SECRET_COOKIE);
+  if (!rawSecret || hashSessionSecret(rawSecret) !== session.sessionSecretHash) {
+    return {
+      ok: false,
+      response: c.json({ error: 'Unauthorized' }, 401),
+    };
+  }
+
+  return {
+    ok: true,
+    session,
+    sessionSecretToSet: null,
+  };
+}
+
+function createSessionSecret(): string {
+  return randomBytes(24).toString('hex');
+}
+
+function hashSessionSecret(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function setChatbotSessionSecretCookie(c: Context, value: string): void {
+  setCookie(c, CHATBOT_SESSION_SECRET_COOKIE, value, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60,
+  });
+}
+
+async function searchFaqHits(
+  services: AppServices,
+  sessionId: string | undefined,
+  query: string,
+): Promise<{ hits: Array<Record<string, unknown>> }> {
+  const session = sessionId
+    ? await services.aiChatSessionRepo.findBySessionId(sessionId)
+    : null;
+  if (!services.listFaqItems) {
+    return { hits: [] };
+  }
+
+  try {
+    const result = await services.listFaqItems.execute({
+      page: 1,
+      limit: 5,
+      search: query,
+      hospitalType: session?.hospitalType,
+      isActive: true,
+    }, {
+      userId: 'chatbot-v3',
+      email: 'chatbot-v3@local',
+      role: 'ADMIN',
+      hospitalId: null,
+    });
+
+    return {
+      hits: result.data.map((item) => ({
+        id: item.id,
+        question: item.question,
+        answer: item.answer,
+        category: item.category,
+      })),
+    };
+  } catch {
+    return { hits: [] };
+  }
+}
+
+async function generateRecommendations(
+  services: AppServices,
+  sessionId: string,
+): Promise<Array<Record<string, unknown>>> {
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  const snapshot = session?.statusSnapshot;
+
+  if (hasAnyStatus(snapshot?.recommendationStatus, ['CONFIRMED', 'ACCEPTED'])) {
+    return [{
+      hospitalId: 'existing-selection',
+      name: 'Existing recommended hospital',
+      reason: 'Recommendation already confirmed in the session state.',
+    }];
+  }
+
+  if (hasAnyStatus(snapshot?.docUploadStatus, ['COMPLETED', 'SUBMITTED', 'READY'])
+    || hasAnyStatus(snapshot?.formStatus, ['COMPLETED', 'SUBMITTED'])) {
+    return [{
+      hospitalId: 'pending-review',
+      name: 'Recommendation review pending',
+      reason: 'Records are available and ready for recommendation review.',
+    }];
+  }
+
+  return [];
+}
+
+async function createHandoff(
+  services: AppServices,
+  sessionId: string,
+  reason: string,
+): Promise<{ handoffId?: string; created?: boolean }> {
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!session?.patientId || !services.createTicket) {
+    return { created: false };
+  }
+
+  try {
+    const ticket = await services.createTicket.execute({
+      type: 'AI_ESCALATION',
+      priority: 'MEDIUM',
+      subject: 'Chatbot v3 handoff request',
+      description: reason,
+      sourcePage: '/api/v3/chatbot/chat',
+    }, {
+      userId: session.patientId,
+      email: 'chatbot-v3@local',
+      role: 'PATIENT',
+      hospitalId: null,
+    });
+
+    return {
+      created: true,
+      handoffId: ticket.id,
+    };
+  } catch {
+    return { created: false };
+  }
 }

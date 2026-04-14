@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatbotV3ChatResponseSchema } from '@medical-crm/validation';
 
 const NOW = new Date('2026-04-15T00:00:00.000Z');
+const SESSION_SECRET = 'secret-v3-1';
+const SESSION_SECRET_HASH = createHash('sha256').update(SESSION_SECRET).digest('hex');
 
 const mockServices = {
   idempotencyExecutor: {
@@ -9,6 +12,7 @@ const mockServices = {
   },
   aiChatSessionRepo: {
     findBySessionId: vi.fn(),
+    save: vi.fn(),
   },
   registerHospitalUser: {
     execute: vi.fn(),
@@ -29,7 +33,83 @@ vi.mock('@medical-crm/infrastructure/auth', () => ({
 
 describe('Chatbot v3 public route mounting', () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
+  });
+
+  it('keeps POST /api/v3/chatbot/chat public and returns v3-only fields', async () => {
+    const { default: app } = await import('../index.js');
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const body = res.headers.get('content-type')?.includes('application/json')
+      ? await res.json()
+      : undefined;
+
+    expect(res.status).toBe(200);
+    expect(body.nextAction).toBeUndefined();
+    expect(body.turnOutcome).toBeDefined();
+    expect(chatbotV3ChatResponseSchema.parse(body)).toBeDefined();
+    expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
+  });
+
+  it('returns 404 when the session does not exist', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'missing-session',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(mockServices.idempotencyExecutor.execute).not.toHaveBeenCalled();
+  });
+
+  it('bootstraps a new session secret cookie when the stored hash is missing', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
@@ -58,11 +138,8 @@ describe('Chatbot v3 public route mounting', () => {
       createdAt: NOW,
       updatedAt: NOW,
     });
-  });
 
-  it('keeps POST /api/v3/chatbot/chat public and returns v3-only fields', async () => {
     const { default: app } = await import('../index.js');
-
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -72,22 +149,44 @@ describe('Chatbot v3 public route mounting', () => {
       }),
     });
 
-    const body = res.headers.get('content-type')?.includes('application/json')
-      ? await res.json()
-      : undefined;
-
     expect(res.status).toBe(200);
-    expect(body.nextAction).toBeUndefined();
-    expect(body.turnOutcome).toBeDefined();
-    expect(chatbotV3ChatResponseSchema.parse(body)).toBeDefined();
-    expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
+    expect(res.headers.get('set-cookie')).toContain('chatbot_session_secret=');
+    expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledOnce();
   });
 
-  it('reuses a deterministic idempotency key for concurrent and repeated identical payloads', async () => {
+  it('reuses the same explicit idempotency header for concurrent and repeated retries', async () => {
     const observedKeys: string[] = [];
     let releaseConcurrentTurn: (() => void) | null = null;
     const waitForRelease = new Promise<void>((resolve) => {
       releaseConcurrentTurn = resolve;
+    });
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
     });
 
     mockServices.idempotencyExecutor.execute.mockImplementation(async (key: string, _operation: string, fn: () => Promise<unknown>) => {
@@ -103,7 +202,11 @@ describe('Chatbot v3 public route mounting', () => {
     const { default: app } = await import('../index.js');
     const request = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'retry-key-v3-1',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
       body: JSON.stringify({
         sessionId: 'session-v3-1',
         message: 'Please explain the process.',
@@ -124,7 +227,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(thirdRes.status).toBe(200);
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledTimes(2);
     expect(new Set(observedKeys)).toHaveProperty('size', 1);
-    expect(observedKeys[0]).toContain('session-v3-1:');
+    expect(observedKeys[0]).toContain('session-v3-1:retry-key-v3-1:chatbot-v3-turn');
     expect(observedKeys[0]).toContain(':chatbot-v3-turn');
   });
 });

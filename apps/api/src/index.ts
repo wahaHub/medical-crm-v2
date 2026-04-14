@@ -41,6 +41,7 @@ import patientPublicRoutes from './routes/patient-public.routes.js';
 import patientAuthRoutes from './routes/patient-auth.routes.js';
 import patientProtectedRoutes from './routes/patient-protected.routes.js';
 import { chatbotPublicRoutes } from './routes/chatbot.routes.js';
+import { chatbotV3PublicRoutes } from './routes/chatbot-v3.routes.js';
 app.route('/api/patient', patientPublicRoutes);
 app.route('/api/patient', patientAuthRoutes);
 
@@ -53,6 +54,7 @@ app.route('/', publicBookingRoutes);
 
 // Public: chatbot routes use session-secret / patient-session auth, not Keycloak
 app.route('/', chatbotPublicRoutes);
+app.route('/', chatbotV3PublicRoutes);
 
 // Internal: worker endpoint (X-Internal-Secret header auth, not Keycloak)
 app.route('/', internalRoutes);

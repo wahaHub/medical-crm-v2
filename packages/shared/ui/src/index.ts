@@ -22,6 +22,11 @@ export { DataTable, type Column, type DataTableProps, type PaginationState } fro
 export { PortalLogin, type PortalLoginProps } from './components/portal-login';
 export { ChatLayout, type ChatMessage, type ChatAttachment, type ChatLayoutProps, type ChatHeaderConfig } from './components/chat-layout';
 export {
+  ChatbotV3Cards,
+  type ChatbotV3CardsActionContext,
+  type ChatbotV3CardsProps,
+} from './components/chatbot-v3-cards';
+export {
   MessageConversationSidebar,
   MessageNewConversationModal,
   MessageCaseDetailPanel,

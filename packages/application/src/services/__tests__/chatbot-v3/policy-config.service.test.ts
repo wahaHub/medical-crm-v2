@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parsePolicyConfig as parsePolicyConfigFromIndex } from '../../../index.js';
 import { parsePolicyConfig } from '../../chatbot-v3/policy-config.service.js';
 
 describe('parsePolicyConfig', () => {
@@ -36,26 +37,22 @@ describe('parsePolicyConfig', () => {
     expect(cfg.jumpRules).toEqual([]);
   });
 
-  it('ignores invalid stage entries while keeping valid ones', () => {
-    const cfg = parsePolicyConfig({
+  it('throws when global forceExplainProcessBefore contains an unknown stage', () => {
+    expect(() => parsePolicyConfig({
       globalPolicies: {
         forceExplainProcessBefore: ['RECOMMENDATION', 'INVALID_STAGE'],
       },
+    } as never)).toThrow('globalPolicies.forceExplainProcessBefore contains unknown stage "INVALID_STAGE"');
+  });
+
+  it('throws when stagePrerequisites contains an unknown stage key', () => {
+    expect(() => parsePolicyConfig({
       stagePrerequisites: {
-        RECOMMENDATION: {
-          requiresAll: ['records.saved'],
-        },
         INVALID_STAGE: {
           requiresAll: ['ignored.fact'],
         },
       } as never,
-    } as never);
-
-    expect(cfg.globalPolicies.forceExplainProcessBefore).toEqual(['RECOMMENDATION']);
-    expect(cfg.stagePrerequisites.RECOMMENDATION).toEqual({
-      requiresAll: ['records.saved'],
-    });
-    expect(cfg.stagePrerequisites).not.toHaveProperty('INVALID_STAGE');
+    } as never)).toThrow('stagePrerequisites contains unknown stage key "INVALID_STAGE"');
   });
 
   it('merges partial handoffTriggers overrides over defaults', () => {
@@ -106,5 +103,9 @@ describe('parsePolicyConfig', () => {
       requiresAny: ['facts.ready'],
       denyIfAny: ['facts.blocked'],
     });
+  });
+
+  it('is re-exported from the package index', () => {
+    expect(parsePolicyConfigFromIndex).toBe(parsePolicyConfig);
   });
 });

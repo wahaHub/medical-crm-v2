@@ -14,6 +14,8 @@ export function parsePolicyConfig(input: ChatbotV3PolicyConfigInput = {}): Chatb
   const handoffTriggers: Partial<ChatbotV3PolicyConfig['globalPolicies']['handoffTriggers']> =
     globalPolicies.handoffTriggers ?? {};
   const stagePrerequisites = input.stagePrerequisites ?? {};
+  validateForceExplainProcessBefore(globalPolicies.forceExplainProcessBefore);
+  validateStagePrerequisiteKeys(stagePrerequisites);
   const mergedStagePrerequisites: ChatbotV3PolicyConfig['stagePrerequisites'] = {};
 
   for (const stage of uniqueStageKeys(DEFAULT_POLICY.stagePrerequisites, stagePrerequisites)) {
@@ -28,7 +30,7 @@ export function parsePolicyConfig(input: ChatbotV3PolicyConfigInput = {}): Chatb
 
   return {
     globalPolicies: {
-      forceExplainProcessBefore: filterJourneyStages(globalPolicies.forceExplainProcessBefore)
+      forceExplainProcessBefore: globalPolicies.forceExplainProcessBefore?.slice()
         ?? DEFAULT_POLICY.globalPolicies.forceExplainProcessBefore.slice(),
       handoffTriggers: {
         userRequestedHuman:
@@ -45,18 +47,6 @@ export function parsePolicyConfig(input: ChatbotV3PolicyConfigInput = {}): Chatb
     stagePrerequisites: mergedStagePrerequisites,
     jumpRules: cloneJumpRules(input.jumpRules) ?? DEFAULT_POLICY.jumpRules.slice(),
   };
-}
-
-function filterJourneyStages(values?: readonly string[]): ChatbotV3PolicyConfig['globalPolicies']['forceExplainProcessBefore'] | undefined {
-  if (!values) {
-    return undefined;
-  }
-
-  const filtered = values.filter((value): value is ChatJourneyStage => {
-    return CHATBOT_V3_JOURNEY_STAGE_SET.has(value as ChatJourneyStage);
-  });
-
-  return filtered.length > 0 ? filtered : [];
 }
 
 function mergeStagePrerequisite(
@@ -114,4 +104,30 @@ function cloneJumpRules(
 
 function isKnownJourneyStage(value: string): value is keyof ChatbotV3PolicyConfig['stagePrerequisites'] {
   return CHATBOT_V3_JOURNEY_STAGE_SET.has(value as ChatJourneyStage);
+}
+
+function validateForceExplainProcessBefore(values?: readonly string[]): void {
+  if (!values) {
+    return;
+  }
+
+  for (const value of values) {
+    if (!CHATBOT_V3_JOURNEY_STAGE_SET.has(value as ChatJourneyStage)) {
+      throw new Error(`Invalid chatbot-v3 policy config: globalPolicies.forceExplainProcessBefore contains unknown stage "${value}"`);
+    }
+  }
+}
+
+function validateStagePrerequisiteKeys(
+  stagePrerequisites: ChatbotV3PolicyConfigInput['stagePrerequisites'] | undefined,
+): void {
+  if (!stagePrerequisites) {
+    return;
+  }
+
+  for (const stage of Object.keys(stagePrerequisites)) {
+    if (!isKnownJourneyStage(stage)) {
+      throw new Error(`Invalid chatbot-v3 policy config: stagePrerequisites contains unknown stage key "${stage}"`);
+    }
+  }
 }

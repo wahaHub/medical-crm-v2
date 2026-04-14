@@ -13,6 +13,7 @@ const mockServices = {
   aiChatSessionRepo: {
     findBySessionId: vi.fn(),
     save: vi.fn(),
+    patchStatus: vi.fn(),
   },
   registerHospitalUser: {
     execute: vi.fn(),
@@ -64,6 +65,34 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
     mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, patch: Record<string, unknown>) => ({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: patch['docUploadStatus'] ?? 'submitted',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    }));
   });
 
   it('keeps POST /api/v3/chatbot/chat public and returns v3-only fields', async () => {
@@ -154,6 +183,80 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledOnce();
   });
 
+  it('rejects missing or wrong secret on sessions with a stored hash', async () => {
+    const { default: app } = await import('../index.js');
+
+    const missingSecret = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const wrongSecret = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=wrong-secret',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    expect(missingSecret.status).toBe(401);
+    expect(wrongSecret.status).toBe(401);
+    expect(mockServices.idempotencyExecutor.execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects patient-linked sessions with missing secret hash instead of bootstrapping', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(mockServices.aiChatSessionRepo.save).not.toHaveBeenCalled();
+  });
+
   it('reuses the same explicit idempotency header for concurrent and repeated retries', async () => {
     const observedKeys: string[] = [];
     let releaseConcurrentTurn: (() => void) | null = null;
@@ -229,5 +332,58 @@ describe('Chatbot v3 public route mounting', () => {
     expect(new Set(observedKeys)).toHaveProperty('size', 1);
     expect(observedKeys[0]).toContain('session-v3-1:retry-key-v3-1:chatbot-v3-turn');
     expect(observedKeys[0]).toContain(':chatbot-v3-turn');
+  });
+
+  it('supports attachment turns through the records upload path', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'in_progress',
+        docUploadStatus: 'requested',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: '',
+        attachments: [{
+          fileName: 'report.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot/session-v3-1/report.pdf',
+        }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalled();
   });
 });

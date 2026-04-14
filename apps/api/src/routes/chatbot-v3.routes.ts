@@ -57,7 +57,10 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     return authorization.response;
   }
   session = authorization.session;
-  const current = resolveCurrentStage(session?.statusSnapshot);
+  const current = normalizeCurrentForRequest(
+    resolveCurrentStage(session?.statusSnapshot),
+    body,
+  );
 
   const result = await getChatbotV3Runtime().handleTurn({
     sessionId: body.sessionId,
@@ -96,6 +99,8 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
         search: async ({ query, sessionId }) => searchFaqHits(services, sessionId, query),
       },
       records: {
+        upload: async ({ sessionId, turnId, attachments }) => handleRecordsUpload(services, sessionId, turnId, attachments),
+        save: async ({ sessionId, turnId, records }) => handleRecordsSave(services, sessionId, turnId, records),
         status: async ({ sessionId }) => ({
           state: deriveRecordsState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
         }),
@@ -147,6 +152,20 @@ function resolveTurnId(c: Context): string {
   return c.req.header('Idempotency-Key')
     ?? c.req.header('X-Idempotency-Key')
     ?? randomUUID();
+}
+
+function normalizeCurrentForRequest(
+  current: ConversationOrchestratorV3StageRef,
+  body: ChatbotV3ChatRequest,
+): ConversationOrchestratorV3StageRef {
+  if ((body.attachments?.length ?? 0) > 0 && current.stage === 'EXPLAIN_PROCESS') {
+    return {
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    };
+  }
+
+  return current;
 }
 
 function resolveCurrentStage(
@@ -556,6 +575,12 @@ async function authorizeOrBootstrapSessionAccess(
   | { ok: false; response: Response }
 > {
   if (!session.sessionSecretHash) {
+    if (session.patientId) {
+      return {
+        ok: false,
+        response: c.json({ error: 'Unauthorized' }, 401),
+      };
+    }
     const sessionSecretToSet = createSessionSecret();
     const updatedSession = await services.aiChatSessionRepo.save(new AiChatSessionEntity({
       ...session,
@@ -700,4 +725,67 @@ async function createHandoff(
   } catch {
     return { created: false };
   }
+}
+
+async function handleRecordsUpload(
+  services: AppServices,
+  sessionId: string,
+  turnId: string | undefined,
+  attachments: Array<Record<string, unknown>> | undefined,
+): Promise<{ uploadId?: string; accepted?: boolean }> {
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!session) {
+    return { accepted: false };
+  }
+
+  await patchSessionStatus(services, session, {
+    docUploadStatus: (attachments?.length ?? 0) > 0 ? 'SUBMITTED' : 'IN_PROGRESS',
+  });
+
+  return {
+    accepted: true,
+    uploadId: turnId ?? `${sessionId}-records-upload`,
+  };
+}
+
+async function handleRecordsSave(
+  services: AppServices,
+  sessionId: string,
+  turnId: string | undefined,
+  records: Array<Record<string, unknown>> | undefined,
+): Promise<{ recordIds?: string[]; saved?: boolean }> {
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!session) {
+    return { saved: false, recordIds: [] };
+  }
+
+  await patchSessionStatus(services, session, {
+    docUploadStatus: 'COMPLETED',
+    formStatus: (records?.length ?? 0) > 0 ? 'COMPLETED' : session.statusSnapshot.formStatus,
+  });
+
+  return {
+    saved: true,
+    recordIds: [turnId ?? `${sessionId}-records-save`],
+  };
+}
+
+async function patchSessionStatus(
+  services: AppServices,
+  session: AiChatSession,
+  patch: Partial<AiChatSession['statusSnapshot']>,
+): Promise<AiChatSession> {
+  const patched = await services.aiChatSessionRepo.patchStatus(session.sessionId, patch);
+  if (patched) {
+    return patched;
+  }
+
+  return services.aiChatSessionRepo.save(new AiChatSessionEntity({
+    ...session,
+    statusSnapshot: {
+      ...session.statusSnapshot,
+      ...patch,
+    },
+    updatedAt: new Date(),
+  }));
 }

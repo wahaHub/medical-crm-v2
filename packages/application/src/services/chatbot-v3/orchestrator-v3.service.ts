@@ -1,5 +1,11 @@
 import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
-import { CHATBOT_V3_JOURNEY_STAGES, type ChatbotV3PolicyConfig, type ChatbotV3PolicyConfigInput, type ChatbotV3StagePrerequisites } from './types.js';
+import {
+  CHATBOT_V3_JOURNEY_STAGES,
+  type ChatbotV3JumpRule,
+  type ChatbotV3PolicyConfig,
+  type ChatbotV3PolicyConfigInput,
+  type ChatbotV3StagePrerequisites,
+} from './types.js';
 import { parsePolicyConfig } from './policy-config.service.js';
 
 export type OrchestratorV3Intent =
@@ -73,7 +79,7 @@ export class OrchestratorV3Service {
       return this.handoff(current);
     }
 
-    if (hitsExplainGate(current.stage, targetStage, this.config)) {
+    if (hitsExplainGate(current, targetStage, this.config)) {
       return stay(current, `EXPLAIN_PROCESS must complete before ${targetStage}`);
     }
 
@@ -82,6 +88,25 @@ export class OrchestratorV3Service {
     }
 
     const action = deriveAction(current.stage, targetStage);
+    if (action === 'SKIP') {
+      const matchedRule = findMatchingJumpRule(current.stage, targetStage, this.config.jumpRules, facts);
+      if (!matchedRule) {
+        return stay(current, `No jump rule matched for ${current.stage} -> ${targetStage}`);
+      }
+
+      return {
+        action,
+        from: current,
+        to: {
+          stage: targetStage,
+          phase: 'active',
+        },
+        dispatchAgent: resolveDispatchAgent(targetStage),
+        dispatchSource: 'orchestrator',
+        matchedRuleId: matchedRule.id,
+      };
+    }
+
     const to: OrchestratorV3StageRef = action === 'STAY'
       ? current
       : {
@@ -152,11 +177,12 @@ function hitsHandoffHardPolicy(
 }
 
 function hitsExplainGate(
-  currentStage: ChatJourneyStage,
+  current: OrchestratorV3StageRef,
   targetStage: ChatJourneyStage,
   config: ChatbotV3PolicyConfig,
 ): boolean {
-  return currentStage === 'EXPLAIN_PROCESS'
+  return current.stage === 'EXPLAIN_PROCESS'
+    && current.phase !== 'post'
     && targetStage !== 'EXPLAIN_PROCESS'
     && config.globalPolicies.forceExplainProcessBefore.includes(targetStage);
 }
@@ -172,18 +198,7 @@ function violatesStagePrerequisites(
     return false;
   }
 
-  if (prerequisite.requiresAll?.some((factKey) => !isTruthyFact(facts[factKey]))) {
-    return true;
-  }
-
-  if (prerequisite.requiresAny && prerequisite.requiresAny.length > 0) {
-    const hasAnyRequirement = prerequisite.requiresAny.some((factKey) => isTruthyFact(facts[factKey]));
-    if (!hasAnyRequirement) {
-      return true;
-    }
-  }
-
-  return prerequisite.denyIfAny?.some((factKey) => isTruthyFact(facts[factKey])) ?? false;
+  return !matchesFactConditions(prerequisite, facts);
 }
 
 function isTruthyFact(value: OrchestratorV3Facts[string]): boolean {
@@ -198,11 +213,41 @@ function deriveAction(currentStage: ChatJourneyStage, targetStage: ChatJourneySt
   const currentIndex = CHATBOT_V3_JOURNEY_STAGES.indexOf(currentStage);
   const targetIndex = CHATBOT_V3_JOURNEY_STAGES.indexOf(targetStage);
 
-  if (currentIndex >= 0 && targetIndex >= 0 && targetIndex - currentIndex > 1) {
-    return 'SKIP';
+  if (currentIndex >= 0 && targetIndex >= 0 && targetIndex - currentIndex === 1) {
+    return 'ADVANCE';
   }
 
-  return 'ADVANCE';
+  return 'SKIP';
+}
+
+function findMatchingJumpRule(
+  currentStage: ChatJourneyStage,
+  targetStage: ChatJourneyStage,
+  jumpRules: ChatbotV3PolicyConfig['jumpRules'],
+  facts: OrchestratorV3Facts,
+): ChatbotV3JumpRule | undefined {
+  return jumpRules
+    .filter((rule) => rule.fromStage === currentStage && rule.toStage === targetStage)
+    .filter((rule) => matchesFactConditions(rule, facts))
+    .sort((left, right) => right.priority - left.priority)[0];
+}
+
+function matchesFactConditions(
+  ruleLike: Pick<ChatbotV3JumpRule, 'requiresAll' | 'requiresAny' | 'denyIfAny'>,
+  facts: OrchestratorV3Facts,
+): boolean {
+  if (ruleLike.requiresAll?.some((factKey) => !isTruthyFact(facts[factKey]))) {
+    return false;
+  }
+
+  if (ruleLike.requiresAny && ruleLike.requiresAny.length > 0) {
+    const hasAnyRequirement = ruleLike.requiresAny.some((factKey) => isTruthyFact(facts[factKey]));
+    if (!hasAnyRequirement) {
+      return false;
+    }
+  }
+
+  return !(ruleLike.denyIfAny?.some((factKey) => isTruthyFact(facts[factKey])) ?? false);
 }
 
 function resolveDispatchAgent(stage: ChatJourneyStage): OrchestratorV3DispatchAgent {

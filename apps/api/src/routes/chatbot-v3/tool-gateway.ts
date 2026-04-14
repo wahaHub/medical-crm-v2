@@ -13,7 +13,14 @@ export type ToolResult<T> =
   | { status: 'ok'; data: T }
   | { status: 'error'; code: ToolErrorCode; message: string };
 
-export type ToolHandler<TInput, TOutput> = (input: TInput) => MaybePromise<TOutput>;
+export interface ToolHandlerContext {
+  signal: AbortSignal;
+}
+
+export type ToolHandler<TInput, TOutput> = (
+  input: TInput,
+  context: ToolHandlerContext,
+) => MaybePromise<TOutput>;
 
 export interface FaqSearchInput {
   query: string;
@@ -185,27 +192,27 @@ export function createToolGateway({
 }: CreateToolGatewayOptions): ToolGateway {
   return {
     faq: {
-      search: wrapTool('faq.search', handlers.faq?.search, readTimeoutMs),
+      search: wrapTool('faq.search', handlers.faq?.search, readTimeoutMs, false),
     },
     records: {
-      upload: wrapTool('records.upload', handlers.records?.upload, writeTimeoutMs),
-      save: wrapTool('records.save', handlers.records?.save, writeTimeoutMs),
-      status: wrapTool('records.status', handlers.records?.status, readTimeoutMs),
+      upload: wrapTool('records.upload', handlers.records?.upload, writeTimeoutMs, true),
+      save: wrapTool('records.save', handlers.records?.save, writeTimeoutMs, true),
+      status: wrapTool('records.status', handlers.records?.status, readTimeoutMs, false),
     },
     recommendation: {
-      generate: wrapTool('recommendation.generate', handlers.recommendation?.generate, writeTimeoutMs),
-      pick: wrapTool('recommendation.pick', handlers.recommendation?.pick, writeTimeoutMs),
-      status: wrapTool('recommendation.status', handlers.recommendation?.status, readTimeoutMs),
+      generate: wrapTool('recommendation.generate', handlers.recommendation?.generate, writeTimeoutMs, true),
+      pick: wrapTool('recommendation.pick', handlers.recommendation?.pick, writeTimeoutMs, true),
+      status: wrapTool('recommendation.status', handlers.recommendation?.status, readTimeoutMs, false),
     },
     consult: {
-      schedule: wrapTool('consult.schedule', handlers.consult?.schedule, writeTimeoutMs),
-      status: wrapTool('consult.status', handlers.consult?.status, readTimeoutMs),
+      schedule: wrapTool('consult.schedule', handlers.consult?.schedule, writeTimeoutMs, true),
+      status: wrapTool('consult.status', handlers.consult?.status, readTimeoutMs, false),
     },
     status: {
-      query: wrapTool('status.query', handlers.status?.query, readTimeoutMs),
+      query: wrapTool('status.query', handlers.status?.query, readTimeoutMs, false),
     },
     handoff: {
-      create: wrapTool('handoff.create', handlers.handoff?.create, writeTimeoutMs),
+      create: wrapTool('handoff.create', handlers.handoff?.create, writeTimeoutMs, true),
     },
   };
 }
@@ -214,6 +221,7 @@ function wrapTool<TInput, TOutput>(
   toolName: string,
   handler: ToolHandler<TInput, TOutput> | undefined,
   timeoutMs: number,
+  isMutating: boolean,
 ) {
   if (!handler) {
     return async (_input: TInput): Promise<ToolResult<TOutput>> => ({
@@ -224,24 +232,43 @@ function wrapTool<TInput, TOutput>(
   }
 
   return async (input: TInput): Promise<ToolResult<TOutput>> => {
+    const controller = new AbortController();
+
     try {
-      const data = await withTimeout(handler(input), timeoutMs, toolName);
+      const data = await withTimeout(
+        handler(input, { signal: controller.signal }),
+        timeoutMs,
+        toolName,
+        controller,
+        isMutating,
+      );
       return { status: 'ok', data };
     } catch (error) {
-      return normalizeToolError<TOutput>(toolName, error);
+      const timeoutError = controller.signal.reason instanceof ToolTimeoutError
+        ? controller.signal.reason
+        : null;
+      return normalizeToolError<TOutput>(toolName, error, timeoutError);
     }
   };
 }
 
-async function withTimeout<T>(promise: MaybePromise<T>, timeoutMs: number, toolName: string): Promise<T> {
+async function withTimeout<T>(
+  promise: MaybePromise<T>,
+  timeoutMs: number,
+  toolName: string,
+  controller: AbortController,
+  isMutating: boolean,
+): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutError = new ToolTimeoutError(toolName, timeoutMs, isMutating);
 
   try {
     return await Promise.race([
       Promise.resolve(promise),
       new Promise<T>((_, reject) => {
         timeoutId = setTimeout(() => {
-          reject(new Error(`${toolName} timed out after ${timeoutMs}ms`));
+          controller.abort(timeoutError);
+          reject(timeoutError);
         }, timeoutMs);
       }),
     ]);
@@ -252,9 +279,10 @@ async function withTimeout<T>(promise: MaybePromise<T>, timeoutMs: number, toolN
   }
 }
 
-function normalizeToolError<T>(toolName: string, error: unknown): ToolResult<T> {
-  const code = getToolErrorCode(error);
-  const message = getToolErrorMessage(toolName, error);
+function normalizeToolError<T>(toolName: string, error: unknown, timeoutError?: ToolTimeoutError | null): ToolResult<T> {
+  const effectiveError = timeoutError ?? error;
+  const code = getToolErrorCode(effectiveError);
+  const message = getToolErrorMessage(toolName, effectiveError);
   return {
     status: 'error',
     code,
@@ -278,6 +306,10 @@ function getToolErrorCode(error: unknown): ToolErrorCode {
 }
 
 function getToolErrorMessage(toolName: string, error: unknown): string {
+  if (error instanceof ToolTimeoutError) {
+    return error.message;
+  }
+
   if (hasToolErrorMessage(error)) {
     return error.message;
   }
@@ -312,4 +344,16 @@ function hasToolErrorMessage(error: unknown): error is { message: string } {
       && typeof (error as { message: unknown }).message === 'string'
       && (error as { message: string }).message.trim().length > 0,
   );
+}
+
+class ToolTimeoutError extends Error {
+  readonly code = 'TIMEOUT' as const;
+
+  constructor(toolName: string, timeoutMs: number, isMutating: boolean) {
+    const guidance = isMutating
+      ? ' outcome may be unknown; rely on idempotency and a status check before retrying.'
+      : '';
+    super(`${toolName} timed out after ${timeoutMs}ms.${guidance}`);
+    this.name = 'ToolTimeoutError';
+  }
 }

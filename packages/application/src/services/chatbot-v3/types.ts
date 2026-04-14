@@ -1,5 +1,13 @@
 import type { ChatJourneyStage } from '@medical-crm/domain';
 
+export const CHATBOT_V3_JOURNEY_STAGES = [
+  'EXPLAIN_PROCESS',
+  'COLLECT_MEDICAL_INPUTS',
+  'RECOMMENDATION',
+  'ONLINE_CONSULT',
+  'HUMAN_HANDOFF',
+] as const satisfies readonly ChatJourneyStage[];
+
 export interface ChatbotV3JumpRule {
   id: string;
   priority: number;
@@ -36,7 +44,8 @@ export interface ChatbotV3PolicyConfig {
 }
 
 export interface ChatbotV3PolicyConfigInput {
-  globalPolicies?: Partial<ChatbotV3GlobalPolicies> & {
+  globalPolicies?: {
+    forceExplainProcessBefore?: ChatJourneyStage[];
     handoffTriggers?: Partial<ChatbotV3GlobalPolicies['handoffTriggers']>;
   };
   stagePrerequisites?: ChatbotV3StagePrerequisites;

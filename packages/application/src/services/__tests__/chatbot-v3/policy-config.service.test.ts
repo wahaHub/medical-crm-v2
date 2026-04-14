@@ -36,18 +36,75 @@ describe('parsePolicyConfig', () => {
     expect(cfg.jumpRules).toEqual([]);
   });
 
-  it('merges stage prerequisite overrides without dropping default requirements', () => {
+  it('ignores invalid stage entries while keeping valid ones', () => {
     const cfg = parsePolicyConfig({
+      globalPolicies: {
+        forceExplainProcessBefore: ['RECOMMENDATION', 'INVALID_STAGE'],
+      },
       stagePrerequisites: {
         RECOMMENDATION: {
-          requiresAny: ['records.saved'],
+          requiresAll: ['records.saved'],
+        },
+        INVALID_STAGE: {
+          requiresAll: ['ignored.fact'],
+        },
+      } as never,
+    } as never);
+
+    expect(cfg.globalPolicies.forceExplainProcessBefore).toEqual(['RECOMMENDATION']);
+    expect(cfg.stagePrerequisites.RECOMMENDATION).toEqual({
+      requiresAll: ['records.saved'],
+    });
+    expect(cfg.stagePrerequisites).not.toHaveProperty('INVALID_STAGE');
+  });
+
+  it('merges partial handoffTriggers overrides over defaults', () => {
+    const cfg = parsePolicyConfig({
+      globalPolicies: {
+        handoffTriggers: {
+          consecutiveCriticalToolFailures: 4,
         },
       },
     });
 
-    expect(cfg.stagePrerequisites.RECOMMENDATION).toEqual({
+    expect(cfg.globalPolicies.handoffTriggers).toEqual({
+      userRequestedHuman: true,
+      consecutiveCriticalToolFailures: 4,
+      safetyPolicyHit: true,
+    });
+  });
+
+  it('copies jumpRules deeply enough to isolate parsed output from caller mutation', () => {
+    const input = {
+      jumpRules: [
+        {
+          id: 'rule-1',
+          priority: 10,
+          fromStage: 'EXPLAIN_PROCESS',
+          toStage: 'RECOMMENDATION',
+          requiresAll: ['records.saved'],
+          requiresAny: ['facts.ready'],
+          denyIfAny: ['facts.blocked'],
+        },
+      ],
+    } as any;
+
+    const cfg = parsePolicyConfig(input);
+
+    input.jumpRules[0].requiresAll?.push('mutated.fact');
+    input.jumpRules[0].requiresAny?.splice(0, 1, 'mutated.any');
+    input.jumpRules[0].denyIfAny = ['mutated.block'];
+
+    expect(cfg.jumpRules).toHaveLength(1);
+    expect(cfg.jumpRules[0]).not.toBe(input.jumpRules[0]);
+    expect(cfg.jumpRules[0]).toEqual({
+      id: 'rule-1',
+      priority: 10,
+      fromStage: 'EXPLAIN_PROCESS',
+      toStage: 'RECOMMENDATION',
       requiresAll: ['records.saved'],
-      requiresAny: ['records.saved'],
+      requiresAny: ['facts.ready'],
+      denyIfAny: ['facts.blocked'],
     });
   });
 });

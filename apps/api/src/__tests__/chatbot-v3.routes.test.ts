@@ -96,7 +96,7 @@ describe('chatbot-v3 agents', () => {
 
 describe('chatbot-v3 runtime', () => {
   it('keeps turn outcomes deterministic for concurrent requests targeting the same session turn', async () => {
-    const execute = vi.fn(createDeterministicIdempotencyExecutor());
+    const execute = vi.fn(createConflictOnInflightIdempotencyExecutor());
     const supervisor = {
       suggest: vi.fn(async () => ({
         intent: 'progression' as const,
@@ -156,7 +156,7 @@ describe('chatbot-v3 runtime', () => {
     ]);
 
     expect(first).toEqual(second);
-    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledTimes(1);
     expect(execute).toHaveBeenCalledWith(
       'session-1:turn-1:chatbot-v3-turn',
       'chatbot_v3_turn',
@@ -296,8 +296,8 @@ describe('chatbot-v3 runtime', () => {
   });
 });
 
-function createDeterministicIdempotencyExecutor() {
-  const inflight = new Map<string, Promise<unknown>>();
+function createConflictOnInflightIdempotencyExecutor() {
+  const inflight = new Set<string>();
   const completed = new Map<string, unknown>();
 
   return async <T>(key: string, _operation: string, fn: () => Promise<T>): Promise<T> => {
@@ -306,17 +306,16 @@ function createDeterministicIdempotencyExecutor() {
     }
 
     if (inflight.has(key)) {
-      return inflight.get(key) as Promise<T>;
+      throw new Error('Request is already being processed');
     }
 
-    const promise = (async () => {
+    inflight.add(key);
+    try {
       const result = await fn();
       completed.set(key, result);
-      inflight.delete(key);
       return result;
-    })();
-
-    inflight.set(key, promise);
-    return promise;
+    } finally {
+      inflight.delete(key);
+    }
   };
 }

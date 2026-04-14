@@ -104,18 +104,34 @@ export interface ConversationOrchestratorV3RuntimeDependencies {
 }
 
 export class ConversationOrchestratorV3RuntimeService {
+  private readonly inflightTurns = new Map<string, Promise<ConversationOrchestratorV3TurnResult>>();
+
   constructor(
     private readonly dependencies: ConversationOrchestratorV3RuntimeDependencies,
   ) {}
 
   handleTurn(input: ConversationOrchestratorV3HandleTurnInput): Promise<ConversationOrchestratorV3TurnResult> {
     const idempotencyKey = `${input.sessionId}:${input.turnId}:chatbot-v3-turn`;
+    const inflightTurn = this.inflightTurns.get(idempotencyKey);
 
-    return this.dependencies.idempotency.execute(
+    if (inflightTurn) {
+      return inflightTurn;
+    }
+
+    const turnPromise = this.dependencies.idempotency.execute(
       idempotencyKey,
       'chatbot_v3_turn',
       () => this.runTurnPipeline(input, idempotencyKey),
     );
+
+    this.inflightTurns.set(idempotencyKey, turnPromise);
+    void turnPromise.finally(() => {
+      if (this.inflightTurns.get(idempotencyKey) === turnPromise) {
+        this.inflightTurns.delete(idempotencyKey);
+      }
+    });
+
+    return turnPromise;
   }
 
   private async runTurnPipeline(

@@ -331,9 +331,18 @@ export class ConversationOrchestratorService {
   }): boolean {
     // In EXPLAIN_PROCESS.pre, asking about the process is not the same as
     // agreeing to move from the invitation into the single active explain turn.
-    // Treat only bare "continue / okay / go ahead" style progression as consent.
+    // Treat bare progression, PROCESS_GUIDE-only acceptance, or a
+    // PROCESS_GUIDE-only process explanation as consent.
+    const targetsProcessGuideOnly = classification.targetResourceTypes.length > 0
+      && classification.targetResourceTypes.every((resourceType) => resourceType === 'PROCESS_GUIDE');
+
+    if (classification.requestClass === 'process_explanation') {
+      return targetsProcessGuideOnly;
+    }
+
     return classification.requestClass === 'progression_request'
-      && classification.targetResourceTypes.length === 0;
+      ? classification.targetResourceTypes.length === 0 || targetsProcessGuideOnly
+      : classification.requestClass === 'resource_request' && targetsProcessGuideOnly;
   }
 
   private isExplicitHandoffAgreement(classification: {

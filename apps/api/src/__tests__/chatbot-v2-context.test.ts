@@ -767,7 +767,7 @@ describe('buildChatbotV2TurnContext', () => {
     ]));
   });
 
-  it('keeps EXPLAIN_PROCESS.pre anchored when the first turn is classified as process_explanation', async () => {
+  it('moves a PROCESS_GUIDE-only process explanation through EXPLAIN_PROCESS.active and into COLLECT_MEDICAL_INPUTS.pre', async () => {
     const getAiPolicyContext = {
       execute: vi.fn().mockResolvedValue({
         chatbot_v2: {
@@ -814,6 +814,75 @@ describe('buildChatbotV2TurnContext', () => {
       services,
       sessionId: 'widget-chat:patient-1:case-1',
       userMessage: 'What do you do?',
+    });
+
+    expect(result.preTurn.requestClass).toBe('process_explanation');
+    expect(result.preTurn.responseIntent).toBe('process_explanation');
+    expect(result.preTurn.journeySnapshot).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(result.preTurn.resources).toEqual([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]);
+
+    const postTurnResult = buildChatbotV2PostTurnContext({
+      foundation: result.foundation,
+      preTurn: result.preTurn,
+      userMessage: 'What do you do?',
+    });
+
+    expect(postTurnResult.journeySnapshot).toEqual({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      currentPhase: 'pre',
+    });
+  });
+
+  it('keeps EXPLAIN_PROCESS.pre anchored when a process explanation turn mixes PROCESS_GUIDE with intake resources', async () => {
+    const getAiPolicyContext = {
+      execute: vi.fn().mockResolvedValue({
+        chatbot_v2: {
+          scope_id: 'widget-chat:patient-1:case-1',
+          journey_snapshot: {
+            current_stage: 'EXPLAIN_PROCESS',
+            current_phase: 'pre',
+          },
+          allowed_resources: [
+            {
+              resource_type: 'PROCESS_GUIDE',
+              resource_id: 'process-guide:widget-chat:patient-1:case-1',
+              status: 'available',
+              visibility: { mode: 'global' },
+              payload: { title: 'Understand the process' },
+              actions: ['open'],
+            },
+          ],
+        },
+      }),
+    };
+    const services = {
+      getAiPolicyContext,
+      difyClassifierApi: {
+        createChatMessage: vi.fn(),
+      },
+      difyApi: { createChatMessage: vi.fn() },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue(null),
+      },
+      aiChatMessageRepo: {
+        listBySession: vi.fn(),
+      },
+    } as any;
+
+    const result = await buildChatbotV2TurnContext({
+      services,
+      sessionId: 'widget-chat:patient-1:case-1',
+      userMessage: 'Can you explain the process and the questionnaire?',
+      classifierOverride: {
+        requestClass: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE', 'QUESTIONNAIRE'],
+        includeProgressionFollowUp: false,
+      },
     });
 
     expect(result.preTurn.requestClass).toBe('process_explanation');

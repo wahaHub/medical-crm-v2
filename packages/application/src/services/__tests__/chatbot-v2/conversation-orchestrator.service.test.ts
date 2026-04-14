@@ -71,6 +71,32 @@ describe('ConversationOrchestratorService', () => {
     ]));
   });
 
+  it('moves EXPLAIN_PROCESS.pre into active on PROCESS_GUIDE-targeted progression consent', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'progression_request',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'pre',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: false,
+    });
+
+    expect(result.responseIntent).toBe('process_explanation');
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]));
+  });
+
   it('keeps EXPLAIN_PROCESS.pre anchored on an explicit process explanation request', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
@@ -88,13 +114,39 @@ describe('ConversationOrchestratorService', () => {
     });
 
     expect(result.responseIntent).toBe('process_explanation');
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
+    expect(result.allowedResources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
+    ]));
+  });
+
+  it('keeps EXPLAIN_PROCESS.pre anchored when process explanation targets mixed resources', () => {
+    const result = service.orchestrate({
+      scopeId: 'case-1',
+      classification: {
+        requestClass: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE', 'QUESTIONNAIRE'],
+        includeProgressionFollowUp: false,
+      },
+      journeySnapshot: {
+        currentStage: 'EXPLAIN_PROCESS',
+        currentPhase: 'pre',
+      },
+      truth: defaultTruth,
+      hasCompletedInitialProcessExplanation: false,
+    });
+
+    expect(result.responseIntent).toBe('process_explanation');
     expect(result.journeyUpdate).toBeUndefined();
     expect(result.allowedResources).toEqual(expect.arrayContaining([
       expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
     ]));
   });
 
-  it('keeps EXPLAIN_PROCESS.pre anchored on a PROCESS_GUIDE resource request', () => {
+  it('moves EXPLAIN_PROCESS.pre into active on PROCESS_GUIDE resource acceptance', () => {
     const result = service.orchestrate({
       scopeId: 'case-1',
       classification: {
@@ -110,8 +162,11 @@ describe('ConversationOrchestratorService', () => {
       hasCompletedInitialProcessExplanation: false,
     });
 
-    expect(result.responseIntent).toBe('resource_request');
-    expect(result.journeyUpdate).toBeUndefined();
+    expect(result.responseIntent).toBe('process_explanation');
+    expect(result.journeyUpdate).toEqual({
+      currentStage: 'EXPLAIN_PROCESS',
+      currentPhase: 'active',
+    });
     expect(result.allowedResources).toEqual([
       expect.objectContaining({ resourceType: 'PROCESS_GUIDE' }),
     ]);

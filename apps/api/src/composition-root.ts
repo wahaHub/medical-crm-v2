@@ -275,6 +275,7 @@ interface AppServices {
   crmDb: ReturnType<typeof getCrmDb>;
   mainSupabase: ReturnType<typeof getMainSupabase>;
   chinaSupabase: ReturnType<typeof getChinaSupabase>;
+  idempotencyExecutor: Pick<IdempotencyGuard, 'execute'>;
 
   // repositories
   caseRepo: ICaseRepository;
@@ -795,6 +796,7 @@ export function getServices(): AppServices {
 
     _services = {
       crmDb, mainSupabase, chinaSupabase,
+      idempotencyExecutor: idempotencyGuard,
       caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, userEmailLookupRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
       mediaUpload: mediaUploadService,

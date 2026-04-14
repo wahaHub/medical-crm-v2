@@ -9,6 +9,12 @@ Medora CRM v2 monorepo.
 - `apps/api`: Node API on Lightsail
 - `dify`: Self-hosted Dify stack
 
+## Chatbot V3 Cutover
+
+- New public endpoint: `POST /api/v3/chatbot/chat`
+- v3 response fields: `messages`, `turnOutcome`, `cards`, `journey`, `handoff`
+- v3 runtime does not depend on Dify provider path
+
 ## Deployment
 
 The verified deployment entrypoint is:

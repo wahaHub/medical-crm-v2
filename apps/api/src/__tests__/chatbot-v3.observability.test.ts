@@ -141,7 +141,11 @@ describe('chatbot-v3 observability', () => {
       },
       data: {
         toolName: 'recommendation.generate',
-        errorDetail: 'password=topsecret '.repeat(50),
+        errorDetail: [
+          'password=topsecret',
+          'Authorization: Bearer abc.def.ghi',
+          '{"token":"abc123","secret":"hidden","PASSWORD":"caps-secret"}',
+        ].join(' '),
       },
     });
 
@@ -194,6 +198,10 @@ describe('chatbot-v3 observability', () => {
     ) as Record<string, unknown>;
     expect((failedToolEvent.errorDetail as string).length).toBeLessThanOrEqual(512);
     expect(failedToolEvent.errorDetail).not.toContain('topsecret');
+    expect(failedToolEvent.errorDetail).not.toContain('abc.def.ghi');
+    expect(failedToolEvent.errorDetail).not.toContain('abc123');
+    expect(failedToolEvent.errorDetail).not.toContain('hidden');
+    expect(failedToolEvent.errorDetail).not.toContain('caps-secret');
   });
 
   it('evaluates M0 alert thresholds from windowed metrics', () => {
@@ -239,6 +247,53 @@ describe('chatbot-v3 observability', () => {
       expect.objectContaining({
         rule: 'handoff_rate_spike',
         triggered: true,
+      }),
+    ]));
+  });
+
+  it('does not fire alerts below minimum volumes or at exact threshold boundaries', () => {
+    const alerts = evaluateM0AlertThresholds({
+      toolCalls: {
+        'consult.schedule': {
+          windowMinutes: 5,
+          total: 19,
+          failures: 10,
+        },
+        'recommendation.generate': {
+          windowMinutes: 5,
+          total: 20,
+          failures: 4,
+        },
+      },
+      subagents: {
+        windowMinutes: 10,
+        total: 100,
+        timeouts: 8,
+      },
+      handoffs: {
+        windowMinutes: 30,
+        totalTurns: 100,
+        handoffs: 35,
+        trailingSevenDayBaselineRate: 0.175,
+      },
+    });
+
+    expect(alerts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'consult.schedule_failure_rate',
+        triggered: false,
+      }),
+      expect.objectContaining({
+        rule: 'recommendation.generate_failure_rate',
+        triggered: false,
+      }),
+      expect.objectContaining({
+        rule: 'subagent_timeout_rate',
+        triggered: false,
+      }),
+      expect.objectContaining({
+        rule: 'handoff_rate_spike',
+        triggered: false,
       }),
     ]));
   });

@@ -308,10 +308,19 @@ function normalizeEvent(
 }
 
 function redactSensitiveValues(value: string): string {
-  return value.replace(
-    /\b(password|token|secret)\s*=\s*([^\s]+)/gi,
-    '$1=[REDACTED]',
-  );
+  return value
+    .replace(
+      /\b(password|token|secret)\s*=\s*([^\s]+)/gi,
+      '$1=[REDACTED]',
+    )
+    .replace(
+      /(authorization\s*:\s*bearer\s+)([^\s,;]+)/gi,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /("(token|password|secret)"\s*:\s*)"([^"]*)"/gi,
+      '$1"[REDACTED]"',
+    );
 }
 
 function truncate(value: string, maxLength: number): string {

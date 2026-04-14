@@ -15,6 +15,9 @@ const mockServices = {
     save: vi.fn(),
     patchStatus: vi.fn(),
   },
+  patientAuthService: {
+    verifySessionToken: vi.fn(),
+  },
   registerHospitalUser: {
     execute: vi.fn(),
   },
@@ -93,6 +96,7 @@ describe('Chatbot v3 public route mounting', () => {
       createdAt: NOW,
       updatedAt: NOW,
     }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-1' });
   });
 
   it('keeps POST /api/v3/chatbot/chat public and returns v3-only fields', async () => {
@@ -255,6 +259,54 @@ describe('Chatbot v3 public route mounting', () => {
     expect(res.status).toBe(401);
     expect(res.headers.get('set-cookie')).toBeNull();
     expect(mockServices.aiChatSessionRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects mismatched patient_session ownership with 403 for patient-linked sessions', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-2' });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `patient_session=patient-token; chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(mockServices.idempotencyExecutor.execute).not.toHaveBeenCalled();
   });
 
   it('reuses the same explicit idempotency header for concurrent and repeated retries', async () => {

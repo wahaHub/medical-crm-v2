@@ -42,6 +42,7 @@ type AppServices = ReturnType<typeof getServices>;
 
 let chatbotV3RuntimeSingleton: ConversationOrchestratorV3RuntimeService | null = null;
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
+const PATIENT_SESSION_COOKIE = 'patient_session';
 
 export const chatbotV3PublicRoutes = new Hono();
 
@@ -574,6 +575,27 @@ async function authorizeOrBootstrapSessionAccess(
   | { ok: true; session: AiChatSession; sessionSecretToSet: string | null }
   | { ok: false; response: Response }
 > {
+  const patientToken = session.patientId ? getCookie(c, PATIENT_SESSION_COOKIE) : undefined;
+  if (session.patientId && patientToken && services.patientAuthService) {
+    try {
+      const payload = await services.patientAuthService.verifySessionToken(patientToken);
+      if (payload.userId !== session.patientId) {
+        return {
+          ok: false,
+          response: c.json({ error: 'Forbidden' }, 403),
+        };
+      }
+
+      return {
+        ok: true,
+        session,
+        sessionSecretToSet: null,
+      };
+    } catch {
+      // Fall back to chatbot-session-secret auth on stale patient cookies.
+    }
+  }
+
   if (!session.sessionSecretHash) {
     if (session.patientId) {
       return {

@@ -12,6 +12,15 @@ export interface SupervisorSuggestionGateway {
 
 export type SupervisorSuggestion = OrchestratorV3Suggestion;
 
+const ORCHESTRATOR_INTENTS = [
+  'faq',
+  'progression',
+  'resource',
+  'consult',
+  'handoff',
+  'unknown',
+] as const satisfies readonly OrchestratorV3Intent[];
+
 export class SupervisorService {
   constructor(private readonly gateway?: SupervisorSuggestionGateway) {}
 
@@ -22,8 +31,12 @@ export class SupervisorService {
       return fallback;
     }
 
-    const raw = await this.gateway.suggest(input);
-    return sanitizeSuggestionOnly(raw, fallback);
+    try {
+      const raw = await this.gateway.suggest(input);
+      return sanitizeSuggestionOnly(raw, fallback);
+    } catch {
+      return fallback;
+    }
   }
 }
 
@@ -103,12 +116,7 @@ function isChatJourneyStage(value: unknown): value is ChatJourneyStage {
 }
 
 function isOrchestratorIntent(value: unknown): value is OrchestratorV3Intent {
-  return value === 'faq'
-    || value === 'progression'
-    || value === 'resource'
-    || value === 'consult'
-    || value === 'handoff'
-    || value === 'unknown';
+  return typeof value === 'string' && (ORCHESTRATOR_INTENTS as readonly string[]).includes(value);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

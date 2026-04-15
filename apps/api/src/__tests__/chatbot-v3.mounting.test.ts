@@ -417,6 +417,67 @@ describe('Chatbot v3 public route mounting', () => {
     ]));
   });
 
+  it('does not execute RecommendationAgent when RECOMMENDATION prerequisites fail in-place', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'completed',
+        docUploadStatus: 'submitted',
+        recommendationStatus: 'in_progress',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'in_progress',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        processExplained: false,
+        conversationSummary: 'Records are present but the process explanation was never shown.',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: NOW,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please recommend a hospital.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(body.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+        payload: expect.objectContaining({
+          candidates: [],
+        }),
+      }),
+    ]));
+    expect(mockServices.aiChatSessionRepo.findBySessionId).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects missing or wrong secret on sessions with a stored hash', async () => {
     const { default: app } = await import('../index.js');
 

@@ -90,7 +90,7 @@ export class OrchestratorV3Service {
     }
 
     if (hitsExplainGate(current, targetStage, this.config)) {
-      return stay(current, `EXPLAIN_PROCESS must complete before ${targetStage}`);
+      return stay(current, `EXPLAIN_PROCESS must complete before ${targetStage}`, null);
     }
 
     if (violatesStagePrerequisites(targetStage, this.config.stagePrerequisites, facts)) {
@@ -99,6 +99,7 @@ export class OrchestratorV3Service {
         `Missing prerequisites for ${targetStage}: ${
           describeFactConditionViolations(this.config.stagePrerequisites[targetStage], facts).join(', ')
         }`,
+        null,
       );
     }
 

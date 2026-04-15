@@ -311,4 +311,26 @@ describe('OrchestratorV3Service', () => {
     expect(decision.action).toBe('STAY');
     expect(decision.whyNotSkip).toContain('process.explained');
   });
+
+  it('does not dispatch the current business agent when RECOMMENDATION prerequisites fail in-place', () => {
+    const decision = service.decide({
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        reason: 'records are saved but process explanation is still missing',
+      },
+      facts: {
+        'records.saved': true,
+        'process.explained': false,
+      },
+    });
+
+    expect(decision.action).toBe('STAY');
+    expect(decision.dispatchAgent).toBeUndefined();
+    expect(decision.whyNotSkip).toContain('process.explained');
+  });
 });

@@ -57,6 +57,31 @@ describe('SupervisorService', () => {
     });
   });
 
+  it.each([
+    ['blank reason', '   '],
+    ['missing reason', undefined],
+    ['non-string reason', { details: 'faq trace' }],
+  ])(
+    'keeps valid intent and stage when supervisor llm returns %s but falls back to heuristic reason',
+    async (_label, reason) => {
+      const supervisorWithPartialInvalidLlm = new SupervisorService({
+        promptVersion: 'supervisor-v1',
+        run: async () => ({
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason,
+          dispatchAgent: 'HandoffAgent',
+        }),
+      });
+
+      await expect(supervisorWithPartialInvalidLlm.suggest(input)).resolves.toEqual({
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: 'medical records are saved and ready for recommendation',
+      });
+    },
+  );
+
   it('falls back to heuristic when llm output is invalid', async () => {
     const gateway = new SupervisorService({
       promptVersion: 'supervisor-v1',

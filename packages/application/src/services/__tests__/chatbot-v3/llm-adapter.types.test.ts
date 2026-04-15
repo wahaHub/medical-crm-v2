@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LlmNodeAdapter } from '../../chatbot-v3/llm-adapter.types.js';
+import type { LlmNodeAdapter } from '../../../index.js';
 import type {
   OrchestratorV3DecisionInput,
   OrchestratorV3Suggestion,

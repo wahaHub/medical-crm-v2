@@ -49,6 +49,7 @@ export type {
   ChatbotV3PolicyConfig,
   ChatbotV3PolicyConfigInput,
 } from './services/chatbot-v3/types.js';
+export type { LlmNodeAdapter } from './services/chatbot-v3/llm-adapter.types.js';
 
 // DTOs
 export type { CaseDTO, HospitalCaseDetailDTO, CaseStatsDTO } from './dtos/case.dto.js';

@@ -46,14 +46,14 @@ export function sanitizeSuggestionOnly(
   const record = asRecord(raw);
   const reason = normalizeReason(record.reason);
 
-  if (!isOrchestratorIntent(record.intent) || !isChatJourneyStage(record.suggestedStage) || !reason) {
+  if (!isOrchestratorIntent(record.intent) || !isChatJourneyStage(record.suggestedStage)) {
     return fallback;
   }
 
   return {
     intent: record.intent,
     suggestedStage: record.suggestedStage,
-    reason,
+    reason: reason ?? fallback.reason,
   };
 }
 

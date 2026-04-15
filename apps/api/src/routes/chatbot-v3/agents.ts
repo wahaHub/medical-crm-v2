@@ -1,6 +1,9 @@
 import type {
   ConsultScheduleInput,
   ConsultStatusInput,
+  FaqCategorySearchInput,
+  FaqGetByIdsInput,
+  FaqItemRecord,
   FaqSearchInput,
   HandoffCreateInput,
   RecommendationGenerateInput,
@@ -12,6 +15,11 @@ import type {
   ToolGateway,
   ToolResult,
 } from './tool-gateway.js';
+import {
+  FaqLlmAdapter,
+  type FaqAnswerResult,
+  type FaqPlan,
+} from './faq-llm-adapter.js';
 
 export type AgentName =
   | 'FaqAgent'
@@ -28,15 +36,113 @@ export interface AgentAction<TInput = unknown> {
   };
 }
 
-export class FaqAgent {
-  constructor(private readonly gateway: ToolGateway) {}
+export interface FaqAgentInput {
+  latestUserMessage: string;
+  locale?: string;
+  sessionId?: string;
+  category?: string;
+}
 
-  execute(action: AgentAction<FaqSearchInput>): Promise<ToolResult<unknown>> {
-    if (action.type !== 'faq.search') {
-      return Promise.resolve(invalidAction('FaqAgent', action.type));
+export class FaqAgent {
+  constructor(
+    private readonly gateway: ToolGateway,
+    private readonly adapter = new FaqLlmAdapter(),
+  ) {}
+
+  execute(action: AgentAction<FaqAgentInput | FaqCategorySearchInput | FaqSearchInput | FaqGetByIdsInput>): Promise<ToolResult<unknown>> {
+    switch (action.type) {
+      case 'faq.answer':
+        return this.answerFaq(action.input as FaqAgentInput, action.meta?.taskPrompt ?? '');
+      case 'faq.categorySearch':
+        return this.gateway.faq.categorySearch(action.input as FaqCategorySearchInput);
+      case 'faq.search':
+        return this.gateway.faq.search(action.input as FaqSearchInput);
+      case 'faq.getByIds':
+        return this.gateway.faq.getByIds(action.input as FaqGetByIdsInput);
+      default:
+        return Promise.resolve(invalidAction('FaqAgent', action.type));
+    }
+  }
+
+  private async answerFaq(
+    input: FaqAgentInput,
+    taskPrompt: string,
+  ): Promise<ToolResult<FaqAnswerResult>> {
+    const latestUserMessage = normalizeFaqUserMessage(input.latestUserMessage);
+    const plan = await this.adapter.plan({
+      taskPrompt,
+      latestUserMessage,
+    });
+    const category = await this.resolveCategory(plan, input);
+    const effectivePlan = category ? { ...plan, category } : plan;
+    const searchResult = await this.gateway.faq.search({
+      category: effectivePlan.category ?? input.category,
+      query: effectivePlan.query,
+      locale: input.locale,
+      sessionId: input.sessionId,
+    });
+    const matches = searchResult.status === 'ok' ? searchResult.data.hits : [];
+    const details = await this.loadFaqDetails(matches, input);
+    const answer = await this.adapter.answer({
+      taskPrompt,
+      latestUserMessage,
+      plan: effectivePlan,
+      matches,
+      details,
+    });
+
+    return {
+      status: 'ok',
+      data: answer,
+    };
+  }
+
+  private async resolveCategory(inputPlan: FaqPlan, input: FaqAgentInput): Promise<string | undefined> {
+    if (inputPlan.category) {
+      return inputPlan.category;
     }
 
-    return this.gateway.faq.search(action.input);
+    if (input.category) {
+      return input.category;
+    }
+
+    const result = await this.gateway.faq.categorySearch({
+      query: inputPlan.query,
+      locale: input.locale,
+      sessionId: input.sessionId,
+    });
+
+    if (result.status !== 'ok') {
+      return undefined;
+    }
+
+    return result.data.categories[0]?.name;
+  }
+
+  private async loadFaqDetails(
+    matches: FaqItemRecord[],
+    input: FaqAgentInput,
+  ): Promise<FaqItemRecord[]> {
+    const ids = matches
+      .map((match) => match.id)
+      .filter((id) => id.trim().length > 0)
+      .slice(0, 3);
+
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const result = await this.gateway.faq.getByIds({
+      ids,
+      locale: input.locale,
+      sessionId: input.sessionId,
+    });
+
+    if (result.status !== 'ok') {
+      return [];
+    }
+
+    return result.data.items;
   }
 }
 
@@ -109,4 +215,9 @@ function invalidAction(agentName: AgentName, actionType: string): ToolResult<nev
     code: 'VALIDATION_ERROR',
     message: `${agentName} cannot execute ${actionType}`,
   };
+}
+
+function normalizeFaqUserMessage(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : 'faq question';
 }

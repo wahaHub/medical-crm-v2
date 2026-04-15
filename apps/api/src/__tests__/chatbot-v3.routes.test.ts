@@ -63,7 +63,9 @@ describe('chatbot-v3 ToolGateway', () => {
   it('exposes required tool capability matrix', () => {
     const gateway = createToolGateway({ handlers: {} });
 
+    expect(gateway.faq).toHaveProperty('categorySearch');
     expect(gateway.faq).toHaveProperty('search');
+    expect(gateway.faq).toHaveProperty('getByIds');
     expect(gateway.records).toHaveProperty('upload');
     expect(gateway.records).toHaveProperty('save');
     expect(gateway.records).toHaveProperty('status');
@@ -503,6 +505,79 @@ describe('chatbot-v3 runtime', () => {
     const call = recommendationAgent.execute.mock.calls[0]?.[0];
     expect(call?.meta?.taskPrompt).toContain('from=COLLECT_MEDICAL_INPUTS');
     expect(call?.meta?.taskPrompt).toContain('to=RECOMMENDATION');
+    expect(call?.meta).not.toHaveProperty('historySummary');
+  });
+
+  it('builds a compact faq task envelope with goal and latest user message', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'Online consultations are usually arranged within 24 hours.',
+          citedFaqIds: ['faq-1'],
+          confidence: 'high' as const,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'faq' as const,
+          suggestedStage: 'EXPLAIN_PROCESS' as const,
+          reason: 'user is asking about consult timing',
+        })),
+      },
+      orchestrator: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          dispatchAgent: 'FaqAgent' as const,
+          dispatchSource: 'orchestrator' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-faq-envelope-1',
+      sessionId: 'session-faq-1',
+      turnId: 'turn-faq-1',
+      message: 'How long does online consultation usually take to schedule?',
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      facts: {
+        'records.saved': false,
+      },
+    });
+
+    const call = faqAgent.execute.mock.calls[0]?.[0];
+    expect(call).toEqual(expect.objectContaining({
+      type: 'faq.answer',
+      input: expect.objectContaining({
+        latestUserMessage: 'How long does online consultation usually take to schedule?',
+        sessionId: 'session-faq-1',
+      }),
+      meta: expect.objectContaining({
+        taskPrompt: expect.stringContaining("goal=Answer the user's FAQ using the FAQ toolset only."),
+      }),
+    }));
+    expect(call?.meta?.taskPrompt).toContain(
+      'latest_user_message=How long does online consultation usually take to schedule?',
+    );
     expect(call?.meta).not.toHaveProperty('historySummary');
   });
 });

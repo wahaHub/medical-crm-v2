@@ -22,13 +22,45 @@ export type ToolHandler<TInput, TOutput> = (
   context: ToolHandlerContext,
 ) => MaybePromise<TOutput>;
 
-export interface FaqSearchInput {
+export interface FaqCategorySearchInput {
   query: string;
+  locale?: string;
   sessionId?: string;
 }
 
+export interface FaqCategorySearchOutput {
+  categories: Array<{
+    name: string;
+    sortOrder?: number;
+  }>;
+}
+
+export interface FaqSearchInput {
+  category?: string;
+  query: string;
+  locale?: string;
+  sessionId?: string;
+}
+
+export interface FaqItemRecord {
+  id: string;
+  question: string;
+  answer: string;
+  category?: string;
+}
+
 export interface FaqSearchOutput {
-  hits: Array<Record<string, unknown>>;
+  hits: FaqItemRecord[];
+}
+
+export interface FaqGetByIdsInput {
+  ids: string[];
+  locale?: string;
+  sessionId?: string;
+}
+
+export interface FaqGetByIdsOutput {
+  items: FaqItemRecord[];
 }
 
 export interface RecordsUploadInput {
@@ -128,7 +160,9 @@ export interface HandoffCreateOutput {
 
 export interface ToolGateway {
   faq: {
+    categorySearch: (input: FaqCategorySearchInput) => Promise<ToolResult<FaqCategorySearchOutput>>;
     search: (input: FaqSearchInput) => Promise<ToolResult<FaqSearchOutput>>;
+    getByIds: (input: FaqGetByIdsInput) => Promise<ToolResult<FaqGetByIdsOutput>>;
   };
   records: {
     upload: (input: RecordsUploadInput) => Promise<ToolResult<RecordsUploadOutput>>;
@@ -154,7 +188,9 @@ export interface ToolGateway {
 
 export interface ToolGatewayHandlers {
   faq?: {
+    categorySearch?: ToolHandler<FaqCategorySearchInput, FaqCategorySearchOutput>;
     search?: ToolHandler<FaqSearchInput, FaqSearchOutput>;
+    getByIds?: ToolHandler<FaqGetByIdsInput, FaqGetByIdsOutput>;
   };
   records?: {
     upload?: ToolHandler<RecordsUploadInput, RecordsUploadOutput>;
@@ -191,7 +227,9 @@ export function createToolGateway({
 }: CreateToolGatewayOptions): ToolGateway {
   return {
     faq: {
+      categorySearch: wrapTool('faq.categorySearch', handlers.faq?.categorySearch, readTimeoutMs, false),
       search: wrapTool('faq.search', handlers.faq?.search, readTimeoutMs, false),
+      getByIds: wrapTool('faq.getByIds', handlers.faq?.getByIds, readTimeoutMs, false),
     },
     records: {
       upload: wrapTool('records.upload', handlers.records?.upload, writeTimeoutMs, true),

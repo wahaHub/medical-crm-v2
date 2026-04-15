@@ -505,9 +505,9 @@ function buildDispatchAction(
   switch (decision.dispatchAgent) {
     case 'FaqAgent':
       return {
-        type: 'faq.search',
+        type: 'faq.answer',
         input: {
-          query: input.message,
+          latestUserMessage: input.message,
           sessionId: input.sessionId,
         },
         meta,
@@ -597,9 +597,26 @@ function buildTaskPrompt(
     `intent=${suggestion.intent}`,
     `supervisor_reason=${normalizeReason(suggestion.reason)}`,
     `facts=${factsSummary}`,
+    `goal=${buildTaskGoal(decision.dispatchAgent)}`,
+    `latest_user_message=${normalizeReason(input.message)}`,
   ].filter((line) => line.length > 0);
 
   return contextLines.join('\n');
+}
+
+function buildTaskGoal(agentName: AgentName): string {
+  switch (agentName) {
+    case 'FaqAgent':
+      return "Answer the user's FAQ using the FAQ toolset only.";
+    case 'RecordsAgent':
+      return 'Handle the records task using the records toolset only.';
+    case 'RecommendationAgent':
+      return 'Handle the recommendation task using the recommendation toolset only.';
+    case 'ConsultAgent':
+      return 'Handle the consult task using the consult toolset only.';
+    case 'HandoffAgent':
+      return 'Handle the handoff task using the handoff toolset only.';
+  }
 }
 
 function summarizeFacts(facts: ConversationOrchestratorV3Facts | undefined): string {

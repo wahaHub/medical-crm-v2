@@ -746,6 +746,15 @@ it('denies semantic handoff when handoffPrerequisites fail', () => {
   });
   expect(decision.action).toBe('STAY');
 });
+
+it('requires process.explained before downstream stages', () => {
+  const decision = service.decide({
+    current: { stage: 'EXPLAIN_PROCESS' },
+    suggestion: { intent: 'progression', suggestedStage: 'RECOMMENDATION', reason: 'continue' },
+    facts: { 'records.saved': true, 'process.explained': false },
+  });
+  expect(decision.action).toBe('STAY');
+});
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -761,6 +770,13 @@ type GlobalPolicies = {
   handoffTriggers: { userRequestedHuman: boolean; consecutiveCriticalToolFailures: number; safetyPolicyHit: boolean };
   handoffPrerequisites?: { requiresAll?: string[]; requiresAny?: string[]; denyIfAny?: string[] };
 };
+```
+
+```ts
+stagePrerequisites: {
+  RECOMMENDATION: { requiresAll: ['process.explained', 'records.saved'] },
+  ONLINE_CONSULT: { requiresAll: ['process.explained', 'recommendation.picked'] },
+}
 ```
 
 - [ ] **Step 4: Enforce precedence in orchestrator**
@@ -851,7 +867,7 @@ git add packages/application/src/services/chatbot-v3/llm-adapter.types.ts \
 git commit -m "feat(chatbot-v3): add minimal llm adapter contracts"
 ```
 
-### Task R5-3: Expand FAQ tool surface to MCP-style internal interface
+### Task R5-3: Expand FAQ internal tool surface
 
 **Files:**
 - Modify: `apps/api/src/routes/chatbot-v3/tool-gateway.ts`
@@ -987,7 +1003,7 @@ git add apps/api/src/routes/chatbot-v3/agents.ts \
 git commit -m "feat(chatbot-v3): add llm-driven faq worker with safe fallback"
 ```
 
-### Task R5-5: Add ResponseComposer and move final assistant copy ownership there
+### Task R5-5: Add ResponseComposer as envelope/card renderer
 
 **Files:**
 - Create: `apps/api/src/routes/chatbot-v3/response-composer.ts`
@@ -1021,7 +1037,7 @@ Expected: FAIL because response composition is still implicit.
 
 ```ts
 export function composeResponse(input: ResponseComposerInput): ResponseComposerOutput {
-  if (isFaqResult(input.dispatchResult)) return faqResponse(...);
+  if (isFaqResult(input.dispatchResult)) return faqResponseFromAgentText(...);
   if (input.decision.action === 'HANDOFF') return handoffResponse(...);
   return defaultGuidanceResponse(...);
 }
@@ -1052,7 +1068,7 @@ git add apps/api/src/routes/chatbot-v3/response-composer.ts \
   apps/api/src/routes/chatbot-v3/runtime.service.ts \
   apps/api/src/__tests__/chatbot-v3.mounting.test.ts \
   apps/api/src/__tests__/chatbot-v3.routes.test.ts
-git commit -m "feat(chatbot-v3): add dedicated response composer"
+git commit -m "feat(chatbot-v3): add response composer envelope renderer"
 ```
 
 ### Task R5-6: Add LLM observability fields and regression verification

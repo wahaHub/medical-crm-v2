@@ -100,6 +100,8 @@ If prerequisites are missing:
 - Assistant returns normal text guidance telling user required prior step.
 - Journey remains at current stage.
 
+`EXPLAIN_PROCESS at least once` is tracked as explicit session fact `process.explained=true`, set only after the process explanation has actually been shown to the user. Downstream stage prerequisites must rely on this fact instead of path inference alone.
+
 ### 5.2 Decision outputs
 
 Orchestrator produces one of:
@@ -168,8 +170,8 @@ type StagePrerequisites = Partial<
 M0 default policy bundle (config defaults, not service hardcode):
 
 - `forceExplainProcessBefore = ["RECOMMENDATION", "ONLINE_CONSULT"]`
-- `stagePrerequisites.RECOMMENDATION.requiresAll = ["records.saved"]`
-- `stagePrerequisites.ONLINE_CONSULT.requiresAll = ["recommendation.picked"]`
+- `stagePrerequisites.RECOMMENDATION.requiresAll = ["process.explained", "records.saved"]`
+- `stagePrerequisites.ONLINE_CONSULT.requiresAll = ["process.explained", "recommendation.picked"]`
 - `handoffTriggers.consecutiveCriticalToolFailures = 2`
 - `handoffPrerequisites.denyIfAny = ["handoff.active"]`
 
@@ -182,6 +184,13 @@ Precedence (fixed order):
 5. `stagePrerequisites` gate (`requires*` / `denyIfAny`)
 6. Highest-priority matching jump rule
 7. Default fallback: `STAY`
+
+Handoff truth table:
+
+- hard handoff (`safetyPolicyHit`, critical tool failure threshold): bypasses `handoffPrerequisites` and explain gate
+- semantic handoff suggested by `Supervisor`: must pass `handoffPrerequisites`
+- denied semantic handoff: remains at current stage and returns normal assistant guidance
+- existing active handoff (`handoff.active=true`): blocks duplicate handoff creation
 
 Determinism guarantee:
 
@@ -445,7 +454,7 @@ Final user-facing response composition is not owned by `Supervisor`.
 - sub-agents return bounded action results
 - `ResponseComposer` assembles `messages[]`, `cards[]`, `journey`, `handoff`, and `turnOutcome`
 
-`ResponseComposer` is the only layer allowed to turn internal suggestion/decision/result state into final assistant text and cards.
+`ResponseComposer` owns the final response envelope and card selection. It may pass through bounded user-facing text returned by a sub-agent, but it must not introduce a second independent prose-generation policy that competes with sub-agent outputs.
 
 Card schema is discriminated by `cardType`:
 
@@ -507,9 +516,9 @@ Not configurable:
 - Orchestrator final arbitration mechanism.
 - Single-writer state ownership model.
 
-## 10) Observability (M0: Required)
+## 10) Observability
 
-All M0 items are in scope for MVP.
+Only the debug-critical subset is M0. Broader metrics and alerts are post-M0 unless they are nearly free to add.
 
 ### 10.1 Correlation IDs
 
@@ -545,7 +554,7 @@ Required LLM runtime fields:
 - `schemaValidationFailed`
 - `toolPlanUsed` (for `FaqAgent`, when applicable)
 
-### 10.3 Required metrics
+### 10.3 M0 metrics
 
 - Turn latency: P50/P95/P99
 - Success/error rate per endpoint
@@ -553,9 +562,8 @@ Required LLM runtime fields:
 - Tool failure rate by tool name
 - Handoff rate
 - Jump-denied rate
-- Stage distribution and stage dwell time
 
-### 10.4 Required alerts
+### 10.4 Post-M0 alerts
 
 - `consult.schedule` failure rate > 15% over 5m (min 20 calls)
 - `recommendation.generate` failure rate > 20% over 5m (min 20 calls)
@@ -732,7 +740,8 @@ type ResponseComposerOutput = {
 - Supervisor may suggest handoff from conversation semantics, but orchestrator remains final authority.
 - Hard handoff signals (tool failure threshold, safety policy) are enforced by orchestrator without relying on model inference.
 - Semantic handoff can be gated by configurable `handoffPrerequisites`.
-- Final assistant text/cards are composed by `ResponseComposer`, not by `Supervisor`.
+- `process.explained` is an explicit session fact used to guarantee process display before downstream stages.
+- Final response envelope/cards are composed by `ResponseComposer`; FAQ answer text may be passed through from `FaqAgent`.
 - FaqAgent is LLM-driven and limited to FAQ tools only.
 - Public response contract contains only v3 fields.
 - `records.save` and `consult.schedule` persist to Supabase and are visible in `status.query`.

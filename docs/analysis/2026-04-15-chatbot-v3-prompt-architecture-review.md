@@ -117,6 +117,16 @@
    - 语义型 handoff 可以由 `Supervisor` 建议
    - 系统硬信号 handoff 由 `Orchestrator` 直接处理
    - 最终 handoff authority 仍是 `Orchestrator`
+   - 语义型 handoff 走 prerequisite gate，硬 handoff 直接生效
+
+5. 给 `EXPLAIN_PROCESS 至少一次` 加显式事实位：
+   - 使用 `process.explained=true`
+   - `RECOMMENDATION / ONLINE_CONSULT` 等下游阶段通过 `stagePrerequisites` 校验这个事实
+
+6. 明确响应 ownership：
+   - `FaqAgent` 可以返回受限 FAQ answer 文本
+   - `ResponseComposer` 只负责最终 response envelope / cards / handoff 字段拼装
+   - 不引入第二套独立 prose policy
 
 ## 4.3 Guardrail（最小必须）
 
@@ -135,6 +145,7 @@
 4. `schema_validation_failed`
 
 这样在 debug 时可以快速回答：是模型漂移、输入变了、schema 坏了，还是 fallback 生效了。
+更重的 metrics / alerts 可以放到 post-M0。
 
 ---
 

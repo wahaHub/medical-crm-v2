@@ -272,6 +272,63 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledOnce();
   });
 
+  it('still reaches recommendation when the process has already been shown', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MEDICAL_INPUTS',
+            current_phase: 'active',
+          },
+        },
+        conditionStatus: 'unknown',
+        formStatus: 'completed',
+        docUploadStatus: 'submitted',
+        recommendationStatus: 'in_progress',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'in_progress',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: 'The process has already been explained to the user.',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: NOW,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please recommend a hospital.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+  });
+
   it('rejects missing or wrong secret on sessions with a stored hash', async () => {
     const { default: app } = await import('../index.js');
 
@@ -534,6 +591,12 @@ describe('Chatbot v3 public route mounting', () => {
       hospitalType: 'COSMETIC',
       status: 'ACTIVE',
       statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'HUMAN_HANDOFF',
+            current_phase: 'active',
+          },
+        },
         conditionStatus: 'unknown',
         formStatus: 'not_started',
         docUploadStatus: 'none',
@@ -541,11 +604,11 @@ describe('Chatbot v3 public route mounting', () => {
         consultationStatus: 'not_introduced',
         packageStatus: 'not_introduced',
         handoffStatus: 'requested',
-        riskLevel: 'crisis',
+        riskLevel: 'low',
         trustOrObjection: 'none',
         engagementMode: 'LIGHT_DISCOVERY',
         enteredDeepWorkflowAt: null,
-        conversationSummary: '',
+        conversationSummary: 'A human advisor is already handling this session.',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
         lastAssistantMessageAt: null,
@@ -569,6 +632,10 @@ describe('Chatbot v3 public route mounting', () => {
 
     const body = await res.json();
     expect(res.status).toBe(200);
+    expect(body.journey).toMatchObject({
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    });
     expect(body.handoff.required).toBe(true);
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
   });

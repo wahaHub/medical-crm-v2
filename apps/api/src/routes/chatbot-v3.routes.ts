@@ -71,7 +71,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     message: body.message,
     attachments: body.attachments,
     current,
-    facts: resolveFacts(session?.statusSnapshot),
+    facts: resolveFacts(session?.statusSnapshot, current),
     handoff: resolveHandoffSignals(session?.statusSnapshot),
     suggestion,
   });
@@ -213,7 +213,7 @@ function resolveCurrentStage(
 
   const truth = deriveJourneyTruthFromStatusSnapshot(statusSnapshot);
 
-  if (isHandoffRequired(statusSnapshot)) {
+  if (isHandoffActive(statusSnapshot)) {
     return { stage: 'HUMAN_HANDOFF', phase: 'active' };
   }
 
@@ -248,6 +248,7 @@ function resolveCurrentStage(
 
 function resolveFacts(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  current: ConversationOrchestratorV3StageRef,
 ): Record<string, boolean> {
   const truth = deriveJourneyTruthFromStatusSnapshot(statusSnapshot);
   const uploadedRecordsReady = hasAnyStatus(
@@ -259,7 +260,8 @@ function resolveFacts(
     'records.saved': truth.medicalInputsSubmitted || uploadedRecordsReady,
     'recommendation.picked': truth.recommendationConfirmed,
     'consult.scheduled': truth.onlineConsultSubmitted,
-    'handoff.required': isHandoffRequired(statusSnapshot),
+    'process.explained': current.stage !== 'EXPLAIN_PROCESS' || current.phase === 'post',
+    'handoff.active': isHandoffActive(statusSnapshot),
   };
 }
 
@@ -267,7 +269,7 @@ function resolveHandoffSignals(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ) {
   return {
-    userRequestedHuman: isHandoffRequired(statusSnapshot),
+    userRequestedHuman: false,
     safetyPolicyHit: normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS',
   };
 }
@@ -286,7 +288,7 @@ function buildResponse(
     cards: buildCards(body, result, session?.statusSnapshot),
     journey: result.journey,
     handoff: {
-      required: result.journey.stage === 'HUMAN_HANDOFF' || isHandoffRequired(session?.statusSnapshot),
+      required: result.journey.stage === 'HUMAN_HANDOFF' || isHandoffActive(session?.statusSnapshot),
       ticketId: readHandoffId(result.dispatchResult),
     },
   };
@@ -570,7 +572,7 @@ function readStoredJourneySnapshot(
   return { stage, phase };
 }
 
-function isHandoffRequired(
+function isHandoffActive(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): boolean {
   return hasWorkflowStatus(statusSnapshot?.handoffStatus, ['NOT_NEEDED', 'RESOLVED', 'COMPLETED']) || normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';

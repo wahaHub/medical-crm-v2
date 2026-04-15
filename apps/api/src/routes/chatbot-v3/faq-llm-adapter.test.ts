@@ -80,6 +80,7 @@ describe('FaqAgent', () => {
       input: {
         latestUserMessage: 'How long does online consultation take to arrange?',
         sessionId: 'session-faq-1',
+        hospitalId: 'hospital-123',
       },
       meta: {
         taskPrompt: [
@@ -91,15 +92,18 @@ describe('FaqAgent', () => {
     });
 
     expect(categorySearch).toHaveBeenCalledWith({
+      hospitalId: 'hospital-123',
       query: 'online consultation timing',
       sessionId: 'session-faq-1',
     }, expect.any(Object));
     expect(search).toHaveBeenCalledWith({
       category: 'Online Consultation',
+      hospitalId: 'hospital-123',
       query: 'online consultation timing',
       sessionId: 'session-faq-1',
     }, expect.any(Object));
     expect(getByIds).toHaveBeenCalledWith({
+      hospitalId: 'hospital-123',
       ids: ['faq-1'],
       sessionId: 'session-faq-1',
     }, expect.any(Object));

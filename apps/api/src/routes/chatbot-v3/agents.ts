@@ -41,6 +41,7 @@ export interface FaqAgentInput {
   locale?: string;
   sessionId?: string;
   category?: string;
+  hospitalId?: string;
 }
 
 export class FaqAgent {
@@ -80,6 +81,7 @@ export class FaqAgent {
       query: effectivePlan.query,
       locale: input.locale,
       sessionId: input.sessionId,
+      hospitalId: input.hospitalId,
     });
     const matches = searchResult.status === 'ok' ? searchResult.data.hits : [];
     const details = await this.loadFaqDetails(matches, input);
@@ -110,6 +112,7 @@ export class FaqAgent {
       query: inputPlan.query,
       locale: input.locale,
       sessionId: input.sessionId,
+      hospitalId: input.hospitalId,
     });
 
     if (result.status !== 'ok') {
@@ -136,6 +139,7 @@ export class FaqAgent {
       ids,
       locale: input.locale,
       sessionId: input.sessionId,
+      hospitalId: input.hospitalId,
     });
 
     if (result.status !== 'ok') {

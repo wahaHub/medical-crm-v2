@@ -63,6 +63,10 @@ export interface ConversationOrchestratorV3HandleTurnInput {
   turnId: string;
   message: string;
   attachments?: Array<Record<string, unknown>>;
+  pageContext?: {
+    type: 'HOSPITAL_DETAIL';
+    hospitalId: string;
+  };
   current: ConversationOrchestratorV3StageRef;
   facts?: ConversationOrchestratorV3Facts;
   handoff?: ConversationOrchestratorV3HandoffSignals;
@@ -509,6 +513,9 @@ function buildDispatchAction(
         input: {
           latestUserMessage: input.message,
           sessionId: input.sessionId,
+          hospitalId: input.pageContext?.type === 'HOSPITAL_DETAIL'
+            ? input.pageContext.hospitalId
+            : undefined,
         },
         meta,
       };

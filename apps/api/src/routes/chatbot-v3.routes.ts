@@ -41,6 +41,7 @@ import {
   type ToolResult,
 } from './chatbot-v3/tool-gateway.js';
 import { createChatbotV3RuntimeNodeEventEmitter } from './chatbot-v3/observability.js';
+import { createChatbotV3FaqRouteAdapter } from './chatbot-v3/faq-route-adapter.js';
 
 type AppServices = ReturnType<typeof getServices>;
 
@@ -55,6 +56,21 @@ const DIRECT_HUMAN_REQUEST_PATTERNS = [
   /\b(?:live|real) (?:agent|person|human)\b/i,
 ] as const;
 const ACTIVE_HANDOFF_STATUSES = ['REQUESTED', 'OPEN', 'IN_PROGRESS'] as const;
+const INTERNAL_FAQ_ACTOR = {
+  userId: 'chatbot-v3-faq',
+  email: 'internal@medora.local',
+  role: 'ADMIN' as const,
+  hospitalId: null,
+};
+
+function buildInternalFaqHospitalActor(hospitalId: string) {
+  return {
+    userId: 'chatbot-v3-faq-hospital',
+    email: 'internal@medora.local',
+    role: 'HOSPITAL' as const,
+    hospitalId,
+  };
+}
 
 export const chatbotV3PublicRoutes = new Hono();
 
@@ -82,6 +98,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     turnId: resolveTurnId(c),
     message: body.message,
     attachments: body.attachments,
+    pageContext: body.pageContext,
     current,
     facts: resolveFacts(session?.statusSnapshot),
     handoff: resolveHandoffSignals(session?.statusSnapshot),
@@ -118,6 +135,13 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
   });
   const gateway = createToolGateway({
     handlers: {
+      faq: {
+        categorySearch: async ({ sessionId, query, hospitalId }) =>
+          handleFaqCategorySearch(services, sessionId, query, hospitalId),
+        search: async ({ sessionId, query, category, hospitalId }) =>
+          handleFaqSearch(services, sessionId, query, category, hospitalId),
+        getByIds: async ({ ids, hospitalId }) => handleFaqGetByIds(services, ids, hospitalId),
+      },
       records: {
         upload: async ({ sessionId, turnId, attachments }) => handleRecordsUpload(services, sessionId, turnId, attachments),
         save: async ({ sessionId, turnId, records }) => handleRecordsSave(services, sessionId, turnId, records),
@@ -160,7 +184,9 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
       status: gateway.status,
     },
     agents: {
-      FaqAgent: new FaqAgent(gateway),
+      FaqAgent: new FaqAgent(gateway, createChatbotV3FaqRouteAdapter({
+        enabled: process.env['CHATBOT_V3_FAQ_LLM_ENABLED'] === 'true',
+      })),
       RecordsAgent: new RecordsAgent(gateway),
       RecommendationAgent: new RecommendationAgent(gateway),
       ConsultAgent: new ConsultAgent(gateway),
@@ -524,6 +550,130 @@ function deriveRecordsState(
   }
 
   return 'processing';
+}
+
+async function handleFaqCategorySearch(
+  services: AppServices,
+  sessionId: string | undefined,
+  query: string,
+  hospitalId: string | undefined,
+) {
+  const result = await services.listFaqCategoriesForChatbot.execute({
+    hospitalType: await resolveFaqHospitalType(services, sessionId, hospitalId),
+    hospitalId,
+  });
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchedCategories = normalizedQuery.length === 0
+    ? result.categories
+    : result.categories.filter((category) => category.name.toLowerCase().includes(normalizedQuery));
+  const categories = matchedCategories.length > 0 ? matchedCategories : result.categories;
+
+  return {
+    categories: categories.map((category) => ({
+      name: category.name,
+      sortOrder: category.sortOrder,
+    })),
+  };
+}
+
+async function handleFaqSearch(
+  services: AppServices,
+  sessionId: string | undefined,
+  query: string,
+  category: string | undefined,
+  hospitalId: string | undefined,
+) {
+  const faqQuery = {
+    page: 1,
+    limit: 5,
+    ...(category ? { category } : {}),
+    hospitalType: await resolveFaqHospitalType(services, sessionId, hospitalId),
+    isActive: true,
+    search: query,
+  };
+
+  const generalResult = await services.listFaqItems.execute(faqQuery, INTERNAL_FAQ_ACTOR);
+  const scopedResult = hospitalId
+    ? await services.listFaqItems.execute(faqQuery, buildInternalFaqHospitalActor(hospitalId))
+    : { data: [] };
+
+  return {
+    hits: dedupeFaqItemsById([
+      ...scopedResult.data.map(mapFaqItemRecord),
+      ...generalResult.data.map(mapFaqItemRecord),
+    ]),
+  };
+}
+
+async function handleFaqGetByIds(
+  services: AppServices,
+  ids: string[],
+  hospitalId: string | undefined,
+) {
+  const items = (await Promise.all(ids.map(async (id) => {
+    try {
+      const scopedActor = hospitalId
+        ? buildInternalFaqHospitalActor(hospitalId)
+        : INTERNAL_FAQ_ACTOR;
+      const item = await services.getFaqItem.execute(id, scopedActor);
+      return mapFaqItemRecord(item);
+    } catch {
+      if (hospitalId) {
+        try {
+          const fallbackItem = await services.getFaqItem.execute(id, INTERNAL_FAQ_ACTOR);
+          return mapFaqItemRecord(fallbackItem);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+  }))).flatMap((item) => item ? [item] : []);
+
+  return { items };
+}
+
+async function resolveFaqHospitalType(
+  services: AppServices,
+  sessionId: string | undefined,
+  hospitalId: string | undefined,
+): Promise<'COSMETIC' | 'REGULAR'> {
+  if (hospitalId) {
+    return services.resolveHospitalType(hospitalId);
+  }
+
+  if (!sessionId) {
+    return 'COSMETIC';
+  }
+
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  return session?.hospitalType === 'REGULAR' ? 'REGULAR' : 'COSMETIC';
+}
+
+function mapFaqItemRecord(item: {
+  id: string;
+  question: string;
+  answer: string;
+  category?: string | null;
+}) {
+  return {
+    id: item.id,
+    question: item.question,
+    answer: item.answer,
+    ...(item.category ? { category: item.category } : {}),
+  };
+}
+
+function dedupeFaqItemsById(items: Array<ReturnType<typeof mapFaqItemRecord>>) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) {
+      return false;
+    }
+    seen.add(item.id);
+    return true;
+  });
 }
 
 function deriveRecommendationState(

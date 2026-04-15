@@ -47,6 +47,7 @@ const mockServices = {
   getFaqItem: {
     execute: vi.fn(),
   },
+  resolveHospitalType: vi.fn(),
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -156,6 +157,7 @@ describe('Chatbot v3 public route mounting', () => {
       categories: [],
     });
     mockServices.getFaqItem.execute.mockResolvedValue(null);
+    mockServices.resolveHospitalType.mockResolvedValue('COSMETIC');
   });
 
   afterEach(() => {
@@ -268,6 +270,147 @@ describe('Chatbot v3 public route mounting', () => {
     expect(res.status).toBe(200);
     expect(body.messages[0].text).toContain('Here is the process');
     expect(body.messages[0].text).not.toContain('Online consultations are usually arranged within 24 hours.');
+  });
+
+  it('keeps public faq retrieval hospital-aware when pageContext supplies a hospital id', async () => {
+    applicationOverrides.suggest = async () => ({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      reason: 'user asked an faq question',
+    });
+    applicationOverrides.decide = () => ({
+      action: 'STAY',
+      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+      to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+      dispatchAgent: 'FaqAgent',
+      dispatchSource: 'orchestrator',
+    });
+    mockServices.listFaqCategoriesForChatbot.execute.mockResolvedValue({
+      categories: [{
+        name: 'Consultation',
+        sortOrder: 1,
+      }],
+    });
+    mockServices.listFaqItems.execute.mockImplementation(async (_query, actor) => {
+      if (actor.role === 'HOSPITAL' && actor.hospitalId === 'hospital-123') {
+        return {
+          data: [{
+            id: 'faq-1',
+            question: 'How long does online consultation usually take to schedule?',
+            answer: 'Online consultations are usually arranged within 24 hours.',
+            category: 'Consultation',
+          }],
+        };
+      }
+
+      return { data: [] };
+    });
+    mockServices.getFaqItem.execute.mockImplementation(async (_id, actor) => {
+      if (actor.role === 'HOSPITAL' && actor.hospitalId === 'hospital-123') {
+        return {
+          id: 'faq-1',
+          question: 'How long does online consultation usually take to schedule?',
+          answer: 'Online consultations are usually arranged within 24 hours.',
+          category: 'Consultation',
+        };
+      }
+
+      throw new Error('FAQ not found in this scope');
+    });
+
+    const { default: app } = await import('../index.js');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'REGULAR',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'How long does online consultation usually take to schedule?',
+        pageContext: {
+          type: 'HOSPITAL_DETAIL',
+          hospitalId: 'hospital-123',
+        },
+      }),
+    });
+
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.turnOutcome.status).toBe('ok');
+    expect(body.messages[0].text).toContain('Here is the process');
+    expect(body.messages[0].text).not.toContain('Online consultations are usually arranged within 24 hours.');
+    expect(mockServices.resolveHospitalType).toHaveBeenCalledWith('hospital-123');
+    expect(mockServices.listFaqCategoriesForChatbot.execute).toHaveBeenCalledWith({
+      hospitalType: 'COSMETIC',
+      hospitalId: 'hospital-123',
+    });
+    expect(mockServices.listFaqItems.execute).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        page: 1,
+        limit: 5,
+        category: 'Consultation',
+        hospitalType: 'COSMETIC',
+        isActive: true,
+        search: 'How long does online consultation usually take to schedule?',
+      }),
+      expect.objectContaining({
+        role: 'ADMIN',
+      }),
+    );
+    expect(mockServices.listFaqItems.execute).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        page: 1,
+        limit: 5,
+        category: 'Consultation',
+        hospitalType: 'COSMETIC',
+        isActive: true,
+        search: 'How long does online consultation usually take to schedule?',
+      }),
+      expect.objectContaining({
+        role: 'HOSPITAL',
+        hospitalId: 'hospital-123',
+      }),
+    );
+    expect(mockServices.getFaqItem.execute).toHaveBeenCalledWith(
+      'faq-1',
+      expect.objectContaining({
+        role: 'HOSPITAL',
+        hospitalId: 'hospital-123',
+      }),
+    );
   });
 
   it('returns runtimeDebug with request traceId in non-production', async () => {

@@ -26,6 +26,7 @@ export interface FaqCategorySearchInput {
   query: string;
   locale?: string;
   sessionId?: string;
+  hospitalId?: string;
 }
 
 export interface FaqCategorySearchOutput {
@@ -40,6 +41,7 @@ export interface FaqSearchInput {
   query: string;
   locale?: string;
   sessionId?: string;
+  hospitalId?: string;
 }
 
 export interface FaqItemRecord {
@@ -57,6 +59,7 @@ export interface FaqGetByIdsInput {
   ids: string[];
   locale?: string;
   sessionId?: string;
+  hospitalId?: string;
 }
 
 export interface FaqGetByIdsOutput {

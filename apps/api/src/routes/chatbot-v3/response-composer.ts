@@ -1,0 +1,282 @@
+import type {
+  AiChatStatusSnapshot,
+} from '@medical-crm/domain';
+import type {
+  ChatbotV3Card,
+  ChatbotV3ChatRequest,
+  ChatbotV3ChatResponse,
+} from '@medical-crm/validation';
+import type {
+  ConversationOrchestratorV3TurnResult,
+} from './runtime.service.js';
+import type {
+  ToolResult,
+} from './tool-gateway.js';
+
+export interface ResponseComposerInput {
+  body: ChatbotV3ChatRequest;
+  result: ConversationOrchestratorV3TurnResult;
+  sessionStatusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined;
+  includeRuntimeDebug?: boolean;
+}
+
+export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an online consultation if you want one.';
+
+export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResponse {
+  const response: ChatbotV3ChatResponse = {
+    messages: [{
+      role: 'assistant',
+      text: buildAssistantText(input.result),
+    }],
+    turnOutcome: input.result.turnOutcome,
+    cards: buildCards(input.body, input.result, input.sessionStatusSnapshot),
+    journey: input.result.journey,
+    handoff: {
+      required: input.result.journey.stage === 'HUMAN_HANDOFF'
+        || hasActiveHandoffStatus(input.sessionStatusSnapshot)
+        || hasCrisisSafetySignal(input.sessionStatusSnapshot),
+      ticketId: readHandoffId(input.result.dispatchResult),
+    },
+  };
+
+  if (input.includeRuntimeDebug) {
+    response.runtimeDebug = {
+      traceId: input.result.runtimeDebug.traceId,
+      idempotencyKey: input.result.runtimeDebug.idempotencyKey,
+      ...(input.result.runtimeDebug.lastDispatchSource
+        ? { lastDispatchSource: input.result.runtimeDebug.lastDispatchSource }
+        : {}),
+    };
+  }
+
+  return response;
+}
+
+function buildAssistantText(result: ConversationOrchestratorV3TurnResult): string {
+  if (result.turnOutcome.status === 'degraded') {
+    return 'I could not complete the requested step, but your v3 journey state is preserved.';
+  }
+
+  const faqAnswer = readFaqAnswer(result);
+  if (faqAnswer) {
+    return faqAnswer;
+  }
+
+  if (isDeniedSemanticHandoff(result)) {
+    return 'Before we connect you with a human, please complete the current step first.';
+  }
+
+  switch (result.journey.stage) {
+    case 'EXPLAIN_PROCESS':
+      return PROCESS_OVERVIEW_TEXT;
+    case 'COLLECT_MEDICAL_INPUTS':
+      return 'I checked the medical input stage for this session.';
+    case 'RECOMMENDATION':
+      return 'I checked the recommendation stage for this session.';
+    case 'ONLINE_CONSULT':
+      return 'I checked the online consultation stage for this session.';
+    case 'HUMAN_HANDOFF':
+      return 'This session is currently in human handoff.';
+  }
+}
+
+function isDeniedSemanticHandoff(
+  result: ConversationOrchestratorV3TurnResult,
+): boolean {
+  return result.suggestion.intent === 'handoff'
+    && result.decision.action !== 'HANDOFF'
+    && result.journey.stage !== 'HUMAN_HANDOFF';
+}
+
+function readFaqAnswer(
+  result: ConversationOrchestratorV3TurnResult,
+): string | null {
+  if (result.decision.dispatchAgent !== 'FaqAgent') {
+    return null;
+  }
+
+  if (result.dispatchResult?.status !== 'ok') {
+    return null;
+  }
+
+  const data = asRecord(result.dispatchResult.data);
+  const answer = asString(data['answer']);
+  const citedFaqIds = asArray(data['citedFaqIds'])
+    .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
+  const confidence = asString(data['confidence']);
+
+  if (citedFaqIds.length === 0 || confidence === 'low') {
+    return null;
+  }
+
+  if (!answer) {
+    return null;
+  }
+
+  const trimmed = answer.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function buildCards(
+  body: ChatbotV3ChatRequest,
+  result: ConversationOrchestratorV3TurnResult,
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): ChatbotV3Card[] {
+  switch (result.journey.stage) {
+    case 'EXPLAIN_PROCESS':
+      return [{
+        cardId: 'card-process-guide',
+        cardType: 'PROCESS_GUIDE',
+        payload: {
+          guideId: 'medical-travel-process',
+          title: 'Medical travel process',
+        },
+        actions: [{
+          actionType: 'OPEN_MODAL',
+          label: 'View process',
+          params: {
+            modalKey: 'MEDICAL_TRAVEL_PROCESS',
+          },
+        }],
+      }];
+    case 'COLLECT_MEDICAL_INPUTS':
+      return [{
+        cardId: 'card-upload-records',
+        cardType: 'UPLOAD_RECORDS',
+        payload: {
+          required: true,
+          uploadedCount: readUploadedCount(body, statusSnapshot),
+        },
+        actions: [],
+      }];
+    case 'RECOMMENDATION':
+      return [{
+        cardId: 'card-recommendations',
+        cardType: 'RECOMMENDATION_LIST',
+        payload: {
+          candidates: readRecommendations(result.dispatchResult),
+        },
+        actions: [],
+      }];
+    case 'ONLINE_CONSULT':
+      return [{
+        cardId: 'card-consult-booking',
+        cardType: 'CONSULT_BOOKING',
+        payload: {
+          status: readConsultCardStatus(result.dispatchResult, statusSnapshot),
+        },
+        actions: [],
+      }];
+    case 'HUMAN_HANDOFF':
+      return [{
+        cardId: 'card-handoff-status',
+        cardType: 'HANDOFF_STATUS',
+        payload: {
+          required: true,
+          ...(readHandoffId(result.dispatchResult) ? { ticketId: readHandoffId(result.dispatchResult) ?? undefined } : {}),
+        },
+        actions: [],
+      }];
+  }
+}
+
+function readUploadedCount(
+  body: ChatbotV3ChatRequest,
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): number {
+  if ((body.attachments?.length ?? 0) > 0) {
+    return body.attachments?.length ?? 0;
+  }
+
+  return hasAnyStatus(statusSnapshot?.docUploadStatus, ['COMPLETED', 'SUBMITTED', 'READY'])
+    || hasAnyStatus(statusSnapshot?.formStatus, ['COMPLETED', 'SUBMITTED', 'READY'])
+    ? 1
+    : 0;
+}
+
+function readRecommendations(dispatchResult: ToolResult<unknown> | null) {
+  if (dispatchResult?.status !== 'ok') {
+    return [];
+  }
+
+  const recommendations = asArray(asRecord(dispatchResult.data)['recommendations']);
+  return recommendations.flatMap((candidate) => {
+    const record = asRecord(candidate);
+    const hospitalId = asString(record['hospitalId']);
+    const name = asString(record['name']);
+
+    if (!hospitalId || !name) {
+      return [];
+    }
+
+    return [{
+      hospitalId,
+      name,
+      ...(asString(record['reason']) ? { reason: asString(record['reason']) ?? undefined } : {}),
+    }];
+  });
+}
+
+function readConsultCardStatus(
+  dispatchResult: ToolResult<unknown> | null,
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): 'idle' | 'scheduled' | 'failed' {
+  if (dispatchResult?.status === 'ok') {
+    const state = normalizeStatus(asString(asRecord(dispatchResult.data)['state']));
+    if (state === 'FAILED') {
+      return 'failed';
+    }
+    if (state === 'SCHEDULED' || state === 'BOOKED' || state === 'COMPLETED') {
+      return 'scheduled';
+    }
+  }
+
+  const consultationStatus = normalizeStatus(statusSnapshot?.consultationStatus);
+  if (consultationStatus === 'FAILED' || consultationStatus === 'CANCELLED') {
+    return 'failed';
+  }
+  if (consultationStatus === 'SCHEDULED' || consultationStatus === 'BOOKED' || consultationStatus === 'COMPLETED') {
+    return 'scheduled';
+  }
+  return 'idle';
+}
+
+function readHandoffId(dispatchResult: ToolResult<unknown> | null): string | null {
+  if (dispatchResult?.status !== 'ok') {
+    return null;
+  }
+
+  return asString(asRecord(dispatchResult.data)['handoffId']);
+}
+
+function hasActiveHandoffStatus(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): boolean {
+  return hasAnyStatus(statusSnapshot?.handoffStatus, ['REQUESTED', 'OPEN', 'IN_PROGRESS']);
+}
+
+function hasCrisisSafetySignal(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): boolean {
+  return normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';
+}
+
+function hasAnyStatus(value: string | null | undefined, expectedStates: string[]): boolean {
+  return expectedStates.includes(normalizeStatus(value));
+}
+
+function normalizeStatus(value: string | null | undefined): string {
+  return value?.trim().toUpperCase() ?? '';
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}

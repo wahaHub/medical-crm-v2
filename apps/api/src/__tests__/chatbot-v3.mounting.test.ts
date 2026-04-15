@@ -224,7 +224,7 @@ describe('Chatbot v3 public route mounting', () => {
     );
   });
 
-  it('keeps route-side assistant text owned by the current stage even after faq agent answers', async () => {
+  it('passes through bounded faq agent answer while keeping cards owned by the response composer', async () => {
     applicationOverrides.suggest = async () => ({
       intent: 'faq',
       suggestedStage: 'EXPLAIN_PROCESS',
@@ -268,8 +268,18 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.messages[0].text).toContain('Here is the process');
-    expect(body.messages[0].text).not.toContain('Online consultations are usually arranged within 24 hours.');
+    expect(body.messages[0].text).toContain('Online consultations are usually arranged within 24 hours.');
+    expect(body.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'PROCESS_GUIDE',
+      }),
+    ]));
+    expect(mockServices.aiChatSessionRepo.patchStatus).not.toHaveBeenCalledWith(
+      'session-v3-1',
+      expect.objectContaining({
+        processExplained: true,
+      }),
+    );
   });
 
   it('keeps public faq retrieval hospital-aware when pageContext supplies a hospital id', async () => {
@@ -368,8 +378,7 @@ describe('Chatbot v3 public route mounting', () => {
 
     expect(res.status).toBe(200);
     expect(body.turnOutcome.status).toBe('ok');
-    expect(body.messages[0].text).toContain('Here is the process');
-    expect(body.messages[0].text).not.toContain('Online consultations are usually arranged within 24 hours.');
+    expect(body.messages[0].text).toContain('Online consultations are usually arranged within 24 hours.');
     expect(mockServices.resolveHospitalType).toHaveBeenCalledWith('hospital-123');
     expect(mockServices.listFaqCategoriesForChatbot.execute).toHaveBeenCalledWith({
       hospitalType: 'COSMETIC',
@@ -1092,6 +1101,44 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'PROCESS_GUIDE',
+      }),
+    ]));
+    expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns normal guidance when semantic handoff is denied by prerequisites', async () => {
+    applicationOverrides.suggest = async () => ({
+      intent: 'handoff',
+      suggestedStage: 'HUMAN_HANDOFF',
+      reason: 'user requested a human',
+    });
+    applicationOverrides.decide = () => ({
+      action: 'STAY',
+      from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      dispatchSource: 'orchestrator',
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Can I talk to a human now?',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.handoff.required).toBe(false);
+    expect(body.messages[0].text).toContain('Before we connect you with a human');
+    expect(body.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
       }),
     ]));
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();

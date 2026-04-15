@@ -19,9 +19,7 @@ import type {
 import {
   chatbotV3ChatRequestSchema,
   chatbotV3ChatResponseSchema,
-  type ChatbotV3Card,
   type ChatbotV3ChatRequest,
-  type ChatbotV3ChatResponse,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
 import {
@@ -34,14 +32,13 @@ import {
 import {
   ConversationOrchestratorV3RuntimeService,
   type ConversationOrchestratorV3StageRef,
-  type ConversationOrchestratorV3TurnResult,
 } from './chatbot-v3/runtime.service.js';
 import {
   createToolGateway,
-  type ToolResult,
 } from './chatbot-v3/tool-gateway.js';
 import { createChatbotV3RuntimeNodeEventEmitter } from './chatbot-v3/observability.js';
 import { createChatbotV3FaqRouteAdapter } from './chatbot-v3/faq-route-adapter.js';
+import { composeResponse, PROCESS_OVERVIEW_TEXT } from './chatbot-v3/response-composer.js';
 
 type AppServices = ReturnType<typeof getServices>;
 
@@ -105,7 +102,12 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     suggestion,
   });
 
-  const response = chatbotV3ChatResponseSchema.parse(buildResponse(body, result, session));
+  const response = chatbotV3ChatResponseSchema.parse(composeResponse({
+    body,
+    result,
+    sessionStatusSnapshot: session?.statusSnapshot,
+    includeRuntimeDebug: process.env.NODE_ENV !== 'production',
+  }));
   if (shouldPersistProcessExplainedFact(session, response)) {
     await patchSessionStatus(services, session, {
       processExplained: true,
@@ -341,196 +343,15 @@ function resolveHandoffSignals(
   };
 }
 
-function buildResponse(
-  body: ChatbotV3ChatRequest,
-  result: ConversationOrchestratorV3TurnResult,
-  session: AiChatSession | null,
-): ChatbotV3ChatResponse {
-  const response: ChatbotV3ChatResponse = {
-    messages: [{
-      role: 'assistant',
-      text: buildAssistantText(result),
-    }],
-    turnOutcome: result.turnOutcome,
-    cards: buildCards(body, result, session?.statusSnapshot),
-    journey: result.journey,
-    handoff: {
-      required: result.journey.stage === 'HUMAN_HANDOFF'
-        || hasActiveHandoffStatus(session?.statusSnapshot)
-        || hasCrisisSafetySignal(session?.statusSnapshot),
-      ticketId: readHandoffId(result.dispatchResult),
-    },
-  };
-
-  if (process.env.NODE_ENV !== 'production') {
-    response.runtimeDebug = {
-      traceId: result.runtimeDebug.traceId,
-      idempotencyKey: result.runtimeDebug.idempotencyKey,
-      ...(result.runtimeDebug.lastDispatchSource
-        ? { lastDispatchSource: result.runtimeDebug.lastDispatchSource }
-        : {}),
-    };
-  }
-
-  return response;
-}
-
 function shouldPersistProcessExplainedFact(
   session: AiChatSession | null,
-  response: ChatbotV3ChatResponse,
+  response: ReturnType<typeof composeResponse>,
 ): session is AiChatSession {
   return session !== null
     && !readProcessExplainedFact(session.statusSnapshot)
     && response.journey.stage === 'EXPLAIN_PROCESS'
+    && response.messages.some((message) => message.text === PROCESS_OVERVIEW_TEXT)
     && response.cards.some((card) => card.cardType === 'PROCESS_GUIDE');
-}
-
-function buildAssistantText(result: ConversationOrchestratorV3TurnResult): string {
-  if (result.turnOutcome.status === 'degraded') {
-    return 'I could not complete the requested step, but your v3 journey state is preserved.';
-  }
-
-  switch (result.journey.stage) {
-    case 'EXPLAIN_PROCESS':
-      return 'Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an online consultation if you want one.';
-    case 'COLLECT_MEDICAL_INPUTS':
-      return 'I checked the medical input stage for this session.';
-    case 'RECOMMENDATION':
-      return 'I checked the recommendation stage for this session.';
-    case 'ONLINE_CONSULT':
-      return 'I checked the online consultation stage for this session.';
-    case 'HUMAN_HANDOFF':
-      return 'This session is currently in human handoff.';
-  }
-}
-
-function buildCards(
-  body: ChatbotV3ChatRequest,
-  result: ConversationOrchestratorV3TurnResult,
-  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-): ChatbotV3Card[] {
-  switch (result.journey.stage) {
-    case 'EXPLAIN_PROCESS':
-      return [{
-        cardId: 'card-process-guide',
-        cardType: 'PROCESS_GUIDE',
-        payload: {
-          guideId: 'medical-travel-process',
-          title: 'Medical travel process',
-        },
-        actions: [{
-          actionType: 'OPEN_MODAL',
-          label: 'View process',
-          params: {
-            modalKey: 'MEDICAL_TRAVEL_PROCESS',
-          },
-        }],
-      }];
-    case 'COLLECT_MEDICAL_INPUTS':
-      return [{
-        cardId: 'card-upload-records',
-        cardType: 'UPLOAD_RECORDS',
-        payload: {
-          required: true,
-          uploadedCount: readUploadedCount(body, statusSnapshot),
-        },
-        actions: [],
-      }];
-    case 'RECOMMENDATION':
-      return [{
-        cardId: 'card-recommendations',
-        cardType: 'RECOMMENDATION_LIST',
-        payload: {
-          candidates: readRecommendations(result.dispatchResult),
-        },
-        actions: [],
-      }];
-    case 'ONLINE_CONSULT':
-      return [{
-        cardId: 'card-consult-booking',
-        cardType: 'CONSULT_BOOKING',
-        payload: {
-          status: readConsultCardStatus(result.dispatchResult, statusSnapshot),
-        },
-        actions: [],
-      }];
-    case 'HUMAN_HANDOFF':
-      return [{
-        cardId: 'card-handoff-status',
-        cardType: 'HANDOFF_STATUS',
-        payload: {
-          required: true,
-          ...(readHandoffId(result.dispatchResult) ? { ticketId: readHandoffId(result.dispatchResult) ?? undefined } : {}),
-        },
-        actions: [],
-      }];
-  }
-}
-
-function readUploadedCount(
-  body: ChatbotV3ChatRequest,
-  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-): number {
-  if ((body.attachments?.length ?? 0) > 0) {
-    return body.attachments?.length ?? 0;
-  }
-
-  return resolveFacts(statusSnapshot)['records.saved'] ? 1 : 0;
-}
-
-function readRecommendations(dispatchResult: ToolResult<unknown> | null) {
-  if (dispatchResult?.status !== 'ok') {
-    return [];
-  }
-
-  const recommendations = asArray(asRecord(dispatchResult.data)['recommendations']);
-  return recommendations.flatMap((candidate) => {
-    const record = asRecord(candidate);
-    const hospitalId = asString(record['hospitalId']);
-    const name = asString(record['name']);
-
-    if (!hospitalId || !name) {
-      return [];
-    }
-
-    return [{
-      hospitalId,
-      name,
-      ...(asString(record['reason']) ? { reason: asString(record['reason']) ?? undefined } : {}),
-    }];
-  });
-}
-
-function readConsultCardStatus(
-  dispatchResult: ToolResult<unknown> | null,
-  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-): 'idle' | 'scheduled' | 'failed' {
-  if (dispatchResult?.status === 'ok') {
-    const state = normalizeStatus(asString(asRecord(dispatchResult.data)['state']));
-    if (state === 'FAILED') {
-      return 'failed';
-    }
-    if (state === 'SCHEDULED' || state === 'BOOKED' || state === 'COMPLETED') {
-      return 'scheduled';
-    }
-  }
-
-  const consultationStatus = normalizeStatus(statusSnapshot?.consultationStatus);
-  if (consultationStatus === 'FAILED' || consultationStatus === 'CANCELLED') {
-    return 'failed';
-  }
-  if (consultationStatus === 'SCHEDULED' || consultationStatus === 'BOOKED' || consultationStatus === 'COMPLETED') {
-    return 'scheduled';
-  }
-  return 'idle';
-}
-
-function readHandoffId(dispatchResult: ToolResult<unknown> | null): string | null {
-  if (dispatchResult?.status !== 'ok') {
-    return null;
-  }
-
-  return asString(asRecord(dispatchResult.data)['handoffId']);
 }
 
 function deriveRecordsState(
@@ -820,10 +641,6 @@ function isPhase(value: string | null): value is ChatJourneyPhase {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 function asString(value: unknown): string | null {

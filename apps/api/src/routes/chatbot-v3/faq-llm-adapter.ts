@@ -19,6 +19,13 @@ export type FaqAnswerResult = {
   confidence: 'high' | 'medium' | 'low';
 };
 
+export interface FaqLlmRunMetadata {
+  nodePromptVersion?: string;
+  nodeModel?: string;
+  fallbackUsed?: boolean;
+  schemaValidationFailed?: boolean;
+}
+
 export interface FaqPlanInput {
   taskPrompt: string;
   latestUserMessage: string;
@@ -40,6 +47,8 @@ export interface FaqLlmAdapterOptions {
 export class FaqLlmAdapter {
   readonly planPromptVersion: string;
   readonly answerPromptVersion: string;
+  private lastPlanRunMetadata: FaqLlmRunMetadata | null = null;
+  private lastAnswerRunMetadata: FaqLlmRunMetadata | null = null;
 
   constructor(private readonly options: FaqLlmAdapterOptions = {}) {
     this.planPromptVersion = options.plan?.promptVersion ?? FAQ_PLAN_PROMPT_VERSION;
@@ -49,15 +58,35 @@ export class FaqLlmAdapter {
   async plan(input: FaqPlanInput): Promise<FaqPlan> {
     buildFaqPlanPrompt(input);
     const fallback = buildFallbackFaqPlan(input);
+    const metadataBase = {
+      nodePromptVersion: this.planPromptVersion,
+      nodeModel: this.options.plan?.model,
+    } satisfies FaqLlmRunMetadata;
 
     if (!this.options.plan) {
+      this.lastPlanRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: true,
+        schemaValidationFailed: false,
+      };
       return fallback;
     }
 
     try {
       const raw = await this.options.plan.run(input);
-      return sanitizeFaqPlan(raw, fallback);
+      const sanitized = sanitizeFaqPlan(raw, fallback);
+      this.lastPlanRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: sanitized.fallbackUsed,
+        schemaValidationFailed: sanitized.schemaValidationFailed,
+      };
+      return sanitized.plan;
     } catch {
+      this.lastPlanRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: true,
+        schemaValidationFailed: false,
+      };
       return fallback;
     }
   }
@@ -65,17 +94,54 @@ export class FaqLlmAdapter {
   async answer(input: FaqAnswerInput): Promise<FaqAnswerResult> {
     buildFaqAnswerPrompt(input);
     const fallback = composeFallbackFaqAnswer(input.matches, input.details, input.latestUserMessage);
+    const metadataBase = {
+      nodePromptVersion: this.answerPromptVersion,
+      nodeModel: this.options.answer?.model,
+    } satisfies FaqLlmRunMetadata;
 
     if (!this.options.answer) {
+      this.lastAnswerRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: true,
+        schemaValidationFailed: false,
+      };
       return fallback;
     }
 
     try {
       const raw = await this.options.answer.run(input);
-      return sanitizeFaqAnswerResult(raw, fallback);
+      const sanitized = sanitizeFaqAnswerResult(raw, fallback);
+      this.lastAnswerRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: sanitized.fallbackUsed,
+        schemaValidationFailed: sanitized.schemaValidationFailed,
+      };
+      return sanitized.answer;
     } catch {
+      this.lastAnswerRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: true,
+        schemaValidationFailed: false,
+      };
       return fallback;
     }
+  }
+
+  getLastRunMetadata(): FaqLlmRunMetadata | null {
+    const answerMetadata = this.lastAnswerRunMetadata;
+    const planMetadata = this.lastPlanRunMetadata;
+    if (!answerMetadata && !planMetadata) {
+      return null;
+    }
+
+    return {
+      nodePromptVersion: answerMetadata?.nodePromptVersion ?? planMetadata?.nodePromptVersion,
+      nodeModel: answerMetadata?.nodeModel ?? planMetadata?.nodeModel,
+      fallbackUsed: Boolean(answerMetadata?.fallbackUsed || planMetadata?.fallbackUsed),
+      schemaValidationFailed: Boolean(
+        answerMetadata?.schemaValidationFailed || planMetadata?.schemaValidationFailed,
+      ),
+    };
   }
 }
 
@@ -131,30 +197,72 @@ function buildFallbackFaqPlan(input: FaqPlanInput): FaqPlan {
   };
 }
 
-function sanitizeFaqPlan(raw: unknown, fallback: FaqPlan): FaqPlan {
+function sanitizeFaqPlan(
+  raw: unknown,
+  fallback: FaqPlan,
+): {
+  plan: FaqPlan;
+  fallbackUsed: boolean;
+  schemaValidationFailed: boolean;
+} {
   const record = asRecord(raw);
-  const query = normalizeString(record.query) ?? fallback.query;
-  const reason = normalizeString(record.reason) ?? fallback.reason;
+  const normalizedQuery = normalizeString(record.query);
+  const normalizedReason = normalizeString(record.reason);
   const category = normalizeString(record.category) ?? undefined;
+  const query = normalizedQuery ?? fallback.query;
+  const reason = normalizedReason ?? fallback.reason;
+  const fallbackUsed = normalizedQuery === null || normalizedReason === null;
 
   return {
-    ...(category ? { category } : {}),
-    query,
-    reason,
+    plan: {
+      ...(category ? { category } : {}),
+      query,
+      reason,
+    },
+    fallbackUsed,
+    schemaValidationFailed: fallbackUsed,
   };
 }
 
-function sanitizeFaqAnswerResult(raw: unknown, fallback: FaqAnswerResult): FaqAnswerResult {
+function sanitizeFaqAnswerResult(
+  raw: unknown,
+  fallback: FaqAnswerResult,
+): {
+  answer: FaqAnswerResult;
+  fallbackUsed: boolean;
+  schemaValidationFailed: boolean;
+} {
   const record = asRecord(raw);
-  const answer = normalizeString(record.answer) ?? fallback.answer;
+  const normalizedAnswer = normalizeString(record.answer);
+  const answer = normalizedAnswer ?? fallback.answer;
   const citedFaqIds = sanitizeFaqIds(record.citedFaqIds);
-  const confidence = normalizeConfidence(record.confidence) ?? fallback.confidence;
+  const normalizedConfidence = normalizeConfidence(record.confidence);
+  const confidence = normalizedConfidence ?? fallback.confidence;
+  const normalizedIds = citedFaqIds.length > 0 ? citedFaqIds : fallback.citedFaqIds;
+  const hasInvalidFaqIds = hasInvalidCitedFaqIds(record.citedFaqIds);
+  const fallbackUsed = normalizedAnswer === null || normalizedConfidence === null || hasInvalidFaqIds;
 
   return {
-    answer,
-    citedFaqIds: citedFaqIds.length > 0 ? citedFaqIds : fallback.citedFaqIds,
-    confidence,
+    answer: {
+      answer,
+      citedFaqIds: normalizedIds,
+      confidence,
+    },
+    fallbackUsed,
+    schemaValidationFailed: fallbackUsed,
   };
+}
+
+function hasInvalidCitedFaqIds(value: unknown): boolean {
+  if (value === undefined) {
+    return false;
+  }
+
+  if (!Array.isArray(value)) {
+    return true;
+  }
+
+  return value.some((candidate) => typeof candidate !== 'string' || candidate.trim().length === 0);
 }
 
 function sanitizeFaqIds(value: unknown): string[] {

@@ -55,6 +55,11 @@ describe('SupervisorService', () => {
       suggestedStage: 'EXPLAIN_PROCESS',
       reason: 'user is asking an faq',
     });
+    expect(supervisorWithLlm.getLastLlmRunMetadata()).toMatchObject({
+      nodePromptVersion: 'supervisor-v1',
+      fallbackUsed: false,
+      schemaValidationFailed: false,
+    });
   });
 
   it.each([
@@ -99,6 +104,11 @@ describe('SupervisorService', () => {
       suggestedStage: 'RECOMMENDATION',
       reason: 'medical records are saved and ready for recommendation',
     });
+    expect(gateway.getLastLlmRunMetadata()).toMatchObject({
+      nodePromptVersion: 'supervisor-v1',
+      fallbackUsed: true,
+      schemaValidationFailed: true,
+    });
   });
 
   it.each([
@@ -116,6 +126,27 @@ describe('SupervisorService', () => {
       intent: 'progression',
       suggestedStage: 'RECOMMENDATION',
       reason: 'medical records are saved and ready for recommendation',
+    });
+  });
+
+  it('records model metadata for successful supervisor llm runs', async () => {
+    const supervisorWithModel = new SupervisorService({
+      promptVersion: 'supervisor-v1',
+      model: 'gpt-4.1-mini',
+      run: async () => ({
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: 'faq request',
+      }),
+    });
+
+    await supervisorWithModel.suggest(input);
+
+    expect(supervisorWithModel.getLastLlmRunMetadata()).toMatchObject({
+      nodePromptVersion: 'supervisor-v1',
+      nodeModel: 'gpt-4.1-mini',
+      fallbackUsed: false,
+      schemaValidationFailed: false,
     });
   });
 });

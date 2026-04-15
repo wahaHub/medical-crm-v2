@@ -90,12 +90,20 @@ export interface ConversationOrchestratorV3TurnResult {
   };
 }
 
+export interface ConversationOrchestratorV3LlmNodeRunMetadata {
+  nodePromptVersion?: string;
+  nodeModel?: string;
+  fallbackUsed?: boolean;
+  schemaValidationFailed?: boolean;
+}
+
 export interface ConversationOrchestratorV3IdempotencyExecutor {
   execute<T>(key: string, operation: string, fn: () => Promise<T>): Promise<T>;
 }
 
 export interface ConversationOrchestratorV3Supervisor {
   suggest(input: ConversationOrchestratorV3DecisionInput): Promise<ConversationOrchestratorV3Suggestion>;
+  getLastLlmRunMetadata?(): ConversationOrchestratorV3LlmNodeRunMetadata | null;
 }
 
 export interface ConversationOrchestratorV3Orchestrator {
@@ -104,6 +112,7 @@ export interface ConversationOrchestratorV3Orchestrator {
 
 export interface ConversationOrchestratorV3AgentExecutor {
   execute(action: AgentAction): Promise<ToolResult<unknown>>;
+  getLastLlmRunMetadata?(): ConversationOrchestratorV3LlmNodeRunMetadata | null;
 }
 
 export interface ConversationOrchestratorV3RuntimeDependencies {
@@ -172,6 +181,7 @@ export class ConversationOrchestratorV3RuntimeService {
         action: 'suggest',
         status: 'completed',
         latencyMs: this.elapsedSince(supervisorStartedAt),
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
       });
     } catch (error) {
       this.emitNodeEvent(input, {
@@ -180,6 +190,7 @@ export class ConversationOrchestratorV3RuntimeService {
         status: 'failed',
         latencyMs: this.elapsedSince(supervisorStartedAt),
         errorCode: 'UNKNOWN',
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
       });
       throw error;
     }
@@ -302,6 +313,7 @@ export class ConversationOrchestratorV3RuntimeService {
           status,
           latencyMs: this.elapsedSince(subagentStartedAt),
           errorCode: dispatchResult.code,
+          ...this.resolveLlmNodeMetadata(agent),
         });
         const degraded = await this.buildDegradedResult({
           input,
@@ -324,6 +336,7 @@ export class ConversationOrchestratorV3RuntimeService {
         action: decision.dispatchAgent,
         status: 'completed',
         latencyMs: this.elapsedSince(subagentStartedAt),
+        ...this.resolveLlmNodeMetadata(agent),
       });
 
       const result = {
@@ -353,6 +366,7 @@ export class ConversationOrchestratorV3RuntimeService {
         status: 'failed',
         latencyMs: this.elapsedSince(subagentStartedAt),
         errorCode: 'UNKNOWN',
+        ...this.resolveLlmNodeMetadata(agent),
       });
       const degraded = await this.buildDegradedResult({
         input,
@@ -484,6 +498,28 @@ export class ConversationOrchestratorV3RuntimeService {
 
   private elapsedSince(startAt: number): number {
     return Math.max(0, this.now() - startAt);
+  }
+
+  private resolveLlmNodeMetadata(
+    node:
+      | ConversationOrchestratorV3Supervisor
+      | ConversationOrchestratorV3AgentExecutor,
+  ): ConversationOrchestratorV3LlmNodeRunMetadata {
+    const metadata = node.getLastLlmRunMetadata?.();
+    if (!metadata) {
+      return {};
+    }
+
+    return {
+      ...(metadata.nodePromptVersion ? { nodePromptVersion: metadata.nodePromptVersion } : {}),
+      ...(metadata.nodeModel ? { nodeModel: metadata.nodeModel } : {}),
+      ...(typeof metadata.fallbackUsed === 'boolean'
+        ? { fallbackUsed: metadata.fallbackUsed }
+        : {}),
+      ...(typeof metadata.schemaValidationFailed === 'boolean'
+        ? { schemaValidationFailed: metadata.schemaValidationFailed }
+        : {}),
+    };
   }
 
   private mapErrorStatus(

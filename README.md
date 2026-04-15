@@ -14,6 +14,7 @@ Medora CRM v2 monorepo.
 - New public endpoint: `POST /api/v3/chatbot/chat`
 - v3 response fields: `messages`, `turnOutcome`, `cards`, `journey`, `handoff`
 - v3 runtime does not depend on Dify provider path
+- Debug-critical LLM node events can carry `nodePromptVersion`, `nodeModel`, `fallbackUsed`, and `schemaValidationFailed`
 
 ## Deployment
 

@@ -23,6 +23,51 @@ describe('FaqLlmAdapter', () => {
       query: 'How long does online consultation take to arrange?',
       reason: expect.stringContaining('fallback'),
     });
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      nodePromptVersion: 'faq-plan-test',
+      fallbackUsed: true,
+      schemaValidationFailed: true,
+    });
+  });
+
+  it('marks citation fallback as schema validation failure in answer metadata', async () => {
+    const adapter = new FaqLlmAdapter({
+      answer: {
+        promptVersion: 'faq-answer-test',
+        model: 'gpt-4o-mini',
+        run: vi.fn(async () => ({
+          answer: 'Grounded answer',
+          citedFaqIds: 'faq-1',
+          confidence: 'high',
+        })),
+      },
+    });
+
+    await expect(adapter.answer({
+      taskPrompt: "goal=Answer the user's FAQ using the FAQ toolset only.",
+      latestUserMessage: 'How long does online consultation take to arrange?',
+      plan: {
+        query: 'online consultation timing',
+        reason: 'timing faq',
+      },
+      matches: [{
+        id: 'faq-1',
+        question: 'How long does online consultation take?',
+        answer: 'Online consultations are usually arranged within 24 hours.',
+        category: 'Consultation',
+      }],
+      details: [],
+    })).resolves.toEqual({
+      answer: 'Grounded answer',
+      citedFaqIds: ['faq-1'],
+      confidence: 'high',
+    });
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      nodePromptVersion: 'faq-answer-test',
+      nodeModel: 'gpt-4o-mini',
+      fallbackUsed: true,
+      schemaValidationFailed: true,
+    });
   });
 });
 

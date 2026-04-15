@@ -18,6 +18,7 @@ import type {
 import {
   FaqLlmAdapter,
   type FaqAnswerResult,
+  type FaqLlmRunMetadata,
   type FaqPlan,
 } from './faq-llm-adapter.js';
 
@@ -63,6 +64,10 @@ export class FaqAgent {
       default:
         return Promise.resolve(invalidAction('FaqAgent', action.type));
     }
+  }
+
+  getLastLlmRunMetadata(): FaqLlmRunMetadata | null {
+    return this.adapter.getLastRunMetadata();
   }
 
   private async answerFaq(

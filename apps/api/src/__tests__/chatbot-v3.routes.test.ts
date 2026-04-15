@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { RecordsAgent } from '../routes/chatbot-v3/agents.js';
+import { SupervisorService } from '@medical-crm/application';
+import { FaqLlmAdapter } from '../routes/chatbot-v3/faq-llm-adapter.js';
+import { FaqAgent, RecordsAgent } from '../routes/chatbot-v3/agents.js';
 import { createChatbotV3RuntimeNodeEventEmitter } from '../routes/chatbot-v3/observability.js';
 import { ConversationOrchestratorV3RuntimeService } from '../routes/chatbot-v3/runtime.service.js';
 import { createToolGateway } from '../routes/chatbot-v3/tool-gateway.js';
@@ -579,6 +581,133 @@ describe('chatbot-v3 runtime', () => {
       'latest_user_message=How long does online consultation usually take to schedule?',
     );
     expect(call?.meta).not.toHaveProperty('historySummary');
+  });
+
+  it('emits llm observability metadata from supervisor and FAQ worker runtime nodes', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const emitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        events.push(event as Record<string, unknown>);
+      },
+    });
+    const faqGateway = createToolGateway({
+      handlers: {
+        faq: {
+          categorySearch: vi.fn(async () => ({
+            categories: [{ name: 'Consultation', sortOrder: 1 }],
+          })),
+          search: vi.fn(async () => ({
+            hits: [{
+              id: 'faq-1',
+              question: 'How long does online consultation usually take to schedule?',
+              answer: 'Online consultations are usually arranged within 24 hours.',
+              category: 'Consultation',
+            }],
+          })),
+          getByIds: vi.fn(async () => ({
+            items: [{
+              id: 'faq-1',
+              question: 'How long does online consultation usually take to schedule?',
+              answer: 'Online consultations are usually arranged within 24 hours.',
+              category: 'Consultation',
+            }],
+          })),
+        },
+        status: {
+          query: vi.fn(async () => ({})),
+        },
+      },
+    });
+    const supervisor = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v1',
+      model: 'gpt-4.1-mini',
+      run: vi.fn(async () => ({
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: 'user is asking an faq',
+      })),
+    });
+    const faqAgent = new FaqAgent(
+      faqGateway,
+      new FaqLlmAdapter({
+        plan: {
+          promptVersion: 'faq-plan-prompt-v1',
+          model: 'gpt-4o-mini',
+          run: vi.fn(async () => ({
+            category: 'Consultation',
+            query: 'online consultation schedule timing',
+            reason: 'faq timing request',
+          })),
+        },
+        answer: {
+          promptVersion: 'faq-answer-prompt-v1',
+          model: 'gpt-4o-mini',
+          run: vi.fn(async () => ({
+            answer: 'Online consultations are usually arranged within 24 hours.',
+            citedFaqIds: 'faq-1',
+            confidence: 'high',
+          })),
+        },
+      }),
+    );
+
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor,
+      orchestrator: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          dispatchAgent: 'FaqAgent' as const,
+          dispatchSource: 'orchestrator' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+      nodeEventEmitter: emitter,
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-observe-1',
+      sessionId: 'session-observe-1',
+      turnId: 'turn-observe-1',
+      message: 'How long does online consultation usually take to schedule?',
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+    });
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        node: 'Supervisor',
+        action: 'suggest',
+        status: 'completed',
+        nodePromptVersion: 'supervisor-prompt-v1',
+        nodeModel: 'gpt-4.1-mini',
+        fallbackUsed: false,
+        schemaValidationFailed: false,
+      }),
+      expect.objectContaining({
+        node: 'Subagent',
+        action: 'FaqAgent',
+        status: 'completed',
+        nodePromptVersion: 'faq-answer-prompt-v1',
+        nodeModel: 'gpt-4o-mini',
+        fallbackUsed: true,
+        schemaValidationFailed: true,
+      }),
+    ]));
   });
 });
 

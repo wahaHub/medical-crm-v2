@@ -554,7 +554,6 @@ Required LLM runtime fields:
 - `nodeModel`
 - `fallbackUsed`
 - `schemaValidationFailed`
-- `toolPlanUsed` (for `FaqAgent`, when applicable)
 
 ### 10.3 M0 metrics
 

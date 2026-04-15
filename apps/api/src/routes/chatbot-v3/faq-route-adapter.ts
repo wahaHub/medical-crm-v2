@@ -45,6 +45,7 @@ export function createChatbotV3FaqRouteAdapter(
   return new FaqLlmAdapter({
     plan: {
       promptVersion: `${FAQ_PLAN_PROMPT_VERSION}:openai`,
+      model,
       run: async (input) => runStructuredOpenAiPrompt({
         apiKey,
         model,
@@ -55,6 +56,7 @@ export function createChatbotV3FaqRouteAdapter(
     },
     answer: {
       promptVersion: `${FAQ_ANSWER_PROMPT_VERSION}:openai`,
+      model,
       run: async (input) => runStructuredOpenAiPrompt({
         apiKey,
         model,

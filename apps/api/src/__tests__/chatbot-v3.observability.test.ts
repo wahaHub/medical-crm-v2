@@ -1,10 +1,66 @@
 import { describe, expect, it } from 'vitest';
 import {
   createChatbotV3EventEmitter,
+  createChatbotV3RuntimeNodeEventEmitter,
   evaluateM0AlertThresholds,
+  type ChatbotV3RuntimeNodeEventInput,
 } from '../routes/chatbot-v3/observability.js';
 
 describe('chatbot-v3 observability', () => {
+  it('preserves optional LLM node metadata on supervisor and FAQ worker events', () => {
+    const capturedEvents: Array<Record<string, unknown>> = [];
+    const emitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        capturedEvents.push(event as Record<string, unknown>);
+      },
+    });
+
+    const supervisorStarted = {
+      traceId: 'trace-llm-1',
+      sessionId: 'session-llm-1',
+      turnId: 'turn-llm-1',
+      node: 'Supervisor',
+      action: 'suggest',
+      status: 'started',
+      latencyMs: 0,
+      nodePromptVersion: 'supervisor-prompt-v1',
+      nodeModel: 'gpt-4.1-mini',
+      fallbackUsed: false,
+      schemaValidationFailed: false,
+    } satisfies ChatbotV3RuntimeNodeEventInput;
+
+    const faqCompleted = {
+      traceId: 'trace-llm-1',
+      sessionId: 'session-llm-1',
+      turnId: 'turn-llm-1',
+      node: 'Subagent',
+      action: 'FaqAgent',
+      status: 'completed',
+      latencyMs: 12,
+      nodePromptVersion: 'faq-answer-prompt-v1',
+      nodeModel: 'gpt-4o-mini',
+      fallbackUsed: true,
+      schemaValidationFailed: false,
+    } satisfies ChatbotV3RuntimeNodeEventInput;
+
+    const supervisorEvent = emitter.emit(supervisorStarted);
+    const faqEvent = emitter.emit(faqCompleted);
+
+    expect(supervisorEvent).toMatchObject({
+      nodePromptVersion: 'supervisor-prompt-v1',
+      nodeModel: 'gpt-4.1-mini',
+      fallbackUsed: false,
+      schemaValidationFailed: false,
+    });
+    expect(faqEvent).toMatchObject({
+      nodePromptVersion: 'faq-answer-prompt-v1',
+      nodeModel: 'gpt-4o-mini',
+      fallbackUsed: true,
+      schemaValidationFailed: false,
+    });
+    expect(capturedEvents).toHaveLength(2);
+  });
+
   it('emits required M0 event set with required decision fields', () => {
     const capturedEvents: unknown[] = [];
     const emitter = createChatbotV3EventEmitter({

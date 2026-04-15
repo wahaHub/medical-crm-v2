@@ -27,6 +27,10 @@ export interface ChatbotV3RuntimeNodeEventInput {
   status: ChatbotV3RuntimeNodeStatus;
   latencyMs: number;
   errorCode?: string;
+  nodePromptVersion?: string;
+  nodeModel?: string;
+  fallbackUsed?: boolean;
+  schemaValidationFailed?: boolean;
   decisionAction?: 'STAY' | 'ADVANCE' | 'SKIP' | 'HANDOFF';
   fromStage?: string;
   toStage?: string;
@@ -139,6 +143,10 @@ export interface ChatbotV3EmittedEvent extends ChatbotV3CorrelationContext {
   agentName?: string;
   toolName?: string;
   errorDetail?: string;
+  nodePromptVersion?: string;
+  nodeModel?: string;
+  fallbackUsed?: boolean;
+  schemaValidationFailed?: boolean;
 }
 
 export interface ChatbotV3EventEmitterOptions {

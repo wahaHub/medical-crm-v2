@@ -1111,7 +1111,6 @@ type LlmNodeEvent = {
   nodeModel?: string;
   fallbackUsed?: boolean;
   schemaValidationFailed?: boolean;
-  toolPlanUsed?: boolean;
 };
 ```
 

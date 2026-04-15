@@ -110,6 +110,8 @@ For each row include:
 - required evidence
 - failure bucket
 
+For denied-jump cases such as `R-A1` and `R-A2`, explicitly include a negative contract assertion that `cards[]` does not contain any special missing-prerequisite placeholder card.
+
 - [ ] **Step 3: Add reusable evidence template**
 
 Embed a copy/paste block:
@@ -191,6 +193,12 @@ Include checks for:
 - node events
 - `turn_summary`
 - FAQ LLM metadata
+- `nodePromptVersion`
+- `nodeModel`
+- `fallbackUsed`
+- `schemaValidationFailed`
+
+Document that missing observability fields required for live diagnosis count as a blocker for staging acceptance, not a minor note.
 
 - [ ] **Step 5: Commit**
 
@@ -359,11 +367,17 @@ Follow the matrix in order and record evidence for each high-risk case.
 
 - [ ] **Step 2: Run `R-E*`, `R-C*`**
 
-Record which failures are:
+Record the primary and secondary bucket for each failure using the same taxonomy as the triage template:
 
-- fallback/runtime
-- composer
-- contract
+- `runtime-authority`
+- `fact-commit`
+- `dispatch/tool`
+- `fallback/error-handling`
+- `response-composer`
+- `frontend/bff/session`
+- `prompt/semantic`
+
+Do not collapse failures into generic "runtime" unless the more specific bucket is genuinely unknown.
 
 - [ ] **Step 3: Mark prompt-tuning gate**
 

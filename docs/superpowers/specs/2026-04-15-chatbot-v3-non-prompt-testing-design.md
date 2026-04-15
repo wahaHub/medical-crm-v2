@@ -321,8 +321,8 @@ Examples of failures that are good prompt-tuning candidates:
 
 ### 10.2 Layer 2 Regression: Authority and Journey
 
-- `R-A1` direct recommendation request before explain stays gated
-- `R-A2` direct consult request before prerequisites stays gated
+- `R-A1` direct recommendation request before explain stays gated and does not return a special missing-prerequisite card
+- `R-A2` direct consult request before prerequisites stays gated and does not return a special missing-prerequisite card
 - `R-A3` explain completed unlocks downstream progression
 - `R-A4` records saved unlock recommendation
 - `R-A5` recommendation picked unlocks consult
@@ -412,10 +412,10 @@ Examples of failures that are good prompt-tuning candidates:
 ### 10.11 Layer 3 Staging Acceptance: Observability
 
 - `A-O1` every high-risk turn has `traceId`
-- `A-O2` node event sequence is complete enough to diagnose
+- `A-O2` node event sequence is complete enough to diagnose and includes the concrete debug fields already required by v3 where applicable: `nodePromptVersion`, `nodeModel`, `fallbackUsed`, and `schemaValidationFailed`
 - `A-O3` `turn_summary` matches actual decision
-- `A-O4` FAQ LLM node metadata is visible when enabled
-- `A-O5` `fallbackUsed` and `schemaValidationFailed` semantics are trustworthy
+- `A-O4` FAQ LLM node metadata is visible when enabled, including prompt/model identity
+- `A-O5` `fallbackUsed` and `schemaValidationFailed` semantics are trustworthy and missing observability fields are treated as blocking for live diagnosis
 - `A-O6` one failed live case can be root-caused from logs alone
 
 ### 10.12 Layer 4 Manual Exploratory

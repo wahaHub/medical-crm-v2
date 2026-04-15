@@ -4,11 +4,10 @@ import type {
   OrchestratorV3Intent,
   OrchestratorV3Suggestion,
 } from './orchestrator-v3.service.js';
+import type { LlmNodeAdapter } from './llm-adapter.types.js';
 import { CHATBOT_V3_JOURNEY_STAGES } from './types.js';
 
-export interface SupervisorSuggestionGateway {
-  suggest(input: OrchestratorV3DecisionInput): Promise<unknown>;
-}
+export type SupervisorSuggestionGateway = LlmNodeAdapter<OrchestratorV3DecisionInput, unknown>;
 
 export type SupervisorSuggestion = OrchestratorV3Suggestion;
 
@@ -32,7 +31,7 @@ export class SupervisorService {
     }
 
     try {
-      const raw = await this.gateway.suggest(input);
+      const raw = await this.gateway.run(input);
       return sanitizeSuggestionOnly(raw, fallback);
     } catch {
       return fallback;
@@ -45,15 +44,15 @@ export function sanitizeSuggestionOnly(
   fallback: SupervisorSuggestion,
 ): SupervisorSuggestion {
   const record = asRecord(raw);
-  const intent = isOrchestratorIntent(record.intent) ? record.intent : fallback.intent;
-  const suggestedStage = isChatJourneyStage(record.suggestedStage)
-    ? record.suggestedStage
-    : fallback.suggestedStage;
-  const reason = normalizeReason(record.reason, fallback.reason);
+  const reason = normalizeReason(record.reason);
+
+  if (!isOrchestratorIntent(record.intent) || !isChatJourneyStage(record.suggestedStage) || !reason) {
+    return fallback;
+  }
 
   return {
-    intent,
-    suggestedStage,
+    intent: record.intent,
+    suggestedStage: record.suggestedStage,
     reason,
   };
 }
@@ -98,13 +97,13 @@ function inferStageFromInput(input: OrchestratorV3DecisionInput): ChatJourneySta
   return CHATBOT_V3_JOURNEY_STAGES[0];
 }
 
-function normalizeReason(reason: unknown, fallbackReason: string): string {
+function normalizeReason(reason: unknown): string | null {
   if (typeof reason !== 'string') {
-    return clampReason(fallbackReason);
+    return null;
   }
 
   const trimmed = reason.trim();
-  return clampReason(trimmed.length > 0 ? trimmed : fallbackReason);
+  return trimmed.length > 0 ? clampReason(trimmed) : null;
 }
 
 function clampReason(reason: string): string {

@@ -36,12 +36,13 @@ describe('SupervisorService', () => {
     expect(record.factsPatch).toBeUndefined();
   });
 
-  it('sanitizes gateway output and strips unsafe journey mutation fields', async () => {
-    const gateway = new SupervisorService({
-      suggest: async () => ({
-        intent: 'consult',
-        suggestedStage: 'ONLINE_CONSULT',
-        reason: 'gateway recommendation',
+  it('accepts only intent/suggestedStage/reason from supervisor llm output', async () => {
+    const supervisorWithLlm = new SupervisorService({
+      promptVersion: 'supervisor-v1',
+      run: async () => ({
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: 'user is asking an faq',
         dispatchAgent: 'HandoffAgent',
         from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
         to: { stage: 'HUMAN_HANDOFF', phase: 'active' },
@@ -49,21 +50,17 @@ describe('SupervisorService', () => {
       }),
     });
 
-    const result = await gateway.suggest(input);
-    const record = result as unknown as Record<string, unknown>;
-
-    expect(result.intent).toBe('consult');
-    expect(result.suggestedStage).toBe('ONLINE_CONSULT');
-    expect(result.reason).toBe('gateway recommendation');
-    expect(record.dispatchAgent).toBeUndefined();
-    expect(record.from).toBeUndefined();
-    expect(record.to).toBeUndefined();
-    expect(record.factsPatch).toBeUndefined();
+    await expect(supervisorWithLlm.suggest(input)).resolves.toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      reason: 'user is asking an faq',
+    });
   });
 
-  it('falls back deterministically when gateway returns invalid intent or stage', async () => {
+  it('falls back to heuristic when llm output is invalid', async () => {
     const gateway = new SupervisorService({
-      suggest: async () => ({
+      promptVersion: 'supervisor-v1',
+      run: async () => ({
         intent: 'not-a-real-intent',
         suggestedStage: 'NOT_A_STAGE',
         reason: 'gateway output is invalid',
@@ -72,15 +69,21 @@ describe('SupervisorService', () => {
 
     const result = await gateway.suggest(input);
 
-    expect(result.intent).toBe('progression');
-    expect(result.suggestedStage).toBe('RECOMMENDATION');
-    expect(result.reason).toBe('gateway output is invalid');
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      reason: 'medical records are saved and ready for recommendation',
+    });
   });
 
-  it('returns fallback suggestion when the gateway throws', async () => {
+  it.each([
+    ['throws', new Error('gateway unavailable')],
+    ['times out', new Error('gateway timeout')],
+  ])('falls back to heuristic when supervisor llm %s', async (_label, error) => {
     const gateway = new SupervisorService({
-      suggest: async () => {
-        throw new Error('gateway unavailable');
+      promptVersion: 'supervisor-v1',
+      run: async () => {
+        throw error;
       },
     });
 

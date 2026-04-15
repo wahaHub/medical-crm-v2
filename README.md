@@ -2,19 +2,43 @@
 
 Medora CRM v2 monorepo.
 
+## Local Setup
+
+Use these three files together when you need to bring `medical-crm-v2` up on a new machine:
+
+- [docs/setup/local-development.md](docs/setup/local-development.md)
+- [.env.example](.env.example)
+- [packages/infrastructure/database/full-bootstrap.sql](packages/infrastructure/database/full-bootstrap.sql)
+
+Fast path:
+
+```bash
+cd /path/to/medical-crm-v2
+corepack enable
+corepack prepare pnpm@9.15.4 --activate
+pnpm install
+cp .env.example .env
+ln -sf ../../.env apps/api/.env
+pnpm db:export:full
+set -a
+source .env
+set +a
+psql "$DATABASE_URL" -f packages/infrastructure/database/full-bootstrap.sql
+pnpm dev
+```
+
+Default local URLs after boot:
+
+- Admin portal: `http://localhost:3002`
+- Hospital portal: `http://localhost:3003`
+- API: `http://localhost:3001/health`
+
 ## Apps
 
 - `apps/admin`: Admin portal on Vercel
 - `apps/hospital`: Hospital portal on Vercel
 - `apps/api`: Node API on Lightsail
 - `dify`: Self-hosted Dify stack
-
-## Chatbot V3 Cutover
-
-- New public endpoint: `POST /api/v3/chatbot/chat`
-- v3 response fields: `messages`, `turnOutcome`, `cards`, `journey`, `handoff`
-- v3 runtime does not depend on Dify provider path
-- Debug-critical LLM node events can carry `nodePromptVersion`, `nodeModel`, `fallbackUsed`, and `schemaValidationFailed`
 
 ## Deployment
 
@@ -357,4 +381,26 @@ Restart the Dify stack components most relevant to chatbot execution:
 ssh -i "$SSH_KEY_PATH" "$REMOTE_USER@$REMOTE_HOST"
 cd /opt/medora/dify/docker
 sudo docker compose restart api worker worker_beat sandbox nginx
+```
+
+Reset the production Dify console account password:
+
+- Production Dify host: `44.253.141.97`
+- Dify docker dir: `/opt/medora/dify/docker`
+- Current console account: `contact@medicaltourismchina.health`
+- Do not store the reset password in git or docs. Generate a fresh temporary password when needed.
+
+```bash
+export SSH_KEY_PATH="/Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem"
+export REMOTE_USER="ubuntu"
+export REMOTE_HOST="44.253.141.97"
+export DIFY_ADMIN_EMAIL="contact@medicaltourismchina.health"
+export NEW_DIFY_PASSWORD="<generate-a-new-strong-password>"
+
+ssh -i "$SSH_KEY_PATH" "$REMOTE_USER@$REMOTE_HOST"
+sudo docker exec docker-api-1 /bin/bash -lc \
+  "cd /app/api && uv run flask reset-password \
+    --email '$DIFY_ADMIN_EMAIL' \
+    --new-password '$NEW_DIFY_PASSWORD' \
+    --password-confirm '$NEW_DIFY_PASSWORD'"
 ```

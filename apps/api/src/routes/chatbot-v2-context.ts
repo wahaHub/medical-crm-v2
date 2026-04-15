@@ -46,7 +46,6 @@ type ChatbotV2FoundationContext = {
   journeySnapshot: JourneySnapshot;
   truth: JourneyTruth;
   resources: ChatResourceDescriptor[];
-  hasCompletedInitialProcessExplanation: boolean;
   classification: ChatbotV2RequestClassificationResult;
   requiresFaqGrounding: boolean;
   activeHospitalContext: {
@@ -70,42 +69,6 @@ export type ChatbotV2TurnContext = {
 
 const orchestrator = new ConversationOrchestratorService();
 const stageCopyRegistry = new StageCopyRegistryService();
-
-export function buildChatbotV2StarterEnvelope(input: {
-  foundation: ChatbotV2FoundationContext;
-}): ChatbotV2Envelope {
-  const starterJourneySnapshot: JourneySnapshot = {
-    currentStage: 'EXPLAIN_PROCESS',
-    currentPhase: 'pre',
-  };
-  const starterResources = [{
-    resourceType: 'PROCESS_GUIDE' as const,
-    resourceId: `process-guide:${input.foundation.scopeId}`,
-    status: 'available' as const,
-    stageBinding: {
-      stage: 'EXPLAIN_PROCESS' as const,
-      phase: 'active' as const,
-    },
-    visibility: {
-      mode: 'global' as const,
-    },
-    payload: {
-      title: 'Understand our consultation process',
-    },
-    actions: ['open'],
-  }];
-
-  return {
-    journeySnapshot: starterJourneySnapshot,
-    resources: starterResources,
-    truthSummary: input.foundation.truth,
-    stageCopy: readStageCopy(starterJourneySnapshot),
-    requestClass: 'process_explanation',
-    responseIntent: 'process_explanation',
-    targetResourceTypes: ['PROCESS_GUIDE'],
-    includeProgressionFollowUp: false,
-  };
-}
 
 export async function buildChatbotV2TurnContext(input: {
   services: Services;
@@ -155,7 +118,6 @@ export async function buildChatbotV2TurnContext(input: {
     journeySnapshot: foundation.journeySnapshot,
     truth: foundation.truth,
     classification,
-    hasCompletedInitialProcessExplanation: foundation.hasCompletedInitialProcessExplanation,
   });
 
   return {
@@ -209,24 +171,22 @@ export function buildChatbotV2PostTurnContext(input: {
     };
   }
 
-  const postTurnOrchestration = orchestrator.orchestratePostTurn({
+  const orchestration = orchestrator.orchestrate({
     scopeId: input.foundation.scopeId,
-    previousJourneySnapshot: input.foundation.journeySnapshot,
     journeySnapshot: currentJourneySnapshot,
     truth: refreshedTruth,
-    assistantNextAction: input.assistantNextAction,
-    assistantInternalNextAction: input.assistantInternalNextAction,
+    classification: input.foundation.classification,
   });
 
   return {
-    journeySnapshot: postTurnOrchestration.journeyUpdate ?? currentJourneySnapshot,
-    resources: postTurnOrchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
+    journeySnapshot: orchestration.journeyUpdate ?? currentJourneySnapshot,
+    resources: orchestration.allowedResources.map((resource) => ChatResourceDescriptorSchema.parse(resource)),
     truthSummary: refreshedTruth,
-    stageCopy: readStageCopy(postTurnOrchestration.journeyUpdate ?? currentJourneySnapshot),
+    stageCopy: readStageCopy(orchestration.journeyUpdate ?? currentJourneySnapshot),
     requestClass,
     responseIntent,
     targetResourceTypes: input.preTurn.targetResourceTypes,
-    includeProgressionFollowUp: input.preTurn.includeProgressionFollowUp ?? false,
+    includeProgressionFollowUp: orchestration.includeProgressionFollowUpAccepted ?? false,
   };
 }
 
@@ -268,7 +228,7 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
   const chatbotV2 = asRecord(root.chatbot_v2 ?? root.chatbotV2);
   let journeySnapshot = JourneySnapshotSchema.parse({
     currentStage: asString(asRecord(chatbotV2.journey_snapshot).current_stage) ?? 'EXPLAIN_PROCESS',
-    currentPhase: asString(asRecord(chatbotV2.journey_snapshot).current_phase) ?? 'pre',
+    currentPhase: asString(asRecord(chatbotV2.journey_snapshot).current_phase) ?? 'active',
   });
   const foundationTruth = deriveJourneyTruth(policyContext);
   let resources = asArray(chatbotV2.allowed_resources).map((resource) => ChatResourceDescriptorSchema.parse({
@@ -289,7 +249,9 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
   const floorSnapshot = readJourneySnapshotFromFloor(floor);
   if (
     floorSnapshot
-    && shouldPreferFloorSnapshot(floorSnapshot, journeySnapshot)
+    && (
+      compareJourneySnapshots(floorSnapshot, journeySnapshot) > 0
+    )
   ) {
     journeySnapshot = floorSnapshot;
     resources = dedupeChatResources([
@@ -316,46 +278,12 @@ function readFoundationContext(policyContext: unknown, fallbackSessionId: string
     journeySnapshot,
     truth: foundationTruth,
     resources,
-    hasCompletedInitialProcessExplanation: hasCompletedInitialProcessExplanation(journeySnapshot, floor, chatbotV2),
     classification: DEFAULT_BOOTSTRAP_CLASSIFICATION,
     requiresFaqGrounding: false,
     activeHospitalContext: readActiveHospitalContext(policyContext),
     requestClass: asString(floor.request_class) ?? asString(chatbotV2.request_class),
     responseIntent: asString(floor.response_intent) ?? asString(chatbotV2.response_intent),
   };
-}
-
-function shouldPreferFloorSnapshot(
-  floorSnapshot: JourneySnapshot,
-  foundationSnapshot: JourneySnapshot,
-): boolean {
-  if (compareJourneySnapshots(floorSnapshot, foundationSnapshot) > 0) {
-    return true;
-  }
-
-  return (
-    floorSnapshot.currentStage === 'EXPLAIN_PROCESS'
-    && floorSnapshot.currentPhase === 'pre'
-    && foundationSnapshot.currentStage === 'EXPLAIN_PROCESS'
-    && foundationSnapshot.currentPhase === 'active'
-  );
-}
-
-function hasCompletedInitialProcessExplanation(
-  journeySnapshot: JourneySnapshot,
-  floor: Record<string, unknown>,
-  chatbotV2: Record<string, unknown>,
-): boolean {
-  if (journeySnapshot.currentStage !== 'EXPLAIN_PROCESS') {
-    return true;
-  }
-
-  if (journeySnapshot.currentPhase === 'pre') {
-    return false;
-  }
-
-  const floorRequestClass = asString(floor.request_class) ?? asString(chatbotV2.request_class);
-  return floorRequestClass === 'process_explanation';
 }
 
 function readScopeId(policyContext: unknown, fallbackSessionId: string): string {
@@ -454,23 +382,23 @@ function buildAllowedResourceHints(
 }
 
 function getSupplementalHintResourceTypes(
-  _journeySnapshot: JourneySnapshot,
+  journeySnapshot: JourneySnapshot,
 ): ChatResourceDescriptor['resourceType'][] {
   const alwaysVisibleQueryResources: ChatResourceDescriptor['resourceType'][] = [
     'MEDICAL_INVITATION_STATUS',
   ];
-  const explicitProgressionResources: ChatResourceDescriptor['resourceType'][] = [
-    'MEDICAL_DOC_UPLOAD',
-    'QUESTIONNAIRE',
-    'HOSPITAL_RECOMMENDATION',
-    'PACKAGE_RECOMMENDATION',
-    'ONLINE_CONSULT_BOOKING',
-  ];
 
-  return [
-    ...alwaysVisibleQueryResources,
-    ...explicitProgressionResources,
-  ];
+  if (journeySnapshot.currentStage === 'EXPLAIN_PROCESS') {
+    return [
+      ...alwaysVisibleQueryResources,
+      'MEDICAL_DOC_UPLOAD',
+      'QUESTIONNAIRE',
+      'HOSPITAL_RECOMMENDATION',
+      'PACKAGE_RECOMMENDATION',
+    ];
+  }
+
+  return alwaysVisibleQueryResources;
 }
 
 function describeResource(resourceType: ChatResourceDescriptor['resourceType']): string {

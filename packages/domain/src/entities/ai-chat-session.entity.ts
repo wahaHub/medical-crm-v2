@@ -17,6 +17,7 @@ export interface AiChatStatusSnapshot {
   trustOrObjection: string;
   engagementMode: string;
   enteredDeepWorkflowAt: Date | null;
+  processExplained: boolean;
   conversationSummary: string;
   lastPolicyDecisionAt: Date | null;
   lastUserMessageAt: Date | null;
@@ -68,6 +69,7 @@ export class AiChatSession {
       trustOrObjection: props.statusSnapshot?.trustOrObjection ?? 'none',
       engagementMode: props.statusSnapshot?.engagementMode ?? 'LIGHT_DISCOVERY',
       enteredDeepWorkflowAt: props.statusSnapshot?.enteredDeepWorkflowAt ?? null,
+      processExplained: props.statusSnapshot?.processExplained ?? false,
       conversationSummary: props.statusSnapshot?.conversationSummary ?? '',
       lastPolicyDecisionAt: props.statusSnapshot?.lastPolicyDecisionAt ?? null,
       lastUserMessageAt: props.statusSnapshot?.lastUserMessageAt ?? null,

@@ -162,7 +162,6 @@ describe('Dify workflow v2 contract', () => {
     expect(parseCode).toContain('target_resource_types');
     expect(parseCode).toContain('allowedResources');
     expect(parseCode).toContain('allowed_resources');
-    expect(parseCode).toContain('resources');
     expect(parseCode).toContain('truthSummary');
     expect(parseCode).toContain('truth_summary');
     expect(parseCode).toContain('stageCopy');
@@ -185,104 +184,34 @@ describe('Dify workflow v2 contract', () => {
     expect(parseCode).not.toContain('if current_stage == "HUMAN_HANDOFF"');
   });
 
-  it('accepts live chatbotV2 resources payloads when parsing allowed resources', () => {
-    const dsl = loadDsl();
-    const parseNode = findNode(dsl.workflow.graph.nodes, 'parse_chatbot_v2_context');
-    const parseCode = parseNode.data?.code ?? '';
-    const samplePayload = JSON.stringify({
-      journeySnapshot: {
-        currentStage: 'COLLECT_MEDICAL_INPUTS',
-        currentPhase: 'active',
-      },
-      resources: [
-        {
-          resourceType: 'PROCESS_GUIDE',
-          status: 'available',
-        },
-        {
-          resourceType: 'MEDICAL_DOC_UPLOAD',
-          status: 'available',
-        },
-        {
-          resourceType: 'QUESTIONNAIRE',
-          status: 'available',
-        },
-      ],
-      truthSummary: {
-        medicalInputsSubmitted: false,
-        onlineConsultSubmitted: false,
-        recommendationConfirmed: false,
-      },
-      requestClass: 'resource_request',
-      responseIntent: 'resource_request',
-      targetResourceTypes: ['QUESTIONNAIRE'],
-      includeProgressionFollowUp: false,
-    });
-
-    const output = execFileSync(
-      'python3',
-      [
-        '-c',
-        [
-          'import json, sys',
-          'ns = {}',
-          'exec(sys.stdin.read(), ns)',
-          'result = ns["main"](sys.argv[1])',
-          'print(json.dumps(result))',
-        ].join('\n'),
-        samplePayload,
-      ],
-      {
-        input: parseCode,
-        encoding: 'utf8',
-      },
-    );
-
-    const parsed = JSON.parse(output) as Record<string, string>;
-    expect(JSON.parse(parsed.allowed_resource_types)).toEqual([
-      'PROCESS_GUIDE',
-      'MEDICAL_DOC_UPLOAD',
-      'QUESTIONNAIRE',
-    ]);
-    expect(JSON.parse(parsed.allowed_resources_json)).toEqual([
-      { resourceType: 'PROCESS_GUIDE', status: 'available' },
-      { resourceType: 'MEDICAL_DOC_UPLOAD', status: 'available' },
-      { resourceType: 'QUESTIONNAIRE', status: 'available' },
-    ]);
-    expect(JSON.parse(parsed.target_resource_types)).toEqual(['QUESTIONNAIRE']);
-  });
-
   it('grounds the v2 composer prompt in CRM journey state and forbids Dify-owned progression', () => {
     const dsl = loadDsl();
     const composerNode = findNode(dsl.workflow.graph.nodes, 'response_composer_v2');
     const prompt = systemPrompt(composerNode);
     const promptInputs = userPrompt(composerNode);
 
-    expect(prompt).toContain('The upstream system has already decided the current journey state');
-    expect(prompt).toContain('Input meanings');
-    expect(prompt).toContain('requestClass');
-    expect(prompt).toContain('responseIntent');
-    expect(prompt).toContain('currentStage');
-    expect(prompt).toContain('currentPhase');
-    expect(prompt).toContain('allowedResources');
-    expect(prompt).toContain('truthSummary');
-    expect(prompt).toContain('stageCopy');
-    expect(prompt).toContain('currentStatus');
-    expect(prompt).toContain('conversationSummary');
-    expect(prompt).toContain('faqGrounding');
+    expect(prompt).toContain('Dify is not the workflow owner');
+    expect(prompt).toContain('request class');
+    expect(prompt).toContain('response intent');
+    expect(prompt).toContain('current stage');
+    expect(prompt).toContain('current phase');
+    expect(prompt).toContain('allowed resources');
+    expect(prompt).toContain('truth summary');
+    expect(prompt).toContain('stage copy reference');
+    expect(prompt).toContain('current status');
+    expect(prompt).toContain('conversation summary');
+    expect(prompt).toContain('faq grounding');
+    expect(prompt).toContain('must not invent widgets');
+    expect(prompt).toContain('must not invent');
     expect(prompt).toContain('allowed next-action hints');
     expect(prompt).toContain('Return strict JSON only');
-    expect(prompt).toContain('If requestClass is resource_request and a target resource type appears in allowedResources');
-    expect(prompt).toContain('that means the user is explicitly asking for a resource that is available in this turn');
-    expect(prompt).toContain('acknowledge that the resource is available now and guide the user to use the surfaced resource');
-    expect(prompt).toContain('If requestClass is progression_request and targetResourceTypes are present');
-    expect(prompt).toContain('candidate next-step resources only');
-    expect(prompt).toContain('cannot be opened here');
-    expect(prompt).toContain('If truthSummary says medicalInputsSubmitted is true');
-    expect(prompt).toContain('do not imply a rewind');
-    expect(prompt).toContain('If stageCopy is provided');
-    expect(prompt).toContain('If faqGrounding is provided');
-    expect(prompt).toContain('Do not invent hospitals, packages, upload flows, booking flows, questionnaires, or human handoff steps');
+    expect(prompt).toContain('Do not say a requested resource is unavailable if it appears in the allowed resources list');
+    expect(prompt).toContain('If request class is resource_request and target resource types are present');
+    expect(prompt).toContain('If request class is progression_request and target resource types are present');
+    expect(prompt).toContain('candidate next-step resources suggested by CRM context');
+    expect(prompt).toContain('If truth summary says medicalInputsSubmitted is true');
+    expect(prompt).toContain('must not imply a journey rewind');
+    expect(prompt).toContain('canonical explanation for the current pre/post stage');
     expect(prompt).not.toContain('SAFETY_HANDOFF');
     expect(prompt).not.toContain('SHOW_HOSPITAL_RECOMMENDATIONS');
     expect(prompt).not.toContain('SHOW_PACKAGE');

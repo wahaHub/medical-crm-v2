@@ -4,56 +4,78 @@ Date: 2026-04-12
 
 ## Purpose
 
-This note describes the actual `chatbot-v2` orchestration model currently implemented after Chunks 1-3 of the phase lifecycle redesign.
+This note describes the actual implemented `chatbot-v2` orchestration model after the 2026-04-12 state-model amendment.
 
-It documents current code behavior, not an aspirational future design.
+It reflects the current code, not a future idealized design.
 
-## Core Model
+## Current State Model
 
-The main conversational state is:
+### Primary journey state
+
+The primary state is now:
 
 - `journeySnapshot.currentStage`
 - `journeySnapshot.currentPhase`
 
-The active lifecycle is:
+This snapshot is the main conversational state. It is no longer derived from a large truth object every turn.
 
-- `EXPLAIN_PROCESS.pre`
-- `EXPLAIN_PROCESS.active`
-- `COLLECT_MEDICAL_INPUTS.pre / active / post`
-- `RECOMMENDATION.pre / active / post`
-- `ONLINE_CONSULT.pre / active / post`
-- `HUMAN_HANDOFF.pre / active / post`
+### Minimal truth
 
-`EXPLAIN_PROCESS` is the only stage without a `post` phase.
-
-Minimal business truth still exists:
+The current minimal truth model is:
 
 - `medicalInputsSubmitted`
 - `recommendationConfirmed`
 - `onlineConsultSubmitted`
 
-Truth supports stage completion, but `journeySnapshot` is still the primary state.
+Truth is now used as business-fact support only. It does not drive a full reverse derivation of the stage machine.
 
-## Snapshot Sources
+### No `deriveSnapshot()`
+
+`JourneyEngineService` no longer implements `deriveSnapshot()`.
+
+It only implements:
+
+```ts
+advanceSnapshot(currentSnapshot, transitionDecision)
+```
+
+This means:
+
+- no `truth -> stage` reverse mapping in the core journey engine
+- no attempt to infer the whole current journey from a few boolean facts
+
+## Where The Current Snapshot Comes From
+
+### Foundation snapshot
+
+`ContextBuilderService.buildChatbotV2Foundation()` now bootstraps the foundation snapshot to:
+
+- `EXPLAIN_PROCESS.active`
+
+and marks the foundation source as:
+
+- `bootstrap`
+
+This foundation snapshot is only the starting point for turn construction.
+
+### Floor override
 
 `buildChatbotV2TurnContext()` reads:
 
 - `chatbot_v2`
 - optional `chatbot_v2_floor`
 
-The builder prefers a later `chatbot_v2_floor.journey_snapshot` when it is ahead of the current foundation snapshot.
+If `chatbot_v2_floor.journey_snapshot` is later than the bootstrapped or current foundation snapshot, that later floor wins.
 
-There is also one special-case preference:
+If the current foundation `journey_snapshot` is already later, the older floor is not preserved.
 
-- `EXPLAIN_PROCESS.pre` from floor is allowed to win over `EXPLAIN_PROCESS.active` from foundation so a resumed session can stay on the opening invitation turn when needed
+This is important: the live turn builder now prefers the currently known journey position over an older floor.
 
-If nothing else is present, the lifecycle bootstraps at:
+## `preTurn` In Practice
 
-- `EXPLAIN_PROCESS.pre`
+`preTurn` is the structured turn context CRM sends to the composer before the assistant writes the reply.
 
-## Turn Envelopes
-
-`preTurn` is the CRM-owned turn context sent into composition. It currently includes:
+It currently contains:
 
 - `journeySnapshot`
 - `resources`
@@ -64,20 +86,25 @@ If nothing else is present, the lifecycle bootstraps at:
 - `targetResourceTypes`
 - `includeProgressionFollowUp`
 
-`postTurn` is rebuilt after the assistant response and may advance the lifecycle again through post-turn reconciliation.
+This is serialized as `chatbotV2` and passed to the composer workflow.
 
-The widget starter now uses a dedicated starter envelope:
+## Conversation Orchestrator Inputs
 
-- fixed `journeySnapshot = EXPLAIN_PROCESS.pre`
-- fixed `requestClass = process_explanation`
-- fixed `responseIntent = process_explanation`
-- only `PROCESS_GUIDE` is exposed
+`ConversationOrchestratorService.orchestrate()` currently receives:
 
-That prevents the widget starter from consuming the opening lifecycle gate.
+- `scopeId`
+- `journeySnapshot`
+- `truth`
+- `classification`
+  - `requestClass`
+  - `targetResourceTypes`
+  - `includeProgressionFollowUp`
 
-## Orchestrator Outputs
+It does not currently receive `recentMessages` or `conversationSummary` directly. Those are used earlier by the classifier.
 
-`ConversationOrchestratorService.orchestrate()` returns:
+## What The Orchestrator Currently Decides
+
+For each turn, the orchestrator currently returns:
 
 - `requestClass`
 - `responseIntent`
@@ -86,221 +113,299 @@ That prevents the widget starter from consuming the opening lifecycle gate.
 - `requiresFaqGrounding`
 - `journeyUpdate`
 
-`requiresFaqGrounding` is keyed off `responseIntent`, not raw `requestClass`.
+### Important note on `responseIntent`
 
-That means FAQ grounding is enabled whenever the assistant is expected to answer as:
+Right now:
 
-- `faq`
-- `process_explanation`
+- `responseIntent = requestClass`
 
-## FAQ Overlay Rule
+This is intentionally simple and is the current implemented behavior.
 
-FAQ is now overlay behavior, not the progression owner.
+## FAQ grounding rule
 
-In practice:
+`requiresFaqGrounding` is currently:
 
-- FAQ in `pre` stays in the same `pre`
-- FAQ in `active` stays in the same `active`
-- FAQ or later informational `process_explanation` may also happen during `post`
-- FAQ does not move a stage forward on its own
-- `includeProgressionFollowUp` only allows a light follow-up close, it does not advance the lifecycle by itself
+- `true` for `faq`
+- `true` for `process_explanation`
+- `false` otherwise
 
-Repeated later `process_explanation` turns outside `EXPLAIN_PROCESS` are normalized to:
+## Progression follow-up rule
 
-- `responseIntent = faq`
+`includeProgressionFollowUp` is currently accepted only when:
 
-That keeps them informational only and prevents rewind.
+- classifier requested it
+- request class is `faq` or `process_explanation`
+- current stage is not `HUMAN_HANDOFF`
 
-When a turn happens during `post`, the answer stays anchored to that current confirmation layer for the turn, and any automatic bridge to the next stage's `pre` still happens afterwards during post-turn reconciliation.
+If accepted:
 
-## Resource Selection Rule
+- the primary `responseIntent` stays unchanged
+- journey may still advance if the current stage rule allows it
+- targeted resources are merged with projected next-stage resources for the turn
 
-The orchestrator computes:
+## Resource selection rule
 
-1. projected resources from the current or updated snapshot
-2. explicitly targeted resources from `classification.targetResourceTypes`
-3. implicit targeted resources for human handoff
+The orchestrator builds:
 
-Then it returns:
+1. current allowed resources from the current snapshot
+2. projected allowed resources from the projected snapshot after any journey update
+3. explicitly targeted resources from `classification.targetResourceTypes`
 
-- targeted resources when they exist
-- merged targeted + projected resources only for FAQ / process-explanation turns with accepted progression follow-up
-- otherwise projected resources
+Then it decides:
 
-This keeps FAQ overlay compatible with the current stage without letting FAQ own progression.
+- if targeted resources exist:
+  - return targeted resources
+  - except for accepted FAQ/process follow-up turns, where targeted resources are merged with projected resources
+- otherwise:
+  - return projected allowed resources
 
-## Lifecycle Semantics
+Implicit targeting is currently only implemented for:
 
-### `EXPLAIN_PROCESS.pre`
+- `human_help_request` -> `HUMAN_HANDOFF`
+- `progression_request` while already inside `HUMAN_HANDOFF` -> `HUMAN_HANDOFF`
 
-This is the discovery and invitation phase.
+## Transition Model
 
-Current behavior:
+The orchestrator no longer emits raw events.
 
-- discovery FAQ stays in `EXPLAIN_PROCESS.pre`
-- only explicit agreement enters `EXPLAIN_PROCESS.active`
-- explicit agreement is currently recognized from:
-  - `progression_request`
-  - `process_explanation`
-  - `resource_request` targeting `PROCESS_GUIDE`
+It now decides whether to call `JourneyEngineService.advanceSnapshot()` with a transition decision.
 
-### `EXPLAIN_PROCESS.active`
+Current transition decisions are:
 
-This is the one-turn process explanation phase.
+- `ENTER_COLLECT_MEDICAL_INPUTS_PRE`
+- `ENTER_COLLECT_MEDICAL_INPUTS_ACTIVE`
+- `ENTER_COLLECT_MEDICAL_INPUTS_POST`
+- `ENTER_RECOMMENDATION_PRE`
+- `ENTER_RECOMMENDATION_ACTIVE`
+- `ENTER_RECOMMENDATION_POST`
+- `ENTER_ONLINE_CONSULT_PRE`
+- `ENTER_ONLINE_CONSULT_ACTIVE`
+- `ENTER_ONLINE_CONSULT_POST`
+- `ENTER_HUMAN_HANDOFF_PRE`
+- `ENTER_HUMAN_HANDOFF_ACTIVE`
+- `ENTER_HUMAN_HANDOFF_POST`
 
-Current behavior:
+## Actual transition rules in code
 
-- pre-turn orchestration keeps the turn anchored at `EXPLAIN_PROCESS.active`
-- `responseIntent` is normalized to `process_explanation`
-- explicit intake resource requests do not jump forward during pre-turn
-- post-turn reconciliation automatically advances:
-  - `EXPLAIN_PROCESS.active -> COLLECT_MEDICAL_INPUTS.pre`
+### 1. Human help
 
-There is no separate `EXPLAIN_PROCESS.post`.
+If:
 
-### `COLLECT_MEDICAL_INPUTS.pre`
+- `requestClass = human_help_request`
+- current stage is not `HUMAN_HANDOFF`
 
-This phase waits for explicit agreement to start intake.
+Then:
 
-Current behavior:
+- transition to `HUMAN_HANDOFF.pre`
 
-- FAQ stays in `COLLECT_MEDICAL_INPUTS.pre`
-- explicit agreement enters `COLLECT_MEDICAL_INPUTS.active`
-- explicit agreement is recognized from:
-  - `progression_request`
-  - `resource_request` targeting `MEDICAL_DOC_UPLOAD` or `QUESTIONNAIRE`
+If current snapshot is:
 
-### `COLLECT_MEDICAL_INPUTS.active`
+- `HUMAN_HANDOFF.pre`
 
-This is the intake execution phase.
+and one of these is true:
 
-Current behavior:
+- `requestClass = progression_request`
+- `requestClass = human_help_request`
+- `requestClass = resource_request` targeting `HUMAN_HANDOFF`
 
-- FAQ stays in `COLLECT_MEDICAL_INPUTS.active`
-- submitted intake enters `COLLECT_MEDICAL_INPUTS.post` when `medicalInputsSubmitted = true`
-- dismiss-style progression also enters `COLLECT_MEDICAL_INPUTS.post`
-- dismissal is currently recognized from:
-  - `progression_request` not still targeting intake resources
-  - `resource_request` targeting recommendation resources
+Then:
 
-### `COLLECT_MEDICAL_INPUTS.post`
+- transition to `HUMAN_HANDOFF.active`
 
-This is the confirmation layer for both completion and dismiss.
+If current snapshot is:
 
-Current behavior:
+- `HUMAN_HANDOFF.active`
 
-- pre-turn remains at `COLLECT_MEDICAL_INPUTS.post`
-- FAQ or informational explanation can still be answered while staying anchored to the intake confirmation turn
-- post-turn automatically advances:
-  - `COLLECT_MEDICAL_INPUTS.post -> RECOMMENDATION.pre`
+and one of these is true:
 
-### `RECOMMENDATION.pre`
+- `requestClass = progression_request`
+- `requestClass = human_help_request`
+- `requestClass = resource_request` targeting `HUMAN_HANDOFF`
 
-This phase waits for explicit agreement to review recommendation resources.
+Then:
 
-Current behavior:
+- transition to `HUMAN_HANDOFF.post`
 
-- FAQ stays in `RECOMMENDATION.pre`
-- explicit agreement enters `RECOMMENDATION.active`
-- explicit agreement is recognized from:
-  - `progression_request`
-  - `resource_request` targeting `HOSPITAL_RECOMMENDATION` or `PACKAGE_RECOMMENDATION`
+### 2. Truth-driven post acknowledgements
 
-### `RECOMMENDATION.active`
+If current snapshot is:
 
-This is the recommendation execution phase.
+- `COLLECT_MEDICAL_INPUTS.active`
+- and `truth.medicalInputsSubmitted = true`
 
-Current behavior:
+Then:
 
-- FAQ stays in `RECOMMENDATION.active`
-- confirmation enters `RECOMMENDATION.post` when `recommendationConfirmed = true`
-- dismiss-style progression also enters `RECOMMENDATION.post`
-- dismissal is currently recognized from:
-  - `progression_request` not still targeting recommendation resources
-  - `resource_request` targeting `ONLINE_CONSULT_BOOKING`
+- transition to `COLLECT_MEDICAL_INPUTS.post`
 
-### `RECOMMENDATION.post`
+If current snapshot is:
 
-This is the confirmation layer for both completion and dismiss.
+- `RECOMMENDATION.active`
+- and `truth.recommendationConfirmed = true`
 
-Current behavior:
+Then:
 
-- pre-turn remains at `RECOMMENDATION.post`
-- FAQ or informational explanation can still be answered while staying anchored to the recommendation confirmation turn
-- post-turn automatically advances:
-  - `RECOMMENDATION.post -> ONLINE_CONSULT.pre`
+- transition to `RECOMMENDATION.post`
 
-### `ONLINE_CONSULT.pre`
+If current snapshot is:
 
-This phase waits for explicit agreement to enter booking.
+- `ONLINE_CONSULT.active`
+- and `truth.onlineConsultSubmitted = true`
 
-Current behavior:
+Then:
 
-- FAQ stays in `ONLINE_CONSULT.pre`
-- explicit agreement enters `ONLINE_CONSULT.active`
-- explicit agreement is recognized from:
-  - `progression_request`
-  - `resource_request` targeting `ONLINE_CONSULT_BOOKING`
+- transition to `ONLINE_CONSULT.post`
 
-### `ONLINE_CONSULT.active`
+### 3. From `EXPLAIN_PROCESS`
 
-This is the booking execution phase.
+If current snapshot is `EXPLAIN_PROCESS.*` and one of these is true:
 
-Current behavior:
+- `requestClass = progression_request`
+- accepted progression follow-up
+- `requestClass = resource_request` targeting:
+  - `MEDICAL_DOC_UPLOAD`
+  - `QUESTIONNAIRE`
+  - `HOSPITAL_RECOMMENDATION`
+  - `PACKAGE_RECOMMENDATION`
 
-- FAQ stays in `ONLINE_CONSULT.active`
-- the stage cannot be dismissed by plain progression
-- only submission moves it forward:
-  - `onlineConsultSubmitted = true` enters `ONLINE_CONSULT.post`
+Then:
 
-### `ONLINE_CONSULT.post`
+- transition to `COLLECT_MEDICAL_INPUTS.pre`
 
-This is currently the submitted confirmation phase.
+### 4. From `COLLECT_MEDICAL_INPUTS.pre`
 
-Current behavior:
+If:
 
-- FAQ or informational explanation can still be answered while staying anchored to the online consultation confirmation turn
-- the stage remains terminal for now
-- there is no implemented automatic bridge beyond `ONLINE_CONSULT.post`
+- `requestClass = progression_request`
 
-### `HUMAN_HANDOFF.pre`
+or:
 
-This phase asks whether the patient wants a human advisor to take over.
+- `requestClass = resource_request`
+- target includes `MEDICAL_DOC_UPLOAD` or `QUESTIONNAIRE`
 
-Current behavior:
+Then:
 
-- entering handoff from any non-handoff stage goes to `HUMAN_HANDOFF.pre`
-- explicit agreement enters `HUMAN_HANDOFF.active`
-- explicit agreement is recognized from:
-  - `human_help_request`
-  - `progression_request`
-  - `resource_request` targeting `HUMAN_HANDOFF`
+- transition to `COLLECT_MEDICAL_INPUTS.active`
 
-### `HUMAN_HANDOFF.active`
+### 5. From `COLLECT_MEDICAL_INPUTS.active`
 
-This is the handoff execution phase.
+If current snapshot is:
 
-Current behavior:
+- `COLLECT_MEDICAL_INPUTS.active`
 
-- pre-turn stays anchored at `HUMAN_HANDOFF.active`
-- it does not auto-complete on FAQ or progression alone
-- post-turn enters `HUMAN_HANDOFF.post` only when the assistant execution acknowledgement is explicitly `HUMAN_HANDOFF`
+and:
 
-### `HUMAN_HANDOFF.post`
+- `truth.medicalInputsSubmitted = false`
 
-This is the completed handoff confirmation phase.
+and one of these is true:
 
-Current behavior:
+- `requestClass = progression_request`
+- accepted progression follow-up
+- `requestClass = resource_request` targeting:
+  - `HOSPITAL_RECOMMENDATION`
+  - `PACKAGE_RECOMMENDATION`
 
-- FAQ or informational explanation can still be answered while staying anchored to the completed handoff confirmation turn
-- the stage remains terminal after handoff confirmation
+Then:
 
-## Stage Copy
+- transition to `RECOMMENDATION.pre`
 
-`StageCopyRegistryService` now provides fixed lifecycle-aware copy for:
+This is the current implemented dismiss behavior for the collect step.
 
-- `EXPLAIN_PROCESS.pre`
-- `EXPLAIN_PROCESS.active`
+### 6. From `COLLECT_MEDICAL_INPUTS.post`
+
+If:
+
+- `requestClass = progression_request`
+
+or:
+
+- accepted progression follow-up
+
+or:
+
+- `requestClass = resource_request`
+- target includes `HOSPITAL_RECOMMENDATION` or `PACKAGE_RECOMMENDATION`
+
+Then:
+
+- transition to `RECOMMENDATION.pre`
+
+### 7. From `RECOMMENDATION.pre`
+
+If:
+
+- `requestClass = progression_request`
+
+or:
+
+- `requestClass = resource_request`
+- target includes `HOSPITAL_RECOMMENDATION` or `PACKAGE_RECOMMENDATION`
+
+Then:
+
+- transition to `RECOMMENDATION.active`
+
+### 8. From `RECOMMENDATION.active`
+
+If current snapshot is:
+
+- `RECOMMENDATION.active`
+
+and:
+
+- `truth.recommendationConfirmed = false`
+
+and one of these is true:
+
+- `requestClass = progression_request`
+- accepted progression follow-up
+- `requestClass = resource_request` targeting `ONLINE_CONSULT_BOOKING`
+
+Then:
+
+- transition to `ONLINE_CONSULT.pre`
+
+This is the current implemented dismiss behavior for the recommendation step.
+
+### 9. From `RECOMMENDATION.post`
+
+If:
+
+- `requestClass = progression_request`
+
+or:
+
+- accepted progression follow-up
+
+or:
+
+- `requestClass = resource_request`
+- target includes `ONLINE_CONSULT_BOOKING`
+
+Then:
+
+- transition to `ONLINE_CONSULT.pre`
+
+### 10. From `ONLINE_CONSULT.pre`
+
+If:
+
+- `requestClass = progression_request`
+
+or:
+
+- `requestClass = resource_request`
+- target includes `ONLINE_CONSULT_BOOKING`
+
+Then:
+
+- transition to `ONLINE_CONSULT.active`
+
+Unlike `COLLECT_MEDICAL_INPUTS` and `RECOMMENDATION`, the current implementation does not allow a dismiss-style transition past `ONLINE_CONSULT.pre`. The stage copy for `ONLINE_CONSULT.pre` now explicitly frames this step as required and not dismissable.
+
+## Stage copy registry
+
+`StageCopyRegistryService` currently returns fixed canonical reference copy for:
+
 - `COLLECT_MEDICAL_INPUTS.pre`
 - `COLLECT_MEDICAL_INPUTS.post`
 - `RECOMMENDATION.pre`
@@ -310,11 +415,56 @@ Current behavior:
 - `HUMAN_HANDOFF.pre`
 - `HUMAN_HANDOFF.post`
 
-There is still no fixed copy entry for:
+Notable current wording:
 
-- `COLLECT_MEDICAL_INPUTS.active`
-- `RECOMMENDATION.active`
-- `ONLINE_CONSULT.active`
-- `HUMAN_HANDOFF.active`
+- `ONLINE_CONSULT.pre` explicitly says the online consultation step is required and cannot be dismissed or skipped
+- `HUMAN_HANDOFF.pre` asks whether the patient wants the case sent to the administrator team now
+- `HUMAN_HANDOFF.post` confirms the case has been sent and says the human team will contact the patient within 24 hours
 
-Those active phases rely on the current `responseIntent`, resource context, and general composer instructions rather than a dedicated fixed stage-copy record.
+## What `JourneyEngineService` Actually Does
+
+`JourneyEngineService` is now intentionally small.
+
+It does not inspect truth.
+It does not interpret raw events.
+It only maps a transition decision to the next snapshot.
+
+Examples:
+
+- `ENTER_COLLECT_MEDICAL_INPUTS_PRE` -> `COLLECT_MEDICAL_INPUTS.pre`
+- `ENTER_RECOMMENDATION_POST` -> `RECOMMENDATION.post`
+- `ENTER_HUMAN_HANDOFF_PRE` -> `HUMAN_HANDOFF.pre`
+
+## Post-turn behavior
+
+`buildChatbotV2PostTurnContext()` now:
+
+1. starts from `preTurn.journeySnapshot`
+2. refreshes minimal truth from the latest status snapshot
+3. re-runs the orchestrator using:
+   - current snapshot
+   - refreshed truth
+   - original turn classification
+
+This means post-turn context no longer tries to derive a fresh stage from truth alone.
+
+## Current limitations
+
+The current implementation is much cleaner than the earlier truth-derived model, but it is still intentionally narrow.
+
+Notable current limits:
+
+- `responseIntent` is still equal to `requestClass`
+- only a limited set of journey transitions is implemented
+- the foundation snapshot still bootstraps at `EXPLAIN_PROCESS.active`
+- stage-copy exists only as fixed canonical reference text for current `pre` / `post` phases; it is not yet personalized or localized beyond composer rephrasing
+
+## Files that implement this behavior
+
+- [conversation-orchestrator.service.ts](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/chatbot-v2/conversation-orchestrator.service.ts)
+- [journey-engine.service.ts](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/chatbot-v2/journey-engine.service.ts)
+- [journey-truth.service.ts](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/chatbot-v2/journey-truth.service.ts)
+- [stage-copy-registry.service.ts](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/chatbot-v2/stage-copy-registry.service.ts)
+- [chatbot-v2-context.ts](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/api/src/routes/chatbot-v2-context.ts)
+- [context-builder.service.ts](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/services/policy-engine/context-builder.service.ts)
+- [get-ai-policy-context.use-case.ts](/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/packages/application/src/use-cases/ai-policy/get-ai-policy-context.use-case.ts)

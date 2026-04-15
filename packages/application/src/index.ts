@@ -18,6 +18,9 @@ export { RecommendationPolicyService } from './services/policy-engine/recommenda
 export { HandoffPolicyService } from './services/policy-engine/handoff-policy.service.js';
 export { WritebackPlannerService } from './services/policy-engine/writeback-planner.service.js';
 export { WritebackExecutorService } from './services/policy-engine/writeback-executor.service.js';
+export { parsePolicyConfig } from './services/chatbot-v3/policy-config.service.js';
+export { SupervisorService } from './services/chatbot-v3/supervisor.service.js';
+export { OrchestratorV3Service } from './services/chatbot-v3/orchestrator-v3.service.js';
 export { JourneyEngineService } from './services/chatbot-v2/journey-engine.service.js';
 export { deriveJourneyTruthFromStatusSnapshot } from './services/chatbot-v2/journey-truth.service.js';
 export { ResourceRegistryService } from './services/chatbot-v2/resource-registry.service.js';
@@ -38,6 +41,15 @@ export type {
   RequestClassificationResult as ChatbotV2RequestClassificationResult,
   ConversationOrchestrationResult as ChatbotV2ConversationOrchestrationResult,
 } from './services/chatbot-v2/types.js';
+export type {
+  ChatbotV3JumpRule,
+  ChatbotV3GlobalPolicies,
+  ChatbotV3StagePrerequisite,
+  ChatbotV3StagePrerequisites,
+  ChatbotV3PolicyConfig,
+  ChatbotV3PolicyConfigInput,
+} from './services/chatbot-v3/types.js';
+export type { LlmNodeAdapter } from './services/chatbot-v3/llm-adapter.types.js';
 
 // DTOs
 export type { CaseDTO, HospitalCaseDetailDTO, CaseStatsDTO } from './dtos/case.dto.js';

@@ -3,11 +3,6 @@ import type { JourneySnapshot, JourneyTransitionDecision } from './types.js';
 export class JourneyEngineService {
   advanceSnapshot(_current: JourneySnapshot, decision: JourneyTransitionDecision): JourneySnapshot {
     switch (decision.type) {
-      case 'ENTER_EXPLAIN_PROCESS_ACTIVE':
-        return {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
-        };
       case 'ENTER_COLLECT_MEDICAL_INPUTS_PRE':
         return {
           currentStage: 'COLLECT_MEDICAL_INPUTS',

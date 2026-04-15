@@ -542,6 +542,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	trustOrObjection: varchar("trust_or_objection", { length: 30 }).default('none').notNull(),
 	engagementMode: varchar("engagement_mode", { length: 30 }).default('LIGHT_DISCOVERY').notNull(),
 	enteredDeepWorkflowAt: timestamp("entered_deep_workflow_at", { withTimezone: true, mode: 'string' }),
+	processExplained: boolean("process_explained").default(false).notNull(),
 	conversationSummary: text("conversation_summary").default('').notNull(),
 	lastPolicyDecisionAt: timestamp("last_policy_decision_at", { withTimezone: true, mode: 'string' }),
 	lastUserMessageAt: timestamp("last_user_message_at", { withTimezone: true, mode: 'string' }),

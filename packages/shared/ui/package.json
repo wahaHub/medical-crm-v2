@@ -17,6 +17,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
+    "@medical-crm/validation": "workspace:*",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "pdfjs-dist": "^4.10.38",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
+    "@testing-library/user-event": "^14.6.1",
     "lucide-react": "^0.577.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

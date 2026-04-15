@@ -142,6 +142,11 @@ type GlobalPolicies = {
     consecutiveCriticalToolFailures: number; // threshold
     safetyPolicyHit: boolean;
   };
+  handoffPrerequisites?: {
+    requiresAll?: string[];
+    requiresAny?: string[];
+    denyIfAny?: string[];
+  };
 };
 ```
 
@@ -166,15 +171,17 @@ M0 default policy bundle (config defaults, not service hardcode):
 - `stagePrerequisites.RECOMMENDATION.requiresAll = ["records.saved"]`
 - `stagePrerequisites.ONLINE_CONSULT.requiresAll = ["recommendation.picked"]`
 - `handoffTriggers.consecutiveCriticalToolFailures = 2`
+- `handoffPrerequisites.denyIfAny = ["handoff.active"]`
 
 Precedence (fixed order):
 
 1. Safety/human-handoff hard policy
 2. Session authorization and ownership checks
-3. `globalPolicies.forceExplainProcessBefore` gate
-4. `stagePrerequisites` gate (`requires*` / `denyIfAny`)
-5. Highest-priority matching jump rule
-6. Default fallback: `STAY`
+3. Semantic handoff suggestion gated by `globalPolicies.handoffPrerequisites`
+4. `globalPolicies.forceExplainProcessBefore` gate
+5. `stagePrerequisites` gate (`requires*` / `denyIfAny`)
+6. Highest-priority matching jump rule
+7. Default fallback: `STAY`
 
 Determinism guarantee:
 
@@ -202,6 +209,8 @@ Output (internal only):
 - `reason` (internal trace/audit field, not exposed to frontend)
 
 Supervisor may suggest `handoff` when the user semantically requests a human. It does not directly trigger handoff or dispatch.
+
+Semantic handoff suggestions are still subject to orchestrator-side `handoffPrerequisites`. Hard handoff signals are not.
 
 Supervisor fallback rule:
 
@@ -427,6 +436,17 @@ type ToolResult<T> =
 
 No additional legacy action fields are returned. `runtimeDebug` is non-production only and is omitted in production responses.
 
+## 8.4 Response composition ownership
+
+Final user-facing response composition is not owned by `Supervisor`.
+
+- `Supervisor` suggests intent/stage only
+- `Orchestrator` decides journey + dispatch
+- sub-agents return bounded action results
+- `ResponseComposer` assembles `messages[]`, `cards[]`, `journey`, `handoff`, and `turnOutcome`
+
+`ResponseComposer` is the only layer allowed to turn internal suggestion/decision/result state into final assistant text and cards.
+
 Card schema is discriminated by `cardType`:
 
 ```ts
@@ -478,6 +498,7 @@ Configurable at runtime (or deploy-time config):
 
 - Supervisor prompt and behavior rules.
 - FaqAgent role prompt and FAQ tool allowlist.
+- ResponseComposer copy/card composition rules.
 - Jump-step prerequisite rule table.
 - Explain-process gate and handoff trigger thresholds in `globalPolicies`.
 
@@ -579,6 +600,7 @@ Required LLM runtime fields:
 ### 11.2 Runtime fallbacks
 
 - If supervisor LLM fails or returns invalid schema: fallback to heuristic supervisor suggestion.
+- If semantic handoff is suggested but `handoffPrerequisites` fail: keep current stage and compose normal assistant guidance instead of handing off.
 - If `FaqAgent` LLM fails before tool execution: fallback to deterministic FAQ search + safe generic answer composition.
 - If `FaqAgent` tool loop fails mid-flight: keep response contract valid, do not mutate stage, and return FAQ-safe degraded response.
 - If agent/tool action fails: keep response contract valid, no state advance.
@@ -608,6 +630,7 @@ Not included in MVP:
 
 - LLM versions of `RecordsAgent`, `RecommendationAgent`, `ConsultAgent`, or `HandoffAgent`
 - external MCP server runtime
+- a separate LLM response-writer agent
 
 Design intent:
 
@@ -628,11 +651,13 @@ Minimum required tests:
 3. API contract tests
    - response includes only v3 fields
 4. Integration tests
-   - FAQ path
-   - FAQ path with LLM-plan -> tool loop -> answer result
-   - FAQ path fallback when LLM schema invalid
-   - FAQ path fallback when FAQ tool fails
-   - records upload/save path
+    - FAQ path
+    - FAQ path with LLM-plan -> tool loop -> answer result
+    - FAQ path fallback when LLM schema invalid
+    - FAQ path fallback when FAQ tool fails
+    - semantic handoff denied by `handoffPrerequisites`
+    - hard handoff still wins when prerequisite gate would otherwise deny
+    - records upload/save path
    - recommendation generate/pick path
    - consult schedule path
    - handoff path
@@ -680,6 +705,25 @@ type FaqAnswerResult = {
 };
 ```
 
+### 14.3 Response composer contract
+
+```ts
+type ResponseComposerInput = {
+  decision: OrchestratorDecision;
+  suggestion: SupervisorSuggestion;
+  dispatchResult: AgentActionResult | null;
+  fallbackStatus: ToolResult<UnifiedStatusSnapshot> | null;
+};
+
+type ResponseComposerOutput = {
+  messages: Array<{ role: "assistant"; text: string }>;
+  cards: V3Card[];
+  journey: { stage: JourneyStage };
+  handoff: { required: boolean; ticketId: string | null };
+  turnOutcome: { status: "ok" | "degraded"; recoverableErrorCode: "TIMEOUT" | "UPSTREAM_UNAVAILABLE" | "UNKNOWN" | null };
+};
+```
+
 ## 15) Acceptance Criteria
 
 - Dify is not used in v3 runtime path.
@@ -687,6 +731,8 @@ type FaqAnswerResult = {
 - Sub-agent dispatch is triggered only by orchestrator decisions.
 - Supervisor may suggest handoff from conversation semantics, but orchestrator remains final authority.
 - Hard handoff signals (tool failure threshold, safety policy) are enforced by orchestrator without relying on model inference.
+- Semantic handoff can be gated by configurable `handoffPrerequisites`.
+- Final assistant text/cards are composed by `ResponseComposer`, not by `Supervisor`.
 - FaqAgent is LLM-driven and limited to FAQ tools only.
 - Public response contract contains only v3 fields.
 - `records.save` and `consult.schedule` persist to Supabase and are visible in `status.query`.

@@ -711,3 +711,403 @@ This append captures post-review scope refinements that were requested after the
 - [x] **R4-5: 回归验证**
   - 新增 runtime 节点事件链测试（覆盖 supervisor/orchestrator/subagent/tool/turn_summary 及统一字段）。
   - 新增 mount 行为测试（非生产含 `runtimeDebug.traceId`、生产不含 `runtimeDebug`）。
+
+## Revision Append (2026-04-15, Round 5)
+
+This append captures the approved shift to option `B`: keep the current orchestrator architecture, add a minimal reusable LLM adapter layer for `Supervisor + FaqAgent`, add configurable semantic handoff gating, and introduce a dedicated `ResponseComposer`.
+
+### Chunk 5: LLM Supervisor + FAQ Worker + Response Composition
+
+### Task R5-1: Extend policy config for semantic handoff gating
+
+**Files:**
+- Modify: `packages/application/src/services/chatbot-v3/types.ts`
+- Modify: `packages/application/src/services/chatbot-v3/policy-config.service.ts`
+- Modify: `packages/application/src/services/__tests__/chatbot-v3/policy-config.service.test.ts`
+- Modify: `packages/application/src/services/__tests__/chatbot-v3/orchestrator-v3.service.test.ts`
+
+- [ ] **Step 1: Write failing tests for handoff prerequisites**
+
+```ts
+it('loads handoffPrerequisites from config', () => {
+  const cfg = parsePolicyConfig({
+    globalPolicies: {
+      handoffPrerequisites: { denyIfAny: ['handoff.active'] },
+    },
+  });
+  expect(cfg.globalPolicies.handoffPrerequisites?.denyIfAny).toContain('handoff.active');
+});
+
+it('denies semantic handoff when handoffPrerequisites fail', () => {
+  const decision = service.decide({
+    current: { stage: 'EXPLAIN_PROCESS' },
+    suggestion: { intent: 'handoff', suggestedStage: 'HUMAN_HANDOFF', reason: 'user asks for human' },
+    facts: { 'handoff.active': true },
+  });
+  expect(decision.action).toBe('STAY');
+});
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/application test -- src/services/__tests__/chatbot-v3/policy-config.service.test.ts src/services/__tests__/chatbot-v3/orchestrator-v3.service.test.ts`  
+Expected: FAIL because `handoffPrerequisites` is not modeled or enforced yet.
+
+- [ ] **Step 3: Implement minimal handoff prerequisite support**
+
+```ts
+type GlobalPolicies = {
+  forceExplainProcessBefore: JourneyStage[];
+  handoffTriggers: { userRequestedHuman: boolean; consecutiveCriticalToolFailures: number; safetyPolicyHit: boolean };
+  handoffPrerequisites?: { requiresAll?: string[]; requiresAny?: string[]; denyIfAny?: string[] };
+};
+```
+
+- [ ] **Step 4: Enforce precedence in orchestrator**
+
+```ts
+if (hitsHandoffHardPolicy(input.handoff, config)) return handoff(current);
+if (input.suggestion.intent === 'handoff' || targetStage === 'HUMAN_HANDOFF') {
+  if (violatesFactConditions(config.globalPolicies.handoffPrerequisites, facts)) {
+    return stay(current, 'Missing prerequisites for HUMAN_HANDOFF');
+  }
+  return handoff(current);
+}
+```
+
+- [ ] **Step 5: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/application test -- src/services/__tests__/chatbot-v3/policy-config.service.test.ts src/services/__tests__/chatbot-v3/orchestrator-v3.service.test.ts`  
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/application/src/services/chatbot-v3/types.ts \
+  packages/application/src/services/chatbot-v3/policy-config.service.ts \
+  packages/application/src/services/__tests__/chatbot-v3/policy-config.service.test.ts \
+  packages/application/src/services/__tests__/chatbot-v3/orchestrator-v3.service.test.ts
+git commit -m "feat(chatbot-v3): add semantic handoff prerequisite gating"
+```
+
+### Task R5-2: Add minimal LLM adapter contracts for Supervisor and FAQ
+
+**Files:**
+- Create: `packages/application/src/services/chatbot-v3/llm-adapter.types.ts`
+- Modify: `packages/application/src/services/chatbot-v3/supervisor.service.ts`
+- Create: `packages/application/src/services/__tests__/chatbot-v3/llm-adapter.types.test.ts`
+- Modify: `packages/application/src/services/__tests__/chatbot-v3/supervisor.service.test.ts`
+
+- [ ] **Step 1: Write failing tests for schema-validated LLM adapter outputs**
+
+```ts
+it('accepts only intent/suggestedStage/reason from supervisor llm output', async () => {
+  const result = await supervisor.suggest(input);
+  expect(result).toEqual({
+    intent: 'faq',
+    suggestedStage: 'EXPLAIN_PROCESS',
+    reason: expect.any(String),
+  });
+});
+
+it('falls back to heuristic when llm output is invalid', async () => {
+  expect(await supervisor.suggest(input)).toEqual(heuristicResult);
+});
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/application test -- src/services/__tests__/chatbot-v3/supervisor.service.test.ts src/services/__tests__/chatbot-v3/llm-adapter.types.test.ts`  
+Expected: FAIL because adapter contracts do not exist yet.
+
+- [ ] **Step 3: Implement minimal adapter interfaces**
+
+```ts
+export interface LlmNodeAdapter<TInput, TOutput> {
+  promptVersion: string;
+  run(input: TInput): Promise<TOutput>;
+}
+```
+
+- [ ] **Step 4: Wire supervisor to adapter + heuristic fallback**
+
+```ts
+const raw = await this.gateway?.suggest(input);
+return sanitizeSuggestionOnly(raw, heuristicSuggest(input));
+```
+
+- [ ] **Step 5: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/application test -- src/services/__tests__/chatbot-v3/supervisor.service.test.ts src/services/__tests__/chatbot-v3/llm-adapter.types.test.ts`  
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/application/src/services/chatbot-v3/llm-adapter.types.ts \
+  packages/application/src/services/chatbot-v3/supervisor.service.ts \
+  packages/application/src/services/__tests__/chatbot-v3/llm-adapter.types.test.ts \
+  packages/application/src/services/__tests__/chatbot-v3/supervisor.service.test.ts
+git commit -m "feat(chatbot-v3): add minimal llm adapter contracts"
+```
+
+### Task R5-3: Expand FAQ tool surface to MCP-style internal interface
+
+**Files:**
+- Modify: `apps/api/src/routes/chatbot-v3/tool-gateway.ts`
+- Modify: `apps/api/src/routes/chatbot-v3/agents.ts`
+- Modify: `apps/api/src/routes/chatbot-v3/runtime.service.ts`
+- Modify: `apps/api/src/routes/chatbot-v3/runtime.service.test.ts`
+- Modify: `apps/api/src/__tests__/chatbot-v3.routes.test.ts`
+
+- [ ] **Step 1: Write failing tests for FAQ tool surface**
+
+```ts
+it('exposes faq categorySearch and getByIds tools', () => {
+  const gateway = createToolGateway({ handlers: {} });
+  expect(gateway.faq).toHaveProperty('categorySearch');
+  expect(gateway.faq).toHaveProperty('getByIds');
+});
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/api test -- src/routes/chatbot-v3/runtime.service.test.ts src/__tests__/chatbot-v3.routes.test.ts`  
+Expected: FAIL because the FAQ tool surface is still `search`-only.
+
+- [ ] **Step 3: Implement FAQ tool-style interface**
+
+```ts
+faq: {
+  categorySearch(...),
+  search(...),
+  getByIds(...),
+}
+```
+
+- [ ] **Step 4: Update task envelope builder**
+
+```ts
+goal=Answer the user's FAQ using the FAQ toolset only.
+latest_user_message=...
+```
+
+- [ ] **Step 5: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/api test -- src/routes/chatbot-v3/runtime.service.test.ts src/__tests__/chatbot-v3.routes.test.ts`  
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api/src/routes/chatbot-v3/tool-gateway.ts \
+  apps/api/src/routes/chatbot-v3/agents.ts \
+  apps/api/src/routes/chatbot-v3/runtime.service.ts \
+  apps/api/src/routes/chatbot-v3/runtime.service.test.ts \
+  apps/api/src/__tests__/chatbot-v3.routes.test.ts
+git commit -m "feat(chatbot-v3): expand faq tools for llm worker runtime"
+```
+
+### Task R5-4: Implement FAQ LLM worker with tool loop and safe fallback
+
+**Files:**
+- Modify: `apps/api/src/routes/chatbot-v3/agents.ts`
+- Create: `apps/api/src/routes/chatbot-v3/faq-llm-adapter.ts`
+- Create: `apps/api/src/routes/chatbot-v3/faq-prompts.ts`
+- Create: `apps/api/src/routes/chatbot-v3/faq-llm-adapter.test.ts`
+- Modify: `apps/api/src/routes/chatbot-v3/runtime.service.test.ts`
+
+- [ ] **Step 1: Write failing FAQ worker tests**
+
+```ts
+it('lets FaqAgent choose category/query and call faq tools before returning answer', async () => {
+  const result = await agent.execute(faqAction);
+  expect(categorySearch).toHaveBeenCalled();
+  expect(search).toHaveBeenCalled();
+  expect(result).toEqual({
+    status: 'ok',
+    data: { answer: expect.any(String), citedFaqIds: expect.any(Array), confidence: 'high' },
+  });
+});
+
+it('falls back safely when faq llm output is invalid', async () => {
+  expect(result.status).toBe('ok');
+  expect(result.data.answer).toContain('I can help');
+});
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/api test -- src/routes/chatbot-v3/faq-llm-adapter.test.ts src/routes/chatbot-v3/runtime.service.test.ts`  
+Expected: FAIL because `FaqAgent` is still deterministic-only.
+
+- [ ] **Step 3: Implement role prompt + structured plan/result contracts**
+
+```ts
+type FaqPlan = { category?: string; query: string; reason: string };
+type FaqAnswerResult = { answer: string; citedFaqIds: string[]; confidence: 'high' | 'medium' | 'low' };
+```
+
+- [ ] **Step 4: Implement tool loop with bounded allowlist**
+
+```ts
+const plan = await adapter.plan(task);
+const categories = plan.category ? null : await gateway.faq.categorySearch(...);
+const matches = await gateway.faq.search(...);
+const details = shouldFetchDetails(matches) ? await gateway.faq.getByIds(...) : null;
+return await adapter.answer({ plan, matches, details, latestUserMessage });
+```
+
+- [ ] **Step 5: Add deterministic fallback**
+
+```ts
+return {
+  status: 'ok',
+  data: {
+    answer: composeFallbackFaqAnswer(matches),
+    citedFaqIds: matches.slice(0, 3).map((item) => item.id),
+    confidence: 'medium',
+  },
+};
+```
+
+- [ ] **Step 6: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/api test -- src/routes/chatbot-v3/faq-llm-adapter.test.ts src/routes/chatbot-v3/runtime.service.test.ts`  
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src/routes/chatbot-v3/agents.ts \
+  apps/api/src/routes/chatbot-v3/faq-llm-adapter.ts \
+  apps/api/src/routes/chatbot-v3/faq-prompts.ts \
+  apps/api/src/routes/chatbot-v3/faq-llm-adapter.test.ts \
+  apps/api/src/routes/chatbot-v3/runtime.service.test.ts
+git commit -m "feat(chatbot-v3): add llm-driven faq worker with safe fallback"
+```
+
+### Task R5-5: Add ResponseComposer and move final assistant copy ownership there
+
+**Files:**
+- Create: `apps/api/src/routes/chatbot-v3/response-composer.ts`
+- Create: `apps/api/src/routes/chatbot-v3/response-composer.test.ts`
+- Modify: `apps/api/src/routes/chatbot-v3.routes.ts`
+- Modify: `apps/api/src/routes/chatbot-v3/runtime.service.ts`
+- Modify: `apps/api/src/__tests__/chatbot-v3.mounting.test.ts`
+- Modify: `apps/api/src/__tests__/chatbot-v3.routes.test.ts`
+
+- [ ] **Step 1: Write failing response composition tests**
+
+```ts
+it('composes faq answer from dispatch result instead of supervisor reason', () => {
+  const response = composeResponse(input);
+  expect(response.messages[0].text).toContain('online consultation');
+});
+
+it('returns normal guidance when semantic handoff is denied by prerequisites', () => {
+  const response = composeResponse(input);
+  expect(response.handoff.required).toBe(false);
+  expect(response.messages[0].text).toContain('before we connect you');
+});
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/api test -- src/routes/chatbot-v3/response-composer.test.ts src/__tests__/chatbot-v3.mounting.test.ts src/__tests__/chatbot-v3.routes.test.ts`  
+Expected: FAIL because response composition is still implicit.
+
+- [ ] **Step 3: Implement minimal ResponseComposer**
+
+```ts
+export function composeResponse(input: ResponseComposerInput): ResponseComposerOutput {
+  if (isFaqResult(input.dispatchResult)) return faqResponse(...);
+  if (input.decision.action === 'HANDOFF') return handoffResponse(...);
+  return defaultGuidanceResponse(...);
+}
+```
+
+- [ ] **Step 4: Wire route/runtime through ResponseComposer**
+
+```ts
+const response = composeResponse({
+  decision,
+  suggestion,
+  dispatchResult,
+  fallbackStatus,
+});
+```
+
+- [ ] **Step 5: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/api test -- src/routes/chatbot-v3/response-composer.test.ts src/__tests__/chatbot-v3.mounting.test.ts src/__tests__/chatbot-v3.routes.test.ts`  
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api/src/routes/chatbot-v3/response-composer.ts \
+  apps/api/src/routes/chatbot-v3/response-composer.test.ts \
+  apps/api/src/routes/chatbot-v3.routes.ts \
+  apps/api/src/routes/chatbot-v3/runtime.service.ts \
+  apps/api/src/__tests__/chatbot-v3.mounting.test.ts \
+  apps/api/src/__tests__/chatbot-v3.routes.test.ts
+git commit -m "feat(chatbot-v3): add dedicated response composer"
+```
+
+### Task R5-6: Add LLM observability fields and regression verification
+
+**Files:**
+- Modify: `apps/api/src/routes/chatbot-v3/observability.ts`
+- Modify: `apps/api/src/__tests__/chatbot-v3.observability.test.ts`
+- Modify: `apps/api/src/routes/chatbot-v3/runtime.service.test.ts`
+- Modify: `README.md`
+
+- [ ] **Step 1: Write failing observability tests**
+
+```ts
+it('emits prompt version/model/fallback fields for llm nodes', async () => {
+  expect(events).toContainEqual(expect.objectContaining({
+    node: 'Supervisor',
+    nodePromptVersion: expect.any(String),
+    nodeModel: expect.any(String),
+  }));
+});
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.observability.test.ts src/routes/chatbot-v3/runtime.service.test.ts`  
+Expected: FAIL because LLM observability fields are not emitted yet.
+
+- [ ] **Step 3: Implement minimal LLM observability fields**
+
+```ts
+type LlmNodeEvent = {
+  nodePromptVersion?: string;
+  nodeModel?: string;
+  fallbackUsed?: boolean;
+  schemaValidationFailed?: boolean;
+  toolPlanUsed?: boolean;
+};
+```
+
+- [ ] **Step 4: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.observability.test.ts src/routes/chatbot-v3/runtime.service.test.ts`  
+Expected: PASS.
+
+- [ ] **Step 5: Run focused end-to-end regression set**
+
+Run: `pnpm --filter @medical-crm/application test -- src/services/__tests__/chatbot-v3/*.test.ts && pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3*.test.ts src/routes/chatbot-v3/*.test.ts`  
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api/src/routes/chatbot-v3/observability.ts \
+  apps/api/src/__tests__/chatbot-v3.observability.test.ts \
+  apps/api/src/routes/chatbot-v3/runtime.service.test.ts \
+  README.md
+git commit -m "feat(chatbot-v3): add llm node observability for supervisor and faq worker"
+```

@@ -164,6 +164,30 @@ describe('Chatbot v3 public route mounting', () => {
     });
   });
 
+  it('falls back to generated traceId when x-request-id is invalid', async () => {
+    process.env.NODE_ENV = 'test';
+    const { default: app } = await import('../index.js');
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+        'x-request-id': 'trace invalid $$$',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.runtimeDebug.traceId).not.toBe('trace invalid $$$');
+    expect(body.runtimeDebug.traceId).toMatch(/^[A-Za-z0-9._:-]+$/);
+    expect(body.runtimeDebug.traceId.length).toBeLessThanOrEqual(128);
+  });
+
   it('does not expose runtimeDebug in production responses', async () => {
     process.env.NODE_ENV = 'production';
     const { default: app } = await import('../index.js');

@@ -10,11 +10,11 @@
 
 但从 **prompt 设计** 角度看，当前仍是「半成品」：
 
-1. `Supervisor` 还没有正式的 LLM prompt contract（现在主要是 heuristic + sanitize）。
+1. `Supervisor` 还没有正式的 history-aware LLM prompt contract（现在主要是 heuristic + sanitize）。
 2. 主 agent 下发给子 agent 的 `taskPrompt` 目前更偏 debug 标签，任务语义不够完整。
-3. 子 agent 目前是 deterministic tool wrapper（这在 M0 是好事），但如果未来切 LLM 子 agent，缺少“每个 agent 的最小 prompt 模板 + allowlist 约束”会很容易漂移。
+3. `FaqAgent` 还没有进入真正的 LLM worker 形态；如果要先做一个子 agent 的 LLM 化，它是最合适的起点。
 
-我的建议：**不推翻架构，做最小补强**。先把 prompt contract 定义清楚，再决定是否启用 LLM supervisor / LLM 子 agent。
+我的建议：**不推翻架构，走 B 路线做最小补强**。也就是保留现有主架构，只加最小 `LLM runtime adapter`，先服务 `Supervisor + FaqAgent`。
 
 ---
 
@@ -26,7 +26,7 @@
 - 现状：`suggest(input)` 支持 gateway，但默认是 heuristic fallback。
 - 保证：`sanitizeSuggestionOnly()` 强制输出只保留 `intent/suggestedStage/reason`，不会泄漏 journey mutation 字段。
 
-评价：**方向正确**（建议层与决策层分离），但“LLM supervisor 提示词协议”还没落地。
+评价：**方向正确**（建议层与决策层分离），但还需要补成 history-aware 的 LLM contract。
 
 ### 2.2 Orchestrator
 
@@ -40,14 +40,14 @@
 - 入口：`apps/api/src/routes/chatbot-v3/runtime.service.ts` 的 `buildTaskPrompt()`
 - 当前 `taskPrompt` 字段：`agent/from/to/intent/supervisor_reason/facts`
 
-评价：比“只传 userMessage 一条”好很多；但如果做执行质量优化，建议再补一个最小任务语义层（见第 4 节）。
+评价：比“只传 userMessage 一条”好很多；但如果要让 `FaqAgent` 成为真正 worker，建议升级成紧凑 `Task Envelope v1`，加入 `goal/latest_user_message` 这类任务语义。
 
 ### 2.4 子 agent 实现形态
 
 - 入口：`apps/api/src/routes/chatbot-v3/agents.ts`
 - 现状：子 agent 是 typed dispatcher（`FaqAgent/RecordsAgent/...`），不直接跑 LLM prompt。
 
-评价：**这非常符合最小可用原则**。M0 不需要强行把每个子 agent 都 LLM 化。
+评价：**这仍然适合多数 agent**。但 `FaqAgent` 可以作为唯一的 LLM worker 先行落地，而 `Records/Recommendation/Consult/Handoff` 继续 deterministic。
 
 ---
 
@@ -91,50 +91,58 @@
 ## 4.1 不改的（保持）
 
 1. **Orchestrator 最终拍板** 不变。  
-2. 子 agent 继续保持 deterministic tool wrapper（M0 不 LLM 化）。  
-3. 不给子 agent 传 history（继续只给任务上下文）。  
+2. `Records/Recommendation/Consult/Handoff` 继续保持 deterministic tool wrapper。  
+3. 不给子 agent 传完整 history（继续只给任务上下文）。  
 
 ## 4.2 需要补的（最小）
 
-1. 增加 `Supervisor Prompt Contract v1`（仅当启用 supervisor gateway 时使用）：
-   - 输入：`current stage/phase + latest user message + facts + handoff signals + allowed stages`
+1. 增加 `Supervisor Prompt Contract v1`：
+   - 输入：`current stage + conversation summary + latest user message + facts + allowed stages`
    - 输出严格 JSON：`{ intent, suggestedStage, reason }`
    - 明确禁止：返回 dispatch/tool/state mutation 字段
    - 失败就 fallback 到现有 heuristic（保持鲁棒性）
 
 2. 把 `taskPrompt` 升级为 `Task Envelope v1`（仍保持紧凑）：
    - 必留：`agent/from/to/intent/supervisor_reason/facts`
-   - 新增最小字段：`goal`（一句话任务目标）、`selected_tool`（本次期望动作）
-   - 不加 history、不加大段上下文
+   - 新增最小字段：`goal`（一句话任务目标）、`latest_user_message`
+   - 不加 history summary、不加大段上下文
 
-3. 明确“未来 LLM 子 agent 的预留合同”（只写规范，不立即实现）：
+3. 让 `FaqAgent` 成为唯一的 LLM 子 agent：
    - 每个 agent 一段固定 role prompt
-   - 每个 agent 显式 allowed tools
-   - 输出必须是结构化 action/result，不允许自由改 journey
+   - FAQ 工具显式 allowlist：`faq.category_search / faq.search / faq.get_by_ids`
+   - 子 agent 自己决定 FAQ tool loop
+   - 输出必须是结构化 FAQ answer/result，不允许自由改 journey
+
+4. 把 handoff 边界写清楚：
+   - 语义型 handoff 可以由 `Supervisor` 建议
+   - 系统硬信号 handoff 由 `Orchestrator` 直接处理
+   - 最终 handoff authority 仍是 `Orchestrator`
 
 ## 4.3 Guardrail（最小必须）
 
 1. Supervisor 输出 schema 校验 + 字段白名单（已部分具备，继续固化）。
-2. 子 agent 工具 allowlist（已具备，继续保持）。
+2. `FaqAgent` 工具 allowlist（新增，但边界清晰）。
 3. Orchestrator 前置条件硬门槛（已具备，保持权威）。
-4. 所有失败统一降级 `STAY + status.query fallback`（已具备）。
+4. 所有失败统一降级到 safe path；FAQ 优先走 FAQ 自身 fallback，通用恢复仍可用 `STAY + status.query fallback`。
 
 ## 4.4 Observability（与 prompt 直接相关）
 
-建议在现有 node event 基础上，加两类轻量字段（token 成本极低）：
+建议在现有 node event 基础上，加最小 LLM 字段（token 成本很低）：
 
-1. `supervisor_prompt_version`、`task_prompt_version`
-2. `supervisor_input_hash`、`task_prompt_hash`（用于排查“同输入不同输出”）
+1. `supervisor_prompt_version`、`faq_prompt_version`
+2. `supervisor_model`、`faq_model`
+3. `fallback_used`
+4. `schema_validation_failed`
 
-这样在 debug 时可以快速回答：是模型漂移、输入变了、还是规则变了。
+这样在 debug 时可以快速回答：是模型漂移、输入变了、schema 坏了，还是 fallback 生效了。
 
 ---
 
 ## 5. 落地顺序（建议）
 
-1. 先写文档 contract（spec 补一节 prompt contract）。  
-2. 再补 Supervisor gateway 的 parse/validate/fallback（不影响现有主流程）。  
-3. 最后把 `taskPrompt` 从 debug 标签升级成 `Task Envelope v1`。  
+1. 先写文档 contract（spec 补 supervisor / faq prompt contract）。  
+2. 再补 Supervisor gateway 的 parse/validate/fallback。  
+3. 接着把 `FaqAgent` 升级成 FAQ-only LLM worker。  
+4. 最后把 `taskPrompt` 从 debug 标签升级成 `Task Envelope v1`。  
 
-这三步做完，你们的架构仍然是最小可用，但 prompt 与执行边界会明显更稳，也更方便后续把某些子 agent 渐进式 LLM 化。
-
+这四步做完，你们的架构仍然仍是最小可用，但已经验证了 `Supervisor + 1 个真实子 agent` 的 LLM 形态。后续如果要扩展到更多子 agent，属于在 B 的基础上增量扩展，而不是推倒重做。

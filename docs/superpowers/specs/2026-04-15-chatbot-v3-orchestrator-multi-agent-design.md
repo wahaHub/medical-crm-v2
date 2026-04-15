@@ -30,7 +30,7 @@ This spec covers one subsystem only: public chatbot turn runtime and contract.
 ### 3.1 Control ownership
 
 - `SupervisorService`: inference only, returns suggestion.
-- `ConversationOrchestratorV3Service`: final authority on stage/phase and dispatch.
+- `ConversationOrchestratorV3Service`: final authority on stage and dispatch.
 - Sub-agents: execute bounded business actions only.
 
 `Orchestrator` is the **only** writer of journey state.
@@ -89,12 +89,6 @@ Stages:
 - `ONLINE_CONSULT`
 - `HUMAN_HANDOFF`
 
-Phases:
-
-- `pre`, `active`, `post`
-
-Phase is orchestrator-owned journey metadata. It is not a hard execution contract for sub-agents.
-
 ### 5.1 Jump-step policy
 
 Jumping is allowed, but only after orchestrator checks prerequisites from current facts/status.
@@ -104,7 +98,7 @@ If prerequisites are missing:
 - Do not jump.
 - Do not return a special "missing prerequisite card".
 - Assistant returns normal text guidance telling user required prior step.
-- Journey remains at current stage/phase.
+- Journey remains at current stage.
 
 ### 5.2 Decision outputs
 
@@ -189,7 +183,17 @@ Determinism guarantee:
 
 ## 6) Agent Set (MVP)
 
-### 6.1 Supervisor (suggestion only)
+### 6.1 Supervisor (LLM suggestion layer with safe fallback)
+
+Supervisor is history-aware. It reads conversation context and suggests intent/stage only.
+
+Input:
+
+- `current.stage`
+- `conversationSummary`
+- `latestUserMessage`
+- `facts`
+- `allowedStages`
 
 Output (internal only):
 
@@ -197,29 +201,55 @@ Output (internal only):
 - `suggestedStage`
 - `reason` (internal trace/audit field, not exposed to frontend)
 
+Supervisor may suggest `handoff` when the user semantically requests a human. It does not directly trigger handoff or dispatch.
+
+Supervisor fallback rule:
+
+- If LLM call fails, times out, or returns invalid schema, fallback to deterministic heuristic suggestion.
+
 ### 6.2 Sub-agents
 
-- `FaqAgent`
-  - `faq.search`
+- `FaqAgent` (LLM worker)
+  - role-prompted worker for FAQ-only tasks
+  - chooses how to complete the FAQ task within FAQ tool allowlist
+  - cannot mutate journey
+  - tools:
+    - `faq.category_search`
+    - `faq.search`
+    - `faq.get_by_ids`
 
-- `RecordsAgent`
+- `RecordsAgent` (deterministic)
   - `records.upload`
   - `records.save`
   - `records.status`
 
-- `RecommendationAgent`
+- `RecommendationAgent` (deterministic)
   - `recommendation.generate`
   - `recommendation.pick`
   - `recommendation.status`
 
-- `ConsultAgent`
+- `ConsultAgent` (deterministic)
   - `consult.schedule`
   - `consult.status`
 
-- `HandoffAgent`
+- `HandoffAgent` (deterministic)
   - `handoff.create`
 
-### 6.3 Query capability
+### 6.3 FAQ agent execution model
+
+`FaqAgent` is the only MVP sub-agent that is LLM-driven.
+
+It receives an orchestrator-owned task prompt and may autonomously decide how to complete the FAQ task using FAQ-only tools. The expected inner loop is:
+
+1. infer FAQ intent/category/query from task + latest user message
+2. call `faq.category_search` when narrowing category helps
+3. call `faq.search`
+4. optionally call `faq.get_by_ids` to retrieve exact FAQ entries
+5. return structured answer result
+
+`FaqAgent` does not decide stage progression, handoff, or dispatch.
+
+### 6.4 Query capability
 
 No standalone QueryAgent.
 
@@ -229,7 +259,7 @@ Use shared read tool:
 
 Accessible to orchestrator and agents as a read-only aggregator.
 
-### 6.4 Sub-agent runtime interface
+### 6.5 Sub-agent runtime interface
 
 All sub-agents implement one runtime shape:
 
@@ -250,7 +280,22 @@ type AgentActionResult = {
 };
 ```
 
-`taskPrompt` is the only sub-agent context contract in MVP. Conversation history reasoning stays in supervisor/orchestrator; sub-agents remain execution-focused. Sub-agents are not constrained by fixed `pre/active/post` execution rules.
+`taskPrompt` is the only orchestrator-to-subagent context contract in MVP.
+
+For `FaqAgent`, the prompt is a compact task envelope rather than raw history. Minimum shape:
+
+```txt
+agent=FaqAgent
+from=EXPLAIN_PROCESS
+to=EXPLAIN_PROCESS
+intent=faq
+supervisor_reason=user is asking consult timeline
+facts=records.saved:false,recommendation.picked:false
+goal=Answer the user's FAQ using the FAQ toolset only.
+latest_user_message=在线问诊一般多久能安排？
+```
+
+The worker may decide which FAQ tools to call, but not whether to advance journey.
 
 ## 7) ToolGateway Contract (Internal)
 
@@ -259,7 +304,9 @@ type AgentActionResult = {
 ```ts
 interface ToolGateway {
   faq: {
+    categorySearch(input: { query: string; locale?: string }): Promise<ToolResult<FaqCategorySearchResult>>;
     search(input: { category?: string; query: string; locale?: string }): Promise<ToolResult<FaqSearchResult>>;
+    getByIds(input: { ids: string[]; locale?: string }): Promise<ToolResult<FaqGetByIdsResult>>;
   };
   records: {
     upload(input: UploadInitOrCompleteInput): Promise<ToolResult<UploadResult>>;
@@ -364,8 +411,7 @@ type ToolResult<T> =
     }
   ],
   "journey": {
-    "stage": "EXPLAIN_PROCESS|COLLECT_MEDICAL_INPUTS|RECOMMENDATION|ONLINE_CONSULT|HUMAN_HANDOFF",
-    "phase": "pre|active|post"
+    "stage": "EXPLAIN_PROCESS|COLLECT_MEDICAL_INPUTS|RECOMMENDATION|ONLINE_CONSULT|HUMAN_HANDOFF"
   },
   "handoff": {
     "required": false,
@@ -426,12 +472,12 @@ Terminal errors use:
 }
 ```
 
-## 9) Dynamic Rules and Skills
+## 9) Dynamic Rules and Prompt Contracts
 
 Configurable at runtime (or deploy-time config):
 
 - Supervisor prompt and behavior rules.
-- Sub-agent prompts and tool allowlists.
+- FaqAgent role prompt and FAQ tool allowlist.
 - Jump-step prerequisite rule table.
 - Explain-process gate and handoff trigger thresholds in `globalPolicies`.
 
@@ -470,6 +516,14 @@ Required decision fields:
 - `reason`
 - `whyNotSkip` (when jump denied)
 
+Required LLM runtime fields:
+
+- `nodePromptVersion`
+- `nodeModel`
+- `fallbackUsed`
+- `schemaValidationFailed`
+- `toolPlanUsed` (for `FaqAgent`, when applicable)
+
 ### 10.3 Required metrics
 
 - Turn latency: P50/P95/P99
@@ -507,6 +561,7 @@ Required decision fields:
 - Every turn emits one `turn_summary` event with:
   - `decisionAction`, `fromStage`, `toStage`, `outcomeStatus`, `degradedErrorCode?`
 - Non-production response may include `runtimeDebug` (`traceId` + runtime debug fields); production must not expose added debug fields.
+- For LLM nodes, non-PHI-safe debug metadata may include prompt/version hashes but must not include raw medical record content.
 
 ## 11) Error Handling
 
@@ -523,6 +578,9 @@ Required decision fields:
 
 ### 11.2 Runtime fallbacks
 
+- If supervisor LLM fails or returns invalid schema: fallback to heuristic supervisor suggestion.
+- If `FaqAgent` LLM fails before tool execution: fallback to deterministic FAQ search + safe generic answer composition.
+- If `FaqAgent` tool loop fails mid-flight: keep response contract valid, do not mutate stage, and return FAQ-safe degraded response.
 - If agent/tool action fails: keep response contract valid, no state advance.
 - If sub-agent times out: fallback to `status.query` and compose guidance text.
 - If orchestrator cannot produce valid decision: force `STAY`.
@@ -537,6 +595,26 @@ Required decision fields:
 
 No additional runtime service is required for MVP.
 
+### 12.1 LLM runtime adapter strategy
+
+This MVP adopts option `B`: a minimal internal LLM runtime adapter layer, not a full generic multi-agent runtime.
+
+Included in MVP:
+
+- `SupervisorLlmAdapter`
+- `FaqLlmAdapter`
+
+Not included in MVP:
+
+- LLM versions of `RecordsAgent`, `RecommendationAgent`, `ConsultAgent`, or `HandoffAgent`
+- external MCP server runtime
+
+Design intent:
+
+- keep the adapter reusable
+- prove the pattern on `Supervisor + FaqAgent`
+- expand later without rewriting orchestrator or public API
+
 ## 13) Testing Requirements (MVP)
 
 Minimum required tests:
@@ -546,10 +624,14 @@ Minimum required tests:
    - jump allow/deny with prerequisite checks
 2. ToolGateway unit tests
    - success and failure paths per tool
+   - FAQ tool surface: `categorySearch/search/getByIds`
 3. API contract tests
    - response includes only v3 fields
 4. Integration tests
    - FAQ path
+   - FAQ path with LLM-plan -> tool loop -> answer result
+   - FAQ path fallback when LLM schema invalid
+   - FAQ path fallback when FAQ tool fails
    - records upload/save path
    - recommendation generate/pick path
    - consult schedule path
@@ -574,11 +656,27 @@ type SupervisorSuggestion = {
 
 type OrchestratorDecision = {
   action: "STAY" | "ADVANCE" | "SKIP" | "HANDOFF";
-  from: { stage: JourneyStage; phase: JourneyPhase };
-  to: { stage: JourneyStage; phase: JourneyPhase };
+  from: { stage: JourneyStage };
+  to: { stage: JourneyStage };
   dispatchAgent?: "FaqAgent" | "RecordsAgent" | "RecommendationAgent" | "ConsultAgent" | "HandoffAgent";
   matchedRuleId?: string;
   whyNotSkip?: string;
+};
+```
+
+### 14.2 FAQ agent contracts
+
+```ts
+type FaqPlan = {
+  category?: string;
+  query: string;
+  reason: string;
+};
+
+type FaqAnswerResult = {
+  answer: string;
+  citedFaqIds: string[];
+  confidence: "high" | "medium" | "low";
 };
 ```
 
@@ -587,6 +685,9 @@ type OrchestratorDecision = {
 - Dify is not used in v3 runtime path.
 - Journey updates happen only through orchestrator.
 - Sub-agent dispatch is triggered only by orchestrator decisions.
+- Supervisor may suggest handoff from conversation semantics, but orchestrator remains final authority.
+- Hard handoff signals (tool failure threshold, safety policy) are enforced by orchestrator without relying on model inference.
+- FaqAgent is LLM-driven and limited to FAQ tools only.
 - Public response contract contains only v3 fields.
 - `records.save` and `consult.schedule` persist to Supabase and are visible in `status.query`.
 - Explain-process appearance, stage prerequisites, jump policy, and handoff triggers are driven by orchestrator config (not hardcoded in service logic).

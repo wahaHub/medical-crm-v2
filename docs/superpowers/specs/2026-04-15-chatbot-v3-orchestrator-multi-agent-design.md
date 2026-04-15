@@ -175,6 +175,8 @@ M0 default policy bundle (config defaults, not service hardcode):
 - `handoffTriggers.consecutiveCriticalToolFailures = 2`
 - `handoffPrerequisites.denyIfAny = ["handoff.active"]`
 
+`consecutiveCriticalToolFailures` counts consecutive `TIMEOUT | UPSTREAM_UNAVAILABLE | UNKNOWN` failures from critical business tools (`records.save`, `recommendation.generate`, `recommendation.pick`, `consult.schedule`, `handoff.create`) within the active session. A successful critical tool call resets the counter.
+
 Precedence (fixed order):
 
 1. Safety/human-handoff hard policy
@@ -232,9 +234,9 @@ Supervisor fallback rule:
   - chooses how to complete the FAQ task within FAQ tool allowlist
   - cannot mutate journey
   - tools:
-    - `faq.category_search`
+    - `faq.categorySearch`
     - `faq.search`
-    - `faq.get_by_ids`
+    - `faq.getByIds`
 
 - `RecordsAgent` (deterministic)
   - `records.upload`
@@ -260,9 +262,9 @@ Supervisor fallback rule:
 It receives an orchestrator-owned task prompt and may autonomously decide how to complete the FAQ task using FAQ-only tools. The expected inner loop is:
 
 1. infer FAQ intent/category/query from task + latest user message
-2. call `faq.category_search` when narrowing category helps
+2. call `faq.categorySearch` when narrowing category helps
 3. call `faq.search`
-4. optionally call `faq.get_by_ids` to retrieve exact FAQ entries
+4. optionally call `faq.getByIds` to retrieve exact FAQ entries
 5. return structured answer result
 
 `FaqAgent` does not decide stage progression, handoff, or dispatch.

@@ -238,8 +238,11 @@ Expected: FAIL.
 - [ ] **Step 3: Implement precedence-driven decision logic**
 
 ```ts
-if (suggestion.intent === 'handoff') return handoff();
 if (hitsHandoffHardPolicy(facts, policies)) return handoff();
+if (suggestion.intent === 'handoff' && violatesFactConditions(config.globalPolicies.handoffPrerequisites, facts)) {
+  return stay('handoff_prerequisite_denied');
+}
+if (suggestion.intent === 'handoff') return handoff();
 if (hitsExplainGate(current, target, policies, facts)) return stay('explain_not_completed');
 if (violatesStagePrerequisites(target, config.stagePrerequisites, facts)) return stay('missing_prerequisite');
 ```
@@ -827,6 +830,10 @@ it('accepts only intent/suggestedStage/reason from supervisor llm output', async
 });
 
 it('falls back to heuristic when llm output is invalid', async () => {
+  expect(await supervisor.suggest(input)).toEqual(heuristicResult);
+});
+
+it('falls back to heuristic when supervisor llm throws or times out', async () => {
   expect(await supervisor.suggest(input)).toEqual(heuristicResult);
 });
 ```

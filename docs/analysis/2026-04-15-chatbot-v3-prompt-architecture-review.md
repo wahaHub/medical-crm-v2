@@ -109,7 +109,7 @@
 
 3. 让 `FaqAgent` 成为唯一的 LLM 子 agent：
    - 每个 agent 一段固定 role prompt
-   - FAQ 工具显式 allowlist：`faq.category_search / faq.search / faq.get_by_ids`
+   - FAQ 工具显式 allowlist：`faq.categorySearch / faq.search / faq.getByIds`
    - 子 agent 自己决定 FAQ tool loop
    - 输出必须是结构化 FAQ answer/result，不允许自由改 journey
 
@@ -139,8 +139,8 @@
 
 建议在现有 node event 基础上，加最小 LLM 字段（token 成本很低）：
 
-1. `supervisor_prompt_version`、`faq_prompt_version`
-2. `supervisor_model`、`faq_model`
+1. `nodePromptVersion`
+2. `nodeModel`
 3. `fallback_used`
 4. `schema_validation_failed`
 

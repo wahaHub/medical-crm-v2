@@ -13,6 +13,7 @@ export function parsePolicyConfig(input: ChatbotV3PolicyConfigInput = {}): Chatb
   const globalPolicies = input.globalPolicies ?? {};
   const handoffTriggers: Partial<ChatbotV3PolicyConfig['globalPolicies']['handoffTriggers']> =
     globalPolicies.handoffTriggers ?? {};
+  const handoffPrerequisites = globalPolicies.handoffPrerequisites;
   const stagePrerequisites = input.stagePrerequisites ?? {};
   validateForceExplainProcessBefore(globalPolicies.forceExplainProcessBefore);
   validateStagePrerequisiteKeys(stagePrerequisites);
@@ -43,6 +44,10 @@ export function parsePolicyConfig(input: ChatbotV3PolicyConfigInput = {}): Chatb
           handoffTriggers.safetyPolicyHit
           ?? DEFAULT_POLICY.globalPolicies.handoffTriggers.safetyPolicyHit,
       },
+      handoffPrerequisites: mergeStagePrerequisite(
+        DEFAULT_POLICY.globalPolicies.handoffPrerequisites,
+        handoffPrerequisites,
+      ),
     },
     stagePrerequisites: mergedStagePrerequisites,
     jumpRules: cloneJumpRules(input.jumpRules) ?? DEFAULT_POLICY.jumpRules.slice(),

@@ -22,6 +22,7 @@ export interface ChatbotV3GlobalPolicies {
     consecutiveCriticalToolFailures: number;
     safetyPolicyHit: boolean;
   };
+  handoffPrerequisites?: ChatbotV3StagePrerequisite;
 }
 
 export interface ChatbotV3StagePrerequisite {
@@ -44,6 +45,7 @@ export interface ChatbotV3PolicyConfigInput {
   globalPolicies?: {
     forceExplainProcessBefore?: ChatJourneyStage[];
     handoffTriggers?: Partial<ChatbotV3GlobalPolicies['handoffTriggers']>;
+    handoffPrerequisites?: ChatbotV3StagePrerequisite;
   };
   stagePrerequisites?: ChatbotV3StagePrerequisites;
   jumpRules?: ChatbotV3JumpRule[];
@@ -57,10 +59,13 @@ export const DEFAULT_POLICY: ChatbotV3PolicyConfig = {
       consecutiveCriticalToolFailures: 2,
       safetyPolicyHit: true,
     },
+    handoffPrerequisites: {
+      denyIfAny: ['handoff.active'],
+    },
   },
   stagePrerequisites: {
-    RECOMMENDATION: { requiresAll: ['records.saved'] },
-    ONLINE_CONSULT: { requiresAll: ['recommendation.picked'] },
+    RECOMMENDATION: { requiresAll: ['process.explained', 'records.saved'] },
+    ONLINE_CONSULT: { requiresAll: ['process.explained', 'recommendation.picked'] },
   },
   jumpRules: [],
 };

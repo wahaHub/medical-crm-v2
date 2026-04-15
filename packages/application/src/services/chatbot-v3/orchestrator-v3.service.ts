@@ -71,11 +71,20 @@ export class OrchestratorV3Service {
     const targetStage = input.suggestion.suggestedStage;
     const facts = input.facts ?? {};
 
-    if (input.suggestion.intent === 'handoff' || targetStage === 'HUMAN_HANDOFF') {
+    if (hitsHandoffHardPolicy(input.handoff, this.config)) {
       return this.handoff(current);
     }
 
-    if (hitsHandoffHardPolicy(input.handoff, this.config)) {
+    if (isSemanticHandoffSuggestion(input.suggestion)) {
+      if (violatesFactConditions(this.config.globalPolicies.handoffPrerequisites, facts)) {
+        return stay(
+          current,
+          `Semantic handoff blocked by handoffPrerequisites: ${
+            describeFactConditionViolations(this.config.globalPolicies.handoffPrerequisites, facts).join(', ')
+          }`,
+        );
+      }
+
       return this.handoff(current);
     }
 
@@ -84,7 +93,12 @@ export class OrchestratorV3Service {
     }
 
     if (violatesStagePrerequisites(targetStage, this.config.stagePrerequisites, facts)) {
-      return stay(current, `Missing prerequisites for ${targetStage}`);
+      return stay(
+        current,
+        `Missing prerequisites for ${targetStage}: ${
+          describeFactConditionViolations(this.config.stagePrerequisites[targetStage], facts).join(', ')
+        }`,
+      );
     }
 
     const action = deriveAction(current.stage, targetStage);
@@ -201,6 +215,10 @@ function violatesStagePrerequisites(
   return !matchesFactConditions(prerequisite, facts);
 }
 
+function isSemanticHandoffSuggestion(suggestion: OrchestratorV3Suggestion): boolean {
+  return suggestion.intent === 'handoff' || suggestion.suggestedStage === 'HUMAN_HANDOFF';
+}
+
 function isTruthyFact(value: OrchestratorV3Facts[string]): boolean {
   return Boolean(value);
 }
@@ -246,6 +264,53 @@ function matchesFactConditions(
   }
 
   return !(ruleLike.denyIfAny?.some((factKey) => isTruthyFact(facts[factKey])) ?? false);
+}
+
+function violatesFactConditions(
+  ruleLike: ChatbotV3StagePrerequisite | undefined,
+  facts: OrchestratorV3Facts,
+): boolean {
+  if (!ruleLike) {
+    return false;
+  }
+
+  return !matchesFactConditions(ruleLike, facts);
+}
+
+function describeFactConditionViolations(
+  ruleLike: ChatbotV3StagePrerequisite | undefined,
+  facts: OrchestratorV3Facts,
+): string[] {
+  if (!ruleLike) {
+    return [];
+  }
+
+  const violations: string[] = [];
+
+  if (ruleLike.requiresAll) {
+    for (const factKey of ruleLike.requiresAll) {
+      if (!isTruthyFact(facts[factKey])) {
+        violations.push(factKey);
+      }
+    }
+  }
+
+  if (ruleLike.requiresAny && ruleLike.requiresAny.length > 0) {
+    const hasAnyRequirement = ruleLike.requiresAny.some((factKey) => isTruthyFact(facts[factKey]));
+    if (!hasAnyRequirement) {
+      violations.push(`any of [${ruleLike.requiresAny.join(', ')}]`);
+    }
+  }
+
+  if (ruleLike.denyIfAny) {
+    for (const factKey of ruleLike.denyIfAny) {
+      if (isTruthyFact(facts[factKey])) {
+        violations.push(factKey);
+      }
+    }
+  }
+
+  return violations;
 }
 
 function resolveDispatchAgent(stage: ChatJourneyStage): OrchestratorV3DispatchAgent {

@@ -28,11 +28,14 @@ describe('parsePolicyConfig', () => {
       consecutiveCriticalToolFailures: 2,
       safetyPolicyHit: true,
     });
+    expect(cfg.globalPolicies.handoffPrerequisites).toEqual({
+      denyIfAny: ['handoff.active'],
+    });
     expect(cfg.stagePrerequisites.RECOMMENDATION).toEqual({
-      requiresAll: ['records.saved'],
+      requiresAll: ['process.explained', 'records.saved'],
     });
     expect(cfg.stagePrerequisites.ONLINE_CONSULT).toEqual({
-      requiresAll: ['recommendation.picked'],
+      requiresAll: ['process.explained', 'recommendation.picked'],
     });
     expect(cfg.jumpRules).toEqual([]);
   });
@@ -68,6 +71,18 @@ describe('parsePolicyConfig', () => {
       userRequestedHuman: true,
       consecutiveCriticalToolFailures: 4,
       safetyPolicyHit: true,
+    });
+  });
+
+  it('loads handoffPrerequisites from config', () => {
+    const cfg = parsePolicyConfig({
+      globalPolicies: {
+        handoffPrerequisites: { denyIfAny: ['handoff.active'] },
+      },
+    } as never);
+
+    expect(cfg.globalPolicies.handoffPrerequisites).toEqual({
+      denyIfAny: ['handoff.active'],
     });
   });
 

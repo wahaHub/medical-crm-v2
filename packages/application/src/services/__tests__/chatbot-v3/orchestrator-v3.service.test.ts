@@ -42,6 +42,34 @@ describe('OrchestratorV3Service', () => {
     expect(decision.action).toBe('HANDOFF');
   });
 
+  it('denies semantic handoff when handoffPrerequisites fail', () => {
+    const serviceWithHandoffPrerequisites = new OrchestratorV3Service({
+      globalPolicies: {
+        handoffPrerequisites: {
+          denyIfAny: ['handoff.active'],
+        },
+      },
+    });
+
+    const decision = serviceWithHandoffPrerequisites.decide({
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      suggestion: {
+        intent: 'handoff',
+        suggestedStage: 'HUMAN_HANDOFF',
+        reason: 'user asks for human',
+      },
+      facts: {
+        'handoff.active': true,
+      },
+    });
+
+    expect(decision.action).toBe('STAY');
+    expect(decision.whyNotSkip).toContain('handoffPrerequisites');
+  });
+
   it('keeps agent dispatch owned by orchestrator output', () => {
     const decision = service.decide({
       current: {
@@ -55,6 +83,7 @@ describe('OrchestratorV3Service', () => {
       },
       facts: {
         'records.saved': true,
+        'process.explained': true,
       },
     });
 
@@ -86,6 +115,7 @@ describe('OrchestratorV3Service', () => {
       },
       facts: {
         'records.saved': true,
+        'process.explained': true,
       },
     });
 
@@ -138,6 +168,7 @@ describe('OrchestratorV3Service', () => {
       },
       facts: {
         'recommendation.picked': true,
+        'process.explained': true,
       },
     });
 
@@ -215,5 +246,37 @@ describe('OrchestratorV3Service', () => {
 
     expect(decision.action).toBe('STAY');
     expect(decision.whyNotSkip).toContain('Missing prerequisites');
+  });
+
+  it('requires process.explained before downstream stages', () => {
+    const serviceWithProcessExplanationGate = new OrchestratorV3Service({
+      jumpRules: [
+        {
+          id: 'collect-to-recommendation',
+          priority: 200,
+          fromStage: 'COLLECT_MEDICAL_INPUTS',
+          toStage: 'RECOMMENDATION',
+        },
+      ],
+    });
+
+    const decision = serviceWithProcessExplanationGate.decide({
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'post',
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        reason: 'continue',
+      },
+      facts: {
+        'records.saved': true,
+        'process.explained': false,
+      },
+    });
+
+    expect(decision.action).toBe('STAY');
+    expect(decision.whyNotSkip).toContain('process.explained');
   });
 });

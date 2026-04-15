@@ -95,10 +95,10 @@ function cloneJumpRules(
   }
 
   return jumpRules.map((rule) => ({
-    ...rule,
-    requiresAll: rule.requiresAll?.slice(),
-    requiresAny: rule.requiresAny?.slice(),
-    denyIfAny: rule.denyIfAny?.slice(),
+    id: rule.id,
+    priority: rule.priority,
+    fromStage: rule.fromStage,
+    toStage: rule.toStage,
   }));
 }
 

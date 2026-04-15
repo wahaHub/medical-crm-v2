@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RecordsAgent } from '../routes/chatbot-v3/agents.js';
+import { createChatbotV3RuntimeNodeEventEmitter } from '../routes/chatbot-v3/observability.js';
 import { ConversationOrchestratorV3RuntimeService } from '../routes/chatbot-v3/runtime.service.js';
 import { createToolGateway } from '../routes/chatbot-v3/tool-gateway.js';
 
@@ -138,6 +139,7 @@ describe('chatbot-v3 runtime', () => {
       },
     });
     const input = {
+      traceId: 'trace-concurrency-1',
       sessionId: 'session-1',
       turnId: 'turn-1',
       message: 'Can you recommend a hospital?',
@@ -165,9 +167,120 @@ describe('chatbot-v3 runtime', () => {
     expect(supervisor.suggest).toHaveBeenCalledTimes(1);
     expect(orchestrator.decide).toHaveBeenCalledTimes(1);
     expect(recommendationAgent.execute).toHaveBeenCalledTimes(1);
+    expect(first.runtimeDebug.traceId).toBe('trace-concurrency-1');
+  });
+
+  it('emits node events for supervisor/orchestrator/subagent/tool and turn_summary', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const eventEmitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        events.push(event as Record<string, unknown>);
+      },
+    });
+
+    let nowMs = 0;
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'continue to recommendation',
+        })),
+      },
+      orchestrator: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchAgent: 'RecommendationAgent' as const,
+          dispatchSource: 'orchestrator' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: {
+          execute: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: {
+              recommendations: [{ hospitalId: 'hospital-3' }],
+            },
+          })),
+        },
+      },
+      nodeEventEmitter: eventEmitter,
+      now: () => {
+        nowMs += 5;
+        return nowMs;
+      },
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-events-1',
+      sessionId: 'session-events-1',
+      turnId: 'turn-events-1',
+      message: 'continue',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.saved': true,
+      },
+    });
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ node: 'Supervisor', action: 'suggest', status: 'started' }),
+      expect.objectContaining({ node: 'Supervisor', action: 'suggest', status: 'completed' }),
+      expect.objectContaining({ node: 'Orchestrator', action: 'decide', status: 'started' }),
+      expect.objectContaining({ node: 'Orchestrator', action: 'decide', status: 'completed' }),
+      expect.objectContaining({ node: 'Subagent', action: 'RecommendationAgent', status: 'started' }),
+      expect.objectContaining({ node: 'Subagent', action: 'RecommendationAgent', status: 'completed' }),
+      expect.objectContaining({ node: 'Tool', action: 'recommendation.generate', status: 'started' }),
+      expect.objectContaining({ node: 'Tool', action: 'recommendation.generate', status: 'completed' }),
+      expect.objectContaining({ node: 'Turn', action: 'turn_summary', status: 'completed' }),
+    ]));
+
+    for (const event of events) {
+      expect(event).toMatchObject({
+        traceId: 'trace-events-1',
+        sessionId: 'session-events-1',
+        turnId: 'turn-events-1',
+        node: expect.any(String),
+        action: expect.any(String),
+        status: expect.any(String),
+      });
+      expect(event['latencyMs']).toEqual(expect.any(Number));
+      expect(event['occurredAt']).toEqual(expect.any(String));
+    }
+
+    const turnSummary = events.find(
+      (event) => event['node'] === 'Turn' && event['action'] === 'turn_summary',
+    );
+    expect(turnSummary).toMatchObject({
+      decisionAction: 'ADVANCE',
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'RECOMMENDATION',
+      outcomeStatus: 'ok',
+      degradedErrorCode: null,
+    });
   });
 
   it('falls back through status.query when agent execution times out', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const eventEmitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        events.push(event as Record<string, unknown>);
+      },
+    });
+
     const statusQuery = vi.fn(async () => ({
       status: 'ok' as const,
       data: {
@@ -206,9 +319,11 @@ describe('chatbot-v3 runtime', () => {
           })),
         },
       },
+      nodeEventEmitter: eventEmitter,
     });
 
     const result = await runtime.handleTurn({
+      traceId: 'trace-timeout-1',
       sessionId: 'session-1',
       turnId: 'turn-2',
       message: 'What should I do next?',
@@ -235,6 +350,30 @@ describe('chatbot-v3 runtime', () => {
       stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        node: 'Tool',
+        action: 'recommendation.generate',
+        status: 'timeout',
+        errorCode: 'TIMEOUT',
+      }),
+      expect.objectContaining({
+        node: 'Subagent',
+        action: 'RecommendationAgent',
+        status: 'timeout',
+        errorCode: 'TIMEOUT',
+      }),
+      expect.objectContaining({
+        node: 'Turn',
+        action: 'turn_summary',
+        status: 'completed',
+        decisionAction: 'ADVANCE',
+        fromStage: 'COLLECT_MEDICAL_INPUTS',
+        toStage: 'RECOMMENDATION',
+        outcomeStatus: 'degraded',
+        degradedErrorCode: 'TIMEOUT',
+      }),
+    ]));
   });
 
   it('dispatches actions only from orchestrator decisions', async () => {
@@ -283,6 +422,7 @@ describe('chatbot-v3 runtime', () => {
     });
 
     const result = await runtime.handleTurn({
+      traceId: 'trace-dispatch-1',
       sessionId: 'session-9',
       turnId: 'turn-4',
       message: 'I need help',
@@ -292,11 +432,78 @@ describe('chatbot-v3 runtime', () => {
       },
     });
 
-    expect(recommendationAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+    const dispatchedAction = recommendationAgent.execute.mock.calls[0]?.[0];
+    expect(dispatchedAction).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
+      meta: expect.objectContaining({
+        taskPrompt: expect.stringContaining('agent=RecommendationAgent'),
+      }),
     }));
+    expect(dispatchedAction?.meta).not.toHaveProperty('historySummary');
+    expect(dispatchedAction?.input).not.toHaveProperty('context');
     expect(handoffAgent.execute).not.toHaveBeenCalled();
     expect(result.runtimeDebug.lastDispatchSource).toBe('orchestrator');
+    expect(result.runtimeDebug.traceId).toBe('trace-dispatch-1');
+  });
+
+  it('passes task prompt only to dispatched agents', async () => {
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [{ hospitalId: 'hospital-3' }],
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'continue',
+        })),
+      },
+      orchestrator: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchAgent: 'RecommendationAgent' as const,
+          dispatchSource: 'orchestrator' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: recommendationAgent,
+      },
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-taskprompt-1',
+      sessionId: 'session-10',
+      turnId: 'turn-10',
+      message: 'please continue',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.saved': true,
+      },
+    });
+
+    const call = recommendationAgent.execute.mock.calls[0]?.[0];
+    expect(call?.meta?.taskPrompt).toContain('from=COLLECT_MEDICAL_INPUTS');
+    expect(call?.meta?.taskPrompt).toContain('to=RECOMMENDATION');
+    expect(call?.meta).not.toHaveProperty('historySummary');
   });
 });
 

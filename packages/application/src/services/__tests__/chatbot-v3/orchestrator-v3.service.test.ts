@@ -70,7 +70,6 @@ describe('OrchestratorV3Service', () => {
           priority: 100,
           fromStage: 'EXPLAIN_PROCESS',
           toStage: 'RECOMMENDATION',
-          requiresAll: ['records.saved'],
         },
       ],
     });
@@ -123,7 +122,6 @@ describe('OrchestratorV3Service', () => {
           priority: 200,
           fromStage: 'COLLECT_MEDICAL_INPUTS',
           toStage: 'ONLINE_CONSULT',
-          requiresAll: ['recommendation.picked'],
         },
       ],
     });
@@ -145,5 +143,77 @@ describe('OrchestratorV3Service', () => {
 
     expect(decision.action).toBe('SKIP');
     expect(decision.matchedRuleId).toBe('collect-to-consult');
+  });
+
+  it('ignores legacy fact conditions on jump rules and relies on stagePrerequisites as hard gate', () => {
+    const serviceWithLegacyRule = new OrchestratorV3Service({
+      stagePrerequisites: {
+        ONLINE_CONSULT: { requiresAll: ['records.saved'] },
+      },
+      jumpRules: [
+        {
+          id: 'collect-to-consult-legacy',
+          priority: 200,
+          fromStage: 'COLLECT_MEDICAL_INPUTS',
+          toStage: 'ONLINE_CONSULT',
+          requiresAll: ['recommendation.picked'],
+        } as any,
+      ],
+    });
+
+    const decision = serviceWithLegacyRule.decide({
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'post',
+      },
+      suggestion: {
+        intent: 'consult',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'user is ready to book consult',
+      },
+      facts: {
+        'records.saved': true,
+        'recommendation.picked': false,
+      },
+    });
+
+    expect(decision.action).toBe('SKIP');
+    expect(decision.matchedRuleId).toBe('collect-to-consult-legacy');
+  });
+
+  it('keeps stagePrerequisites as a hard gate even when a jump rule path matches', () => {
+    const serviceWithLegacyRule = new OrchestratorV3Service({
+      stagePrerequisites: {
+        ONLINE_CONSULT: { requiresAll: ['records.saved'] },
+      },
+      jumpRules: [
+        {
+          id: 'collect-to-consult-legacy',
+          priority: 200,
+          fromStage: 'COLLECT_MEDICAL_INPUTS',
+          toStage: 'ONLINE_CONSULT',
+          requiresAll: ['recommendation.picked'],
+        } as any,
+      ],
+    });
+
+    const decision = serviceWithLegacyRule.decide({
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'post',
+      },
+      suggestion: {
+        intent: 'consult',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'user is ready to book consult',
+      },
+      facts: {
+        'records.saved': false,
+        'recommendation.picked': true,
+      },
+    });
+
+    expect(decision.action).toBe('STAY');
+    expect(decision.whyNotSkip).toContain('Missing prerequisites');
   });
 });

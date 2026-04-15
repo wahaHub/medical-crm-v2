@@ -47,6 +47,12 @@ const chatbotV3HandoffSchema = z.object({
   ticketId: z.string().min(1).nullable(),
 }).strict();
 
+const chatbotV3RuntimeDebugSchema = z.object({
+  traceId: z.string().min(1).max(128),
+  idempotencyKey: z.string().min(1),
+  lastDispatchSource: z.literal('orchestrator').optional(),
+}).strict();
+
 const chatbotV3ProcessGuideCardSchema = z.object({
   cardId: z.string().min(1),
   cardType: z.literal('PROCESS_GUIDE'),
@@ -161,6 +167,7 @@ export const chatbotV3ChatResponseSchema = z.object({
   cards: z.array(chatbotV3CardSchema),
   journey: chatbotV3JourneySchema,
   handoff: chatbotV3HandoffSchema,
+  runtimeDebug: chatbotV3RuntimeDebugSchema.optional(),
 }).strict();
 
 export const chatbotV3ErrorSchema = z.object({

@@ -64,7 +64,6 @@ export interface RecordsStatusOutput {
 export interface RecommendationGenerateInput {
   sessionId: string;
   turnId?: string;
-  context?: Record<string, unknown>;
 }
 
 export interface RecommendationGenerateOutput {

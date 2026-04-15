@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatbotV3ChatResponseSchema } from '@medical-crm/validation';
 
 const NOW = new Date('2026-04-15T00:00:00.000Z');
 const SESSION_SECRET = 'secret-v3-1';
 const SESSION_SECRET_HASH = createHash('sha256').update(SESSION_SECRET).digest('hex');
+const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 
 const mockServices = {
   idempotencyExecutor: {
@@ -103,6 +104,15 @@ describe('Chatbot v3 public route mounting', () => {
     mockServices.createTicket.execute.mockResolvedValue({ id: 'ticket-v3-1' });
   });
 
+  afterEach(() => {
+    if (ORIGINAL_NODE_ENV === undefined) {
+      delete process.env.NODE_ENV;
+      return;
+    }
+
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  });
+
   it('keeps POST /api/v3/chatbot/chat public and returns v3-only fields', async () => {
     const { default: app } = await import('../index.js');
 
@@ -127,6 +137,53 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.turnOutcome).toBeDefined();
     expect(chatbotV3ChatResponseSchema.parse(body)).toBeDefined();
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
+  });
+
+  it('returns runtimeDebug with request traceId in non-production', async () => {
+    process.env.NODE_ENV = 'test';
+    const { default: app } = await import('../index.js');
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+        'x-request-id': 'trace-nonprod-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.runtimeDebug).toMatchObject({
+      traceId: 'trace-nonprod-1',
+      idempotencyKey: expect.any(String),
+    });
+  });
+
+  it('does not expose runtimeDebug in production responses', async () => {
+    process.env.NODE_ENV = 'production';
+    const { default: app } = await import('../index.js');
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+        'x-request-id': 'trace-prod-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.runtimeDebug).toBeUndefined();
   });
 
   it('returns 404 when the session does not exist', async () => {

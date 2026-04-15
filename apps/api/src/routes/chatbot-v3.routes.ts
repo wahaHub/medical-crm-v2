@@ -37,17 +37,20 @@ import {
   type ConversationOrchestratorV3TurnResult,
 } from './chatbot-v3/runtime.service.js';
 import { createToolGateway, type ToolResult } from './chatbot-v3/tool-gateway.js';
+import { createChatbotV3RuntimeNodeEventEmitter } from './chatbot-v3/observability.js';
 
 type AppServices = ReturnType<typeof getServices>;
 
 let chatbotV3RuntimeSingleton: ConversationOrchestratorV3RuntimeService | null = null;
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
+const TRACE_ID_MAX_LENGTH = 128;
 
 export const chatbotV3PublicRoutes = new Hono();
 
 chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   const body = chatbotV3ChatRequestSchema.parse(await c.req.json());
+  const traceId = resolveTraceId(c);
   const services = getServices();
   let session = await services.aiChatSessionRepo.findBySessionId(body.sessionId);
   if (!session) {
@@ -62,6 +65,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   const suggestion = buildInitialSuggestion(current, body);
 
   const result = await getChatbotV3Runtime().handleTurn({
+    traceId,
     sessionId: body.sessionId,
     turnId: resolveTurnId(c),
     message: body.message,
@@ -88,6 +92,13 @@ function getChatbotV3Runtime(): ConversationOrchestratorV3RuntimeService {
 }
 
 function createChatbotV3Runtime(services: AppServices): ConversationOrchestratorV3RuntimeService {
+  const nodeEventEmitter = createChatbotV3RuntimeNodeEventEmitter({
+    emit: (event) => {
+      if (process.env.NODE_ENV !== 'test') {
+        console.info('[chatbot-v3.node-event]', JSON.stringify(event));
+      }
+    },
+  });
   const gateway = createToolGateway({
     handlers: {
       faq: {
@@ -130,6 +141,7 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
     idempotency: services.idempotencyExecutor,
     supervisor: new SupervisorService(),
     orchestrator: new OrchestratorV3Service(),
+    nodeEventEmitter,
     gateway: {
       status: gateway.status,
     },
@@ -147,6 +159,25 @@ function resolveTurnId(c: Context): string {
   return c.req.header('Idempotency-Key')
     ?? c.req.header('X-Idempotency-Key')
     ?? randomUUID();
+}
+
+function resolveTraceId(c: Context): string {
+  const candidate = c.req.header('x-request-id')
+    ?? c.req.header('X-Request-Id');
+  if (!candidate) {
+    return randomUUID();
+  }
+
+  const trimmed = candidate.trim();
+  if (trimmed.length === 0 || trimmed.length > TRACE_ID_MAX_LENGTH) {
+    return randomUUID();
+  }
+
+  if (!/^[A-Za-z0-9._:-]+$/.test(trimmed)) {
+    return randomUUID();
+  }
+
+  return trimmed;
 }
 
 function buildInitialSuggestion(
@@ -246,7 +277,7 @@ function buildResponse(
   result: ConversationOrchestratorV3TurnResult,
   session: AiChatSession | null,
 ): ChatbotV3ChatResponse {
-  return {
+  const response: ChatbotV3ChatResponse = {
     messages: [{
       role: 'assistant',
       text: buildAssistantText(result.journey.stage, result.turnOutcome.status),
@@ -259,6 +290,18 @@ function buildResponse(
       ticketId: readHandoffId(result.dispatchResult),
     },
   };
+
+  if (process.env.NODE_ENV !== 'production') {
+    response.runtimeDebug = {
+      traceId: result.runtimeDebug.traceId,
+      idempotencyKey: result.runtimeDebug.idempotencyKey,
+      ...(result.runtimeDebug.lastDispatchSource
+        ? { lastDispatchSource: result.runtimeDebug.lastDispatchSource }
+        : {}),
+    };
+  }
+
+  return response;
 }
 
 function buildAssistantText(

@@ -13,9 +13,6 @@ export interface ChatbotV3JumpRule {
   priority: number;
   fromStage: ChatJourneyStage;
   toStage: ChatJourneyStage;
-  requiresAll?: string[];
-  requiresAny?: string[];
-  denyIfAny?: string[];
 }
 
 export interface ChatbotV3GlobalPolicies {

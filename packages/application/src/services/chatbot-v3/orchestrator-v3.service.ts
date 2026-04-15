@@ -1,9 +1,9 @@
 import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
-  type ChatbotV3JumpRule,
   type ChatbotV3PolicyConfig,
   type ChatbotV3PolicyConfigInput,
+  type ChatbotV3StagePrerequisite,
   type ChatbotV3StagePrerequisites,
 } from './types.js';
 import { parsePolicyConfig } from './policy-config.service.js';
@@ -89,7 +89,7 @@ export class OrchestratorV3Service {
 
     const action = deriveAction(current.stage, targetStage);
     if (action === 'SKIP') {
-      const matchedRule = findMatchingJumpRule(current.stage, targetStage, this.config.jumpRules, facts);
+      const matchedRule = findMatchingJumpRule(current.stage, targetStage, this.config.jumpRules);
       if (!matchedRule) {
         return stay(current, `No jump rule matched for ${current.stage} -> ${targetStage}`);
       }
@@ -224,16 +224,14 @@ function findMatchingJumpRule(
   currentStage: ChatJourneyStage,
   targetStage: ChatJourneyStage,
   jumpRules: ChatbotV3PolicyConfig['jumpRules'],
-  facts: OrchestratorV3Facts,
-): ChatbotV3JumpRule | undefined {
+): ChatbotV3PolicyConfig['jumpRules'][number] | undefined {
   return jumpRules
     .filter((rule) => rule.fromStage === currentStage && rule.toStage === targetStage)
-    .filter((rule) => matchesFactConditions(rule, facts))
     .sort((left, right) => right.priority - left.priority)[0];
 }
 
 function matchesFactConditions(
-  ruleLike: Pick<ChatbotV3JumpRule, 'requiresAll' | 'requiresAny' | 'denyIfAny'>,
+  ruleLike: ChatbotV3StagePrerequisite,
   facts: OrchestratorV3Facts,
 ): boolean {
   if (ruleLike.requiresAll?.some((factKey) => !isTruthyFact(facts[factKey]))) {

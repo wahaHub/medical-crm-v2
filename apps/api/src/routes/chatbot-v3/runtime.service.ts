@@ -1,6 +1,11 @@
 import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
 import type { AgentAction, AgentName } from './agents.js';
 import type {
+  ChatbotV3RuntimeNodeEventEmitter,
+  ChatbotV3RuntimeNodeEventInput,
+  ChatbotV3RuntimeNodeStatus,
+} from './observability.js';
+import type {
   StatusQueryOutput,
   ToolErrorCode,
   ToolGateway,
@@ -53,6 +58,7 @@ export interface ConversationOrchestratorV3Decision {
 }
 
 export interface ConversationOrchestratorV3HandleTurnInput {
+  traceId: string;
   sessionId: string;
   turnId: string;
   message: string;
@@ -74,6 +80,7 @@ export interface ConversationOrchestratorV3TurnResult {
     recoverableErrorCode: 'TIMEOUT' | 'UPSTREAM_UNAVAILABLE' | 'UNKNOWN' | null;
   };
   runtimeDebug: {
+    traceId: string;
     idempotencyKey: string;
     lastDispatchSource?: 'orchestrator';
   };
@@ -101,14 +108,19 @@ export interface ConversationOrchestratorV3RuntimeDependencies {
   orchestrator: ConversationOrchestratorV3Orchestrator;
   gateway: Pick<ToolGateway, 'status'>;
   agents: Partial<Record<AgentName, ConversationOrchestratorV3AgentExecutor>>;
+  nodeEventEmitter?: Pick<ChatbotV3RuntimeNodeEventEmitter, 'emit'>;
+  now?: () => number;
 }
 
 export class ConversationOrchestratorV3RuntimeService {
   private readonly inflightTurns = new Map<string, Promise<ConversationOrchestratorV3TurnResult>>();
+  private readonly now: () => number;
 
   constructor(
     private readonly dependencies: ConversationOrchestratorV3RuntimeDependencies,
-  ) {}
+  ) {
+    this.now = dependencies.now ?? (() => Date.now());
+  }
 
   handleTurn(input: ConversationOrchestratorV3HandleTurnInput): Promise<ConversationOrchestratorV3TurnResult> {
     const idempotencyKey = `${input.sessionId}:${input.turnId}:chatbot-v3-turn`;
@@ -138,19 +150,74 @@ export class ConversationOrchestratorV3RuntimeService {
     input: ConversationOrchestratorV3HandleTurnInput,
     idempotencyKey: string,
   ): Promise<ConversationOrchestratorV3TurnResult> {
+    const turnStartedAt = this.now();
     const supervisorInput = this.buildDecisionInput(input);
-    const suggestion = await this.dependencies.supervisor.suggest(supervisorInput);
-    const decision = this.dependencies.orchestrator.decide({
-      ...supervisorInput,
-      suggestion,
+    this.emitNodeEvent(input, {
+      node: 'Supervisor',
+      action: 'suggest',
+      status: 'started',
+      latencyMs: 0,
     });
+    const supervisorStartedAt = this.now();
+
+    let suggestion: ConversationOrchestratorV3Suggestion;
+    try {
+      suggestion = await this.dependencies.supervisor.suggest(supervisorInput);
+      this.emitNodeEvent(input, {
+        node: 'Supervisor',
+        action: 'suggest',
+        status: 'completed',
+        latencyMs: this.elapsedSince(supervisorStartedAt),
+      });
+    } catch (error) {
+      this.emitNodeEvent(input, {
+        node: 'Supervisor',
+        action: 'suggest',
+        status: 'failed',
+        latencyMs: this.elapsedSince(supervisorStartedAt),
+        errorCode: 'UNKNOWN',
+      });
+      throw error;
+    }
+
+    this.emitNodeEvent(input, {
+      node: 'Orchestrator',
+      action: 'decide',
+      status: 'started',
+      latencyMs: 0,
+    });
+    const orchestratorStartedAt = this.now();
+    let decision: ConversationOrchestratorV3Decision;
+    try {
+      decision = this.dependencies.orchestrator.decide({
+        ...supervisorInput,
+        suggestion,
+      });
+      this.emitNodeEvent(input, {
+        node: 'Orchestrator',
+        action: 'decide',
+        status: 'completed',
+        latencyMs: this.elapsedSince(orchestratorStartedAt),
+      });
+    } catch (error) {
+      this.emitNodeEvent(input, {
+        node: 'Orchestrator',
+        action: 'decide',
+        status: 'failed',
+        latencyMs: this.elapsedSince(orchestratorStartedAt),
+        errorCode: 'UNKNOWN',
+      });
+      throw error;
+    }
+
     const runtimeDebug = {
+      traceId: input.traceId,
       idempotencyKey,
       lastDispatchSource: decision.dispatchSource,
     } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
 
     if (!decision.dispatchAgent) {
-      return {
+      const result = {
         suggestion,
         decision,
         journey: decision.to,
@@ -161,12 +228,27 @@ export class ConversationOrchestratorV3RuntimeService {
           recoverableErrorCode: null,
         },
         runtimeDebug,
-      };
+      } satisfies ConversationOrchestratorV3TurnResult;
+      return this.finalizeTurnResult(input, decision, result, turnStartedAt);
     }
 
     const agent = this.dependencies.agents[decision.dispatchAgent];
     if (!agent) {
-      return this.buildDegradedResult({
+      this.emitNodeEvent(input, {
+        node: 'Subagent',
+        action: decision.dispatchAgent,
+        status: 'failed',
+        latencyMs: 0,
+        errorCode: 'UPSTREAM_UNAVAILABLE',
+      });
+      this.emitNodeEvent(input, {
+        node: 'Tool',
+        action: 'unknown_tool_for_agent',
+        status: 'failed',
+        latencyMs: 0,
+        errorCode: 'UPSTREAM_UNAVAILABLE',
+      });
+      const degraded = await this.buildDegradedResult({
         input,
         suggestion,
         decision,
@@ -177,25 +259,70 @@ export class ConversationOrchestratorV3RuntimeService {
         },
         runtimeDebug,
       });
+      return this.finalizeTurnResult(input, decision, degraded, turnStartedAt);
     }
 
+    const dispatchAction = buildDispatchAction(input, decision as ConversationOrchestratorV3Decision & {
+      dispatchAgent: AgentName;
+    }, suggestion);
+    this.emitNodeEvent(input, {
+      node: 'Subagent',
+      action: decision.dispatchAgent,
+      status: 'started',
+      latencyMs: 0,
+    });
+    const subagentStartedAt = this.now();
+    this.emitNodeEvent(input, {
+      node: 'Tool',
+      action: dispatchAction.type,
+      status: 'started',
+      latencyMs: 0,
+    });
+    const toolStartedAt = this.now();
+
     try {
-      const dispatchAction = buildDispatchAction(input, decision as ConversationOrchestratorV3Decision & {
-        dispatchAgent: AgentName;
-      }, suggestion);
       const dispatchResult = await agent.execute(dispatchAction);
 
       if (dispatchResult.status === 'error') {
-        return this.buildDegradedResult({
+        const status = this.mapErrorStatus(dispatchResult.code);
+        this.emitNodeEvent(input, {
+          node: 'Tool',
+          action: dispatchAction.type,
+          status,
+          latencyMs: this.elapsedSince(toolStartedAt),
+          errorCode: dispatchResult.code,
+        });
+        this.emitNodeEvent(input, {
+          node: 'Subagent',
+          action: decision.dispatchAgent,
+          status,
+          latencyMs: this.elapsedSince(subagentStartedAt),
+          errorCode: dispatchResult.code,
+        });
+        const degraded = await this.buildDegradedResult({
           input,
           suggestion,
           decision,
           dispatchResult,
           runtimeDebug,
         });
+        return this.finalizeTurnResult(input, decision, degraded, turnStartedAt);
       }
 
-      return {
+      this.emitNodeEvent(input, {
+        node: 'Tool',
+        action: dispatchAction.type,
+        status: 'completed',
+        latencyMs: this.elapsedSince(toolStartedAt),
+      });
+      this.emitNodeEvent(input, {
+        node: 'Subagent',
+        action: decision.dispatchAgent,
+        status: 'completed',
+        latencyMs: this.elapsedSince(subagentStartedAt),
+      });
+
+      const result = {
         suggestion,
         decision,
         journey: decision.to,
@@ -206,9 +333,24 @@ export class ConversationOrchestratorV3RuntimeService {
           recoverableErrorCode: null,
         },
         runtimeDebug,
-      };
+      } satisfies ConversationOrchestratorV3TurnResult;
+      return this.finalizeTurnResult(input, decision, result, turnStartedAt);
     } catch (error) {
-      return this.buildDegradedResult({
+      this.emitNodeEvent(input, {
+        node: 'Tool',
+        action: dispatchAction.type,
+        status: 'failed',
+        latencyMs: this.elapsedSince(toolStartedAt),
+        errorCode: 'UNKNOWN',
+      });
+      this.emitNodeEvent(input, {
+        node: 'Subagent',
+        action: decision.dispatchAgent,
+        status: 'failed',
+        latencyMs: this.elapsedSince(subagentStartedAt),
+        errorCode: 'UNKNOWN',
+      });
+      const degraded = await this.buildDegradedResult({
         input,
         suggestion,
         decision,
@@ -219,6 +361,7 @@ export class ConversationOrchestratorV3RuntimeService {
         },
         runtimeDebug,
       });
+      return this.finalizeTurnResult(input, decision, degraded, turnStartedAt);
     }
   }
 
@@ -250,7 +393,7 @@ export class ConversationOrchestratorV3RuntimeService {
     dispatchResult: Extract<ToolResult<unknown>, { status: 'error' }>;
     runtimeDebug: ConversationOrchestratorV3TurnResult['runtimeDebug'];
   }): Promise<ConversationOrchestratorV3TurnResult> {
-    const fallbackStatus = await queryStatusFallback(this.dependencies.gateway, input.sessionId);
+    const fallbackStatus = await this.queryStatusFallback(input);
 
     return {
       suggestion,
@@ -265,7 +408,88 @@ export class ConversationOrchestratorV3RuntimeService {
       runtimeDebug,
     };
   }
+
+  private async queryStatusFallback(
+    input: ConversationOrchestratorV3HandleTurnInput,
+  ): Promise<ToolResult<StatusQueryOutput>> {
+    this.emitNodeEvent(input, {
+      node: 'Tool',
+      action: 'status.query',
+      status: 'started',
+      latencyMs: 0,
+    });
+    const startedAt = this.now();
+
+    try {
+      const result = await this.dependencies.gateway.status.query({ sessionId: input.sessionId });
+      this.emitNodeEvent(input, {
+        node: 'Tool',
+        action: 'status.query',
+        status: result.status === 'error' ? this.mapErrorStatus(result.code) : 'completed',
+        latencyMs: this.elapsedSince(startedAt),
+        ...(result.status === 'error' ? { errorCode: result.code } : {}),
+      });
+      return result;
+    } catch (error) {
+      this.emitNodeEvent(input, {
+        node: 'Tool',
+        action: 'status.query',
+        status: 'failed',
+        latencyMs: this.elapsedSince(startedAt),
+        errorCode: 'UNKNOWN',
+      });
+      return {
+        status: 'error',
+        code: 'UNKNOWN',
+        message: error instanceof Error ? error.message : 'status.query fallback failed',
+      };
+    }
+  }
+
+  private finalizeTurnResult(
+    input: ConversationOrchestratorV3HandleTurnInput,
+    decision: ConversationOrchestratorV3Decision,
+    result: ConversationOrchestratorV3TurnResult,
+    turnStartedAt: number,
+  ): ConversationOrchestratorV3TurnResult {
+    this.emitNodeEvent(input, {
+      node: 'Turn',
+      action: 'turn_summary',
+      status: 'completed',
+      latencyMs: this.elapsedSince(turnStartedAt),
+      decisionAction: decision.action,
+      fromStage: decision.from.stage,
+      toStage: decision.to.stage,
+      outcomeStatus: result.turnOutcome.status,
+      degradedErrorCode: result.turnOutcome.recoverableErrorCode,
+    });
+    return result;
+  }
+
+  private emitNodeEvent(
+    input: ConversationOrchestratorV3HandleTurnInput,
+    event: Omit<ChatbotV3RuntimeNodeEventInput, 'traceId' | 'sessionId' | 'turnId'>,
+  ): void {
+    this.dependencies.nodeEventEmitter?.emit({
+      traceId: input.traceId,
+      sessionId: input.sessionId,
+      turnId: input.turnId,
+      ...event,
+    });
+  }
+
+  private elapsedSince(startAt: number): number {
+    return Math.max(0, this.now() - startAt);
+  }
+
+  private mapErrorStatus(
+    code: ToolErrorCode,
+  ): Extract<ChatbotV3RuntimeNodeStatus, 'failed' | 'timeout'> {
+    return code === 'TIMEOUT' ? 'timeout' : 'failed';
+  }
 }
+
+const FACTS_SNIPPET_MAX_ENTRIES = 6;
 
 function buildDispatchAction(
   input: ConversationOrchestratorV3HandleTurnInput,
@@ -274,6 +498,10 @@ function buildDispatchAction(
   },
   suggestion: ConversationOrchestratorV3Suggestion,
 ): AgentAction {
+  const meta = {
+    taskPrompt: buildTaskPrompt(input, decision, suggestion),
+  } satisfies NonNullable<AgentAction['meta']>;
+
   switch (decision.dispatchAgent) {
     case 'FaqAgent':
       return {
@@ -282,6 +510,7 @@ function buildDispatchAction(
           query: input.message,
           sessionId: input.sessionId,
         },
+        meta,
       };
     case 'RecordsAgent':
       if ((input.attachments?.length ?? 0) > 0) {
@@ -292,6 +521,7 @@ function buildDispatchAction(
             turnId: input.turnId,
             attachments: input.attachments,
           },
+          meta,
         };
       }
 
@@ -300,6 +530,7 @@ function buildDispatchAction(
         input: {
           sessionId: input.sessionId,
         },
+        meta,
       };
     case 'RecommendationAgent':
       return {
@@ -307,13 +538,8 @@ function buildDispatchAction(
         input: {
           sessionId: input.sessionId,
           turnId: input.turnId,
-          context: {
-            message: input.message,
-            facts: input.facts ?? {},
-            targetStage: decision.to.stage,
-            supervisorReason: suggestion.reason,
-          },
         },
+        meta,
       };
     case 'ConsultAgent':
       return {
@@ -321,6 +547,7 @@ function buildDispatchAction(
         input: {
           sessionId: input.sessionId,
         },
+        meta,
       };
     case 'HandoffAgent':
       return {
@@ -330,22 +557,8 @@ function buildDispatchAction(
           turnId: input.turnId,
           reason: normalizeReason(suggestion.reason || input.message || 'human handoff requested'),
         },
+        meta,
       };
-  }
-}
-
-async function queryStatusFallback(
-  gateway: Pick<ToolGateway, 'status'>,
-  sessionId: string,
-): Promise<ToolResult<StatusQueryOutput>> {
-  try {
-    return await gateway.status.query({ sessionId });
-  } catch (error) {
-    return {
-      status: 'error',
-      code: 'UNKNOWN',
-      message: error instanceof Error ? error.message : 'status.query fallback failed',
-    };
   }
 }
 
@@ -369,6 +582,35 @@ function normalizeReason(reason: string): string {
   }
 
   return trimmed.length <= 240 ? trimmed : trimmed.slice(0, 240);
+}
+
+function buildTaskPrompt(
+  input: ConversationOrchestratorV3HandleTurnInput,
+  decision: ConversationOrchestratorV3Decision & { dispatchAgent: AgentName },
+  suggestion: ConversationOrchestratorV3Suggestion,
+): string {
+  const factsSummary = summarizeFacts(input.facts);
+  const contextLines = [
+    `agent=${decision.dispatchAgent}`,
+    `from=${decision.from.stage}`,
+    `to=${decision.to.stage}`,
+    `intent=${suggestion.intent}`,
+    `supervisor_reason=${normalizeReason(suggestion.reason)}`,
+    `facts=${factsSummary}`,
+  ].filter((line) => line.length > 0);
+
+  return contextLines.join('\n');
+}
+
+function summarizeFacts(facts: ConversationOrchestratorV3Facts | undefined): string {
+  if (!facts) {
+    return 'none';
+  }
+
+  const entries = Object.entries(facts)
+    .slice(0, FACTS_SNIPPET_MAX_ENTRIES)
+    .map(([key, value]) => `${key}:${String(value)}`);
+  return entries.length > 0 ? entries.join(',') : 'none';
 }
 
 function cloneStageRef(

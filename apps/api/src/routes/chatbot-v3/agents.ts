@@ -23,6 +23,9 @@ export type AgentName =
 export interface AgentAction<TInput = unknown> {
   type: string;
   input: TInput;
+  meta?: {
+    taskPrompt: string;
+  };
 }
 
 export class FaqAgent {

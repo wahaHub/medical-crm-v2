@@ -5,6 +5,48 @@ export interface ChatbotV3CorrelationContext {
   childRunId?: string | null;
 }
 
+export type ChatbotV3RuntimeNode =
+  | 'Supervisor'
+  | 'Orchestrator'
+  | 'Subagent'
+  | 'Tool'
+  | 'Turn';
+
+export type ChatbotV3RuntimeNodeStatus =
+  | 'started'
+  | 'completed'
+  | 'failed'
+  | 'timeout';
+
+export interface ChatbotV3RuntimeNodeEventInput {
+  traceId: string;
+  sessionId: string;
+  turnId: string;
+  node: ChatbotV3RuntimeNode;
+  action: string;
+  status: ChatbotV3RuntimeNodeStatus;
+  latencyMs: number;
+  errorCode?: string;
+  decisionAction?: 'STAY' | 'ADVANCE' | 'SKIP' | 'HANDOFF';
+  fromStage?: string;
+  toStage?: string;
+  outcomeStatus?: 'ok' | 'degraded';
+  degradedErrorCode?: 'TIMEOUT' | 'UPSTREAM_UNAVAILABLE' | 'UNKNOWN' | null;
+}
+
+export interface ChatbotV3RuntimeNodeEvent extends ChatbotV3RuntimeNodeEventInput {
+  occurredAt: string;
+}
+
+export interface ChatbotV3RuntimeNodeEventEmitterOptions {
+  emit: (event: ChatbotV3RuntimeNodeEvent) => void;
+  now?: () => Date;
+}
+
+export interface ChatbotV3RuntimeNodeEventEmitter {
+  emit(input: ChatbotV3RuntimeNodeEventInput): ChatbotV3RuntimeNodeEvent;
+}
+
 export type ChatbotV3M0EventName =
   | 'supervisor_suggestion_created'
   | 'orchestrator_decision_finalized'
@@ -156,6 +198,23 @@ export function createChatbotV3EventEmitter(
   return {
     emit(input) {
       const event = normalizeEvent(input, now);
+      options.emit(event);
+      return event;
+    },
+  };
+}
+
+export function createChatbotV3RuntimeNodeEventEmitter(
+  options: ChatbotV3RuntimeNodeEventEmitterOptions,
+): ChatbotV3RuntimeNodeEventEmitter {
+  const now = options.now ?? (() => new Date());
+  return {
+    emit(input) {
+      const event = {
+        ...input,
+        latencyMs: Math.max(0, input.latencyMs),
+        occurredAt: now().toISOString(),
+      } satisfies ChatbotV3RuntimeNodeEvent;
       options.emit(event);
       return event;
     },

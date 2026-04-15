@@ -79,18 +79,15 @@ describe('parsePolicyConfig', () => {
           priority: 10,
           fromStage: 'EXPLAIN_PROCESS',
           toStage: 'RECOMMENDATION',
-          requiresAll: ['records.saved'],
-          requiresAny: ['facts.ready'],
-          denyIfAny: ['facts.blocked'],
+          requiresAll: ['legacy.fact'],
         },
       ],
     } as any;
 
     const cfg = parsePolicyConfig(input);
 
-    input.jumpRules[0].requiresAll?.push('mutated.fact');
-    input.jumpRules[0].requiresAny?.splice(0, 1, 'mutated.any');
-    input.jumpRules[0].denyIfAny = ['mutated.block'];
+    input.jumpRules[0].priority = 20;
+    input.jumpRules[0].toStage = 'ONLINE_CONSULT';
 
     expect(cfg.jumpRules).toHaveLength(1);
     expect(cfg.jumpRules[0]).not.toBe(input.jumpRules[0]);
@@ -99,10 +96,8 @@ describe('parsePolicyConfig', () => {
       priority: 10,
       fromStage: 'EXPLAIN_PROCESS',
       toStage: 'RECOMMENDATION',
-      requiresAll: ['records.saved'],
-      requiresAny: ['facts.ready'],
-      denyIfAny: ['facts.blocked'],
     });
+    expect(cfg.jumpRules[0]).not.toHaveProperty('requiresAll');
   });
 
   it('is re-exported from the package index', () => {

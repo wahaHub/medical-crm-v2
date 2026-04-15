@@ -52,6 +52,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         trustOrObjection: entity.statusSnapshot.trustOrObjection,
         engagementMode: entity.statusSnapshot.engagementMode,
         enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+        processExplained: entity.statusSnapshot.processExplained,
         conversationSummary: entity.statusSnapshot.conversationSummary,
         lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
         lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -78,6 +79,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           trustOrObjection: entity.statusSnapshot.trustOrObjection,
           engagementMode: entity.statusSnapshot.engagementMode,
           enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+          processExplained: entity.statusSnapshot.processExplained,
           conversationSummary: entity.statusSnapshot.conversationSummary,
           lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
           lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -150,6 +152,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.enteredDeepWorkflowAt !== undefined) {
       updates.enteredDeepWorkflowAt = patch.enteredDeepWorkflowAt?.toISOString() ?? null;
     }
+    if (patch.processExplained !== undefined) updates.processExplained = patch.processExplained;
     if (patch.conversationSummary !== undefined) updates.conversationSummary = patch.conversationSummary;
     if (patch.lastPolicyDecisionAt !== undefined) {
       updates.lastPolicyDecisionAt = patch.lastPolicyDecisionAt?.toISOString() ?? null;
@@ -191,6 +194,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         trustOrObjection: row.trustOrObjection,
         engagementMode: row.engagementMode,
         enteredDeepWorkflowAt: row.enteredDeepWorkflowAt ? new Date(row.enteredDeepWorkflowAt) : null,
+        processExplained: row.processExplained,
         conversationSummary: row.conversationSummary,
         lastPolicyDecisionAt: row.lastPolicyDecisionAt ? new Date(row.lastPolicyDecisionAt) : null,
         lastUserMessageAt: row.lastUserMessageAt ? new Date(row.lastUserMessageAt) : null,

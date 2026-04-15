@@ -70,6 +70,38 @@ describe('OrchestratorV3Service', () => {
     expect(decision.whyNotSkip).toContain('handoffPrerequisites');
   });
 
+  it('does not dispatch HandoffAgent when semantic handoff is denied in HUMAN_HANDOFF', () => {
+    const serviceWithHandoffPrerequisites = new OrchestratorV3Service({
+      globalPolicies: {
+        handoffPrerequisites: {
+          denyIfAny: ['handoff.active'],
+        },
+      },
+    });
+
+    const decision = serviceWithHandoffPrerequisites.decide({
+      current: {
+        stage: 'HUMAN_HANDOFF',
+        phase: 'active',
+      },
+      suggestion: {
+        intent: 'handoff',
+        suggestedStage: 'HUMAN_HANDOFF',
+        reason: 'user asks for human again',
+      },
+      facts: {
+        'handoff.active': true,
+      },
+    });
+
+    expect(decision.action).toBe('STAY');
+    expect(decision.dispatchAgent).toBeUndefined();
+    expect(decision.to).toEqual({
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    });
+  });
+
   it('keeps agent dispatch owned by orchestrator output', () => {
     const decision = service.decide({
       current: {

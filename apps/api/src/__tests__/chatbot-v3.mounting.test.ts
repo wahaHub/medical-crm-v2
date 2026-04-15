@@ -139,6 +139,30 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
   });
 
+  it('persists process.explained after returning the process guide', async () => {
+    const { default: app } = await import('../index.js');
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
+      'session-v3-1',
+      expect.objectContaining({
+        processExplained: true,
+      }),
+    );
+  });
+
   it('returns runtimeDebug with request traceId in non-production', async () => {
     process.env.NODE_ENV = 'test';
     const { default: app } = await import('../index.js');
@@ -299,6 +323,7 @@ describe('Chatbot v3 public route mounting', () => {
         trustOrObjection: 'none',
         engagementMode: 'LIGHT_DISCOVERY',
         enteredDeepWorkflowAt: null,
+        processExplained: true,
         conversationSummary: 'The process has already been explained to the user.',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
@@ -327,6 +352,69 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
+  });
+
+  it('does not infer process.explained from journey stage or phase when the persisted fact is false', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MEDICAL_INPUTS',
+            current_phase: 'post',
+          },
+        },
+        conditionStatus: 'unknown',
+        formStatus: 'completed',
+        docUploadStatus: 'submitted',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        processExplained: false,
+        conversationSummary: 'Records are ready, but the process explainer was never shown.',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: NOW,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please recommend a hospital.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'post',
+    });
+    expect(body.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+      }),
+    ]));
   });
 
   it('rejects missing or wrong secret on sessions with a stored hash', async () => {
@@ -637,6 +725,7 @@ describe('Chatbot v3 public route mounting', () => {
       phase: 'active',
     });
     expect(body.handoff.required).toBe(true);
+    expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledTimes(1);
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
   });
 });

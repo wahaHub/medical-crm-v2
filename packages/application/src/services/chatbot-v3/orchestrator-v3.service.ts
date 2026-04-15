@@ -82,6 +82,7 @@ export class OrchestratorV3Service {
           `Semantic handoff blocked by handoffPrerequisites: ${
             describeFactConditionViolations(this.config.globalPolicies.handoffPrerequisites, facts).join(', ')
           }`,
+          null,
         );
       }
 
@@ -158,12 +159,16 @@ function cloneStageRef(stageRef: OrchestratorV3StageRef): OrchestratorV3StageRef
   };
 }
 
-function stay(from: OrchestratorV3StageRef, whyNotSkip: string): OrchestratorV3Decision {
+function stay(
+  from: OrchestratorV3StageRef,
+  whyNotSkip: string,
+  dispatchAgent: OrchestratorV3DispatchAgent | null = resolveDispatchAgent(from.stage),
+): OrchestratorV3Decision {
   return {
     action: 'STAY',
     from,
     to: cloneStageRef(from),
-    dispatchAgent: resolveDispatchAgent(from.stage),
+    ...(dispatchAgent ? { dispatchAgent } : {}),
     dispatchSource: 'orchestrator',
     whyNotSkip,
   };

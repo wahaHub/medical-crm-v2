@@ -71,12 +71,17 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     message: body.message,
     attachments: body.attachments,
     current,
-    facts: resolveFacts(session?.statusSnapshot, current),
+    facts: resolveFacts(session?.statusSnapshot),
     handoff: resolveHandoffSignals(session?.statusSnapshot),
     suggestion,
   });
 
   const response = chatbotV3ChatResponseSchema.parse(buildResponse(body, result, session));
+  if (shouldPersistProcessExplainedFact(session, response)) {
+    await patchSessionStatus(services, session, {
+      processExplained: true,
+    });
+  }
   if (authorization.sessionSecretToSet) {
     setChatbotSessionSecretCookie(c, authorization.sessionSecretToSet);
   }
@@ -248,7 +253,6 @@ function resolveCurrentStage(
 
 function resolveFacts(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-  current: ConversationOrchestratorV3StageRef,
 ): Record<string, boolean> {
   const truth = deriveJourneyTruthFromStatusSnapshot(statusSnapshot);
   const uploadedRecordsReady = hasAnyStatus(
@@ -260,7 +264,7 @@ function resolveFacts(
     'records.saved': truth.medicalInputsSubmitted || uploadedRecordsReady,
     'recommendation.picked': truth.recommendationConfirmed,
     'consult.scheduled': truth.onlineConsultSubmitted,
-    'process.explained': current.stage !== 'EXPLAIN_PROCESS' || current.phase === 'post',
+    'process.explained': readProcessExplainedFact(statusSnapshot),
     'handoff.active': isHandoffActive(statusSnapshot),
   };
 }
@@ -304,6 +308,16 @@ function buildResponse(
   }
 
   return response;
+}
+
+function shouldPersistProcessExplainedFact(
+  session: AiChatSession | null,
+  response: ChatbotV3ChatResponse,
+): session is AiChatSession {
+  return session !== null
+    && !readProcessExplainedFact(session.statusSnapshot)
+    && response.journey.stage === 'EXPLAIN_PROCESS'
+    && response.cards.some((card) => card.cardType === 'PROCESS_GUIDE');
 }
 
 function buildAssistantText(
@@ -543,6 +557,7 @@ function serializeStatusSnapshot(
     trustOrObjection: statusSnapshot.trustOrObjection ?? null,
     engagementMode: statusSnapshot.engagementMode ?? null,
     enteredDeepWorkflowAt: statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+    processExplained: readProcessExplainedFact(statusSnapshot),
     conversationSummary: statusSnapshot.conversationSummary ?? '',
     lastPolicyDecisionAt: statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
     lastUserMessageAt: statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -576,6 +591,12 @@ function isHandoffActive(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): boolean {
   return hasWorkflowStatus(statusSnapshot?.handoffStatus, ['NOT_NEEDED', 'RESOLVED', 'COMPLETED']) || normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';
+}
+
+function readProcessExplainedFact(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): boolean {
+  return statusSnapshot?.processExplained === true;
 }
 
 function hasWorkflowStatus(value: string | null | undefined, emptyStates: string[]): boolean {

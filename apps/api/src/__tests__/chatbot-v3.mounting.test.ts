@@ -139,7 +139,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
   });
 
-  it('persists process.explained after returning the process guide', async () => {
+  it('returns a real process overview before persisting process.explained', async () => {
     const { default: app } = await import('../index.js');
 
     const res = await app.request('/api/v3/chatbot/chat', {
@@ -154,7 +154,12 @@ describe('Chatbot v3 public route mounting', () => {
       }),
     });
 
+    const body = await res.json();
+
     expect(res.status).toBe(200);
+    expect(body.messages[0].text).toContain('share your medical records');
+    expect(body.messages[0].text).toContain('review hospital recommendations');
+    expect(body.messages[0].text).toContain('arrange an online consultation');
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
       expect.objectContaining({
@@ -786,6 +791,67 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
   });
 
+  it('does not claim a successful handoff for anonymous public sessions without patientId', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Need a human now',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.journey).toMatchObject({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+    });
+    expect(body.handoff).toMatchObject({
+      required: false,
+      ticketId: null,
+    });
+    expect(body.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'PROCESS_GUIDE',
+      }),
+    ]));
+    expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
+  });
+
   it('does not create duplicate handoff tickets when handoff is already active', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
@@ -844,5 +910,84 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.handoff.required).toBe(true);
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledTimes(1);
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
+  });
+
+  it('treats CANCELLED handoff status as inactive and allows a fresh handoff ticket', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'EXPLAIN_PROCESS',
+            current_phase: 'active',
+          },
+        },
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'cancelled',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: 'A previous handoff was cancelled.',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+
+    const explainRes = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}; patient_session=patient-token`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const explainBody = await explainRes.json();
+    expect(explainRes.status).toBe(200);
+    expect(explainBody.journey).toMatchObject({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+    });
+    expect(explainBody.handoff.required).toBe(false);
+
+    const handoffRes = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}; patient_session=patient-token`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Need a human now',
+      }),
+    });
+
+    const handoffBody = await handoffRes.json();
+    expect(handoffRes.status).toBe(200);
+    expect(handoffBody.handoff).toMatchObject({
+      required: true,
+      ticketId: 'ticket-v3-1',
+    });
+    expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
   });
 });

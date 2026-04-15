@@ -51,6 +51,7 @@ const DIRECT_HUMAN_REQUEST_PATTERNS = [
   /\b(?:talk|speak|chat|connect|transfer|handoff|escalat(?:e|ion)?)\b[\s\w]*\b(?:human|person|advisor|agent|operator|representative)\b/i,
   /\b(?:live|real) (?:agent|person|human)\b/i,
 ] as const;
+const ACTIVE_HANDOFF_STATUSES = ['REQUESTED', 'OPEN', 'IN_PROGRESS'] as const;
 
 export const chatbotV3PublicRoutes = new Hono();
 
@@ -68,7 +69,9 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   }
   session = authorization.session;
   const current = resolveCurrentStage(session?.statusSnapshot);
-  const suggestion = buildInitialSuggestion(current, body);
+  const suggestion = buildInitialSuggestion(current, body, {
+    canCreateHandoff: canCreateHandoffTicket(session, services),
+  });
 
   const result = await getChatbotV3Runtime().handleTurn({
     traceId,
@@ -194,12 +197,23 @@ function resolveTraceId(c: Context): string {
 function buildInitialSuggestion(
   current: ConversationOrchestratorV3StageRef,
   body: ChatbotV3ChatRequest,
+  options: {
+    canCreateHandoff: boolean;
+  },
 ): {
   intent: 'handoff' | 'progression' | 'unknown';
   suggestedStage: ChatJourneyStage;
   reason: string;
 } {
   if (isDirectHumanRequest(body.message)) {
+    if (!options.canCreateHandoff) {
+      return {
+        intent: 'unknown',
+        suggestedStage: current.stage,
+        reason: 'direct human request cannot create handoff ticket for this session',
+      };
+    }
+
     return {
       intent: 'handoff',
       suggestedStage: 'HUMAN_HANDOFF',
@@ -241,7 +255,7 @@ function resolveCurrentStage(
 
   const truth = deriveJourneyTruthFromStatusSnapshot(statusSnapshot);
 
-  if (isHandoffActive(statusSnapshot)) {
+  if (hasActiveHandoffStatus(statusSnapshot) || hasCrisisSafetySignal(statusSnapshot)) {
     return { stage: 'HUMAN_HANDOFF', phase: 'active' };
   }
 
@@ -288,7 +302,7 @@ function resolveFacts(
     'recommendation.picked': truth.recommendationConfirmed,
     'consult.scheduled': truth.onlineConsultSubmitted,
     'process.explained': readProcessExplainedFact(statusSnapshot),
-    'handoff.active': isHandoffActive(statusSnapshot),
+    'handoff.active': hasActiveHandoffStatus(statusSnapshot),
   };
 }
 
@@ -297,7 +311,7 @@ function resolveHandoffSignals(
 ) {
   return {
     userRequestedHuman: false,
-    safetyPolicyHit: normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS',
+    safetyPolicyHit: hasCrisisSafetySignal(statusSnapshot),
   };
 }
 
@@ -315,7 +329,9 @@ function buildResponse(
     cards: buildCards(body, result, session?.statusSnapshot),
     journey: result.journey,
     handoff: {
-      required: result.journey.stage === 'HUMAN_HANDOFF' || isHandoffActive(session?.statusSnapshot),
+      required: result.journey.stage === 'HUMAN_HANDOFF'
+        || hasActiveHandoffStatus(session?.statusSnapshot)
+        || hasCrisisSafetySignal(session?.statusSnapshot),
       ticketId: readHandoffId(result.dispatchResult),
     },
   };
@@ -353,7 +369,7 @@ function buildAssistantText(
 
   switch (stage) {
     case 'EXPLAIN_PROCESS':
-      return 'Here is the current process step for your conversation.';
+      return 'Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an online consultation if you want one.';
     case 'COLLECT_MEDICAL_INPUTS':
       return 'I checked the medical input stage for this session.';
     case 'RECOMMENDATION':
@@ -610,10 +626,18 @@ function readStoredJourneySnapshot(
   return { stage, phase };
 }
 
-function isHandoffActive(
+function hasActiveHandoffStatus(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): boolean {
-  return hasWorkflowStatus(statusSnapshot?.handoffStatus, ['NOT_NEEDED', 'RESOLVED', 'COMPLETED']) || normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';
+  return ACTIVE_HANDOFF_STATUSES.includes(
+    normalizeStatus(statusSnapshot?.handoffStatus) as (typeof ACTIVE_HANDOFF_STATUSES)[number],
+  );
+}
+
+function hasCrisisSafetySignal(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): boolean {
+  return normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';
 }
 
 function readProcessExplainedFact(
@@ -833,7 +857,7 @@ async function createHandoff(
       if (!latestSession?.patientId || !services.createTicket) {
         return { created: false };
       }
-      if (hasWorkflowStatus(latestSession.statusSnapshot?.handoffStatus, ['NOT_NEEDED', 'RESOLVED', 'COMPLETED'])) {
+      if (hasActiveHandoffStatus(latestSession.statusSnapshot)) {
         return { created: false };
       }
 
@@ -859,6 +883,13 @@ async function createHandoff(
       };
     },
   );
+}
+
+function canCreateHandoffTicket(
+  session: AiChatSession | null,
+  services: AppServices,
+): boolean {
+  return Boolean(session?.patientId && services.createTicket);
 }
 
 async function handleRecordsUpload(

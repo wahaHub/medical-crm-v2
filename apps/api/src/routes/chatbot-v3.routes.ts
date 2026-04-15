@@ -38,7 +38,6 @@ import {
 } from './chatbot-v3/runtime.service.js';
 import {
   createToolGateway,
-  type FaqItemRecord,
   type ToolResult,
 } from './chatbot-v3/tool-gateway.js';
 import { createChatbotV3RuntimeNodeEventEmitter } from './chatbot-v3/observability.js';
@@ -119,11 +118,6 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
   });
   const gateway = createToolGateway({
     handlers: {
-      faq: {
-        categorySearch: async ({ query, sessionId }) => searchFaqCategories(services, sessionId, query),
-        search: async ({ category, query, sessionId }) => searchFaqHits(services, sessionId, query, category),
-        getByIds: async ({ ids }) => getFaqItemsByIds(services, ids),
-      },
       records: {
         upload: async ({ sessionId, turnId, attachments }) => handleRecordsUpload(services, sessionId, turnId, attachments),
         save: async ({ sessionId, turnId, records }) => handleRecordsSave(services, sessionId, turnId, records),
@@ -366,13 +360,6 @@ function shouldPersistProcessExplainedFact(
 }
 
 function buildAssistantText(result: ConversationOrchestratorV3TurnResult): string {
-  if (result.suggestion.intent === 'faq' && result.dispatchResult?.status === 'ok') {
-    const faqAnswer = asString(asRecord(result.dispatchResult.data)['answer']);
-    if (faqAnswer) {
-      return faqAnswer;
-    }
-  }
-
   if (result.turnOutcome.status === 'degraded') {
     return 'I could not complete the requested step, but your v3 journey state is preserved.';
   }
@@ -774,122 +761,6 @@ function setChatbotSessionSecretCookie(c: Context, value: string): void {
     path: '/',
     maxAge: 7 * 24 * 60 * 60,
   });
-}
-
-async function searchFaqHits(
-  services: AppServices,
-  sessionId: string | undefined,
-  query: string,
-  category?: string,
-): Promise<{ hits: FaqItemRecord[] }> {
-  const session = sessionId
-    ? await services.aiChatSessionRepo.findBySessionId(sessionId)
-    : null;
-  if (!services.listFaqItems) {
-    return { hits: [] };
-  }
-
-  try {
-    const result = await services.listFaqItems.execute({
-      page: 1,
-      limit: 5,
-      ...(category ? { category } : {}),
-      search: query,
-      hospitalType: session?.hospitalType,
-      isActive: true,
-    }, {
-      userId: 'chatbot-v3',
-      email: 'chatbot-v3@local',
-      role: 'ADMIN',
-      hospitalId: null,
-    });
-
-    return {
-      hits: result.data.map((item) => ({
-        id: item.id,
-        question: item.question,
-        answer: item.answer,
-        category: item.category,
-      })),
-    };
-  } catch {
-    return { hits: [] };
-  }
-}
-
-async function searchFaqCategories(
-  services: AppServices,
-  sessionId: string | undefined,
-  query: string,
-): Promise<{ categories: Array<{ name: string; sortOrder?: number }> }> {
-  const session = sessionId
-    ? await services.aiChatSessionRepo.findBySessionId(sessionId)
-    : null;
-
-  if (!services.listFaqCategoriesForChatbot || !session?.hospitalType) {
-    return { categories: [] };
-  }
-
-  try {
-    const result = await services.listFaqCategoriesForChatbot.execute({
-      hospitalType: session.hospitalType,
-    });
-    const normalizedQuery = query.trim().toLowerCase();
-    const categories = result.categories.filter((category) => {
-      if (normalizedQuery.length === 0) {
-        return true;
-      }
-      return category.name.toLowerCase().includes(normalizedQuery);
-    });
-
-    return {
-      categories: categories.map((category) => ({
-        name: category.name,
-        sortOrder: category.sortOrder,
-      })),
-    };
-  } catch {
-    return { categories: [] };
-  }
-}
-
-async function getFaqItemsByIds(
-  services: AppServices,
-  ids: string[],
-): Promise<{ items: FaqItemRecord[] }> {
-  if (!services.getFaqItem) {
-    return { items: [] };
-  }
-
-  try {
-    const settled = await Promise.all(
-      ids.map(async (id) => {
-        try {
-          return await services.getFaqItem.execute(id, {
-            userId: 'chatbot-v3',
-            email: 'chatbot-v3@local',
-            role: 'ADMIN',
-            hospitalId: null,
-          });
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    return {
-      items: settled
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-        .map((item) => ({
-          id: item.id,
-          question: item.question,
-          answer: item.answer,
-          category: item.category,
-        })),
-    };
-  } catch {
-    return { items: [] };
-  }
 }
 
 async function generateRecommendations(

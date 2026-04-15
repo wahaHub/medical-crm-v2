@@ -1,11 +1,21 @@
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatbotV3ChatResponseSchema } from '@medical-crm/validation';
+import type {
+  OrchestratorV3DecisionInput,
+  OrchestratorV3Suggestion,
+} from '@medical-crm/application';
 
 const NOW = new Date('2026-04-15T00:00:00.000Z');
 const SESSION_SECRET = 'secret-v3-1';
 const SESSION_SECRET_HASH = createHash('sha256').update(SESSION_SECRET).digest('hex');
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+const applicationOverrides: {
+  suggest?: (input: OrchestratorV3DecisionInput) => Promise<OrchestratorV3Suggestion>;
+  decide?: (input: OrchestratorV3DecisionInput) => ReturnType<
+    InstanceType<typeof import('@medical-crm/application').OrchestratorV3Service>['decide']
+  >;
+} = {};
 
 const mockServices = {
   idempotencyExecutor: {
@@ -28,11 +38,46 @@ const mockServices = {
   createTicket: {
     execute: vi.fn(),
   },
+  listFaqItems: {
+    execute: vi.fn(),
+  },
+  listFaqCategoriesForChatbot: {
+    execute: vi.fn(),
+  },
+  getFaqItem: {
+    execute: vi.fn(),
+  },
 };
 
 vi.mock('../composition-root.js', () => ({
   getServices: () => mockServices,
 }));
+
+vi.mock('@medical-crm/application', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@medical-crm/application')>();
+
+  return {
+    ...actual,
+    SupervisorService: class extends actual.SupervisorService {
+      override async suggest(input: OrchestratorV3DecisionInput): Promise<OrchestratorV3Suggestion> {
+        if (applicationOverrides.suggest) {
+          return applicationOverrides.suggest(input);
+        }
+
+        return super.suggest(input);
+      }
+    },
+    OrchestratorV3Service: class extends actual.OrchestratorV3Service {
+      override decide(input: OrchestratorV3DecisionInput) {
+        if (applicationOverrides.decide) {
+          return applicationOverrides.decide(input);
+        }
+
+        return super.decide(input);
+      }
+    },
+  };
+});
 
 vi.mock('@medical-crm/infrastructure/auth', () => ({
   authMiddleware: async (c: { json: (body: unknown, status: number) => Response }) =>
@@ -43,6 +88,8 @@ describe('Chatbot v3 public route mounting', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    applicationOverrides.suggest = undefined;
+    applicationOverrides.decide = undefined;
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
@@ -102,6 +149,13 @@ describe('Chatbot v3 public route mounting', () => {
     }));
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-1' });
     mockServices.createTicket.execute.mockResolvedValue({ id: 'ticket-v3-1' });
+    mockServices.listFaqItems.execute.mockResolvedValue({
+      data: [],
+    });
+    mockServices.listFaqCategoriesForChatbot.execute.mockResolvedValue({
+      categories: [],
+    });
+    mockServices.getFaqItem.execute.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -166,6 +220,54 @@ describe('Chatbot v3 public route mounting', () => {
         processExplained: true,
       }),
     );
+  });
+
+  it('keeps route-side assistant text owned by the current stage even after faq agent answers', async () => {
+    applicationOverrides.suggest = async () => ({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      reason: 'user asked an faq question',
+    });
+    applicationOverrides.decide = () => ({
+      action: 'STAY',
+      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+      to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+      dispatchAgent: 'FaqAgent',
+      dispatchSource: 'orchestrator',
+    });
+    mockServices.listFaqItems.execute.mockResolvedValue({
+      data: [{
+        id: 'faq-1',
+        question: 'How long does online consultation usually take to schedule?',
+        answer: 'Online consultations are usually arranged within 24 hours.',
+        category: 'Consultation',
+      }],
+    });
+    mockServices.getFaqItem.execute.mockResolvedValue({
+      id: 'faq-1',
+      question: 'How long does online consultation usually take to schedule?',
+      answer: 'Online consultations are usually arranged within 24 hours.',
+      category: 'Consultation',
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'How long does online consultation usually take to schedule?',
+      }),
+    });
+
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.messages[0].text).toContain('Here is the process');
+    expect(body.messages[0].text).not.toContain('Online consultations are usually arranged within 24 hours.');
   });
 
   it('returns runtimeDebug with request traceId in non-production', async () => {

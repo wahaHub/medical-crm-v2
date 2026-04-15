@@ -1133,3 +1133,182 @@ git add apps/api/src/routes/chatbot-v3/observability.ts \
   README.md
 git commit -m "feat(chatbot-v3): add llm node observability for supervisor and faq worker"
 ```
+
+## Revision Append (2026-04-15, Round 6)
+
+This append captures the next priority after R5-1 through R5-7: the v3 architecture now exists and is test-backed, but it is not yet fully polished for direct website integration. The goal of Round 6 is not to expand product scope. The goal is to tighten the existing prompt/runtime/frontend contract so the chatbot can be connected to the real site with fewer unknowns.
+
+The companion analysis doc `docs/analysis/2026-04-15-chatbot-v3-post-plan-remaining-gaps.md` is valid as a gap map. It correctly describes what v3 already proves and what still remains before calling the website-facing integration "ready enough". Round 6 turns those gaps into a smallest useful execution slice.
+
+### Task R6-1: Freeze website-facing prompt/runtime contracts
+
+**Files:**
+- Modify: `docs/analysis/2026-04-15-chatbot-v3-prompt-architecture-review.md`
+- Modify: `docs/superpowers/specs/2026-04-15-chatbot-v3-orchestrator-multi-agent-design.md`
+- Create: `docs/analysis/2026-04-15-chatbot-v3-website-integration-contract.md`
+
+- [ ] **Step 1: Write the failing contract checklist**
+
+Write a short checklist in the new analysis doc covering:
+
+- supervisor prompt inputs actually required by website traffic
+- FAQ worker task envelope fields actually consumed at runtime
+- bounded response-composer copy ownership
+- runtime debug fields required for staging and website QA
+
+- [ ] **Step 2: Review current code against the checklist**
+
+Read:
+
+- `packages/application/src/services/chatbot-v3/supervisor.service.ts`
+- `apps/api/src/routes/chatbot-v3/faq-llm-adapter.ts`
+- `apps/api/src/routes/chatbot-v3/runtime.service.ts`
+- `apps/api/src/routes/chatbot-v3/response-composer.ts`
+
+Expected: find only contract gaps, not new feature asks.
+
+- [ ] **Step 3: Tighten spec + prompt analysis docs**
+
+Document the minimum stable contract for:
+
+- supervisor prompt input
+- FAQ task envelope
+- FAQ answer passthrough policy
+- runtime debug expectations in non-production
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/analysis/2026-04-15-chatbot-v3-prompt-architecture-review.md \
+  docs/analysis/2026-04-15-chatbot-v3-website-integration-contract.md \
+  docs/superpowers/specs/2026-04-15-chatbot-v3-orchestrator-multi-agent-design.md
+git commit -m "docs(chatbot-v3): freeze website-facing prompt and runtime contracts"
+```
+
+### Task R6-2: Close remaining runtime authority and fact-commit gaps
+
+**Files:**
+- Modify: `apps/api/src/routes/chatbot-v3.routes.ts`
+- Modify: `apps/api/src/routes/chatbot-v3/runtime.service.ts`
+- Modify: `apps/api/src/__tests__/chatbot-v3.mounting.test.ts`
+- Modify: `apps/api/src/__tests__/chatbot-v3.routes.test.ts`
+
+- [ ] **Step 1: Write failing runtime ownership tests**
+
+Add focused tests for:
+
+- who is allowed to persist `process.explained`
+- whether orchestrator-owned journey/fact writes are still single-path
+- whether runtime debug exposes enough context to explain replay differences
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.mounting.test.ts src/__tests__/chatbot-v3.routes.test.ts`
+Expected: FAIL on the newly added ownership / audit expectations.
+
+- [ ] **Step 3: Implement the minimum authority closure**
+
+Keep scope narrow:
+
+- no new stage model
+- no new agent types
+- no compatibility shims
+
+Only close:
+
+- explicit fact commit ownership
+- authoritative write-path visibility
+- replay-relevant debug context
+
+- [ ] **Step 4: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.mounting.test.ts src/__tests__/chatbot-v3.routes.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/api/src/routes/chatbot-v3.routes.ts \
+  apps/api/src/routes/chatbot-v3/runtime.service.ts \
+  apps/api/src/__tests__/chatbot-v3.mounting.test.ts \
+  apps/api/src/__tests__/chatbot-v3.routes.test.ts
+git commit -m "fix(chatbot-v3): close remaining runtime authority gaps"
+```
+
+### Task R6-3: Add website integration smoke path and frontend binding checklist
+
+**Files:**
+- Modify: `packages/shared/ui/src/components/chatbot-v3-cards.tsx`
+- Modify: `packages/shared/ui/src/components/chatbot-v3-cards.test.tsx`
+- Modify: `apps/admin/src/app/api/chatbot-v3/chat/route.ts`
+- Modify: `apps/hospital/src/app/api/chatbot-v3/chat/route.ts`
+- Create: `docs/analysis/2026-04-15-chatbot-v3-website-binding-checklist.md`
+
+- [ ] **Step 1: Write failing frontend binding tests**
+
+Cover:
+
+- all v3 card types render with current response contract
+- card payload assumptions match current backend output
+- admin/hospital proxy routes do not mutate v3 response shape
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run: `pnpm --filter @medical-crm/ui test -- src/components/chatbot-v3-cards.test.tsx`
+Expected: FAIL if any card/render assumptions are still implicit.
+
+- [ ] **Step 3: Implement minimal website-binding polish**
+
+Do not redesign UI. Only ensure:
+
+- shared card renderer is stable
+- BFF proxy path is shape-preserving
+- checklist exists for marketing-site/widget integration later
+
+- [ ] **Step 4: Re-run tests**
+
+Run: `pnpm --filter @medical-crm/ui test -- src/components/chatbot-v3-cards.test.tsx`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/shared/ui/src/components/chatbot-v3-cards.tsx \
+  packages/shared/ui/src/components/chatbot-v3-cards.test.tsx \
+  apps/admin/src/app/api/chatbot-v3/chat/route.ts \
+  apps/hospital/src/app/api/chatbot-v3/chat/route.ts \
+  docs/analysis/2026-04-15-chatbot-v3-website-binding-checklist.md
+git commit -m "feat(chatbot-v3): add website integration smoke path and binding checklist"
+```
+
+### Task R6-4: Add lightweight website-ready eval and QA checklist
+
+**Files:**
+- Create: `docs/analysis/2026-04-15-chatbot-v3-staging-eval-checklist.md`
+- Modify: `README.md`
+
+- [ ] **Step 1: Write the smallest useful eval checklist**
+
+Include:
+
+- supervisor history-sensitive cases
+- FAQ grounded answer cases
+- semantic handoff acceptance/denial cases
+- explain-process persistence cases
+- degraded runtime fallback cases
+
+- [ ] **Step 2: Add README handoff note**
+
+Document:
+
+- what v3 already supports
+- what remains before direct website rollout
+- which checklist to run in staging
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docs/analysis/2026-04-15-chatbot-v3-staging-eval-checklist.md \
+  README.md
+git commit -m "docs(chatbot-v3): add website-ready eval and rollout checklist"
+```

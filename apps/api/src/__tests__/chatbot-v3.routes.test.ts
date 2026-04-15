@@ -231,6 +231,10 @@ describe('chatbot-v3 runtime', () => {
         },
       },
     });
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
   });
 
   it('dispatches actions only from orchestrator decisions', async () => {

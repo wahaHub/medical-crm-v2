@@ -255,7 +255,7 @@ export class ConversationOrchestratorV3RuntimeService {
     return {
       suggestion,
       decision,
-      journey: decision.to,
+      journey: cloneStageRef(decision.from),
       dispatchResult,
       fallbackStatus,
       turnOutcome: {
@@ -369,4 +369,13 @@ function normalizeReason(reason: string): string {
   }
 
   return trimmed.length <= 240 ? trimmed : trimmed.slice(0, 240);
+}
+
+function cloneStageRef(
+  stageRef: ConversationOrchestratorV3StageRef,
+): ConversationOrchestratorV3StageRef {
+  return {
+    stage: stageRef.stage,
+    phase: stageRef.phase,
+  };
 }

@@ -32,6 +32,8 @@ describe('admin chatbot-v3 chat proxy route', () => {
       headers: {
         'Content-Type': 'application/json',
         cookie: 'medical-crm-admin-session=admin-abc; patient_session=patient-xyz',
+        'Idempotency-Key': 'retry-admin-1',
+        'X-Idempotency-Key': 'legacy-admin-1',
       },
       body: JSON.stringify({ sessionId: 'session-1', message: 'hello' }),
     });
@@ -52,6 +54,8 @@ describe('admin chatbot-v3 chat proxy route', () => {
 
     expect(headers.get('content-type')).toBe('application/json');
     expect(headers.get('cookie')).toBe('medical-crm-admin-session=admin-abc; patient_session=patient-xyz');
+    expect(headers.get('idempotency-key')).toBe('retry-admin-1');
+    expect(headers.get('x-idempotency-key')).toBe('legacy-admin-1');
     expect(response.headers.get('set-cookie')).toContain('chatbot_session_secret=secret-123');
     expect(response.headers.get('content-type')).toContain('application/json');
     expect(await response.json()).toEqual({ ok: true });

@@ -14,13 +14,15 @@ export async function POST(request: NextRequest): Promise<Response> {
   return buildProxyResponse(upstreamResponse);
 }
 
-function buildUpstreamHeaders(request: NextRequest): Headers {
-  const headers = new Headers();
-  headers.set('Content-Type', request.headers.get('content-type') ?? 'application/json');
+function buildUpstreamHeaders(request: NextRequest): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': request.headers.get('content-type') ?? 'application/json',
+  };
+  copyIdempotencyHeaders(request, headers);
 
   const cookie = request.headers.get('cookie');
   if (cookie) {
-    headers.set('cookie', cookie);
+    headers.cookie = cookie;
   }
 
   return headers;
@@ -53,5 +55,17 @@ function appendSetCookieHeaders(target: Headers, source: Headers) {
   const setCookie = source.get('set-cookie');
   if (setCookie) {
     target.set('set-cookie', setCookie);
+  }
+}
+
+function copyIdempotencyHeaders(request: NextRequest, target: Record<string, string>): void {
+  const idempotencyKey = request.headers.get('idempotency-key');
+  if (idempotencyKey) {
+    target['Idempotency-Key'] = idempotencyKey;
+  }
+
+  const legacyIdempotencyKey = request.headers.get('x-idempotency-key');
+  if (legacyIdempotencyKey) {
+    target['X-Idempotency-Key'] = legacyIdempotencyKey;
   }
 }

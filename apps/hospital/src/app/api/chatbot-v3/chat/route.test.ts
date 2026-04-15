@@ -32,6 +32,8 @@ describe('hospital chatbot-v3 chat proxy route', () => {
       headers: {
         'Content-Type': 'application/json',
         cookie: 'medical-crm-hospital-session=hospital-abc; patient_session=patient-xyz',
+        'Idempotency-Key': 'retry-hospital-1',
+        'X-Idempotency-Key': 'legacy-hospital-1',
       },
       body: JSON.stringify({ sessionId: 'session-2', message: 'need help' }),
     });
@@ -52,6 +54,8 @@ describe('hospital chatbot-v3 chat proxy route', () => {
 
     expect(headers.get('content-type')).toBe('application/json');
     expect(headers.get('cookie')).toBe('medical-crm-hospital-session=hospital-abc; patient_session=patient-xyz');
+    expect(headers.get('idempotency-key')).toBe('retry-hospital-1');
+    expect(headers.get('x-idempotency-key')).toBe('legacy-hospital-1');
     expect(response.headers.get('set-cookie')).toContain('chatbot_session_secret=secret-456');
     expect(response.headers.get('content-type')).toContain('application/json');
     expect(await response.json()).toEqual({ ok: true });

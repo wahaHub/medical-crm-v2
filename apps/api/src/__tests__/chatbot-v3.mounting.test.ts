@@ -24,6 +24,9 @@ const mockServices = {
   validateRegistrationToken: {
     execute: vi.fn(),
   },
+  createTicket: {
+    execute: vi.fn(),
+  },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -78,12 +81,12 @@ describe('Chatbot v3 public route mounting', () => {
       status: 'ACTIVE',
       statusSnapshot: {
         conditionStatus: 'unknown',
-        formStatus: 'not_started',
+        formStatus: patch['formStatus'] ?? 'not_started',
         docUploadStatus: patch['docUploadStatus'] ?? 'submitted',
         recommendationStatus: 'not_started',
-        consultationStatus: 'not_introduced',
+        consultationStatus: patch['consultationStatus'] ?? 'not_introduced',
         packageStatus: 'not_introduced',
-        handoffStatus: 'not_needed',
+        handoffStatus: patch['handoffStatus'] ?? 'not_needed',
         riskLevel: 'low',
         trustOrObjection: 'none',
         engagementMode: 'LIGHT_DISCOVERY',
@@ -97,6 +100,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     }));
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-1' });
+    mockServices.createTicket.execute.mockResolvedValue({ id: 'ticket-v3-1' });
   });
 
   it('keeps POST /api/v3/chatbot/chat public and returns v3-only fields', async () => {
@@ -437,5 +441,54 @@ describe('Chatbot v3 public route mounting', () => {
 
     expect(res.status).toBe(200);
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalled();
+  });
+
+  it('does not create duplicate handoff tickets when handoff is already active', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'requested',
+        riskLevel: 'crisis',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}; patient_session=patient-token`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Need a human now',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.handoff.required).toBe(true);
+    expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
   });
 });

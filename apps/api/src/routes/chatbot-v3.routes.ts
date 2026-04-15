@@ -58,10 +58,8 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     return authorization.response;
   }
   session = authorization.session;
-  const current = normalizeCurrentForRequest(
-    resolveCurrentStage(session?.statusSnapshot),
-    body,
-  );
+  const current = resolveCurrentStage(session?.statusSnapshot);
+  const suggestion = buildInitialSuggestion(current, body);
 
   const result = await getChatbotV3Runtime().handleTurn({
     sessionId: body.sessionId,
@@ -71,11 +69,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     current,
     facts: resolveFacts(session?.statusSnapshot),
     handoff: resolveHandoffSignals(session?.statusSnapshot),
-    suggestion: {
-      intent: 'unknown',
-      suggestedStage: current.stage,
-      reason: 'session-derived baseline',
-    },
+    suggestion,
   });
 
   const response = chatbotV3ChatResponseSchema.parse(buildResponse(body, result, session));
@@ -127,7 +121,7 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
         }),
       },
       handoff: {
-        create: async ({ sessionId, reason }) => createHandoff(services, sessionId, reason),
+        create: async ({ sessionId, turnId, reason }) => createHandoff(services, sessionId, turnId, reason),
       },
     },
   });
@@ -155,18 +149,27 @@ function resolveTurnId(c: Context): string {
     ?? randomUUID();
 }
 
-function normalizeCurrentForRequest(
+function buildInitialSuggestion(
   current: ConversationOrchestratorV3StageRef,
   body: ChatbotV3ChatRequest,
-): ConversationOrchestratorV3StageRef {
-  if ((body.attachments?.length ?? 0) > 0 && current.stage === 'EXPLAIN_PROCESS') {
+): {
+  intent: 'progression' | 'unknown';
+  suggestedStage: ChatJourneyStage;
+  reason: string;
+} {
+  if ((body.attachments?.length ?? 0) > 0) {
     return {
-      stage: 'COLLECT_MEDICAL_INPUTS',
-      phase: 'active',
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      reason: 'attachments provided by user',
     };
   }
 
-  return current;
+  return {
+    intent: 'unknown',
+    suggestedStage: current.stage,
+    reason: 'session-derived baseline',
+  };
 }
 
 function resolveCurrentStage(
@@ -719,34 +722,54 @@ async function generateRecommendations(
 async function createHandoff(
   services: AppServices,
   sessionId: string,
+  turnId: string | undefined,
   reason: string,
 ): Promise<{ handoffId?: string; created?: boolean }> {
   const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
-  if (!session?.patientId || !services.createTicket) {
+  if (!session || !session.patientId || !services.createTicket) {
     return { created: false };
   }
 
-  try {
-    const ticket = await services.createTicket.execute({
-      type: 'AI_ESCALATION',
-      priority: 'MEDIUM',
-      subject: 'Chatbot v3 handoff request',
-      description: reason,
-      sourcePage: '/api/v3/chatbot/chat',
-    }, {
-      userId: session.patientId,
-      email: 'chatbot-v3@local',
-      role: 'PATIENT',
-      hospitalId: null,
-    });
+  const handoffTurnToken = turnId ?? randomUUID();
+  const handoffTurnDigest = createHash('sha256')
+    .update(`${sessionId}:handoff-ticket:${handoffTurnToken}`)
+    .digest('hex');
+  const idempotencyKey = `chatbot-v3:handoff:${handoffTurnDigest}`;
 
-    return {
-      created: true,
-      handoffId: ticket.id,
-    };
-  } catch {
-    return { created: false };
-  }
+  return services.idempotencyExecutor.execute(
+    idempotencyKey,
+    'chatbot_v3_handoff_ticket',
+    async () => {
+      const latestSession = await services.aiChatSessionRepo.findBySessionId(sessionId);
+      if (!latestSession?.patientId || !services.createTicket) {
+        return { created: false };
+      }
+      if (hasWorkflowStatus(latestSession.statusSnapshot?.handoffStatus, ['NOT_NEEDED', 'RESOLVED', 'COMPLETED'])) {
+        return { created: false };
+      }
+
+      const ticket = await services.createTicket.execute({
+        type: 'AI_ESCALATION',
+        priority: 'MEDIUM',
+        subject: 'Chatbot v3 handoff request',
+        description: reason,
+        sourcePage: '/api/v3/chatbot/chat',
+      }, {
+        userId: latestSession.patientId,
+        email: 'chatbot-v3@local',
+        role: 'PATIENT',
+        hospitalId: null,
+      });
+      await patchSessionStatus(services, latestSession, {
+        handoffStatus: 'REQUESTED',
+      });
+
+      return {
+        created: true,
+        handoffId: ticket.id,
+      };
+    },
+  );
 }
 
 async function handleRecordsUpload(

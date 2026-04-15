@@ -45,6 +45,12 @@ let chatbotV3RuntimeSingleton: ConversationOrchestratorV3RuntimeService | null =
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
 const TRACE_ID_MAX_LENGTH = 128;
+const DIRECT_HUMAN_REQUEST_PATTERNS = [
+  /\bneed (?:a |to talk to a |to speak to a )?(?:human|person|advisor|agent|operator|representative)\b/i,
+  /\b(?:want|wanna|would like) (?:a |to talk to a |to speak to a )?(?:human|person|advisor|agent|operator|representative)\b/i,
+  /\b(?:talk|speak|chat|connect|transfer|handoff|escalat(?:e|ion)?)\b[\s\w]*\b(?:human|person|advisor|agent|operator|representative)\b/i,
+  /\b(?:live|real) (?:agent|person|human)\b/i,
+] as const;
 
 export const chatbotV3PublicRoutes = new Hono();
 
@@ -189,10 +195,18 @@ function buildInitialSuggestion(
   current: ConversationOrchestratorV3StageRef,
   body: ChatbotV3ChatRequest,
 ): {
-  intent: 'progression' | 'unknown';
+  intent: 'handoff' | 'progression' | 'unknown';
   suggestedStage: ChatJourneyStage;
   reason: string;
 } {
+  if (isDirectHumanRequest(body.message)) {
+    return {
+      intent: 'handoff',
+      suggestedStage: 'HUMAN_HANDOFF',
+      reason: 'direct user request for a human',
+    };
+  }
+
   if ((body.attachments?.length ?? 0) > 0) {
     return {
       intent: 'progression',
@@ -206,6 +220,15 @@ function buildInitialSuggestion(
     suggestedStage: current.stage,
     reason: 'session-derived baseline',
   };
+}
+
+function isDirectHumanRequest(message: string): boolean {
+  const trimmed = message.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+
+  return DIRECT_HUMAN_REQUEST_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
 function resolveCurrentStage(

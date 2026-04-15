@@ -730,6 +730,62 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalled();
   });
 
+  it('creates a handoff ticket when the first v3 user message directly requests a human', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: SESSION_SECRET_HASH,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}; patient_session=patient-token`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Need a human now',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.journey).toMatchObject({
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    });
+    expect(body.handoff).toMatchObject({
+      required: true,
+      ticketId: 'ticket-v3-1',
+    });
+    expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
+  });
+
   it('does not create duplicate handoff tickets when handoff is already active', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',

@@ -113,7 +113,12 @@ describe('SupabaseHospitalSyncService', () => {
     });
 
     it('upserts with correct field mapping for REGULAR', async () => {
-      const hospital = makeHospital({ type: 'REGULAR', status: 'ACTIVE', address: 'Beijing' });
+      const hospital = makeHospital({
+        type: 'REGULAR',
+        status: 'ACTIVE',
+        city: 'guangzhou',
+        address: '广州市黄埔大道 123 号',
+      });
       await service.syncToSupabase(hospital);
 
       const fromMock = chinaSupabase.from as ReturnType<typeof vi.fn>;
@@ -129,8 +134,8 @@ describe('SupabaseHospitalSyncService', () => {
 
       expect(upsertData.id).toBe('hosp-uuid-1');
       expect(upsertData.slug).toBe('test-hospital');
-      expect(upsertData.city).toBe('Beijing');
-      expect(upsertData.address).toBe('Beijing');
+      expect(upsertData.city).toBe('guangzhou');
+      expect(upsertData.address).toBe('广州市黄埔大道 123 号');
       expect(upsertData.is_active).toBe(true);
       expect(upsertData.status).toBe('approved');
     });

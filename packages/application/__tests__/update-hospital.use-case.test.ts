@@ -156,7 +156,7 @@ describe('UpdateHospitalStatusUseCase', () => {
       syncToSupabase: vi.fn().mockResolvedValue(undefined),
     };
 
-    useCase = new UpdateHospitalStatusUseCase(mockHospitalRepo);
+    useCase = new UpdateHospitalStatusUseCase(mockHospitalRepo, mockSyncService);
   });
 
   it('calls activate() and updateStatus() for ACTIVE target', async () => {
@@ -227,5 +227,17 @@ describe('UpdateHospitalStatusUseCase', () => {
     expect(result).toHaveProperty('status');
     expect(typeof result.createdAt).toBe('string');
     expect(typeof result.updatedAt).toBe('string');
+  });
+
+  it('syncs the saved hospital to Supabase after status changes', async () => {
+    const pendingHospital = makeHospital({ status: 'PENDING' });
+    const savedHospital = makeHospital({ status: 'ACTIVE' });
+    mockHospitalRepo.findFullById = vi.fn().mockResolvedValue(pendingHospital);
+    mockHospitalRepo.updateStatus = vi.fn().mockResolvedValue(savedHospital);
+
+    await useCase.execute({ id: 'h-1', status: 'ACTIVE' }, adminActor);
+
+    expect(mockSyncService.syncToSupabase).toHaveBeenCalledOnce();
+    expect(mockSyncService.syncToSupabase).toHaveBeenCalledWith(savedHospital);
   });
 });

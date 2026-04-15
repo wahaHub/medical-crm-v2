@@ -41,7 +41,7 @@ export class SupabaseHospitalSyncService implements IHospitalSyncService {
   private async syncToChinaSupabase(hospital: Hospital): Promise<void> {
     const payload = {
       id: hospital.id,
-      city: hospital.address ?? '',
+      city: hospital.city ?? '',
       address: hospital.address,
       is_active: hospital.status === 'ACTIVE',
       status: hospital.status === 'ACTIVE' ? 'approved' : 'pending',

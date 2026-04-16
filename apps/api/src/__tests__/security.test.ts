@@ -36,6 +36,29 @@ describe('Security middleware', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:3002');
   });
 
+  it('allows x-medora-site in CORS preflight headers', async () => {
+    process.env.ADMIN_ORIGIN = 'https://portal.medora.com';
+    process.env.HOSPITAL_ORIGIN = 'https://hospital.medora.com';
+    process.env.CHINA_ORIGIN = 'https://china.medora.com';
+
+    const { Hono } = await import('hono');
+    const { applySecurityMiddleware } = await import('../middleware/security');
+    const testApp = new Hono();
+    applySecurityMiddleware(testApp);
+    testApp.get('/health', (c) => c.json({ ok: true }));
+
+    const res = await testApp.request('/health', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://portal.medora.com',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type,x-medora-site',
+      },
+    });
+
+    expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('x-medora-site');
+  });
+
   it('includes request-id header', async () => {
     const { default: app } = await import('../index');
     const res = await app.request('/health');

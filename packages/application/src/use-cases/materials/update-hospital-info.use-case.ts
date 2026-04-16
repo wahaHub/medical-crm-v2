@@ -56,6 +56,7 @@ function buildHospitalInfoTranslationFields(
     ownership_type: input.ownershipType,
     core_specialties: input.coreSpecialties,
     departments_info: buildDepartmentsInfo(input),
+    equipment: input.equipment,
   });
 }
 

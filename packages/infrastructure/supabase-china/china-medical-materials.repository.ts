@@ -382,7 +382,6 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
         annual_patients: stats[dept]?.annualPatients ?? null,
       }));
       zhUpdates['departments_info'] = deptInfoArray;
-      enUpdates['departments_info'] = deptInfoArray;
     }
 
     if (Object.keys(zhUpdates).length > 0) {

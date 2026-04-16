@@ -55,6 +55,8 @@ describe('OpenAIBatchTranslationService', () => {
     // System prompt should mention target languages
     expect(callArgs.messages[0].content).toContain('en');
     expect(callArgs.messages[0].content).toContain('ko');
+    expect(callArgs.messages[0].content).toContain('Do not translate or remove non-language fields such as image_url');
+    expect(callArgs.messages[0].content).toContain('department_code');
   });
 
   it('parses response correctly', async () => {

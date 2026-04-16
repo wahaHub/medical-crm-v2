@@ -19,6 +19,7 @@ export class OpenAIBatchTranslationService implements IBatchTranslationService {
       '  "detected_language": the ISO 639-1 code of the detected source language (e.g. "zh", "en", "ko"),',
       '  "translations": an object keyed by language code, each value being the translated fields object.',
       'Preserve the original field structure. Skip (omit) fields that are empty or null.',
+      'Do not translate or remove non-language fields such as image_url, videoUrl, id, idx, slug, storage keys, URLs, numeric values, or department_code.',
       'Do NOT include the source language in the translations object.',
       'Use formal medical terminology throughout.',
     ].join('\n');

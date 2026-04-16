@@ -22,6 +22,7 @@ import {
   generateId,
 } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
+import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
 import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
@@ -71,9 +72,19 @@ const sendChatRoute = createRoute({
 chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
+  let site;
 
   if (!getDifyChatApiKey()) {
     return c.json({ error: 'Dify API key is not configured' }, 500);
+  }
+
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return c.json({ error: error.message }, 400);
+    }
+    throw error;
   }
 
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
@@ -88,6 +99,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     session = await svc.aiChatSessionRepo.save(new AiChatSessionEntity({
       id: generateId(),
       sessionId: body.sessionId,
+      site,
       sessionSecretHash: hashSessionSecret(sessionSecretToSet),
       difyConversationId: null,
       patientId: null,
@@ -682,11 +694,23 @@ async function authorizeSessionAccess(
   session: AiChatSession,
   options?: { allowBootstrapWhenSecretMissing?: boolean },
 ) {
+  let site;
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return c.json({ error: error.message }, 400);
+    }
+    throw error;
+  }
+  if (session.site && session.site !== site) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
   const patientToken = session.patientId ? getCookie(c, PATIENT_SESSION_COOKIE) : undefined;
   if (session.patientId) {
     if (patientToken) {
       try {
-        const payload = await svc.patientAuthService.verifySessionToken(patientToken);
+        const payload = await svc.patientAuthService.verifySessionToken(patientToken, site);
         if (payload.userId === session.patientId) {
           return null;
         }
@@ -715,7 +739,7 @@ async function authorizeSessionAccess(
   if (session.patientId) {
     if (patientToken) {
       try {
-        const payload = await svc.patientAuthService.verifySessionToken(patientToken);
+        const payload = await svc.patientAuthService.verifySessionToken(patientToken, site);
         if (payload.userId !== session.patientId) {
           return c.json({ error: 'Forbidden' }, 403);
         }
@@ -733,13 +757,22 @@ async function attachPatientFromCookie(
   svc: ReturnType<typeof getServices>,
   session: AiChatSession,
 ): Promise<{ session: AiChatSession; error: Response | null }> {
+  let site;
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return { session, error: c.json({ error: error.message }, 400) };
+    }
+    throw error;
+  }
   const patientToken = getCookie(c, PATIENT_SESSION_COOKIE);
   if (!patientToken) {
     return { session, error: null };
   }
 
   try {
-    const payload = await svc.patientAuthService.verifySessionToken(patientToken);
+    const payload = await svc.patientAuthService.verifySessionToken(patientToken, site);
     if (session.patientId && session.patientId !== payload.userId) {
       return { session, error: c.json({ error: 'Forbidden' }, 403) };
     }
@@ -792,6 +825,15 @@ async function ensurePatientSessionCookies(
   svc: ReturnType<typeof getServices>,
   patientId: string | null | undefined,
 ): Promise<{ restoreToken: string | null }> {
+  let site;
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return { restoreToken: null };
+    }
+    throw error;
+  }
   if (!patientId) {
     return { restoreToken: null };
   }
@@ -801,14 +843,14 @@ async function ensurePatientSessionCookies(
 
   if (currentSessionCookie) {
     try {
-      const session = await svc.patientAuthService.verifySessionToken(currentSessionCookie);
+      const session = await svc.patientAuthService.verifySessionToken(currentSessionCookie, site);
       hasMatchingSession = session.userId === patientId;
     } catch {
       hasMatchingSession = false;
     }
   }
 
-  const restoreArtifacts = await svc.patientAuthService.createGuestRestoreArtifacts(patientId);
+  const restoreArtifacts = await svc.patientAuthService.createGuestRestoreArtifacts(patientId, site);
 
   if (hasMatchingSession) {
     setCookie(c, PATIENT_RESTORE_COOKIE, restoreArtifacts.restoreCookie, {
@@ -821,7 +863,7 @@ async function ensurePatientSessionCookies(
     return { restoreToken: restoreArtifacts.restoreToken };
   }
 
-  const sessionToken = await svc.patientAuthService.createSessionToken(patientId);
+  const sessionToken = await svc.patientAuthService.createSessionToken(patientId, site);
   setPatientSessionCookies(c, sessionToken, restoreArtifacts.restoreCookie);
   return { restoreToken: restoreArtifacts.restoreToken };
 }
@@ -844,8 +886,10 @@ async function ensureCaseForSession(
   isExistingPatient: boolean;
   restoreToken: string;
 }> {
+  const site = resolvePatientSiteContext(c);
   const onboarding = await svc.initOnboarding.execute({
     email: input.email,
+    site,
     name: input.name,
     preferredLanguage: 'en',
     destination: input.country,

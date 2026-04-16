@@ -1,3 +1,4 @@
+import type { PatientSite } from '../ports/patient-repository.port.js';
 import type { AiChatSessionStatus, HospitalType } from '../enums/index.js';
 
 export interface AiChatPendingState {
@@ -27,6 +28,7 @@ export interface AiChatStatusSnapshot {
 export interface AiChatSessionProps {
   id: string;
   sessionId: string;
+  site?: PatientSite;
   sessionSecretHash: string | null;
   difyConversationId: string | null;
   patientId: string | null;
@@ -40,6 +42,7 @@ export interface AiChatSessionProps {
 export class AiChatSession {
   readonly id: string;
   sessionId: string;
+  site: PatientSite;
   sessionSecretHash: string | null;
   difyConversationId: string | null;
   patientId: string | null;
@@ -52,6 +55,7 @@ export class AiChatSession {
   constructor(props: AiChatSessionProps) {
     this.id = props.id;
     this.sessionId = props.sessionId;
+    this.site = props.site ?? 'china';
     this.sessionSecretHash = props.sessionSecretHash;
     this.difyConversationId = props.difyConversationId;
     this.patientId = props.patientId;

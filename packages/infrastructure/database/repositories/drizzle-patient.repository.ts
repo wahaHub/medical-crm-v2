@@ -15,6 +15,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
           message.includes('users_email_key')
           || message.includes('users_patient_email_site_key')
           || message.includes('users_non_patient_email_key')
+          || message.includes('email_role_conflict')
           || message.includes('duplicate key value')
         ) {
           return true;
@@ -190,6 +191,9 @@ export class DrizzlePatientRepository implements IPatientRepository {
     } catch (err: unknown) {
       // If email already exists, only reuse it when it already belongs to a patient.
       if (this.isUniqueEmailViolation(err)) {
+        if (err instanceof Error && err.message.includes('EMAIL_ROLE_CONFLICT')) {
+          throw new Error('EMAIL_ROLE_CONFLICT');
+        }
         const [existingNonPatient] = await this.db
           .select({
             id: users.id,

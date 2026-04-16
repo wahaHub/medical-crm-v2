@@ -10,6 +10,7 @@ import { getServices } from '../composition-root.js';
 import { rateLimitByIp } from '../middleware/rate-limit.middleware.js';
 import { initOnboardingSchema, matchHospitalsSchema } from '@medical-crm/validation';
 import { seedWidgetStarterMessage } from './patient-widget-starter.js';
+import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
 
 const app = new Hono();
 const PATIENT_SESSION_COOKIE = 'patient_session';
@@ -140,6 +141,15 @@ async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<b
 
 // POST /onboarding/init — rate limited
 app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => {
+  let site;
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return c.json({ error: error.message }, 400);
+    }
+    throw error;
+  }
   const body = initOnboardingSchema.parse(await c.req.json());
   const remoteIp = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? undefined;
   const captchaValid = await verifyTurnstileToken(body.captchaToken ?? '', remoteIp);
@@ -158,7 +168,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
   const sessionToken = getCookie(c, PATIENT_SESSION_COOKIE);
   if (sessionToken) {
     try {
-      const session = await patientAuthService.verifySessionToken(sessionToken);
+      const session = await patientAuthService.verifySessionToken(sessionToken, site);
       try {
         const profile = await getProfile.execute({
           userId: session.userId,
@@ -187,7 +197,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
   if (body.registerToken) {
     let registerProof;
     try {
-      registerProof = await verifyPatientEntryToken.execute({ token: body.registerToken });
+      registerProof = await verifyPatientEntryToken.execute({ token: body.registerToken, site });
     } catch (error) {
       if (error instanceof VerifyPatientEntryTokenAuthError) {
         return c.json({ error: 'Unauthorized' }, 401);
@@ -213,6 +223,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
   try {
     result = await initOnboarding.execute({
       ...onboardingInput,
+      site,
       authenticatedPatientId,
       verifiedRegisterEmail,
     });

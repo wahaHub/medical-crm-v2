@@ -127,7 +127,7 @@ describe('GetPatientSessionStateUseCase', () => {
       },
     });
 
-    const result = await useCase.execute({ patientId: 'patient-1' });
+    const result = await useCase.execute({ patientId: 'patient-1', site: 'beauty' });
 
     expect(result).toEqual({
       id: 'patient-1',
@@ -174,6 +174,7 @@ describe('GetPatientSessionStateUseCase', () => {
         conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
       },
     });
+    expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(mockAiChatSessionRepo.findBySessionId).toHaveBeenCalledWith('widget-chat:patient-1:case-2');
     expect(mockConversationRepo.findByPatientId).toHaveBeenCalledWith('patient-1');
     expect(mockConversationRepo.save).toHaveBeenCalledOnce();

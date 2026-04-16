@@ -232,6 +232,7 @@ export class InitOnboardingUseCase {
       await this.aiChatSessionRepo.save(new AiChatSession({
         id: generateId(),
         sessionId: widgetSessionId,
+        site: input.site,
         sessionSecretHash: null,
         difyConversationId: null,
         patientId: patient.id,

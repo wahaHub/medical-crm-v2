@@ -22,6 +22,7 @@ import {
   type ChatbotV3ChatRequest,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
+import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
 import {
   ConsultAgent,
   FaqAgent,
@@ -655,10 +656,28 @@ async function authorizeOrBootstrapSessionAccess(
   | { ok: true; session: AiChatSession; sessionSecretToSet: string | null }
   | { ok: false; response: Response }
 > {
+  let site;
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return {
+        ok: false,
+        response: c.json({ error: error.message }, 400),
+      };
+    }
+    throw error;
+  }
+  if (session.site && session.site !== site) {
+    return {
+      ok: false,
+      response: c.json({ error: 'Forbidden' }, 403),
+    };
+  }
   const patientToken = session.patientId ? getCookie(c, PATIENT_SESSION_COOKIE) : undefined;
   if (session.patientId && patientToken && services.patientAuthService) {
     try {
-      const payload = await services.patientAuthService.verifySessionToken(patientToken);
+      const payload = await services.patientAuthService.verifySessionToken(patientToken, site);
       if (payload.userId !== session.patientId) {
         return {
           ok: false,

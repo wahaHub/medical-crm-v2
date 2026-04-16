@@ -85,6 +85,25 @@ vi.mock('@medical-crm/infrastructure/auth', () => ({
     c.json({ error: 'Missing or invalid Authorization header' }, 401),
 }));
 
+function withSiteHeaders(headers?: HeadersInit, site = 'beauty') {
+  const merged = new Headers(headers);
+  if (!merged.has('x-medora-site')) {
+    merged.set('x-medora-site', site);
+  }
+  return merged;
+}
+
+async function loadApp() {
+  const { default: app } = await import('../index.js');
+  const originalRequest = app.request.bind(app);
+  app.request = ((input: string, init?: RequestInit) =>
+    originalRequest(input, {
+      ...init,
+      headers: withSiteHeaders(init?.headers),
+    })) as typeof app.request;
+  return app;
+}
+
 describe('Chatbot v3 public route mounting', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -94,6 +113,7 @@ describe('Chatbot v3 public route mounting', () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
+      site: 'beauty',
       sessionSecretHash: SESSION_SECRET_HASH,
       difyConversationId: null,
       patientId: null,
@@ -123,6 +143,7 @@ describe('Chatbot v3 public route mounting', () => {
     mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, patch: Record<string, unknown>) => ({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
+      site: 'beauty',
       sessionSecretHash: SESSION_SECRET_HASH,
       difyConversationId: null,
       patientId: null,
@@ -170,7 +191,7 @@ describe('Chatbot v3 public route mounting', () => {
   });
 
   it('keeps POST /api/v3/chatbot/chat public and returns v3-only fields', async () => {
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
 
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
@@ -195,8 +216,28 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
   });
 
+  it('rejects requests when the persisted chatbot session belongs to a different site', async () => {
+    const app = await loadApp();
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+        'x-medora-site': 'china',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Forbidden' });
+  });
+
   it('returns a real process overview before persisting process.explained', async () => {
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
 
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
@@ -252,7 +293,7 @@ describe('Chatbot v3 public route mounting', () => {
       category: 'Consultation',
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -328,7 +369,7 @@ describe('Chatbot v3 public route mounting', () => {
       throw new Error('FAQ not found in this scope');
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
@@ -424,7 +465,7 @@ describe('Chatbot v3 public route mounting', () => {
 
   it('returns runtimeDebug with request traceId in non-production', async () => {
     process.env.NODE_ENV = 'test';
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
 
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
@@ -449,7 +490,7 @@ describe('Chatbot v3 public route mounting', () => {
 
   it('falls back to generated traceId when x-request-id is invalid', async () => {
     process.env.NODE_ENV = 'test';
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
 
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
@@ -473,7 +514,7 @@ describe('Chatbot v3 public route mounting', () => {
 
   it('does not expose runtimeDebug in production responses', async () => {
     process.env.NODE_ENV = 'production';
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
 
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
@@ -496,7 +537,7 @@ describe('Chatbot v3 public route mounting', () => {
   it('returns 404 when the session does not exist', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -540,7 +581,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -592,7 +633,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -650,7 +691,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -707,7 +748,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -738,7 +779,7 @@ describe('Chatbot v3 public route mounting', () => {
   });
 
   it('rejects missing or wrong secret on sessions with a stored hash', async () => {
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
 
     const missingSecret = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
@@ -796,7 +837,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -842,7 +883,7 @@ describe('Chatbot v3 public route mounting', () => {
     });
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-2' });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -904,7 +945,7 @@ describe('Chatbot v3 public route mounting', () => {
       return fn();
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const request = {
       method: 'POST',
       headers: {
@@ -966,7 +1007,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -1019,7 +1060,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -1075,7 +1116,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -1119,7 +1160,7 @@ describe('Chatbot v3 public route mounting', () => {
       dispatchSource: 'orchestrator',
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -1180,7 +1221,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',
       headers: {
@@ -1240,7 +1281,7 @@ describe('Chatbot v3 public route mounting', () => {
       updatedAt: NOW,
     });
 
-    const { default: app } = await import('../index.js');
+    const app = await loadApp();
 
     const explainRes = await app.request('/api/v3/chatbot/chat', {
       method: 'POST',

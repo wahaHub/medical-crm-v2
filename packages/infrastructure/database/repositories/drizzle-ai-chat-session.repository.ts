@@ -36,6 +36,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
       .values({
         id: entity.id,
         sessionId: entity.sessionId,
+        site: entity.site,
         sessionSecretHash: entity.sessionSecretHash,
         difyConversationId: entity.difyConversationId,
         patientId: entity.patientId,
@@ -63,6 +64,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
       .onConflictDoUpdate({
         target: aiChatSessions.id,
         set: {
+          site: entity.site,
           sessionSecretHash: entity.sessionSecretHash,
           difyConversationId: entity.difyConversationId,
           patientId: entity.patientId,
@@ -177,6 +179,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     return new AiChatSession({
       id: row.id,
       sessionId: row.sessionId,
+      site: row.site ?? 'china',
       sessionSecretHash: row.sessionSecretHash ?? null,
       difyConversationId: row.difyConversationId ?? null,
       patientId: row.patientId ?? null,

@@ -117,9 +117,10 @@ app.use('/*', async (c, next) => {
 // GET /me — patient profile
 app.get('/me', async (c) => {
   const session = c.get('patientSession');
+  const site = c.get('patientSite');
   const services = getServices();
   const { getPatientSessionState } = services;
-  const result = await getPatientSessionState.execute({ patientId: session.userId });
+  const result = await getPatientSessionState.execute({ patientId: session.userId, site });
 
   if (result.nextStep === 'select-hospitals' && result.caseId) {
     void seedWidgetStarterMessage({
@@ -502,10 +503,12 @@ app.post('/intake/:caseId/response', async (c) => {
   const { caseId } = intakeCaseIdParamSchema.parse({ caseId: c.req.param('caseId') });
   const body = submitPatientQCResponseSchema.parse(await c.req.json());
   const session = c.get('patientSession');
+  const site = c.get('patientSite');
   const { submitPatientQCResponse } = getServices();
   const result = await submitPatientQCResponse.execute({
     caseId,
     patientId: session.userId,
+    site,
     templateId: body.templateId,
     responses: body.responses,
   });

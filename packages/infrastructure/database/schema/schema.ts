@@ -530,6 +530,7 @@ export const supportTicketReplies = pgTable("support_ticket_replies", {
 export const aiChatSessions = pgTable("ai_chat_sessions", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	sessionId: varchar("session_id", { length: 255 }).notNull(),
+	site: patientSite("site").default('china').notNull(),
 	sessionSecretHash: varchar("session_secret_hash", { length: 255 }),
 	difyConversationId: varchar("dify_conversation_id", { length: 255 }),
 	patientId: uuid("patient_id").references(() => users.id, { onDelete: 'set null', onUpdate: 'cascade' }),
@@ -556,6 +557,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 }, (table) => [
 	uniqueIndex("ai_chat_sessions_session_id_key").using("btree", table.sessionId.asc().nullsLast().op("text_ops")),
 	index("ai_chat_sessions_session_id_idx").using("btree", table.sessionId.asc().nullsLast().op("text_ops")),
+	index("ai_chat_sessions_site_idx").using("btree", table.site.asc().nullsLast().op("enum_ops")),
 	index("ai_chat_sessions_dify_conversation_id_idx").using("btree", table.difyConversationId.asc().nullsLast().op("text_ops")),
 	index("ai_chat_sessions_patient_id_idx").using("btree", table.patientId.asc().nullsLast().op("uuid_ops")),
 	index("ai_chat_sessions_handoff_status_idx").using("btree", table.handoffStatus.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),

@@ -16,6 +16,16 @@ vi.mock('../composition-root.js', () => ({
 }));
 
 describe('patientAuthRoutes', () => {
+  function requestWithSite(path: string, init?: RequestInit, site = 'beauty') {
+    return patientAuthRoutes.request(path, {
+      ...init,
+      headers: {
+        'x-medora-site': site,
+        ...(init?.headers ?? {}),
+      },
+    });
+  }
+
   beforeEach(() => {
     mockGetServices.mockReset();
   });
@@ -27,7 +37,7 @@ describe('patientAuthRoutes', () => {
     });
     mockGetServices.mockReturnValue({ sendPatientLoginLink: { execute } });
 
-    const res = await patientAuthRoutes.request('/magic-link', {
+    const res = await requestWithSite('/magic-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'patient@example.com' }),
@@ -35,7 +45,37 @@ describe('patientAuthRoutes', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    expect(execute).toHaveBeenCalledWith({ email: 'patient@example.com' });
+    expect(execute).toHaveBeenCalledWith({ email: 'patient@example.com', site: 'beauty' });
+  });
+
+  it('scopes magic-link rate limiting by site as well as email', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      delivery: 'dashboard-login',
+      token: 'patient-login-token',
+    });
+    mockGetServices.mockReturnValue({ sendPatientLoginLink: { execute } });
+
+    const body = JSON.stringify({ email: 'same-email-cross-site@example.com' });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await requestWithSite('/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }, 'beauty');
+      expect(res.status).toBe(200);
+    }
+
+    const chinaRes = await requestWithSite('/magic-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    }, 'china');
+
+    expect(chinaRes.status).toBe(200);
+    expect(execute).toHaveBeenNthCalledWith(4, {
+      email: 'same-email-cross-site@example.com',
+      site: 'china',
+    });
   });
 
   it('returns ok for an unregistered email and dispatches register delivery', async () => {
@@ -45,7 +85,7 @@ describe('patientAuthRoutes', () => {
     });
     mockGetServices.mockReturnValue({ sendPatientLoginLink: { execute } });
 
-    const res = await patientAuthRoutes.request('/magic-link', {
+    const res = await requestWithSite('/magic-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'new@example.com' }),
@@ -53,14 +93,14 @@ describe('patientAuthRoutes', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    expect(execute).toHaveBeenCalledWith({ email: 'new@example.com' });
+    expect(execute).toHaveBeenCalledWith({ email: 'new@example.com', site: 'beauty' });
   });
 
   it('returns 409 for hospital/admin email role conflict', async () => {
     const execute = vi.fn().mockRejectedValue(new EmailRoleConflictError());
     mockGetServices.mockReturnValue({ sendPatientLoginLink: { execute } });
 
-    const res = await patientAuthRoutes.request('/magic-link', {
+    const res = await requestWithSite('/magic-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'hospital@example.com' }),
@@ -80,7 +120,7 @@ describe('patientAuthRoutes', () => {
     });
     mockGetServices.mockReturnValue({ verifyPatientEntryToken: { execute } });
 
-    const res = await patientAuthRoutes.request('/register-token/verify', {
+    const res = await requestWithSite('/register-token/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: 'register-token-abc' }),
@@ -91,7 +131,7 @@ describe('patientAuthRoutes', () => {
       email: 'new@example.com',
       purpose: 'patient-register',
     });
-    expect(execute).toHaveBeenCalledWith({ token: 'register-token-abc' });
+    expect(execute).toHaveBeenCalledWith({ token: 'register-token-abc', site: 'beauty' });
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 
@@ -99,7 +139,7 @@ describe('patientAuthRoutes', () => {
     const execute = vi.fn().mockRejectedValue(new VerifyPatientEntryTokenAuthError('Invalid token'));
     mockGetServices.mockReturnValue({ verifyPatientEntryToken: { execute } });
 
-    const res = await patientAuthRoutes.request('/register-token/verify', {
+    const res = await requestWithSite('/register-token/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: 'expired-register-token' }),
@@ -146,7 +186,7 @@ describe('patientAuthRoutes', () => {
     };
     mockGetServices.mockReturnValue({ verifyMagicLink: { execute }, getPatientSessionState });
 
-    const res = await patientAuthRoutes.request('/verify-token', {
+    const res = await requestWithSite('/verify-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: 'magic-token-abc' }),
@@ -187,7 +227,7 @@ describe('patientAuthRoutes', () => {
     const execute = vi.fn().mockRejectedValue(new VerifyMagicLinkAuthError('Invalid token purpose'));
     mockGetServices.mockReturnValue({ verifyMagicLink: { execute } });
 
-    const res = await patientAuthRoutes.request('/verify-token', {
+    const res = await requestWithSite('/verify-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: 'register-token-abc' }),
@@ -234,7 +274,7 @@ describe('patientAuthRoutes', () => {
     };
     mockGetServices.mockReturnValue({ loginWithPassword: { execute }, getPatientSessionState });
 
-    const res = await patientAuthRoutes.request('/login', {
+    const res = await requestWithSite('/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'hao@example.com', password: 'SecurePass123' }),
@@ -270,6 +310,7 @@ describe('patientAuthRoutes', () => {
     expect(execute).toHaveBeenCalledWith({
       email: 'hao@example.com',
       password: 'SecurePass123',
+      site: 'beauty',
     });
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-login');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-login');
@@ -279,7 +320,7 @@ describe('patientAuthRoutes', () => {
     const execute = vi.fn().mockRejectedValue(new Error('Invalid credentials'));
     mockGetServices.mockReturnValue({ loginWithPassword: { execute } });
 
-    const res = await patientAuthRoutes.request('/login', {
+    const res = await requestWithSite('/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'hao@example.com', password: 'WrongPassword123' }),
@@ -293,7 +334,7 @@ describe('patientAuthRoutes', () => {
     const execute = vi.fn();
     mockGetServices.mockReturnValue({ restoreGuestSession: { execute } });
 
-    const res = await patientAuthRoutes.request('/session/restore', {
+    const res = await requestWithSite('/session/restore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ restoreToken: 'restore-token-abc' }),
@@ -304,7 +345,7 @@ describe('patientAuthRoutes', () => {
   });
 
   it('rejects restore cookie alone when restoreToken is missing', async () => {
-    const res = await patientAuthRoutes.request('/session/restore', {
+    const res = await requestWithSite('/session/restore', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -320,7 +361,7 @@ describe('patientAuthRoutes', () => {
     const execute = vi.fn().mockRejectedValue(new RestoreGuestSessionAuthError('Restore token mismatch'));
     mockGetServices.mockReturnValue({ restoreGuestSession: { execute } });
 
-    const res = await patientAuthRoutes.request('/session/restore', {
+    const res = await requestWithSite('/session/restore', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -333,6 +374,7 @@ describe('patientAuthRoutes', () => {
     expect(execute).toHaveBeenCalledWith({
       restoreToken: 'restore-token-abc',
       restoreCookie: 'restore-cookie-correct',
+      site: 'beauty',
     });
   });
 
@@ -340,7 +382,7 @@ describe('patientAuthRoutes', () => {
     const execute = vi.fn().mockRejectedValue(new Error('database unavailable'));
     mockGetServices.mockReturnValue({ restoreGuestSession: { execute } });
 
-    const res = await patientAuthRoutes.request('/session/restore', {
+    const res = await requestWithSite('/session/restore', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -353,6 +395,7 @@ describe('patientAuthRoutes', () => {
     expect(execute).toHaveBeenCalledWith({
       restoreToken: 'restore-token-abc',
       restoreCookie: 'restore-cookie-correct',
+      site: 'beauty',
     });
   });
 
@@ -392,7 +435,7 @@ describe('patientAuthRoutes', () => {
     };
     mockGetServices.mockReturnValue({ restoreGuestSession: { execute }, getPatientSessionState });
 
-    const res = await patientAuthRoutes.request('/session/restore', {
+    const res = await requestWithSite('/session/restore', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -75,13 +75,28 @@ app.use('/api/v2/*', async (c, next) => {
   await next();
 });
 app.route('/', chatbotRoutes);
+const originalAppRequest = app.request.bind(app);
+app.request = ((input: string, init?: RequestInit) =>
+  originalAppRequest(input, {
+    ...init,
+    headers: withSiteHeaders(init?.headers),
+  })) as typeof app.request;
 
 const NOW = new Date('2026-03-26T10:00:00.000Z');
+
+function withSiteHeaders(headers?: HeadersInit, site = 'beauty') {
+  const merged = new Headers(headers);
+  if (!merged.has('x-medora-site')) {
+    merged.set('x-medora-site', site);
+  }
+  return merged;
+}
 
 function makeSession(overrides: Record<string, unknown> = {}) {
   return {
     id: 'db-session-1',
     sessionId: 'session-1',
+    site: 'beauty',
     sessionSecretHash: null,
     difyConversationId: null,
     patientId: null,
@@ -404,6 +419,24 @@ describe('Chatbot routes', () => {
       mockServices.difyApi.createChatMessage.mock.invocationCallOrder[0]!,
     );
     expect(json.resources).toEqual(expect.arrayContaining(storedChatbotV2.resources));
+  });
+
+  it('POST /api/v2/chatbot/chat rejects missing site context before persisting a new session', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
+
+    const res = await originalAppRequest('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'session-no-site',
+        hospitalType: 'COSMETIC',
+        message: 'hello',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Missing or invalid patient site context' });
+    expect(mockServices.aiChatSessionRepo.save).not.toHaveBeenCalled();
   });
 
   it('invokes FAQ grounding before composer for faq turns and passes grounded FAQ context downstream', async () => {
@@ -3901,7 +3934,7 @@ describe('Chatbot routes', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('patient-cookie-1');
+    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('patient-cookie-1', 'beauty');
     expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
   });
 
@@ -3917,6 +3950,26 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(401);
     expect(mockServices.aiChatMessageRepo.listBySession).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} rejects persisted sessions from a different site even with a valid secret', async () => {
+    const sessionSecret = 'secret-site-mismatch';
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'session-site-mismatch',
+      sessionSecretHash: createHash('sha256').update(sessionSecret).digest('hex'),
+      site: 'beauty',
+    }));
+
+    const res = await app.request('/api/v2/chatbot/history/session-site-mismatch?limit=2', {
+      method: 'GET',
+      headers: {
+        Cookie: `chatbot_session_secret=${sessionSecret}`,
+        'x-medora-site': 'china',
+      },
+    });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Forbidden' });
   });
 
   it('GET /api/v2/chatbot/history/{sessionId} allows a provisioned widget session with a valid patient session cookie', async () => {
@@ -3983,7 +4036,7 @@ describe('Chatbot routes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('patient-cookie-1');
+    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('patient-cookie-1', 'beauty');
     expect(mockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith('db-session-1', 2);
   });
 
@@ -4960,8 +5013,8 @@ describe('Chatbot routes', () => {
     expect(json.alreadyExists).toBe(true);
     expect(json.requestedAction).toBe('INVITE_ONLINE_CONSULT');
     expect(mockServices.initOnboarding.execute).not.toHaveBeenCalled();
-    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
-    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
   });
 
@@ -5053,9 +5106,9 @@ describe('Chatbot routes', () => {
     expect(res.status).toBe(200);
     const json = chatbotConvertResponseSchema.parse(await res.json());
     expect(json.restoreToken).toBe('restore-token-123');
-    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('wrong-patient-session');
-    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
-    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('wrong-patient-session', 'beauty');
+    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(res.headers.get('set-cookie')).toContain('patient_session=patient-token');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
   });
@@ -5114,8 +5167,8 @@ describe('Chatbot routes', () => {
     expect(json.alreadyExists).toBe(true);
     expect(json.requestedAction).toBe('INVITE_ONLINE_CONSULT');
     expect(mockServices.aiChatSessionRepo.attachPatient).toHaveBeenCalledWith('session-1', 'patient-1');
-    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
-    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(res.headers.get('set-cookie')).toContain('patient_session=patient-token');
   });
 
@@ -5351,8 +5404,8 @@ describe('Chatbot routes', () => {
     expect(json.ticketId).toBe('ticket-1');
     expect(json.alreadyExists).toBe(true);
     expect(mockServices.aiChatSessionRepo.attachPatient).toHaveBeenCalledWith('session-1', 'patient-1');
-    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
-    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(mockServices.patientAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockServices.patientAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(res.headers.get('set-cookie')).toContain('patient_session=patient-token');
   });
 

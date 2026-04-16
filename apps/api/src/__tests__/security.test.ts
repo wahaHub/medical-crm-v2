@@ -1,8 +1,34 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const originalEnv = {
+  ADMIN_ORIGIN: process.env.ADMIN_ORIGIN,
+  HOSPITAL_ORIGIN: process.env.HOSPITAL_ORIGIN,
+  CHINA_ORIGIN: process.env.CHINA_ORIGIN,
+};
 
 describe('Security middleware', () => {
   beforeEach(() => {
     vi.resetModules();
+  });
+
+  afterEach(() => {
+    if (originalEnv.ADMIN_ORIGIN === undefined) {
+      delete process.env.ADMIN_ORIGIN;
+    } else {
+      process.env.ADMIN_ORIGIN = originalEnv.ADMIN_ORIGIN;
+    }
+
+    if (originalEnv.HOSPITAL_ORIGIN === undefined) {
+      delete process.env.HOSPITAL_ORIGIN;
+    } else {
+      process.env.HOSPITAL_ORIGIN = originalEnv.HOSPITAL_ORIGIN;
+    }
+
+    if (originalEnv.CHINA_ORIGIN === undefined) {
+      delete process.env.CHINA_ORIGIN;
+    } else {
+      process.env.CHINA_ORIGIN = originalEnv.CHINA_ORIGIN;
+    }
   });
 
   it('returns security headers', async () => {
@@ -56,6 +82,7 @@ describe('Security middleware', () => {
       },
     });
 
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://portal.medora.com');
     expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('x-medora-site');
   });
 

@@ -38,6 +38,7 @@ export class CreateBeforeAfterCaseUseCase {
       entityType: 'procedure_case',
       entityId: saved.id,
       fieldsToTranslate: {
+        procedure_name: saved.procedureName,
         description: saved.description,
         provider_name: saved.surgeonName,
       },

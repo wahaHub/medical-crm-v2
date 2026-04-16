@@ -32,6 +32,7 @@ export class UpdateBeforeAfterCaseUseCase {
       entityType: 'procedure_case',
       entityId: caseId,
       fieldsToTranslate: {
+        ...(input.procedureName !== undefined ? { procedure_name: input.procedureName } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.surgeonName !== undefined ? { provider_name: input.surgeonName } : {}),
       },

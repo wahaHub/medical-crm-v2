@@ -9,6 +9,7 @@ describe('SendMagicLinkUseCase', () => {
 
   beforeEach(() => {
     delete process.env.FRONTEND_URL;
+    delete process.env.BEAUTY_ORIGIN;
     delete process.env.PATIENT_APP_ORIGIN;
     delete process.env.CHINA_ORIGIN;
 
@@ -35,9 +36,10 @@ describe('SendMagicLinkUseCase', () => {
       id: 'patient-1', patientCode: 'P001', preferredLanguage: 'en',
     });
 
-    await useCase.execute({ email: 'test@example.com' });
+    await useCase.execute({ email: 'test@example.com', site: 'beauty' });
 
-    expect(mockAuthService.createMagicLinkToken).toHaveBeenCalledWith('test@example.com');
+    expect(mockPatientRepo.findByEmail).toHaveBeenCalledWith('test@example.com', 'beauty');
+    expect(mockAuthService.createMagicLinkToken).toHaveBeenCalledWith('test@example.com', 'beauty');
     expect(mockEmailService.sendMagicLink).toHaveBeenCalledWith(
       'test@example.com',
       expect.stringContaining('magic-token-abc'),
@@ -51,7 +53,7 @@ describe('SendMagicLinkUseCase', () => {
       id: 'patient-1', patientCode: 'P001', preferredLanguage: 'en',
     });
 
-    await useCase.execute({ email: 'test@example.com' });
+    await useCase.execute({ email: 'test@example.com', site: 'china' });
 
     expect(mockEmailService.sendMagicLink).toHaveBeenCalledWith(
       'test@example.com',
@@ -63,7 +65,7 @@ describe('SendMagicLinkUseCase', () => {
   it('silently does nothing when patient does not exist (no email leak)', async () => {
     mockPatientRepo.findByEmail.mockResolvedValue(null);
 
-    await useCase.execute({ email: 'nonexistent@example.com' });
+    await useCase.execute({ email: 'nonexistent@example.com', site: 'beauty' });
 
     expect(mockAuthService.createMagicLinkToken).not.toHaveBeenCalled();
     expect(mockEmailService.sendMagicLink).not.toHaveBeenCalled();

@@ -23,6 +23,7 @@ beforeAll(async () => {
       email: PATIENT_EMAIL,
       name: 'Lookup Patient',
       role: 'PATIENT',
+      patientSite: 'china',
       preferredLanguage: 'en',
       updatedAt: now,
     },
@@ -44,20 +45,21 @@ afterAll(async () => {
 
 describe('DrizzleUserEmailLookupRepository integration', () => {
   it('returns NONE when no user exists for the email', async () => {
-    await expect(repo.findEmailState(`lookup-missing-${randomUUID()}@integration.test`)).resolves.toEqual({
+    await expect(repo.findEmailState(`lookup-missing-${randomUUID()}@integration.test`, 'beauty')).resolves.toEqual({
       state: 'NONE',
     });
   });
 
   it('returns PATIENT when the email belongs to a patient', async () => {
-    await expect(repo.findEmailState(PATIENT_EMAIL)).resolves.toEqual({
+    await expect(repo.findEmailState(PATIENT_EMAIL, 'china')).resolves.toEqual({
       state: 'PATIENT',
       userId: TEST_PATIENT_ID,
+      site: 'china',
     });
   });
 
   it('returns ADMIN when the email belongs to a non-patient role', async () => {
-    await expect(repo.findEmailState(ADMIN_EMAIL)).resolves.toEqual({
+    await expect(repo.findEmailState(ADMIN_EMAIL, 'beauty')).resolves.toEqual({
       state: 'ADMIN',
       userId: TEST_ADMIN_ID,
     });

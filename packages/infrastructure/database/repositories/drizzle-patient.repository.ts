@@ -1,5 +1,5 @@
-import { eq, and, sql } from 'drizzle-orm';
-import type { IPatientRepository, PatientAuthInfo, PatientBasicInfo } from '@medical-crm/domain';
+import { eq, and, ne, sql } from 'drizzle-orm';
+import type { IPatientRepository, PatientAuthInfo, PatientBasicInfo, PatientSite } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { users } from '../schema/index.js';
 
@@ -11,7 +11,12 @@ export class DrizzlePatientRepository implements IPatientRepository {
     while (current) {
       if (current instanceof Error) {
         const message = current.message.toLowerCase();
-        if (message.includes('users_email_key') || message.includes('duplicate key value')) {
+        if (
+          message.includes('users_email_key')
+          || message.includes('users_patient_email_site_key')
+          || message.includes('users_non_patient_email_key')
+          || message.includes('duplicate key value')
+        ) {
           return true;
         }
       }
@@ -44,55 +49,107 @@ export class DrizzlePatientRepository implements IPatientRepository {
     return false;
   }
 
-  async findById(id: string): Promise<PatientBasicInfo | null> {
-    const rows = await this.db
-      .select({
-        id: users.id,
-        patientCode: users.patientCode,
-        preferredLanguage: users.preferredLanguage,
-      })
-      .from(users)
-      .where(eq(users.id, id))
-      .limit(1);
+  async findById(id: string, site?: PatientSite): Promise<PatientBasicInfo | null> {
+    try {
+      const rows = await this.db
+        .select({
+          id: users.id,
+          patientCode: users.patientCode,
+          preferredLanguage: users.preferredLanguage,
+          site: users.patientSite,
+        })
+        .from(users)
+        .where(
+          site
+            ? and(eq(users.id, id), eq(users.role, 'PATIENT'), eq(users.patientSite, site))
+            : and(eq(users.id, id), eq(users.role, 'PATIENT')),
+        )
+        .limit(1);
 
-    if (rows.length === 0) return null;
-    const row = rows[0]!;
-    return {
-      id: row.id,
-      patientCode: row.patientCode ?? null,
-      preferredLanguage: row.preferredLanguage,
-    };
+      if (rows.length === 0) return null;
+      const row = rows[0]!;
+      return {
+        id: row.id,
+        patientCode: row.patientCode ?? null,
+        preferredLanguage: row.preferredLanguage,
+        site: row.site ?? null,
+      };
+    } catch (err: unknown) {
+      if (!this.isMissingColumnError(err, 'patient_site')) {
+        throw err;
+      }
+      if (site && site !== 'china') return null;
+      const rows = await this.db
+        .select({
+          id: users.id,
+          patientCode: users.patientCode,
+          preferredLanguage: users.preferredLanguage,
+        })
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.role, 'PATIENT')))
+        .limit(1);
+
+      if (rows.length === 0) return null;
+      const row = rows[0]!;
+      return {
+        id: row.id,
+        patientCode: row.patientCode ?? null,
+        preferredLanguage: row.preferredLanguage,
+        site: 'china',
+      };
+    }
   }
 
-  async findByEmail(email: string): Promise<PatientBasicInfo | null> {
-    const [row] = await this.db
-      .select({ id: users.id, patientCode: users.patientCode, preferredLanguage: users.preferredLanguage })
-      .from(users)
-      .where(and(eq(users.email, email), eq(users.role, 'PATIENT')))
-      .limit(1);
-    return row ?? null;
-  }
-
-  async findAuthByEmail(email: string): Promise<PatientAuthInfo | null> {
+  async findByEmail(email: string, site: PatientSite): Promise<PatientBasicInfo | null> {
     try {
       const [row] = await this.db
         .select({
           id: users.id,
           patientCode: users.patientCode,
           preferredLanguage: users.preferredLanguage,
+          site: users.patientSite,
+        })
+        .from(users)
+        .where(and(eq(users.email, email), eq(users.role, 'PATIENT'), eq(users.patientSite, site)))
+        .limit(1);
+      return row ?? null;
+    } catch (err: unknown) {
+      if (!this.isMissingColumnError(err, 'patient_site')) {
+        throw err;
+      }
+      if (site !== 'china') return null;
+      const [row] = await this.db
+        .select({ id: users.id, patientCode: users.patientCode, preferredLanguage: users.preferredLanguage })
+        .from(users)
+        .where(and(eq(users.email, email), eq(users.role, 'PATIENT')))
+        .limit(1);
+      return row ? { ...row, site: 'china' } : null;
+    }
+  }
+
+  async findAuthByEmail(email: string, site: PatientSite): Promise<PatientAuthInfo | null> {
+    try {
+      const [row] = await this.db
+        .select({
+          id: users.id,
+          patientCode: users.patientCode,
+          preferredLanguage: users.preferredLanguage,
+          site: users.patientSite,
           passwordHash: users.passwordHash,
         })
         .from(users)
-        .where(and(eq(users.email, email), eq(users.role, 'PATIENT')))
+        .where(and(eq(users.email, email), eq(users.role, 'PATIENT'), eq(users.patientSite, site)))
         .limit(1);
 
       return row ?? null;
     } catch (err: unknown) {
-      if (!this.isMissingColumnError(err, 'password_hash')) {
+      const missingPasswordHash = this.isMissingColumnError(err, 'password_hash');
+      const missingPatientSite = this.isMissingColumnError(err, 'patient_site');
+      if (!missingPasswordHash && !missingPatientSite) {
         throw err;
       }
 
-      const patient = await this.findByEmail(email);
+      const patient = await this.findByEmail(email, site);
       if (!patient) return null;
 
       return {
@@ -107,11 +164,13 @@ export class DrizzlePatientRepository implements IPatientRepository {
     name: string;
     phone?: string;
     preferredLanguage: string;
+    site: PatientSite;
   }): Promise<PatientBasicInfo> {
     const baseValues = {
       email: input.email,
       name: input.name,
       role: 'PATIENT' as const,
+      patientSite: input.site,
       preferredLanguage: input.preferredLanguage,
       status: 'active' as const,
       updatedAt: new Date().toISOString(),
@@ -131,7 +190,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
     } catch (err: unknown) {
       // If email already exists, only reuse it when it already belongs to a patient.
       if (this.isUniqueEmailViolation(err)) {
-        const [existingUser] = await this.db
+        const [existingNonPatient] = await this.db
           .select({
             id: users.id,
             patientCode: users.patientCode,
@@ -139,21 +198,34 @@ export class DrizzlePatientRepository implements IPatientRepository {
             role: users.role,
           })
           .from(users)
-          .where(eq(users.email, input.email))
+          .where(and(eq(users.email, input.email), ne(users.role, 'PATIENT')))
           .limit(1);
-        if (existingUser) {
-          if (existingUser.role !== 'PATIENT') {
-            throw new Error('EMAIL_ROLE_CONFLICT');
-          }
+        if (existingNonPatient) {
+          throw new Error('EMAIL_ROLE_CONFLICT');
+        }
+
+        const [existingPatient] = await this.db
+          .select({
+            id: users.id,
+          })
+          .from(users)
+          .where(and(eq(users.email, input.email), eq(users.role, 'PATIENT'), eq(users.patientSite, input.site)))
+          .limit(1);
+        if (existingPatient) {
           throw new Error('PATIENT_ALREADY_EXISTS');
         }
       }
 
-      // Backward compatibility: some local DBs still miss "phone"/"password_hash".
+      // Backward compatibility: some local DBs still miss "phone"/"password_hash"/"patient_site".
       const hasLegacySchema =
         this.isMissingColumnError(err, 'phone')
-        || this.isMissingColumnError(err, 'password_hash');
+        || this.isMissingColumnError(err, 'password_hash')
+        || this.isMissingColumnError(err, 'patient_site');
       if (!hasLegacySchema) throw err;
+
+      if (input.site !== 'china') {
+        throw new Error('Database schema is outdated: missing users.patient_site column. Please run latest migrations.');
+      }
 
       await this.db.execute(sql`
         insert into "users" (
@@ -163,7 +235,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
         )
       `);
 
-      const created = await this.findByEmail(input.email);
+      const created = await this.findByEmail(input.email, input.site);
       if (!created) {
         throw new Error('Failed to create patient on legacy database schema');
       }

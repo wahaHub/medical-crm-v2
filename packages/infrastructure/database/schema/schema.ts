@@ -13,6 +13,7 @@ export const hospitalStatus = pgEnum("HospitalStatus", ['ACTIVE', 'PENDING', 'IN
 export const hospitalType = pgEnum("HospitalType", ['COSMETIC', 'REGULAR'])
 export const messageType = pgEnum("MessageType", ['TEXT', 'IMAGE', 'FILE', 'SYSTEM'])
 export const moderationStatus = pgEnum("ModerationStatus", ['ALLOWED', 'BLOCKED', 'REVIEW'])
+export const patientSite = pgEnum("PatientSite", ['beauty', 'china'])
 export const progressType = pgEnum("ProgressType", ['STATUS_CHANGE', 'DOCUMENT_UPLOAD', 'VIDEO_CONSULTATION', 'MESSAGE', 'APPOINTMENT'])
 export const riskLevel = pgEnum("RiskLevel", ['LOW', 'MEDIUM', 'HIGH'])
 export const sensitivity = pgEnum("Sensitivity", ['PHI_HIGH', 'PHI_MED', 'PHI_LOW'])
@@ -72,6 +73,7 @@ export const users = pgTable("users", {
 	email: varchar({ length: 255 }).notNull(),
 	name: varchar({ length: 100 }).notNull(),
 	role: userRole().default('PATIENT').notNull(),
+	patientSite: patientSite("patient_site"),
 	hospitalId: uuid("hospital_id"),
 	avatarUrl: varchar("avatar_url", { length: 500 }),
 	status: varchar({ length: 20 }).default('active').notNull(),
@@ -87,7 +89,9 @@ export const users = pgTable("users", {
 	notificationSettings: jsonb("notification_settings"),
 }, (table) => [
 	index("users_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
-	uniqueIndex("users_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")),
+	uniqueIndex("users_patient_email_site_key").using("btree", table.email.asc().nullsLast().op("text_ops"), table.patientSite.asc().nullsLast().op("enum_ops")).where(sql`${table.role} = 'PATIENT'`),
+	uniqueIndex("users_non_patient_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")).where(sql`${table.role} <> 'PATIENT'`),
+	index("users_patient_site_idx").using("btree", table.patientSite.asc().nullsLast().op("enum_ops")),
 	index("users_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("users_patient_code_key").using("btree", table.patientCode.asc().nullsLast().op("text_ops")),
 	index("users_role_idx").using("btree", table.role.asc().nullsLast().op("enum_ops")),

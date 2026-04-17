@@ -22,6 +22,7 @@ import {
   generateId,
 } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
+import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
 import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
 
@@ -71,12 +72,22 @@ const sendChatRoute = createRoute({
 chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
+  let site;
 
   if (!getDifyChatApiKey()) {
     return c.json({ error: 'Dify API key is not configured' }, 500);
   }
 
-  let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return c.json({ error: error.message }, 400);
+    }
+    throw error;
+  }
+
+  let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId, site);
   let sessionSecretToSet: string | null = null;
   let effectiveHospitalType = body.hospitalType ?? null;
 
@@ -163,6 +174,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     chatbotV2Turn = await buildChatbotV2TurnContext({
       services: svc,
       sessionId: session.sessionId,
+      site: session.site,
       userMessage: normalizedUserMessage,
       pageContext: body.pageContext ?? null,
     });
@@ -211,11 +223,11 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   }
 
   const normalized = normalizeDifyChatResponse(difyResponse);
-  session = await svc.aiChatSessionRepo.findBySessionId(session.sessionId) ?? session;
+  session = await svc.aiChatSessionRepo.findBySessionId(session.sessionId, session.site) ?? session;
 
   if (!session.difyConversationId && normalized.conversationId) {
     const updatedSession = typeof svc.aiChatSessionRepo.setDifyConversationId === 'function'
-      ? await svc.aiChatSessionRepo.setDifyConversationId(session.sessionId, normalized.conversationId)
+      ? await svc.aiChatSessionRepo.setDifyConversationId(session.sessionId, session.site, normalized.conversationId)
       : await svc.aiChatSessionRepo.save(new AiChatSessionEntity({
           ...session,
           difyConversationId: normalized.conversationId,
@@ -277,7 +289,6 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       conversionDraft,
     }),
   };
-
   const assistantMessage = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
     content: normalized.answer,
     intent: normalized.intent,
@@ -321,6 +332,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     messageId: assistantMessage.id,
     answer: assistantMessage.content,
     intent: assistantMessage.intent,
+    nextAction: assistantMessage.nextAction,
     topic: normalized.topic,
     riskLevel: assistantMessage.riskLevel,
     canAnswer: assistantMessage.canAnswer,
@@ -388,7 +400,8 @@ const convertChatRoute = createRoute({
 chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
-  let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
+  const site = resolvePatientSiteContext(c);
+  let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId, site);
 
   if (!session) {
     return c.json({ error: 'Chatbot session not found' }, 404);
@@ -404,7 +417,7 @@ chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
   const existingAction = existingWorkflow.lastConvertAction ?? body.requestedAction ?? 'INVITE_ONLINE_CONSULT';
 
   if (!session.patientId && existingWorkflow.patientId) {
-    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, existingWorkflow.patientId)) ?? session;
+    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, session.site, existingWorkflow.patientId)) ?? session;
   } else {
     const patientSync = await attachPatientFromCookie(c, svc, session);
     if (patientSync.error) {
@@ -466,7 +479,8 @@ const escalateChatRoute = createRoute({
 chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
-  let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
+  const site = resolvePatientSiteContext(c);
+  let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId, site);
 
   if (!session) {
     return c.json({ error: 'Chatbot session not found' }, 404);
@@ -480,7 +494,7 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
   const messages = await svc.aiChatMessageRepo.listBySession(session.id, 200);
   const existingWorkflow = extractWorkflowState(messages);
   if (!session.patientId && existingWorkflow.patientId) {
-    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, existingWorkflow.patientId)) ?? session;
+    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, session.site, existingWorkflow.patientId)) ?? session;
   } else {
     const patientSync = await attachPatientFromCookie(c, svc, session);
     if (patientSync.error) {
@@ -492,7 +506,7 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
   if (existingWorkflow.ticketId) {
     const { restoreToken } = await ensurePatientSessionCookies(c, svc, existingWorkflow.patientId ?? session.patientId);
     if (session.status !== 'ESCALATED') {
-      session = (await svc.aiChatSessionRepo.updateStatus(session.sessionId, 'ESCALATED')) ?? session;
+      session = (await svc.aiChatSessionRepo.updateStatus(session.sessionId, session.site, 'ESCALATED')) ?? session;
     }
     return c.json({
       sessionId: session.sessionId,
@@ -524,7 +538,7 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
     hospitalId: null,
   });
 
-  session = (await svc.aiChatSessionRepo.updateStatus(session.sessionId, 'ESCALATED')) ?? session;
+  session = (await svc.aiChatSessionRepo.updateStatus(session.sessionId, session.site, 'ESCALATED')) ?? session;
 
   await recordWorkflowMessage(svc, session.id, {
     kind: 'ESCALATE',
@@ -564,7 +578,8 @@ const initChatbotUploadRoute = createRoute({
 chatbotPublicRoutes.openapi(initChatbotUploadRoute, async (c) => {
   const body = c.req.valid('json');
   const svc = getServices();
-  const session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId);
+  const site = resolvePatientSiteContext(c);
+  const session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId, site);
 
   if (!session) {
     return c.json({ error: 'Chatbot session not found' }, 404);
@@ -613,7 +628,8 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
   const { sessionId } = c.req.valid('param');
   const { limit } = c.req.valid('query');
   const svc = getServices();
-  const session = await svc.aiChatSessionRepo.findBySessionId(sessionId);
+  const site = resolvePatientSiteContext(c);
+  const session = await svc.aiChatSessionRepo.findBySessionId(sessionId, site);
 
   if (!session) {
     return c.json({ error: 'Chatbot session not found' }, 404);
@@ -652,6 +668,7 @@ chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
       id: message.id,
       role: message.role,
       content: message.content,
+      nextAction: normalizePublicNextAction(message.nextAction ?? undefined),
       intent: derivePublicIntent({
         intent: message.intent,
         resolvedIntent: message.resolvedIntent
@@ -744,7 +761,7 @@ async function attachPatientFromCookie(
       return { session, error: c.json({ error: 'Forbidden' }, 403) };
     }
     if (!session.patientId) {
-      session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, payload.userId)) ?? session;
+      session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, session.site, payload.userId)) ?? session;
     }
     return { session, error: null };
   } catch {
@@ -853,7 +870,7 @@ async function ensureCaseForSession(
   });
 
   setPatientSessionCookies(c, onboarding.token, onboarding.restoreCookie);
-  session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, onboarding.patientId)) ?? session;
+  session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, session.site, onboarding.patientId)) ?? session;
 
   const caseEntity = await svc.caseRepo.findById(onboarding.caseId);
   if (!caseEntity) {
@@ -901,7 +918,7 @@ async function ensureExistingCaseForSession(
   const { restoreToken } = await ensurePatientSessionCookies(c, svc, patientId);
 
   if (!session.patientId) {
-    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, patientId)) ?? session;
+    session = (await svc.aiChatSessionRepo.attachPatient(session.sessionId, session.site, patientId)) ?? session;
   }
 
   hydrateCaseFromChatbot(caseEntity, session, input);

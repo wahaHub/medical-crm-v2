@@ -112,7 +112,7 @@ export class SubmitPatientQCResponseUseCase {
     tx: Transaction;
   }): Promise<void> {
     const widgetSessionId = buildWidgetSessionId(input.patientId, input.caseId);
-    let widgetSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.tx);
+    let widgetSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.site, input.tx);
     if (!widgetSession) {
       widgetSession = await this.aiChatSessionRepo.save(new AiChatSession({
         id: generateId(),
@@ -126,7 +126,7 @@ export class SubmitPatientQCResponseUseCase {
         updatedAt: input.submittedAt,
       }), input.tx);
     } else if (!widgetSession.patientId) {
-      widgetSession = (await this.aiChatSessionRepo.attachPatient(widgetSession.sessionId, input.patientId, input.tx)) ?? widgetSession;
+      widgetSession = (await this.aiChatSessionRepo.attachPatient(widgetSession.sessionId, input.site, input.patientId, input.tx)) ?? widgetSession;
     }
 
     await this.aiChatMessageRepo.create(new AiChatMessage({
@@ -149,7 +149,7 @@ export class SubmitPatientQCResponseUseCase {
       createdAt: input.submittedAt,
     }), input.tx);
 
-    await this.aiChatSessionRepo.patchStatus(widgetSessionId, {
+    await this.aiChatSessionRepo.patchStatus(widgetSessionId, input.site, {
       formStatus: 'COMPLETED',
       lastAssistantMessageAt: input.submittedAt,
     }, input.tx);

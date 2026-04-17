@@ -9,12 +9,15 @@ import {
   type IAiFollowupTriggerRepository,
   type IAiHandoffRepository,
   type IAiUserProfileRepository,
+  type PatientSite,
 } from '@medical-crm/domain';
 import type { PlannedTimelineEvent, WritebackPlannerInput } from './writeback-planner.service.js';
 import { WritebackPlannerService } from './writeback-planner.service.js';
 import { HandoffPolicyService } from './handoff-policy.service.js';
 
-export interface WritebackExecutorInput extends WritebackPlannerInput {}
+export interface WritebackExecutorInput extends WritebackPlannerInput {
+  site: PatientSite;
+}
 
 export interface WritebackExecutorResult {
   statusUpdated: Record<string, unknown>;
@@ -43,7 +46,7 @@ export class WritebackExecutorService {
 
   async execute(input: WritebackExecutorInput): Promise<WritebackExecutorResult> {
     void this._profileRepo;
-    const currentSession = await this.sessionRepo.findBySessionId(input.sessionId);
+    const currentSession = await this.sessionRepo.findBySessionId(input.sessionId, input.site);
     if (!currentSession) {
       throw new Error(`AI chat session not found: ${input.sessionId}`);
     }
@@ -56,7 +59,7 @@ export class WritebackExecutorService {
         : {}),
     };
 
-    await this.sessionRepo.patchStatus(input.sessionId, statusUpdated);
+    await this.sessionRepo.patchStatus(input.sessionId, input.site, statusUpdated);
 
     const timelineEventsWritten: string[] = [];
     for (const event of plan.timelineEvents) {

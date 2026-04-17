@@ -1,4 +1,4 @@
-import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
+import type { ChatJourneyPhase, ChatJourneyStage, PatientSite } from '@medical-crm/domain';
 import type { AgentAction, AgentName } from './agents.js';
 import type {
   ChatbotV3RuntimeNodeEventEmitter,
@@ -60,6 +60,7 @@ export interface ConversationOrchestratorV3Decision {
 export interface ConversationOrchestratorV3HandleTurnInput {
   traceId: string;
   sessionId: string;
+  site: PatientSite;
   turnId: string;
   message: string;
   attachments?: Array<Record<string, unknown>>;
@@ -439,7 +440,7 @@ export class ConversationOrchestratorV3RuntimeService {
     const startedAt = this.now();
 
     try {
-      const result = await this.dependencies.gateway.status.query({ sessionId: input.sessionId });
+      const result = await this.dependencies.gateway.status.query({ sessionId: input.sessionId, site: input.site });
       this.emitNodeEvent(input, {
         node: 'Tool',
         action: 'status.query',
@@ -549,6 +550,7 @@ function buildDispatchAction(
         input: {
           latestUserMessage: input.message,
           sessionId: input.sessionId,
+          site: input.site,
           hospitalId: input.pageContext?.type === 'HOSPITAL_DETAIL'
             ? input.pageContext.hospitalId
             : undefined,
@@ -561,6 +563,7 @@ function buildDispatchAction(
           type: 'records.upload',
           input: {
             sessionId: input.sessionId,
+            site: input.site,
             turnId: input.turnId,
             attachments: input.attachments,
           },
@@ -572,6 +575,7 @@ function buildDispatchAction(
         type: 'records.status',
         input: {
           sessionId: input.sessionId,
+          site: input.site,
         },
         meta,
       };
@@ -580,6 +584,7 @@ function buildDispatchAction(
         type: 'recommendation.generate',
         input: {
           sessionId: input.sessionId,
+          site: input.site,
           turnId: input.turnId,
         },
         meta,
@@ -589,6 +594,7 @@ function buildDispatchAction(
         type: 'consult.status',
         input: {
           sessionId: input.sessionId,
+          site: input.site,
         },
         meta,
       };
@@ -597,6 +603,7 @@ function buildDispatchAction(
         type: 'handoff.create',
         input: {
           sessionId: input.sessionId,
+          site: input.site,
           turnId: input.turnId,
           reason: normalizeReason(suggestion.reason || input.message || 'human handoff requested'),
         },

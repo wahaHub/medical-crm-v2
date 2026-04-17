@@ -126,6 +126,7 @@ app.get('/me', async (c) => {
       services,
       widgetSessionId: result.widgetChatTarget?.sessionId,
       caseId: result.caseId,
+      site,
       destination: result.destination,
     }).catch((error) => {
       console.warn('Failed to backfill widget starter message during patient restore:', error);

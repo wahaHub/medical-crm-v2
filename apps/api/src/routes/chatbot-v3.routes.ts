@@ -75,7 +75,16 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   const body = chatbotV3ChatRequestSchema.parse(await c.req.json());
   const traceId = resolveTraceId(c);
   const services = getServices();
-  let session = await services.aiChatSessionRepo.findBySessionId(body.sessionId);
+  let site;
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return c.json({ error: error.message }, 400);
+    }
+    throw error;
+  }
+  let session = await services.aiChatSessionRepo.findBySessionId(body.sessionId, site);
   if (!session) {
     return c.json({ error: 'Chatbot session not found' }, 404);
   }
@@ -92,6 +101,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   const result = await getChatbotV3Runtime().handleTurn({
     traceId,
     sessionId: body.sessionId,
+    site,
     turnId: resolveTurnId(c),
     message: body.message,
     attachments: body.attachments,
@@ -138,41 +148,44 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
   const gateway = createToolGateway({
     handlers: {
       faq: {
-        categorySearch: async ({ sessionId, query, hospitalId }) =>
-          handleFaqCategorySearch(services, sessionId, query, hospitalId),
-        search: async ({ sessionId, query, category, hospitalId }) =>
-          handleFaqSearch(services, sessionId, query, category, hospitalId),
+        categorySearch: async ({ sessionId, site, query, hospitalId }) =>
+          handleFaqCategorySearch(services, sessionId, site, query, hospitalId),
+        search: async ({ sessionId, site, query, category, hospitalId }) =>
+          handleFaqSearch(services, sessionId, site, query, category, hospitalId),
         getByIds: async ({ ids, hospitalId }) => handleFaqGetByIds(services, ids, hospitalId),
       },
       records: {
-        upload: async ({ sessionId, turnId, attachments }) => handleRecordsUpload(services, sessionId, turnId, attachments),
-        save: async ({ sessionId, turnId, records }) => handleRecordsSave(services, sessionId, turnId, records),
-        status: async ({ sessionId }) => ({
-          state: deriveRecordsState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
+        upload: async ({ sessionId, site, turnId, attachments }) =>
+          handleRecordsUpload(services, sessionId, site, turnId, attachments),
+        save: async ({ sessionId, site, turnId, records }) =>
+          handleRecordsSave(services, sessionId, site, turnId, records),
+        status: async ({ sessionId, site }) => ({
+          state: deriveRecordsState((site ? await services.aiChatSessionRepo.findBySessionId(sessionId, site) : null)?.statusSnapshot),
         }),
       },
       recommendation: {
-        generate: async ({ sessionId }) => ({
-          recommendations: await generateRecommendations(services, sessionId),
+        generate: async ({ sessionId, site }) => ({
+          recommendations: await generateRecommendations(services, sessionId, site),
         }),
-        status: async ({ sessionId }) => ({
-          state: deriveRecommendationState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
+        status: async ({ sessionId, site }) => ({
+          state: deriveRecommendationState((site ? await services.aiChatSessionRepo.findBySessionId(sessionId, site) : null)?.statusSnapshot),
         }),
       },
       consult: {
-        status: async ({ sessionId }) => ({
-          state: deriveConsultState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
+        status: async ({ sessionId, site }) => ({
+          state: deriveConsultState((site ? await services.aiChatSessionRepo.findBySessionId(sessionId, site) : null)?.statusSnapshot),
         }),
       },
       status: {
-        query: async ({ sessionId }) => ({
+        query: async ({ sessionId, site }) => ({
           snapshot: buildStatusQuerySnapshot(
-            await services.aiChatSessionRepo.findBySessionId(sessionId),
+            site ? await services.aiChatSessionRepo.findBySessionId(sessionId, site) : null,
           ),
         }),
       },
       handoff: {
-        create: async ({ sessionId, turnId, reason }) => createHandoff(services, sessionId, turnId, reason),
+        create: async ({ sessionId, site, turnId, reason }) =>
+          createHandoff(services, sessionId, site, turnId, reason),
       },
     },
   });
@@ -376,11 +389,12 @@ function deriveRecordsState(
 async function handleFaqCategorySearch(
   services: AppServices,
   sessionId: string | undefined,
+  site: import('@medical-crm/domain').PatientSite | undefined,
   query: string,
   hospitalId: string | undefined,
 ) {
   const result = await services.listFaqCategoriesForChatbot.execute({
-    hospitalType: await resolveFaqHospitalType(services, sessionId, hospitalId),
+    hospitalType: await resolveFaqHospitalType(services, sessionId, site, hospitalId),
     hospitalId,
   });
 
@@ -401,6 +415,7 @@ async function handleFaqCategorySearch(
 async function handleFaqSearch(
   services: AppServices,
   sessionId: string | undefined,
+  site: import('@medical-crm/domain').PatientSite | undefined,
   query: string,
   category: string | undefined,
   hospitalId: string | undefined,
@@ -409,7 +424,7 @@ async function handleFaqSearch(
     page: 1,
     limit: 5,
     ...(category ? { category } : {}),
-    hospitalType: await resolveFaqHospitalType(services, sessionId, hospitalId),
+    hospitalType: await resolveFaqHospitalType(services, sessionId, site, hospitalId),
     isActive: true,
     search: query,
   };
@@ -458,6 +473,7 @@ async function handleFaqGetByIds(
 async function resolveFaqHospitalType(
   services: AppServices,
   sessionId: string | undefined,
+  site: import('@medical-crm/domain').PatientSite | undefined,
   hospitalId: string | undefined,
 ): Promise<'COSMETIC' | 'REGULAR'> {
   if (hospitalId) {
@@ -468,7 +484,11 @@ async function resolveFaqHospitalType(
     return 'COSMETIC';
   }
 
-  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!site) {
+    return 'COSMETIC';
+  }
+
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId, site);
   return session?.hospitalType === 'REGULAR' ? 'REGULAR' : 'COSMETIC';
 }
 
@@ -733,8 +753,13 @@ function setChatbotSessionSecretCookie(c: Context, value: string): void {
 async function generateRecommendations(
   services: AppServices,
   sessionId: string,
+  site: import('@medical-crm/domain').PatientSite | undefined,
 ): Promise<Array<Record<string, unknown>>> {
-  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!site) {
+    return [];
+  }
+
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId, site);
   const snapshot = session?.statusSnapshot;
 
   if (hasAnyStatus(snapshot?.recommendationStatus, ['CONFIRMED', 'ACCEPTED'])) {
@@ -760,10 +785,15 @@ async function generateRecommendations(
 async function createHandoff(
   services: AppServices,
   sessionId: string,
+  site: import('@medical-crm/domain').PatientSite | undefined,
   turnId: string | undefined,
   reason: string,
 ): Promise<{ handoffId?: string; created?: boolean }> {
-  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!site) {
+    return { created: false };
+  }
+
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId, site);
   if (!session || !session.patientId || !services.createTicket) {
     return { created: false };
   }
@@ -778,7 +808,7 @@ async function createHandoff(
     idempotencyKey,
     'chatbot_v3_handoff_ticket',
     async () => {
-      const latestSession = await services.aiChatSessionRepo.findBySessionId(sessionId);
+      const latestSession = await services.aiChatSessionRepo.findBySessionId(sessionId, site);
       if (!latestSession?.patientId || !services.createTicket) {
         return { created: false };
       }
@@ -820,10 +850,15 @@ function canCreateHandoffTicket(
 async function handleRecordsUpload(
   services: AppServices,
   sessionId: string,
+  site: import('@medical-crm/domain').PatientSite | undefined,
   turnId: string | undefined,
   attachments: Array<Record<string, unknown>> | undefined,
 ): Promise<{ uploadId?: string; accepted?: boolean }> {
-  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!site) {
+    return { accepted: false };
+  }
+
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId, site);
   if (!session) {
     return { accepted: false };
   }
@@ -841,10 +876,15 @@ async function handleRecordsUpload(
 async function handleRecordsSave(
   services: AppServices,
   sessionId: string,
+  site: import('@medical-crm/domain').PatientSite | undefined,
   turnId: string | undefined,
   records: Array<Record<string, unknown>> | undefined,
 ): Promise<{ recordIds?: string[]; saved?: boolean }> {
-  const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
+  if (!site) {
+    return { saved: false, recordIds: [] };
+  }
+
+  const session = await services.aiChatSessionRepo.findBySessionId(sessionId, site);
   if (!session) {
     return { saved: false, recordIds: [] };
   }
@@ -865,7 +905,7 @@ async function patchSessionStatus(
   session: AiChatSession,
   patch: Partial<AiChatSession['statusSnapshot']>,
 ): Promise<AiChatSession> {
-  const patched = await services.aiChatSessionRepo.patchStatus(session.sessionId, patch);
+  const patched = await services.aiChatSessionRepo.patchStatus(session.sessionId, session.site, patch);
   if (patched) {
     return patched;
   }

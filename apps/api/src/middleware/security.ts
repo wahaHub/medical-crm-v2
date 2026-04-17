@@ -45,6 +45,7 @@ export function applySecurityMiddleware(app: Hono) {
   const allowedOrigins = [
     process.env.ADMIN_ORIGIN,
     process.env.HOSPITAL_ORIGIN,
+    process.env.BEAUTY_ORIGIN,
     process.env.CHINA_ORIGIN,
   ].filter((origin): origin is string => Boolean(origin));
 

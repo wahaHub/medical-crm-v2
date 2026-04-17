@@ -91,7 +91,7 @@ export class GetPatientSessionStateUseCase {
       .filter((contact) => !contact.removedAt)
       .map((contact) => contact.hospitalId);
     const widgetSessionId = `widget-chat:${patient.id}:${latestCase?.id ?? 'pending'}`;
-    let aiChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId);
+    let aiChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.site);
     if (!aiChatSession && latestCase) {
       aiChatSession = await this.aiChatSessionRepo.save(new AiChatSession({
         id: generateId(),

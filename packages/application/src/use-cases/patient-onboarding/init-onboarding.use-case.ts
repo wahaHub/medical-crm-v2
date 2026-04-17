@@ -224,7 +224,7 @@ export class InitOnboardingUseCase {
     }
 
     const widgetSessionId = `widget-chat:${patient.id}:${savedCase.id}`;
-    const existingWidgetChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId);
+    const existingWidgetChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.site);
     if (!existingWidgetChatSession) {
       await this.aiChatSessionRepo.save(new AiChatSession({
         id: generateId(),

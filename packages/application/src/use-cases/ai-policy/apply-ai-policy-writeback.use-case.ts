@@ -1,4 +1,4 @@
-import type { IAiChatSessionRepository } from '@medical-crm/domain';
+import type { IAiChatSessionRepository, PatientSite } from '@medical-crm/domain';
 import type {
   AiPolicyBackendNextAction,
   AiPolicyEngagementMode,
@@ -11,6 +11,7 @@ interface IIdempotencyExecutor {
 
 export interface ApplyAiPolicyWritebackInput {
   sessionId: string;
+  site: PatientSite;
   assistantMessageId: string;
   idempotencyKey: string;
   policyDecision: {
@@ -31,7 +32,7 @@ export class ApplyAiPolicyWritebackUseCase {
   ) {}
 
   async execute(input: ApplyAiPolicyWritebackInput) {
-    const session = await this.sessionRepo.findBySessionId(input.sessionId);
+    const session = await this.sessionRepo.findBySessionId(input.sessionId, input.site);
     if (!session) {
       throw new Error(`AI chat session not found: ${input.sessionId}`);
     }
@@ -41,6 +42,7 @@ export class ApplyAiPolicyWritebackUseCase {
       'ai_policy_writeback',
       async () => this.writebackExecutor.execute({
         sessionId: input.sessionId,
+        site: input.site,
         sessionDbId: session.id,
         patientId: session.patientId,
         assistantMessageId: input.assistantMessageId,

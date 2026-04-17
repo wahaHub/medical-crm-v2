@@ -53,6 +53,18 @@ describe('materials tabs hook ordering', () => {
     expect(source).toContain('Dismiss and locate issue');
   });
 
+  it('shows raw backend validation logs in the save modal before dismissing failed hospital saves', () => {
+    const source = readFileSync(
+      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
+      'utf8',
+    );
+
+    expect(source).toContain('Technical debug logs');
+    expect(source).toContain('state.debugDetails');
+    expect(source).toContain('JSON.stringify(error.body, null, 2)');
+    expect(source).toContain('showDebugDetails: true');
+  });
+
   it('supports clearing hero, department, and equipment images in edit mode', () => {
     const source = readFileSync(
       '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',

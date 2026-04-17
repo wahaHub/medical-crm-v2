@@ -202,8 +202,13 @@ CREATE TABLE "translation_tasks" (
 	"hospital_type" text NOT NULL,
 	"entity_type" text NOT NULL,
 	"entity_id" uuid NOT NULL,
+	"chunk_key" text DEFAULT 'default' NOT NULL,
 	"source_language" text DEFAULT 'zh' NOT NULL,
-	"target_language" text NOT NULL,
+	"target_language" varchar(10) NOT NULL,
+	"source_db" text DEFAULT 'crm' NOT NULL,
+	"fields_to_translate" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"target_languages" text[] DEFAULT '{}'::text[] NOT NULL,
+	"detected_language" varchar(10),
 	"status" text DEFAULT 'pending',
 	"error_message" text,
 	"retry_count" integer DEFAULT 0,
@@ -342,6 +347,8 @@ ALTER TABLE translation_tasks
 
 ALTER TABLE translation_tasks ALTER COLUMN hospital_type DROP NOT NULL;
 ALTER TABLE translation_tasks ALTER COLUMN target_language DROP NOT NULL;
+ALTER TABLE translation_tasks ADD COLUMN IF NOT EXISTS chunk_key TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE translation_tasks ALTER COLUMN target_language TYPE VARCHAR(10) USING target_language::varchar(10);
 
 -- Backfill new columns from the legacy one-row-per-target-language model.
 UPDATE translation_tasks
@@ -353,12 +360,90 @@ SET
   END
 WHERE target_languages = '{}'::text[];
 
--- Merge duplicate pending/processing rows created under the old per-language queue model
--- into the new unified one-row-per-entity model.
-WITH grouped AS (
+-- Split legacy multi-language rows into one row per target language before the final
+-- chunk-aware identity index is established.
+WITH legacy_backlog AS (
   SELECT
+    id,
+    source_db,
+    hospital_type,
     entity_type,
     entity_id,
+    chunk_key,
+    source_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    detected_language,
+    unnest(target_languages) AS target_language
+  FROM translation_tasks
+  WHERE COALESCE(array_length(target_languages, 1), 0) > 1
+), split_rows AS (
+  INSERT INTO translation_tasks (
+    id,
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    target_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    target_languages,
+    detected_language
+  )
+  SELECT
+    gen_random_uuid(),
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    target_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    ARRAY[target_language]::text[],
+    detected_language
+  FROM legacy_backlog
+  RETURNING id
+)
+DELETE FROM translation_tasks tt
+USING legacy_backlog lb
+WHERE tt.id = lb.id;
+
+UPDATE translation_tasks
+SET target_language = CASE
+  WHEN COALESCE(array_length(target_languages, 1), 0) = 1 THEN target_languages[1]
+  ELSE target_language
+END
+WHERE target_language IS NULL OR target_language = '';
+
+ALTER TABLE translation_tasks ALTER COLUMN target_language SET NOT NULL;
+
+-- Merge duplicate pending/processing rows using the chunk-aware, single-language identity.
+WITH grouped AS (
+  SELECT
+    source_db,
+    entity_type,
+    entity_id,
+    chunk_key,
+    target_language,
     CASE
       WHEN COUNT(DISTINCT hospital_type) = 1 THEN MIN(hospital_type)
       ELSE NULL
@@ -371,36 +456,29 @@ WITH grouped AS (
       WHEN BOOL_OR(status = 'processing') THEN 'processing'
       ELSE 'pending'
     END AS merged_status,
-    COALESCE(
-      ARRAY_AGG(DISTINCT target_language) FILTER (WHERE target_language IS NOT NULL),
-      '{}'::text[]
-    ) AS merged_target_languages,
     MAX(retry_count) AS merged_retry_count,
     (
       ARRAY_AGG(
         id
         ORDER BY
           CASE WHEN status = 'processing' THEN 0 ELSE 1 END,
-          created_at ASC,
-          id ASC
+          created_at DESC,
+          id DESC
       )
     )[1] AS keep_id
   FROM translation_tasks
   WHERE status IN ('pending', 'processing')
-  GROUP BY entity_type, entity_id
+  GROUP BY source_db, entity_type, entity_id, chunk_key, target_language
   HAVING COUNT(*) > 1
 ), merged_keep_rows AS (
   UPDATE translation_tasks tt
   SET
     hospital_type = grouped.merged_hospital_type,
     source_language = grouped.merged_source_language,
-    target_language = CASE
-      WHEN COALESCE(array_length(grouped.merged_target_languages, 1), 0) = 1
-        THEN grouped.merged_target_languages[1]
-      ELSE NULL
-    END,
-    target_languages = grouped.merged_target_languages,
-    source_db = 'crm',
+    target_language = grouped.target_language,
+    target_languages = ARRAY[grouped.target_language]::text[],
+    source_db = grouped.source_db,
+    chunk_key = grouped.chunk_key,
     status = grouped.merged_status,
     retry_count = grouped.merged_retry_count,
     error_message = NULL
@@ -410,8 +488,11 @@ WITH grouped AS (
 )
 DELETE FROM translation_tasks tt
 USING grouped
-WHERE tt.entity_type = grouped.entity_type
+WHERE tt.source_db = grouped.source_db
+  AND tt.entity_type = grouped.entity_type
   AND tt.entity_id = grouped.entity_id
+  AND tt.chunk_key = grouped.chunk_key
+  AND tt.target_language = grouped.target_language
   AND tt.status IN ('pending', 'processing')
   AND tt.id <> grouped.keep_id;
 
@@ -432,8 +513,7 @@ BEGIN
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS translation_tasks_entity_dedup
-  ON translation_tasks (source_db, entity_type, entity_id)
-  WHERE status IN ('pending', 'processing');
+  ON translation_tasks (source_db, entity_type, entity_id, chunk_key, target_language);
 
 -- Add translations jsonb to CRM tables
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
@@ -1586,6 +1666,108 @@ ALTER TABLE ai_chat_sessions
   DROP COLUMN IF EXISTS last_next_action,
   DROP COLUMN IF EXISTS last_resolved_intent;
 
+-- Migration: 030_ai_chat_process_explained.sql
+ALTER TABLE ai_chat_sessions
+ADD COLUMN process_explained boolean NOT NULL DEFAULT false;
+
+-- Migration: 031_patient_site_identity.sql
+DO $$
+BEGIN
+  CREATE TYPE "PatientSite" AS ENUM ('beauty', 'china');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS patient_site "PatientSite";
+
+ALTER TABLE ai_chat_sessions
+  ADD COLUMN IF NOT EXISTS site "PatientSite";
+
+UPDATE users
+SET patient_site = 'china'
+WHERE role = 'PATIENT'
+  AND patient_site IS NULL;
+
+UPDATE ai_chat_sessions
+SET site = 'china'
+WHERE site IS NULL;
+
+ALTER TABLE ai_chat_sessions
+  ALTER COLUMN site SET NOT NULL;
+
+ALTER TABLE users
+  DROP CONSTRAINT IF EXISTS users_patient_site_required;
+
+ALTER TABLE users
+  ADD CONSTRAINT users_patient_site_required
+  CHECK (
+    (role = 'PATIENT' AND patient_site IS NOT NULL)
+    OR (role <> 'PATIENT' AND patient_site IS NULL)
+  );
+
+DROP INDEX IF EXISTS users_email_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_patient_email_site_key
+  ON users USING btree (email text_ops, patient_site)
+  WHERE role = 'PATIENT';
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_non_patient_email_key
+  ON users USING btree (email text_ops)
+  WHERE role <> 'PATIENT';
+
+CREATE INDEX IF NOT EXISTS users_patient_site_idx
+  ON users USING btree (patient_site);
+
+CREATE INDEX IF NOT EXISTS ai_chat_sessions_site_idx
+  ON ai_chat_sessions USING btree (site);
+
+CREATE OR REPLACE FUNCTION prevent_cross_role_user_email_duplicates()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.role = 'PATIENT' THEN
+    IF EXISTS (
+      SELECT 1
+      FROM users
+      WHERE email = NEW.email
+        AND role <> 'PATIENT'
+        AND id <> NEW.id
+    ) THEN
+      RAISE EXCEPTION 'EMAIL_ROLE_CONFLICT';
+    END IF;
+  ELSE
+    IF EXISTS (
+      SELECT 1
+      FROM users
+      WHERE email = NEW.email
+        AND role = 'PATIENT'
+        AND id <> NEW.id
+    ) THEN
+      RAISE EXCEPTION 'EMAIL_ROLE_CONFLICT';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS users_prevent_cross_role_email_duplicates ON users;
+
+CREATE TRIGGER users_prevent_cross_role_email_duplicates
+BEFORE INSERT OR UPDATE OF email, role, patient_site
+ON users
+FOR EACH ROW
+EXECUTE FUNCTION prevent_cross_role_user_email_duplicates();
+
+-- Migration: 032_ai_chat_session_site_scope.sql
+ALTER TABLE ai_chat_sessions
+  DROP CONSTRAINT IF EXISTS ai_chat_sessions_session_id_key;
+
+DROP INDEX IF EXISTS ai_chat_sessions_session_id_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ai_chat_sessions_session_id_site_key
+  ON ai_chat_sessions USING btree (session_id text_ops, site enum_ops);
+
 -- Track the current schema head so future pnpm db:migrate runs stay incremental.
 CREATE TABLE IF NOT EXISTS _migrations (
   id SERIAL PRIMARY KEY,
@@ -1626,5 +1808,8 @@ VALUES
   ('026_ai_policy_engagement_mode.sql'),
   ('027_ai_policy_selected_hospital.sql'),
   ('028_backfill_regular_hospitals_from_china.sql'),
-  ('029_chatbot_state_truth_consolidation.sql')
+  ('029_chatbot_state_truth_consolidation.sql'),
+  ('030_ai_chat_process_explained.sql'),
+  ('031_patient_site_identity.sql'),
+  ('032_ai_chat_session_site_scope.sql')
 ON CONFLICT (name) DO NOTHING;

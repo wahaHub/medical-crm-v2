@@ -822,7 +822,7 @@ export function getServices(): AppServices {
 
       createHospital: new CreateHospitalUseCase(hospitalManagementRepo, syncService),
       listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
-      getHospital: new GetHospitalUseCase(hospitalManagementRepo, userRepo),
+      getHospital: new GetHospitalUseCase(hospitalManagementRepo, userRepo, materialsRepo),
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
       updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo),
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),

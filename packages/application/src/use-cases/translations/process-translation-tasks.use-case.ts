@@ -28,9 +28,10 @@ export class ProcessTranslationTasksUseCase {
 
     for (const task of tasks) {
       try {
+        const targetLanguages = task.targetLanguage ? [task.targetLanguage] : task.targetLanguages;
         const result = await this.translationService.translateBatch({
           fields: task.fieldsToTranslate,
-          targetLanguages: task.targetLanguages,
+          targetLanguages,
         });
         await this.writebackService.writeback(task, result);
         await this.taskRepo.markCompleted(task.id, result.detectedLanguage);

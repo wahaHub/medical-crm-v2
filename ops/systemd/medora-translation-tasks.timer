@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Medora CRM v2 translation task processor every 30 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
+Unit=medora-translation-tasks.service
+
+[Install]
+WantedBy=timers.target

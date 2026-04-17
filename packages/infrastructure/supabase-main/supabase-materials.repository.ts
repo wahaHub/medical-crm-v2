@@ -319,26 +319,43 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     }
 
     // 3. Update translations table
-    const translationUpdates: Record<string, unknown> = {};
-    if (updates.tagline !== undefined) translationUpdates['tagline'] = updates.tagline;
-    else if (updates.taglineEn !== undefined) translationUpdates['tagline'] = updates.taglineEn;
-    if (updates.description !== undefined) translationUpdates['description'] = updates.description;
-    else if (updates.descriptionEn !== undefined) translationUpdates['description'] = updates.descriptionEn;
+    const zhTranslationUpdates: Record<string, unknown> = {};
+    const enTranslationUpdates: Record<string, unknown> = {};
+    if (updates.tagline !== undefined) zhTranslationUpdates['tagline'] = updates.tagline;
+    if (updates.description !== undefined) zhTranslationUpdates['description'] = updates.description;
+    if (updates.taglineEn !== undefined) enTranslationUpdates['tagline'] = updates.taglineEn;
+    if (updates.descriptionEn !== undefined) enTranslationUpdates['description'] = updates.descriptionEn;
 
-    if (Object.keys(translationUpdates).length > 0) {
-      translationUpdates['updated_at'] = new Date().toISOString();
-      const { data: transData, error: transError } = await this.supabase
+    type HospitalTranslationRow = {
+      hospital_id: string;
+      language_code: 'zh' | 'en';
+      updated_at: string;
+    } & Record<string, unknown>;
+
+    const translationRows = [
+      Object.keys(zhTranslationUpdates).length > 0
+        ? {
+            hospital_id: hospitalId,
+            language_code: 'zh',
+            ...zhTranslationUpdates,
+            updated_at: new Date().toISOString(),
+          }
+        : null,
+      Object.keys(enTranslationUpdates).length > 0
+        ? {
+            hospital_id: hospitalId,
+            language_code: 'en',
+            ...enTranslationUpdates,
+            updated_at: new Date().toISOString(),
+          }
+        : null,
+    ].filter((row): row is HospitalTranslationRow => row !== null);
+
+    for (const row of translationRows) {
+      const { error } = await this.supabase
         .from('hospital_translations')
-        .update(translationUpdates)
-        .eq('hospital_id', hospitalId)
-        .eq('language_code', 'en')
-        .select('id');
-
-      if (!transError && (!transData || transData.length === 0)) {
-        await this.supabase
-          .from('hospital_translations')
-          .insert({ hospital_id: hospitalId, language_code: 'en', ...translationUpdates });
-      }
+        .upsert(row, { onConflict: 'hospital_id,language_code' });
+      if (error) throw error;
     }
 
     // 4. Update nearby attractions

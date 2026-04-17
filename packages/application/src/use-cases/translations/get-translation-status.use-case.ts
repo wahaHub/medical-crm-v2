@@ -1,6 +1,7 @@
 import type { ITranslationTaskRepository, SourceDb, TranslationTaskStatus } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
+import { aggregateTranslationTasks } from './translation-task-aggregation.js';
 
 export interface TranslationStatusResult {
   status: TranslationTaskStatus;
@@ -23,12 +24,6 @@ export class GetTranslationStatusUseCase {
     }
     const tasks = await this.taskRepo.findByEntity(sourceDb, entityType, entityId);
     if (!tasks || tasks.length === 0) return null;
-    const task = tasks[0]!;
-    return {
-      status: task.status,
-      retryCount: task.retryCount,
-      errorMessage: task.errorMessage,
-      detectedLanguage: task.detectedLanguage,
-    };
+    return aggregateTranslationTasks(tasks);
   }
 }

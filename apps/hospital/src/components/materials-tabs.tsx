@@ -70,6 +70,7 @@ import type {
   MaterialsBeforeAfterCaseDTO,
 } from '@/lib/api-types';
 import { useAuth } from '@/lib/auth-context';
+import { sanitizeDepartmentStats } from '@/lib/materials-payload';
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -120,7 +121,52 @@ type SaveProgressState = {
   items: SaveProgressItem[];
   failedTargetKey?: string;
   canDismiss: boolean;
+  debugDetails?: string;
+  showDebugDetails?: boolean;
 };
+
+const MATERIALS_DEBUG_PREFIX = '[hospital.materials.debug]';
+
+function extractDebugDetails(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    const markerIndex = error.message.indexOf(MATERIALS_DEBUG_PREFIX);
+    if (markerIndex >= 0) {
+      return error.message.slice(markerIndex + MATERIALS_DEBUG_PREFIX.length).trim();
+    }
+  }
+
+  if (typeof error === 'object' && error && 'body' in error) {
+    return JSON.stringify(error.body, null, 2);
+  }
+
+  return undefined;
+}
+
+function extractSaveFailureMessage(error: unknown): string {
+  const debugDetails = extractDebugDetails(error);
+  if (!debugDetails) {
+    return error instanceof Error ? error.message : 'Failed to save hospital information.';
+  }
+
+  try {
+    const parsed = JSON.parse(debugDetails) as {
+      responseBody?: {
+        error?: {
+          issues?: Array<{ message?: string; path?: Array<string | number> }>;
+        };
+      };
+    };
+    const firstIssue = parsed.responseBody?.error?.issues?.[0];
+    if (firstIssue?.message) {
+      const fieldPath = firstIssue.path?.length ? ` (${firstIssue.path.join('.')})` : '';
+      return `${firstIssue.message}${fieldPath}`;
+    }
+  } catch {
+    return 'Failed to save hospital information. Expand the debug logs for details.';
+  }
+
+  return 'Failed to save hospital information. Expand the debug logs for details.';
+}
 
 function getFlashClass(active: boolean) {
   return active
@@ -187,6 +233,20 @@ function UploadProgressModal({
             </div>
           ))}
         </div>
+
+        {state.showDebugDetails && state.debugDetails ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-800">Technical debug logs</div>
+              <div className="text-xs text-slate-500">Raw backend error / validation JSON</div>
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950 shadow-inner">
+              <pre className="max-h-64 overflow-auto px-4 py-3 text-xs leading-5 text-slate-100 whitespace-pre-wrap break-words">
+                {state.debugDetails}
+              </pre>
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex justify-end">
           <button
@@ -1281,7 +1341,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     departments: raw?.departments ?? [],
     departmentDescriptions: raw?.departmentDescriptions ?? {},
     departmentKeyServices: raw?.departmentKeyServices ?? {},
-    departmentStats: raw?.departmentStats ?? {},
+    departmentStats: sanitizeDepartmentStats(raw?.departmentStats),
     departmentImages: raw?.departmentImages ?? {},
     equipment: raw?.equipment ?? [],
     promotionalVideos: raw?.promotionalVideos ?? [],
@@ -1350,7 +1410,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     setSelectedDepartments(raw.departments ?? []);
     setDeptDescriptions(raw.departmentDescriptions ?? {});
     setDeptKeyServices(raw.departmentKeyServices ?? {});
-    setDeptStats(raw.departmentStats ?? {});
+    setDeptStats(sanitizeDepartmentStats(raw.departmentStats));
     setDeptImages(raw.departmentImages ?? {});
     setDeptImageStorageKeys(raw.departmentImageStorageKeys ?? {});
     setEquipment((raw.equipment ?? []).map((e: { name: string; description?: string; image_url?: string }) => ({
@@ -1414,7 +1474,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     if (info.departments.length) setSelectedDepartments(info.departments);
     setDeptDescriptions(info.departmentDescriptions ?? {});
     setDeptKeyServices(info.departmentKeyServices ?? {});
-    setDeptStats(info.departmentStats ?? {});
+    setDeptStats(sanitizeDepartmentStats(info.departmentStats));
     setDeptServiceInputs({});
     setEquipment((info.equipment ?? []).map((e: { name: string; description?: string; image_url?: string }) => ({
       name: e.name ?? '',
@@ -1588,6 +1648,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           status: 'pending' as const,
         },
       ],
+      showDebugDetails: false,
     });
 
     try {
@@ -1611,6 +1672,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           ...prev,
           canDismiss: true,
           failedTargetKey,
+          showDebugDetails: false,
         }));
         return;
       }
@@ -1662,6 +1724,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           ...prev,
           canDismiss: true,
           failedTargetKey: unresolvedMedia.targetKey,
+          showDebugDetails: false,
         }));
         return;
       }
@@ -1718,7 +1781,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           departments: selectedDepartments,
           departmentDescriptions: deptDescriptions,
           departmentKeyServices: deptKeyServices,
-          departmentStats: deptStats,
+          departmentStats: sanitizeDepartmentStats(deptStats),
           departmentImages: Object.fromEntries(
             Object.keys(nextDepartmentImages).map((key) => [key, nextDepartmentImageStorageKeys[key] ?? nextDepartmentImages[key] ?? '']),
           ),
@@ -1749,16 +1812,18 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           canDismiss: false,
         });
       }, 500);
-    } catch {
+    } catch (error) {
       failedTargetKey ??= 'hospital-info-root';
       updateSaveProgress('save-hospital-info', {
         status: 'failed',
-        error: 'Failed to save hospital information.',
+        error: extractSaveFailureMessage(error),
       });
       setSaveProgress((prev) => ({
         ...prev,
         canDismiss: true,
         failedTargetKey,
+        debugDetails: extractDebugDetails(error),
+        showDebugDetails: false,
       }));
     } finally {
       setSaving(false);
@@ -1844,12 +1909,21 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       <UploadProgressModal
         state={saveProgress}
         onDismiss={() => {
+          if (saveProgress.failedTargetKey && saveProgress.debugDetails && !saveProgress.showDebugDetails) {
+            setSaveProgress((prev) => ({
+              ...prev,
+              showDebugDetails: true,
+            }));
+            return;
+          }
           const failedKey = saveProgress.failedTargetKey;
           setSaveProgress({
             open: false,
             title: '',
             items: [],
             canDismiss: false,
+            debugDetails: undefined,
+            showDebugDetails: false,
           });
           focusSection(failedKey);
         }}

@@ -56,6 +56,7 @@ export interface CaseStats {
 export interface HospitalSummary {
   id: string; name: string; nameEn: string | null; type: string; status: string;
   hasRegisteredUser?: boolean;
+  consumerSlug?: string | null;
   specialties: string[] | null; email: string | null; phone: string | null;
   address: string | null; city: string | null; createdAt: string;
 }

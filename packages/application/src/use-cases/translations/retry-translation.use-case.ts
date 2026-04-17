@@ -1,6 +1,7 @@
 import type { ITranslationTaskRepository, SourceDb } from '@medical-crm/domain';
 import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
+import { getFailedTaskIds } from './translation-task-aggregation.js';
 
 export interface RetryTranslationInput {
   sourceDb: SourceDb;
@@ -19,7 +20,9 @@ export class RetryTranslationUseCase {
     if (!tasks || tasks.length === 0) {
       throw new NotFoundError('Translation task not found');
     }
-    // Reset the most recent task for retry
-    await this.taskRepo.resetForRetry(tasks[0]!.id);
+    const failedTaskIds = getFailedTaskIds(tasks);
+    for (const taskId of failedTaskIds) {
+      await this.taskRepo.resetForRetry(taskId);
+    }
   }
 }

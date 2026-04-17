@@ -19,6 +19,7 @@ export class OpenAIBatchTranslationService implements IBatchTranslationService {
       '  "detected_language": the ISO 639-1 code of the detected source language (e.g. "zh", "en", "ko"),',
       '  "translations": an object keyed by language code, each value being the translated fields object.',
       'Preserve the original field structure. Skip (omit) fields that are empty or null.',
+      'Do not translate or remove non-language fields such as image_url, videoUrl, id, idx, slug, storage keys, URLs, numeric values, or department_code.',
       'Do NOT include the source language in the translations object.',
       'Use formal medical terminology throughout.',
     ].join('\n');
@@ -34,17 +35,31 @@ export class OpenAIBatchTranslationService implements IBatchTranslationService {
     });
 
     const raw = response.choices[0]?.message?.content;
+    const context = this.buildRequestContext(fields, targetLanguages, raw);
     if (!raw) {
-      throw new Error('OpenAI returned an empty response for batch translation');
+      throw new Error(`OpenAI returned an empty response for batch translation (${context})`);
     }
 
-    const parsed = JSON.parse(raw) as {
+    let parsed: {
       detected_language?: string;
       translations?: Record<string, Record<string, unknown>>;
     };
+    try {
+      parsed = JSON.parse(raw) as {
+        detected_language?: string;
+        translations?: Record<string, Record<string, unknown>>;
+      };
+    } catch (err) {
+      const parseMessage = err instanceof Error ? err.message : 'Unknown JSON parse error';
+      throw new Error(
+        `Failed to parse OpenAI batch translation response (${context}): ${parseMessage}`,
+      );
+    }
 
     if (!parsed.detected_language || !parsed.translations) {
-      throw new Error('OpenAI response is missing required fields: detected_language or translations');
+      throw new Error(
+        `OpenAI response is missing required fields: detected_language or translations (${context})`,
+      );
     }
 
     const detectedLanguage = parsed.detected_language;
@@ -54,5 +69,24 @@ export class OpenAIBatchTranslationService implements IBatchTranslationService {
     delete translations[detectedLanguage];
 
     return { detectedLanguage, translations };
+  }
+
+  private buildRequestContext(
+    fields: Record<string, unknown>,
+    targetLanguages: string[],
+    raw: string | null | undefined,
+  ): string {
+    const payloadSize = JSON.stringify(fields).length;
+    const fieldKeys = Object.keys(fields).join(',') || '(none)';
+    const responseState = raw ? 'present' : 'empty';
+    const rawLength = raw?.length ?? 0;
+
+    return [
+      `payloadSize=${payloadSize}`,
+      `fieldKeys=${fieldKeys}`,
+      `targetLanguages=${targetLanguages.join(',') || '(none)'}`,
+      `responseState=${responseState}`,
+      `rawLength=${rawLength}`,
+    ].join(' ');
   }
 }

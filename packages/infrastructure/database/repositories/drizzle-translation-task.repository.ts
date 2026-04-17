@@ -1,4 +1,4 @@
-import { eq, sql, and, inArray } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import {
   TranslationTask,
   TRANSLATION_CONFIG,
@@ -26,50 +26,17 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
       hospitalType,
       fieldsToTranslate,
       targetLanguages,
+      targetLanguage,
+      chunkKey,
     } = input;
 
-    const defaultTargetLanguages = TRANSLATION_CONFIG.defaultTargetLanguages as string[];
-    const langs = targetLanguages ?? defaultTargetLanguages;
+    const effectiveChunkKey = chunkKey ?? 'default';
+    const effectiveTargetLanguage =
+      targetLanguage ?? targetLanguages?.[0] ?? (TRANSLATION_CONFIG.defaultTargetLanguages[0] as string);
+    const langs = [effectiveTargetLanguage];
 
     // Use a transaction: SELECT FOR UPDATE, then INSERT or UPDATE
     const row = await this.db.transaction(async (tx) => {
-      // Look for an existing pending/processing task
-      const existing = await tx
-        .select()
-        .from(translationTasks)
-        .where(
-          and(
-            eq(translationTasks.sourceDb, sourceDb),
-            eq(translationTasks.entityType, entityType),
-            eq(translationTasks.entityId, entityId),
-            inArray(translationTasks.status, ['pending', 'processing']),
-          ),
-        )
-        .limit(1)
-        .for('update')
-        .execute();
-
-      if (existing.length > 0) {
-        // Update existing task — merge fields and langs, keep status=pending
-        const updateResult = await tx
-          .update(translationTasks)
-          .set({
-            fieldsToTranslate: sql`${translationTasks.fieldsToTranslate} || ${JSON.stringify(fieldsToTranslate)}::jsonb`,
-            targetLanguages: langs,
-            status: 'pending',
-          })
-          .where(eq(translationTasks.id, existing[0]!.id))
-          .returning();
-
-        const updated = updateResult[0];
-        if (!updated) {
-          throw new Error('Failed to update translation task');
-        }
-
-        return updated;
-      }
-
-      // Insert new task
       const insertResult = await tx
         .insert(translationTasks)
         .values({
@@ -78,11 +45,33 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
           entityType,
           entityId,
           hospitalType: hospitalType ?? null,
+          chunkKey: effectiveChunkKey,
           fieldsToTranslate,
           targetLanguages: langs,
+          targetLanguage: effectiveTargetLanguage,
           status: 'pending',
           retryCount: 0,
           createdAt: new Date().toISOString(),
+        })
+        .onConflictDoUpdate({
+          target: [
+            translationTasks.sourceDb,
+            translationTasks.entityType,
+            translationTasks.entityId,
+            translationTasks.chunkKey,
+            translationTasks.targetLanguage,
+          ],
+          set: {
+            fieldsToTranslate: sql`${translationTasks.fieldsToTranslate} || excluded.fields_to_translate`,
+            targetLanguages: langs,
+            hospitalType: hospitalType ?? null,
+            status: 'pending',
+            errorMessage: null,
+            retryCount: 0,
+            startedAt: null,
+            completedAt: null,
+            detectedLanguage: null,
+          },
         })
         .returning();
 
@@ -210,6 +199,7 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
     const sourceDb: SourceDb = (r.sourceDb ?? r.source_db ?? 'crm') as SourceDb;
     const entityType: string = r.entityType ?? r.entity_type;
     const entityId: string = r.entityId ?? r.entity_id;
+    const chunkKey: string = r.chunkKey ?? r.chunk_key ?? 'default';
     const hospitalType: string | null = r.hospitalType ?? r.hospital_type ?? null;
     const fieldsToTranslate: Record<string, unknown> =
       r.fieldsToTranslate ?? r.fields_to_translate ?? {};
@@ -236,6 +226,7 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
       sourceDb,
       entityType,
       entityId,
+      chunkKey,
       hospitalType,
       fieldsToTranslate,
       targetLanguages,

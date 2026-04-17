@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GetHospitalUseCase } from '../src/use-cases/hospitals/get-hospital.use-case.js';
-import type { IHospitalManagementRepository, IUserRepository } from '@medical-crm/domain';
+import type { IHospitalManagementRepository, IMaterialsRepository, IUserRepository } from '@medical-crm/domain';
 import { Hospital } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 describe('GetHospitalUseCase', () => {
   let useCase: GetHospitalUseCase;
   let mockHospitalRepo: IHospitalManagementRepository;
+  let mockMaterialsRepo: IMaterialsRepository;
   let mockUserRepo: IUserRepository;
 
   const adminActor: Actor = {
@@ -42,7 +43,7 @@ describe('GetHospitalUseCase', () => {
     logoUrl: null,
     specialties: ['Cardiology'],
     status: 'ACTIVE',
-    type: 'BEAUTY',
+    type: 'COSMETIC',
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
   });
@@ -60,7 +61,30 @@ describe('GetHospitalUseCase', () => {
       findById: vi.fn(),
       update: vi.fn(),
     };
-    useCase = new GetHospitalUseCase(mockHospitalRepo, mockUserRepo);
+    mockMaterialsRepo = {
+      getHospitalInfo: vi.fn().mockResolvedValue({
+        id: 'h-1',
+        name: 'Test Hospital',
+        slug: 'test-hospital',
+        heroImage: null,
+        photos: [],
+        highlights: [],
+      }),
+      updateHospitalInfo: vi.fn(),
+      listProcedures: vi.fn(),
+      createProcedure: vi.fn(),
+      updateProcedure: vi.fn(),
+      deleteProcedure: vi.fn(),
+      listSurgeons: vi.fn(),
+      createSurgeon: vi.fn(),
+      updateSurgeon: vi.fn(),
+      deleteSurgeon: vi.fn(),
+      listBeforeAfterCases: vi.fn(),
+      createBeforeAfterCase: vi.fn(),
+      updateBeforeAfterCase: vi.fn(),
+      deleteBeforeAfterCase: vi.fn(),
+    };
+    useCase = new GetHospitalUseCase(mockHospitalRepo, mockUserRepo, mockMaterialsRepo);
   });
 
   it('returns HospitalDTO for ADMIN actor viewing any hospital', async () => {
@@ -69,8 +93,9 @@ describe('GetHospitalUseCase', () => {
     expect(result.id).toBe('h-1');
     expect(result.name).toBe('Test Hospital');
     expect(result.status).toBe('ACTIVE');
-    expect(result.type).toBe('BEAUTY');
+    expect(result.type).toBe('COSMETIC');
     expect(result.hasRegisteredUser).toBe(true);
+    expect(result.consumerSlug).toBe('test-hospital');
     expect(mockHospitalRepo.findFullById).toHaveBeenCalledWith('h-1');
   });
 
@@ -95,6 +120,15 @@ describe('GetHospitalUseCase', () => {
 
     expect(result.hasRegisteredUser).toBe(false);
     expect(mockUserRepo.findPreferredLanguage).toHaveBeenCalledWith('h-1');
+  });
+
+  it('returns null consumerSlug when no consumer hospital record exists yet', async () => {
+    (mockMaterialsRepo.getHospitalInfo as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const result = await useCase.execute('h-1', adminActor);
+
+    expect(result.consumerSlug).toBeNull();
+    expect(mockMaterialsRepo.getHospitalInfo).toHaveBeenCalledWith('h-1');
   });
 
   it('throws NotFoundError if hospital not found', async () => {

@@ -1,5 +1,5 @@
 import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
-import type { IHospitalManagementRepository, IUserRepository } from '@medical-crm/domain';
+import type { IHospitalManagementRepository, IMaterialsRepository, IUserRepository } from '@medical-crm/domain';
 import type { Actor } from '../../types/actor.js';
 import type { HospitalDTO } from '../../dtos/hospital.dto.js';
 import { toHospitalDTO } from '../../mappers/hospital.mapper.js';
@@ -8,6 +8,7 @@ export class GetHospitalUseCase {
   constructor(
     private readonly hospitalManagementRepo: IHospitalManagementRepository,
     private readonly userRepo: IUserRepository,
+    private readonly materialsRepo: IMaterialsRepository,
   ) {}
 
   async execute(id: string, actor: Actor): Promise<HospitalDTO> {
@@ -21,10 +22,15 @@ export class GetHospitalUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    const preferredLanguage = await this.userRepo.findPreferredLanguage(id);
+    const [preferredLanguage, materialsHospitalInfo] = await Promise.all([
+      this.userRepo.findPreferredLanguage(id),
+      this.materialsRepo.getHospitalInfo(id),
+    ]);
+
     return {
       ...toHospitalDTO(hospital),
       hasRegisteredUser: preferredLanguage !== null,
+      consumerSlug: materialsHospitalInfo?.slug ?? null,
     };
   }
 }

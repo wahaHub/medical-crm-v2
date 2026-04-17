@@ -8,6 +8,8 @@ export interface EnqueueTranslationInput {
   hospitalType?: string;
   fieldsToTranslate: Record<string, unknown>;
   targetLanguages?: string[];
+  targetLanguage?: string;
+  chunkKey?: string;
 }
 
 export interface ITranslationTaskRepository {

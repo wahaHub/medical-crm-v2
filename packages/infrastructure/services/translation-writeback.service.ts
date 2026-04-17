@@ -219,7 +219,7 @@ export class TranslationWritebackService {
         await this.chinaMergeProcedureCaseTranslations(task.entityId, result.translations);
         break;
       case 'hospital_info':
-        await this.chinaWritebackHospitalInfo(task.entityId, result.translations);
+        await this.chinaWritebackHospitalInfo(task, result.translations);
         break;
       default:
         throw new Error(`Unknown Supabase China entityType for writeback: ${task.entityType}`);
@@ -298,13 +298,15 @@ export class TranslationWritebackService {
    * Upserts on (hospital_id, locale) conflict.
    */
   private async chinaWritebackHospitalInfo(
-    hospitalId: string,
+    task: TranslationTask,
     translations: Record<string, Record<string, unknown>>,
   ): Promise<void> {
-    // Fetch existing i18n rows so we can deep-merge facilities_info
+    const hospitalId = task.entityId;
+
+    // Fetch existing i18n rows so we can deep-merge facilities_info and seed locale names.
     const { data: existingRows, error: fetchError } = await this.chinaSupabase
       .from('hospital_i18n')
-      .select('locale, facilities_info')
+      .select('locale, name, display_name, facilities_info, departments_info')
       .eq('hospital_id', hospitalId);
 
     if (fetchError) throw fetchError;
@@ -312,15 +314,16 @@ export class TranslationWritebackService {
     const existingByLocale = new Map<string, Record<string, unknown>>();
     for (const row of existingRows ?? []) {
       const r = row as Record<string, unknown>;
-      existingByLocale.set(r['locale'] as string, (r['facilities_info'] as Record<string, unknown> | null) ?? {});
+      existingByLocale.set(r['locale'] as string, r);
     }
 
     for (const [locale, translatedFields] of Object.entries(translations)) {
       const row: Record<string, unknown> = {
         hospital_id: hospitalId,
         locale,
-        updated_at: new Date().toISOString(),
       };
+      const existingLocaleRow = existingByLocale.get(locale);
+      const nameSeed = this.resolveHospitalLocaleNameSeed(existingRows ?? [], existingLocaleRow, task, locale);
 
       // Apply the same field-mapping rules as updateHospitalInfo in china-medical-materials.repository.ts
       if (translatedFields['name'] !== undefined) {
@@ -350,7 +353,7 @@ export class TranslationWritebackService {
       if (translatedFields['core_specialties'] !== undefined) row['core_specialties'] = translatedFields['core_specialties'];
 
       // facilities_info: merge with existing row
-      const existingFacilitiesInfo = existingByLocale.get(locale) ?? {};
+      const existingFacilitiesInfo = (existingLocaleRow?.['facilities_info'] as Record<string, unknown> | null) ?? {};
       const hasFacilitiesUpdate =
         translatedFields['promotionalVideos'] !== undefined
         || translatedFields['videoTestimonials'] !== undefined
@@ -369,13 +372,35 @@ export class TranslationWritebackService {
 
       // departments_info: if translated fields contain structured department data
       if (translatedFields['departmentsInfo'] !== undefined) {
-        row['departments_info'] = translatedFields['departmentsInfo'];
+        row['departments_info'] = this.mergeDepartmentsInfo(
+          task.fieldsToTranslate['departmentsInfo'],
+          existingLocaleRow?.['departments_info'],
+          translatedFields['departmentsInfo'],
+        );
       }
       if (translatedFields['departments_info'] !== undefined) {
-        row['departments_info'] = translatedFields['departments_info'];
+        row['departments_info'] = this.mergeDepartmentsInfo(
+          task.fieldsToTranslate['departments_info'],
+          existingLocaleRow?.['departments_info'],
+          translatedFields['departments_info'],
+        );
       }
 
-      if (Object.keys(row).length === 3) continue;
+      if (translatedFields['equipment_translated'] !== undefined) {
+        row['equipment_translated'] = translatedFields['equipment_translated'];
+      } else if (translatedFields['equipment'] !== undefined) {
+        row['equipment_translated'] = translatedFields['equipment'];
+      }
+
+      if (Object.keys(row).length === 2) continue;
+
+      if (row['name'] === undefined && nameSeed.name !== undefined) row['name'] = nameSeed.name;
+      if (row['display_name'] === undefined) {
+        row['display_name'] = nameSeed.displayName ?? row['name'];
+      }
+      if (row['name'] === undefined && row['display_name'] !== undefined) {
+        row['name'] = row['display_name'];
+      }
 
       const { error } = await this.chinaSupabase
         .from('hospital_i18n')
@@ -404,5 +429,79 @@ export class TranslationWritebackService {
       result[lang] = { ...existingLang, ...fields };
     }
     return result;
+  }
+
+  private resolveHospitalLocaleNameSeed(
+    existingRows: Record<string, unknown>[],
+    existingLocaleRow: Record<string, unknown> | undefined,
+    task: TranslationTask,
+    locale: string,
+  ): { name?: unknown; displayName?: unknown } {
+    const fallbackRow =
+      existingLocaleRow
+      ?? existingRows.find((row) => row['locale'] === locale)
+      ?? existingRows.find((row) => row['locale'] === task.sourceLanguage)
+      ?? existingRows[0];
+
+    const taskName = task.fieldsToTranslate['name'] ?? task.fieldsToTranslate['display_name'];
+    const taskDisplayName = task.fieldsToTranslate['display_name'] ?? task.fieldsToTranslate['name'];
+    const rowName = fallbackRow?.['name'] ?? fallbackRow?.['display_name'];
+    const rowDisplayName = fallbackRow?.['display_name'] ?? fallbackRow?.['name'];
+
+    return {
+      name: rowName ?? taskName,
+      displayName: rowDisplayName ?? taskDisplayName ?? rowName ?? taskName,
+    };
+  }
+
+  private mergeDepartmentsInfo(
+    sourceValue: unknown,
+    existingValue: unknown,
+    translatedValue: unknown,
+  ): Array<Record<string, unknown>> | undefined {
+    if (!Array.isArray(translatedValue)) return undefined;
+
+    const existingEntries = Array.isArray(existingValue) ? existingValue.filter(
+      (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+    ) : [];
+    const sourceEntries = Array.isArray(sourceValue) ? sourceValue.filter(
+      (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+    ) : [];
+    const translatedEntries = translatedValue.filter(
+      (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+    );
+
+    const mergedByCode = new Map<string, Record<string, unknown>>();
+    const orderedCodes: string[] = [];
+    const anonymousEntries: Array<Record<string, unknown>> = [];
+
+    const overlayEntries = (entries: Array<Record<string, unknown>>) => {
+      for (const entry of entries) {
+        const code = entry['department_code'];
+        if (typeof code === 'string' && code.length > 0) {
+          if (!mergedByCode.has(code)) orderedCodes.push(code);
+          mergedByCode.set(code, {
+            ...(mergedByCode.get(code) ?? {}),
+            ...entry,
+          });
+          continue;
+        }
+
+        anonymousEntries.push({ ...entry });
+      }
+    };
+
+    overlayEntries(existingEntries);
+    overlayEntries(sourceEntries);
+    overlayEntries(translatedEntries);
+
+    if (mergedByCode.size === 0 && anonymousEntries.length === 0) {
+      return undefined;
+    }
+
+    return [
+      ...orderedCodes.map((code) => ({ ...mergedByCode.get(code)! })),
+      ...anonymousEntries,
+    ];
   }
 }

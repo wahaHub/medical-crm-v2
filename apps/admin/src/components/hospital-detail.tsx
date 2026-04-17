@@ -13,6 +13,7 @@ import { useHospitalCases } from '@/queries/use-hospitals';
 import type { HospitalSummary, CaseSummary } from '@/lib/api-types';
 import { updateHospitalStatus, generateRegistrationToken } from '@/actions/hospital-actions';
 import { useRouter } from 'next/navigation';
+import { buildConsumerShowcaseUrl } from '@/lib/consumer-showcase-link';
 
 interface HospitalDetailProps {
   hospital: HospitalSummary;
@@ -39,25 +40,6 @@ const HOSPITAL_STATUS_COLORS: Record<string, string> = {
   ACTIVE: 'bg-emerald-50 text-emerald-700',
   INACTIVE: 'bg-slate-100 text-slate-500',
 };
-
-const CONSUMER_REGULAR_ORIGIN =
-  process.env.NEXT_PUBLIC_CONSUMER_REGULAR_ORIGIN ?? 'https://medicaltourismchina.health';
-const CONSUMER_COSMETIC_ORIGIN =
-  process.env.NEXT_PUBLIC_CONSUMER_COSMETIC_ORIGIN ?? CONSUMER_REGULAR_ORIGIN;
-const CONSUMER_HOSPITAL_PATH_TEMPLATE =
-  process.env.NEXT_PUBLIC_CONSUMER_HOSPITAL_PATH_TEMPLATE ?? '/hospitals/{hospitalId}';
-
-function joinUrl(origin: string, path: string): string {
-  const base = origin.replace(/\/+$/, '');
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${base}${normalizedPath}`;
-}
-
-function fillTemplate(template: string, hospital: HospitalSummary): string {
-  return template
-    .replaceAll('{hospitalId}', hospital.id)
-    .replaceAll('{hospitalType}', String(hospital.type ?? '').toLowerCase());
-}
 
 const casesColumns: Column<CaseSummary>[] = [
   {
@@ -102,12 +84,7 @@ function ConsumerShowcaseLinkSection({ hospital }: { hospital: HospitalSummary }
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const consumerOrigin =
-    hospital.type === 'REGULAR' ? CONSUMER_REGULAR_ORIGIN : CONSUMER_COSMETIC_ORIGIN;
-  const consumerUrl = joinUrl(
-    consumerOrigin,
-    fillTemplate(CONSUMER_HOSPITAL_PATH_TEMPLATE, hospital),
-  );
+  const consumerUrl = buildConsumerShowcaseUrl(hospital);
   const nextStatus =
     status === 'PENDING'
       ? 'ACTIVE'
@@ -152,14 +129,20 @@ function ConsumerShowcaseLinkSection({ hospital }: { hospital: HospitalSummary }
       </h3>
       <div className="mt-3 flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <a
-            href={consumerUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="block break-all font-mono text-xs text-indigo-600 hover:text-indigo-700"
-          >
-            {consumerUrl}
-          </a>
+          {consumerUrl ? (
+            <a
+              href={consumerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block break-all font-mono text-xs text-indigo-600 hover:text-indigo-700"
+            >
+              {consumerUrl}
+            </a>
+          ) : (
+            <p className="break-all font-mono text-xs text-slate-500">
+              Consumer page slug is not available yet.
+            </p>
+          )}
           <p className="mt-1 text-xs text-slate-500">
             Domain policy: {hospital.type === 'REGULAR' ? 'REGULAR' : 'COSMETIC'} hospital
           </p>

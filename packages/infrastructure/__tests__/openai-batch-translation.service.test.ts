@@ -55,6 +55,8 @@ describe('OpenAIBatchTranslationService', () => {
     // System prompt should mention target languages
     expect(callArgs.messages[0].content).toContain('en');
     expect(callArgs.messages[0].content).toContain('ko');
+    expect(callArgs.messages[0].content).toContain('Do not translate or remove non-language fields such as image_url');
+    expect(callArgs.messages[0].content).toContain('department_code');
   });
 
   it('parses response correctly', async () => {
@@ -129,5 +131,36 @@ describe('OpenAIBatchTranslationService', () => {
         targetLanguages: ['en'],
       }),
     ).rejects.toThrow('OpenAI response is missing required fields');
+  });
+
+  it('includes request context when JSON parsing fails', async () => {
+    const mockClient = makeMockClient('{"detected_language": "zh"');
+    service['client'] = mockClient as never;
+
+    await expect(
+      service.translateBatch({
+        fields: { title: '鼻子整形', description: '改变鼻子形状的手术。' },
+        targetLanguages: ['en', 'ko'],
+      }),
+    ).rejects.toThrow(/payloadSize=.*fieldKeys=title,description.*targetLanguages=en,ko(?!.*rawPreview=)/);
+  });
+
+  it('does not include raw model output in malformed-response errors', async () => {
+    const mockClient = makeMockClient('{"unexpected":"value","sensitive":"do not persist this"}');
+    service['client'] = mockClient as never;
+
+    await expect(
+      service.translateBatch({
+        fields: { title: 'test' },
+        targetLanguages: ['en'],
+      }),
+    ).rejects.toThrow(/OpenAI response is missing required fields/);
+
+    await expect(
+      service.translateBatch({
+        fields: { title: 'test' },
+        targetLanguages: ['en'],
+      }),
+    ).rejects.not.toThrow(/do not persist this|rawPreview=/);
   });
 });

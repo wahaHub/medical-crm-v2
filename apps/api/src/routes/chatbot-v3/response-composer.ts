@@ -21,6 +21,18 @@ export interface ResponseComposerInput {
 }
 
 export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an online consultation if you want one.';
+const FAQ_DEGRADED_TEXT = 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.';
+const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
+const CONSULT_DEGRADED_TEXT = 'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.';
+const HANDOFF_DENIED_TEXT = 'Before we connect you with a human, please complete the current step first.';
+const GENERIC_DEGRADED_TEXT = 'I could not complete the requested step, but your v3 journey state is preserved.';
+
+export function didShowExplicitProcessExplanation(
+  result: ConversationOrchestratorV3TurnResult,
+): boolean {
+  return result.turnOutcome.status === 'ok'
+    && result.render.path === 'PROCESS_OVERVIEW';
+}
 
 export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResponse {
   const response: ChatbotV3ChatResponse = {
@@ -46,29 +58,44 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
       ...(input.result.runtimeDebug.lastDispatchSource
         ? { lastDispatchSource: input.result.runtimeDebug.lastDispatchSource }
         : {}),
+      ...(input.result.runtimeDebug.replayLineage
+        ? { replayLineage: input.result.runtimeDebug.replayLineage }
+        : {}),
     };
   }
 
   return response;
 }
 
-function buildAssistantText(result: ConversationOrchestratorV3TurnResult): string {
-  if (result.turnOutcome.status === 'degraded') {
-    return 'I could not complete the requested step, but your v3 journey state is preserved.';
+export function buildAssistantText(result: ConversationOrchestratorV3TurnResult): string {
+  const guidanceFamily = classifyGuidanceFamily(result);
+  if (guidanceFamily) {
+    return renderGuidanceFamilyText(guidanceFamily);
   }
 
-  const faqAnswer = readFaqAnswer(result);
-  if (faqAnswer) {
-    return faqAnswer;
+  if (result.render.path === 'FAQ_ANSWER') {
+    return readFaqAnswer(result) ?? 'I checked the explain process stage for this session.';
   }
 
-  if (isDeniedSemanticHandoff(result)) {
-    return 'Before we connect you with a human, please complete the current step first.';
+  if (result.render.path === 'PROCESS_OVERVIEW') {
+    return PROCESS_OVERVIEW_TEXT;
+  }
+
+  const recordsAssistantText = readRecordsAssistantText(result);
+  if (recordsAssistantText) {
+    return recordsAssistantText;
+  }
+
+  const recommendationAssistantText = readRecommendationAssistantText(result);
+  if (recommendationAssistantText) {
+    return recommendationAssistantText;
   }
 
   switch (result.journey.stage) {
     case 'EXPLAIN_PROCESS':
-      return PROCESS_OVERVIEW_TEXT;
+      return 'I checked the explain process stage for this session.';
+    case 'COLLECT_MINIMAL_MEDICAL_FACTS':
+      return 'Please share the key medical facts and any records you already have so I can guide the next step.';
     case 'COLLECT_MEDICAL_INPUTS':
       return 'I checked the medical input stage for this session.';
     case 'RECOMMENDATION':
@@ -80,12 +107,103 @@ function buildAssistantText(result: ConversationOrchestratorV3TurnResult): strin
   }
 }
 
+type GuidanceFamily =
+  | 'FAQ_DEGRADED'
+  | 'RECOMMENDATION_DEGRADED'
+  | 'CONSULT_DEGRADED'
+  | 'HANDOFF_DENIED'
+  | 'GENERIC_DEGRADED';
+
+function classifyGuidanceFamily(
+  result: ConversationOrchestratorV3TurnResult,
+): GuidanceFamily | null {
+  if (result.turnOutcome.status !== 'degraded') {
+    return isDeniedSemanticHandoff(result) ? 'HANDOFF_DENIED' : null;
+  }
+
+  if (result.decision.dispatchAgent === 'FaqAgent') {
+    return 'FAQ_DEGRADED';
+  }
+
+  const attemptedGuidanceFamily = classifyAttemptedDegradedGuidanceFamily(result);
+  if (attemptedGuidanceFamily) {
+    return attemptedGuidanceFamily;
+  }
+
+  const preservedStageGuidanceFamily = classifyPreservedStageDegradedGuidanceFamily(result);
+  if (preservedStageGuidanceFamily) {
+    return preservedStageGuidanceFamily;
+  }
+
+  return 'GENERIC_DEGRADED';
+}
+
+function renderGuidanceFamilyText(
+  family: GuidanceFamily,
+): string {
+  switch (family) {
+    case 'FAQ_DEGRADED':
+      return FAQ_DEGRADED_TEXT;
+    case 'RECOMMENDATION_DEGRADED':
+      return RECOMMENDATION_DEGRADED_TEXT;
+    case 'CONSULT_DEGRADED':
+      return CONSULT_DEGRADED_TEXT;
+    case 'HANDOFF_DENIED':
+      return HANDOFF_DENIED_TEXT;
+    case 'GENERIC_DEGRADED':
+      return GENERIC_DEGRADED_TEXT;
+  }
+}
+
 function isDeniedSemanticHandoff(
   result: ConversationOrchestratorV3TurnResult,
 ): boolean {
-  return result.suggestion.intent === 'handoff'
+  return result.turnOutcome.status !== 'degraded'
+    && result.suggestion.intent === 'handoff'
     && result.decision.action !== 'HANDOFF'
+    && !result.decision.dispatchAgent
     && result.journey.stage !== 'HUMAN_HANDOFF';
+}
+
+function classifyAttemptedDegradedGuidanceFamily(
+  result: ConversationOrchestratorV3TurnResult,
+): GuidanceFamily | null {
+  if (result.decision.dispatchAgent === 'ConsultAgent'
+    || result.suggestion.intent === 'consult'
+    || result.suggestion.suggestedStage === 'ONLINE_CONSULT') {
+    return 'CONSULT_DEGRADED';
+  }
+
+  if (result.decision.dispatchAgent === 'RecommendationAgent'
+    || result.suggestion.suggestedStage === 'RECOMMENDATION') {
+    return 'RECOMMENDATION_DEGRADED';
+  }
+
+  return null;
+}
+
+function classifyPreservedStageDegradedGuidanceFamily(
+  result: ConversationOrchestratorV3TurnResult,
+): GuidanceFamily | null {
+  if (
+    result.journey.stage === 'ONLINE_CONSULT'
+    && result.suggestion.intent !== 'handoff'
+    && result.suggestion.suggestedStage !== 'HUMAN_HANDOFF'
+  ) {
+    return 'CONSULT_DEGRADED';
+  }
+
+  if (
+    result.journey.stage === 'RECOMMENDATION'
+    && result.suggestion.intent !== 'consult'
+    && result.suggestion.intent !== 'handoff'
+    && result.suggestion.suggestedStage !== 'ONLINE_CONSULT'
+    && result.suggestion.suggestedStage !== 'HUMAN_HANDOFF'
+  ) {
+    return 'RECOMMENDATION_DEGRADED';
+  }
+
+  return null;
 }
 
 function readFaqAnswer(
@@ -117,6 +235,64 @@ function readFaqAnswer(
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function readRecordsAssistantText(
+  result: ConversationOrchestratorV3TurnResult,
+): string | null {
+  if (result.decision.dispatchAgent !== 'RecordsAgent') {
+    return null;
+  }
+
+  if (result.dispatchResult?.status !== 'ok') {
+    return null;
+  }
+
+  const data = asRecord(result.dispatchResult.data);
+  if (result.journey.stage === 'COLLECT_MEDICAL_INPUTS') {
+    return asString(data['collectionPrompt']);
+  }
+
+  if (result.journey.stage !== 'COLLECT_MINIMAL_MEDICAL_FACTS') {
+    return null;
+  }
+
+  if (data['records.minimal_triage.complete'] !== false) {
+    return null;
+  }
+
+  const followUp = asString(data['followUp']);
+  const questions = asArray(data['questions'])
+    .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
+    .map((question, index) => `${index + 1}. ${question.trim()}`);
+
+  if (!followUp && questions.length === 0) {
+    return null;
+  }
+
+  return [followUp, questions.join('\n')]
+    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+    .join('\n');
+}
+
+function readRecommendationAssistantText(
+  result: ConversationOrchestratorV3TurnResult,
+): string | null {
+  if (result.decision.dispatchAgent !== 'RecommendationAgent') {
+    return null;
+  }
+
+  if (result.dispatchResult?.status !== 'ok' || result.journey.stage !== 'RECOMMENDATION') {
+    return null;
+  }
+
+  const data = asRecord(result.dispatchResult.data);
+  const recommendationTask = asString(data['recommendationTask']);
+  if (recommendationTask !== 'compare' && recommendationTask !== 'explain') {
+    return null;
+  }
+
+  return asString(data['explanation']);
+}
+
 function buildCards(
   body: ChatbotV3ChatRequest,
   result: ConversationOrchestratorV3TurnResult,
@@ -139,6 +315,7 @@ function buildCards(
           },
         }],
       }];
+    case 'COLLECT_MINIMAL_MEDICAL_FACTS':
     case 'COLLECT_MEDICAL_INPUTS':
       return [{
         cardId: 'card-upload-records',

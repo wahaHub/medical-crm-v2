@@ -1,3 +1,7 @@
+import type {
+  ChatbotV3ReplayLineage,
+} from '@medical-crm/application';
+
 export interface ChatbotV3CorrelationContext {
   traceId: string;
   sessionId: string;
@@ -7,7 +11,7 @@ export interface ChatbotV3CorrelationContext {
 
 export type ChatbotV3RuntimeNode =
   | 'Supervisor'
-  | 'Orchestrator'
+  | 'JourneyRuntimeAuthority'
   | 'Subagent'
   | 'Tool'
   | 'Turn';
@@ -36,6 +40,7 @@ export interface ChatbotV3RuntimeNodeEventInput {
   toStage?: string;
   outcomeStatus?: 'ok' | 'degraded';
   degradedErrorCode?: 'TIMEOUT' | 'UPSTREAM_UNAVAILABLE' | 'UNKNOWN' | null;
+  replayLineage?: ChatbotV3ReplayLineage;
 }
 
 export interface ChatbotV3RuntimeNodeEvent extends ChatbotV3RuntimeNodeEventInput {
@@ -53,7 +58,7 @@ export interface ChatbotV3RuntimeNodeEventEmitter {
 
 export type ChatbotV3M0EventName =
   | 'supervisor_suggestion_created'
-  | 'orchestrator_decision_finalized'
+  | 'journey_runtime_authority_decision_finalized'
   | 'journey_transition_committed'
   | 'subagent_dispatched'
   | 'subagent_started'
@@ -102,7 +107,7 @@ export type ChatbotV3EventInput =
       data: ChatbotV3SupervisorSuggestionEventData;
     }
   | {
-      name: 'orchestrator_decision_finalized';
+      name: 'journey_runtime_authority_decision_finalized';
       context: ChatbotV3CorrelationContext;
       data: ChatbotV3DecisionEventData;
     }
@@ -332,7 +337,7 @@ function normalizeEvent(
     };
   }
 
-  if (input.name === 'orchestrator_decision_finalized') {
+  if (input.name === 'journey_runtime_authority_decision_finalized') {
     return {
       ...baseEvent,
       suggestedStage: input.data.suggestedStage,

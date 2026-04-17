@@ -3,23 +3,22 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import {
-  deriveJourneyTruthFromStatusSnapshot,
-  OrchestratorV3Service,
+  JourneyRuntimeAuthorityService,
+  type MinimalIntakeSeed,
   SupervisorService,
 } from '@medical-crm/application';
 import {
   AiChatSession as AiChatSessionEntity,
+  deriveCanonicalTruthFlagsFromStatusSnapshot,
 } from '@medical-crm/domain';
 import type {
   AiChatSession,
   AiChatStatusSnapshot,
-  ChatJourneyPhase,
   ChatJourneyStage,
 } from '@medical-crm/domain';
 import {
   chatbotV3ChatRequestSchema,
   chatbotV3ChatResponseSchema,
-  type ChatbotV3ChatRequest,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
 import {
@@ -30,15 +29,23 @@ import {
   RecordsAgent,
 } from './chatbot-v3/agents.js';
 import {
+  type ConversationOrchestratorV3Decision,
+  type ConversationOrchestratorV3DecisionInput,
   ConversationOrchestratorV3RuntimeService,
-  type ConversationOrchestratorV3StageRef,
+  type ConversationOrchestratorV3TurnResult,
+  deriveCurrentStageFromStatusSnapshot,
 } from './chatbot-v3/runtime.service.js';
 import {
   createToolGateway,
 } from './chatbot-v3/tool-gateway.js';
 import { createChatbotV3RuntimeNodeEventEmitter } from './chatbot-v3/observability.js';
 import { createChatbotV3FaqRouteAdapter } from './chatbot-v3/faq-route-adapter.js';
-import { composeResponse, PROCESS_OVERVIEW_TEXT } from './chatbot-v3/response-composer.js';
+import { createChatbotV3RecordsRouteAdapter } from './chatbot-v3/records-route-adapter.js';
+import { createChatbotV3RecommendationRouteAdapter } from './chatbot-v3/recommendation-route-adapter.js';
+import { createChatbotV3SupervisorRouteAdapter } from './chatbot-v3/supervisor-route-adapter.js';
+import {
+  composeResponse,
+} from './chatbot-v3/response-composer.js';
 
 type AppServices = ReturnType<typeof getServices>;
 
@@ -46,13 +53,14 @@ let chatbotV3RuntimeSingleton: ConversationOrchestratorV3RuntimeService | null =
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
 const TRACE_ID_MAX_LENGTH = 128;
-const DIRECT_HUMAN_REQUEST_PATTERNS = [
-  /\bneed (?:a |to talk to a |to speak to a )?(?:human|person|advisor|agent|operator|representative)\b/i,
-  /\b(?:want|wanna|would like) (?:a |to talk to a |to speak to a )?(?:human|person|advisor|agent|operator|representative)\b/i,
-  /\b(?:talk|speak|chat|connect|transfer|handoff|escalat(?:e|ion)?)\b[\s\w]*\b(?:human|person|advisor|agent|operator|representative)\b/i,
-  /\b(?:live|real) (?:agent|person|human)\b/i,
-] as const;
-const ACTIVE_HANDOFF_STATUSES = ['REQUESTED', 'OPEN', 'IN_PROGRESS'] as const;
+const CANONICAL_JOURNEY_ORDER = [
+  'COLLECT_MINIMAL_MEDICAL_FACTS',
+  'RECOMMENDATION',
+  'EXPLAIN_PROCESS',
+  'COLLECT_MEDICAL_INPUTS',
+  'ONLINE_CONSULT',
+  'HUMAN_HANDOFF',
+] as const satisfies readonly ChatJourneyStage[];
 const INTERNAL_FAQ_ACTOR = {
   userId: 'chatbot-v3-faq',
   email: 'internal@medora.local',
@@ -74,6 +82,7 @@ export const chatbotV3PublicRoutes = new Hono();
 chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   const body = chatbotV3ChatRequestSchema.parse(await c.req.json());
   const traceId = resolveTraceId(c);
+  const turnId = resolveTurnId(c);
   const services = getServices();
   let session = await services.aiChatSessionRepo.findBySessionId(body.sessionId);
   if (!session) {
@@ -84,23 +93,30 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     return authorization.response;
   }
   session = authorization.session;
-  const current = resolveCurrentStage(session?.statusSnapshot);
-  const suggestion = buildInitialSuggestion(current, body, {
-    canCreateHandoff: canCreateHandoffTicket(session, services),
-  });
 
   const result = await getChatbotV3Runtime().handleTurn({
     traceId,
     sessionId: body.sessionId,
-    turnId: resolveTurnId(c),
+    turnId,
     message: body.message,
     attachments: body.attachments,
     pageContext: body.pageContext,
-    current,
+    statusSnapshot: session?.statusSnapshot,
     facts: resolveFacts(session?.statusSnapshot),
+    intake: await resolveSupervisorIntakeSeed(services, session),
     handoff: resolveHandoffSignals(session?.statusSnapshot),
-    suggestion,
+    bootstrap: {
+      message: body.message,
+      attachments: body.attachments,
+      canCreateHandoff: canCreateHandoffTicket(session, services),
+    },
   });
+
+  if (session && shouldPersistAttachmentUpload(body.attachments, result)) {
+    session = await patchSessionStatus(services, session, {
+      docUploadStatus: (body.attachments?.length ?? 0) > 0 ? 'SUBMITTED' : 'IN_PROGRESS',
+    });
+  }
 
   const response = chatbotV3ChatResponseSchema.parse(composeResponse({
     body,
@@ -108,10 +124,18 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     sessionStatusSnapshot: session?.statusSnapshot,
     includeRuntimeDebug: process.env.NODE_ENV !== 'production',
   }));
-  if (shouldPersistProcessExplainedFact(session, response)) {
-    await patchSessionStatus(services, session, {
-      processExplained: true,
-    });
+  if (session) {
+    const statusPatch = filterUnchangedStatusPatch(
+      session.statusSnapshot,
+      Object.assign(
+        {},
+        result.writeIntents?.canonicalTruthPatch ?? {},
+        result.writeIntents?.conversationSummaryPatch?.statusPatch ?? {},
+      ),
+    );
+    if (Object.keys(statusPatch).length > 0) {
+      await patchSessionStatus(services, session, statusPatch);
+    }
   }
   if (authorization.sessionSecretToSet) {
     setChatbotSessionSecretCookie(c, authorization.sessionSecretToSet);
@@ -128,6 +152,7 @@ function getChatbotV3Runtime(): ConversationOrchestratorV3RuntimeService {
 }
 
 function createChatbotV3Runtime(services: AppServices): ConversationOrchestratorV3RuntimeService {
+  const journeyRuntimeAuthority = createJourneyRuntimeAuthorityAdapter();
   const nodeEventEmitter = createChatbotV3RuntimeNodeEventEmitter({
     emit: (event) => {
       if (process.env.NODE_ENV !== 'test') {
@@ -173,28 +198,113 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
       },
       handoff: {
         create: async ({ sessionId, turnId, reason }) => createHandoff(services, sessionId, turnId, reason),
+        status: async ({ sessionId }) => ({
+          state: deriveHandoffState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
+        }),
       },
     },
   });
 
   return new ConversationOrchestratorV3RuntimeService({
     idempotency: services.idempotencyExecutor,
-    supervisor: new SupervisorService(),
-    orchestrator: new OrchestratorV3Service(),
+    supervisor: new SupervisorService(createChatbotV3SupervisorRouteAdapter({
+      enabled: process.env['CHATBOT_V3_SUPERVISOR_LLM_ENABLED'] === 'true',
+    })),
+    journeyRuntimeAuthority,
     nodeEventEmitter,
     gateway: {
+      records: gateway.records,
+      recommendation: gateway.recommendation,
+      consult: gateway.consult,
+      handoff: gateway.handoff,
       status: gateway.status,
     },
     agents: {
       FaqAgent: new FaqAgent(gateway, createChatbotV3FaqRouteAdapter({
         enabled: process.env['CHATBOT_V3_FAQ_LLM_ENABLED'] === 'true',
       })),
-      RecordsAgent: new RecordsAgent(gateway),
-      RecommendationAgent: new RecommendationAgent(gateway),
+      RecordsAgent: new RecordsAgent(gateway, createChatbotV3RecordsRouteAdapter({
+        enabled: process.env['CHATBOT_V3_RECORDS_LLM_ENABLED'] === 'true',
+      })),
+      RecommendationAgent: new RecommendationAgent(gateway, createChatbotV3RecommendationRouteAdapter({
+        enabled: process.env['CHATBOT_V3_RECOMMENDATION_LLM_ENABLED'] === 'true',
+      })),
       ConsultAgent: new ConsultAgent(gateway),
       HandoffAgent: new HandoffAgent(gateway),
     },
   });
+}
+
+function createJourneyRuntimeAuthorityAdapter() {
+  const authority = new JourneyRuntimeAuthorityService();
+
+  return {
+    decide(input: ConversationOrchestratorV3DecisionInput): ConversationOrchestratorV3Decision {
+      const current = input.current ?? {
+        stage: input.currentStage ?? 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      };
+      const authorityDecision = authority.decide({
+        current,
+        proposal: input.suggestion,
+        facts: input.facts,
+        handoff: input.handoff,
+        bootstrap: input.bootstrap,
+        intake: input.intake,
+      });
+
+      if (authorityDecision.outcome === 'DENY') {
+        return {
+          action: 'STAY',
+          from: authorityDecision.from,
+          to: authorityDecision.to,
+          dispatchSource: 'journey-runtime-authority',
+          whyNotSkip: authorityDecision.reason,
+          write: authorityDecision.write,
+        };
+      }
+
+      const action = mapAuthorityActionToRuntimeAction(
+        authorityDecision.from.stage,
+        authorityDecision.to.stage,
+        authorityDecision.action,
+      );
+
+      return {
+        action,
+        from: authorityDecision.from,
+        to: action === 'STAY' ? authorityDecision.from : authorityDecision.to,
+        dispatchAgent: authorityDecision.dispatch.outcome === 'ALLOW'
+          ? authorityDecision.dispatch.agent
+          : undefined,
+        dispatchSource: 'journey-runtime-authority',
+        write: authorityDecision.write,
+      };
+    },
+  };
+}
+
+function mapAuthorityActionToRuntimeAction(
+  currentStage: ChatJourneyStage,
+  targetStage: ChatJourneyStage,
+  action: 'ADVANCE' | 'ESCALATE' | 'REPEAT' | 'STAY',
+): ConversationOrchestratorV3Decision['action'] {
+  if (action === 'ESCALATE') {
+    return 'HANDOFF';
+  }
+
+  if (currentStage === targetStage || action === 'REPEAT' || action === 'STAY') {
+    return 'STAY';
+  }
+
+  const currentIndex = CANONICAL_JOURNEY_ORDER.indexOf(currentStage);
+  const targetIndex = CANONICAL_JOURNEY_ORDER.indexOf(targetStage);
+
+  if (currentIndex >= 0 && targetIndex >= 0 && targetIndex - currentIndex === 1) {
+    return 'ADVANCE';
+  }
+
+  return 'SKIP';
 }
 
 function resolveTurnId(c: Context): string {
@@ -222,115 +332,45 @@ function resolveTraceId(c: Context): string {
   return trimmed;
 }
 
-function buildInitialSuggestion(
-  current: ConversationOrchestratorV3StageRef,
-  body: ChatbotV3ChatRequest,
-  options: {
-    canCreateHandoff: boolean;
-  },
-): {
-  intent: 'handoff' | 'progression' | 'unknown';
-  suggestedStage: ChatJourneyStage;
-  reason: string;
-} {
-  if (isDirectHumanRequest(body.message)) {
-    if (!options.canCreateHandoff) {
-      return {
-        intent: 'unknown',
-        suggestedStage: current.stage,
-        reason: 'direct human request cannot create handoff ticket for this session',
-      };
-    }
-
-    return {
-      intent: 'handoff',
-      suggestedStage: 'HUMAN_HANDOFF',
-      reason: 'direct user request for a human',
-    };
-  }
-
-  if ((body.attachments?.length ?? 0) > 0) {
-    return {
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-      reason: 'attachments provided by user',
-    };
-  }
-
-  return {
-    intent: 'unknown',
-    suggestedStage: current.stage,
-    reason: 'session-derived baseline',
-  };
-}
-
-function isDirectHumanRequest(message: string): boolean {
-  const trimmed = message.trim();
-  if (trimmed.length === 0) {
-    return false;
-  }
-
-  return DIRECT_HUMAN_REQUEST_PATTERNS.some((pattern) => pattern.test(trimmed));
-}
-
-function resolveCurrentStage(
-  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-): ConversationOrchestratorV3StageRef {
-  const storedJourney = readStoredJourneySnapshot(statusSnapshot);
-  if (storedJourney) {
-    return storedJourney;
-  }
-
-  const truth = deriveJourneyTruthFromStatusSnapshot(statusSnapshot);
-
-  if (hasActiveHandoffStatus(statusSnapshot) || hasCrisisSafetySignal(statusSnapshot)) {
-    return { stage: 'HUMAN_HANDOFF', phase: 'active' };
-  }
-
-  if (hasWorkflowStatus(statusSnapshot?.consultationStatus, ['NOT_INTRODUCED', 'NOT_STARTED'])) {
-    return {
-      stage: 'ONLINE_CONSULT',
-      phase: truth.onlineConsultSubmitted ? 'post' : 'active',
-    };
-  }
-
-  if (hasWorkflowStatus(statusSnapshot?.recommendationStatus, ['NOT_STARTED'])
-    || hasWorkflowStatus(statusSnapshot?.packageStatus, ['NOT_INTRODUCED'])) {
-    return {
-      stage: 'RECOMMENDATION',
-      phase: truth.recommendationConfirmed ? 'post' : 'active',
-    };
-  }
-
-  if (hasWorkflowStatus(statusSnapshot?.docUploadStatus, ['NONE', 'NOT_STARTED'])
-    || hasWorkflowStatus(statusSnapshot?.formStatus, ['NOT_STARTED'])) {
-    return {
-      stage: 'COLLECT_MEDICAL_INPUTS',
-      phase: truth.medicalInputsSubmitted ? 'post' : 'active',
-    };
-  }
-
-  return {
-    stage: 'EXPLAIN_PROCESS',
-    phase: 'active',
-  };
-}
-
 function resolveFacts(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): Record<string, boolean> {
-  const truth = deriveJourneyTruthFromStatusSnapshot(statusSnapshot);
-  const uploadedRecordsReady = hasAnyStatus(
-    statusSnapshot?.docUploadStatus,
-    ['COMPLETED', 'SUBMITTED', 'READY'],
+  const canonicalTruthFlags = deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot);
+  const consultScheduled = hasAnyStatus(
+    statusSnapshot?.consultationStatus,
+    ['SCHEDULED', 'BOOKED', 'COMPLETED'],
   );
 
   return {
-    'records.saved': truth.medicalInputsSubmitted || uploadedRecordsReady,
-    'recommendation.picked': truth.recommendationConfirmed,
-    'consult.scheduled': truth.onlineConsultSubmitted,
-    'process.explained': readProcessExplainedFact(statusSnapshot),
-    'handoff.active': hasActiveHandoffStatus(statusSnapshot),
+    ...canonicalTruthFlags,
+    'records.saved': canonicalTruthFlags['records.minimal_triage.complete'],
+    'recommendation.picked': canonicalTruthFlags['recommendation.selected'],
+    'consult.scheduled': consultScheduled,
+  };
+}
+
+async function resolveSupervisorIntakeSeed(
+  services: AppServices,
+  session: AiChatSession | null,
+): Promise<MinimalIntakeSeed> {
+  if (!session?.patientId) {
+    return {
+      condition: null,
+      targetDestination: null,
+      language: null,
+      gender: null,
+    };
+  }
+
+  const profile = await services.aiUserProfileRepo.findByAnonymousKeyOrPatient({
+    patientId: session.patientId,
+  });
+
+  return {
+    condition: profile?.conditionOrGoal ?? profile?.conditionCategory ?? null,
+    targetDestination: profile?.preferredDestination[0] ?? null,
+    language: profile?.preferredLanguage ?? null,
+    gender: null,
   };
 }
 
@@ -338,20 +378,8 @@ function resolveHandoffSignals(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ) {
   return {
-    userRequestedHuman: false,
     safetyPolicyHit: hasCrisisSafetySignal(statusSnapshot),
   };
-}
-
-function shouldPersistProcessExplainedFact(
-  session: AiChatSession | null,
-  response: ReturnType<typeof composeResponse>,
-): session is AiChatSession {
-  return session !== null
-    && !readProcessExplainedFact(session.statusSnapshot)
-    && response.journey.stage === 'EXPLAIN_PROCESS'
-    && response.messages.some((message) => message.text === PROCESS_OVERVIEW_TEXT)
-    && response.cards.some((card) => card.cardType === 'PROCESS_GUIDE');
 }
 
 function deriveRecordsState(
@@ -537,10 +565,31 @@ function deriveConsultState(
   return 'processing';
 }
 
+function deriveHandoffState(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): string {
+  const handoffStatus = normalizeStatus(statusSnapshot?.handoffStatus);
+
+  if (handoffStatus === 'CLOSED' || handoffStatus === 'RESOLVED') {
+    return 'closed';
+  }
+
+  if (handoffStatus === 'REQUESTED' || handoffStatus === 'OPEN' || handoffStatus === 'IN_PROGRESS') {
+    return 'active';
+  }
+
+  if (handoffStatus === 'FAILED') {
+    return 'failed';
+  }
+
+  return 'idle';
+}
+
 function buildStatusQuerySnapshot(session: AiChatSession | null): Record<string, unknown> {
   return {
     sessionStatus: session?.status ?? null,
-    current: resolveCurrentStage(session?.statusSnapshot),
+    current: deriveCurrentStageFromStatusSnapshot(session?.statusSnapshot),
+    truthFlags: session ? deriveCanonicalTruthFlagsFromStatusSnapshot(session.statusSnapshot) : null,
     statusSnapshot: serializeStatusSnapshot(session?.statusSnapshot),
   };
 }
@@ -551,6 +600,8 @@ function serializeStatusSnapshot(
   if (!statusSnapshot) {
     return null;
   }
+
+  const canonicalTruthFlags = deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot);
 
   return {
     conditionStatus: statusSnapshot.conditionStatus ?? null,
@@ -564,7 +615,13 @@ function serializeStatusSnapshot(
     trustOrObjection: statusSnapshot.trustOrObjection ?? null,
     engagementMode: statusSnapshot.engagementMode ?? null,
     enteredDeepWorkflowAt: statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
-    processExplained: readProcessExplainedFact(statusSnapshot),
+    minimalTriageComplete: canonicalTruthFlags['records.minimal_triage.complete'],
+    processExplained: canonicalTruthFlags['process.explained'],
+    recommendationGenerated: canonicalTruthFlags['recommendation.generated'],
+    recommendationSelected: canonicalTruthFlags['recommendation.selected'],
+    consultCompleted: canonicalTruthFlags['consult.completed'],
+    handoffActive: canonicalTruthFlags['handoff.active'],
+    canonicalTruthFlags,
     conversationSummary: statusSnapshot.conversationSummary ?? '',
     lastPolicyDecisionAt: statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
     lastUserMessageAt: statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -572,34 +629,10 @@ function serializeStatusSnapshot(
   };
 }
 
-function readStoredJourneySnapshot(
-  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-): ConversationOrchestratorV3StageRef | null {
-  const record = asRecord(statusSnapshot);
-  const chatbotV2 = asRecord(record['chatbot_v2'] ?? record['chatbotV2']);
-  const journey = asRecord(
-    chatbotV2['journey_snapshot']
-      ?? chatbotV2['journeySnapshot']
-      ?? record['journey_snapshot']
-      ?? record['journeySnapshot'],
-  );
-
-  const stage = asString(journey['current_stage'] ?? journey['currentStage']);
-  const phase = asString(journey['current_phase'] ?? journey['currentPhase']);
-
-  if (!isStage(stage) || !isPhase(phase)) {
-    return null;
-  }
-
-  return { stage, phase };
-}
-
 function hasActiveHandoffStatus(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): boolean {
-  return ACTIVE_HANDOFF_STATUSES.includes(
-    normalizeStatus(statusSnapshot?.handoffStatus) as (typeof ACTIVE_HANDOFF_STATUSES)[number],
-  );
+  return deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot)['handoff.active'];
 }
 
 function hasCrisisSafetySignal(
@@ -608,43 +641,12 @@ function hasCrisisSafetySignal(
   return normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';
 }
 
-function readProcessExplainedFact(
-  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-): boolean {
-  return statusSnapshot?.processExplained === true;
-}
-
-function hasWorkflowStatus(value: string | null | undefined, emptyStates: string[]): boolean {
-  const normalized = normalizeStatus(value);
-  return normalized.length > 0 && !emptyStates.includes(normalized);
-}
-
 function hasAnyStatus(value: string | null | undefined, expectedStates: string[]): boolean {
   return expectedStates.includes(normalizeStatus(value));
 }
 
 function normalizeStatus(value: string | null | undefined): string {
   return (value ?? '').trim().toUpperCase();
-}
-
-function isStage(value: string | null): value is ChatJourneyStage {
-  return value === 'EXPLAIN_PROCESS'
-    || value === 'COLLECT_MEDICAL_INPUTS'
-    || value === 'RECOMMENDATION'
-    || value === 'ONLINE_CONSULT'
-    || value === 'HUMAN_HANDOFF';
-}
-
-function isPhase(value: string | null): value is ChatJourneyPhase {
-  return value === 'pre' || value === 'active' || value === 'post';
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
 async function authorizeOrBootstrapSessionAccess(
@@ -735,26 +737,79 @@ async function generateRecommendations(
   sessionId: string,
 ): Promise<Array<Record<string, unknown>>> {
   const session = await services.aiChatSessionRepo.findBySessionId(sessionId);
-  const snapshot = session?.statusSnapshot;
-
-  if (hasAnyStatus(snapshot?.recommendationStatus, ['CONFIRMED', 'ACCEPTED'])) {
-    return [{
-      hospitalId: 'existing-selection',
-      name: 'Existing recommended hospital',
-      reason: 'Recommendation already confirmed in the session state.',
-    }];
+  if (!session) {
+    return [];
   }
 
-  if (hasAnyStatus(snapshot?.docUploadStatus, ['COMPLETED', 'SUBMITTED', 'READY'])
-    || hasAnyStatus(snapshot?.formStatus, ['COMPLETED', 'SUBMITTED'])) {
-    return [{
-      hospitalId: 'pending-review',
-      name: 'Recommendation review pending',
-      reason: 'Records are available and ready for recommendation review.',
-    }];
+  const intake = await resolveSupervisorIntakeSeed(services, session);
+  const matchedHospitals = await services.matchHospitals.execute({
+    destination: intake.targetDestination ?? undefined,
+  });
+  const recommendations = compactMatchedHospitals(matchedHospitals.hospitals, intake);
+
+  if (
+    recommendations.length > 0
+    && !deriveCanonicalTruthFlagsFromStatusSnapshot(session.statusSnapshot)['recommendation.generated']
+  ) {
+    await patchSessionStatus(services, session, {
+      recommendationGenerated: true,
+    });
   }
 
-  return [];
+  return recommendations;
+}
+
+function compactMatchedHospitals(
+  hospitals: Array<{
+    id: string;
+    name: string;
+    nameEn: string | null;
+    rating: number | null;
+    logoUrl: string | null;
+    tags: string[];
+    procedureCount: number;
+  }>,
+  intake: MinimalIntakeSeed,
+): Array<Record<string, unknown>> {
+  return hospitals.slice(0, 3).map((hospital) => {
+    const reason = buildRecommendationReason(hospital, intake);
+    return {
+      hospitalId: hospital.id,
+      name: hospital.name,
+      ...(reason ? { reason } : {}),
+    };
+  });
+}
+
+function buildRecommendationReason(
+  hospital: {
+    name: string;
+    tags: string[];
+    procedureCount: number;
+    rating: number | null;
+  },
+  intake: MinimalIntakeSeed,
+): string | null {
+  const destination = intake.targetDestination?.trim();
+  const firstTag = hospital.tags.find((tag) => tag.trim().length > 0)?.trim();
+
+  if (destination) {
+    return `Matched the requested destination: ${destination}.`;
+  }
+
+  if (firstTag) {
+    return `Active hospital candidate with ${firstTag}.`;
+  }
+
+  if (hospital.procedureCount > 0) {
+    return `Active hospital candidate in the current pool with ${hospital.procedureCount} procedures.`;
+  }
+
+  if (hospital.rating !== null) {
+    return `Active hospital candidate in the current pool.`;
+  }
+
+  return 'Active hospital candidate in the current pool.';
 }
 
 async function createHandoff(
@@ -800,6 +855,7 @@ async function createHandoff(
       });
       await patchSessionStatus(services, latestSession, {
         handoffStatus: 'REQUESTED',
+        handoffActive: true,
       });
 
       return {
@@ -860,6 +916,15 @@ async function handleRecordsSave(
   };
 }
 
+function shouldPersistAttachmentUpload(
+  attachments: Array<Record<string, unknown>> | undefined,
+  result: ConversationOrchestratorV3TurnResult,
+): boolean {
+  return (attachments?.length ?? 0) > 0
+    && result.decision.dispatchAgent === 'RecordsAgent'
+    && result.journey.stage === 'COLLECT_MINIMAL_MEDICAL_FACTS';
+}
+
 async function patchSessionStatus(
   services: AppServices,
   session: AiChatSession,
@@ -878,4 +943,21 @@ async function patchSessionStatus(
     },
     updatedAt: new Date(),
   }));
+}
+
+function filterUnchangedStatusPatch(
+  statusSnapshot: Partial<AiChatSession['statusSnapshot']> | null | undefined,
+  patch: Partial<AiChatSession['statusSnapshot']>,
+): Partial<AiChatSession['statusSnapshot']> {
+  const filteredEntries = Object.entries(patch).filter(([key, nextValue]) => {
+    const currentValue = statusSnapshot?.[key as keyof AiChatSession['statusSnapshot']];
+
+    if (currentValue instanceof Date && nextValue instanceof Date) {
+      return currentValue.toISOString() !== nextValue.toISOString();
+    }
+
+    return currentValue !== nextValue;
+  });
+
+  return Object.fromEntries(filteredEntries);
 }

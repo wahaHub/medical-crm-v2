@@ -38,7 +38,14 @@ export const chatbotV3TurnOutcomeSchema = z.object({
 }).strict();
 
 const chatbotV3JourneySchema = z.object({
-  stage: z.enum(['EXPLAIN_PROCESS', 'COLLECT_MEDICAL_INPUTS', 'RECOMMENDATION', 'ONLINE_CONSULT', 'HUMAN_HANDOFF']),
+  stage: z.enum([
+    'EXPLAIN_PROCESS',
+    'COLLECT_MINIMAL_MEDICAL_FACTS',
+    'COLLECT_MEDICAL_INPUTS',
+    'RECOMMENDATION',
+    'ONLINE_CONSULT',
+    'HUMAN_HANDOFF',
+  ]),
   phase: z.enum(['pre', 'active', 'post']),
 }).strict();
 
@@ -47,10 +54,32 @@ const chatbotV3HandoffSchema = z.object({
   ticketId: z.string().min(1).nullable(),
 }).strict();
 
+export const chatbotV3ReplayLineageSchema = z.object({
+  matchedRuleId: z.string().min(1).max(255).optional(),
+  supervisorReadDomainRequests: z.array(z.array(z.enum([
+    'records.status',
+    'recommendation.status',
+    'consult.status',
+    'handoff.status',
+  ])).max(2)).max(2).optional(),
+  supervisorReadDomainsResolved: z.array(z.enum([
+    'records.status',
+    'recommendation.status',
+    'consult.status',
+    'handoff.status',
+  ])).max(2).optional(),
+  bootstrapOverride: z.enum([
+    'direct_human_request_handoff',
+    'direct_human_request_faq_fallback',
+    'attachments_to_minimal_triage',
+  ]).optional(),
+}).strict();
+
 const chatbotV3RuntimeDebugSchema = z.object({
   traceId: z.string().min(1).max(128),
   idempotencyKey: z.string().min(1),
-  lastDispatchSource: z.literal('orchestrator').optional(),
+  lastDispatchSource: z.literal('journey-runtime-authority').optional(),
+  replayLineage: chatbotV3ReplayLineageSchema.optional(),
 }).strict();
 
 const chatbotV3ProcessGuideCardSchema = z.object({
@@ -184,6 +213,7 @@ export type ChatbotV3Message = z.infer<typeof chatbotV3MessageSchema>;
 export type ChatbotV3TurnOutcome = z.infer<typeof chatbotV3TurnOutcomeSchema>;
 export type ChatbotV3Journey = z.infer<typeof chatbotV3JourneySchema>;
 export type ChatbotV3Handoff = z.infer<typeof chatbotV3HandoffSchema>;
+export type ChatbotV3ReplayLineage = z.infer<typeof chatbotV3ReplayLineageSchema>;
 export type ChatbotV3Card = z.infer<typeof chatbotV3CardSchema>;
 export type ChatbotV3ChatResponse = z.infer<typeof chatbotV3ChatResponseSchema>;
 export type ChatbotV3Error = z.infer<typeof chatbotV3ErrorSchema>;

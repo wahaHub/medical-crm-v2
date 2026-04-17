@@ -20,6 +20,14 @@ export { WritebackPlannerService } from './services/policy-engine/writeback-plan
 export { WritebackExecutorService } from './services/policy-engine/writeback-executor.service.js';
 export { parsePolicyConfig } from './services/chatbot-v3/policy-config.service.js';
 export { SupervisorService } from './services/chatbot-v3/supervisor.service.js';
+export {
+  SUPERVISOR_AGENT_REGISTRY,
+  SUPERVISOR_REGISTRY,
+  renderSupervisorAgentRegistry,
+  renderSupervisorRegistry,
+  renderSupervisorRegistryEntry,
+} from './services/chatbot-v3/supervisor-registry.js';
+export { JourneyRuntimeAuthorityService } from './services/chatbot-v3/journey-runtime-authority.service.js';
 export { OrchestratorV3Service } from './services/chatbot-v3/orchestrator-v3.service.js';
 export { JourneyEngineService } from './services/chatbot-v2/journey-engine.service.js';
 export { deriveJourneyTruthFromStatusSnapshot } from './services/chatbot-v2/journey-truth.service.js';
@@ -42,13 +50,49 @@ export type {
   ConversationOrchestrationResult as ChatbotV2ConversationOrchestrationResult,
 } from './services/chatbot-v2/types.js';
 export type {
-  ChatbotV3JumpRule,
+  ChatbotV3BootstrapOverride,
+  ChatbotV3ConversationSummaryContract,
+  ChatbotV3BootstrapSignals,
+  ChatbotV3DispatchAgent,
+  ChatbotV3Facts,
   ChatbotV3GlobalPolicies,
-  ChatbotV3StagePrerequisite,
-  ChatbotV3StagePrerequisites,
+  ChatbotV3HandoffSignals,
+  ChatbotV3Intent,
+  ChatbotV3JumpRule,
   ChatbotV3PolicyConfig,
   ChatbotV3PolicyConfigInput,
+  ChatbotV3Suggestion,
+  ChatbotV3StagePrerequisite,
+  ChatbotV3StagePrerequisites,
+  ChatbotV3StageRef,
+  JourneyRuntimeAuthorityDecision,
+  JourneyRuntimeAuthorityDispatch,
+  JourneyRuntimeAuthorityInput,
+  JourneyRuntimeAuthorityWrite,
+  OrchestratorV3BootstrapSignals,
+  OrchestratorV3DecisionInput,
+  OrchestratorV3DispatchAgent,
+  OrchestratorV3Facts,
+  OrchestratorV3HandoffSignals,
+  OrchestratorV3Intent,
+  OrchestratorV3StageRef,
+  OrchestratorV3Suggestion,
+  SupervisorGatewayInput,
+  SupervisorDomainReadResults,
+  SupervisorDecisionLineage,
+  SupervisorOutput,
+  SupervisorReadDomain,
+  SupervisorReadHints,
+  SupervisorProposal,
+  SupervisorSuggestionSeed,
+  SupervisorTask,
 } from './services/chatbot-v3/types.js';
+export type { ChatbotV3ReplayLineage } from '@medical-crm/validation';
+export {
+  CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
+  SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
+} from './services/chatbot-v3/types.js';
+export type { MinimalIntakeSeed } from './services/chatbot-v3/minimal-intake.types.js';
 export type { LlmNodeAdapter } from './services/chatbot-v3/llm-adapter.types.js';
 
 // DTOs

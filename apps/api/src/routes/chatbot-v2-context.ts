@@ -215,6 +215,7 @@ function compareJourneySnapshots(left: JourneySnapshot, right: JourneySnapshot):
 function scoreJourneySnapshot(snapshot: JourneySnapshot): number {
   const stageOrder = [
     'EXPLAIN_PROCESS',
+    'COLLECT_MINIMAL_MEDICAL_FACTS',
     'COLLECT_MEDICAL_INPUTS',
     'RECOMMENDATION',
     'ONLINE_CONSULT',

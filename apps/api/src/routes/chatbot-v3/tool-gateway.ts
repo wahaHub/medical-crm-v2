@@ -176,6 +176,14 @@ export interface HandoffCreateOutput {
   created?: boolean;
 }
 
+export interface HandoffStatusInput {
+  sessionId: string;
+}
+
+export interface HandoffStatusOutput {
+  state: string;
+}
+
 export interface ToolGateway {
   faq: {
     categorySearch: (input: FaqCategorySearchInput) => Promise<ToolResult<FaqCategorySearchOutput>>;
@@ -201,6 +209,7 @@ export interface ToolGateway {
   };
   handoff: {
     create: (input: HandoffCreateInput) => Promise<ToolResult<HandoffCreateOutput>>;
+    status: (input: HandoffStatusInput) => Promise<ToolResult<HandoffStatusOutput>>;
   };
 }
 
@@ -229,6 +238,7 @@ export interface ToolGatewayHandlers {
   };
   handoff?: {
     create?: ToolHandler<HandoffCreateInput, HandoffCreateOutput>;
+    status?: ToolHandler<HandoffStatusInput, HandoffStatusOutput>;
   };
 }
 
@@ -268,6 +278,7 @@ export function createToolGateway({
     },
     handoff: {
       create: wrapTool('handoff.create', handlers.handoff?.create, writeTimeoutMs, true),
+      status: wrapTool('handoff.status', handlers.handoff?.status, readTimeoutMs, false),
     },
   };
 }

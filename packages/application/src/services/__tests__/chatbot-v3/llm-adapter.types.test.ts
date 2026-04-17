@@ -1,38 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import type { LlmNodeAdapter } from '../../../index.js';
 import type {
-  OrchestratorV3DecisionInput,
-  OrchestratorV3Suggestion,
-} from '../../chatbot-v3/orchestrator-v3.service.js';
+  SupervisorGatewayInput,
+  SupervisorOutput,
+} from '../../chatbot-v3/types.js';
 
 describe('LlmNodeAdapter', () => {
-  const supervisorInput: OrchestratorV3DecisionInput = {
-    current: {
-      stage: 'EXPLAIN_PROCESS',
-      phase: 'active',
+  const supervisorInput: SupervisorGatewayInput = {
+    currentStage: 'EXPLAIN_PROCESS',
+    conversationSummary: 'The user is asking how the process works.',
+    latestUserMessage: 'How long does online consult scheduling take?',
+    intake: {
+      condition: 'lung cancer',
+      targetDestination: 'Shanghai',
+      language: 'en',
+      gender: 'female',
     },
-    suggestion: {
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
-      reason: 'user is asking an faq',
-    },
-    facts: {
-      'records.saved': false,
+    availableReadDomains: ['records.status'],
+    conversationSummaryContract: {
+      owner: 'runtime',
+      refreshTrigger: 'after_final_assistant_response',
+      sizeDiscipline: 'compact',
+      freshness: 'latest_committed_turn',
+      persistenceStrategy: 'persisted_with_session',
     },
   };
 
   it('defines the minimal contract used by supervisor adapters', async () => {
-    const adapter: LlmNodeAdapter<OrchestratorV3DecisionInput, OrchestratorV3Suggestion> = {
-      promptVersion: 'supervisor-v1',
+    const adapter: LlmNodeAdapter<SupervisorGatewayInput, Partial<SupervisorOutput>> = {
+      promptVersion: 'supervisor-v2',
       run: async (input) => ({
-        intent: input.suggestion.intent,
-        suggestedStage: input.suggestion.suggestedStage,
-        reason: input.suggestion.reason,
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: `faq for ${input.latestUserMessage}`,
       }),
     };
 
-    expect(adapter.promptVersion).toBe('supervisor-v1');
-    await expect(adapter.run(supervisorInput)).resolves.toEqual(supervisorInput.suggestion);
+    expect(adapter.promptVersion).toBe('supervisor-v2');
+    await expect(adapter.run(supervisorInput)).resolves.toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      reason: 'faq for How long does online consult scheduling take?',
+    });
   });
 
   it('defines the same contract for future faq adapters', async () => {

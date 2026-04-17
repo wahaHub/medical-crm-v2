@@ -1,336 +1,137 @@
 import { describe, expect, it } from 'vitest';
+import { JourneyRuntimeAuthorityService } from '../../chatbot-v3/journey-runtime-authority.service.js';
 import { OrchestratorV3Service } from '../../chatbot-v3/orchestrator-v3.service.js';
 
 describe('OrchestratorV3Service', () => {
   const service = new OrchestratorV3Service();
+  const authority = new JourneyRuntimeAuthorityService();
 
-  it('denies skip when explain gate is not satisfied', () => {
+  it('keeps the compatibility wrapper aligned with authority-approved recommendation dispatch', () => {
+    const input = {
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
+        phase: 'active' as const,
+      },
+      suggestion: {
+        intent: 'progression' as const,
+        suggestedStage: 'RECOMMENDATION' as const,
+        dispatchAgent: 'RecommendationAgent' as const,
+        reason: 'minimal triage is complete',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+    };
+
+    const decision = service.decide(input);
+    const authorityDecision = authority.decide({
+      current: input.current,
+      proposal: input.suggestion,
+      facts: input.facts,
+    });
+
+    expect(decision).toMatchObject({
+      action: authorityDecision.action,
+      from: authorityDecision.from,
+      to: authorityDecision.to,
+      dispatchAgent: 'RecommendationAgent',
+      dispatchSource: 'orchestrator',
+    });
+  });
+
+  it('returns a deny/stay compatibility shape when authority rejects a proposal', () => {
     const decision = service.decide({
       current: {
-        stage: 'EXPLAIN_PROCESS',
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
         phase: 'active',
       },
       suggestion: {
         intent: 'progression',
         suggestedStage: 'RECOMMENDATION',
-        reason: 'user asked to jump straight to recommendations',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'jump ahead',
       },
-      facts: {},
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
     });
 
     expect(decision.action).toBe('STAY');
-    expect(decision.whyNotSkip).toContain('EXPLAIN_PROCESS');
+    expect(decision.dispatchAgent).toBeUndefined();
+    expect(decision.dispatchSource).toBe('orchestrator');
+    expect(decision.whyNotSkip).toContain('records.minimal_triage.complete');
   });
 
-  it('lets handoff hard policy win before explain/prerequisite gates', () => {
+  it('maps escalation decisions to the runtime-shell handoff shape', () => {
     const decision = service.decide({
       current: {
-        stage: 'EXPLAIN_PROCESS',
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
         phase: 'active',
       },
       suggestion: {
         intent: 'progression',
         suggestedStage: 'RECOMMENDATION',
-        reason: 'user also asked for a recommendation',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'continue',
       },
-      facts: {},
       handoff: {
         userRequestedHuman: true,
       },
     });
 
-    expect(decision.action).toBe('HANDOFF');
-  });
-
-  it('denies semantic handoff when handoffPrerequisites fail', () => {
-    const serviceWithHandoffPrerequisites = new OrchestratorV3Service({
-      globalPolicies: {
-        handoffPrerequisites: {
-          denyIfAny: ['handoff.active'],
-        },
-      },
-    });
-
-    const decision = serviceWithHandoffPrerequisites.decide({
-      current: {
-        stage: 'EXPLAIN_PROCESS',
-        phase: 'active',
-      },
-      suggestion: {
-        intent: 'handoff',
-        suggestedStage: 'HUMAN_HANDOFF',
-        reason: 'user asks for human',
-      },
-      facts: {
-        'handoff.active': true,
-      },
-    });
-
-    expect(decision.action).toBe('STAY');
-    expect(decision.whyNotSkip).toContain('handoffPrerequisites');
-  });
-
-  it('does not dispatch HandoffAgent when semantic handoff is denied in HUMAN_HANDOFF', () => {
-    const serviceWithHandoffPrerequisites = new OrchestratorV3Service({
-      globalPolicies: {
-        handoffPrerequisites: {
-          denyIfAny: ['handoff.active'],
-        },
-      },
-    });
-
-    const decision = serviceWithHandoffPrerequisites.decide({
-      current: {
+    expect(decision).toMatchObject({
+      action: 'HANDOFF',
+      to: {
         stage: 'HUMAN_HANDOFF',
         phase: 'active',
       },
-      suggestion: {
-        intent: 'handoff',
-        suggestedStage: 'HUMAN_HANDOFF',
-        reason: 'user asks for human again',
-      },
-      facts: {
-        'handoff.active': true,
-      },
-    });
-
-    expect(decision.action).toBe('STAY');
-    expect(decision.dispatchAgent).toBeUndefined();
-    expect(decision.to).toEqual({
-      stage: 'HUMAN_HANDOFF',
-      phase: 'active',
+      dispatchAgent: 'HandoffAgent',
+      dispatchSource: 'orchestrator',
     });
   });
 
-  it('keeps agent dispatch owned by orchestrator output', () => {
+  it('preserves the current phase when an authority repeat maps to compatibility stay', () => {
     const decision = service.decide({
       current: {
-        stage: 'COLLECT_MEDICAL_INPUTS',
-        phase: 'active',
+        stage: 'RECOMMENDATION',
+        phase: 'post',
       },
       suggestion: {
         intent: 'progression',
         suggestedStage: 'RECOMMENDATION',
-        reason: 'records are complete',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'refresh recommendation in place',
       },
       facts: {
-        'records.saved': true,
-        'process.explained': true,
+        'records.minimal_triage.complete': true,
       },
     });
 
-    expect(decision.dispatchAgent).toBe('RecommendationAgent');
-    expect(decision.dispatchSource).toBe('orchestrator');
+    expect(decision).toMatchObject({
+      action: 'STAY',
+      from: {
+        stage: 'RECOMMENDATION',
+        phase: 'post',
+      },
+      to: {
+        stage: 'RECOMMENDATION',
+        phase: 'post',
+      },
+      dispatchAgent: 'RecommendationAgent',
+      dispatchSource: 'orchestrator',
+    });
   });
 
-  it('does not let explain gate block progression once explain process is already in post', () => {
-    const serviceWithJumpRule = new OrchestratorV3Service({
+  it('fails loudly when callers try to pass legacy policy overrides into the compatibility wrapper', () => {
+    expect(() => new OrchestratorV3Service({
       jumpRules: [
         {
-          id: 'explain-post-to-recommendation',
+          id: 'legacy-rule',
           priority: 100,
-          fromStage: 'EXPLAIN_PROCESS',
-          toStage: 'RECOMMENDATION',
-        },
-      ],
-    });
-
-    const decision = serviceWithJumpRule.decide({
-      current: {
-        stage: 'EXPLAIN_PROCESS',
-        phase: 'post',
-      },
-      suggestion: {
-        intent: 'progression',
-        suggestedStage: 'RECOMMENDATION',
-        reason: 'explain stage is already complete',
-      },
-      facts: {
-        'records.saved': true,
-        'process.explained': true,
-      },
-    });
-
-    expect(decision.action).toBe('SKIP');
-    expect(decision.matchedRuleId).toBe('explain-post-to-recommendation');
-    expect(decision.whyNotSkip).toBeUndefined();
-  });
-
-  it('does not classify backward transitions as ADVANCE when no jump rule matches', () => {
-    const decision = service.decide({
-      current: {
-        stage: 'RECOMMENDATION',
-        phase: 'active',
-      },
-      suggestion: {
-        intent: 'progression',
-        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-        reason: 'revisit uploads',
-      },
-      facts: {
-        'records.saved': true,
-      },
-    });
-
-    expect(decision.action).toBe('STAY');
-    expect(decision.whyNotSkip).toContain('No jump rule matched');
-  });
-
-  it('requires a matching jump rule for skip transitions and returns the matched rule id', () => {
-    const serviceWithJumpRule = new OrchestratorV3Service({
-      jumpRules: [
-        {
-          id: 'collect-to-consult',
-          priority: 200,
-          fromStage: 'COLLECT_MEDICAL_INPUTS',
+          fromStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
           toStage: 'ONLINE_CONSULT',
         },
       ],
-    });
-
-    const decision = serviceWithJumpRule.decide({
-      current: {
-        stage: 'COLLECT_MEDICAL_INPUTS',
-        phase: 'post',
-      },
-      suggestion: {
-        intent: 'consult',
-        suggestedStage: 'ONLINE_CONSULT',
-        reason: 'user is ready to book consult',
-      },
-      facts: {
-        'recommendation.picked': true,
-        'process.explained': true,
-      },
-    });
-
-    expect(decision.action).toBe('SKIP');
-    expect(decision.matchedRuleId).toBe('collect-to-consult');
-  });
-
-  it('ignores legacy fact conditions on jump rules and relies on stagePrerequisites as hard gate', () => {
-    const serviceWithLegacyRule = new OrchestratorV3Service({
-      stagePrerequisites: {
-        ONLINE_CONSULT: { requiresAll: ['records.saved'] },
-      },
-      jumpRules: [
-        {
-          id: 'collect-to-consult-legacy',
-          priority: 200,
-          fromStage: 'COLLECT_MEDICAL_INPUTS',
-          toStage: 'ONLINE_CONSULT',
-          requiresAll: ['recommendation.picked'],
-        } as any,
-      ],
-    });
-
-    const decision = serviceWithLegacyRule.decide({
-      current: {
-        stage: 'COLLECT_MEDICAL_INPUTS',
-        phase: 'post',
-      },
-      suggestion: {
-        intent: 'consult',
-        suggestedStage: 'ONLINE_CONSULT',
-        reason: 'user is ready to book consult',
-      },
-      facts: {
-        'records.saved': true,
-        'recommendation.picked': false,
-      },
-    });
-
-    expect(decision.action).toBe('SKIP');
-    expect(decision.matchedRuleId).toBe('collect-to-consult-legacy');
-  });
-
-  it('keeps stagePrerequisites as a hard gate even when a jump rule path matches', () => {
-    const serviceWithLegacyRule = new OrchestratorV3Service({
-      stagePrerequisites: {
-        ONLINE_CONSULT: { requiresAll: ['records.saved'] },
-      },
-      jumpRules: [
-        {
-          id: 'collect-to-consult-legacy',
-          priority: 200,
-          fromStage: 'COLLECT_MEDICAL_INPUTS',
-          toStage: 'ONLINE_CONSULT',
-          requiresAll: ['recommendation.picked'],
-        } as any,
-      ],
-    });
-
-    const decision = serviceWithLegacyRule.decide({
-      current: {
-        stage: 'COLLECT_MEDICAL_INPUTS',
-        phase: 'post',
-      },
-      suggestion: {
-        intent: 'consult',
-        suggestedStage: 'ONLINE_CONSULT',
-        reason: 'user is ready to book consult',
-      },
-      facts: {
-        'records.saved': false,
-        'recommendation.picked': true,
-      },
-    });
-
-    expect(decision.action).toBe('STAY');
-    expect(decision.whyNotSkip).toContain('Missing prerequisites');
-  });
-
-  it('requires process.explained before downstream stages', () => {
-    const serviceWithProcessExplanationGate = new OrchestratorV3Service({
-      jumpRules: [
-        {
-          id: 'collect-to-recommendation',
-          priority: 200,
-          fromStage: 'COLLECT_MEDICAL_INPUTS',
-          toStage: 'RECOMMENDATION',
-        },
-      ],
-    });
-
-    const decision = serviceWithProcessExplanationGate.decide({
-      current: {
-        stage: 'COLLECT_MEDICAL_INPUTS',
-        phase: 'post',
-      },
-      suggestion: {
-        intent: 'progression',
-        suggestedStage: 'RECOMMENDATION',
-        reason: 'continue',
-      },
-      facts: {
-        'records.saved': true,
-        'process.explained': false,
-      },
-    });
-
-    expect(decision.action).toBe('STAY');
-    expect(decision.whyNotSkip).toContain('process.explained');
-  });
-
-  it('does not dispatch the current business agent when RECOMMENDATION prerequisites fail in-place', () => {
-    const decision = service.decide({
-      current: {
-        stage: 'RECOMMENDATION',
-        phase: 'active',
-      },
-      suggestion: {
-        intent: 'progression',
-        suggestedStage: 'RECOMMENDATION',
-        reason: 'records are saved but process explanation is still missing',
-      },
-      facts: {
-        'records.saved': true,
-        'process.explained': false,
-      },
-    });
-
-    expect(decision.action).toBe('STAY');
-    expect(decision.dispatchAgent).toBeUndefined();
-    expect(decision.whyNotSkip).toContain('process.explained');
+    })).toThrow('OrchestratorV3Service no longer accepts policy override config');
   });
 });

@@ -126,6 +126,7 @@ export type BookingRequestStatus = 'PENDING' | 'HOSPITALS_MATCHED' | 'SELECTIONS
 export type BookingConditionType = 'COSMETIC' | 'MEDICAL' | 'DENTAL' | 'WELLNESS' | 'OTHER';
 export type ChatJourneyStage =
   | 'EXPLAIN_PROCESS'
+  | 'COLLECT_MINIMAL_MEDICAL_FACTS'
   | 'COLLECT_MEDICAL_INPUTS'
   | 'RECOMMENDATION'
   | 'ONLINE_CONSULT'

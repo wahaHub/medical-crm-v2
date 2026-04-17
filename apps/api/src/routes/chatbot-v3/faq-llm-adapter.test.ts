@@ -2,8 +2,30 @@ import { describe, expect, it, vi } from 'vitest';
 import { FaqAgent } from './agents.js';
 import { FaqLlmAdapter } from './faq-llm-adapter.js';
 import { createToolGateway } from './tool-gateway.js';
+import type { FaqWorkerTask } from './worker-task.js';
+import {
+  FAQ_ANSWER_EVAL_FIXTURES,
+} from './__fixtures__/degraded-path.fixtures.js';
+
+function createFaqTask(latestUserMessage: string): FaqWorkerTask {
+  return {
+    agent: 'FaqAgent',
+    fromStage: 'EXPLAIN_PROCESS',
+    toStage: 'EXPLAIN_PROCESS',
+    latestUserMessage,
+    intent: 'faq',
+    supervisorReason: 'user is asking an faq question',
+  };
+}
 
 describe('FaqLlmAdapter', () => {
+  it('keeps the FAQ degraded-path fixture set complete', () => {
+    expect(FAQ_ANSWER_EVAL_FIXTURES.map((fixture) => fixture.id)).toEqual([
+      'faq-degraded-fallback-no-grounding',
+      'faq-low-confidence-grounded-answer',
+    ]);
+  });
+
   it('falls back to a deterministic plan when the plan output is invalid', async () => {
     const adapter = new FaqLlmAdapter({
       plan: {
@@ -17,8 +39,7 @@ describe('FaqLlmAdapter', () => {
     });
 
     await expect(adapter.plan({
-      taskPrompt: "goal=Answer the user's FAQ using the FAQ toolset only.",
-      latestUserMessage: 'How long does online consultation take to arrange?',
+      task: createFaqTask('How long does online consultation take to arrange?'),
     })).resolves.toEqual({
       query: 'How long does online consultation take to arrange?',
       reason: expect.stringContaining('fallback'),
@@ -44,8 +65,7 @@ describe('FaqLlmAdapter', () => {
     });
 
     await expect(adapter.answer({
-      taskPrompt: "goal=Answer the user's FAQ using the FAQ toolset only.",
-      latestUserMessage: 'How long does online consultation take to arrange?',
+      task: createFaqTask('How long does online consultation take to arrange?'),
       plan: {
         query: 'online consultation timing',
         reason: 'timing faq',
@@ -67,6 +87,31 @@ describe('FaqLlmAdapter', () => {
       nodeModel: 'gpt-4o-mini',
       fallbackUsed: true,
       schemaValidationFailed: true,
+    });
+  });
+
+  it.each(FAQ_ANSWER_EVAL_FIXTURES)('$id', async (fixture) => {
+    const adapter = new FaqLlmAdapter({
+      answer: {
+        promptVersion: `faq-answer-fixture:${fixture.id}`,
+        run: vi.fn(async () => fixture.rawAnswer),
+      },
+    });
+
+    await expect(adapter.answer({
+      task: createFaqTask(fixture.latestUserMessage),
+      plan: {
+        query: fixture.latestUserMessage,
+        reason: fixture.bucket,
+      },
+      matches: fixture.matches,
+      details: fixture.details,
+    })).resolves.toEqual(fixture.expected);
+
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      nodePromptVersion: `faq-answer-fixture:${fixture.id}`,
+      fallbackUsed: fixture.expectedMetadata.fallbackUsed,
+      schemaValidationFailed: fixture.expectedMetadata.schemaValidationFailed,
     });
   });
 });
@@ -128,11 +173,7 @@ describe('FaqAgent', () => {
         hospitalId: 'hospital-123',
       },
       meta: {
-        taskPrompt: [
-          'agent=FaqAgent',
-          "goal=Answer the user's FAQ using the FAQ toolset only.",
-          'latest_user_message=How long does online consultation take to arrange?',
-        ].join('\n'),
+        task: createFaqTask('How long does online consultation take to arrange?'),
       },
     });
 
@@ -204,7 +245,7 @@ describe('FaqAgent', () => {
         sessionId: 'session-faq-2',
       },
       meta: {
-        taskPrompt: "goal=Answer the user's FAQ using the FAQ toolset only.",
+        task: createFaqTask('Can I schedule a consult after the records review?'),
       },
     });
 

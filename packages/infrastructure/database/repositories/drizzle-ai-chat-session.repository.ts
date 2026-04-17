@@ -53,7 +53,12 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         trustOrObjection: entity.statusSnapshot.trustOrObjection,
         engagementMode: entity.statusSnapshot.engagementMode,
         enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+        minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
         processExplained: entity.statusSnapshot.processExplained,
+        recommendationGenerated: entity.statusSnapshot.recommendationGenerated,
+        recommendationSelected: entity.statusSnapshot.recommendationSelected,
+        consultCompleted: entity.statusSnapshot.consultCompleted,
+        handoffActive: entity.statusSnapshot.handoffActive,
         conversationSummary: entity.statusSnapshot.conversationSummary,
         lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
         lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -81,7 +86,12 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           trustOrObjection: entity.statusSnapshot.trustOrObjection,
           engagementMode: entity.statusSnapshot.engagementMode,
           enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+          minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
           processExplained: entity.statusSnapshot.processExplained,
+          recommendationGenerated: entity.statusSnapshot.recommendationGenerated,
+          recommendationSelected: entity.statusSnapshot.recommendationSelected,
+          consultCompleted: entity.statusSnapshot.consultCompleted,
+          handoffActive: entity.statusSnapshot.handoffActive,
           conversationSummary: entity.statusSnapshot.conversationSummary,
           lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
           lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
@@ -156,7 +166,12 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.enteredDeepWorkflowAt !== undefined) {
       updates.enteredDeepWorkflowAt = patch.enteredDeepWorkflowAt?.toISOString() ?? null;
     }
+    if (patch.minimalTriageComplete !== undefined) updates.minimalTriageComplete = patch.minimalTriageComplete;
     if (patch.processExplained !== undefined) updates.processExplained = patch.processExplained;
+    if (patch.recommendationGenerated !== undefined) updates.recommendationGenerated = patch.recommendationGenerated;
+    if (patch.recommendationSelected !== undefined) updates.recommendationSelected = patch.recommendationSelected;
+    if (patch.consultCompleted !== undefined) updates.consultCompleted = patch.consultCompleted;
+    if (patch.handoffActive !== undefined) updates.handoffActive = patch.handoffActive;
     if (patch.conversationSummary !== undefined) updates.conversationSummary = patch.conversationSummary;
     if (patch.lastPolicyDecisionAt !== undefined) {
       updates.lastPolicyDecisionAt = patch.lastPolicyDecisionAt?.toISOString() ?? null;
@@ -199,7 +214,12 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         trustOrObjection: row.trustOrObjection,
         engagementMode: row.engagementMode,
         enteredDeepWorkflowAt: row.enteredDeepWorkflowAt ? new Date(row.enteredDeepWorkflowAt) : null,
+        minimalTriageComplete: row.minimalTriageComplete,
         processExplained: row.processExplained,
+        recommendationGenerated: row.recommendationGenerated,
+        recommendationSelected: row.recommendationSelected,
+        consultCompleted: row.consultCompleted,
+        handoffActive: row.handoffActive,
         conversationSummary: row.conversationSummary,
         lastPolicyDecisionAt: row.lastPolicyDecisionAt ? new Date(row.lastPolicyDecisionAt) : null,
         lastUserMessageAt: row.lastUserMessageAt ? new Date(row.lastUserMessageAt) : null,

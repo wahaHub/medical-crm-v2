@@ -28,5 +28,6 @@ As of 2026-04-17 rerun:
 
 - Chunk 0 residual (baseline artifact + fail-fast guard): `spec review APPROVED`, `quality review APPROVED`
 - Chunk 8 residual (structured worker-task contract): `spec review APPROVED`, `quality review APPROVED`
+- Supervisor fallback residual (`recommendation.selected` + `process.explained` ordering): fixed at `a07da99f2ef40ae42009c2152a87dacee5539ab5`, `spec review APPROVED`, `quality review APPROVED`
 
 Note: this snapshot only records baseline/residual closure. It does not replace the live supervisor-led implementation audit for runtime behavior findings.

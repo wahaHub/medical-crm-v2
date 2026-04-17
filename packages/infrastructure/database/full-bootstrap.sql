@@ -304,6 +304,7 @@ CREATE INDEX "idx_translation_tasks_pending" ON "translation_tasks" USING btree 
 CREATE INDEX "idx_translation_tasks_status" ON "translation_tasks" USING btree ("status" text_ops);--> statement-breakpoint
 CREATE INDEX "conversations_case_id_idx" ON "conversations" USING btree ("case_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "conversations_category_idx" ON "conversations" USING btree ("category" enum_ops);--> statement-breakpoint
+CREATE UNIQUE INDEX "conversations_admin_patient_case_unique_idx" ON "conversations" USING btree ("case_id" uuid_ops) WHERE "conversations"."category" = 'ADMIN_PATIENT' and "conversations"."case_id" is not null;--> statement-breakpoint
 CREATE INDEX "idx_conversations_hospital_category_time" ON "conversations" USING btree ("hospital_id" uuid_ops,"category" enum_ops,"last_message_at" timestamptz_ops);--> statement-breakpoint
 CREATE INDEX "hospital_registration_tokens_expires_at_idx" ON "hospital_registration_tokens" USING btree ("expires_at" timestamp_ops);--> statement-breakpoint
 CREATE INDEX "hospital_registration_tokens_hospital_id_idx" ON "hospital_registration_tokens" USING btree ("hospital_id" uuid_ops);--> statement-breakpoint

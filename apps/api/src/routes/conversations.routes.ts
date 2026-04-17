@@ -102,6 +102,9 @@ app.openapi(updateConversationRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
+  if (body.assistantMode === 'AI_ACTIVE' && body.title !== undefined) {
+    return c.json({ error: 'Cannot update title while restoring AI on this endpoint' }, 400);
+  }
   if (body.assistantMode === 'AI_ACTIVE') {
     const result = await svc.resumeConversationAi.execute(id, actor);
     if (result.resumeNotice) {

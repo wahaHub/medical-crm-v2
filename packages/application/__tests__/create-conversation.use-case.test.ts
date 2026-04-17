@@ -26,7 +26,9 @@ describe('CreateConversationUseCase', () => {
     mockConversationRepo = {
       findById: vi.fn(),
       findMany: vi.fn(),
+      findByPatientId: vi.fn(),
       save: vi.fn().mockImplementation((entity: Conversation) => Promise.resolve(entity)),
+      findOrCreateAdminPatientConversation: vi.fn().mockImplementation((entity: Conversation) => Promise.resolve(entity)),
     };
     useCase = new CreateConversationUseCase(mockConversationRepo);
   });
@@ -60,6 +62,17 @@ describe('CreateConversationUseCase', () => {
 
     expect(result.category).toBe('ADMIN_HOSPITAL');
     expect(mockConversationRepo.save).toHaveBeenCalledOnce();
+  });
+
+  it('uses the admin-patient get-or-create path so concurrent creation converges on one stored conversation', async () => {
+    const result = await useCase.execute(
+      { category: 'ADMIN_PATIENT', caseId: 'case-123' },
+      adminActor,
+    );
+
+    expect(result.category).toBe('ADMIN_PATIENT');
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 
   it('sets caseId, hospitalId, and title from input', async () => {

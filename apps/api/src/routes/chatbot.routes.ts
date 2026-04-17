@@ -427,28 +427,55 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       return buildSuppressedAssistantResponse(c, session.sessionId, userMessage.id, assistantMessageId);
     }
 
-    const mirroredAssistantMessage = await tryMirrorMessageIntoConversation(svc, mirroredConversation, new Message({
-      id: assistantMessage.id,
-      conversationId: mirroredConversation.id,
-      senderId: null,
-      senderRoleOverride: AI_MIRROR_SENDER_ROLE,
-      senderNameOverride: AI_MIRROR_SENDER_NAME,
-      senderRole: AI_MIRROR_SENDER_ROLE,
-      senderName: AI_MIRROR_SENDER_NAME,
-      content: assistantMessage.content,
-      originalLanguage: null,
-      translatedContent: null,
-      messageType: 'TEXT',
-      moderationStatus: 'ALLOWED',
-      attachments: [],
-      aiSummary: null,
-      createdAt: assistantMessage.createdAt,
-    }));
+    let mirroredAssistantMessage;
+    try {
+      mirroredAssistantMessage = await persistAssistantMirrorIfConversationAllows(svc, mirroredConversation, new Message({
+        id: assistantMessage.id,
+        conversationId: mirroredConversation.id,
+        senderId: null,
+        senderRoleOverride: AI_MIRROR_SENDER_ROLE,
+        senderNameOverride: AI_MIRROR_SENDER_NAME,
+        senderRole: AI_MIRROR_SENDER_ROLE,
+        senderName: AI_MIRROR_SENDER_NAME,
+        content: assistantMessage.content,
+        originalLanguage: null,
+        translatedContent: null,
+        messageType: 'TEXT',
+        moderationStatus: 'ALLOWED',
+        attachments: [],
+        aiSummary: null,
+        createdAt: assistantMessage.createdAt,
+      }));
+    } catch (error) {
+      console.error('[chatbot-mirror] failed to persist assistant reply into formal conversation', {
+        conversationId: mirroredConversation.id,
+        sessionId: session.sessionId,
+        messageId: assistantMessage.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await invalidateAssistantDraftAfterMirrorFailure(svc, assistantMessageId);
+      return c.json({ error: 'Unable to persist assistant reply in formal conversation' }, 503);
+    }
     if (mirroredAssistantMessage) {
       wsManager.broadcast(`conv:${mirroredConversation.id}`, {
         type: 'new_message',
         data: toMessageDTO(mirroredAssistantMessage),
       });
+    } else {
+      await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
+        content: '',
+        canAnswer: false,
+        nextAction: 'HUMAN_HANDOFF',
+        metadata: {
+          ...(assistantMessage.metadata ?? {}),
+          assistantSuppressed: true,
+          suppressionReason: 'human_takeover_active',
+        },
+      });
+      if (sessionSecretToSet) {
+        setChatbotSessionSecretCookie(c, sessionSecretToSet);
+      }
+      return buildSuppressedAssistantResponse(c, session.sessionId, userMessage.id, assistantMessageId);
     }
   }
 
@@ -940,7 +967,7 @@ async function resolveAdminConversationForChatbotSession(
   }
 
   const now = new Date();
-  return svc.conversationRepo.save(new Conversation({
+  const newConversation = new Conversation({
     id: generateId(),
     caseId,
     hospitalId: null,
@@ -952,7 +979,11 @@ async function resolveAdminConversationForChatbotSession(
     lastSenderId: null,
     createdAt: now,
     updatedAt: now,
-  }));
+  });
+
+  return svc.conversationRepo.findOrCreateAdminPatientConversation
+    ? svc.conversationRepo.findOrCreateAdminPatientConversation(newConversation)
+    : svc.conversationRepo.save(newConversation);
 }
 
 async function tryResolveAdminConversationForChatbotSession(
@@ -989,34 +1020,80 @@ async function mirrorMessageIntoConversation(
   svc: ReturnType<typeof getServices>,
   conversation: Conversation,
   message: Message,
+  tx?: unknown,
 ): Promise<Message> {
-  const saved = await svc.messageRepo.save(message);
+  const messageRepo = svc.messageRepo as typeof svc.messageRepo & {
+    save(entity: Message, transaction?: unknown): Promise<Message>;
+  };
+  const conversationRepo = svc.conversationRepo as typeof svc.conversationRepo & {
+    save(entity: Conversation, transaction?: unknown): Promise<Conversation>;
+  };
+  const saved = await messageRepo.save(message, tx);
   conversation.updateLastMessage({
     id: saved.id,
     content: saved.content,
     senderId: saved.senderId,
     createdAt: saved.createdAt,
   });
-  await svc.conversationRepo.save(conversation);
+  await conversationRepo.save(conversation, tx);
   return saved;
 }
 
-async function tryMirrorMessageIntoConversation(
+async function persistAssistantMirrorIfConversationAllows(
   svc: ReturnType<typeof getServices>,
   conversation: Conversation,
   message: Message,
 ): Promise<Message | null> {
+  return svc.txRunner.run(async (tx) => {
+    const guardedConversationRepo = svc.conversationRepo as typeof svc.conversationRepo & {
+      findById(id: string, transaction?: unknown): Promise<Conversation | null>;
+      findByIdForUpdate?(id: string, transaction?: unknown): Promise<Conversation | null>;
+    };
+    const lockedConversation = (guardedConversationRepo.findByIdForUpdate
+      ? await guardedConversationRepo.findByIdForUpdate(conversation.id, tx)
+      : await guardedConversationRepo.findById(conversation.id, tx))
+      ?? conversation;
+
+    if (lockedConversation.category === 'ADMIN_PATIENT' && lockedConversation.assistantMode === 'HUMAN_TAKEOVER') {
+      return null;
+    }
+
+    return mirrorMessageIntoConversation(svc, lockedConversation, message, tx);
+  });
+}
+
+async function invalidateAssistantDraftAfterMirrorFailure(
+  svc: ReturnType<typeof getServices>,
+  assistantMessageId: string,
+): Promise<void> {
   try {
-    return await mirrorMessageIntoConversation(svc, conversation, message);
-  } catch (error) {
-    console.error('[chatbot-mirror] failed to mirror message into conversation', {
-      conversationId: conversation.id,
-      messageId: message.id,
-      senderId: message.senderId,
-      error: error instanceof Error ? error.message : String(error),
+    const invalidated = await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
+      content: '',
+      intent: null,
+      resolvedIntent: null,
+      canAnswer: false,
+      nextAction: null,
+      secondaryAction: null,
+      responseMode: null,
+      citations: [],
+      reasonCodes: [],
+      shortlist: [],
+      metadata: {
+        draftState: 'delivery_error',
+        failureStage: 'formal_conversation_mirror',
+        failureRecordedAt: new Date().toISOString(),
+      },
+      writebackStatus: 'failed',
     });
-    return null;
+
+    if (invalidated) {
+      return;
+    }
+  } catch {
+    // Fall through to best-effort deletion.
   }
+
+  await svc.aiChatMessageRepo.deleteById(assistantMessageId).catch(() => undefined);
 }
 
 async function transitionConversationToHumanTakeover(
@@ -2489,9 +2566,10 @@ function sanitizeCitationArray(value: AiChatCitation[]): AiChatCitation[] {
 }
 
 function isProviderFailedDraft(message: { role?: string | null; content?: string | null; metadata?: Record<string, unknown> | null }): boolean {
+  const draftState = asString(message.metadata?.draftState);
   return (message.role ?? '').toUpperCase() === 'ASSISTANT'
     && (message.content ?? '') === ''
-    && asString(message.metadata?.draftState) === 'provider_error';
+    && (draftState === 'provider_error' || draftState === 'delivery_error');
 }
 
 function sanitizeUnknownValue(value: unknown): unknown {

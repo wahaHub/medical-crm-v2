@@ -185,5 +185,18 @@ describe('Conversation routes', () => {
       expect(res.status).toBe(400);
       expect(mockServices.resumeConversationAi.execute).not.toHaveBeenCalled();
     });
+
+    it('rejects mixed title plus assistantMode=AI_ACTIVE payloads instead of silently dropping title', async () => {
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Keep this', assistantMode: 'AI_ACTIVE' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'Cannot update title while restoring AI on this endpoint' });
+      expect(mockServices.resumeConversationAi.execute).not.toHaveBeenCalled();
+      expect(mockServices.updateConversation.execute).not.toHaveBeenCalled();
+    });
   });
 });

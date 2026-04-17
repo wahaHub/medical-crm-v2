@@ -10,6 +10,29 @@ import { cases } from '../schema/index.js';
 export class DrizzleConversationRepository implements IConversationRepository {
   constructor(private readonly db: CrmDb) {}
 
+  private isAdminPatientCaseUniqueViolation(err: unknown): boolean {
+    let current: unknown = err;
+    while (current) {
+      if (current instanceof Error) {
+        const message = current.message.toLowerCase();
+        if (
+          message.includes('conversations_admin_patient_case_unique_idx')
+          || message.includes('duplicate key value')
+        ) {
+          return true;
+        }
+      }
+      current =
+        typeof current === 'object'
+          && current !== null
+          && 'cause' in current
+          ? (current as { cause?: unknown }).cause
+          : undefined;
+    }
+
+    return false;
+  }
+
   async findById(id: string, tx?: Transaction): Promise<Conversation | null> {
     const db = (tx as CrmDb | undefined) ?? this.db;
     const rows = await db
@@ -17,6 +40,19 @@ export class DrizzleConversationRepository implements IConversationRepository {
       .from(conversations)
       .where(eq(conversations.id, id))
       .limit(1);
+
+    if (rows.length === 0) return null;
+    return this.rowToEntity(rows[0]!);
+  }
+
+  async findByIdForUpdate(id: string, tx?: Transaction): Promise<Conversation | null> {
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    const rows = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, id))
+      .limit(1)
+      .for('update');
 
     if (rows.length === 0) return null;
     return this.rowToEntity(rows[0]!);
@@ -75,6 +111,25 @@ export class DrizzleConversationRepository implements IConversationRepository {
       .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`);
 
     return rows.map((r) => this.rowToEntity(r));
+  }
+
+  async findAdminPatientByCaseId(caseId: string, tx?: Transaction): Promise<Conversation | null> {
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    const rows = await db
+      .select()
+      .from(conversations)
+      .where(and(
+        eq(conversations.caseId, caseId),
+        eq(conversations.category, 'ADMIN_PATIENT'),
+      ))
+      .orderBy(conversations.createdAt)
+      .limit(1);
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return this.rowToEntity(rows[0]!);
   }
 
   async save(entity: Conversation, tx?: Transaction): Promise<Conversation> {
@@ -142,6 +197,32 @@ export class DrizzleConversationRepository implements IConversationRepository {
     }
 
     return this.rowToEntity(rows[0]!);
+  }
+
+  async findOrCreateAdminPatientConversation(entity: Conversation, tx?: Transaction): Promise<Conversation> {
+    if (entity.category !== 'ADMIN_PATIENT' || !entity.caseId) {
+      return this.save(entity, tx);
+    }
+
+    const existing = await this.findAdminPatientByCaseId(entity.caseId, tx);
+    if (existing) {
+      return existing;
+    }
+
+    try {
+      return await this.save(entity, tx);
+    } catch (err) {
+      if (!this.isAdminPatientCaseUniqueViolation(err)) {
+        throw err;
+      }
+
+      const resolved = await this.findAdminPatientByCaseId(entity.caseId, tx);
+      if (resolved) {
+        return resolved;
+      }
+
+      throw err;
+    }
   }
 
   private rowToEntity(row: typeof conversations.$inferSelect): Conversation {

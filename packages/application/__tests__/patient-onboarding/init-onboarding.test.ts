@@ -48,6 +48,7 @@ describe('InitOnboardingUseCase', () => {
       findMany: vi.fn(),
       findByPatientId: vi.fn().mockResolvedValue([]),
       save: vi.fn().mockImplementation((conversation: any) => Promise.resolve(conversation)),
+      findOrCreateAdminPatientConversation: vi.fn().mockImplementation((conversation: any) => Promise.resolve(conversation)),
     };
     mockAiChatSessionRepo = {
       findBySessionId: vi.fn().mockResolvedValue(null),
@@ -107,12 +108,13 @@ describe('InitOnboardingUseCase', () => {
     }));
     expect(mockCaseRepo.findByPatientId).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
-    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
-    expect(mockConversationRepo.save.mock.calls[0]?.[0]).toMatchObject({
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation.mock.calls[0]?.[0]).toMatchObject({
       caseId: result.caseId,
       category: 'ADMIN_PATIENT',
       hospitalId: null,
     });
+    expect(mockConversationRepo.findByPatientId).not.toHaveBeenCalled();
     expect(result.patientId).toBe('patient-1');
     expect(result.nextStep).toBe('select-hospitals');
     expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
@@ -155,7 +157,7 @@ describe('InitOnboardingUseCase', () => {
     expect(mockPatientRepo.createTempPatient).not.toHaveBeenCalled();
     expect(mockCaseRepo.findByPatientId).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
-    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
     expect(result.patientId).toBe('patient-123');
     expect(result.isExistingPatient).toBe(true);
     expect(result.widgetChatTarget).toEqual({
@@ -218,6 +220,25 @@ describe('InitOnboardingUseCase', () => {
 
     expect(mockPatientRepo.createTempPatient).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('reuses the stored admin-patient conversation when concurrent onboarding hits the same case guard', async () => {
+    mockEmailState({ state: 'NONE' });
+    const canonicalConversation = { id: 'conv-existing', caseId: 'case-fixed', category: 'ADMIN_PATIENT' };
+    mockCaseRepo.save.mockResolvedValueOnce({ id: 'case-fixed' });
+    mockConversationRepo.findOrCreateAdminPatientConversation.mockResolvedValueOnce(canonicalConversation);
+
+    const result = await useCase.execute({
+      email: 'new@test.com',
+      site: 'beauty',
+      name: 'New User',
+      phone: '+1234',
+      preferredLanguage: 'en',
+    });
+
+    expect(result.caseId).toBe('case-fixed');
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 
   it('rejects a hospital or admin email with EMAIL_ROLE_CONFLICT', async () => {

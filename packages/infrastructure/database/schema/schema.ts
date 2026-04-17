@@ -374,8 +374,9 @@ export const translationTasks = pgTable("translation_tasks", {
 	hospitalType: text("hospital_type"),
 	entityType: text("entity_type").notNull(),
 	entityId: uuid("entity_id").notNull(),
+	chunkKey: text("chunk_key").default('default').notNull(),
 	sourceLanguage: text("source_language").default('zh').notNull(),
-	targetLanguage: text("target_language"),
+	targetLanguage: varchar("target_language", { length: 10 }).notNull(),
 	status: text().default('pending'),
 	errorMessage: text("error_message"),
 	retryCount: integer("retry_count").default(0),
@@ -392,7 +393,7 @@ export const translationTasks = pgTable("translation_tasks", {
 	index("idx_translation_tasks_hospital_type").using("btree", table.hospitalType.asc().nullsLast().op("text_ops")),
 	index("idx_translation_tasks_pending").using("btree", table.status.asc().nullsLast().op("text_ops"), table.createdAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(status = 'pending'::text)`),
 	index("idx_translation_tasks_status").using("btree", table.status.asc().nullsLast().op("text_ops")),
-	index("translation_tasks_entity_dedup_idx").using("btree", table.sourceDb.asc(), table.entityType.asc(), table.entityId.asc()),
+	uniqueIndex("translation_tasks_entity_dedup").using("btree", table.sourceDb.asc(), table.entityType.asc(), table.entityId.asc(), table.chunkKey.asc().nullsLast().op("text_ops"), table.targetLanguage.asc().nullsLast().op("text_ops")).where(sql`(status = 'pending'::text OR status = 'processing'::text)`),
 ]);
 
 export const hospitalRegistrationTokens = pgTable("hospital_registration_tokens", {

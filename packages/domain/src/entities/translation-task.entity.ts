@@ -6,6 +6,7 @@ export interface TranslationTaskProps {
   sourceDb: SourceDb;
   entityType: string;
   entityId: string;
+  chunkKey?: string;
   hospitalType: string | null;
   fieldsToTranslate: Record<string, unknown>;
   targetLanguages: string[];
@@ -25,6 +26,7 @@ export class TranslationTask {
   readonly sourceDb: SourceDb;
   readonly entityType: string;
   readonly entityId: string;
+  readonly chunkKey: string;
   hospitalType: string | null;
   fieldsToTranslate: Record<string, unknown>;
   targetLanguages: string[];
@@ -45,6 +47,7 @@ export class TranslationTask {
     this.sourceDb = props.sourceDb;
     this.entityType = props.entityType;
     this.entityId = props.entityId;
+    this.chunkKey = props.chunkKey ?? 'default';
     this.hospitalType = props.hospitalType;
     this.fieldsToTranslate = props.fieldsToTranslate;
     this.targetLanguages = props.targetLanguages;

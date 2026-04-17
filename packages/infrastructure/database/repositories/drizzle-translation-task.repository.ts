@@ -26,10 +26,14 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
       hospitalType,
       fieldsToTranslate,
       targetLanguages,
+      targetLanguage,
+      chunkKey,
     } = input;
 
-    const defaultTargetLanguages = TRANSLATION_CONFIG.defaultTargetLanguages as string[];
-    const langs = targetLanguages ?? defaultTargetLanguages;
+    const effectiveChunkKey = chunkKey ?? 'default';
+    const effectiveTargetLanguage =
+      targetLanguage ?? targetLanguages?.[0] ?? (TRANSLATION_CONFIG.defaultTargetLanguages[0] as string);
+    const langs = [effectiveTargetLanguage];
 
     // Use a transaction: SELECT FOR UPDATE, then INSERT or UPDATE
     const row = await this.db.transaction(async (tx) => {
@@ -42,6 +46,8 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
             eq(translationTasks.sourceDb, sourceDb),
             eq(translationTasks.entityType, entityType),
             eq(translationTasks.entityId, entityId),
+            eq(translationTasks.chunkKey, effectiveChunkKey),
+            eq(translationTasks.targetLanguage, effectiveTargetLanguage),
             inArray(translationTasks.status, ['pending', 'processing']),
           ),
         )
@@ -51,11 +57,20 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
 
       if (existing.length > 0) {
         // Update existing task — merge fields and langs, keep status=pending
+        const existingFieldsToTranslate =
+          (existing[0] as Record<string, unknown>).fieldsToTranslate ??
+          (existing[0] as Record<string, unknown>).fields_to_translate ??
+          {};
         const updateResult = await tx
           .update(translationTasks)
           .set({
-            fieldsToTranslate: sql`${translationTasks.fieldsToTranslate} || ${JSON.stringify(fieldsToTranslate)}::jsonb`,
+            fieldsToTranslate: {
+              ...(existingFieldsToTranslate as Record<string, unknown>),
+              ...fieldsToTranslate,
+            },
             targetLanguages: langs,
+            targetLanguage: effectiveTargetLanguage,
+            chunkKey: effectiveChunkKey,
             status: 'pending',
           })
           .where(eq(translationTasks.id, existing[0]!.id))
@@ -78,8 +93,10 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
           entityType,
           entityId,
           hospitalType: hospitalType ?? null,
+          chunkKey: effectiveChunkKey,
           fieldsToTranslate,
           targetLanguages: langs,
+          targetLanguage: effectiveTargetLanguage,
           status: 'pending',
           retryCount: 0,
           createdAt: new Date().toISOString(),
@@ -210,6 +227,7 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
     const sourceDb: SourceDb = (r.sourceDb ?? r.source_db ?? 'crm') as SourceDb;
     const entityType: string = r.entityType ?? r.entity_type;
     const entityId: string = r.entityId ?? r.entity_id;
+    const chunkKey: string = r.chunkKey ?? r.chunk_key ?? 'default';
     const hospitalType: string | null = r.hospitalType ?? r.hospital_type ?? null;
     const fieldsToTranslate: Record<string, unknown> =
       r.fieldsToTranslate ?? r.fields_to_translate ?? {};
@@ -236,6 +254,7 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
       sourceDb,
       entityType,
       entityId,
+      chunkKey,
       hospitalType,
       fieldsToTranslate,
       targetLanguages,

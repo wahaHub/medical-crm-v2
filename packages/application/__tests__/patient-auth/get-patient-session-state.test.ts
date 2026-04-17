@@ -166,6 +166,7 @@ describe('GetPatientSessionStateUseCase', () => {
       formalConversationState: {
         activeConversationId: expect.any(String),
         conversationIds: [expect.any(String), 'conv-hosp-1'],
+        activeAssistantMode: 'AI_ACTIVE',
       },
       journeySnapshot: {
         currentStage: 'EXPLAIN_PROCESS',
@@ -208,7 +209,7 @@ describe('GetPatientSessionStateUseCase', () => {
     ]);
     mockChcRepo.findByCaseId.mockResolvedValue([]);
     mockConversationRepo.findByPatientId.mockResolvedValue([
-      { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT' },
+      { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', assistantMode: 'HUMAN_TAKEOVER' },
     ]);
 
     const result = await useCase.execute({ patientId: 'patient-1' });
@@ -237,6 +238,7 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.formalConversationState).toEqual({
       activeConversationId: 'conv-1',
       conversationIds: ['conv-1'],
+      activeAssistantMode: 'HUMAN_TAKEOVER',
     });
     expect(result.journeySnapshot).toEqual({
       currentStage: 'EXPLAIN_PROCESS',

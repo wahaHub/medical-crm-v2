@@ -208,6 +208,7 @@ import {
   ApplyAiPolicyWritebackUseCase,
 } from '@medical-crm/application';
 import type { IMagicLinkEmailService } from '@medical-crm/application';
+import { ResumeConversationAiUseCase } from '../../../packages/application/src/use-cases/conversations/resume-conversation-ai.use-case.js';
 import {
   DrizzleCaseRepository,
   DrizzleDocumentRepository,
@@ -807,6 +808,7 @@ export function getServices(): AppServices {
       idempotencyExecutor: idempotencyGuard,
       caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
+      txRunner,
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,
       difyClassifierApi: difyClassifierApiClient,
@@ -842,7 +844,8 @@ export function getServices(): AppServices {
       listConversations: new ListConversationsUseCase(conversationRepo),
       getConversation: new GetConversationUseCase(conversationRepo),
       updateConversation: new UpdateConversationUseCase(conversationRepo),
-      sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo),
+      resumeConversationAi: new ResumeConversationAiUseCase(conversationRepo, messageRepo, txRunner),
+      sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo, txRunner),
       listMessages: new ListMessagesUseCase(conversationRepo, messageRepo, routedStorageService),
       getMessage: new GetMessageUseCase(conversationRepo, messageRepo, routedStorageService),
       updateMessage: new UpdateMessageUseCase(conversationRepo, messageRepo),

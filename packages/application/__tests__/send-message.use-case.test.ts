@@ -9,6 +9,7 @@ import type {
   IPatientRepository,
   IUserRepository,
   ICaseRepository,
+  TransactionRunner,
 } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -29,6 +30,7 @@ const makeConversation = (
     lastSenderId: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
+    assistantMode: 'AI_ACTIVE',
     ...overrides,
   });
 
@@ -46,6 +48,13 @@ const hospitalActor: Actor = {
   hospitalId: 'hosp-1',
 };
 
+const patientActor: Actor = {
+  userId: 'patient-1',
+  email: 'patient@test.com',
+  role: 'PATIENT',
+  hospitalId: null,
+};
+
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 describe('SendMessageUseCase', () => {
@@ -57,6 +66,7 @@ describe('SendMessageUseCase', () => {
   let mockPatientRepo: IPatientRepository;
   let mockUserRepo: IUserRepository;
   let mockCaseRepo: ICaseRepository;
+  let mockTxRunner: TransactionRunner;
 
   beforeEach(() => {
     mockConversationRepo = {
@@ -119,6 +129,10 @@ describe('SendMessageUseCase', () => {
       countByFilters: vi.fn(),
     };
 
+    mockTxRunner = {
+      run: vi.fn(async (fn) => fn({})),
+    };
+
     useCase = new SendMessageUseCase(
       mockConversationRepo,
       mockMessageRepo,
@@ -127,6 +141,7 @@ describe('SendMessageUseCase', () => {
       mockPatientRepo,
       mockUserRepo,
       mockCaseRepo,
+      mockTxRunner,
     );
   });
 
@@ -143,8 +158,9 @@ describe('SendMessageUseCase', () => {
       adminActor,
     );
 
-    expect(result.moderationStatus).toBe('ALLOWED');
-    expect(result.translatedContent).toBe('translated text');
+    expect(result.message.moderationStatus).toBe('ALLOWED');
+    expect(result.message.senderRole).toBe('ADMIN');
+    expect(result.message.translatedContent).toBe('translated text');
     expect(mockTranslationService.translate).toHaveBeenCalledOnce();
     expect(mockMessageTaskQueue.enqueueSummarization).not.toHaveBeenCalled();
     expect(mockMessageTaskQueue.enqueueTranslation).not.toHaveBeenCalled();
@@ -163,8 +179,9 @@ describe('SendMessageUseCase', () => {
       hospitalActor,
     );
 
-    expect(result.moderationStatus).toBe('REVIEW');
-    expect(result.translatedContent).toBe('translated text');
+    expect(result.message.moderationStatus).toBe('REVIEW');
+    expect(result.message.senderRole).toBe('HOSPITAL');
+    expect(result.message.translatedContent).toBe('translated text');
     expect(mockTranslationService.translate).toHaveBeenCalledOnce();
   });
 
@@ -181,8 +198,8 @@ describe('SendMessageUseCase', () => {
       hospitalActor,
     );
 
-    expect(result.moderationStatus).toBe('ALLOWED');
-    expect(result.translatedContent).toBe('translated text');
+    expect(result.message.moderationStatus).toBe('ALLOWED');
+    expect(result.message.translatedContent).toBe('translated text');
   });
 
   // ─── Test 4: IMAGE message: no inline translation, enqueues tasks ─────────────
@@ -210,12 +227,12 @@ describe('SendMessageUseCase', () => {
     );
 
     expect(mockTranslationService.translate).not.toHaveBeenCalled();
-    expect(result.translatedContent).toBeNull();
+    expect(result.message.translatedContent).toBeNull();
     expect(mockMessageTaskQueue.enqueueSummarization).toHaveBeenCalledWith(
-      result.id,
+      result.message.id,
     );
     expect(mockMessageTaskQueue.enqueueTranslation).toHaveBeenCalledWith(
-      result.id,
+      result.message.id,
       expect.any(String),
     );
   });
@@ -235,10 +252,10 @@ describe('SendMessageUseCase', () => {
 
     expect(mockTranslationService.translate).not.toHaveBeenCalled();
     expect(mockMessageTaskQueue.enqueueSummarization).toHaveBeenCalledWith(
-      result.id,
+      result.message.id,
     );
     expect(mockMessageTaskQueue.enqueueTranslation).toHaveBeenCalledWith(
-      result.id,
+      result.message.id,
       expect.any(String),
     );
   });
@@ -365,6 +382,171 @@ describe('SendMessageUseCase', () => {
     expect(savedConv.lastSenderId).toBe(adminActor.userId);
     expect(savedConv.lastMessageId).toBeTruthy();
     expect(savedConv.lastMessageAt).toBeInstanceOf(Date);
+  });
+
+  it('transitions ADMIN_PATIENT conversations to HUMAN_TAKEOVER and appends the handoff notice on the first admin send', async () => {
+    const conversation = makeConversation({
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      title: null,
+      assistantMode: 'AI_ACTIVE',
+    });
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+    (mockConversationRepo as IConversationRepository & {
+      compareAndSetAssistantMode: (
+        id: string,
+        fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+      ) => Promise<Conversation | null>;
+    }).compareAndSetAssistantMode = vi.fn(async () => makeConversation({
+      ...conversation,
+      assistantMode: 'HUMAN_TAKEOVER',
+      hospitalId: null,
+      title: null,
+      category: 'ADMIN_PATIENT',
+    }));
+
+    const result = await useCase.execute(
+      'conv-1',
+      { content: 'A human advisor is taking over now.', messageType: 'TEXT' },
+      adminActor,
+    );
+
+    expect(mockTxRunner.run).toHaveBeenCalledOnce();
+    expect(result.message.senderId).toBe('admin-1');
+    expect(result.message.senderRole).toBe('ADMIN');
+    expect(result.sideEffectMessages).toHaveLength(1);
+    expect(mockMessageRepo.save).toHaveBeenCalledTimes(2);
+
+    const persistedAdminMessage = mockMessageRepo.save.mock.calls[0]?.[0] as Message;
+    expect(persistedAdminMessage).toMatchObject({
+      conversationId: 'conv-1',
+      senderId: 'admin-1',
+      messageType: 'TEXT',
+      content: 'A human advisor is taking over now.',
+    });
+
+    const persistedNotice = mockMessageRepo.save.mock.calls[1]?.[0] as Message;
+    expect(persistedNotice).toMatchObject({
+      conversationId: 'conv-1',
+      senderId: null,
+      senderRoleOverride: 'SYSTEM',
+      messageType: 'SYSTEM',
+      content: 'Medora AI 已转人工，现由顾问接手',
+    });
+
+    const savedConversation = mockConversationRepo.save.mock.calls.at(-1)?.[0] as Conversation;
+    expect(savedConversation.assistantMode).toBe('HUMAN_TAKEOVER');
+    expect(savedConversation.lastMessagePreview).toBe('Medora AI 已转人工，现由顾问接手');
+  });
+
+  it('does not append duplicate handoff notices when ADMIN_PATIENT is already in HUMAN_TAKEOVER', async () => {
+    const conversation = makeConversation({
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      title: null,
+      assistantMode: 'HUMAN_TAKEOVER',
+    });
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+
+    const result = await useCase.execute(
+      'conv-1',
+      { content: 'Following up as the human owner.', messageType: 'TEXT' },
+      adminActor,
+    );
+
+    expect(result.sideEffectMessages).toEqual([]);
+    expect(mockMessageRepo.save).toHaveBeenCalledTimes(1);
+    const savedConversation = mockConversationRepo.save.mock.calls.at(-1)?.[0] as Conversation;
+    expect(savedConversation.assistantMode).toBe('HUMAN_TAKEOVER');
+    expect(savedConversation.lastMessagePreview).toBe('Following up as the human owner.');
+  });
+
+  it('appends the handoff notice exactly once when concurrent first admin sends race', async () => {
+    const sharedConversation = makeConversation({
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      title: null,
+      assistantMode: 'AI_ACTIVE',
+    });
+    mockConversationRepo.findById = vi.fn(async () => sharedConversation);
+    mockConversationRepo.save = vi.fn(async (entity: Conversation) => {
+      sharedConversation.assistantMode = entity.assistantMode;
+      sharedConversation.lastMessageId = entity.lastMessageId;
+      sharedConversation.lastMessageAt = entity.lastMessageAt;
+      sharedConversation.lastMessagePreview = entity.lastMessagePreview;
+      sharedConversation.lastSenderId = entity.lastSenderId;
+      return entity;
+    });
+    (mockConversationRepo as IConversationRepository & {
+      compareAndSetAssistantMode: (
+        id: string,
+        fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+      ) => Promise<Conversation | null>;
+    }).compareAndSetAssistantMode = vi.fn(async (_id, fromMode, toMode) => {
+      if (sharedConversation.assistantMode !== fromMode) {
+        return null;
+      }
+      sharedConversation.assistantMode = toMode;
+      return makeConversation({
+        ...sharedConversation,
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+        title: null,
+        assistantMode: toMode,
+      });
+    });
+
+    const [first, second] = await Promise.all([
+      useCase.execute('conv-1', { content: 'Admin reply one', messageType: 'TEXT' }, adminActor),
+      useCase.execute('conv-1', { content: 'Admin reply two', messageType: 'TEXT' }, adminActor),
+    ]);
+
+    expect(first.sideEffectMessages.length + second.sideEffectMessages.length).toBe(1);
+    expect(
+      mockMessageRepo.save.mock.calls.filter(([entity]) => (entity as Message).messageType === 'SYSTEM'),
+    ).toHaveLength(1);
+  });
+
+  it('preserves assistantMode on patient sends in ADMIN_PATIENT conversations', async () => {
+    const conversation = makeConversation({
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      title: null,
+      assistantMode: 'AI_ACTIVE',
+    });
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+
+    const result = await useCase.execute(
+      'conv-1',
+      { content: 'Checking in again', messageType: 'TEXT' },
+      patientActor,
+    );
+
+    expect(result.sideEffectMessages).toEqual([]);
+    expect(mockMessageRepo.save).toHaveBeenCalledTimes(1);
+    const savedConversation = mockConversationRepo.save.mock.calls.at(-1)?.[0] as Conversation;
+    expect(savedConversation.assistantMode).toBe('AI_ACTIVE');
+  });
+
+  it('does not touch assistantMode for ADMIN_HOSPITAL admin replies', async () => {
+    const conversation = makeConversation({
+      category: 'ADMIN_HOSPITAL',
+      assistantMode: 'AI_ACTIVE',
+    });
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+
+    const result = await useCase.execute(
+      'conv-1',
+      { content: 'Hello hospital', messageType: 'TEXT' },
+      adminActor,
+    );
+
+    expect(result.sideEffectMessages).toEqual([]);
+    expect(mockMessageRepo.save).toHaveBeenCalledTimes(1);
+    const savedConversation = mockConversationRepo.save.mock.calls.at(-1)?.[0] as Conversation;
+    expect(savedConversation.assistantMode).toBe('AI_ACTIVE');
   });
 
   // ─── Test 10: ForbiddenError if actor lacks access ───────────────────────────

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { mockBroadcast } = vi.hoisted(() => ({
+  mockBroadcast: vi.fn(),
+}));
+vi.mock('../ws/ws-manager.js', () => ({
+  wsManager: { broadcast: mockBroadcast },
+}));
+
 // ---------------------------------------------------------------------------
 // Mock the composition root
 // ---------------------------------------------------------------------------
@@ -64,6 +71,7 @@ describe('Message routes', () => {
       id: VALID_UUID,
       caseId: VALID_UUID,
       category: 'HOSPITAL_PATIENT',
+      assistantMode: 'AI_ACTIVE',
     });
     mockServices.caseRepo.findById.mockResolvedValue({
       id: VALID_UUID,
@@ -96,7 +104,10 @@ describe('Message routes', () => {
   // -----------------------------------------------------------------------
   describe('POST /api/v2/conversations/:id/messages', () => {
     it('sends a message and returns 201', async () => {
-      const created = { id: VALID_MSG_ID };
+      const created = {
+        message: { id: VALID_MSG_ID, senderRole: 'ADMIN' },
+        sideEffectMessages: [],
+      };
       mockServices.sendMessage.execute.mockResolvedValue(created);
 
       const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
@@ -107,7 +118,11 @@ describe('Message routes', () => {
 
       expect(res.status).toBe(201);
       const body = await res.json();
-      expect(body).toEqual(created);
+      expect(body).toEqual(created.message);
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: VALID_MSG_ID, senderRole: 'ADMIN' },
+      });
       expect(mockServices.sendMessage.execute).toHaveBeenCalledWith(
         VALID_UUID,
         expect.objectContaining({ content: 'Hello world' }),
@@ -127,7 +142,10 @@ describe('Message routes', () => {
     });
 
     it('accepts attachment-only payloads', async () => {
-      const created = { id: VALID_MSG_ID };
+      const created = {
+        message: { id: VALID_MSG_ID },
+        sideEffectMessages: [],
+      };
       mockServices.sendMessage.execute.mockResolvedValue(created);
 
       const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
@@ -162,6 +180,37 @@ describe('Message routes', () => {
         }),
         expect.anything(),
       );
+    });
+
+    it('broadcasts takeover notices emitted by the send-message use case on the normal conversation channel', async () => {
+      mockServices.getConversation.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+        category: 'ADMIN_PATIENT',
+        assistantMode: 'AI_ACTIVE',
+      });
+      mockServices.sendMessage.execute.mockResolvedValue({
+        message: { id: VALID_MSG_ID, content: 'Admin reply' },
+        sideEffectMessages: [
+          { id: 'notice-1', content: 'Medora AI 已转人工，现由顾问接手', messageType: 'SYSTEM' },
+        ],
+      });
+
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Admin reply' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: VALID_MSG_ID, content: 'Admin reply' },
+      });
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: 'notice-1', content: 'Medora AI 已转人工，现由顾问接手', messageType: 'SYSTEM' },
+      });
     });
   });
 

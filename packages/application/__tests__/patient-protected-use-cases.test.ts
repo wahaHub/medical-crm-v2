@@ -205,13 +205,18 @@ describe('GetPatientConversationsUseCase', () => {
   });
 
   it('returns conversations for patient', async () => {
-    const conversations = [makeMockConversation(), makeMockConversation({ id: 'conv-2' })];
+    const conversations = [
+      makeMockConversation({ category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'HUMAN_TAKEOVER' }),
+      makeMockConversation({ id: 'conv-2', assistantMode: 'AI_ACTIVE' }),
+    ];
     vi.mocked(convRepo.findByPatientId).mockResolvedValue(conversations);
 
     const result = await useCase.execute({ patientId: 'patient-1' });
 
     expect(convRepo.findByPatientId).toHaveBeenCalledWith('patient-1');
     expect(result).toHaveLength(2);
+    expect(result[0]?.assistantMode).toBe('HUMAN_TAKEOVER');
+    expect(result[1]?.assistantMode).toBe('AI_ACTIVE');
   });
 });
 

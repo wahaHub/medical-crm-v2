@@ -18,6 +18,7 @@ export interface ConversationDTO {
   category: ConversationCategory;
   title: string | null;
   hospitalId: string | null;
+  assistantMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER';
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
   lastSenderId: string | null;

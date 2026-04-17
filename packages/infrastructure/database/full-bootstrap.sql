@@ -21,6 +21,7 @@ CREATE TYPE "public"."AuditEvent" AS ENUM('DOC_UPLOAD', 'DOC_VIEW', 'DOC_DOWNLOA
 CREATE TYPE "public"."CaseStage" AS ENUM('PENDING_ASSIGNMENT', 'TRANSFERRED_TO_HOSPITAL', 'HOSPITAL_CONTACTED', 'CONSULTATION_SCHEDULED', 'IN_TREATMENT', 'TREATMENT_COMPLETED');--> statement-breakpoint
 CREATE TYPE "public"."CaseStatus" AS ENUM('DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'ARCHIVED');--> statement-breakpoint
 CREATE TYPE "public"."ConsultationStatus" AS ENUM('SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW');--> statement-breakpoint
+CREATE TYPE "public"."ConversationAssistantMode" AS ENUM('AI_ACTIVE', 'HUMAN_TAKEOVER');--> statement-breakpoint
 CREATE TYPE "public"."ConversationCategory" AS ENUM('HOSPITAL', 'PATIENT', 'ADMIN_HOSPITAL', 'ADMIN_PATIENT', 'HOSPITAL_PATIENT');--> statement-breakpoint
 CREATE TYPE "public"."DocumentStatus" AS ENUM('PENDING', 'ACTIVE', 'DELETED');--> statement-breakpoint
 CREATE TYPE "public"."DocumentType" AS ENUM('LAB', 'IMAGING', 'DISCHARGE', 'PRESCRIPTION', 'ID', 'DIAGNOSIS', 'QUOTE', 'INVITATION', 'OTHER');--> statement-breakpoint
@@ -219,6 +220,7 @@ CREATE TABLE "conversations" (
 	"category" "ConversationCategory" NOT NULL,
 	"title" varchar(200),
 	"hospital_id" uuid,
+	"assistant_mode" "ConversationAssistantMode" DEFAULT 'AI_ACTIVE' NOT NULL,
 	"created_at" timestamp(6) DEFAULT CURRENT_TIMESTAMP NOT NULL,
 	"updated_at" timestamp(6) NOT NULL,
 	"last_message_id" uuid,

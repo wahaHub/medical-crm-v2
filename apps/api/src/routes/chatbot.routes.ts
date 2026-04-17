@@ -4,7 +4,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { AiChatCitation, AiChatSession } from '@medical-crm/domain';
 import { AiChatMessage, AiChatSession as AiChatSessionEntity, Conversation, Message } from '@medical-crm/domain';
-import { toActor } from '@medical-crm/application';
+import { toActor, toMessageDTO } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import {
   chatbotChatSchema,
@@ -25,6 +25,7 @@ import { getServices } from '../composition-root.js';
 import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
 import { resolveChatbotV2FaqGrounding } from './chatbot-v2-faq-grounding.js';
 import { buildChatbotV2PostTurnContext, buildChatbotV2TurnContext } from './chatbot-v2-context.js';
+import { wsManager } from '../ws/ws-manager.js';
 
 export const chatbotPublicRoutes = new OpenAPIHono();
 export const chatbotProtectedRoutes = new OpenAPIHono();
@@ -34,6 +35,8 @@ const PATIENT_SESSION_COOKIE = 'patient_session';
 const PATIENT_RESTORE_COOKIE = 'patient_restore';
 const AI_MIRROR_SENDER_NAME = 'Medora AI';
 const AI_MIRROR_SENDER_ROLE = 'AI';
+const SYSTEM_SENDER_NAME = 'System';
+const HUMAN_TAKEOVER_NOTICE = 'Medora AI 已转人工，现由顾问接手';
 const DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK = {
   resolvedIntent: 'UNKNOWN',
   engagementSignal: 'LIGHT_DISCOVERY',
@@ -156,21 +159,71 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     createdAt: new Date(),
   }));
 
-  const mirroredConversation = await tryResolveAdminConversationForChatbotSession(svc, session);
+  let mirroredConversation: Conversation | null = null;
+  try {
+    mirroredConversation = await resolveAdminConversationForChatbotSession(svc, session);
+  } catch (error) {
+    console.error('[chatbot-mirror] failed to resolve admin conversation', {
+      sessionId: session.sessionId,
+      patientId: session.patientId,
+      site: session.site,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json({ error: 'Unable to preserve patient turn in formal conversation' }, 503);
+  }
+
   if (mirroredConversation) {
-    await tryMirrorMessageIntoConversation(svc, mirroredConversation, new Message({
-      id: userMessage.id,
-      conversationId: mirroredConversation.id,
-      senderId: session.patientId,
-      content: normalizedUserMessage,
-      originalLanguage: null,
-      translatedContent: null,
-      messageType: 'TEXT',
-      moderationStatus: 'ALLOWED',
-      attachments: userAttachments,
-      aiSummary: null,
-      createdAt: userMessage.createdAt,
-    }));
+    let mirroredPatientMessage;
+    try {
+      mirroredPatientMessage = await mirrorMessageIntoConversation(svc, mirroredConversation, new Message({
+        id: userMessage.id,
+        conversationId: mirroredConversation.id,
+        senderId: session.patientId,
+        senderRole: 'PATIENT',
+        content: normalizedUserMessage,
+        originalLanguage: null,
+        translatedContent: null,
+        messageType: 'TEXT',
+        moderationStatus: 'ALLOWED',
+        attachments: userAttachments,
+        aiSummary: null,
+        createdAt: userMessage.createdAt,
+      }));
+    } catch (error) {
+      console.error('[chatbot-mirror] failed to preserve patient turn in conversation', {
+        conversationId: mirroredConversation.id,
+        sessionId: session.sessionId,
+        messageId: userMessage.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.json({ error: 'Unable to preserve patient turn in formal conversation' }, 503);
+    }
+    wsManager.broadcast(`conv:${mirroredConversation.id}`, {
+      type: 'new_message',
+      data: toMessageDTO(mirroredPatientMessage),
+    });
+    if (mirroredConversation.assistantMode === 'HUMAN_TAKEOVER') {
+      const suppressedAssistant = await svc.aiChatMessageRepo.create(new AiChatMessage({
+        id: generateId(),
+        sessionId: session.id,
+        role: 'ASSISTANT',
+        content: '',
+        intent: null,
+        riskLevel: null,
+        canAnswer: false,
+        nextAction: 'HUMAN_HANDOFF',
+        citations: [],
+        metadata: {
+          assistantSuppressed: true,
+          suppressionReason: 'human_takeover_active',
+        },
+        createdAt: new Date(),
+      }));
+      if (sessionSecretToSet) {
+        setChatbotSessionSecretCookie(c, sessionSecretToSet);
+      }
+      return buildSuppressedAssistantResponse(c, session.sessionId, userMessage.id, suppressedAssistant.id);
+    }
   }
 
   const assistantMessageId = generateId();
@@ -344,7 +397,37 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   }
 
   if (mirroredConversation) {
-    await tryMirrorMessageIntoConversation(svc, mirroredConversation, new Message({
+    const latestConversationState = await svc.conversationRepo.findById(mirroredConversation.id);
+    if (latestConversationState?.assistantMode === 'HUMAN_TAKEOVER' || normalized.nextAction === 'HUMAN_HANDOFF') {
+      let handoffNotice = null;
+      if (normalized.nextAction === 'HUMAN_HANDOFF') {
+        handoffNotice = await transitionConversationToHumanTakeover(svc, latestConversationState ?? mirroredConversation);
+      }
+      await svc.aiChatMessageRepo.updateMessage(assistantMessageId, {
+        content: '',
+        canAnswer: false,
+        nextAction: 'HUMAN_HANDOFF',
+        metadata: {
+          ...(assistantMessage.metadata ?? {}),
+          assistantSuppressed: true,
+          suppressionReason: normalized.nextAction === 'HUMAN_HANDOFF'
+            ? 'assistant_requested_handoff'
+            : 'human_takeover_active',
+        },
+      });
+      if (handoffNotice) {
+        wsManager.broadcast(`conv:${mirroredConversation.id}`, {
+          type: 'new_message',
+          data: handoffNotice,
+        });
+      }
+      if (sessionSecretToSet) {
+        setChatbotSessionSecretCookie(c, sessionSecretToSet);
+      }
+      return buildSuppressedAssistantResponse(c, session.sessionId, userMessage.id, assistantMessageId);
+    }
+
+    const mirroredAssistantMessage = await tryMirrorMessageIntoConversation(svc, mirroredConversation, new Message({
       id: assistantMessage.id,
       conversationId: mirroredConversation.id,
       senderId: null,
@@ -361,6 +444,12 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       aiSummary: null,
       createdAt: assistantMessage.createdAt,
     }));
+    if (mirroredAssistantMessage) {
+      wsManager.broadcast(`conv:${mirroredConversation.id}`, {
+        type: 'new_message',
+        data: toMessageDTO(mirroredAssistantMessage),
+      });
+    }
   }
 
   if (sessionSecretToSet) {
@@ -900,7 +989,7 @@ async function mirrorMessageIntoConversation(
   svc: ReturnType<typeof getServices>,
   conversation: Conversation,
   message: Message,
-): Promise<void> {
+): Promise<Message> {
   const saved = await svc.messageRepo.save(message);
   conversation.updateLastMessage({
     id: saved.id,
@@ -909,15 +998,16 @@ async function mirrorMessageIntoConversation(
     createdAt: saved.createdAt,
   });
   await svc.conversationRepo.save(conversation);
+  return saved;
 }
 
 async function tryMirrorMessageIntoConversation(
   svc: ReturnType<typeof getServices>,
   conversation: Conversation,
   message: Message,
-): Promise<void> {
+): Promise<Message | null> {
   try {
-    await mirrorMessageIntoConversation(svc, conversation, message);
+    return await mirrorMessageIntoConversation(svc, conversation, message);
   } catch (error) {
     console.error('[chatbot-mirror] failed to mirror message into conversation', {
       conversationId: conversation.id,
@@ -925,7 +1015,120 @@ async function tryMirrorMessageIntoConversation(
       senderId: message.senderId,
       error: error instanceof Error ? error.message : String(error),
     });
+    return null;
   }
+}
+
+async function transitionConversationToHumanTakeover(
+  svc: ReturnType<typeof getServices>,
+  conversation: Conversation,
+): Promise<ReturnType<typeof toMessageDTO> | null> {
+  if (conversation.category !== 'ADMIN_PATIENT') {
+    return null;
+  }
+  if (conversation.assistantMode === 'HUMAN_TAKEOVER') {
+    return null;
+  }
+
+  return svc.txRunner.run(async (tx) => {
+    const guardedConversationRepo = svc.conversationRepo as typeof svc.conversationRepo & {
+      findById(id: string, transaction?: unknown): Promise<Conversation | null>;
+      save(entity: Conversation, transaction?: unknown): Promise<Conversation>;
+      compareAndSetAssistantMode?(
+        id: string,
+        fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        transaction?: unknown,
+      ): Promise<Conversation | null>;
+    };
+    const latestConversation = (await guardedConversationRepo.findById(conversation.id, tx)) ?? conversation;
+
+    if (latestConversation.assistantMode === 'HUMAN_TAKEOVER') {
+      return null;
+    }
+
+    const transitionedConversation = guardedConversationRepo.compareAndSetAssistantMode
+      ? await guardedConversationRepo.compareAndSetAssistantMode(
+          latestConversation.id,
+          'AI_ACTIVE',
+          'HUMAN_TAKEOVER',
+          tx,
+        )
+      : (() => {
+          latestConversation.assistantMode = 'HUMAN_TAKEOVER';
+          return latestConversation;
+        })();
+
+    if (!transitionedConversation) {
+      return null;
+    }
+
+    const message = await (svc.messageRepo as typeof svc.messageRepo & {
+      save(entity: Message, transaction?: unknown): Promise<Message>;
+    }).save(new Message({
+      id: generateId(),
+      conversationId: transitionedConversation.id,
+      senderId: null,
+      senderRoleOverride: 'SYSTEM',
+      senderNameOverride: SYSTEM_SENDER_NAME,
+      senderRole: 'SYSTEM',
+      senderName: SYSTEM_SENDER_NAME,
+      content: HUMAN_TAKEOVER_NOTICE,
+      originalLanguage: 'zh',
+      translatedContent: null,
+      messageType: 'SYSTEM',
+      moderationStatus: 'ALLOWED',
+      attachments: [],
+      aiSummary: null,
+      createdAt: new Date(),
+    }), tx);
+
+    transitionedConversation.updateLastMessage({
+      id: message.id,
+      content: message.content,
+      senderId: message.senderId,
+      createdAt: message.createdAt,
+    });
+    await guardedConversationRepo.save(transitionedConversation, tx);
+    return toMessageDTO(message);
+  });
+}
+
+function buildSuppressedAssistantResponse(
+  c: Context,
+  sessionId: string,
+  userMessageId: string,
+  assistantMessageId: string,
+): Response {
+  return c.json({
+    sessionId,
+    messageId: assistantMessageId,
+    answer: '',
+    intent: null,
+    nextAction: 'HUMAN_HANDOFF',
+    topic: null,
+    riskLevel: null,
+    canAnswer: false,
+    secondaryAction: null,
+    responseMode: null,
+    citations: [],
+    collectedFields: null,
+    missingItems: [],
+    recommendedProviders: [],
+    reasonCodes: [],
+    shortlist: [],
+    journeySnapshot: {
+      currentStage: 'HUMAN_HANDOFF',
+      currentPhase: 'active',
+    },
+    resources: [],
+    blocks: [],
+    metadata: {},
+    history: {
+      userMessageId,
+      assistantMessageId,
+    },
+  }, 200);
 }
 
 function hashSessionSecret(value: string): string {

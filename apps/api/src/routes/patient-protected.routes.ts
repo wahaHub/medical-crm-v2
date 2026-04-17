@@ -206,16 +206,15 @@ app.get('/conversations/:convId/messages', async (c) => {
   const query = listMessagesQuerySchema.parse(c.req.query());
   const session = c.get('patientSession');
   const convId = c.req.param('convId');
-  const { listMessages } = getServices();
+  const { listMessages, getConversation } = getServices();
   const actor = toPatientActor(session);
   const result = await listMessages.execute(convId, { page: 1, limit: query.limit }, actor);
+  const conversation = await getConversation.execute(convId, actor);
   const data = result.data.map((message) => ({
     ...message,
-    senderRole: message.senderRole?.toUpperCase() === 'AI'
-      ? 'AI'
-      : (message.senderId === session.userId ? 'PATIENT' : 'HOSPITAL'),
+    senderRole: resolvePatientVisibleSenderRole(message.senderRole, message.senderId, message.messageType, session.userId),
   }));
-  const response = { ...result, data };
+  const response = { ...result, assistantMode: conversation.assistantMode, data };
   return c.json(response);
 });
 
@@ -255,11 +254,12 @@ app.post('/conversations/:convId/messages', async (c) => {
   const convId = c.req.param('convId');
   const { sendMessage } = getServices();
   const actor = toPatientActor(session);
-  const result = await sendMessage.execute(convId, {
+  const executionResult = await sendMessage.execute(convId, {
     content: body.content,
     messageType: body.messageType,
     attachments: body.attachments,
   }, actor);
+  const result = 'message' in executionResult ? executionResult.message : executionResult;
   const response = {
     ...result,
     senderRole: 'PATIENT',
@@ -270,6 +270,19 @@ app.post('/conversations/:convId/messages', async (c) => {
   });
   return c.json(response);
 });
+
+function resolvePatientVisibleSenderRole(
+  senderRole: string | null,
+  senderId: string | null,
+  messageType: string,
+  patientId: string,
+): 'AI' | 'PATIENT' | 'ADMIN' | 'HOSPITAL' | 'SYSTEM' {
+  if (messageType === 'SYSTEM' || senderRole?.toUpperCase() === 'SYSTEM') return 'SYSTEM';
+  if (senderRole?.toUpperCase() === 'AI') return 'AI';
+  if (senderRole?.toUpperCase() === 'ADMIN') return 'ADMIN';
+  if (senderId === patientId) return 'PATIENT';
+  return 'HOSPITAL';
+}
 
 // GET /cases
 app.get('/cases', async (c) => {

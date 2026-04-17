@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { mockBroadcast } = vi.hoisted(() => ({
+  mockBroadcast: vi.fn(),
+}));
+vi.mock('../ws/ws-manager.js', () => ({
+  wsManager: { broadcast: mockBroadcast },
+}));
+
 // ---------------------------------------------------------------------------
 // Mock the composition root
 // ---------------------------------------------------------------------------
@@ -8,6 +15,7 @@ const mockServices = {
   listConversations: { execute: vi.fn() },
   getConversation: { execute: vi.fn() },
   updateConversation: { execute: vi.fn() },
+  resumeConversationAi: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -140,6 +148,42 @@ describe('Conversation routes', () => {
         expect.objectContaining({ title: 'Updated' }),
         expect.anything(),
       );
+    });
+
+    it('routes assistantMode=AI_ACTIVE through the dedicated resume use case and broadcasts the resume notice', async () => {
+      mockServices.resumeConversationAi.execute.mockResolvedValue({
+        conversation: { id: VALID_UUID, assistantMode: 'AI_ACTIVE' },
+        resumeNotice: { id: 'notice-1', content: 'Medora AI 已重新接入，可继续为您提供初步协助', messageType: 'SYSTEM' },
+      });
+
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assistantMode: 'AI_ACTIVE' }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.resumeConversationAi.execute).toHaveBeenCalledWith(
+        VALID_UUID,
+        expect.anything(),
+      );
+      expect(mockServices.updateConversation.execute).not.toHaveBeenCalled();
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: 'notice-1', content: 'Medora AI 已重新接入，可继续为您提供初步协助', messageType: 'SYSTEM' },
+      });
+      expect(await res.json()).toEqual({ id: VALID_UUID, assistantMode: 'AI_ACTIVE' });
+    });
+
+    it('rejects direct HUMAN_TAKEOVER writes on the public update route', async () => {
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assistantMode: 'HUMAN_TAKEOVER' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.resumeConversationAi.execute).not.toHaveBeenCalled();
     });
   });
 });

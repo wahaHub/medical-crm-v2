@@ -8,6 +8,7 @@ export function toConversationDTO(entity: Conversation): ConversationDTO {
     category: entity.category,
     title: entity.title,
     hospitalId: entity.hospitalId,
+    assistantMode: entity.assistantMode,
     lastMessageAt: entity.lastMessageAt?.toISOString() ?? null,
     lastMessagePreview: entity.lastMessagePreview,
     lastSenderId: entity.lastSenderId,

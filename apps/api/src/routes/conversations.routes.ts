@@ -7,6 +7,7 @@ import {
   conversationListQuerySchema,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
+import { wsManager } from '../ws/ws-manager.js';
 
 const app = new OpenAPIHono();
 
@@ -101,6 +102,17 @@ app.openapi(updateConversationRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
+  if (body.assistantMode === 'AI_ACTIVE') {
+    const result = await svc.resumeConversationAi.execute(id, actor);
+    if (result.resumeNotice) {
+      wsManager.broadcast(`conv:${id}`, {
+        type: 'new_message',
+        data: result.resumeNotice,
+      });
+    }
+    return c.json(result.conversation, 200);
+  }
+
   const result = await svc.updateConversation.execute(id, body, actor);
   return c.json(result, 200);
 });

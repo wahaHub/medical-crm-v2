@@ -6,6 +6,7 @@ import { toConversationDTO } from '../../mappers/conversation.mapper.js';
 
 export interface UpdateConversationInput {
   title?: string;
+  assistantMode?: 'AI_ACTIVE';
 }
 
 export class UpdateConversationUseCase {

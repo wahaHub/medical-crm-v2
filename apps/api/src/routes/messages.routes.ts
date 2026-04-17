@@ -122,11 +122,19 @@ app.openapi(sendMessageRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
   const conversation = await svc.getConversation.execute(id, actor);
-  const result = await svc.sendMessage.execute(id, body, actor);
+  const executionResult = await svc.sendMessage.execute(id, body, actor);
+  const result = 'message' in executionResult ? executionResult.message : executionResult;
+  const sideEffectMessages = 'sideEffectMessages' in executionResult ? executionResult.sideEffectMessages : [];
   wsManager.broadcast(`conv:${id}`, {
     type: 'new_message',
     data: result,
   });
+  for (const sideEffectMessage of sideEffectMessages) {
+    wsManager.broadcast(`conv:${id}`, {
+      type: 'new_message',
+      data: sideEffectMessage,
+    });
+  }
 
   if (conversation.caseId) {
     const caseEntity = await svc.caseRepo.findById(conversation.caseId);

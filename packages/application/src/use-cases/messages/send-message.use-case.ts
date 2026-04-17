@@ -12,6 +12,8 @@ import type {
   ModerationStatus,
   Attachment,
   Conversation,
+  TransactionRunner,
+  Transaction,
 } from '@medical-crm/domain';
 import type { Actor } from '../../types/actor.js';
 import type { MessageDTO } from '../../dtos/conversation.dto.js';
@@ -23,6 +25,28 @@ export interface SendMessageInput {
   attachments?: Attachment[];
 }
 
+export interface SendMessageResult {
+  message: MessageDTO;
+  sideEffectMessages: MessageDTO[];
+}
+
+type TxConversationRepository = IConversationRepository & {
+  findById(id: string, tx?: Transaction): Promise<Conversation | null>;
+  save(entity: Conversation, tx?: Transaction): Promise<Conversation>;
+  compareAndSetAssistantMode?(
+    id: string,
+    fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+    toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+    tx?: Transaction,
+  ): Promise<Conversation | null>;
+};
+
+type TxMessageRepository = IMessageRepository & {
+  save(entity: Message, tx?: Transaction): Promise<Message>;
+};
+
+const HANDOFF_NOTICE = 'Medora AI 已转人工，现由顾问接手';
+
 export class SendMessageUseCase {
   constructor(
     private readonly conversationRepo: IConversationRepository,
@@ -32,13 +56,14 @@ export class SendMessageUseCase {
     private readonly patientRepo: IPatientRepository,
     private readonly userRepo: IUserRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly txRunner: TransactionRunner,
   ) {}
 
   async execute(
     conversationId: string,
     input: SendMessageInput,
     actor: Actor,
-  ): Promise<MessageDTO> {
+  ): Promise<SendMessageResult> {
     // 1. Validate access
     const conversation = await this.conversationRepo.findById(conversationId);
     if (!conversation) throw new NotFoundError('Conversation not found');
@@ -56,6 +81,7 @@ export class SendMessageUseCase {
       id: generateId(),
       conversationId,
       senderId: actor.userId,
+      senderRole: actor.role,
       content: input.content,
       originalLanguage: this.detectLanguage(input.content),
       translatedContent: null,
@@ -76,15 +102,26 @@ export class SendMessageUseCase {
     }
 
     // 6. Save message (before enqueue!)
-    const saved = await this.messageRepo.save(message);
+    const isAdminTakeoverCandidate = actor.role === 'ADMIN' && conversation.category === 'ADMIN_PATIENT';
+
+    const result = isAdminTakeoverCandidate
+      ? await this.txRunner.run(async (tx) => this.persistAdminTakeoverMessage(tx, conversationId, message))
+      : await this.persistStandardMessage(conversation, message);
 
     // 7. IMAGE/FILE: async enqueue
     if (messageType === 'IMAGE' || messageType === 'FILE') {
-      await this.messageTaskQueue.enqueueSummarization(saved.id);
-      await this.messageTaskQueue.enqueueTranslation(saved.id, recipientLang);
+      await this.messageTaskQueue.enqueueSummarization(result.message.id);
+      await this.messageTaskQueue.enqueueTranslation(result.message.id, recipientLang);
     }
 
-    // 8. Update conversation lastMessage* fields
+    return result;
+  }
+
+  private async persistStandardMessage(
+    conversation: Conversation,
+    message: Message,
+  ): Promise<SendMessageResult> {
+    const saved = await this.messageRepo.save(message);
     conversation.updateLastMessage({
       id: saved.id,
       content: saved.content,
@@ -93,7 +130,84 @@ export class SendMessageUseCase {
     });
     await this.conversationRepo.save(conversation);
 
-    return toMessageDTO(saved);
+    return {
+      message: toMessageDTO(saved),
+      sideEffectMessages: [],
+    };
+  }
+
+  private async persistAdminTakeoverMessage(
+    tx: Transaction,
+    conversationId: string,
+    message: Message,
+  ): Promise<SendMessageResult> {
+    const conversationRepo = this.conversationRepo as TxConversationRepository;
+    const messageRepo = this.messageRepo as TxMessageRepository;
+    const conversation = await conversationRepo.findById(conversationId, tx);
+    if (!conversation) {
+      throw new NotFoundError('Conversation not found');
+    }
+
+    const saved = await messageRepo.save(message, tx);
+    const sideEffectMessages: MessageDTO[] = [];
+
+    const transitionedConversation = conversationRepo.compareAndSetAssistantMode
+      ? await conversationRepo.compareAndSetAssistantMode(
+          conversationId,
+          'AI_ACTIVE',
+          'HUMAN_TAKEOVER',
+          tx,
+        )
+      : (conversation.assistantMode === 'AI_ACTIVE'
+          ? (() => {
+              conversation.assistantMode = 'HUMAN_TAKEOVER';
+              return conversation;
+            })()
+          : null);
+
+    if (transitionedConversation) {
+      conversation.assistantMode = 'HUMAN_TAKEOVER';
+      const handoffNotice = await messageRepo.save(new Message({
+        id: generateId(),
+        conversationId,
+        senderId: null,
+        senderRoleOverride: 'SYSTEM',
+        senderNameOverride: 'System',
+        senderRole: 'SYSTEM',
+        senderName: 'System',
+        content: HANDOFF_NOTICE,
+        originalLanguage: 'zh',
+        translatedContent: null,
+        messageType: 'SYSTEM',
+        moderationStatus: 'ALLOWED',
+        attachments: [],
+        aiSummary: null,
+        createdAt: new Date(),
+      }), tx);
+
+      transitionedConversation.updateLastMessage({
+        id: handoffNotice.id,
+        content: handoffNotice.content,
+        senderId: handoffNotice.senderId,
+        createdAt: handoffNotice.createdAt,
+      });
+      sideEffectMessages.push(toMessageDTO(handoffNotice));
+      await conversationRepo.save(transitionedConversation, tx);
+    } else {
+      conversation.assistantMode = 'HUMAN_TAKEOVER';
+      conversation.updateLastMessage({
+        id: saved.id,
+        content: saved.content,
+        senderId: saved.senderId,
+        createdAt: saved.createdAt,
+      });
+      await conversationRepo.save(conversation, tx);
+    }
+
+    return {
+      message: toMessageDTO(saved),
+      sideEffectMessages,
+    };
   }
 
   private async deriveRecipientLang(

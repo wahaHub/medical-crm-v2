@@ -1,5 +1,5 @@
 import { eq, count, sql } from 'drizzle-orm';
-import type { IMessageRepository, MessageListQuery, Attachment } from '@medical-crm/domain';
+import type { IMessageRepository, MessageListQuery, Attachment, Transaction } from '@medical-crm/domain';
 import { Message } from '@medical-crm/domain';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
@@ -8,8 +8,9 @@ import { messages, users } from '../schema/index.js';
 export class DrizzleMessageRepository implements IMessageRepository {
   constructor(private readonly db: CrmDb) {}
 
-  async findById(id: string): Promise<Message | null> {
-    const rows = await this.db
+  async findById(id: string, tx?: Transaction): Promise<Message | null> {
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    const rows = await db
       .select({
         message: messages,
         senderRole: users.role,
@@ -27,11 +28,13 @@ export class DrizzleMessageRepository implements IMessageRepository {
   async findByConversationId(
     conversationId: string,
     query: MessageListQuery,
+    tx?: Transaction,
   ): Promise<PaginatedResult<Message>> {
     const { page, limit } = query;
+    const db = (tx as CrmDb | undefined) ?? this.db;
 
     const [rows, countResult] = await Promise.all([
-      this.db
+      db
         .select({
           message: messages,
           senderRole: users.role,
@@ -43,7 +46,7 @@ export class DrizzleMessageRepository implements IMessageRepository {
         .orderBy(sql`${messages.createdAt} DESC`)
         .limit(limit)
         .offset((page - 1) * limit),
-      this.db
+      db
         .select({ total: count() })
         .from(messages)
         .where(eq(messages.conversationId, conversationId)),
@@ -62,8 +65,9 @@ export class DrizzleMessageRepository implements IMessageRepository {
     };
   }
 
-  async findPendingReview(): Promise<Message[]> {
-    const rows = await this.db
+  async findPendingReview(tx?: Transaction): Promise<Message[]> {
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    const rows = await db
       .select({
         message: messages,
         senderRole: users.role,
@@ -76,8 +80,9 @@ export class DrizzleMessageRepository implements IMessageRepository {
     return rows.map((r) => this.rowToEntity(r));
   }
 
-  async save(entity: Message): Promise<Message> {
+  async save(entity: Message, tx?: Transaction): Promise<Message> {
     const now = entity.createdAt.toISOString();
+    const db = (tx as CrmDb | undefined) ?? this.db;
     const values = {
       id: entity.id,
       conversationId: entity.conversationId,
@@ -94,7 +99,7 @@ export class DrizzleMessageRepository implements IMessageRepository {
       createdAt: now,
     };
 
-    const rows = await this.db
+    const rows = await db
       .insert(messages)
       .values(values)
       .onConflictDoUpdate({
@@ -119,8 +124,9 @@ export class DrizzleMessageRepository implements IMessageRepository {
     });
   }
 
-  async delete(id: string): Promise<void> {
-    await this.db
+  async delete(id: string, tx?: Transaction): Promise<void> {
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    await db
       .delete(messages)
       .where(eq(messages.id, id));
   }

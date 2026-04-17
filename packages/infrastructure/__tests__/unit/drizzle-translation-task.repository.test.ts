@@ -245,4 +245,27 @@ describe('DrizzleTranslationTaskRepository.upsert', () => {
       summary: 'Second',
     });
   });
+
+  it('merges the same identity even when the existing row is completed', async () => {
+    const first = await repo.upsert(makeInput({
+      chunkKey: 'details',
+      targetLanguage: 'ko',
+      fieldsToTranslate: { name: 'A', summary: 'First' },
+    }));
+    rows[0]!.status = 'completed';
+
+    const second = await repo.upsert(makeInput({
+      chunkKey: 'details',
+      targetLanguage: 'ko',
+      fieldsToTranslate: { summary: 'Second' },
+    }));
+
+    expect(rows).toHaveLength(1);
+    expect(second.id).toBe(first.id);
+    expect(rows[0]?.status).toBe('pending');
+    expect(rows[0]?.fieldsToTranslate).toEqual({
+      name: 'A',
+      summary: 'Second',
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { eq, sql, and, inArray } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import {
   TranslationTask,
   TRANSLATION_CONFIG,
@@ -37,7 +37,7 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
 
     // Use a transaction: SELECT FOR UPDATE, then INSERT or UPDATE
     const row = await this.db.transaction(async (tx) => {
-      // Look for an existing pending/processing task
+      // Look for an existing task with the same identity, regardless of status.
       const existing = await tx
         .select()
         .from(translationTasks)
@@ -48,7 +48,6 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
             eq(translationTasks.entityId, entityId),
             eq(translationTasks.chunkKey, effectiveChunkKey),
             eq(translationTasks.targetLanguage, effectiveTargetLanguage),
-            inArray(translationTasks.status, ['pending', 'processing']),
           ),
         )
         .limit(1)

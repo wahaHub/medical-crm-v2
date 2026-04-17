@@ -3,6 +3,74 @@
 ALTER TABLE translation_tasks
   ADD COLUMN IF NOT EXISTS chunk_key TEXT NOT NULL DEFAULT 'default';
 
+-- Split any live backlog rows that still carry multiple target languages so the
+-- new queue shape is one row per single target language.
+WITH legacy_backlog AS (
+  SELECT
+    id,
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    detected_language,
+    unnest(target_languages) AS target_language
+  FROM translation_tasks
+  WHERE status IN ('pending', 'processing')
+    AND COALESCE(array_length(target_languages, 1), 0) > 1
+), split_rows AS (
+  INSERT INTO translation_tasks (
+    id,
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    target_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    target_languages,
+    detected_language
+  )
+  SELECT
+    gen_random_uuid(),
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    target_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    ARRAY[target_language]::text[],
+    detected_language
+  FROM legacy_backlog
+  RETURNING id
+)
+DELETE FROM translation_tasks tt
+USING legacy_backlog lb
+WHERE tt.id = lb.id;
+
 -- Backfill target_language so every task has a single language identity.
 UPDATE translation_tasks
 SET target_language = CASE

@@ -369,6 +369,74 @@ WHERE target_language IS NULL OR target_language = '';
 
 ALTER TABLE translation_tasks ALTER COLUMN target_language SET NOT NULL;
 
+-- Split live backlog rows into one row per target language before the final
+-- chunk-aware identity index is established.
+WITH legacy_backlog AS (
+  SELECT
+    id,
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    detected_language,
+    unnest(target_languages) AS target_language
+  FROM translation_tasks
+  WHERE status IN ('pending', 'processing')
+    AND COALESCE(array_length(target_languages, 1), 0) > 1
+), split_rows AS (
+  INSERT INTO translation_tasks (
+    id,
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    target_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    target_languages,
+    detected_language
+  )
+  SELECT
+    gen_random_uuid(),
+    source_db,
+    hospital_type,
+    entity_type,
+    entity_id,
+    chunk_key,
+    source_language,
+    target_language,
+    status,
+    error_message,
+    retry_count,
+    created_at,
+    started_at,
+    completed_at,
+    fields_to_translate,
+    ARRAY[target_language]::text[],
+    detected_language
+  FROM legacy_backlog
+  RETURNING id
+)
+DELETE FROM translation_tasks tt
+USING legacy_backlog lb
+WHERE tt.id = lb.id;
+
 -- Merge duplicate pending/processing rows created under the old per-language queue model
 -- into the new unified one-row-per-entity model.
 WITH grouped AS (

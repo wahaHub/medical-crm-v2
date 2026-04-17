@@ -8,6 +8,7 @@ import type {
   OrchestratorV3Suggestion,
 } from '@medical-crm/application';
 import { ConversationOrchestratorV3RuntimeService } from '../routes/chatbot-v3/runtime.service.js';
+import { createChatbotV3SessionDriver } from './helpers/chatbot-v3-session-driver.js';
 
 const NOW = new Date('2026-04-15T00:00:00.000Z');
 const SESSION_SECRET = 'secret-v3-1';
@@ -22,6 +23,44 @@ const applicationOverrides: {
   orchestratorDecideShouldThrow?: boolean;
 } = {};
 let currentSession: Record<string, any> | null = null;
+
+function createPersistedMountingSession(
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, any> {
+  return {
+    ...currentSession,
+    ...overrides,
+    statusSnapshot: {
+      ...currentSession?.statusSnapshot,
+      ...(overrides.statusSnapshot as Record<string, unknown> | undefined),
+    },
+  };
+}
+
+function persistMountingSession(
+  session: Record<string, any>,
+) {
+  let persistedSession = session;
+  mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => persistedSession);
+  mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: any) => {
+    persistedSession = entity;
+    return entity;
+  });
+  mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, patch: Record<string, unknown>) => {
+    persistedSession = {
+      ...persistedSession,
+      statusSnapshot: {
+        ...persistedSession.statusSnapshot,
+        ...patch,
+      },
+      updatedAt: NOW,
+    };
+
+    return persistedSession;
+  });
+
+  return () => persistedSession;
+}
 
 function mapAuthorityInputToCompatibilityInput(
   input: JourneyRuntimeAuthorityInput,
@@ -489,20 +528,19 @@ describe('Chatbot v3 public route mounting', () => {
     }));
 
     const { default: app } = await import('../index.js');
-
-    const firstRes = await app.request('/api/v3/chatbot/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
       },
-      body: JSON.stringify({
-        sessionId: 'session-v3-1',
-        message: 'Please explain the process.',
-      }),
+    });
+    const firstTurn = await driver.sendTurn({
+      message: 'Please explain the process.',
     });
 
-    expect(firstRes.status).toBe(200);
+    expect(firstTurn.status).toBe(200);
+    expect(chatbotV3ChatResponseSchema.parse(firstTurn.body)).toBeDefined();
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
       expect.objectContaining({
@@ -510,19 +548,12 @@ describe('Chatbot v3 public route mounting', () => {
       }),
     );
 
-    const secondRes = await app.request('/api/v3/chatbot/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
-      },
-      body: JSON.stringify({
-        sessionId: 'session-v3-1',
-        message: 'Thanks, what should I do next?',
-      }),
+    const secondTurn = await driver.sendTurn({
+      message: 'Thanks, what should I do next?',
     });
 
-    expect(secondRes.status).toBe(200);
+    expect(secondTurn.status).toBe(200);
+    expect(chatbotV3ChatResponseSchema.parse(secondTurn.body)).toBeDefined();
     expect(capturedSummaries[0]).toBe('');
     expect(capturedSummaries[1]).toBe(
       'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an...',
@@ -1182,6 +1213,823 @@ describe('Chatbot v3 public route mounting', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('set-cookie')).toContain('chatbot_session_secret=');
     expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledOnce();
+  });
+
+  it('session driver carries bootstrapped secret cookies into the next turn', async () => {
+    let session = {
+      id: 'db-session-v3-1',
+      sessionId: 'session-v3-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        conditionStatus: 'unknown',
+        formStatus: 'not_started',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+        riskLevel: 'low',
+        trustOrObjection: 'none',
+        engagementMode: 'LIGHT_DISCOVERY',
+        enteredDeepWorkflowAt: null,
+        conversationSummary: '',
+        lastPolicyDecisionAt: null,
+        lastUserMessageAt: null,
+        lastAssistantMessageAt: null,
+      },
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => session);
+    mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: any) => {
+      session = entity;
+      return entity;
+    });
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+    });
+
+    const firstTurn = await driver.sendTurn({
+      message: 'Please explain the process.',
+    });
+
+    expect(firstTurn.status).toBe(200);
+    expect(firstTurn.response.headers.get('set-cookie')).toContain('chatbot_session_secret=');
+    expect(session.sessionSecretHash).toBeTruthy();
+
+    const secondTurn = await driver.sendTurn({
+      message: 'What should I do next?',
+    });
+
+    expect(secondTurn.status).toBe(200);
+    expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps an upload-first session on minimal triage until a later turn can advance to recommendation', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'EXPLAIN_PROCESS',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: false,
+        processExplained: false,
+        recommendationGenerated: false,
+      },
+    }));
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const uploadTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Here is my report.',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-v3-1/report.pdf',
+      }],
+    })).body);
+
+    expect(uploadTurn.journey).toMatchObject({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    });
+    expect(uploadTurn.messages[0]?.text).toContain('Please answer these 3 questions');
+    expect(uploadTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          uploadedCount: 1,
+        }),
+      }),
+    ]));
+    expect(readSession().statusSnapshot.docUploadStatus).toBe('SUBMITTED');
+    expect(readSession().statusSnapshot.minimalTriageComplete).not.toBe(true);
+
+    const triageTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'I have chest pain, it started 3 days ago, it feels moderate, and I already had a blood test.',
+    })).body);
+
+    expect(triageTurn.journey).toMatchObject({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    });
+    expect(triageTurn.messages[0]?.text).not.toContain('I checked');
+    expect(triageTurn.cards).toEqual(expect.not.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.minimalTriageComplete).toBe(true);
+
+    const recommendationTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'What should I do next?',
+    })).body);
+
+    expect(recommendationTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(recommendationTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+  });
+
+  it('keeps recommendation to process explanation continuity before the session advances to consult', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: false,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        docUploadStatus: 'submitted',
+      },
+    }));
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const explainTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Please explain the process first.',
+    })).body);
+
+    expect(explainTurn.journey).toMatchObject({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+    });
+    expect(explainTurn.messages[0]?.text).toContain('Here is the process');
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+
+    const inputsTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'What should I do next?',
+    })).body);
+
+    expect(inputsTurn.journey).toMatchObject({
+      stage: 'ONLINE_CONSULT',
+      phase: 'active',
+    });
+    expect(inputsTurn.messages[0]?.text).toContain('online consultation stage');
+    expect(inputsTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'CONSULT_BOOKING',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+  });
+
+  it('keeps a controlled recommendation to explain process to medical inputs continuity session when records collection is explicitly requested', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: false,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        docUploadStatus: 'submitted',
+      },
+    }));
+
+    applicationOverrides.suggest = vi.fn(async (input) => {
+      if (input.latestUserMessage.toLowerCase().includes('explain')) {
+        return {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          dispatchAgent: 'FaqAgent',
+          reason: 'explain the process',
+        };
+      }
+
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue records collection before consult',
+      };
+    });
+    applicationOverrides.decide = vi.fn((input) => {
+      if (input.suggestion.suggestedStage === 'EXPLAIN_PROCESS') {
+        return {
+          action: 'ADVANCE',
+          from: input.current,
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'orchestrator',
+          write: {
+            authority: 'journey-runtime-authority',
+            stage: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+            factsPatch: {
+              'process.explained': true,
+            },
+          },
+        };
+      }
+
+      return {
+        action: 'ADVANCE',
+        from: input.current,
+        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        dispatchAgent: 'RecordsAgent',
+        dispatchSource: 'orchestrator',
+      };
+    });
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const explainTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Please explain the process first.',
+    })).body);
+
+    expect(explainTurn.journey).toMatchObject({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+    });
+    expect(explainTurn.messages[0]?.text).toContain('Here is the process');
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+
+    const inputsTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'I want to share more medical reports before the consultation.',
+    })).body);
+
+    expect(inputsTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(inputsTurn.messages[0]?.text).toContain('Please upload or share any pathology reports');
+    expect(inputsTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+  });
+
+  it('keeps recommendation-selected and explained sessions on online consult across committed turns', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        recommendationStatus: 'accepted',
+        selectedHospitalId: 'hospital-1',
+        docUploadStatus: 'submitted',
+      },
+    }));
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const firstConsultTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'What should I do next?',
+    })).body);
+
+    expect(firstConsultTurn.journey).toMatchObject({
+      stage: 'ONLINE_CONSULT',
+      phase: 'active',
+    });
+    expect(firstConsultTurn.messages[0]?.text).toContain('online consultation stage');
+    expect(firstConsultTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'CONSULT_BOOKING',
+      }),
+    ]));
+
+    const secondConsultTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'I am ready to schedule the consultation.',
+    })).body);
+
+    expect(secondConsultTurn.journey).toMatchObject({
+      stage: 'ONLINE_CONSULT',
+      phase: 'active',
+    });
+    expect(secondConsultTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'CONSULT_BOOKING',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+    expect(readSession().statusSnapshot.recommendationSelected).toBe(true);
+  });
+
+  it('keeps direct human requests on handoff continuity after prerequisites are already met', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      patientId: 'patient-1',
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'ONLINE_CONSULT',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        docUploadStatus: 'submitted',
+        handoffStatus: 'not_needed',
+      },
+    }));
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+        patient_session: 'patient-token',
+      },
+    });
+
+    const firstHandoffTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Need a human now',
+    })).body);
+
+    expect(firstHandoffTurn.journey).toMatchObject({
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    });
+    expect(firstHandoffTurn.handoff).toMatchObject({
+      required: true,
+      ticketId: 'ticket-v3-1',
+    });
+    expect(firstHandoffTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'HANDOFF_STATUS',
+      }),
+    ]));
+    expect(mockServices.createTicket.execute).toHaveBeenCalledTimes(1);
+    expect(readSession().statusSnapshot.handoffActive).toBe(true);
+
+    const secondHandoffTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Any update from the human team?',
+    })).body);
+
+    expect(secondHandoffTurn.journey).toMatchObject({
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    });
+    expect(secondHandoffTurn.handoff.required).toBe(true);
+    expect(secondHandoffTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'HANDOFF_STATUS',
+      }),
+    ]));
+    expect(mockServices.createTicket.execute).toHaveBeenCalledTimes(1);
+    expect(readSession().statusSnapshot.handoffActive).toBe(true);
+  });
+
+  it('keeps a controlled FAQ detour from auto-advancing the main recommendation session', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        recommendationGenerated: true,
+        processExplained: false,
+      },
+    }));
+
+    applicationOverrides.suggest = vi.fn(async (input) => {
+      if (input.latestUserMessage.toLowerCase().includes('consultation')) {
+        return {
+          intent: 'faq',
+          suggestedStage: 'RECOMMENDATION',
+          dispatchAgent: 'FaqAgent',
+          reason: 'answer the scheduling faq without advancing the journey',
+        };
+      }
+
+      return {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        reason: 'resume recommendation review after the faq detour',
+      };
+    });
+    applicationOverrides.decide = vi.fn((input) => {
+      if (input.suggestion.intent === 'faq') {
+        return {
+          action: 'STAY',
+          from: { stage: 'RECOMMENDATION', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'orchestrator',
+        };
+      }
+
+      return {
+        action: 'STAY',
+        from: { stage: 'RECOMMENDATION', phase: 'active' },
+        to: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchAgent: 'RecommendationAgent',
+        dispatchSource: 'orchestrator',
+      };
+    });
+    mockServices.listFaqItems.execute.mockResolvedValue({
+      data: [{
+        id: 'faq-1',
+        question: 'How long does online consultation usually take to schedule?',
+        answer: 'Online consultations are usually arranged within 24 hours.',
+        category: 'Consultation',
+      }],
+    });
+    mockServices.getFaqItem.execute.mockResolvedValue({
+      id: 'faq-1',
+      question: 'How long does online consultation usually take to schedule?',
+      answer: 'Online consultations are usually arranged within 24 hours.',
+      category: 'Consultation',
+    });
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const faqTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'How long does online consultation usually take to schedule?',
+    })).body);
+
+    expect(faqTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(faqTurn.messages[0]?.text).toContain('Online consultations are usually arranged within 24 hours.');
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+    expect(readSession().statusSnapshot.processExplained).toBe(false);
+
+    const revisitTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Show me the hospital options again.',
+    })).body);
+
+    expect(revisitTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(revisitTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+  });
+
+  it('keeps a real recommendation revisit compare loop canonical across committed turns', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        recommendationGenerated: true,
+        processExplained: false,
+      },
+    }));
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const compareTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Compare the hospitals for me.',
+    })).body);
+
+    expect(compareTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(compareTurn.messages[0]?.text).toContain('These options can be compared');
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+
+    const explainTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Compare them again and explain the differences.',
+    })).body);
+
+    expect(explainTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(explainTurn.messages[0]?.text).toContain('These options can be compared');
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+
+    const revisitTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Show me the hospital options again.',
+    })).body);
+
+    expect(revisitTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(revisitTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+  });
+
+  it('keeps repeated explain requests on the already-explained recommendation path without corrupting continuity', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+      },
+    }));
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const repeatExplainTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Please explain the process again.',
+    })).body);
+
+    expect(repeatExplainTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(repeatExplainTurn.messages[0]?.text).toContain('recommendation stage');
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+
+    const nextTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'What should I do next?',
+    })).body);
+
+    expect(nextTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(nextTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+  });
+
+  it('keeps a controlled degraded recommendation retry session recoverable on a later turn', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        recommendationGenerated: true,
+      },
+    }));
+
+    applicationOverrides.suggest = vi.fn(async () => ({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      reason: 'refresh recommendation options after the user asked again',
+    }));
+    applicationOverrides.decide = vi.fn(() => ({
+      action: 'STAY',
+      from: { stage: 'RECOMMENDATION', phase: 'active' },
+      to: { stage: 'RECOMMENDATION', phase: 'active' },
+      dispatchAgent: 'RecommendationAgent',
+      dispatchSource: 'orchestrator',
+    }));
+    mockServices.matchHospitals.execute
+      .mockRejectedValueOnce(new Error('recommendation.generate timed out'))
+      .mockResolvedValue({
+        hospitals: [
+          {
+            id: 'hospital-1',
+            name: 'Shanghai Chest Hospital',
+            nameEn: 'Shanghai Chest Hospital',
+            rating: 4.8,
+            logoUrl: null,
+            tags: ['thoracic oncology'],
+            procedureCount: 24,
+          },
+          {
+            id: 'hospital-2',
+            name: 'Fudan Cancer Center',
+            nameEn: 'Fudan Cancer Center',
+            rating: 4.7,
+            logoUrl: null,
+            tags: ['multidisciplinary oncology'],
+            procedureCount: 18,
+          },
+        ],
+      });
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const degradedTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Show me more hospitals.',
+    })).body);
+
+    expect(degradedTurn.turnOutcome.status).toBe('degraded');
+    expect(degradedTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(degradedTurn.messages[0]?.text).toContain('refresh the hospital recommendations');
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+
+    const retryTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Try the recommendations again.',
+    })).body);
+
+    expect(retryTurn.turnOutcome.status).toBe('ok');
+    expect(retryTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(retryTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+        payload: expect.objectContaining({
+          candidates: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'Shanghai Chest Hospital',
+            }),
+          ]),
+        }),
+      }),
+    ]));
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+  });
+
+  it('keeps a controlled denied handoff detour returning to the current records step on the next turn', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MEDICAL_INPUTS',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+        handoffStatus: 'not_needed',
+        docUploadStatus: 'none',
+      },
+    }));
+
+    applicationOverrides.suggest = vi.fn(async (input) => {
+      if (input.latestUserMessage.toLowerCase().includes('human')) {
+        return {
+          intent: 'handoff',
+          suggestedStage: 'HUMAN_HANDOFF',
+          reason: 'user asked for a human before the current step was complete',
+        };
+      }
+
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue collecting records after the denied handoff detour',
+      };
+    });
+    applicationOverrides.decide = vi.fn((input) => {
+      if (input.suggestion.intent === 'handoff') {
+        return {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchSource: 'orchestrator',
+        };
+      }
+
+      return {
+        action: 'STAY',
+        from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        dispatchAgent: 'RecordsAgent',
+        dispatchSource: 'orchestrator',
+      };
+    });
+
+    const { default: app } = await import('../index.js');
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const deniedTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Can I talk to a human now?',
+    })).body);
+
+    expect(deniedTurn.turnOutcome.status).toBe('ok');
+    expect(deniedTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(deniedTurn.messages[0]?.text).toContain('Before we connect you with a human');
+    expect(readSession().statusSnapshot.handoffStatus).toBe('not_needed');
+
+    const recoveryTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'What should I send next?',
+    })).body);
+
+    expect(recoveryTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(recoveryTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.handoffStatus).toBe('not_needed');
+    expect(readSession().statusSnapshot.handoffActive).not.toBe(true);
   });
 
   it('still reaches recommendation when the process has already been shown', async () => {

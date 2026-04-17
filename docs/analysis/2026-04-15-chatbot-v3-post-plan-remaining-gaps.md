@@ -178,14 +178,22 @@ That remains true in the supervisor-led system.
 
 The runtime now has much stronger contracts than the old 4/15 MVP expected, but the system can still drift semantically while remaining schema-valid.
 
-The highest-value missing eval areas are still:
+The highest-value missing eval areas are now concentrated in:
 
 - `Supervisor` progression intent
 - `Supervisor` mixed FAQ/handoff/process-explanation intent handling
 - FAQ answer quality under partial grounding
 - degraded-path user guidance
-- repeated turns after recommendation selection, explanation, consult, or handoff activation
-- revisit/repeat behavior for `RECOMMENDATION` and `COLLECT_MEDICAL_INPUTS`
+
+The new public-route system-session coverage now exercises:
+
+- FAQ detours that should not auto-advance the main journey
+- recommendation revisit/compare loops
+- repeated explanation requests on already-explained paths
+- degraded recommendation recovery on a later retry
+- denied-handoff detours that return to the correct current step
+
+That materially improves route-level confidence for repeat, detour, and recovery behavior, even though fixture-driven semantic eval coverage is still thinner than it should be.
 
 ### Why this matters
 

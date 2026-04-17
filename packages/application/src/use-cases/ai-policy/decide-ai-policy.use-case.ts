@@ -34,6 +34,7 @@ type RuntimeIntentBridgeContext = {
 
 export interface DecideAiPolicyInput {
   sessionId: string;
+  site: import('@medical-crm/domain').PatientSite;
   userMessage: string;
   extraction?: Record<string, unknown>;
   pageContext?: {
@@ -58,6 +59,7 @@ export class DecideAiPolicyUseCase {
   async execute(input: DecideAiPolicyInput) {
     const lightContext = await this.contextBuilder.build({
       sessionId: input.sessionId,
+      site: input.site,
       userMessage: input.userMessage,
       depth: 'light',
       pageContext: input.pageContext,
@@ -80,6 +82,7 @@ export class DecideAiPolicyUseCase {
       ? lightContext
       : await this.contextBuilder.build({
         sessionId: input.sessionId,
+        site: input.site,
         userMessage: input.userMessage,
         depth: 'full',
         pageContext: input.pageContext,

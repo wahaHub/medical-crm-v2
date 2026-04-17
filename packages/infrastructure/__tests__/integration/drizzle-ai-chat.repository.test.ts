@@ -35,6 +35,7 @@ function makeSession(overrides: Partial<ConstructorParameters<typeof AiChatSessi
   return new AiChatSession({
     id,
     sessionId,
+    site: overrides.site ?? 'china',
     sessionSecretHash:
       overrides.sessionSecretHash ?? createHash('sha256').update(`secret-${sessionId}`).digest('hex'),
     difyConversationId: overrides.difyConversationId ?? null,
@@ -118,6 +119,7 @@ beforeAll(async () => {
     email: `ai-chat-patient-${TEST_PATIENT_ID}@integration.test`,
     name: 'AI Chat Integration Patient',
     role: 'PATIENT',
+    patientSite: 'china',
     preferredLanguage: 'en',
     updatedAt: new Date().toISOString(),
   }).onConflictDoNothing();
@@ -130,24 +132,41 @@ afterAll(async () => {
 
 describe('AI chat repositories integration', () => {
   it('persists and mutates chatbot sessions in the migrated ai_chat_sessions table', async () => {
-    const entity = makeSession({ difyConversationId: 'conv-1' });
+    const sharedSessionId = `${SESSION_PREFIX}${randomUUID()}`;
+    const chinaEntity = makeSession({ sessionId: sharedSessionId, site: 'china', difyConversationId: 'conv-1' });
+    const beautyEntity = makeSession({
+      id: randomUUID(),
+      sessionId: sharedSessionId,
+      site: 'beauty',
+      difyConversationId: 'conv-2',
+    });
 
-    await sessionRepo.save(entity);
+    await sessionRepo.save(chinaEntity);
+    await sessionRepo.save(beautyEntity);
 
-    const foundBySessionId = await sessionRepo.findBySessionId(entity.sessionId);
-    expect(foundBySessionId).not.toBeNull();
-    expect(foundBySessionId!.difyConversationId).toBe('conv-1');
-    expect(foundBySessionId!.hospitalType).toBe('COSMETIC');
+    const foundChinaSession = await sessionRepo.findBySessionId(sharedSessionId, 'china');
+    expect(foundChinaSession).not.toBeNull();
+    expect(foundChinaSession!.difyConversationId).toBe('conv-1');
+    expect(foundChinaSession!.site).toBe('china');
 
-    const attached = await sessionRepo.attachPatient(entity.sessionId, TEST_PATIENT_ID);
+    const foundBeautySession = await sessionRepo.findBySessionId(sharedSessionId, 'beauty');
+    expect(foundBeautySession).not.toBeNull();
+    expect(foundBeautySession!.difyConversationId).toBe('conv-2');
+    expect(foundBeautySession!.site).toBe('beauty');
+
+    const attached = await sessionRepo.attachPatient(sharedSessionId, 'beauty', TEST_PATIENT_ID);
     expect(attached?.patientId).toBe(TEST_PATIENT_ID);
+    expect(attached?.site).toBe('beauty');
 
-    const escalated = await sessionRepo.updateStatus(entity.sessionId, 'ESCALATED');
+    const escalated = await sessionRepo.updateStatus(sharedSessionId, 'china', 'ESCALATED');
     expect(escalated?.status).toBe('ESCALATED');
 
     const foundByConversationId = await sessionRepo.findByDifyConversationId('conv-1');
-    expect(foundByConversationId?.id).toBe(entity.id);
-    expect(foundByConversationId?.patientId).toBe(TEST_PATIENT_ID);
+    expect(foundByConversationId?.id).toBe(chinaEntity.id);
+    expect(foundByConversationId?.patientId).toBeNull();
+
+    const foundBeautyAfterUpdate = await sessionRepo.findBySessionId(sharedSessionId, 'beauty');
+    expect(foundBeautyAfterUpdate?.patientId).toBe(TEST_PATIENT_ID);
   });
 
   it('stores chatbot messages newest-first with JSON citations and metadata intact', async () => {

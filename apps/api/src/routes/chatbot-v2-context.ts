@@ -8,7 +8,7 @@ import {
   type ChatbotV2RequestClassificationResult,
   deriveJourneyTruthFromStatusSnapshot,
 } from '@medical-crm/application';
-import type { AiChatStatusSnapshot } from '@medical-crm/domain';
+import type { AiChatStatusSnapshot, PatientSite } from '@medical-crm/domain';
 import type {
   ChatResourceDescriptor,
   JourneySnapshot,
@@ -73,12 +73,14 @@ const stageCopyRegistry = new StageCopyRegistryService();
 export async function buildChatbotV2TurnContext(input: {
   services: Services;
   sessionId: string;
+  site: PatientSite;
   userMessage: string;
   pageContext?: PageContext;
   classifierOverride?: ChatbotV2RequestClassificationResult;
 }): Promise<ChatbotV2TurnContext> {
   const policyContext = await input.services.getAiPolicyContext.execute({
     sessionId: input.sessionId,
+    site: input.site,
     userMessage: input.userMessage,
     pageContext: input.pageContext ?? null,
   });
@@ -106,6 +108,7 @@ export async function buildChatbotV2TurnContext(input: {
   const classification = input.classifierOverride ?? await classifyTurn({
     services: input.services,
     sessionId: input.sessionId,
+    site: input.site,
     scopeId: foundation.scopeId,
     userMessage: input.userMessage,
     journeySnapshot: foundation.journeySnapshot,
@@ -295,6 +298,7 @@ function readScopeId(policyContext: unknown, fallbackSessionId: string): string 
 async function classifyTurn(input: {
   services: Services;
   sessionId: string;
+  site: PatientSite;
   scopeId: string;
   userMessage: string;
   journeySnapshot: JourneySnapshot;
@@ -327,6 +331,7 @@ async function classifyTurn(input: {
     recentMessages: await buildRecentMessages({
       services: input.services,
       sessionId: input.sessionId,
+      site: input.site,
       userMessage: input.userMessage,
       policyContext: input.policyContext,
     }),
@@ -339,6 +344,7 @@ async function classifyTurn(input: {
 async function buildRecentMessages(input: {
   services: Services;
   sessionId: string;
+  site: PatientSite;
   userMessage: string;
   policyContext: unknown;
 }): Promise<ChatbotV2ClassifierMessage[]> {
@@ -348,7 +354,7 @@ async function buildRecentMessages(input: {
     return appendCurrentUserMessage(fromPolicyContext, trimmedUserMessage);
   }
 
-  const session = await input.services.aiChatSessionRepo.findBySessionId(input.sessionId);
+  const session = await input.services.aiChatSessionRepo.findBySessionId(input.sessionId, input.site);
   if (!session) {
     return appendCurrentUserMessage([], trimmedUserMessage);
   }

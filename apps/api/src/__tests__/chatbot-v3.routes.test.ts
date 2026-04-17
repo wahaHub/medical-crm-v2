@@ -145,6 +145,7 @@ describe('chatbot-v3 runtime', () => {
     const input = {
       traceId: 'trace-concurrency-1',
       sessionId: 'session-1',
+      site: 'china' as const,
       turnId: 'turn-1',
       message: 'Can you recommend a hospital?',
       current: {
@@ -229,6 +230,7 @@ describe('chatbot-v3 runtime', () => {
     await runtime.handleTurn({
       traceId: 'trace-events-1',
       sessionId: 'session-events-1',
+      site: 'china',
       turnId: 'turn-events-1',
       message: 'continue',
       current: {
@@ -329,6 +331,7 @@ describe('chatbot-v3 runtime', () => {
     const result = await runtime.handleTurn({
       traceId: 'trace-timeout-1',
       sessionId: 'session-1',
+      site: 'china',
       turnId: 'turn-2',
       message: 'What should I do next?',
       current: {
@@ -337,7 +340,7 @@ describe('chatbot-v3 runtime', () => {
       },
     });
 
-    expect(statusQuery).toHaveBeenCalledWith({ sessionId: 'session-1' });
+    expect(statusQuery).toHaveBeenCalledWith({ sessionId: 'session-1', site: 'china' });
     expect(result.turnOutcome).toEqual({
       status: 'degraded',
       recoverableErrorCode: 'TIMEOUT',
@@ -428,6 +431,7 @@ describe('chatbot-v3 runtime', () => {
     const result = await runtime.handleTurn({
       traceId: 'trace-dispatch-1',
       sessionId: 'session-9',
+      site: 'china',
       turnId: 'turn-4',
       message: 'I need help',
       current: {
@@ -493,6 +497,7 @@ describe('chatbot-v3 runtime', () => {
     await runtime.handleTurn({
       traceId: 'trace-taskprompt-1',
       sessionId: 'session-10',
+      site: 'china',
       turnId: 'turn-10',
       message: 'please continue',
       current: {
@@ -555,6 +560,7 @@ describe('chatbot-v3 runtime', () => {
     await runtime.handleTurn({
       traceId: 'trace-faq-envelope-1',
       sessionId: 'session-faq-1',
+      site: 'china',
       turnId: 'turn-faq-1',
       message: 'How long does online consultation usually take to schedule?',
       current: {
@@ -680,6 +686,7 @@ describe('chatbot-v3 runtime', () => {
     await runtime.handleTurn({
       traceId: 'trace-observe-1',
       sessionId: 'session-observe-1',
+      site: 'china',
       turnId: 'turn-observe-1',
       message: 'How long does online consultation usually take to schedule?',
       current: {

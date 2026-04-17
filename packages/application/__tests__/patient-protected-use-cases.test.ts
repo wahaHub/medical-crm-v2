@@ -855,6 +855,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     }), expect.anything());
     expect(aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       widgetSessionId,
+      'beauty',
       expect.objectContaining({
         formStatus: 'COMPLETED',
       }),
@@ -899,6 +900,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     }), expect.anything());
     expect(aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'widget-chat:patient-1:case-1',
+      'beauty',
       expect.objectContaining({
         formStatus: 'COMPLETED',
       }),

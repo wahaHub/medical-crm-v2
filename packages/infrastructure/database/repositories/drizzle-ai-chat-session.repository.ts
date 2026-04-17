@@ -1,5 +1,5 @@
-import { eq, sql } from 'drizzle-orm';
-import type { IAiChatSessionRepository } from '@medical-crm/domain';
+import { and, eq, sql } from 'drizzle-orm';
+import type { IAiChatSessionRepository, PatientSite } from '@medical-crm/domain';
 import { AiChatSession } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { aiChatSessions } from '../schema/index.js';
@@ -7,12 +7,12 @@ import { aiChatSessions } from '../schema/index.js';
 export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository {
   constructor(private readonly db: CrmDb) {}
 
-  async findBySessionId(sessionId: string, tx?: unknown): Promise<AiChatSession | null> {
+  async findBySessionId(sessionId: string, site: PatientSite, tx?: unknown): Promise<AiChatSession | null> {
     const db = (tx as CrmDb) ?? this.db;
     const rows = await db
       .select()
       .from(aiChatSessions)
-      .where(eq(aiChatSessions.sessionId, sessionId))
+      .where(and(eq(aiChatSessions.sessionId, sessionId), eq(aiChatSessions.site, site)))
       .limit(1);
 
     return rows[0] ? this.rowToEntity(rows[0]) : null;
@@ -94,12 +94,12 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     return this.rowToEntity(rows[0]!);
   }
 
-  async attachPatient(sessionId: string, patientId: string, tx?: unknown): Promise<AiChatSession | null> {
+  async attachPatient(sessionId: string, site: PatientSite, patientId: string, tx?: unknown): Promise<AiChatSession | null> {
     const db = (tx as CrmDb) ?? this.db;
     const rows = await db
       .update(aiChatSessions)
       .set({ patientId, updatedAt: sql`NOW()` })
-      .where(eq(aiChatSessions.sessionId, sessionId))
+      .where(and(eq(aiChatSessions.sessionId, sessionId), eq(aiChatSessions.site, site)))
       .returning();
 
     return rows[0] ? this.rowToEntity(rows[0]) : null;
@@ -107,6 +107,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
 
   async setDifyConversationId(
     sessionId: string,
+    site: PatientSite,
     difyConversationId: string,
     tx?: unknown,
   ): Promise<AiChatSession | null> {
@@ -114,18 +115,18 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     const rows = await db
       .update(aiChatSessions)
       .set({ difyConversationId, updatedAt: sql`NOW()` })
-      .where(eq(aiChatSessions.sessionId, sessionId))
+      .where(and(eq(aiChatSessions.sessionId, sessionId), eq(aiChatSessions.site, site)))
       .returning();
 
     return rows[0] ? this.rowToEntity(rows[0]) : null;
   }
 
-  async updateStatus(sessionId: string, status: import('@medical-crm/domain').AiChatSessionStatus, tx?: unknown): Promise<AiChatSession | null> {
+  async updateStatus(sessionId: string, site: PatientSite, status: import('@medical-crm/domain').AiChatSessionStatus, tx?: unknown): Promise<AiChatSession | null> {
     const db = (tx as CrmDb) ?? this.db;
     const rows = await db
       .update(aiChatSessions)
       .set({ status, updatedAt: sql`NOW()` })
-      .where(eq(aiChatSessions.sessionId, sessionId))
+      .where(and(eq(aiChatSessions.sessionId, sessionId), eq(aiChatSessions.site, site)))
       .returning();
 
     return rows[0] ? this.rowToEntity(rows[0]) : null;
@@ -133,6 +134,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
 
   async patchStatus(
     sessionId: string,
+    site: PatientSite,
     patch: Partial<AiChatSession['statusSnapshot']>,
     tx?: unknown,
   ): Promise<AiChatSession | null> {
@@ -169,7 +171,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     const rows = await db
       .update(aiChatSessions)
       .set(updates as Partial<typeof aiChatSessions.$inferInsert>)
-      .where(eq(aiChatSessions.sessionId, sessionId))
+      .where(and(eq(aiChatSessions.sessionId, sessionId), eq(aiChatSessions.site, site)))
       .returning();
 
     return rows[0] ? this.rowToEntity(rows[0]) : null;

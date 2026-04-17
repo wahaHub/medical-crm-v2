@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const originalEnv = {
   ADMIN_ORIGIN: process.env.ADMIN_ORIGIN,
   HOSPITAL_ORIGIN: process.env.HOSPITAL_ORIGIN,
+  BEAUTY_ORIGIN: process.env.BEAUTY_ORIGIN,
   CHINA_ORIGIN: process.env.CHINA_ORIGIN,
 };
 
@@ -22,6 +23,12 @@ describe('Security middleware', () => {
       delete process.env.HOSPITAL_ORIGIN;
     } else {
       process.env.HOSPITAL_ORIGIN = originalEnv.HOSPITAL_ORIGIN;
+    }
+
+    if (originalEnv.BEAUTY_ORIGIN === undefined) {
+      delete process.env.BEAUTY_ORIGIN;
+    } else {
+      process.env.BEAUTY_ORIGIN = originalEnv.BEAUTY_ORIGIN;
     }
 
     if (originalEnv.CHINA_ORIGIN === undefined) {
@@ -60,6 +67,21 @@ describe('Security middleware', () => {
       headers: { Origin: 'http://localhost:3002' },
     });
     expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost:3002');
+  });
+
+  it('accepts CORS from beauty origin', async () => {
+    process.env.BEAUTY_ORIGIN = 'https://beauty.medora.com';
+
+    const { Hono } = await import('hono');
+    const { applySecurityMiddleware } = await import('../middleware/security');
+    const testApp = new Hono();
+    applySecurityMiddleware(testApp);
+    testApp.get('/health', (c) => c.json({ ok: true }));
+
+    const res = await testApp.request('/health', {
+      headers: { Origin: 'https://beauty.medora.com' },
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://beauty.medora.com');
   });
 
   it('allows x-medora-site in CORS preflight headers', async () => {

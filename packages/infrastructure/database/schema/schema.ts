@@ -555,7 +555,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	uniqueIndex("ai_chat_sessions_session_id_key").using("btree", table.sessionId.asc().nullsLast().op("text_ops")),
+	uniqueIndex("ai_chat_sessions_session_id_site_key").using("btree", table.sessionId.asc().nullsLast().op("text_ops"), table.site.asc().nullsLast().op("enum_ops")),
 	index("ai_chat_sessions_session_id_idx").using("btree", table.sessionId.asc().nullsLast().op("text_ops")),
 	index("ai_chat_sessions_site_idx").using("btree", table.site.asc().nullsLast().op("enum_ops")),
 	index("ai_chat_sessions_dify_conversation_id_idx").using("btree", table.difyConversationId.asc().nullsLast().op("text_ops")),

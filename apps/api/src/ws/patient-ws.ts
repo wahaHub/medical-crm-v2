@@ -3,7 +3,7 @@ import { getCookie } from 'hono/cookie';
 import type { PatientAuthService } from '@medical-crm/domain';
 import { wsManager } from './ws-manager.js';
 import { getServices } from '../composition-root.js';
-import { resolvePatientSiteContext } from '../patient-site-context.js';
+import { readPatientSiteContext } from '../patient-site-context.js';
 
 export function registerPatientWs(
   app: Hono,
@@ -18,8 +18,12 @@ export function registerPatientWs(
     return {
       async onOpen(_event: any, ws: any) {
         if (!token) { ws.close(4001, 'Unauthorized'); return; }
+        const site = readPatientSiteContext(c);
+        if (!site) {
+          ws.close(4001, 'Invalid site context');
+          return;
+        }
         try {
-          const site = resolvePatientSiteContext(c);
           const payload = await authService.verifySessionToken(token, site);
           const { getPatientConversations } = getServices();
           const conversations = await getPatientConversations.execute({ patientId: payload.userId });
@@ -46,8 +50,12 @@ export function registerPatientWs(
     return {
       async onOpen(_event: any, ws: any) {
         if (!token) { ws.close(4001, 'Unauthorized'); return; }
+        const site = readPatientSiteContext(c);
+        if (!site) {
+          ws.close(4001, 'Invalid site context');
+          return;
+        }
         try {
-          const site = resolvePatientSiteContext(c);
           const payload = await authService.verifySessionToken(token, site);
           wsManager.join(`patient:${payload.userId}`, ws);
         } catch {

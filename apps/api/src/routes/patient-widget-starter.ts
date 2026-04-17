@@ -157,6 +157,7 @@ export async function seedWidgetStarterMessage(input: {
   services: ReturnType<typeof getServices>;
   widgetSessionId?: string | null;
   caseId: string;
+  site: import('@medical-crm/domain').PatientSite;
   destination?: string | null;
   category?: string | null;
   procedureId?: string | null;
@@ -165,7 +166,7 @@ export async function seedWidgetStarterMessage(input: {
     return;
   }
 
-  let session = await input.services.aiChatSessionRepo.findBySessionId(input.widgetSessionId);
+  let session = await input.services.aiChatSessionRepo.findBySessionId(input.widgetSessionId, input.site);
   if (!session) {
     return;
   }
@@ -212,6 +213,7 @@ export async function seedWidgetStarterMessage(input: {
   const chatbotV2Turn = await buildChatbotV2TurnContext({
     services: input.services,
     sessionId: session.sessionId,
+    site: session.site,
     userMessage: 'Explain the process',
     classifierOverride: {
       requestClass: 'process_explanation',
@@ -247,12 +249,12 @@ export async function seedWidgetStarterMessage(input: {
     conversationId: session.difyConversationId,
   });
 
-  session = await input.services.aiChatSessionRepo.findBySessionId(session.sessionId) ?? session;
+  session = await input.services.aiChatSessionRepo.findBySessionId(session.sessionId, session.site) ?? session;
 
   const normalized = normalizeStarterDifyResponse(difyResponse);
   if (!session.difyConversationId && normalized.conversationId) {
     const updatedSession = typeof input.services.aiChatSessionRepo.setDifyConversationId === 'function'
-      ? await input.services.aiChatSessionRepo.setDifyConversationId(session.sessionId, normalized.conversationId)
+      ? await input.services.aiChatSessionRepo.setDifyConversationId(session.sessionId, session.site, normalized.conversationId)
       : await input.services.aiChatSessionRepo.save(new AiChatSessionEntity({
           ...session,
           difyConversationId: normalized.conversationId,

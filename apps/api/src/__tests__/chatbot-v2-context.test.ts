@@ -67,6 +67,7 @@ describe('buildChatbotV2TurnContext', () => {
     const result = await buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'Why do we still need this step?',
     });
 
@@ -175,6 +176,7 @@ describe('buildChatbotV2TurnContext', () => {
     await buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'Okay, continue.',
     });
 
@@ -242,6 +244,7 @@ describe('buildChatbotV2TurnContext', () => {
     await expect(buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'How does this work?',
     })).rejects.toThrow('DIFY_CLASSIFIER_APP_API_KEY is required for chatbot-v2 classification');
 
@@ -300,6 +303,7 @@ describe('buildChatbotV2TurnContext', () => {
     const result = await buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'Open the questionnaire for me.',
     });
 
@@ -426,6 +430,7 @@ describe('buildChatbotV2TurnContext', () => {
     const result = await buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'Can you confirm the current status of my medical invitation again?',
     });
 
@@ -544,6 +549,7 @@ describe('buildChatbotV2TurnContext', () => {
     const result = await buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'Did you receive the questionnaire already?',
     });
 
@@ -649,6 +655,7 @@ describe('buildChatbotV2TurnContext', () => {
     const result = await buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'What happens after this recommendation?',
     });
 
@@ -754,6 +761,7 @@ describe('buildChatbotV2TurnContext', () => {
     const result = await buildChatbotV2TurnContext({
       services,
       sessionId: 'widget-chat:patient-1:case-1',
+      site: 'china',
       userMessage: 'Before we move on, did you receive all my forms?',
     });
 

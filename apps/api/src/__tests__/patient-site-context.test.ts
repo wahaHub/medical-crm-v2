@@ -51,6 +51,13 @@ describe('patient site context', () => {
     expect(resolvePatientSiteContext(context)).toBe('china');
   });
 
+  it('ignores the site query parameter on ordinary http requests', () => {
+    const context = makeContext('https://crm.medora.com/api/v2/patient/me?site=china');
+
+    expect(readPatientSiteContext(context)).toBeNull();
+    expect(() => resolvePatientSiteContext(context)).toThrow(PatientSiteContextError);
+  });
+
   it('falls back to configured origins when the browser cannot send custom headers', () => {
     process.env['BEAUTY_ORIGIN'] = 'https://beauty.medora.com';
     process.env['CHINA_ORIGIN'] = 'https://china.medora.com';

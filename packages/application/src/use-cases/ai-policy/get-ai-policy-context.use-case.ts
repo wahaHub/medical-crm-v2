@@ -3,6 +3,7 @@ import type { AiChatMessage } from '@medical-crm/domain';
 
 export interface GetAiPolicyContextInput {
   sessionId: string;
+  site: import('@medical-crm/domain').PatientSite;
   userMessage: string;
   pageContext?: {
     type: 'HOSPITAL_DETAIL';

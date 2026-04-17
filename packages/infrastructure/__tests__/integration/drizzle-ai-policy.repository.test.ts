@@ -242,7 +242,7 @@ describe('AI policy schema integration', () => {
       completedAt: null,
     }));
 
-    await sessionRepo.patchStatus(session.sessionId, {
+    await sessionRepo.patchStatus(session.sessionId, 'china', {
       engagementMode: 'DEEP_WORKFLOW',
       prequalificationReasonCodes: ['form_completed', 'documents_missing'],
       enteredDeepWorkflowAt: new Date('2026-03-29T12:00:00.000Z'),
@@ -254,7 +254,7 @@ describe('AI policy schema integration', () => {
       },
     });
 
-    const persisted = await sessionRepo.findBySessionId(session.sessionId);
+    const persisted = await sessionRepo.findBySessionId(session.sessionId, 'china');
     const recentMessages = await messageRepo.listRecentBySession(session.id, 5);
     const recentTimeline = await timelineRepo.listRecentBySession(session.id, 5);
 

@@ -58,10 +58,14 @@ export class DrizzleUserEmailLookupRepository implements IUserEmailLookupReposit
         return { state: 'NONE' };
       }
 
-      return {
-        state: row.role,
-        userId: row.id,
-      };
+      if (row.role === 'HOSPITAL' || row.role === 'ADMIN') {
+        return {
+          state: row.role,
+          userId: row.id,
+        };
+      }
+
+      return { state: 'NONE' };
     } catch (err: unknown) {
       if (!this.isMissingColumnError(err, 'patient_site')) {
         throw err;
@@ -85,10 +89,14 @@ export class DrizzleUserEmailLookupRepository implements IUserEmailLookupReposit
           : { state: 'NONE' };
       }
 
-      return {
-        state: row.role,
-        userId: row.id,
-      };
+      if (row.role === 'HOSPITAL' || row.role === 'ADMIN') {
+        return {
+          state: row.role,
+          userId: row.id,
+        };
+      }
+
+      return { state: 'NONE' };
     }
   }
 }

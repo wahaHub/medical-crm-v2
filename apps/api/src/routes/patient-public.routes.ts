@@ -254,6 +254,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
       services: getServices(),
       widgetSessionId: result.widgetChatTarget?.sessionId,
       caseId: result.caseId,
+      site,
       destination: body.destination,
       category: body.category,
       procedureId: body.procedureId,

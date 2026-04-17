@@ -28,15 +28,21 @@ function normalizeOrigin(rawOrigin: string | null | undefined): string | null {
   }
 }
 
+function isWebsocketStyleRequest(reqUrl: string): boolean {
+  return new URL(reqUrl).pathname.startsWith('/ws/');
+}
+
 export function readPatientSiteContext(c: Pick<Context, 'req'>): PatientSite | null {
   const headerSite = normalizePatientSite(c.req.header('x-medora-site'));
   if (headerSite) {
     return headerSite;
   }
 
-  const querySite = normalizePatientSite(new URL(c.req.url).searchParams.get('site'));
-  if (querySite) {
-    return querySite;
+  if (isWebsocketStyleRequest(c.req.url)) {
+    const querySite = normalizePatientSite(new URL(c.req.url).searchParams.get('site'));
+    if (querySite) {
+      return querySite;
+    }
   }
 
   const requestOrigin = normalizeOrigin(c.req.header('origin'));

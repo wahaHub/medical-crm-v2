@@ -2266,6 +2266,7 @@ describe('Chatbot v3 public route mounting', () => {
 
     const body = await res.json();
     expect(res.status).toBe(200);
+    expect(body.turnOutcome.status).toBe('ok');
     expect(body.handoff.required).toBe(false);
     expect(body.messages[0].text).toContain('Before we connect you with a human');
     expect(body.cards).toEqual(expect.arrayContaining([
@@ -2274,6 +2275,49 @@ describe('Chatbot v3 public route mounting', () => {
       }),
     ]));
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
+  });
+
+  it('keeps recommendation degradation distinct from blocked handoff guidance on the public route', async () => {
+    applicationOverrides.suggest = async () => ({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      reason: 'refresh recommendation options',
+    });
+    applicationOverrides.decide = () => ({
+      action: 'STAY',
+      from: { stage: 'RECOMMENDATION', phase: 'active' },
+      to: { stage: 'RECOMMENDATION', phase: 'active' },
+      dispatchAgent: 'RecommendationAgent',
+      dispatchSource: 'orchestrator',
+    });
+    mockServices.matchHospitals.execute.mockRejectedValueOnce(
+      new Error('recommendation.generate timed out'),
+    );
+
+    const { default: app } = await import('../index.js');
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Show me more hospitals.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.turnOutcome.status).toBe('degraded');
+    expect(body.handoff.required).toBe(false);
+    expect(body.messages[0].text).toContain('refresh the hospital recommendations');
+    expect(body.messages[0].text).not.toContain('Before we connect you with a human');
+    expect(body.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
   });
 
   it('does not create duplicate handoff tickets when handoff is already active', async () => {

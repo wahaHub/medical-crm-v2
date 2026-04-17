@@ -8,6 +8,9 @@ import {
   renderSupervisorAgentRegistry,
 } from '../../chatbot-v3/supervisor-registry.js';
 import { SupervisorService } from '../../chatbot-v3/supervisor.service.js';
+import {
+  SUPERVISOR_EVAL_FIXTURES,
+} from './fixtures/supervisor-eval.fixtures.js';
 
 describe('SupervisorService', () => {
   const supervisor = new SupervisorService();
@@ -269,6 +272,17 @@ describe('SupervisorService', () => {
         },
       },
     });
+
+    expect(supervisor.deriveDecisionLineage({
+      ...minimalInput,
+      latestUserMessage: 'I need a human now',
+      bootstrap: {
+        message: 'I need a human now',
+        canCreateHandoff: true,
+      },
+    })).toEqual({
+      bootstrapOverride: 'direct_human_request_handoff',
+    });
   });
 
   it('routes denied direct human requests into an explicit faq explanation path instead of a normal worker', async () => {
@@ -294,6 +308,17 @@ describe('SupervisorService', () => {
           'intake.target_destination': 'Shanghai',
         },
       },
+    });
+
+    expect(supervisor.deriveDecisionLineage({
+      ...minimalInput,
+      latestUserMessage: 'I need a human now',
+      bootstrap: {
+        message: 'I need a human now',
+        canCreateHandoff: false,
+      },
+    })).toEqual({
+      bootstrapOverride: 'direct_human_request_faq_fallback',
     });
   });
 
@@ -325,6 +350,68 @@ describe('SupervisorService', () => {
         },
       },
     });
+
+    expect(supervisor.deriveDecisionLineage({
+      ...minimalInput,
+      latestUserMessage: 'Here are my documents',
+      bootstrap: {
+        message: 'Here are my documents',
+        attachments: [{ fileName: 'report.pdf' }],
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    })).toEqual({
+      bootstrapOverride: 'attachments_to_minimal_triage',
+    });
+  });
+
+  it('preserves bootstrap override semantics when the supervisor gateway throws', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => {
+        throw new Error('gateway unavailable');
+      },
+    });
+
+    await expect(supervisorWithGateway.suggest({
+      ...minimalInput,
+      latestUserMessage: 'I need a human now',
+      bootstrap: {
+        message: 'I need a human now',
+        canCreateHandoff: true,
+      },
+    })).resolves.toEqual({
+      intent: 'handoff',
+      suggestedStage: 'HUMAN_HANDOFF',
+      dispatchAgent: 'HandoffAgent',
+      reason: 'direct user request for a human',
+      task: {
+        goal: 'Initiate a human handoff for this user.',
+        latestUserMessage: 'I need a human now',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'handoff.active': false,
+        },
+      },
+    });
+
+    expect(supervisorWithGateway.deriveDecisionLineage({
+      ...minimalInput,
+      latestUserMessage: 'I need a human now',
+      bootstrap: {
+        message: 'I need a human now',
+        canCreateHandoff: true,
+      },
+    })).toEqual({
+      bootstrapOverride: 'direct_human_request_handoff',
+    });
+  });
+
+  it('returns null bootstrap lineage for normal non-bootstrap paths', async () => {
+    await supervisor.suggest(minimalInput);
+
+    expect(supervisor.deriveDecisionLineage(minimalInput)).toBeNull();
   });
 
   it('changes the records goal when the supervisor is collecting consult-supporting medical inputs', async () => {
@@ -430,6 +517,27 @@ describe('SupervisorService', () => {
         },
       },
     });
+  });
+
+  it('keeps the fixed supervisor eval fixture set complete', () => {
+    expect(SUPERVISOR_EVAL_FIXTURES.map((fixture) => fixture.id)).toEqual([
+      'ambiguous-short-confirmation-before-process',
+      'mixed-handoff-process-request-denied-to-explain',
+      'repeat-recommendation-in-place',
+      'revisit-recommendation-from-later-stage',
+      'late-process-explanation-request',
+    ]);
+  });
+
+  it.each(SUPERVISOR_EVAL_FIXTURES)('$id', async (fixture) => {
+    const fixtureSupervisor = fixture.mode === 'gateway'
+      ? new SupervisorService({
+        promptVersion: `supervisor-fixture:${fixture.id}`,
+        run: async () => fixture.gatewayOutput,
+      })
+      : supervisor;
+
+    await expect(fixtureSupervisor.suggest(fixture.input)).resolves.toEqual(fixture.expected);
   });
 
   it('exports an explicit conversation summary contract', () => {

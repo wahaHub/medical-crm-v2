@@ -7,8 +7,10 @@ import type {
 import {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
   type ChatbotV3ConversationSummaryContract,
-  type SupervisorDomainReadResults,
+  type ChatbotV3ReplayLineage,
   type MinimalIntakeSeed,
+  type SupervisorDecisionLineage,
+  type SupervisorDomainReadResults,
   type SupervisorReadDomain,
 } from '@medical-crm/application';
 import type { AgentAction, AgentName } from './agents.js';
@@ -152,8 +154,17 @@ export interface ConversationOrchestratorV3TurnResult {
     traceId: string;
     idempotencyKey: string;
     lastDispatchSource?: 'journey-runtime-authority';
+    replayLineage?: ChatbotV3ReplayLineage;
   };
   render: ConversationOrchestratorV3RenderState;
+}
+
+interface ConversationOrchestratorV3SupervisorReadDomainCollection {
+  domainReadResults?: SupervisorDomainReadResults;
+  replayLineage?: Pick<
+    ChatbotV3ReplayLineage,
+    'supervisorReadDomainRequests' | 'supervisorReadDomainsResolved'
+  >;
 }
 
 export interface ConversationOrchestratorV3LlmNodeRunMetadata {
@@ -170,6 +181,7 @@ export interface ConversationOrchestratorV3IdempotencyExecutor {
 export interface ConversationOrchestratorV3Supervisor {
   suggest(input: ConversationOrchestratorV3DecisionInput): Promise<ConversationOrchestratorV3Suggestion>;
   requestDomainReads?(input: ConversationOrchestratorV3DecisionInput): Promise<readonly SupervisorReadDomain[]>;
+  deriveDecisionLineage?(input: ConversationOrchestratorV3DecisionInput): SupervisorDecisionLineage | null;
   getLastLlmRunMetadata?(): ConversationOrchestratorV3LlmNodeRunMetadata | null;
 }
 
@@ -217,7 +229,11 @@ export class ConversationOrchestratorV3RuntimeService {
     );
 
     this.inflightTurns.set(idempotencyKey, turnPromise);
-    void turnPromise.finally(() => {
+    void turnPromise.then(() => {
+      if (this.inflightTurns.get(idempotencyKey) === turnPromise) {
+        this.inflightTurns.delete(idempotencyKey);
+      }
+    }, () => {
       if (this.inflightTurns.get(idempotencyKey) === turnPromise) {
         this.inflightTurns.delete(idempotencyKey);
       }
@@ -242,22 +258,45 @@ export class ConversationOrchestratorV3RuntimeService {
     const supervisorStartedAt = this.now();
 
     let suggestion: ConversationOrchestratorV3Suggestion;
+    let supervisorReplayLineage: ChatbotV3ReplayLineage | undefined;
+    let supervisorReadDomainCollection: ConversationOrchestratorV3SupervisorReadDomainCollection | undefined;
+    let supervisorDecisionLineage: SupervisorDecisionLineage | null | undefined;
     try {
-      suggestion = await this.resolveSupervisorSuggestion(input, supervisorInput);
+      supervisorReadDomainCollection = await this.collectSupervisorReadDomains(input, supervisorInput);
+      const supervisorSuggestInput = supervisorReadDomainCollection.domainReadResults
+        ? {
+            ...supervisorInput,
+            domainReadResults: supervisorReadDomainCollection.domainReadResults,
+          }
+        : supervisorInput;
+      supervisorDecisionLineage = this.dependencies.supervisor.deriveDecisionLineage?.(
+        supervisorSuggestInput,
+      ) ?? null;
+      suggestion = await this.dependencies.supervisor.suggest(supervisorSuggestInput);
+      supervisorReplayLineage = this.buildSupervisorReplayLineage(
+        supervisorReadDomainCollection,
+        supervisorDecisionLineage,
+      );
       this.emitNodeEvent(input, {
         node: 'Supervisor',
         action: 'suggest',
         status: 'completed',
         latencyMs: this.elapsedSince(supervisorStartedAt),
+        ...(supervisorReplayLineage ? { replayLineage: supervisorReplayLineage } : {}),
         ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
       });
     } catch (error) {
+      const supervisorFailureReplayLineage = this.buildSupervisorReplayLineage(
+        supervisorReadDomainCollection,
+        supervisorDecisionLineage,
+      );
       this.emitNodeEvent(input, {
         node: 'Supervisor',
         action: 'suggest',
         status: 'failed',
         latencyMs: this.elapsedSince(supervisorStartedAt),
         errorCode: 'UNKNOWN',
+        ...(supervisorFailureReplayLineage ? { replayLineage: supervisorFailureReplayLineage } : {}),
         ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
       });
       throw error;
@@ -276,27 +315,42 @@ export class ConversationOrchestratorV3RuntimeService {
         ...decisionInput,
         suggestion,
       });
+      const authorityReplayLineage = compactReplayLineage({
+        ...supervisorReplayLineage,
+        ...(decision.matchedRuleId ? { matchedRuleId: decision.matchedRuleId } : {}),
+      });
       this.emitNodeEvent(input, {
         node: 'JourneyRuntimeAuthority',
         action: 'decide',
         status: 'completed',
         latencyMs: this.elapsedSince(orchestratorStartedAt),
+        ...(authorityReplayLineage ? { replayLineage: authorityReplayLineage } : {}),
       });
     } catch (error) {
+      const authorityFailureReplayLineage = compactReplayLineage({
+        ...(supervisorReplayLineage ?? {}),
+      });
       this.emitNodeEvent(input, {
         node: 'JourneyRuntimeAuthority',
         action: 'decide',
         status: 'failed',
         latencyMs: this.elapsedSince(orchestratorStartedAt),
         errorCode: 'UNKNOWN',
+        ...(authorityFailureReplayLineage ? { replayLineage: authorityFailureReplayLineage } : {}),
       });
       throw error;
     }
+
+    const replayLineage = compactReplayLineage({
+      ...supervisorReplayLineage,
+      ...(decision.matchedRuleId ? { matchedRuleId: decision.matchedRuleId } : {}),
+    });
 
     const runtimeDebug = {
       traceId: input.traceId,
       idempotencyKey,
       lastDispatchSource: 'journey-runtime-authority',
+      ...(replayLineage ? { replayLineage } : {}),
     } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
 
     if (!decision.dispatchAgent) {
@@ -560,44 +614,35 @@ export class ConversationOrchestratorV3RuntimeService {
     };
   }
 
-  private async resolveSupervisorSuggestion(
-    input: ConversationOrchestratorV3HandleTurnInput,
-    supervisorInput: ConversationOrchestratorV3DecisionInput,
-  ): Promise<ConversationOrchestratorV3Suggestion> {
-    const domainReadResults = await this.collectSupervisorReadDomains(input, supervisorInput);
-    if (!domainReadResults) {
-      return this.dependencies.supervisor.suggest(supervisorInput);
-    }
-
-    return this.dependencies.supervisor.suggest({
-      ...supervisorInput,
-      domainReadResults,
-    });
-  }
-
   private async collectSupervisorReadDomains(
     input: ConversationOrchestratorV3HandleTurnInput,
     supervisorInput: ConversationOrchestratorV3DecisionInput,
-  ): Promise<SupervisorDomainReadResults | undefined> {
+  ): Promise<ConversationOrchestratorV3SupervisorReadDomainCollection> {
     if (!this.dependencies.supervisor.requestDomainReads) {
-      return undefined;
+      return {};
     }
 
     let availableReadDomains = [...(supervisorInput.availableReadDomains ?? [])];
     if (availableReadDomains.length === 0) {
-      return undefined;
+      return {};
     }
 
     const domainReadResults: SupervisorDomainReadResults = {};
+    const requestedReadDomains: SupervisorReadDomain[][] = [];
+    const resolvedReadDomains: SupervisorReadDomain[] = [];
 
     for (let pass = 0; pass < 2 && availableReadDomains.length > 0; pass += 1) {
-      const requestedReadDomains: readonly SupervisorReadDomain[] = await this.dependencies.supervisor
+      const requestedDomainsForPass: readonly SupervisorReadDomain[] = await this.dependencies.supervisor
         .requestDomainReads({
           ...supervisorInput,
           availableReadDomains,
           ...(Object.keys(domainReadResults).length > 0 ? { domainReadResults } : {}),
         });
-      const nextDomain = requestedReadDomains.find((domain) => availableReadDomains.includes(domain));
+      if (requestedDomainsForPass.length > 0) {
+        requestedReadDomains.push([...requestedDomainsForPass]);
+      }
+
+      const nextDomain = requestedDomainsForPass.find((domain) => availableReadDomains.includes(domain));
       if (!nextDomain) {
         break;
       }
@@ -607,10 +652,31 @@ export class ConversationOrchestratorV3RuntimeService {
       const data = await this.querySingleSupervisorReadDomain(input, nextDomain);
       if (data) {
         domainReadResults[nextDomain] = data;
+        resolvedReadDomains.push(nextDomain);
       }
     }
 
-    return Object.keys(domainReadResults).length > 0 ? domainReadResults : undefined;
+    return {
+      ...(Object.keys(domainReadResults).length > 0 ? { domainReadResults } : {}),
+      replayLineage: compactReplayLineage({
+        ...(requestedReadDomains.length > 0
+          ? { supervisorReadDomainRequests: requestedReadDomains }
+          : {}),
+        ...(resolvedReadDomains.length > 0
+          ? { supervisorReadDomainsResolved: resolvedReadDomains }
+          : {}),
+      }),
+    };
+  }
+
+  private buildSupervisorReplayLineage(
+    domainReadCollection?: ConversationOrchestratorV3SupervisorReadDomainCollection,
+    supervisorDecisionLineage?: SupervisorDecisionLineage | null,
+  ): ChatbotV3ReplayLineage | undefined {
+    return compactReplayLineage({
+      ...(domainReadCollection?.replayLineage ?? {}),
+      ...(supervisorDecisionLineage ?? {}),
+    });
   }
 
   private async querySingleSupervisorReadDomain(
@@ -725,6 +791,9 @@ export class ConversationOrchestratorV3RuntimeService {
       toStage: decision.to.stage,
       outcomeStatus: finalizedResult.turnOutcome.status,
       degradedErrorCode: finalizedResult.turnOutcome.recoverableErrorCode,
+      ...(finalizedResult.runtimeDebug.replayLineage
+        ? { replayLineage: finalizedResult.runtimeDebug.replayLineage }
+        : {}),
     });
     return finalizedResult;
   }
@@ -1177,6 +1246,25 @@ function deriveRenderState(
   return {
     path: 'STAGE_GUIDANCE',
   } satisfies ConversationOrchestratorV3RenderState;
+}
+
+function compactReplayLineage(
+  lineage: ChatbotV3ReplayLineage,
+): ChatbotV3ReplayLineage | undefined {
+  const compact = {
+    ...(lineage.matchedRuleId ? { matchedRuleId: lineage.matchedRuleId } : {}),
+    ...(lineage.supervisorReadDomainRequests?.length
+      ? {
+          supervisorReadDomainRequests: lineage.supervisorReadDomainRequests.map((request) => [...request]),
+        }
+      : {}),
+    ...(lineage.supervisorReadDomainsResolved?.length
+      ? { supervisorReadDomainsResolved: [...lineage.supervisorReadDomainsResolved] }
+      : {}),
+    ...(lineage.bootstrapOverride ? { bootstrapOverride: lineage.bootstrapOverride } : {}),
+  } satisfies ChatbotV3ReplayLineage;
+
+  return Object.keys(compact).length > 0 ? compact : undefined;
 }
 
 function isDeniedSemanticHandoff(

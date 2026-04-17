@@ -61,6 +61,59 @@ describe('chatbot-v3 observability', () => {
     expect(capturedEvents).toHaveLength(2);
   });
 
+  it('preserves compact replay lineage fields on runtime node events', () => {
+    const capturedEvents: Array<Record<string, unknown>> = [];
+    const emitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        capturedEvents.push(event as Record<string, unknown>);
+      },
+    });
+
+    const event = emitter.emit({
+      traceId: 'trace-lineage-1',
+      sessionId: 'session-lineage-1',
+      turnId: 'turn-lineage-1',
+      node: 'Turn',
+      action: 'turn_summary',
+      status: 'completed',
+      latencyMs: 9,
+      replayLineage: {
+        matchedRuleId: 'rule-minimal-triage-complete',
+        supervisorReadDomainRequests: [
+          ['records.status', 'recommendation.status'],
+          ['recommendation.status'],
+        ],
+        supervisorReadDomainsResolved: ['records.status', 'recommendation.status'],
+        bootstrapOverride: 'attachments_to_minimal_triage',
+      },
+    } as ChatbotV3RuntimeNodeEventInput);
+
+    expect(event).toMatchObject({
+      replayLineage: {
+        matchedRuleId: 'rule-minimal-triage-complete',
+        supervisorReadDomainRequests: [
+          ['records.status', 'recommendation.status'],
+          ['recommendation.status'],
+        ],
+        supervisorReadDomainsResolved: ['records.status', 'recommendation.status'],
+        bootstrapOverride: 'attachments_to_minimal_triage',
+      },
+    });
+    expect(capturedEvents).toEqual([
+      expect.objectContaining({
+        replayLineage: {
+          matchedRuleId: 'rule-minimal-triage-complete',
+          supervisorReadDomainRequests: [
+            ['records.status', 'recommendation.status'],
+            ['recommendation.status'],
+          ],
+          supervisorReadDomainsResolved: ['records.status', 'recommendation.status'],
+          bootstrapOverride: 'attachments_to_minimal_triage',
+        },
+      }),
+    ]);
+  });
+
   it('emits required M0 event set with required decision fields', () => {
     const capturedEvents: unknown[] = [];
     const emitter = createChatbotV3EventEmitter({

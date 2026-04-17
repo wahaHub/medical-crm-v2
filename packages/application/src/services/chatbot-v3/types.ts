@@ -1,4 +1,5 @@
 import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
+import type { ChatbotV3ReplayLineage } from '@medical-crm/validation';
 import type { MinimalIntakeSeed } from './minimal-intake.types.js';
 
 export const CHATBOT_V3_JOURNEY_STAGES = [
@@ -30,6 +31,13 @@ export type SupervisorReadDomain =
   | 'recommendation.status'
   | 'consult.status'
   | 'handoff.status';
+
+export type ChatbotV3BootstrapOverride =
+  | 'direct_human_request_handoff'
+  | 'direct_human_request_faq_fallback'
+  | 'attachments_to_minimal_triage';
+
+export type SupervisorDecisionLineage = Pick<ChatbotV3ReplayLineage, 'bootstrapOverride'>;
 
 export interface SupervisorConversationSummaryContract {
   owner: 'runtime';

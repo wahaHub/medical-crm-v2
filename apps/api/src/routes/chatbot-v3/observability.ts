@@ -1,3 +1,7 @@
+import type {
+  ChatbotV3ReplayLineage,
+} from '@medical-crm/application';
+
 export interface ChatbotV3CorrelationContext {
   traceId: string;
   sessionId: string;
@@ -36,6 +40,7 @@ export interface ChatbotV3RuntimeNodeEventInput {
   toStage?: string;
   outcomeStatus?: 'ok' | 'degraded';
   degradedErrorCode?: 'TIMEOUT' | 'UPSTREAM_UNAVAILABLE' | 'UNKNOWN' | null;
+  replayLineage?: ChatbotV3ReplayLineage;
 }
 
 export interface ChatbotV3RuntimeNodeEvent extends ChatbotV3RuntimeNodeEventInput {

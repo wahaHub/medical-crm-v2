@@ -599,6 +599,9 @@ describe('chatbot-v3 runtime', () => {
             reason: 'runtime-owned handoff suggestion',
           };
         }),
+        deriveDecisionLineage: vi.fn(() => ({
+          bootstrapOverride: 'direct_human_request_handoff' as const,
+        })),
       },
       journeyRuntimeAuthority: {
         decide: vi.fn(() => ({
@@ -676,6 +679,150 @@ describe('chatbot-v3 runtime', () => {
       },
     });
     expect(capturedInput?.suggestion.reason).toContain('Need a human now');
+    expect(result.runtimeDebug).toMatchObject({
+      replayLineage: {
+        bootstrapOverride: 'direct_human_request_handoff',
+      },
+    });
+  });
+
+  it('only emits bootstrap lineage when the supervisor reports it explicitly', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
+          reason: 'continue triage',
+        })),
+        deriveDecisionLineage: vi.fn(() => null),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      nodeEventEmitter: createChatbotV3RuntimeNodeEventEmitter({
+        emit: (event) => {
+          events.push(event as Record<string, unknown>);
+        },
+      }),
+      agents: {},
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-bootstrap-explicit-1',
+      sessionId: 'session-bootstrap-explicit-1',
+      turnId: 'turn-bootstrap-explicit-1',
+      message: 'Here are my documents',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      bootstrap: {
+        message: 'Here are my documents',
+        attachments: [{
+          fileName: 'report.pdf',
+          storageKey: 'chatbot/session-bootstrap-explicit-1/report.pdf',
+        }],
+      } as any,
+    } as any);
+
+    expect(result.runtimeDebug.replayLineage).toBeUndefined();
+
+    const supervisorCompleted = events.find(
+      (event) => event['node'] === 'Supervisor' && event['action'] === 'suggest' && event['status'] === 'completed',
+    );
+    const turnSummary = events.find(
+      (event) => event['node'] === 'Turn' && event['action'] === 'turn_summary',
+    );
+
+    expect(supervisorCompleted?.['replayLineage']).toBeUndefined();
+    expect(turnSummary?.['replayLineage']).toBeUndefined();
+  });
+
+  it('derives bootstrap replay lineage per call instead of reading mutable supervisor state', async () => {
+    const staleLineageGetter = vi.fn(() => ({
+      bootstrapOverride: 'direct_human_request_handoff' as const,
+    }));
+
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
+          reason: 'attachments should stay on minimal triage',
+        })),
+        deriveDecisionLineage: vi.fn(() => ({
+          bootstrapOverride: 'attachments_to_minimal_triage' as const,
+        })),
+        getLastDecisionLineage: staleLineageGetter,
+      } as any,
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-bootstrap-deterministic-1',
+      sessionId: 'session-bootstrap-deterministic-1',
+      turnId: 'turn-bootstrap-deterministic-1',
+      message: 'Here are my documents',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-bootstrap-deterministic-1/report.pdf',
+      }],
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      bootstrap: {
+        message: 'Here are my documents',
+        attachments: [{
+          fileName: 'report.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot/session-bootstrap-deterministic-1/report.pdf',
+        }],
+        canCreateHandoff: true,
+      } as any,
+    } as any);
+
+    expect(result.runtimeDebug).toMatchObject({
+      replayLineage: {
+        bootstrapOverride: 'attachments_to_minimal_triage',
+      },
+    });
+    expect(staleLineageGetter).not.toHaveBeenCalled();
   });
 
   it('ignores a stale caller current when statusSnapshot is present and minimal triage is incomplete', async () => {
@@ -895,6 +1042,12 @@ describe('chatbot-v3 runtime', () => {
   });
 
   it('lets supervisor request compact domain reads before returning the final proposal', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const eventEmitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        events.push(event as Record<string, unknown>);
+      },
+    });
     const recordsStatus = vi.fn(async () => ({
       status: 'ok' as const,
       data: {
@@ -930,6 +1083,7 @@ describe('chatbot-v3 runtime', () => {
           to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
           dispatchAgent: 'RecommendationAgent' as const,
           dispatchSource: 'journey-runtime-authority' as const,
+          matchedRuleId: 'rule-minimal-triage-complete' as const,
         })),
       },
       gateway: {
@@ -952,6 +1106,7 @@ describe('chatbot-v3 runtime', () => {
           })),
         },
       } as any,
+      nodeEventEmitter: eventEmitter,
       agents: {
         RecommendationAgent: {
           execute: vi.fn(async () => ({
@@ -995,6 +1150,177 @@ describe('chatbot-v3 runtime', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
+    expect(result.runtimeDebug).toMatchObject({
+      replayLineage: {
+        matchedRuleId: 'rule-minimal-triage-complete',
+        supervisorReadDomainRequests: [
+          ['records.status', 'recommendation.status'],
+          ['recommendation.status'],
+        ],
+        supervisorReadDomainsResolved: ['records.status', 'recommendation.status'],
+      },
+    });
+
+    const turnSummary = events.find(
+      (event) => event['node'] === 'Turn' && event['action'] === 'turn_summary',
+    );
+    expect(turnSummary).toMatchObject({
+      replayLineage: {
+        matchedRuleId: 'rule-minimal-triage-complete',
+        supervisorReadDomainRequests: [
+          ['records.status', 'recommendation.status'],
+          ['recommendation.status'],
+        ],
+        supervisorReadDomainsResolved: ['records.status', 'recommendation.status'],
+      },
+    });
+  });
+
+  it('preserves collected replay lineage when supervisor suggestion fails after domain reads', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        requestDomainReads: vi
+          .fn()
+          .mockResolvedValueOnce(['records.status'] as const)
+          .mockResolvedValueOnce([] as const),
+        suggest: vi.fn(async () => {
+          throw new Error('supervisor failed after reads');
+        }),
+        deriveDecisionLineage: vi.fn(() => null),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        records: {
+          status: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: {
+              state: 'ready',
+            },
+          })),
+        },
+        recommendation: { status: vi.fn() },
+        consult: { status: vi.fn() },
+        handoff: { status: vi.fn() },
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      nodeEventEmitter: createChatbotV3RuntimeNodeEventEmitter({
+        emit: (event) => {
+          events.push(event as Record<string, unknown>);
+        },
+      }),
+      agents: {},
+    });
+
+    await expect(runtime.handleTurn({
+      traceId: 'trace-supervisor-reads-fail-1',
+      sessionId: 'session-supervisor-reads-fail-1',
+      turnId: 'turn-supervisor-reads-fail-1',
+      message: 'Can you recommend a hospital for me?',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+    })).rejects.toThrow('supervisor failed after reads');
+
+    expect(events).toContainEqual(expect.objectContaining({
+      node: 'Supervisor',
+      action: 'suggest',
+      status: 'failed',
+      replayLineage: {
+        supervisorReadDomainRequests: [['records.status']],
+        supervisorReadDomainsResolved: ['records.status'],
+      },
+    }));
+  });
+
+  it('preserves collected replay lineage when authority fails after domain reads', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        requestDomainReads: vi
+          .fn()
+          .mockResolvedValueOnce(['records.status'] as const)
+          .mockResolvedValueOnce([] as const),
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'records are ready',
+        })),
+        deriveDecisionLineage: vi.fn(() => null),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('authority failed after reads');
+        }),
+      },
+      gateway: {
+        records: {
+          status: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: {
+              state: 'ready',
+            },
+          })),
+        },
+        recommendation: { status: vi.fn() },
+        consult: { status: vi.fn() },
+        handoff: { status: vi.fn() },
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      nodeEventEmitter: createChatbotV3RuntimeNodeEventEmitter({
+        emit: (event) => {
+          events.push(event as Record<string, unknown>);
+        },
+      }),
+      agents: {},
+    });
+
+    await expect(runtime.handleTurn({
+      traceId: 'trace-authority-reads-fail-1',
+      sessionId: 'session-authority-reads-fail-1',
+      turnId: 'turn-authority-reads-fail-1',
+      message: 'Can you recommend a hospital for me?',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+    })).rejects.toThrow('authority failed after reads');
+
+    expect(events).toContainEqual(expect.objectContaining({
+      node: 'JourneyRuntimeAuthority',
+      action: 'decide',
+      status: 'failed',
+      replayLineage: {
+        supervisorReadDomainRequests: [['records.status']],
+        supervisorReadDomainsResolved: ['records.status'],
+      },
+    }));
   });
 
   it('requests at most one status read before finalizing the supervisor proposal and keeps the supervisor input minimal', async () => {

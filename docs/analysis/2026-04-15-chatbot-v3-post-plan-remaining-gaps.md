@@ -1,386 +1,398 @@
-# Chatbot V3 After-Plan Remaining Gaps
+# Chatbot V3 Remaining Gaps (Supervisor-Led Translation)
 
 Date: 2026-04-15
-Scope: What would still be missing even if `docs/superpowers/plans/2026-04-15-chatbot-v3-orchestrator-multi-agent-implementation.md` were fully implemented
+Updated: 2026-04-17
+Original scope: What would still be missing even if `docs/superpowers/plans/2026-04-15-chatbot-v3-orchestrator-multi-agent-implementation.md` were fully implemented
+Current scope: Which maturity and debugging follow-ups still matter after the 2026-04-16 supervisor-led contract became canonical
 Audience: CRM chatbot maintainers, reviewers, and future v3 follow-up planners
 
-## 1. Why this document exists
+## 1. Why this document was rewritten
 
-The 2026-04-15 implementation plan is a good MVP plan.
+The 2026-04-15 architecture was orchestrator-led.
 
-If all plan tasks land, the team should have a real v3 runtime, not a mock or a paper design. It should be good enough to validate the architecture, run production-like traffic, and unblock frontend integration.
+That is no longer the canonical control plane.
 
-But the plan is still an M0 / MVP plan, not the final form of the chatbot runtime.
+As of 2026-04-16, the canonical contract is:
 
-This document explains:
+- `Supervisor` is the main LLM agent
+- `JourneyRuntimeAuthority` is the single final writer and allow-or-deny authority
+- the primary journey begins with `COLLECT_MINIMAL_MEDICAL_FACTS`
+- `RecordsAgent` and `RecommendationAgent` are real LLM workers
+- the runtime should prefer minimal context plus targeted domain reads
 
-1. what each major subsystem would likely reach if the plan is fully completed
-2. what would still be missing before calling that subsystem "complete"
-3. why those remaining gaps still matter
-4. what the smallest sensible follow-up should be
+Because of that control-plane change, the original version of this document can no longer be read literally.
 
-The goal is to prevent two opposite mistakes:
+However, several of its follow-up concerns were not really "orchestrator concerns." They were maturity concerns:
 
-- underestimating the value of the plan
-- overclaiming that plan-complete means architecture-complete
+- state-write ownership clarity
+- replay/debug visibility
+- evaluation discipline
+- worker result contract durability
+- degraded response quality
+- action-loop closure
 
-## 2. High-level conclusion
+Those concerns still matter.
 
-If the full 2026-04-15 implementation plan is completed as written, the likely subsystem completion levels would be:
+This rewritten document keeps the useful follow-up ideas, drops the outdated control-plane framing, and re-states the remaining gaps in supervisor-led terms.
 
-| Area | Estimated completion after full plan | Summary |
-|---|---:|---|
-| Orchestrator | 90-95% | Core authority model should be real and mostly correct |
-| Supervisor | 75-85% | Suggestion layer should be usable, but still MVP-grade |
-| Subagents | 70-80% | Agent pattern should be proven, but only partially matured |
-| Composer | 85-90% | Response assembly should become a real module, but still mostly renderer-grade |
-| Overall v3 runtime | 82-88% | Good first production-capable architecture, not final architecture |
+## 2. High-level judgment
 
-The reason it still does not reach 100% is simple:
+The old document is now best understood as:
 
-the plan proves the architecture, but it does not try to solve every long-tail runtime, memory, eval, and ownership problem that a fully mature agent system eventually needs to solve.
+- no longer a source of architectural truth
+- still a useful maturity backlog
+- especially useful for debugging, replay, and operational hardening follow-ups
 
-This is the correct tradeoff for M0.
+In other words:
 
-## 3. Orchestrator after full plan
+- do not reuse its orchestrator-led wording as if it were current design truth
+- do reuse the parts that help the team debug, evaluate, and harden the shipped supervisor-led runtime
 
-### 3.1 What full plan completion should achieve
+## 3. What is now outdated or largely closed
 
-If the plan is fully implemented, the orchestrator should become a real deterministic decision engine with:
+### 3.1 Orchestrator-led ownership wording is outdated
 
-- config-driven stage prerequisites
-- config-driven jump rules
-- explain-before-downstream gate
-- semantic handoff gating
-- hard handoff precedence
-- orchestrator-owned dispatch decisions
-- idempotent runtime execution around each turn
-- degraded fallback behavior when subagent or tool work fails
+The original text treated the orchestrator as the enduring primary decision owner.
 
-That is enough to make `Supervisor suggests -> Orchestrator decides -> Sub-agent executes` true in practice rather than only in docs.
+That is no longer the right framing.
 
-### 3.2 Why this is still not 100%
+The correct supervisor-led framing is:
 
-Even after the plan, the orchestrator would still likely need a small number of follow-up upgrades before it can be treated as fully complete.
+- `Supervisor` proposes
+- `JourneyRuntimeAuthority` finalizes
+- runtime dispatches only the finalized decision
 
-#### Gap A: explicit fact commit must be fully closed
+So any old gap framed as "make the orchestrator smarter" should now be translated into either:
 
-The most important example is `process.explained=true`.
+- improve `Supervisor` proposal quality
+- improve `JourneyRuntimeAuthority` rule clarity and write ownership
+- improve runtime observability around the proposal-to-authority boundary
 
-The spec correctly says downstream progression should depend on an explicit fact rather than stage/path inference. But getting this truly right requires more than just checking the fact during decision time. The runtime also needs a stable rule for:
+### 3.2 "Only one real agentic worker" is outdated
 
-- when the fact is created
-- who is allowed to create it
-- where it is persisted
-- how it is replayed on later turns
+That was true for the 4/15 MVP direction.
 
-If that lifecycle is still even slightly ambiguous, the orchestrator is not yet fully closed.
+It is not true for the current implementation direction.
 
-#### Gap B: decision ownership must include state commit ownership
+The current supervisor-led architecture already treats these as real LLM nodes:
 
-It is not enough for the orchestrator to compute `to.stage`.
+- `Supervisor`
+- `FaqAgent`
+- `RecordsAgent`
+- `RecommendationAgent`
 
-To really be the single writer, the orchestrator path also needs to be the only place that commits authoritative journey and explicit fact changes back into persisted session state. Otherwise the system still has split authority: one component decides, another component silently becomes the effective writer.
+So the useful follow-up is no longer "prove a second real worker exists."
 
-#### Gap C: deterministic replay needs config version visibility
+The useful follow-up is now:
 
-The spec already frames determinism in terms of:
+- keep worker task boundaries durable
+- keep worker outcome schemas bounded
+- keep authority/runtime from trusting worker output too broadly
 
-- journey snapshot
-- status snapshot
-- supervisor suggestion
-- rule config version
+### 3.3 Summary ownership is no longer the same kind of gap
 
-To make this operationally useful, the runtime should expose enough audit context to answer "why did this turn decide differently from yesterday?" without guessing. If rule config version, prompt version, or fact snapshot lineage are missing from debug/audit context, deterministic design exists on paper but remains weaker in production debugging.
+The old document correctly worried that a history-aware system would become unstable if conversation summary ownership stayed vague.
 
-### 3.3 Smallest sensible follow-up
+That concern was important.
 
-After plan completion, the smallest useful orchestrator follow-up would be:
+But the specific ownership split described in the old version is now mostly closed.
 
-1. fully define explicit fact commit rules, especially `process.explained`
-2. make orchestrator-side journey/fact commit the only authoritative write path
-3. attach config version to runtime debug and emitted decision events
+The current runtime owns summary patch generation and route persistence consumes the runtime-produced patch.
 
-Those three changes would likely move the orchestrator from "mostly complete" to "effectively complete for v3."
+So summary is no longer a "missing owner" problem.
 
-## 4. Supervisor after full plan
+The remaining problem is now smaller and more operational:
 
-### 4.1 What full plan completion should achieve
+- whether the compact summary contract stays stable and useful for debugging over time
+- whether summary version lineage becomes visible enough for replay debugging
 
-If the plan is completed, the supervisor should no longer be just a heuristic placeholder.
+### 3.4 Task envelope and FAQ answer contract are no longer purely aspirational
 
-It should become a real history-aware suggestion layer with:
+The old document said task envelopes and bounded worker outcomes still needed to become real contracts.
 
-- a structured prompt contract
-- strict output shape
-- suggestion-only sanitation
-- fallback to heuristic mode on failure
-- minimal observability for prompt/runtime issues
+That concern was correct at the time.
 
-That is enough to make the supervisor usable in production without giving it unsafe authority.
+The current runtime now already has explicit typed worker task structures and bounded worker output contracts.
 
-### 4.2 Why this is still not 100%
+So this is no longer a "not yet started" gap.
 
-The supervisor is intentionally narrow in MVP. That is good. But it also means several maturity gaps would remain.
+The remaining gap is now contract durability:
 
-#### Gap A: evaluation coverage will still be thin
+- keeping those schemas versioned and observable enough for future worker evolution
+- ensuring runtime logs/debug payloads make worker contract failures easy to inspect
 
-A prompt contract plus fallback is not the same thing as a mature suggestion system.
+## 4. Remaining gaps that still matter
 
-To really trust the supervisor, the team still needs a reusable eval set for cases such as:
+## 4.1 Replay and debugging visibility is still underpowered
 
-- short confirmations like "okay" or "that one"
-- handoff requests mixed with FAQ intent
-- late process explanation requests in downstream stages
-- repeated turns after handoff is already active
-- history-sensitive progression intent
+This is the most important remaining gap from the old document.
 
-Without this, the supervisor can be functional but still drift quietly after prompt or model changes.
+The runtime already exposes useful observability and node-debug fields such as:
 
-#### Gap B: summary provenance must stay explicit
+- `nodePromptVersion`
+- `nodeModel`
+- `fallbackUsed`
+- `schemaValidationFailed`
 
-A history-aware supervisor is only as good as the summary and facts it receives.
+That is a strong start.
 
-If conversation summary generation, refresh cadence, or trust level is vague, the supervisor may appear unstable even when the prompt itself is fine. This is not only a prompt problem. It is an upstream context contract problem.
+But the system still lacks enough lineage to answer the hardest production debugging question cleanly:
 
-#### Gap C: drift detection remains weaker than runtime validation
+"Why did this turn behave differently from the same-looking turn yesterday?"
 
-Schema validation protects against malformed output.
+The missing pieces are things like:
 
-It does not protect against semantically bad but schema-valid output. That requires lightweight regression evaluation, prompt versioning discipline, and a stable review habit when prompt or model changes happen.
+- explicit authority rule/config version visibility
+- clearer authority decision lineage visibility at the turn-debug surface
+- clearer fact snapshot lineage visibility
+- clearer conversation summary lineage visibility
+- clearer supervisor domain-read request/result visibility
+- clearer bootstrap-override visibility
+- one compact replay-oriented explanation surface that joins these together
 
-### 4.3 Smallest sensible follow-up
+Without those, the runtime is observable, but replay debugging is still more manual than it should be.
 
-After plan completion, the minimum useful supervisor follow-up would be:
+### Why this matters
 
-1. create a fixed supervisor eval fixture set
-2. explicitly define conversation summary ownership and refresh policy
-3. add prompt/model drift review around the supervisor contract
+This directly affects:
 
-That would take the supervisor from "safe MVP" to "operationally reliable."
+- production incident debugging
+- regression triage after prompt changes
+- comparing two seemingly similar turns that diverged
+- explaining whether the cause was summary drift, authority rule drift, worker fallback, bootstrap override, supervisor read-domain differences, or state differences
 
-## 5. Subagents after full plan
+### Smallest sensible follow-up
 
-### 5.1 What full plan completion should achieve
+1. attach authority/config version to finalized authority decision events
+2. surface authority decision lineage at the turn-debug level, not only deeper event streams
+3. attach summary contract/version lineage to debug output or decision metadata
+4. expose fact snapshot lineage plus supervisor read-domain request/result breadcrumbs for replay
+5. make bootstrap overrides explicit in replay/debug payloads
+6. add one stable replay-debug envelope that joins suggestion, authority decision, worker metadata, summary contract, canonical truth inputs, read-domain usage, and bootstrap inputs
 
-If the plan is completed, the runtime should have a real and defensible subagent split:
+## 4.2 Evaluation maturity is still thin
 
-- `FaqAgent` becomes the only MVP LLM worker
-- `RecordsAgent`, `RecommendationAgent`, `ConsultAgent`, and `HandoffAgent` remain deterministic bounded wrappers
-- tool access remains constrained by agent role
-- dispatch remains orchestrator-owned
+The old document was right that schema validation is not enough.
 
-This is a good architecture.
+That remains true in the supervisor-led system.
 
-It is also the right minimal interpretation of "multi-agent" for this product. Most business actions should stay deterministic.
+The runtime now has much stronger contracts than the old 4/15 MVP expected, but the system can still drift semantically while remaining schema-valid.
 
-### 5.2 Why this is still not 100%
+The highest-value missing eval areas are still:
 
-#### Gap A: only one agent would be truly agentic
+- `Supervisor` progression intent
+- `Supervisor` mixed FAQ/handoff/process-explanation intent handling
+- FAQ answer quality under partial grounding
+- degraded-path user guidance
+- repeated turns after recommendation selection, explanation, consult, or handoff activation
+- revisit/repeat behavior for `RECOMMENDATION` and `COLLECT_MEDICAL_INPUTS`
 
-This is acceptable for MVP and probably desirable.
+### Why this matters
 
-But it means the system has proven only one real LLM worker pattern, not a broadly generalized subagent platform. The architecture would be validated, but not yet broadly stress-tested across multiple agent types.
+This is the main defense against:
 
-#### Gap B: task envelope needs to become a long-lived contract
+- schema-valid but semantically wrong `Supervisor` proposals
+- prompt regressions that only show up in natural user language
+- worker contract drift that still "looks fine" in happy-path tests
 
-The plan's `Task Envelope v1` is the correct direction.
+### Smallest sensible follow-up
 
-Still, after implementation, the envelope will likely remain early-stage unless it is treated as a real internal contract with:
+1. create fixed supervisor eval fixtures
+2. create FAQ and degraded-path eval fixtures
+3. add a lightweight regression habit for prompt/model changes, not just type/schema checks
 
-- stable schema
-- explicit allowed tools
-- explicit result shape
-- versioning discipline
+## 4.3 Composer degraded guidance was too generic and is now mostly closed
 
-Without that, it works as an implementation detail but is still fragile as a long-term runtime boundary.
+The old document said the composer might become formally correct before it becomes operationally helpful.
 
-#### Gap C: outcome protocol needs to be stronger
+That concern materially improved in the 2026-04-17 hardening pass.
 
-One lesson from other agent systems is that agent execution quality improves when workers do not merely emit free text. They should converge on a bounded outcome signal.
+The composer no longer collapses every degraded turn into one generic user message.
 
-For v3, this matters most for `FaqAgent`. If it can return a structured answer result plus cited FAQ ids and confidence, the main runtime can stay deterministic while still benefiting from LLM flexibility.
+It now keeps a small, explicit family set:
 
-#### Gap D: allowlist discipline must stay runtime-enforced
+- FAQ degradation
+- recommendation degradation
+- consult degradation
+- blocked handoff / denied escalation guidance
 
-Natural language warnings are not enough.
+That is exactly the right shape for this layer:
 
-The system should keep agent capabilities runtime-enforced and observable, especially for the FAQ worker. If that boundary becomes loose, stage authority and factual grounding both get weaker.
+- deterministic
+- bounded
+- easy to regression test
+- not a hidden policy engine
 
-### 5.3 Smallest sensible follow-up
+### Why this matters
 
-After plan completion, the smallest high-value subagent follow-up would be:
+This improves:
 
-1. freeze `Task Envelope v1` as a real internal schema
-2. freeze `FaqAnswerResult` as a real internal schema
-3. ensure emitted runtime events capture enough information to debug tool-plan and outcome quality
+- user recovery rate after failures
+- frontend debugging
+- support/debugging because user-visible symptoms better reflect the real failure type
 
-That would keep the system minimal while making subagent behavior much more durable.
+### What remains open
 
-## 6. Composer after full plan
+The remaining follow-up is now much smaller:
 
-### 6.1 What full plan completion should achieve
+1. keep future failure families explicit instead of extending copy ad hoc
+2. keep route-level regression coverage for the live degraded paths
+3. resist adding free-form policy branching to the composer
 
-If the plan is completed, the biggest structural improvement here should be:
+## 4.4 Card action closure still deserves an explicit audit
 
-`ResponseComposer` becomes an explicit module instead of route-local assembly logic.
+The old document warned that rendered cards can land before all actions behind them are fully alive.
 
-That matters because the final response envelope should have one owner for:
+That still matters.
 
-- `messages[]`
-- `cards[]`
-- `journey`
-- `handoff`
-- `turnOutcome`
+The current card layer is much cleaner than before, but some cards still behave more like rendered state than fully closed action surfaces.
 
-This is a cleaner ownership model than scattering that logic through route code.
+This is not a contract failure.
 
-### 6.2 Why this is still not 100%
+It is a maturity gap:
 
-#### Gap A: composer would still be mostly an envelope renderer
+- every surfaced card should have a clear backend action story
+- every repeat/refresh/revisit flow should be intentionally supported, not accidentally tolerated
 
-That is fine for MVP.
+### Why this matters
 
-But it means the composer is still not a rich response policy system. It mainly assembles final output from bounded upstream results. For v3 this is probably the right decision, but it also means the composer remains intentionally narrow.
+This directly helps:
 
-#### Gap B: degraded guidance may still be too generic
+- frontend integration predictability
+- staging QA
+- debugging loops where the UI looks interactive but the backend path is only partially closed
 
-When failures happen, users do not only need a valid envelope. They need stage-aware guidance.
+Update on 2026-04-17:
 
-For example:
+The audit/documentation part of this gap is now closed by `docs/analysis/2026-04-17-chatbot-v3-card-action-closure-checklist.md`.
 
-- failed FAQ grounding
-- failed recommendation generation
-- failed consult scheduling
-- blocked semantic handoff
+The implementation/action-surface part is still open.
 
-Each of these should ideally produce slightly different user guidance. A minimal composer may still collapse too many of these into generic degraded copy.
+More specifically:
 
-#### Gap C: card actions may still lag behind card rendering
+- backend ownership of every current v3 card action or revisit loop is now explicit
+- the live response envelope still leaves several schema-allowed actions intentionally un-emitted
+- this remains a maturity gap, but it is no longer an invisible one
 
-A composer can become correct as a renderer before the action semantics behind all cards are fully closed. This often happens in staged implementations: the UI contract lands earlier than the complete action loop behind every button or refresh action.
+### Smallest sensible follow-up
 
-So even with a finished composer module, the runtime may still need action-loop strengthening to make every surfaced card feel fully alive.
+1. audit each v3 card type against its backend action path
+2. explicitly mark which cards are view-only and which are action-bearing
+3. add a small action-loop checklist for recommendation revisit, upload retry, consult retry, and handoff follow-up states
 
-### 6.3 Smallest sensible follow-up
+## 4.5 Single-writer correctness now needs periodic audit, not architectural rescue
 
-After plan completion, the smallest useful composer follow-up would be:
+The old document was right that state-write ownership matters.
 
-1. add stage-aware degraded response rules
-2. ensure FAQ bounded answer text passes cleanly through the composer
-3. verify every card action has a clean backend action story, not only a schema slot
+The good news is that this is no longer a "missing architecture" problem.
 
-That would move the composer from "formalized renderer" to "reliable response layer."
+The supervisor-led runtime now has a real authority-owned final write contract.
 
-## 7. Overall runtime after full plan
+So the remaining gap is narrower:
 
-### 7.1 What full plan completion should achieve
+- keep auditing that route/runtime/worker changes do not quietly reintroduce side writes or implicit truth derivation
+- keep canonical truth flags tied to explicit persisted state rather than helper heuristics
 
-A fully completed plan should produce a v3 runtime that is good enough to say:
+### Why this matters
 
-- Dify is no longer the primary engine on the v3 path
-- orchestration authority lives in CRM
-- the v3 endpoint and contract are real
-- observability is real enough for non-prod verification
-- frontend-ready v3 cards and response shapes exist
-- one real LLM worker pattern is validated
+This is how the team prevents a regression back into dual truths.
 
-That is not a toy result. That is a serious milestone.
+### Smallest sensible follow-up
 
-### 7.2 Why this is still not 100%
+1. keep a focused single-writer audit checklist for new journey facts
+2. require explicit tests whenever a new canonical truth flag or worker write path is added
+3. treat route-side heuristic truth derivation as a regression unless deliberately approved
 
-The runtime would still be missing some maturity layers that are usually learned only after initial production use.
+## 4.6 Long-tail lifecycle maturity is still normal post-M0 work
 
-#### Gap A: long-tail eval maturity
+The old document correctly said a valid contract can arrive before every lifecycle edge is equally mature.
 
-The plan proves the system can run.
+That remains true.
 
-It does not yet guarantee that stage transitions, FAQ grounding, degraded guidance, and handoff semantics remain stable through many prompt changes, data changes, and future agent additions.
-
-#### Gap B: contract maturity is ahead of lifecycle maturity
-
-The v3 contract can be fully valid before all lifecycle edges are equally mature.
-
-Typical examples:
+The kinds of long-tail issues still worth expecting are:
 
 - retries after partial business success
-- duplicate user submissions with stale UI state
-- late-arriving status writes
-- edge cases around pre/post phase transitions
+- duplicate submissions with stale UI state
+- delayed status writes from external business steps
+- repeated or late follow-up actions after consult or handoff
+- edge cases around active/post/completed phase transitions
 
-These are not arguments against the plan. They are the normal next class of issues after a good M0 lands.
+This is not a sign the architecture is wrong.
 
-#### Gap C: architecture validation does not equal organization-wide closure
+It is the normal next layer after architecture proof and contract cleanup.
 
-After plan completion, the team should know that the v3 architecture direction is correct.
+## 5. Recommended supervisor-led follow-up order
 
-But there will still be follow-up work around:
+The best next follow-up order is now:
 
-- eval discipline
-- production debugging discipline
-- prompt and config versioning hygiene
-- explicit ownership of state writes, summaries, and user-facing guidance
+1. extend replay/debug lineage visibility for authority config, summary lineage, and fact lineage
+2. keep growing fixed eval fixtures for `Supervisor`, FAQ, and degraded paths
+3. keep composer degraded guidance bounded as new failure families appear
+4. close the remaining live card action surfaces beyond the now-complete audit/checklist
+5. keep a focused single-writer regression audit for canonical truth writes
 
-Those are maturity tasks, not first-plan tasks.
+This order is intentionally different from the original 4/15 wording.
 
-### 7.3 Smallest sensible follow-up
+It follows the new supervisor-led control plane while preserving the old document's best maturity instincts.
 
-The smallest high-value runtime follow-up after full plan completion would be:
+## 6. Debugging payoff
 
-1. a post-M0 eval pack focused on supervisor, FAQ worker, and degraded paths
-2. a persistence and explicit-fact audit, especially around journey/fact single-writer rules
-3. a response-quality pass on composer degraded guidance and action loops
+Implementing the remaining high-value items above should make debugging the new v3 noticeably easier.
 
-That would likely move the runtime from "strong MVP" to "stable first production generation."
+The biggest reasons are:
 
-## 8. Why this is the right stopping point for the 4/15 plan
+### 6.1 Better turn-to-turn comparison
 
-It is important not to misread the remaining gaps as flaws in the plan.
+Version and lineage visibility makes it much easier to answer:
 
-The plan is intentionally doing the right kind of restraint:
+- did the `Supervisor` change?
+- did the authority rules change?
+- did the worker prompt change?
+- did the summary change?
+- did the canonical facts differ?
+- did the supervisor read a different domain?
+- did a bootstrap override force a different path?
 
-- prove one real LLM suggestion layer
-- prove one real LLM worker
-- keep other business actions deterministic
-- move final authority into the orchestrator
-- ship a clean v3 public contract
+That turns many debugging sessions from "reconstruct the world manually" into "inspect one joined debug record."
 
-This is the right first move.
+### 6.2 Better detection of semantic drift
 
-Trying to solve every remaining maturity problem inside the same plan would likely make the project slower, blur ownership, and create more moving parts before the first architecture proof has even shipped.
+Fixed eval fixtures catch the class of bugs where everything validates but the behavior is still wrong.
 
-So the correct reading is:
+That is especially important for:
 
-- if this plan is not completed, the architecture is still under-proven
-- if this plan is completed, the architecture is proven enough to continue
-- after that, the remaining work is mostly maturity work, not architecture-rescue work
+- mixed intent turns
+- short ambiguous confirmations
+- revisit/repeat requests
+- late process-explanation requests
+- degrade/recovery paths
 
-## 9. Recommended post-plan follow-up order
+### 6.3 Better frontend and staging diagnosis
 
-If the full implementation plan lands, the next follow-up order should be:
+Stage-aware degraded guidance and explicit action-loop closure make it easier to tell whether a problem is:
 
-1. explicit fact + single-writer persistence audit
-2. supervisor and FAQ eval fixtures
-3. formalize task envelope and FAQ answer result contracts
-4. strengthen composer degraded guidance and card action closure
-5. add prompt/config/runtime version visibility for easier replay and debugging
+- a backend failure
+- a missing action path
+- a blocked authority rule
+- a worker fallback
+- or simply a view-only card doing what it was designed to do
 
-This sequence keeps the next iteration small and practical while directly attacking the most important remaining risks.
+## 7. Final judgment
 
-## 10. Final judgment
+The original 2026-04-15 remaining-gaps document is no longer correct as an architecture narrative.
 
-If the 2026-04-15 implementation plan is fully completed, the team should treat that milestone as:
+It is still valuable as a maturity and debugging checklist.
 
-- a successful architecture validation
-- a real v3 runtime milestone
-- a strong production-capable first generation
+The right way to use it now is:
 
-The team should not treat it as:
+- discard its orchestrator-led control-plane assumptions
+- keep its strongest operational concerns
+- restate those concerns in supervisor-led terms
 
-- the final form of the chatbot runtime
-- a complete multi-agent platform
-- the end of state ownership, eval, or maturity work
+That is what this rewritten version does.
 
-That distinction is healthy.
+So the final answer is:
 
-It means the plan is ambitious enough to matter, but still disciplined enough to ship.
+- yes, parts of the old gap analysis still matter
+- no, it should not be read literally anymore
+- yes, implementing the still-relevant follow-ups should make debugging the new supervisor-led v3 materially easier

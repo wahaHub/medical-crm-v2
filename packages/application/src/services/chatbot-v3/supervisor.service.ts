@@ -1,10 +1,12 @@
 import type { ChatJourneyStage } from '@medical-crm/domain';
 import type {
+  ChatbotV3BootstrapOverride,
   ChatbotV3DispatchAgent,
   ChatbotV3Facts,
   OrchestratorV3BootstrapSignals,
   OrchestratorV3DecisionInput,
   OrchestratorV3Intent,
+  SupervisorDecisionLineage,
   SupervisorGatewayInput,
   SupervisorReadDomain,
   SupervisorReadHints,
@@ -51,13 +53,21 @@ export class SupervisorService {
 
   constructor(private readonly gateway?: SupervisorSuggestionGateway) {}
 
+  deriveDecisionLineage(input: OrchestratorV3DecisionInput): SupervisorDecisionLineage | null {
+    const bootstrapOverride = resolveBootstrapOverride(input.bootstrap);
+    return bootstrapOverride ? { bootstrapOverride } : null;
+  }
+
   async suggest(input: OrchestratorV3DecisionInput): Promise<SupervisorSuggestion> {
-    const bootstrapOverride = deriveBootstrapOverride(input);
+    const bootstrapOverride = this.deriveDecisionLineage(input)?.bootstrapOverride;
+    const bootstrapSuggestion = bootstrapOverride
+      ? buildBootstrapOverrideSuggestion(bootstrapOverride)
+      : null;
     const fallback = buildProposal(heuristicSuggest(input), input);
 
     if (!this.gateway) {
       this.lastRunMetadata = null;
-      return bootstrapOverride ? buildProposal(bootstrapOverride, input) : fallback;
+      return bootstrapSuggestion ? buildProposal(bootstrapSuggestion, input) : fallback;
     }
 
     const metadataBase = {
@@ -68,13 +78,13 @@ export class SupervisorService {
     try {
       const raw = await this.gateway.run(buildGatewayInput(input));
       const sanitized = sanitizeSuggestion(raw, input, fallback);
-      if (bootstrapOverride) {
+      if (bootstrapSuggestion) {
         this.lastRunMetadata = {
           ...metadataBase,
           fallbackUsed: true,
           schemaValidationFailed: false,
         };
-        return buildProposal(bootstrapOverride, input);
+        return buildProposal(bootstrapSuggestion, input);
       }
       this.lastRunMetadata = {
         ...metadataBase,
@@ -88,7 +98,7 @@ export class SupervisorService {
         fallbackUsed: true,
         schemaValidationFailed: false,
       };
-      return fallback;
+      return bootstrapSuggestion ? buildProposal(bootstrapSuggestion, input) : fallback;
     }
   }
 
@@ -151,11 +161,6 @@ function sanitizeSuggestion(
 }
 
 function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggestionSeed {
-  const bootstrapOverride = deriveBootstrapOverride(input);
-  if (bootstrapOverride) {
-    return bootstrapOverride;
-  }
-
   if (input.suggestion.intent === 'handoff' || input.current.stage === 'HUMAN_HANDOFF') {
     return {
       intent: 'handoff',
@@ -249,35 +254,44 @@ function isDirectHumanRequest(bootstrap: OrchestratorV3BootstrapSignals | undefi
   return DIRECT_HUMAN_REQUEST_PATTERNS.some((pattern) => pattern.test(message));
 }
 
-function deriveBootstrapOverride(
-  input: OrchestratorV3DecisionInput,
-): SupervisorSuggestionSeed | null {
-  if (isDirectHumanRequest(input.bootstrap)) {
-    if (input.bootstrap?.canCreateHandoff) {
+function resolveBootstrapOverride(
+  bootstrap: OrchestratorV3BootstrapSignals | undefined,
+): ChatbotV3BootstrapOverride | null {
+  if (isDirectHumanRequest(bootstrap)) {
+    return bootstrap?.canCreateHandoff
+      ? 'direct_human_request_handoff'
+      : 'direct_human_request_faq_fallback';
+  }
+
+  return (bootstrap?.attachments?.length ?? 0) > 0
+    ? 'attachments_to_minimal_triage'
+    : null;
+}
+
+function buildBootstrapOverrideSuggestion(
+  bootstrapOverride: ChatbotV3BootstrapOverride,
+): SupervisorSuggestionSeed {
+  switch (bootstrapOverride) {
+    case 'direct_human_request_handoff':
       return {
         intent: 'handoff',
         suggestedStage: 'HUMAN_HANDOFF',
         reason: clampReason('direct user request for a human'),
       };
-    }
-
-    return {
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
-      dispatchAgent: 'FaqAgent',
-      reason: clampReason('direct human request cannot create handoff ticket for this session'),
-    };
+    case 'direct_human_request_faq_fallback':
+      return {
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: 'FaqAgent',
+        reason: clampReason('direct human request cannot create handoff ticket for this session'),
+      };
+    case 'attachments_to_minimal_triage':
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: clampReason('attachments provided by user'),
+      };
   }
-
-  if ((input.bootstrap?.attachments?.length ?? 0) > 0) {
-    return {
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-      reason: clampReason('attachments provided by user'),
-    };
-  }
-
-  return null;
 }
 
 function buildProposal(

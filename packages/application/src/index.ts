@@ -50,6 +50,7 @@ export type {
   ConversationOrchestrationResult as ChatbotV2ConversationOrchestrationResult,
 } from './services/chatbot-v2/types.js';
 export type {
+  ChatbotV3BootstrapOverride,
   ChatbotV3ConversationSummaryContract,
   ChatbotV3BootstrapSignals,
   ChatbotV3DispatchAgent,
@@ -78,6 +79,7 @@ export type {
   OrchestratorV3Suggestion,
   SupervisorGatewayInput,
   SupervisorDomainReadResults,
+  SupervisorDecisionLineage,
   SupervisorOutput,
   SupervisorReadDomain,
   SupervisorReadHints,
@@ -85,6 +87,7 @@ export type {
   SupervisorSuggestionSeed,
   SupervisorTask,
 } from './services/chatbot-v3/types.js';
+export type { ChatbotV3ReplayLineage } from '@medical-crm/validation';
 export {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,

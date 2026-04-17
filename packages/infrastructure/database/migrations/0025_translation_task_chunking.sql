@@ -22,8 +22,8 @@ WITH ranked AS (
       PARTITION BY source_db, entity_type, entity_id, chunk_key, target_language
       ORDER BY
         CASE status
-          WHEN 'pending' THEN 0
-          WHEN 'processing' THEN 1
+          WHEN 'processing' THEN 0
+          WHEN 'pending' THEN 1
           WHEN 'completed' THEN 2
           ELSE 3
         END,

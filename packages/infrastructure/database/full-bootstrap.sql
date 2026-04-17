@@ -367,6 +367,8 @@ SET target_language = CASE
 END
 WHERE target_language IS NULL OR target_language = '';
 
+ALTER TABLE translation_tasks ALTER COLUMN target_language SET NOT NULL;
+
 -- Merge duplicate pending/processing rows created under the old per-language queue model
 -- into the new unified one-row-per-entity model.
 WITH grouped AS (

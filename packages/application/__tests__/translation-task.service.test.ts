@@ -47,6 +47,7 @@ describe('TranslationTaskService', () => {
         entityType: 'case',
         entityId: 'entity-1',
         fieldsToTranslate: { name: 'John', description: 'Some text' },
+        targetLanguage: 'zh',
         targetLanguages: ['zh', 'en'],
       };
       await service.enqueue(input);
@@ -54,6 +55,36 @@ describe('TranslationTaskService', () => {
       expect(mockTaskRepo.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           fieldsToTranslate: { name: 'John', description: 'Some text' },
+          targetLanguage: 'zh',
+          targetLanguages: ['zh'],
+        }),
+      );
+    });
+
+    it('fans out legacy multi-language enqueue into one row per target language when targetLanguage is absent', async () => {
+      const input: EnqueueTranslationInput = {
+        sourceDb: 'crm',
+        entityType: 'case',
+        entityId: 'entity-1',
+        fieldsToTranslate: { name: 'John', description: 'Some text' },
+        targetLanguages: ['zh', 'en'],
+      };
+
+      await service.enqueue(input);
+
+      expect(mockTaskRepo.upsert).toHaveBeenCalledTimes(2);
+      expect(mockTaskRepo.upsert).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          targetLanguage: 'zh',
+          targetLanguages: ['zh'],
+        }),
+      );
+      expect(mockTaskRepo.upsert).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          targetLanguage: 'en',
+          targetLanguages: ['en'],
         }),
       );
     });

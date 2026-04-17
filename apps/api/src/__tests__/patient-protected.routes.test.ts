@@ -95,6 +95,7 @@ describe('patientProtectedRoutes', () => {
       services: expect.any(Object),
       widgetSessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
       caseId: '11111111-1111-4111-8111-111111111111',
+      site: 'beauty',
       destination: 'Shenzhen',
     });
   });

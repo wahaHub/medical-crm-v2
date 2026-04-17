@@ -54,6 +54,7 @@ describe('patientPublicRoutes', () => {
         findBySessionId: vi.fn().mockResolvedValue({
           id: 'ai-session-1',
           sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+          site: 'beauty',
           difyConversationId: null,
           hospitalType: 'REGULAR',
           statusSnapshot: {},
@@ -250,6 +251,7 @@ describe('patientPublicRoutes', () => {
     expect(starterUpdate?.metadata?.blocks).toBeUndefined();
     expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
       'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      'beauty',
       'dify-conversation-1',
     );
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -366,6 +368,7 @@ describe('patientPublicRoutes', () => {
           .mockResolvedValueOnce({
             id: 'ai-session-1',
             sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            site: 'beauty',
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
@@ -375,6 +378,7 @@ describe('patientPublicRoutes', () => {
           .mockResolvedValueOnce({
             id: 'ai-session-1',
             sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            site: 'beauty',
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
@@ -429,6 +433,7 @@ describe('patientPublicRoutes', () => {
     expect(res.status).toBe(200);
     expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
       'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      'beauty',
       'dify-conversation-docs-1',
     );
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
@@ -472,6 +477,7 @@ describe('patientPublicRoutes', () => {
           .mockResolvedValueOnce({
             id: 'ai-session-1',
             sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            site: 'beauty',
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
@@ -481,6 +487,7 @@ describe('patientPublicRoutes', () => {
           .mockResolvedValueOnce({
             id: 'ai-session-1',
             sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            site: 'beauty',
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
@@ -573,6 +580,7 @@ describe('patientPublicRoutes', () => {
           .mockResolvedValueOnce({
             id: 'ai-session-1',
             sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            site: 'beauty',
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {
@@ -582,6 +590,7 @@ describe('patientPublicRoutes', () => {
           .mockResolvedValueOnce({
             id: 'ai-session-1',
             sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            site: 'beauty',
             difyConversationId: null,
             hospitalType: 'REGULAR',
             statusSnapshot: {

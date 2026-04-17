@@ -202,8 +202,13 @@ CREATE TABLE "translation_tasks" (
 	"hospital_type" text NOT NULL,
 	"entity_type" text NOT NULL,
 	"entity_id" uuid NOT NULL,
+	"chunk_key" text DEFAULT 'default' NOT NULL,
 	"source_language" text DEFAULT 'zh' NOT NULL,
-	"target_language" text NOT NULL,
+	"target_language" varchar(10) NOT NULL,
+	"source_db" text DEFAULT 'crm' NOT NULL,
+	"fields_to_translate" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"target_languages" text[] DEFAULT '{}'::text[] NOT NULL,
+	"detected_language" varchar(10),
 	"status" text DEFAULT 'pending',
 	"error_message" text,
 	"retry_count" integer DEFAULT 0,
@@ -342,6 +347,8 @@ ALTER TABLE translation_tasks
 
 ALTER TABLE translation_tasks ALTER COLUMN hospital_type DROP NOT NULL;
 ALTER TABLE translation_tasks ALTER COLUMN target_language DROP NOT NULL;
+ALTER TABLE translation_tasks ADD COLUMN IF NOT EXISTS chunk_key TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE translation_tasks ALTER COLUMN target_language TYPE VARCHAR(10) USING target_language::varchar(10);
 
 -- Backfill new columns from the legacy one-row-per-target-language model.
 UPDATE translation_tasks
@@ -352,6 +359,13 @@ SET
     ELSE ARRAY[target_language]
   END
 WHERE target_languages = '{}'::text[];
+
+UPDATE translation_tasks
+SET target_language = CASE
+  WHEN COALESCE(array_length(target_languages, 1), 0) = 1 THEN target_languages[1]
+  ELSE 'legacy-bat'
+END
+WHERE target_language IS NULL OR target_language = '';
 
 -- Merge duplicate pending/processing rows created under the old per-language queue model
 -- into the new unified one-row-per-entity model.
@@ -432,8 +446,7 @@ BEGIN
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS translation_tasks_entity_dedup
-  ON translation_tasks (source_db, entity_type, entity_id)
-  WHERE status IN ('pending', 'processing');
+  ON translation_tasks (source_db, entity_type, entity_id, chunk_key, target_language);
 
 -- Add translations jsonb to CRM tables
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;

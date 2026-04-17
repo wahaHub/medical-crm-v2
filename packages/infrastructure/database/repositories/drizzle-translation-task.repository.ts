@@ -37,53 +37,6 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
 
     // Use a transaction: SELECT FOR UPDATE, then INSERT or UPDATE
     const row = await this.db.transaction(async (tx) => {
-      // Look for an existing task with the same identity, regardless of status.
-      const existing = await tx
-        .select()
-        .from(translationTasks)
-        .where(
-          and(
-            eq(translationTasks.sourceDb, sourceDb),
-            eq(translationTasks.entityType, entityType),
-            eq(translationTasks.entityId, entityId),
-            eq(translationTasks.chunkKey, effectiveChunkKey),
-            eq(translationTasks.targetLanguage, effectiveTargetLanguage),
-          ),
-        )
-        .limit(1)
-        .for('update')
-        .execute();
-
-      if (existing.length > 0) {
-        // Update existing task — merge fields and langs, keep status=pending
-        const existingFieldsToTranslate =
-          (existing[0] as Record<string, unknown>).fieldsToTranslate ??
-          (existing[0] as Record<string, unknown>).fields_to_translate ??
-          {};
-        const updateResult = await tx
-          .update(translationTasks)
-          .set({
-            fieldsToTranslate: {
-              ...(existingFieldsToTranslate as Record<string, unknown>),
-              ...fieldsToTranslate,
-            },
-            targetLanguages: langs,
-            targetLanguage: effectiveTargetLanguage,
-            chunkKey: effectiveChunkKey,
-            status: 'pending',
-          })
-          .where(eq(translationTasks.id, existing[0]!.id))
-          .returning();
-
-        const updated = updateResult[0];
-        if (!updated) {
-          throw new Error('Failed to update translation task');
-        }
-
-        return updated;
-      }
-
-      // Insert new task
       const insertResult = await tx
         .insert(translationTasks)
         .values({
@@ -99,6 +52,26 @@ export class DrizzleTranslationTaskRepository implements ITranslationTaskReposit
           status: 'pending',
           retryCount: 0,
           createdAt: new Date().toISOString(),
+        })
+        .onConflictDoUpdate({
+          target: [
+            translationTasks.sourceDb,
+            translationTasks.entityType,
+            translationTasks.entityId,
+            translationTasks.chunkKey,
+            translationTasks.targetLanguage,
+          ],
+          set: {
+            fieldsToTranslate: sql`${translationTasks.fieldsToTranslate} || excluded.fields_to_translate`,
+            targetLanguages: langs,
+            hospitalType: hospitalType ?? null,
+            status: 'pending',
+            errorMessage: null,
+            retryCount: 0,
+            startedAt: null,
+            completedAt: null,
+            detectedLanguage: null,
+          },
         })
         .returning();
 

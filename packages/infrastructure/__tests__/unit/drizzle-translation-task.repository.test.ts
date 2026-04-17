@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { DrizzleTranslationTaskRepository } from '../../database/repositories/drizzle-translation-task.repository.js';
 import { translationTasks } from '../../database/schema/index.js';
 import type { CrmDb } from '../../database/crm-client.js';
@@ -98,8 +98,36 @@ function evaluateMergeExpression(value: unknown, existing: TaskRow): unknown {
   };
 }
 
-function makeFakeDb(initialRows: TaskRow[] = []) {
+function makeFakeDb(
+  initialRows: TaskRow[] = [],
+  options: {
+    beforeInsert?: (draftRow: TaskRow, rows: TaskRow[]) => void;
+  } = {},
+) {
   const rows = initialRows;
+  const identityMatches = (a: TaskRow, b: TaskRow) =>
+    a.sourceDb === b.sourceDb &&
+    a.entityType === b.entityType &&
+    a.entityId === b.entityId &&
+    a.chunkKey === b.chunkKey &&
+    a.targetLanguage === b.targetLanguage;
+
+  const mergeRows = (existing: TaskRow, incoming: TaskRow) => {
+    existing.fieldsToTranslate = {
+      ...(existing.fieldsToTranslate as Record<string, unknown>),
+      ...(incoming.fieldsToTranslate as Record<string, unknown>),
+    };
+    existing.targetLanguages = incoming.targetLanguages;
+    existing.targetLanguage = incoming.targetLanguage;
+    existing.chunkKey = incoming.chunkKey;
+    existing.hospitalType = incoming.hospitalType;
+    existing.status = incoming.status;
+    existing.errorMessage = incoming.errorMessage;
+    existing.retryCount = incoming.retryCount;
+    existing.startedAt = incoming.startedAt;
+    existing.completedAt = incoming.completedAt;
+    return existing;
+  };
 
   const selectBuilder = {
     from() {
@@ -148,6 +176,41 @@ function makeFakeDb(initialRows: TaskRow[] = []) {
   const insertBuilder = {
     values(values: Record<string, unknown>) {
       return {
+        onConflictDoUpdate() {
+          return {
+            async returning() {
+              const row: TaskRow = {
+                id: values.id,
+                sourceDb: values.sourceDb,
+                entityType: values.entityType,
+                entityId: values.entityId,
+                hospitalType: values.hospitalType ?? null,
+                fieldsToTranslate: values.fieldsToTranslate ?? {},
+                targetLanguages: values.targetLanguages ?? [],
+                targetLanguage: values.targetLanguage ?? null,
+                chunkKey: values.chunkKey ?? 'default',
+                sourceLanguage: values.sourceLanguage ?? null,
+                detectedLanguage: values.detectedLanguage ?? null,
+                status: values.status ?? 'pending',
+                errorMessage: values.errorMessage ?? null,
+                retryCount: values.retryCount ?? 0,
+                createdAt: values.createdAt ?? new Date().toISOString(),
+                startedAt: values.startedAt ?? null,
+                completedAt: values.completedAt ?? null,
+              };
+
+              options.beforeInsert?.(row, rows);
+
+              const existing = rows.find((candidate) => identityMatches(candidate, row));
+              if (existing) {
+                return [mergeRows(existing, row)];
+              }
+
+              rows.push(row);
+              return [row];
+            },
+          };
+        },
         async returning() {
           const row: TaskRow = {
             id: values.id,
@@ -168,6 +231,11 @@ function makeFakeDb(initialRows: TaskRow[] = []) {
             startedAt: values.startedAt ?? null,
             completedAt: values.completedAt ?? null,
           };
+          options.beforeInsert?.(row, rows);
+          const duplicate = rows.find((candidate) => identityMatches(candidate, row));
+          if (duplicate) {
+            throw new Error('duplicate key value violates unique constraint "translation_tasks_entity_dedup"');
+          }
           rows.push(row);
           return [row];
         },
@@ -266,6 +334,38 @@ describe('DrizzleTranslationTaskRepository.upsert', () => {
     expect(rows[0]?.fieldsToTranslate).toEqual({
       name: 'A',
       summary: 'Second',
+    });
+  });
+
+  it('handles a concurrent first insert for the same identity without throwing', async () => {
+    const fakeDb = makeFakeDb([], {
+      beforeInsert: (draftRow, rowsRef) => {
+        if (rowsRef.length === 0) {
+          rowsRef.push({
+            ...draftRow,
+            id: 'other-worker-row',
+            fieldsToTranslate: { existing: 'value' },
+          });
+        }
+      },
+    });
+    rows = fakeDb.rows;
+    repo = new DrizzleTranslationTaskRepository(fakeDb.db);
+
+    await expect(
+      repo.upsert(
+        makeInput({
+          chunkKey: 'race',
+          targetLanguage: 'en',
+          fieldsToTranslate: { newField: 'value' },
+        }),
+      ),
+    ).resolves.toBeDefined();
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.fieldsToTranslate).toEqual({
+      existing: 'value',
+      newField: 'value',
     });
   });
 });

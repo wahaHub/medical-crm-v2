@@ -1,5 +1,9 @@
 import { RecordsLlmAdapter } from './records-llm-adapter.js';
-import { RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION } from './records-prompts.js';
+import {
+  buildRecordsWorkerPrompt,
+  RECORDS_COLLECTION_PROMPT_VERSION,
+  RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION,
+} from './records-prompts.js';
 
 type FetchLike = typeof fetch;
 
@@ -36,15 +40,19 @@ export function createChatbotV3RecordsRouteAdapter(
   }
 
   return new RecordsLlmAdapter({
+    promptVersionByMode: {
+      minimal_triage: `${RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION}:openai`,
+      medical_collection: `${RECORDS_COLLECTION_PROMPT_VERSION}:openai`,
+    },
     worker: {
-      promptVersion: `${RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION}:openai`,
+      promptVersion: 'records-openai',
       model,
       run: async (input) => runStructuredOpenAiPrompt({
         apiKey,
         model,
         fetchImpl,
         timeoutMs,
-        prompt: input.taskPrompt,
+        prompt: buildRecordsWorkerPrompt(input.task),
       }),
     },
   });

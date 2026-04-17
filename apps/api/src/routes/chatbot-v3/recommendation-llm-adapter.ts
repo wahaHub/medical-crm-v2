@@ -3,7 +3,6 @@ import {
   buildFallbackRecommendationResult,
   compactRecommendations,
   type CompactRecommendation,
-  extractRecommendationTask,
   type RecommendationPromptInput,
   RECOMMENDATION_MAX_RESULTS,
   RECOMMENDATION_PROMPT_VERSION,
@@ -78,7 +77,7 @@ function sanitizeRecommendationWorkerResult(
   fallbackUsed: boolean;
   schemaValidationFailed: boolean;
 } {
-  const recommendationTask = extractRecommendationTask(input.taskPrompt);
+  const recommendationTask = input.task.recommendationTask;
   const allowedRecommendations = new Map(
     compactRecommendations(input.recommendations)
       .map((candidate) => [candidate.hospitalId, candidate] as const),

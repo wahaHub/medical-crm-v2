@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createChatbotV3FaqRouteAdapter } from './faq-route-adapter.js';
+import type { FaqWorkerTask } from './worker-task.js';
+
+function createFaqTask(latestUserMessage: string): FaqWorkerTask {
+  return {
+    agent: 'FaqAgent',
+    fromStage: 'EXPLAIN_PROCESS',
+    toStage: 'EXPLAIN_PROCESS',
+    latestUserMessage,
+    intent: 'faq',
+    supervisorReason: 'user is asking about faq timing',
+  };
+}
 
 describe('createChatbotV3FaqRouteAdapter', () => {
   it('uses an external llm client when configured and parses structured json output', async () => {
@@ -40,12 +52,10 @@ describe('createChatbotV3FaqRouteAdapter', () => {
     });
 
     const plan = await adapter.plan({
-      taskPrompt: 'agent=FaqAgent',
-      latestUserMessage: 'How long does online consultation usually take to schedule?',
+      task: createFaqTask('How long does online consultation usually take to schedule?'),
     });
     const answer = await adapter.answer({
-      taskPrompt: 'agent=FaqAgent',
-      latestUserMessage: 'How long does online consultation usually take to schedule?',
+      task: createFaqTask('How long does online consultation usually take to schedule?'),
       plan,
       matches: [{
         id: 'faq-1',
@@ -84,8 +94,7 @@ describe('createChatbotV3FaqRouteAdapter', () => {
     });
 
     const plan = await adapter.plan({
-      taskPrompt: 'agent=FaqAgent',
-      latestUserMessage: 'How long does online consultation usually take to schedule?',
+      task: createFaqTask('How long does online consultation usually take to schedule?'),
     });
 
     expect(plan).toEqual({

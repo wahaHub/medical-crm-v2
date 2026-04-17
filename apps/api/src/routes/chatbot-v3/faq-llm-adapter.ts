@@ -1,5 +1,6 @@
 import type { LlmNodeAdapter } from '@medical-crm/application';
 import type { FaqItemRecord } from './tool-gateway.js';
+import type { FaqWorkerTask } from './worker-task.js';
 import {
   buildFaqAnswerPrompt,
   buildFaqPlanPrompt,
@@ -27,13 +28,11 @@ export interface FaqLlmRunMetadata {
 }
 
 export interface FaqPlanInput {
-  taskPrompt: string;
-  latestUserMessage: string;
+  task: FaqWorkerTask;
 }
 
 export interface FaqAnswerInput {
-  taskPrompt: string;
-  latestUserMessage: string;
+  task: FaqWorkerTask;
   plan: FaqPlan;
   matches: FaqItemRecord[];
   details: FaqItemRecord[];
@@ -93,7 +92,11 @@ export class FaqLlmAdapter {
 
   async answer(input: FaqAnswerInput): Promise<FaqAnswerResult> {
     buildFaqAnswerPrompt(input);
-    const fallback = composeFallbackFaqAnswer(input.matches, input.details, input.latestUserMessage);
+    const fallback = composeFallbackFaqAnswer(
+      input.matches,
+      input.details,
+      input.task.latestUserMessage,
+    );
     const metadataBase = {
       nodePromptVersion: this.answerPromptVersion,
       nodeModel: this.options.answer?.model,
@@ -190,7 +193,7 @@ export function composeFallbackFaqAnswer(
 }
 
 function buildFallbackFaqPlan(input: FaqPlanInput): FaqPlan {
-  const latestUserMessage = normalizeString(input.latestUserMessage);
+  const latestUserMessage = normalizeString(input.task.latestUserMessage);
   return {
     query: latestUserMessage ?? 'faq question',
     reason: 'fallback faq plan derived from latest user message',

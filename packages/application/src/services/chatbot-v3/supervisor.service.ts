@@ -165,6 +165,14 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
   }
 
   if (input.facts?.['recommendation.selected']) {
+    if (input.facts['process.explained'] !== true) {
+      return {
+        intent: 'progression',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: clampReason('recommendation selected and process explanation should follow'),
+      };
+    }
+
     return {
       intent: 'progression',
       suggestedStage: 'ONLINE_CONSULT',

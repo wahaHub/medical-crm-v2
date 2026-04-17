@@ -1,7 +1,73 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RecommendationLlmAdapter } from './recommendation-llm-adapter.js';
+import type { RecommendationWorkerTask } from './worker-task.js';
+
+function createRecommendationTask(
+  latestUserMessage: string,
+  overrides: Partial<RecommendationWorkerTask> = {},
+): RecommendationWorkerTask {
+  return {
+    agent: 'RecommendationAgent',
+    fromStage: 'RECOMMENDATION',
+    toStage: 'RECOMMENDATION',
+    latestUserMessage,
+    recommendationTask: 'generate',
+    ...overrides,
+  };
+}
 
 describe('RecommendationLlmAdapter', () => {
+  it('uses structured recommendation task metadata instead of parsing taskPrompt lines', async () => {
+    const adapter = new RecommendationLlmAdapter({
+      worker: {
+        promptVersion: 'recommendation-worker-test',
+        run: vi.fn(async () => ({
+          recommendations: [
+            {
+              hospitalId: 'hospital-1',
+              name: 'Shanghai Chest Hospital',
+              reason: 'Thoracic oncology focus',
+            },
+          ],
+        })),
+      },
+    });
+
+    await expect(adapter.runGenerate({
+      task: createRecommendationTask('Compare the hospitals for me.', {
+        recommendationTask: 'compare',
+      }),
+      recommendations: [
+        {
+          hospitalId: 'hospital-1',
+          name: 'Shanghai Chest Hospital',
+          reason: 'Thoracic oncology focus',
+          score: 0.94,
+        },
+        {
+          hospitalId: 'hospital-2',
+          name: 'Fudan Cancer Center',
+          reason: 'Strong multidisciplinary lung cancer team',
+          score: 0.91,
+        },
+      ],
+    })).resolves.toEqual({
+      recommendations: [
+        {
+          hospitalId: 'hospital-1',
+          name: 'Shanghai Chest Hospital',
+          reason: 'Thoracic oncology focus',
+        },
+        {
+          hospitalId: 'hospital-2',
+          name: 'Fudan Cancer Center',
+          reason: 'Strong multidisciplinary lung cancer team',
+        },
+      ],
+      explanation: 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.',
+    });
+  });
+
   it('fails closed to a compact grounded fallback when structured output is invalid', async () => {
     const adapter = new RecommendationLlmAdapter({
       worker: {
@@ -14,14 +80,9 @@ describe('RecommendationLlmAdapter', () => {
     });
 
     await expect(adapter.runGenerate({
-      taskPrompt: [
-        'agent=RecommendationAgent',
-        'from=RECOMMENDATION',
-        'to=RECOMMENDATION',
-        'recommendation_task=compare',
-        'goal=Refresh grounded hospital recommendations, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.',
-        'latest_user_message=Compare the best options for me.',
-      ].join('\n'),
+      task: createRecommendationTask('Compare the best options for me.', {
+        recommendationTask: 'compare',
+      }),
       recommendations: [
         {
           hospitalId: 'hospital-1',
@@ -77,14 +138,9 @@ describe('RecommendationLlmAdapter', () => {
     });
 
     await expect(adapter.runGenerate({
-      taskPrompt: [
-        'agent=RecommendationAgent',
-        'from=RECOMMENDATION',
-        'to=RECOMMENDATION',
-        'recommendation_task=compare',
-        'goal=Refresh grounded hospital recommendations, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.',
-        'latest_user_message=Compare the best options for me.',
-      ].join('\n'),
+      task: createRecommendationTask('Compare the best options for me.', {
+        recommendationTask: 'compare',
+      }),
       recommendations: [
         {
           hospitalId: 'hospital-1',
@@ -138,14 +194,9 @@ describe('RecommendationLlmAdapter', () => {
     });
 
     await expect(adapter.runGenerate({
-      taskPrompt: [
-        'agent=RecommendationAgent',
-        'from=RECOMMENDATION',
-        'to=RECOMMENDATION',
-        'recommendation_task=compare',
-        'goal=Compare the current grounded hospital recommendations briefly, keep the output small, and do not mutate records, consult, or handoff state.',
-        'latest_user_message=Compare the hospitals for me.',
-      ].join('\n'),
+      task: createRecommendationTask('Compare the hospitals for me.', {
+        recommendationTask: 'compare',
+      }),
       recommendations: [
         {
           hospitalId: 'hospital-1',
@@ -200,14 +251,9 @@ describe('RecommendationLlmAdapter', () => {
     });
 
     await expect(adapter.runGenerate({
-      taskPrompt: [
-        'agent=RecommendationAgent',
-        'from=RECOMMENDATION',
-        'to=RECOMMENDATION',
-        'recommendation_task=explain',
-        'goal=Explain the current grounded hospital recommendations briefly, keep the output small, and do not mutate records, consult, or handoff state.',
-        'latest_user_message=Why this one?',
-      ].join('\n'),
+      task: createRecommendationTask('Why this one?', {
+        recommendationTask: 'explain',
+      }),
       recommendations: [
         {
           hospitalId: 'hospital-1',

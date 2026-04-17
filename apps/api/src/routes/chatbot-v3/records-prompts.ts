@@ -1,4 +1,7 @@
+import type { RecordsWorkerTask } from './worker-task.js';
+
 export const RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION = 'records-minimal-triage-v1';
+export const RECORDS_COLLECTION_PROMPT_VERSION = 'records-collection-v1';
 
 export const RECORDS_MINIMAL_TRIAGE_QUESTIONS = [
   'What is the main symptom, diagnosis, or medical problem right now?',
@@ -31,17 +34,39 @@ const RECORDS_MINIMAL_TRIAGE_FOLLOW_UP_LABELS: Record<
   existing_tests_or_treatments: 'what tests, treatments, medicines, or diagnoses already exist',
 };
 
-export function buildRecordsMinimalTriagePrompt(taskPrompt: string): string {
+export function buildRecordsWorkerPrompt(task: RecordsWorkerTask): string {
+  if (task.mode === 'medical_collection') {
+    return buildRecordsCollectionPrompt(task);
+  }
+
+  return buildRecordsMinimalTriagePrompt(task);
+}
+
+export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string {
   return [
     `version=${RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION}`,
     'role=records minimal triage worker',
     'instructions=Ask the 3 key medical questions below, ask again when answers are incomplete, unclear, or insufficient, return questions/followUp/missing for the records stage when triage is still incomplete, and only expose records.minimal_triage.complete to the supervisor.',
+    `from_stage=${task.fromStage}`,
+    `to_stage=${task.toStage}`,
+    `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
+    `latest_user_message=${task.latestUserMessage}`,
     'questions=',
     `1. ${RECORDS_MINIMAL_TRIAGE_QUESTIONS[0]}`,
     `2. ${RECORDS_MINIMAL_TRIAGE_QUESTIONS[1]}`,
     `3. ${RECORDS_MINIMAL_TRIAGE_QUESTIONS[2]}`,
-    '',
-    taskPrompt.trim(),
+  ].join('\n');
+}
+
+export function buildRecordsCollectionPrompt(task: RecordsWorkerTask): string {
+  return [
+    `version=${RECORDS_COLLECTION_PROMPT_VERSION}`,
+    'role=records collection worker',
+    'instructions=Continue medical records collection by asking for existing reports, scans, pathology, medications, and treatment history while preserving records.minimal_triage.complete.',
+    `from_stage=${task.fromStage}`,
+    `to_stage=${task.toStage}`,
+    `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
+    `latest_user_message=${task.latestUserMessage}`,
   ].join('\n');
 }
 

@@ -1,8 +1,41 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RecordsLlmAdapter } from './records-llm-adapter.js';
-import { buildRecordsMinimalTriagePrompt } from './records-prompts.js';
+import type { RecordsWorkerTask } from './worker-task.js';
+
+function createRecordsTask(
+  latestUserMessage: string,
+  overrides: Partial<RecordsWorkerTask> = {},
+): RecordsWorkerTask {
+  return {
+    agent: 'RecordsAgent',
+    fromStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    toStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    latestUserMessage,
+    mode: 'minimal_triage',
+    minimalTriageComplete: false,
+    ...overrides,
+  };
+}
 
 describe('RecordsLlmAdapter', () => {
+  it('uses structured task metadata to choose collection mode without parsing string envelopes', async () => {
+    const adapter = new RecordsLlmAdapter();
+
+    await expect(adapter.runStatus({
+      task: {
+        agent: 'RecordsAgent',
+        fromStage: 'COLLECT_MEDICAL_INPUTS',
+        toStage: 'COLLECT_MEDICAL_INPUTS',
+        latestUserMessage: 'I can upload more reports.',
+        mode: 'medical_collection',
+        minimalTriageComplete: true,
+      },
+    } as any)).resolves.toEqual({
+      'records.minimal_triage.complete': true,
+      collectionPrompt: 'Please upload or share any pathology reports, imaging, blood tests, discharge summaries, medication lists, or treatment history you already have.',
+    });
+  });
+
   it('falls back to the deterministic worker result when the structured output is invalid', async () => {
     const adapter = new RecordsLlmAdapter({
       worker: {
@@ -15,12 +48,7 @@ describe('RecordsLlmAdapter', () => {
     });
 
     await expect(adapter.runStatus({
-      taskPrompt: buildRecordsMinimalTriagePrompt([
-        'agent=RecordsAgent',
-        'from=COLLECT_MINIMAL_MEDICAL_FACTS',
-        'to=COLLECT_MINIMAL_MEDICAL_FACTS',
-        'latest_user_message=I have chest pain, it started 3 days ago and feels moderate.',
-      ].join('\n')),
+      task: createRecordsTask('I have chest pain, it started 3 days ago and feels moderate.'),
     })).resolves.toEqual({
       'records.minimal_triage.complete': false,
       questions: [
@@ -50,12 +78,7 @@ describe('RecordsLlmAdapter', () => {
     });
 
     await expect(adapter.runStatus({
-      taskPrompt: buildRecordsMinimalTriagePrompt([
-        'agent=RecordsAgent',
-        'from=COLLECT_MINIMAL_MEDICAL_FACTS',
-        'to=COLLECT_MINIMAL_MEDICAL_FACTS',
-        'latest_user_message=What do you need from me first?',
-      ].join('\n')),
+      task: createRecordsTask('What do you need from me first?'),
     })).resolves.toEqual({
       'records.minimal_triage.complete': false,
       questions: [
@@ -84,14 +107,12 @@ describe('RecordsLlmAdapter', () => {
     });
 
     await expect(adapter.runStatus({
-      taskPrompt: [
-        'agent=RecordsAgent',
-        'from=COLLECT_MEDICAL_INPUTS',
-        'to=COLLECT_MEDICAL_INPUTS',
-        'facts=records.minimal_triage.complete:true',
-        'goal=Continue medical records collection',
-        'latest_user_message=I can upload more reports.',
-      ].join('\n'),
+      task: createRecordsTask('I can upload more reports.', {
+        fromStage: 'COLLECT_MEDICAL_INPUTS',
+        toStage: 'COLLECT_MEDICAL_INPUTS',
+        mode: 'medical_collection',
+        minimalTriageComplete: true,
+      }),
     })).resolves.toEqual({
       'records.minimal_triage.complete': true,
       collectionPrompt: 'Please upload or share any pathology reports, imaging, blood tests, discharge summaries, medication lists, or treatment history you already have.',
@@ -100,6 +121,64 @@ describe('RecordsLlmAdapter', () => {
     expect(adapter.getLastRunMetadata()).toMatchObject({
       fallbackUsed: true,
       schemaValidationFailed: true,
+    });
+  });
+
+  it('pins collection-mode triage truth to the structured task value when the worker hallucinates true', async () => {
+    const adapter = new RecordsLlmAdapter({
+      worker: {
+        promptVersion: 'records-worker-test',
+        run: vi.fn(async () => ({
+          'records.minimal_triage.complete': true,
+          collectionPrompt: 'Please upload any records you already have.',
+        })),
+      },
+    });
+
+    await expect(adapter.runStatus({
+      task: createRecordsTask('I can upload more reports.', {
+        fromStage: 'COLLECT_MEDICAL_INPUTS',
+        toStage: 'COLLECT_MEDICAL_INPUTS',
+        mode: 'medical_collection',
+        minimalTriageComplete: false,
+      }),
+    })).resolves.toEqual({
+      'records.minimal_triage.complete': false,
+      collectionPrompt: 'Please upload any records you already have.',
+    });
+
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      fallbackUsed: false,
+      schemaValidationFailed: false,
+    });
+  });
+
+  it('pins collection-mode triage truth to the structured task value when the worker hallucinates false', async () => {
+    const adapter = new RecordsLlmAdapter({
+      worker: {
+        promptVersion: 'records-worker-test',
+        run: vi.fn(async () => ({
+          'records.minimal_triage.complete': false,
+          collectionPrompt: 'Please upload any records you already have.',
+        })),
+      },
+    });
+
+    await expect(adapter.runStatus({
+      task: createRecordsTask('I can upload more reports.', {
+        fromStage: 'COLLECT_MEDICAL_INPUTS',
+        toStage: 'COLLECT_MEDICAL_INPUTS',
+        mode: 'medical_collection',
+        minimalTriageComplete: true,
+      }),
+    })).resolves.toEqual({
+      'records.minimal_triage.complete': true,
+      collectionPrompt: 'Please upload any records you already have.',
+    });
+
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      fallbackUsed: false,
+      schemaValidationFailed: false,
     });
   });
 });

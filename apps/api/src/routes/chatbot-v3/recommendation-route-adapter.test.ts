@@ -1,5 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createChatbotV3RecommendationRouteAdapter } from './recommendation-route-adapter.js';
+import type { RecommendationWorkerTask } from './worker-task.js';
+
+function createRecommendationTask(latestUserMessage: string): RecommendationWorkerTask {
+  return {
+    agent: 'RecommendationAgent',
+    fromStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    toStage: 'RECOMMENDATION',
+    latestUserMessage,
+    recommendationTask: 'generate',
+    intent: 'progression',
+    supervisorReason: 'minimal triage is complete',
+  };
+}
 
 describe('createChatbotV3RecommendationRouteAdapter', () => {
   it('uses the structured route response when the model path is enabled', async () => {
@@ -32,14 +45,7 @@ describe('createChatbotV3RecommendationRouteAdapter', () => {
     });
 
     await expect(adapter.runGenerate({
-      taskPrompt: [
-        'agent=RecommendationAgent',
-        'from=COLLECT_MINIMAL_MEDICAL_FACTS',
-        'to=RECOMMENDATION',
-        'recommendation_task=generate',
-        'goal=Generate grounded hospital recommendations now that minimal triage is complete, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.',
-        'latest_user_message=Please recommend a hospital.',
-      ].join('\n'),
+      task: createRecommendationTask('Please recommend a hospital.'),
       recommendations: [
         {
           hospitalId: 'hospital-1',

@@ -12,14 +12,19 @@ import {
   type SupervisorReadDomain,
 } from '@medical-crm/application';
 import type { AgentAction, AgentName } from './agents.js';
-import { buildRecordsMinimalTriagePrompt } from './records-prompts.js';
 import { buildAssistantText } from './response-composer.js';
 import {
   AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP,
   deriveCanonicalTruthFlagsFromStatusSnapshot,
   deriveCanonicalTruthTruePatchFromStatusSnapshot,
 } from '@medical-crm/domain';
-import type { RecommendationTask } from './recommendation-prompts.js';
+import type {
+  FaqWorkerTask,
+  RecommendationTask,
+  RecommendationWorkerTask,
+  RecordsWorkerTask,
+  WorkerTask,
+} from './worker-task.js';
 import type {
   ChatbotV3RuntimeNodeEventEmitter,
   ChatbotV3RuntimeNodeEventInput,
@@ -891,8 +896,6 @@ export function deriveCurrentStageFromStatusSnapshot(
   };
 }
 
-const FACTS_SNIPPET_MAX_ENTRIES = 6;
-
 function buildDispatchAction(
   input: ConversationOrchestratorV3HandleTurnInput,
   decision: ConversationOrchestratorV3Decision & {
@@ -900,10 +903,6 @@ function buildDispatchAction(
   },
   suggestion: ConversationOrchestratorV3Suggestion,
 ): AgentAction {
-  const meta = {
-    taskPrompt: buildTaskPrompt(input, decision, suggestion),
-  } satisfies NonNullable<AgentAction['meta']>;
-
   switch (decision.dispatchAgent) {
     case 'FaqAgent':
       return {
@@ -915,7 +914,9 @@ function buildDispatchAction(
             ? input.pageContext.hospitalId
             : undefined,
         },
-        meta,
+        meta: {
+          task: buildWorkerTask(input, decision, suggestion),
+        },
       };
     case 'RecordsAgent':
       if (
@@ -929,7 +930,6 @@ function buildDispatchAction(
             turnId: input.turnId,
             attachments: input.attachments,
           },
-          meta,
         };
       }
 
@@ -938,7 +938,9 @@ function buildDispatchAction(
         input: {
           sessionId: input.sessionId,
         },
-        meta,
+        meta: {
+          task: buildWorkerTask(input, decision, suggestion),
+        },
       };
     case 'RecommendationAgent':
       return {
@@ -947,7 +949,9 @@ function buildDispatchAction(
           sessionId: input.sessionId,
           turnId: input.turnId,
         },
-        meta,
+        meta: {
+          task: buildWorkerTask(input, decision, suggestion),
+        },
       };
     case 'ConsultAgent':
       return {
@@ -955,7 +959,6 @@ function buildDispatchAction(
         input: {
           sessionId: input.sessionId,
         },
-        meta,
       };
     case 'HandoffAgent':
       return {
@@ -965,7 +968,6 @@ function buildDispatchAction(
           turnId: input.turnId,
           reason: normalizeReason(suggestion.reason || input.message || 'human handoff requested'),
         },
-        meta,
       };
   }
 }
@@ -992,67 +994,56 @@ function normalizeReason(reason: string): string {
   return trimmed.length <= 240 ? trimmed : trimmed.slice(0, 240);
 }
 
-function buildTaskPrompt(
+function buildWorkerTask(
   input: ConversationOrchestratorV3HandleTurnInput,
   decision: ConversationOrchestratorV3Decision & { dispatchAgent: AgentName },
   suggestion: ConversationOrchestratorV3Suggestion,
-): string {
-  const factsSummary = summarizeFacts(input.facts);
-  const recommendationTask = decision.dispatchAgent === 'RecommendationAgent'
-    ? resolveRecommendationTask(input.message, decision)
-    : null;
-  const contextLines = [
-    `agent=${decision.dispatchAgent}`,
-    `from=${decision.from.stage}`,
-    `to=${decision.to.stage}`,
-    `intent=${suggestion.intent}`,
-    `supervisor_reason=${normalizeReason(suggestion.reason)}`,
-    `facts=${factsSummary}`,
-    recommendationTask ? `recommendation_task=${recommendationTask}` : '',
-    `goal=${buildTaskGoal(decision.dispatchAgent, decision, recommendationTask ?? undefined)}`,
-    `latest_user_message=${normalizeReason(input.message)}`,
-  ].filter((line) => line.length > 0);
+): WorkerTask {
+  const baseTask = {
+    fromStage: decision.from.stage,
+    toStage: decision.to.stage,
+    intent: suggestion.intent,
+    supervisorReason: normalizeReason(suggestion.reason),
+    latestUserMessage: input.message,
+  };
 
-  const taskPrompt = contextLines.join('\n');
-
-  if (decision.dispatchAgent === 'RecordsAgent' && resolveRecordsWorkerMode(decision) === 'minimal_triage') {
-    return buildRecordsMinimalTriagePrompt(taskPrompt);
+  switch (decision.dispatchAgent) {
+    case 'FaqAgent':
+      return {
+        agent: 'FaqAgent',
+        ...baseTask,
+      } satisfies FaqWorkerTask;
+    case 'RecordsAgent':
+      return {
+        agent: 'RecordsAgent',
+        ...baseTask,
+        mode: resolveRecordsWorkerMode(decision),
+        minimalTriageComplete: resolveRecordsMinimalTriageComplete(input),
+      } satisfies RecordsWorkerTask;
+    case 'RecommendationAgent':
+      return {
+        agent: 'RecommendationAgent',
+        ...baseTask,
+        recommendationTask: resolveRecommendationTask(input.message, decision),
+      } satisfies RecommendationWorkerTask;
+    default:
+      return {
+        agent: 'FaqAgent',
+        ...baseTask,
+      } satisfies FaqWorkerTask;
   }
-
-  return taskPrompt;
 }
 
-function buildTaskGoal(
-  agentName: AgentName,
-  decision?: ConversationOrchestratorV3Decision & { dispatchAgent: AgentName },
-  recommendationTask?: RecommendationTask,
-): string {
-  switch (agentName) {
-    case 'FaqAgent':
-      return "Answer the user's FAQ using the FAQ toolset only.";
-    case 'RecordsAgent':
-      return resolveRecordsWorkerMode(decision) === 'medical_collection'
-        ? 'Continue medical records collection by asking for existing reports, scans, pathology, medications, and treatment history while preserving records.minimal_triage.complete.'
-        : 'Complete minimal medical triage by asking the 3 key medical questions, continuing with records-stage follow-up when answers are incomplete or insufficient, and only exposing records.minimal_triage.complete to the supervisor.';
-    case 'RecommendationAgent':
-      switch (recommendationTask) {
-        case 'refresh':
-          return 'Refresh grounded hospital recommendations, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.';
-        case 'revisit':
-          return 'Revisit grounded hospital recommendations from a later stage, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.';
-        case 'compare':
-          return 'Compare the current grounded hospital recommendations briefly, keep the output small, and do not mutate records, consult, or handoff state.';
-        case 'explain':
-          return 'Explain the current grounded hospital recommendations briefly, keep the output small, and do not mutate records, consult, or handoff state.';
-        case 'generate':
-        default:
-          return 'Generate grounded hospital recommendations now that minimal triage is complete, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.';
-      }
-    case 'ConsultAgent':
-      return 'Handle the consult task using the consult toolset only.';
-    case 'HandoffAgent':
-      return 'Handle the handoff task using the handoff toolset only.';
+function resolveRecordsMinimalTriageComplete(
+  input: ConversationOrchestratorV3HandleTurnInput,
+): boolean {
+  if (input.statusSnapshot) {
+    return deriveCanonicalTruthFlagsFromStatusSnapshot(input.statusSnapshot)[
+      'records.minimal_triage.complete'
+    ];
   }
+
+  return input.facts?.['records.minimal_triage.complete'] === true;
 }
 
 function resolveRecommendationTask(
@@ -1102,17 +1093,6 @@ function resolveRecordsWorkerMode(
   return decision.to.stage === 'COLLECT_MEDICAL_INPUTS' || decision.from.stage === 'COLLECT_MEDICAL_INPUTS'
     ? 'medical_collection'
     : 'minimal_triage';
-}
-
-function summarizeFacts(facts: ConversationOrchestratorV3Facts | undefined): string {
-  if (!facts) {
-    return 'none';
-  }
-
-  const entries = Object.entries(facts)
-    .slice(0, FACTS_SNIPPET_MAX_ENTRIES)
-    .map(([key, value]) => `${key}:${String(value)}`);
-  return entries.length > 0 ? entries.join(',') : 'none';
 }
 
 function cloneStageRef(

@@ -4,6 +4,7 @@ import {
   SupervisorService,
 } from '@medical-crm/application';
 import { FaqLlmAdapter } from '../routes/chatbot-v3/faq-llm-adapter.js';
+import { RecordsLlmAdapter } from '../routes/chatbot-v3/records-llm-adapter.js';
 import { FaqAgent, RecommendationAgent, RecordsAgent } from '../routes/chatbot-v3/agents.js';
 import { buildRecordsMinimalTriagePrompt } from '../routes/chatbot-v3/records-prompts.js';
 import { createChatbotV3RuntimeNodeEventEmitter } from '../routes/chatbot-v3/observability.js';
@@ -12,6 +13,55 @@ import {
   deriveCurrentStageFromStatusSnapshot,
 } from '../routes/chatbot-v3/runtime.service.js';
 import { createToolGateway } from '../routes/chatbot-v3/tool-gateway.js';
+import type {
+  FaqWorkerTask,
+  RecommendationWorkerTask,
+  RecordsWorkerTask,
+} from '../routes/chatbot-v3/worker-task.js';
+
+function createRecordsTask(
+  latestUserMessage: string,
+  overrides: Partial<RecordsWorkerTask> = {},
+): RecordsWorkerTask {
+  return {
+    agent: 'RecordsAgent',
+    fromStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    toStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    latestUserMessage,
+    mode: 'minimal_triage',
+    minimalTriageComplete: false,
+    ...overrides,
+  };
+}
+
+function createRecommendationTask(
+  latestUserMessage: string,
+  overrides: Partial<RecommendationWorkerTask> = {},
+): RecommendationWorkerTask {
+  return {
+    agent: 'RecommendationAgent',
+    fromStage: 'RECOMMENDATION',
+    toStage: 'RECOMMENDATION',
+    latestUserMessage,
+    recommendationTask: 'generate',
+    ...overrides,
+  };
+}
+
+function createFaqTask(
+  latestUserMessage: string,
+  overrides: Partial<FaqWorkerTask> = {},
+): FaqWorkerTask {
+  return {
+    agent: 'FaqAgent',
+    fromStage: 'EXPLAIN_PROCESS',
+    toStage: 'EXPLAIN_PROCESS',
+    latestUserMessage,
+    intent: 'faq',
+    supervisorReason: 'user is asking an faq question',
+    ...overrides,
+  };
+}
 
 describe('chatbot-v3 ToolGateway', () => {
   it('normalizes timeouts into TIMEOUT tool results', async () => {
@@ -114,10 +164,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-1' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=What do you need from me first?',
-        ].join('\n')),
+        task: createRecordsTask('What do you need from me first?'),
       },
     });
 
@@ -144,10 +191,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-2' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=I have chest pain, it started 3 days ago and feels moderate.',
-        ].join('\n')),
+        task: createRecordsTask('I have chest pain, it started 3 days ago and feels moderate.'),
       },
     });
 
@@ -174,12 +218,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-2a' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'from=COLLECT_MINIMAL_MEDICAL_FACTS',
-          'to=COLLECT_MINIMAL_MEDICAL_FACTS',
-          'latest_user_message=I have chest pain.',
-        ].join('\n')),
+        task: createRecordsTask('I have chest pain.'),
       },
     });
 
@@ -206,10 +245,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-2b' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=I have chest pain, it started 3 days ago, it feels moderate, and I already had a blood test.',
-        ].join('\n')),
+        task: createRecordsTask('I have chest pain, it started 3 days ago, it feels moderate, and I already had a blood test.'),
       },
     });
 
@@ -229,9 +265,8 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-2c' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=Main problem: chest pain',
+        task: createRecordsTask([
+          'Main problem: chest pain',
           'Started 3 days ago and feels moderate.',
           'Tests/treatments: had a blood test already.',
         ].join('\n')),
@@ -254,10 +289,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-2d' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=I have chest pain, it started 3 days ago, it feels moderate, and nothing yet has been done.',
-        ].join('\n')),
+        task: createRecordsTask('I have chest pain, it started 3 days ago, it feels moderate, and nothing yet has been done.'),
       },
     });
 
@@ -277,10 +309,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-2e' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=I have chest pain, it started 3 days ago, it feels moderate, and I reacted badly yesterday.',
-        ].join('\n')),
+        task: createRecordsTask('I have chest pain, it started 3 days ago, it feels moderate, and I reacted badly yesterday.'),
       },
     });
 
@@ -307,10 +336,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-3' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=I am not sure.',
-        ].join('\n')),
+        task: createRecordsTask('I am not sure.'),
       },
     });
 
@@ -337,10 +363,7 @@ describe('chatbot-v3 agents', () => {
       type: 'records.status',
       input: { sessionId: 'session-3b' },
       meta: {
-        taskPrompt: buildRecordsMinimalTriagePrompt([
-          'agent=RecordsAgent',
-          'latest_user_message=Not sure, but I do have chest pain and it started 3 days ago.',
-        ].join('\n')),
+        task: createRecordsTask('Not sure, but I do have chest pain and it started 3 days ago.'),
       },
     });
 
@@ -407,14 +430,9 @@ describe('chatbot-v3 agents', () => {
         turnId: 'turn-recommendation-1',
       },
       meta: {
-        taskPrompt: [
-          'agent=RecommendationAgent',
-          'from=RECOMMENDATION',
-          'to=RECOMMENDATION',
-          'recommendation_task=compare',
-          'goal=Refresh grounded hospital recommendations, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.',
-          'latest_user_message=Compare the best options for me.',
-        ].join('\n'),
+        task: createRecommendationTask('Compare the best options for me.', {
+          recommendationTask: 'compare',
+        }),
       },
     });
 
@@ -447,12 +465,9 @@ describe('chatbot-v3 agents', () => {
 
 describe('chatbot-v3 records triage prompt', () => {
   it('asks the 3 key medical questions in the minimal triage prompt', () => {
-    const prompt = buildRecordsMinimalTriagePrompt([
-      'agent=RecordsAgent',
-      'from=COLLECT_MINIMAL_MEDICAL_FACTS',
-      'to=COLLECT_MINIMAL_MEDICAL_FACTS',
-      'latest_user_message=What do you need from me first?',
-    ].join('\n'));
+    const prompt = buildRecordsMinimalTriagePrompt(
+      createRecordsTask('What do you need from me first?'),
+    );
 
     expect(prompt).toContain('What is the main symptom, diagnosis, or medical problem right now?');
     expect(prompt).toContain('When did it start, how long has it been going on, and how severe is it?');
@@ -868,7 +883,10 @@ describe('chatbot-v3 runtime', () => {
         sessionId: 'session-minimal-triage-attachments-1',
       },
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('latest_user_message=Here is my report.'),
+        task: expect.objectContaining({
+          latestUserMessage: 'Here is my report.',
+          mode: 'minimal_triage',
+        }),
       }),
     }));
     expect(recordsAgent.execute).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -1701,7 +1719,11 @@ describe('chatbot-v3 runtime', () => {
     expect(dispatchedAction).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('agent=RecommendationAgent'),
+        task: expect.objectContaining({
+          agent: 'RecommendationAgent',
+          fromStage: 'COLLECT_MEDICAL_INPUTS',
+          toStage: 'RECOMMENDATION',
+        }),
       }),
     }));
     expect(dispatchedAction?.meta).not.toHaveProperty('historySummary');
@@ -1711,7 +1733,7 @@ describe('chatbot-v3 runtime', () => {
     expect(result.runtimeDebug.traceId).toBe('trace-dispatch-1');
   });
 
-  it('passes task prompt only to dispatched agents', async () => {
+  it('passes structured worker task metadata only to dispatched agents', async () => {
     const recommendationAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
@@ -1766,11 +1788,81 @@ describe('chatbot-v3 runtime', () => {
     });
 
     const call = recommendationAgent.execute.mock.calls[0]?.[0];
-    expect(call?.meta?.taskPrompt).toContain('from=COLLECT_MEDICAL_INPUTS');
-    expect(call?.meta?.taskPrompt).toContain('to=RECOMMENDATION');
-    expect(call?.meta?.taskPrompt).toContain('recommendation_task=generate');
-    expect(call?.meta?.taskPrompt).toContain('goal=Generate grounded hospital recommendations now that minimal triage is complete, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.');
+    expect(call?.meta?.task).toEqual(expect.objectContaining({
+      agent: 'RecommendationAgent',
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'RECOMMENDATION',
+      latestUserMessage: 'please continue',
+      recommendationTask: 'generate',
+    }));
     expect(call?.meta).not.toHaveProperty('historySummary');
+  });
+
+  it('dispatches structured worker task metadata instead of a legacy taskPrompt string envelope', async () => {
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [{ hospitalId: 'hospital-3' }],
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'continue',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchAgent: 'RecommendationAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: recommendationAgent,
+      },
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-task-structured-1',
+      sessionId: 'session-10b',
+      turnId: 'turn-10b',
+      message: 'please continue',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.saved': true,
+      },
+    });
+
+    const call = recommendationAgent.execute.mock.calls[0]?.[0];
+    expect(call?.meta?.task).toEqual({
+      agent: 'RecommendationAgent',
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'RECOMMENDATION',
+      intent: 'progression',
+      supervisorReason: 'continue',
+      latestUserMessage: 'please continue',
+      recommendationTask: 'generate',
+    });
+    expect(call?.meta).not.toHaveProperty('taskPrompt');
   });
 
   it('keeps recommendation repeats and later revisits on the recommendation.generate worker contract', async () => {
@@ -1855,13 +1947,17 @@ describe('chatbot-v3 runtime', () => {
     expect(recommendationAgent.execute.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('recommendation_task=refresh'),
+        task: expect.objectContaining({
+          recommendationTask: 'refresh',
+        }),
       }),
     }));
     expect(recommendationAgent.execute.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('recommendation_task=revisit'),
+        task: expect.objectContaining({
+          recommendationTask: 'revisit',
+        }),
       }),
     }));
   });
@@ -1975,36 +2071,46 @@ describe('chatbot-v3 runtime', () => {
     expect(recommendationAgent.execute.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('recommendation_task=compare'),
+        task: expect.objectContaining({
+          recommendationTask: 'compare',
+        }),
       }),
     }));
     expect(recommendationAgent.execute.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('recommendation_task=explain'),
+        task: expect.objectContaining({
+          recommendationTask: 'explain',
+        }),
       }),
     }));
     expect(recommendationAgent.execute.mock.calls[2]?.[0]).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('recommendation_task=compare'),
+        task: expect.objectContaining({
+          recommendationTask: 'compare',
+        }),
       }),
     }));
     expect(recommendationAgent.execute.mock.calls[3]?.[0]).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('recommendation_task=compare'),
+        task: expect.objectContaining({
+          recommendationTask: 'compare',
+        }),
       }),
     }));
     expect(recommendationAgent.execute.mock.calls[4]?.[0]).toEqual(expect.objectContaining({
       type: 'recommendation.generate',
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining('recommendation_task=explain'),
+        task: expect.objectContaining({
+          recommendationTask: 'explain',
+        }),
       }),
     }));
   });
 
-  it('does not wrap COLLECT_MEDICAL_INPUTS records dispatches in the minimal triage prompt or goal', async () => {
+  it('dispatches COLLECT_MEDICAL_INPUTS records turns with structured collection-mode metadata', async () => {
     const recordsAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
@@ -2050,6 +2156,76 @@ describe('chatbot-v3 runtime', () => {
       sessionId: 'session-records-collect-1',
       turnId: 'turn-records-collect-1',
       message: 'I can share more reports.',
+      statusSnapshot: {
+        minimalTriageComplete: true,
+      } as any,
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    const call = recordsAgent.execute.mock.calls[0]?.[0];
+    expect(call?.type).toBe('records.status');
+    expect(call?.meta?.task).toEqual(expect.objectContaining({
+      agent: 'RecordsAgent',
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'COLLECT_MEDICAL_INPUTS',
+      latestUserMessage: 'I can share more reports.',
+      mode: 'medical_collection',
+      minimalTriageComplete: true,
+    }));
+  });
+
+  it('falls back to caller facts for collection-mode triage truth only when statusSnapshot is absent', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          'records.minimal_triage.complete': true,
+          collectionPrompt: 'Please upload any records you already have.',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'COLLECT_MEDICAL_INPUTS' as const,
+          reason: 'continue collecting records',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          dispatchAgent: 'RecordsAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-records-collect-facts-fallback-1',
+      sessionId: 'session-records-collect-facts-fallback-1',
+      turnId: 'turn-records-collect-facts-fallback-1',
+      message: 'I can share more reports.',
       current: {
         stage: 'COLLECT_MEDICAL_INPUTS',
         phase: 'active',
@@ -2060,15 +2236,84 @@ describe('chatbot-v3 runtime', () => {
     });
 
     const call = recordsAgent.execute.mock.calls[0]?.[0];
-    expect(call?.type).toBe('records.status');
-    expect(call?.meta?.taskPrompt).toContain('from=COLLECT_MEDICAL_INPUTS');
-    expect(call?.meta?.taskPrompt).toContain('to=COLLECT_MEDICAL_INPUTS');
-    expect(call?.meta?.taskPrompt).toContain('goal=Continue medical records collection');
-    expect(call?.meta?.taskPrompt).not.toContain('role=records minimal triage worker');
-    expect(call?.meta?.taskPrompt).not.toContain('What is the main symptom, diagnosis, or medical problem right now?');
+    expect(call?.meta?.task).toEqual(expect.objectContaining({
+      mode: 'medical_collection',
+      minimalTriageComplete: true,
+    }));
   });
 
-  it('builds a compact faq task envelope with goal and latest user message', async () => {
+  it('does not escalate canonical minimal triage truth from a collection-mode worker hallucination', async () => {
+    const recordsAgent = new RecordsAgent(
+      createToolGateway({ handlers: {} }),
+      new RecordsLlmAdapter({
+        worker: {
+          promptVersion: 'records-worker-test',
+          run: vi.fn(async () => ({
+            'records.minimal_triage.complete': true,
+            collectionPrompt: 'Please upload any records you already have.',
+          })),
+        },
+      }),
+    );
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'COLLECT_MEDICAL_INPUTS' as const,
+          reason: 'continue collecting records',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          dispatchAgent: 'RecordsAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-records-collect-truth-boundary-1',
+      sessionId: 'session-records-collect-truth-boundary-1',
+      turnId: 'turn-records-collect-truth-boundary-1',
+      message: 'I can upload more reports.',
+      statusSnapshot: {
+        minimalTriageComplete: false,
+      } as any,
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    expect(result.dispatchResult).toEqual({
+      status: 'ok',
+      data: {
+        'records.minimal_triage.complete': false,
+        collectionPrompt: 'Please upload any records you already have.',
+      },
+    });
+    expect(result.writeIntents.canonicalTruthPatch).toEqual({});
+  });
+
+  it('builds compact structured faq task metadata with the latest user message', async () => {
     const faqAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
@@ -2132,12 +2377,16 @@ describe('chatbot-v3 runtime', () => {
         sessionId: 'session-faq-1',
       }),
       meta: expect.objectContaining({
-        taskPrompt: expect.stringContaining("goal=Answer the user's FAQ using the FAQ toolset only."),
+        task: expect.objectContaining({
+          agent: 'FaqAgent',
+          fromStage: 'EXPLAIN_PROCESS',
+          toStage: 'EXPLAIN_PROCESS',
+          latestUserMessage: 'How long does online consultation usually take to schedule?',
+          intent: 'faq',
+          supervisorReason: 'user is asking about consult timing',
+        }),
       }),
     }));
-    expect(call?.meta?.taskPrompt).toContain(
-      'latest_user_message=How long does online consultation usually take to schedule?',
-    );
     expect(call?.meta).not.toHaveProperty('historySummary');
   });
 

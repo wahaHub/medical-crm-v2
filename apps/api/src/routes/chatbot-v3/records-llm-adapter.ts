@@ -3,12 +3,17 @@ import {
   buildRecordsMinimalTriageClarifyingFollowUp,
   buildRecordsMinimalTriageInitialFollowUp,
   buildRecordsMinimalTriageMissingFollowUp,
+  RECORDS_COLLECTION_PROMPT_VERSION,
   RECORDS_MINIMAL_TRIAGE_MISSING_FIELDS,
   RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION,
   RECORDS_MINIMAL_TRIAGE_QUESTIONS,
   type RecordsMinimalTriageDetectedDetails,
   type RecordsMinimalTriageMissingField,
 } from './records-prompts.js';
+import type {
+  RecordsWorkerMode,
+  RecordsWorkerTask,
+} from './worker-task.js';
 
 export interface RecordsLlmRunMetadata {
   nodePromptVersion?: string;
@@ -18,7 +23,7 @@ export interface RecordsLlmRunMetadata {
 }
 
 export interface RecordsStatusWorkerInput {
-  taskPrompt: string;
+  task: RecordsWorkerTask;
 }
 
 export interface RecordsWorkerResult {
@@ -31,23 +36,20 @@ export interface RecordsWorkerResult {
 
 export interface RecordsLlmAdapterOptions {
   worker?: LlmNodeAdapter<RecordsStatusWorkerInput, unknown>;
+  promptVersionByMode?: Partial<Record<RecordsWorkerMode, string>>;
 }
 
-type RecordsWorkerMode = 'minimal_triage' | 'medical_collection';
-
 export class RecordsLlmAdapter {
-  readonly promptVersion: string;
   private lastRunMetadata: RecordsLlmRunMetadata | null = null;
 
-  constructor(private readonly options: RecordsLlmAdapterOptions = {}) {
-    this.promptVersion = options.worker?.promptVersion ?? RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION;
-  }
+  constructor(private readonly options: RecordsLlmAdapterOptions = {}) {}
 
   async runStatus(input: RecordsStatusWorkerInput): Promise<RecordsWorkerResult> {
-    const fallback = buildFallbackRecordsWorkerResult(input.taskPrompt);
-    const mode = resolveRecordsWorkerMode(input.taskPrompt);
+    const fallback = buildFallbackRecordsWorkerResult(input.task);
+    const mode = input.task.mode;
+    const promptVersion = resolveRecordsNodePromptVersion(input.task, this.options);
     const metadataBase = {
-      nodePromptVersion: this.promptVersion,
+      nodePromptVersion: promptVersion,
       nodeModel: this.options.worker?.model,
     } satisfies RecordsLlmRunMetadata;
 
@@ -102,6 +104,9 @@ function sanitizeRecordsWorkerResult(
       schemaValidationFailed: true,
     };
   }
+  const canonicalComplete = mode === 'medical_collection'
+    ? fallback['records.minimal_triage.complete']
+    : complete;
 
   const questions = sanitizeQuestions(record.questions);
   const followUp = normalizeString(record.followUp);
@@ -134,7 +139,7 @@ function sanitizeRecordsWorkerResult(
 
   return {
     result: {
-      'records.minimal_triage.complete': complete,
+      'records.minimal_triage.complete': canonicalComplete,
       ...(questions ? { questions } : {}),
       ...(followUp ? { followUp } : {}),
       ...(missing ? { missing } : {}),
@@ -145,25 +150,24 @@ function sanitizeRecordsWorkerResult(
   };
 }
 
-function buildFallbackRecordsWorkerResult(taskPrompt: string): RecordsWorkerResult {
-  const mode = resolveRecordsWorkerMode(taskPrompt);
+function buildFallbackRecordsWorkerResult(task: RecordsWorkerTask): RecordsWorkerResult {
+  const mode = task.mode;
   if (mode === 'medical_collection') {
-    return buildFallbackRecordsCollectionResult(taskPrompt);
+    return buildFallbackRecordsCollectionResult(task);
   }
 
-  return buildFallbackRecordsMinimalTriageResult(taskPrompt);
+  return buildFallbackRecordsMinimalTriageResult(task);
 }
 
-function buildFallbackRecordsCollectionResult(taskPrompt: string): RecordsWorkerResult {
+function buildFallbackRecordsCollectionResult(task: RecordsWorkerTask): RecordsWorkerResult {
   return {
-    'records.minimal_triage.complete': extractMinimalTriageTruthFromFacts(taskPrompt),
+    'records.minimal_triage.complete': task.minimalTriageComplete,
     collectionPrompt: 'Please upload or share any pathology reports, imaging, blood tests, discharge summaries, medication lists, or treatment history you already have.',
   };
 }
 
-function buildFallbackRecordsMinimalTriageResult(taskPrompt: string): RecordsWorkerResult {
-  const latestUserMessage = extractLatestUserMessage(taskPrompt);
-  const analysis = analyzeRecordsMinimalTriage(latestUserMessage);
+function buildFallbackRecordsMinimalTriageResult(task: RecordsWorkerTask): RecordsWorkerResult {
+  const analysis = analyzeRecordsMinimalTriage(task.latestUserMessage);
 
   if (analysis.complete) {
     return {
@@ -190,52 +194,22 @@ function buildFallbackRecordsMinimalTriageResult(taskPrompt: string): RecordsWor
   };
 }
 
-function resolveRecordsWorkerMode(taskPrompt: string): RecordsWorkerMode {
-  const toStage = extractTaskPromptValue(taskPrompt, 'to');
-  const fromStage = extractTaskPromptValue(taskPrompt, 'from');
-  const stage = toStage ?? fromStage ?? '';
-
-  return stage === 'COLLECT_MEDICAL_INPUTS' ? 'medical_collection' : 'minimal_triage';
-}
-
-function extractMinimalTriageTruthFromFacts(taskPrompt: string): boolean {
-  const facts = extractTaskPromptValue(taskPrompt, 'facts') ?? '';
-  return /\brecords\.minimal_triage\.complete:true\b/.test(facts);
-}
-
-function extractTaskPromptValue(taskPrompt: string, key: string): string | null {
-  const marker = `${key}=`;
-  const linePrefixedMarker = `\n${marker}`;
-  const prefixedIndex = taskPrompt.indexOf(linePrefixedMarker);
-
-  if (prefixedIndex >= 0) {
-    const start = prefixedIndex + linePrefixedMarker.length;
-    const end = taskPrompt.indexOf('\n', start);
-    return taskPrompt.slice(start, end >= 0 ? end : undefined).trim();
+function resolveRecordsNodePromptVersion(
+  task: RecordsWorkerTask,
+  options: RecordsLlmAdapterOptions,
+): string {
+  const configured = options.promptVersionByMode?.[task.mode];
+  if (configured) {
+    return configured;
   }
 
-  if (taskPrompt.startsWith(marker)) {
-    const end = taskPrompt.indexOf('\n', marker.length);
-    return taskPrompt.slice(marker.length, end >= 0 ? end : undefined).trim();
+  if (options.worker?.promptVersion) {
+    return options.worker.promptVersion;
   }
 
-  return null;
-}
-
-function extractLatestUserMessage(taskPrompt: string): string {
-  const marker = 'latest_user_message=';
-  const linePrefixedMarker = `\n${marker}`;
-  const prefixedIndex = taskPrompt.indexOf(linePrefixedMarker);
-
-  if (prefixedIndex >= 0) {
-    return taskPrompt.slice(prefixedIndex + linePrefixedMarker.length).trim();
-  }
-
-  if (taskPrompt.startsWith(marker)) {
-    return taskPrompt.slice(marker.length).trim();
-  }
-
-  return '';
+  return task.mode === 'medical_collection'
+    ? RECORDS_COLLECTION_PROMPT_VERSION
+    : RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION;
 }
 
 function analyzeRecordsMinimalTriage(latestUserMessage: string): {

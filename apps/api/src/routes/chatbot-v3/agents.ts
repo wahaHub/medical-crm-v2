@@ -29,10 +29,13 @@ import {
   RecommendationLlmAdapter,
   type RecommendationLlmRunMetadata,
 } from './recommendation-llm-adapter.js';
+import { type RecommendationWorkerResult } from './recommendation-prompts.js';
 import {
-  extractRecommendationTask,
-  type RecommendationWorkerResult,
-} from './recommendation-prompts.js';
+  createFallbackFaqWorkerTask,
+  createFallbackRecommendationWorkerTask,
+  createFallbackRecordsWorkerTask,
+  type WorkerTask,
+} from './worker-task.js';
 
 export type AgentName =
   | 'FaqAgent'
@@ -45,7 +48,7 @@ export interface AgentAction<TInput = unknown> {
   type: string;
   input: TInput;
   meta?: {
-    taskPrompt: string;
+    task?: WorkerTask;
   };
 }
 
@@ -66,7 +69,7 @@ export class FaqAgent {
   execute(action: AgentAction<FaqAgentInput | FaqCategorySearchInput | FaqSearchInput | FaqGetByIdsInput>): Promise<ToolResult<unknown>> {
     switch (action.type) {
       case 'faq.answer':
-        return this.answerFaq(action.input as FaqAgentInput, action.meta?.taskPrompt ?? '');
+        return this.answerFaq(action.input as FaqAgentInput, action.meta?.task);
       case 'faq.categorySearch':
         return this.gateway.faq.categorySearch(action.input as FaqCategorySearchInput);
       case 'faq.search':
@@ -84,12 +87,14 @@ export class FaqAgent {
 
   private async answerFaq(
     input: FaqAgentInput,
-    taskPrompt: string,
+    task: WorkerTask | undefined,
   ): Promise<ToolResult<FaqAnswerResult>> {
     const latestUserMessage = normalizeFaqUserMessage(input.latestUserMessage);
+    const faqTask = task?.agent === 'FaqAgent'
+      ? { ...task, latestUserMessage }
+      : createFallbackFaqWorkerTask(latestUserMessage);
     const plan = await this.adapter.plan({
-      taskPrompt,
-      latestUserMessage,
+      task: faqTask,
     });
     const category = await this.resolveCategory(plan, input);
     const effectivePlan = category ? { ...plan, category } : plan;
@@ -103,8 +108,7 @@ export class FaqAgent {
     const matches = searchResult.status === 'ok' ? searchResult.data.hits : [];
     const details = await this.loadFaqDetails(matches, input);
     const answer = await this.adapter.answer({
-      taskPrompt,
-      latestUserMessage,
+      task: faqTask,
       plan: effectivePlan,
       matches,
       details,
@@ -183,7 +187,9 @@ export class RecordsAgent {
         return {
           status: 'ok',
           data: await this.worker.runStatus({
-            taskPrompt: action.meta?.taskPrompt ?? '',
+            task: action.meta?.task?.agent === 'RecordsAgent'
+              ? action.meta.task
+              : createFallbackRecordsWorkerTask(''),
           }),
         };
       default:
@@ -209,7 +215,7 @@ export class RecommendationAgent {
       case 'recommendation.generate':
         return this.generateRecommendations(
           action.input as RecommendationGenerateInput,
-          action.meta?.taskPrompt ?? '',
+          action.meta?.task,
         );
       case 'recommendation.pick':
         return this.gateway.recommendation.pick(action.input as RecommendationPickInput);
@@ -226,21 +232,25 @@ export class RecommendationAgent {
 
   private async generateRecommendations(
     input: RecommendationGenerateInput,
-    taskPrompt: string,
+    task: WorkerTask | undefined,
   ): Promise<ToolResult<RecommendationWorkerResult>> {
     const generated = await this.gateway.recommendation.generate(input);
     if (generated.status === 'error') {
       return generated;
     }
 
+    const recommendationTask = task?.agent === 'RecommendationAgent'
+      ? task
+      : createFallbackRecommendationWorkerTask('');
+
     return {
       status: 'ok',
       data: {
         ...(await this.worker.runGenerate({
-          taskPrompt,
+          task: recommendationTask,
           recommendations: generated.data.recommendations,
         })),
-        recommendationTask: extractRecommendationTask(taskPrompt),
+        recommendationTask: recommendationTask.recommendationTask,
       },
     };
   }

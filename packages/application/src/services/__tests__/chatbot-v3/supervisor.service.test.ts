@@ -59,6 +59,77 @@ describe('SupervisorService', () => {
     });
   });
 
+  it('prefers process explanation after recommendation selection when the process has not been explained', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'RECOMMENDATION',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'recommendation was selected',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': false,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'recommendation selected and process explanation should follow',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'current.stage': 'RECOMMENDATION',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
+  it('prefers online consult only after the process has already been explained', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'EXPLAIN_PROCESS',
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'recommendation was selected and process was explained',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'ONLINE_CONSULT',
+      dispatchAgent: 'ConsultAgent',
+      reason: 'recommendation has been selected',
+      task: {
+        goal: 'Advance the online consultation workflow for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'recommendation.selected': true,
+        },
+      },
+    });
+  });
+
   it('sends minimal context plus read-domain hints to the supervisor gateway', async () => {
     let capturedInput: SupervisorGatewayInput | undefined;
     const supervisorWithGateway = new SupervisorService({

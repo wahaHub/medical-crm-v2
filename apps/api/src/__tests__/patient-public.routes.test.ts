@@ -16,6 +16,16 @@ vi.mock('../composition-root.js', () => ({
 }));
 
 describe('patientPublicRoutes', () => {
+  function requestWithSite(path: string, init?: RequestInit, site = 'beauty') {
+    return patientPublicRoutes.request(path, {
+      ...init,
+      headers: {
+        'x-medora-site': site,
+        ...(init?.headers ?? {}),
+      },
+    });
+  }
+
   function createBaseServices(overrides: Record<string, unknown> = {}) {
     return {
       initOnboarding: { execute: vi.fn() },
@@ -182,7 +192,7 @@ describe('patientPublicRoutes', () => {
     });
     mockGetServices.mockReturnValue(services);
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -317,7 +327,7 @@ describe('patientPublicRoutes', () => {
     });
     mockGetServices.mockReturnValue(services);
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -405,7 +415,7 @@ describe('patientPublicRoutes', () => {
     });
     mockGetServices.mockReturnValue(services);
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -511,7 +521,7 @@ describe('patientPublicRoutes', () => {
     });
     mockGetServices.mockReturnValue(services);
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -606,7 +616,7 @@ describe('patientPublicRoutes', () => {
     });
     mockGetServices.mockReturnValue(services);
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -650,7 +660,7 @@ describe('patientPublicRoutes', () => {
       initOnboarding: { execute },
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -687,7 +697,7 @@ describe('patientPublicRoutes', () => {
       patientAuthService: { verifySessionToken },
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -702,7 +712,7 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(verifySessionToken).toHaveBeenCalledWith('session-cookie-abc');
+    expect(verifySessionToken).toHaveBeenCalledWith('session-cookie-abc', 'beauty');
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({
       email: 'existing@example.com',
       authenticatedPatientId: 'patient-123',
@@ -742,7 +752,7 @@ describe('patientPublicRoutes', () => {
       getProfile: getPatientSessionState,
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -757,7 +767,7 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(verifySessionToken).toHaveBeenCalledWith('session-cookie-abc');
+    expect(verifySessionToken).toHaveBeenCalledWith('session-cookie-abc', 'beauty');
     expect(getPatientSessionState.execute).toHaveBeenCalledWith({
       userId: 'patient-123',
       email: '',
@@ -794,7 +804,7 @@ describe('patientPublicRoutes', () => {
       getProfile: getPatientSessionState,
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -843,7 +853,7 @@ describe('patientPublicRoutes', () => {
       verifyPatientEntryToken: { execute: verifyRegisterToken },
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -856,7 +866,7 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(verifyRegisterToken).toHaveBeenCalledWith({ token: 'register-token-abc' });
+    expect(verifyRegisterToken).toHaveBeenCalledWith({ token: 'register-token-abc', site: 'beauty' });
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({
       email: 'new@example.com',
       verifiedRegisterEmail: 'new@example.com',
@@ -874,7 +884,7 @@ describe('patientPublicRoutes', () => {
       verifyPatientEntryToken: { execute: verifyRegisterToken },
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -897,7 +907,7 @@ describe('patientPublicRoutes', () => {
       initOnboarding: { execute },
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -921,7 +931,7 @@ describe('patientPublicRoutes', () => {
       initOnboarding: { execute },
     }));
 
-    const res = await patientPublicRoutes.request('/onboarding/init', {
+    const res = await requestWithSite('/onboarding/init', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -13,6 +13,7 @@ export const hospitalStatus = pgEnum("HospitalStatus", ['ACTIVE', 'PENDING', 'IN
 export const hospitalType = pgEnum("HospitalType", ['COSMETIC', 'REGULAR'])
 export const messageType = pgEnum("MessageType", ['TEXT', 'IMAGE', 'FILE', 'SYSTEM'])
 export const moderationStatus = pgEnum("ModerationStatus", ['ALLOWED', 'BLOCKED', 'REVIEW'])
+export const patientSite = pgEnum("PatientSite", ['beauty', 'china'])
 export const progressType = pgEnum("ProgressType", ['STATUS_CHANGE', 'DOCUMENT_UPLOAD', 'VIDEO_CONSULTATION', 'MESSAGE', 'APPOINTMENT'])
 export const riskLevel = pgEnum("RiskLevel", ['LOW', 'MEDIUM', 'HIGH'])
 export const sensitivity = pgEnum("Sensitivity", ['PHI_HIGH', 'PHI_MED', 'PHI_LOW'])
@@ -72,6 +73,7 @@ export const users = pgTable("users", {
 	email: varchar({ length: 255 }).notNull(),
 	name: varchar({ length: 100 }).notNull(),
 	role: userRole().default('PATIENT').notNull(),
+	patientSite: patientSite("patient_site"),
 	hospitalId: uuid("hospital_id"),
 	avatarUrl: varchar("avatar_url", { length: 500 }),
 	status: varchar({ length: 20 }).default('active').notNull(),
@@ -87,7 +89,9 @@ export const users = pgTable("users", {
 	notificationSettings: jsonb("notification_settings"),
 }, (table) => [
 	index("users_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
-	uniqueIndex("users_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")),
+	uniqueIndex("users_patient_email_site_key").using("btree", table.email.asc().nullsLast().op("text_ops"), table.patientSite.asc().nullsLast().op("enum_ops")).where(sql`${table.role} = 'PATIENT'`),
+	uniqueIndex("users_non_patient_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")).where(sql`${table.role} <> 'PATIENT'`),
+	index("users_patient_site_idx").using("btree", table.patientSite.asc().nullsLast().op("enum_ops")),
 	index("users_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("users_patient_code_key").using("btree", table.patientCode.asc().nullsLast().op("text_ops")),
 	index("users_role_idx").using("btree", table.role.asc().nullsLast().op("enum_ops")),
@@ -527,6 +531,7 @@ export const supportTicketReplies = pgTable("support_ticket_replies", {
 export const aiChatSessions = pgTable("ai_chat_sessions", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	sessionId: varchar("session_id", { length: 255 }).notNull(),
+	site: patientSite("site").default('china').notNull(),
 	sessionSecretHash: varchar("session_secret_hash", { length: 255 }),
 	difyConversationId: varchar("dify_conversation_id", { length: 255 }),
 	patientId: uuid("patient_id").references(() => users.id, { onDelete: 'set null', onUpdate: 'cascade' }),
@@ -553,6 +558,7 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 }, (table) => [
 	uniqueIndex("ai_chat_sessions_session_id_site_key").using("btree", table.sessionId.asc().nullsLast().op("text_ops"), table.site.asc().nullsLast().op("enum_ops")),
 	index("ai_chat_sessions_session_id_idx").using("btree", table.sessionId.asc().nullsLast().op("text_ops")),
+	index("ai_chat_sessions_site_idx").using("btree", table.site.asc().nullsLast().op("enum_ops")),
 	index("ai_chat_sessions_dify_conversation_id_idx").using("btree", table.difyConversationId.asc().nullsLast().op("text_ops")),
 	index("ai_chat_sessions_patient_id_idx").using("btree", table.patientId.asc().nullsLast().op("uuid_ops")),
 	index("ai_chat_sessions_handoff_status_idx").using("btree", table.handoffStatus.asc().nullsLast().op("text_ops"), table.updatedAt.desc().nullsFirst().op("timestamptz_ops")),

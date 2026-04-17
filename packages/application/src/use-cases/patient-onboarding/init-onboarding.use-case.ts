@@ -6,6 +6,7 @@ import {
   type ICaseRepository,
   type IConversationRepository,
   type IPatientRepository,
+  type PatientSite,
   type IUserEmailLookupRepository,
   PatientAuthService,
 } from '@medical-crm/domain';
@@ -17,6 +18,7 @@ import {
 
 export interface InitOnboardingInput {
   email: string;
+  site: PatientSite;
   name: string;
   phone?: string;
   age?: string;
@@ -103,14 +105,14 @@ export class InitOnboardingUseCase {
 
   async execute(input: InitOnboardingInput): Promise<InitOnboardingOutput> {
     const entryProfile = buildEntryProfile(input);
-    const emailState = await this.userEmailLookupRepo.findEmailState(input.email);
+    const emailState = await this.userEmailLookupRepo.findEmailState(input.email, input.site);
 
     // 1. Gate by email ownership before any case creation logic.
     let patient;
     const isExisting = emailState.state === 'PATIENT';
 
     if (input.authenticatedPatientId && emailState.state === 'NONE') {
-      const authenticatedPatient = await this.patientRepo.findById(input.authenticatedPatientId);
+      const authenticatedPatient = await this.patientRepo.findById(input.authenticatedPatientId, input.site);
       if (authenticatedPatient) {
         throw new PatientAlreadyExistsError();
       }
@@ -121,8 +123,8 @@ export class InitOnboardingUseCase {
         throw new PatientAlreadyExistsError();
       }
 
-      patient = await this.patientRepo.findById(emailState.userId)
-        ?? await this.patientRepo.findByEmail(input.email);
+      patient = await this.patientRepo.findById(emailState.userId, input.site)
+        ?? await this.patientRepo.findByEmail(input.email, input.site);
       if (!patient) {
         throw new Error('Authenticated patient session could not be resolved');
       }
@@ -135,6 +137,7 @@ export class InitOnboardingUseCase {
           name: input.name,
           phone: input.phone,
           preferredLanguage: input.preferredLanguage,
+          site: input.site,
         });
       } catch (err: unknown) {
         if (err instanceof Error && err.message === 'PATIENT_ALREADY_EXISTS') {
@@ -229,6 +232,7 @@ export class InitOnboardingUseCase {
       await this.aiChatSessionRepo.save(new AiChatSession({
         id: generateId(),
         sessionId: widgetSessionId,
+        site: input.site,
         sessionSecretHash: null,
         difyConversationId: null,
         patientId: patient.id,
@@ -240,8 +244,8 @@ export class InitOnboardingUseCase {
     }
 
     // 3. Create session token for the patient
-    const token = await this.authService.createSessionToken(patient.id);
-    const { restoreToken, restoreCookie } = await this.authService.createGuestRestoreArtifacts(patient.id);
+    const token = await this.authService.createSessionToken(patient.id, input.site);
+    const { restoreToken, restoreCookie } = await this.authService.createGuestRestoreArtifacts(patient.id, input.site);
 
     return {
       patientId: patient.id,

@@ -22,18 +22,20 @@ describe('VerifyPatientEntryTokenUseCase', () => {
     authService.verifyPatientEntryToken.mockResolvedValue({
       email: 'new@test.com',
       purpose: 'patient-register',
+      site: 'beauty',
       exp: Math.floor(Date.now() / 1000) + 3600,
     });
 
-    await expect(useCase.execute({ token: 'register-token' })).resolves.toMatchObject({
+    await expect(useCase.execute({ token: 'register-token', site: 'beauty' })).resolves.toMatchObject({
       email: 'new@test.com',
       purpose: 'patient-register',
+      site: 'beauty',
     });
   });
 
   it('maps invalid tokens to auth errors', async () => {
     authService.verifyPatientEntryToken.mockRejectedValue(new Error('Invalid token'));
 
-    await expect(useCase.execute({ token: 'expired-register-token' })).rejects.toBeInstanceOf(VerifyPatientEntryTokenAuthError);
+    await expect(useCase.execute({ token: 'expired-register-token', site: 'china' })).rejects.toBeInstanceOf(VerifyPatientEntryTokenAuthError);
   });
 });

@@ -54,7 +54,7 @@ export function applySecurityMiddleware(app: Hono) {
   app.use('*', cors({
     origin: allowedOrigins,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+    allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Medora-Site'],
     credentials: true,
     maxAge: 86400,
   }));

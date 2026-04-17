@@ -127,7 +127,7 @@ describe('GetPatientSessionStateUseCase', () => {
       },
     });
 
-    const result = await useCase.execute({ patientId: 'patient-1' });
+    const result = await useCase.execute({ patientId: 'patient-1', site: 'beauty' });
 
     expect(result).toEqual({
       id: 'patient-1',

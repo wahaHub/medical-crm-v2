@@ -5,6 +5,7 @@ import type {
   ICHCRepository,
   IConversationRepository,
   IPatientRepository,
+  PatientSite,
   IUserRepository,
 } from '@medical-crm/domain';
 import { AiChatSession, Conversation } from '@medical-crm/domain';
@@ -68,9 +69,9 @@ export class GetPatientSessionStateUseCase {
     private readonly aiChatSessionRepo: IAiChatSessionRepository,
   ) {}
 
-  async execute(input: { patientId: string }): Promise<PatientSessionState> {
+  async execute(input: { patientId: string; site: PatientSite }): Promise<PatientSessionState> {
     const [patient, userProfile, cases] = await Promise.all([
-      this.patientRepo.findById(input.patientId),
+      this.patientRepo.findById(input.patientId, input.site),
       this.userRepo.findById(input.patientId),
       this.caseRepo.findByPatientId(input.patientId),
     ]);
@@ -96,6 +97,7 @@ export class GetPatientSessionStateUseCase {
       aiChatSession = await this.aiChatSessionRepo.save(new AiChatSession({
         id: generateId(),
         sessionId: widgetSessionId,
+        site: patient.site ?? 'china',
         sessionSecretHash: null,
         difyConversationId: null,
         patientId: patient.id,

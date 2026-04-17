@@ -940,7 +940,7 @@ export function getServices(): AppServices {
       submitIntake: new SubmitIntakeUseCase(),
       selectHospitals: new SelectHospitalsUseCase(caseRepo, chcRepo, conversationRepo),
       skipMedicalForm: new SkipMedicalFormUseCase(caseRepo),
-      submitPatientQCResponse: new SubmitPatientQCResponseUseCase(qcRepo, caseRepo, aiChatSessionRepo, aiChatMessageRepo, txRunner),
+      submitPatientQCResponse: new SubmitPatientQCResponseUseCase(qcRepo, caseRepo, patientRepo, aiChatSessionRepo, aiChatMessageRepo, txRunner),
       getPatientQCResponse: new GetPatientQCResponseUseCase(qcRepo, caseRepo),
 
       patientDashboard: new PatientDashboardUseCase(caseRepo, orderRepo, journeyRepo),

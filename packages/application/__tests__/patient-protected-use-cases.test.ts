@@ -718,6 +718,7 @@ function makeMockTransactionRunner(): TransactionRunner {
 describe('SubmitPatientQCResponseUseCase', () => {
   let caseRepo: ICaseRepository;
   let qcRepo: IQuestionCollectorRepository;
+  let patientRepo: import('@medical-crm/domain').IPatientRepository;
   let aiChatSessionRepo: IAiChatSessionRepository;
   let aiChatMessageRepo: IAiChatMessageRepository;
   let txRunner: TransactionRunner;
@@ -726,10 +727,22 @@ describe('SubmitPatientQCResponseUseCase', () => {
   beforeEach(() => {
     caseRepo = makeMockCaseRepo();
     qcRepo = makeMockQCRepo();
+    patientRepo = {
+      findById: vi.fn().mockResolvedValue({
+        id: 'patient-1',
+        patientCode: 'P-001',
+        preferredLanguage: 'en',
+        site: 'beauty',
+      }),
+      findByEmail: vi.fn(),
+      findAuthByEmail: vi.fn(),
+      createTempPatient: vi.fn(),
+      createOrFindRegisteredPatient: vi.fn(),
+    } satisfies import('@medical-crm/domain').IPatientRepository;
     aiChatSessionRepo = makeMockAiChatSessionRepo();
     aiChatMessageRepo = makeMockAiChatMessageRepo();
     txRunner = makeMockTransactionRunner();
-    useCase = new SubmitPatientQCResponseUseCase(qcRepo, caseRepo, aiChatSessionRepo, aiChatMessageRepo, txRunner);
+    useCase = new SubmitPatientQCResponseUseCase(qcRepo, caseRepo, patientRepo, aiChatSessionRepo, aiChatMessageRepo, txRunner);
   });
 
   it('patient can submit response for their own case', async () => {
@@ -744,6 +757,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     const result = await useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'template-1',
       responses: { q1: 'my answer' },
     });
@@ -766,6 +780,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     await useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'template-1',
       responses: { q1: 'my answer' },
     });
@@ -822,6 +837,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     await useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'template-1',
       responses: { q1: 'my answer' },
     });
@@ -866,6 +882,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     await useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'template-1',
       responses: { q1: 'my answer' },
     });
@@ -907,6 +924,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     await expect(useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'template-1',
       responses: { q1: 'updated answer' },
     })).rejects.toThrow('Medical form has already been submitted for this case');
@@ -920,6 +938,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     await expect(useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'nonexistent-template',
       responses: {},
     })).rejects.toThrow('Template nonexistent-template not found');
@@ -933,6 +952,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     await expect(useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'template-1',
       responses: {},
     })).rejects.toThrow('Template template-1 not found');
@@ -944,6 +964,7 @@ describe('SubmitPatientQCResponseUseCase', () => {
     await expect(useCase.execute({
       caseId: 'case-1',
       patientId: 'patient-1',
+      site: 'beauty',
       templateId: 'template-1',
       responses: { q1: 'my answer' },
     })).rejects.toThrow('Access denied');

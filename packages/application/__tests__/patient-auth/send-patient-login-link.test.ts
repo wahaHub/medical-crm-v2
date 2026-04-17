@@ -16,6 +16,7 @@ describe('SendPatientLoginLinkUseCase', () => {
 
   beforeEach(() => {
     delete process.env.FRONTEND_URL;
+    delete process.env.BEAUTY_ORIGIN;
     delete process.env.PATIENT_APP_ORIGIN;
     delete process.env.CHINA_ORIGIN;
 
@@ -37,13 +38,15 @@ describe('SendPatientLoginLinkUseCase', () => {
     lookupRepo.findEmailState.mockResolvedValue({
       state: 'PATIENT',
       userId: 'patient-1',
+      site: 'beauty',
     });
 
-    await expect(useCase.execute({ email: 'patient@test.com' })).resolves.toMatchObject({
+    await expect(useCase.execute({ email: 'patient@test.com', site: 'beauty' })).resolves.toMatchObject({
       delivery: 'dashboard-login',
       token: 'patient-login-token',
     });
-    expect(authService.createPatientLoginToken).toHaveBeenCalledWith('patient@test.com');
+    expect(lookupRepo.findEmailState).toHaveBeenCalledWith('patient@test.com', 'beauty');
+    expect(authService.createPatientLoginToken).toHaveBeenCalledWith('patient@test.com', 'beauty');
     expect(authService.createPatientRegisterToken).not.toHaveBeenCalled();
     expect(emailService.sendMagicLink).toHaveBeenCalledWith(
       'patient@test.com',
@@ -54,11 +57,12 @@ describe('SendPatientLoginLinkUseCase', () => {
   it('creates a patient-register token for an unregistered email', async () => {
     lookupRepo.findEmailState.mockResolvedValue({ state: 'NONE' });
 
-    await expect(useCase.execute({ email: 'new@test.com' })).resolves.toMatchObject({
+    await expect(useCase.execute({ email: 'new@test.com', site: 'beauty' })).resolves.toMatchObject({
       delivery: 'register',
       token: 'patient-register-token',
     });
-    expect(authService.createPatientRegisterToken).toHaveBeenCalledWith('new@test.com');
+    expect(lookupRepo.findEmailState).toHaveBeenCalledWith('new@test.com', 'beauty');
+    expect(authService.createPatientRegisterToken).toHaveBeenCalledWith('new@test.com', 'beauty');
     expect(authService.createPatientLoginToken).not.toHaveBeenCalled();
     expect(emailService.sendMagicLink).toHaveBeenCalledWith(
       'new@test.com',
@@ -71,9 +75,10 @@ describe('SendPatientLoginLinkUseCase', () => {
     lookupRepo.findEmailState.mockResolvedValue({
       state: 'PATIENT',
       userId: 'patient-1',
+      site: 'china',
     });
 
-    await useCase.execute({ email: 'patient@test.com' });
+    await useCase.execute({ email: 'patient@test.com', site: 'china' });
 
     expect(emailService.sendMagicLink).toHaveBeenCalledWith(
       'patient@test.com',
@@ -87,13 +92,30 @@ describe('SendPatientLoginLinkUseCase', () => {
     lookupRepo.findEmailState.mockResolvedValue({
       state: 'PATIENT',
       userId: 'patient-1',
+      site: 'china',
     });
 
-    await useCase.execute({ email: 'patient@test.com' });
+    await useCase.execute({ email: 'patient@test.com', site: 'china' });
 
     expect(emailService.sendMagicLink).toHaveBeenCalledWith(
       'patient@test.com',
       'https://portal.medicaltourismchina.health/dashboard?token=patient-login-token',
+    );
+  });
+
+  it('prefers BEAUTY_ORIGIN for beauty patient links', async () => {
+    process.env.BEAUTY_ORIGIN = 'https://beauty.medora.com';
+    lookupRepo.findEmailState.mockResolvedValue({
+      state: 'PATIENT',
+      userId: 'patient-1',
+      site: 'beauty',
+    });
+
+    await useCase.execute({ email: 'patient@test.com', site: 'beauty' });
+
+    expect(emailService.sendMagicLink).toHaveBeenCalledWith(
+      'patient@test.com',
+      'https://beauty.medora.com/dashboard?token=patient-login-token',
     );
   });
 
@@ -103,7 +125,7 @@ describe('SendPatientLoginLinkUseCase', () => {
       userId: 'hospital-1',
     });
 
-    await expect(useCase.execute({ email: 'hospital@test.com' })).rejects.toMatchObject({
+    await expect(useCase.execute({ email: 'hospital@test.com', site: 'beauty' })).rejects.toMatchObject({
       code: 'EMAIL_ROLE_CONFLICT',
     });
     expect(emailService.sendMagicLink).not.toHaveBeenCalled();
@@ -115,7 +137,7 @@ describe('SendPatientLoginLinkUseCase', () => {
       userId: 'admin-1',
     });
 
-    await expect(useCase.execute({ email: 'admin@test.com' })).rejects.toMatchObject({
+    await expect(useCase.execute({ email: 'admin@test.com', site: 'china' })).rejects.toMatchObject({
       code: 'EMAIL_ROLE_CONFLICT',
     });
     expect(emailService.sendMagicLink).not.toHaveBeenCalled();

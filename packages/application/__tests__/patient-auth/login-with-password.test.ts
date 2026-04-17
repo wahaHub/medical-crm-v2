@@ -37,6 +37,7 @@ describe('LoginWithPasswordUseCase', () => {
     const result = await useCase.execute({
       email: 'patient@example.com',
       password: 'SecurePass123',
+      site: 'beauty',
     });
 
     expect(result).toEqual({
@@ -45,9 +46,9 @@ describe('LoginWithPasswordUseCase', () => {
       restoreToken: 'restore-token-123',
       restoreCookie: 'restore-cookie-123',
     });
-    expect(mockPatientRepo.findAuthByEmail).toHaveBeenCalledWith('patient@example.com');
-    expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
-    expect(mockAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(mockPatientRepo.findAuthByEmail).toHaveBeenCalledWith('patient@example.com', 'beauty');
+    expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1', 'beauty');
   });
 
   it('rejects when password is invalid', async () => {
@@ -61,6 +62,7 @@ describe('LoginWithPasswordUseCase', () => {
     await expect(useCase.execute({
       email: 'patient@example.com',
       password: 'WrongPassword123',
+      site: 'beauty',
     })).rejects.toThrow('Invalid credentials');
   });
 
@@ -75,6 +77,7 @@ describe('LoginWithPasswordUseCase', () => {
     await expect(useCase.execute({
       email: 'patient@example.com',
       password: 'SecurePass123',
+      site: 'china',
     })).rejects.toThrow('Invalid credentials');
   });
 });

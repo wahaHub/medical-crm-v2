@@ -95,8 +95,8 @@ WITH ranked AS (
           WHEN 'completed' THEN 2
           ELSE 3
         END,
-        created_at ASC,
-        id ASC
+        created_at DESC,
+        id DESC
     ) AS rn
   FROM translation_tasks
 )

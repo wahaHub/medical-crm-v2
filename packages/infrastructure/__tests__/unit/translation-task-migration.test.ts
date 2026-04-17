@@ -1,22 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const migrationPath = resolve(
-  '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/codex-hospital-translation-chunking/packages/infrastructure/database/migrations/0025_translation_task_chunking.sql',
-);
-const bootstrapPath = resolve(
-  '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/codex-hospital-translation-chunking/packages/infrastructure/database/full-bootstrap.sql',
-);
+const migrationPath = fileURLToPath(new URL('../../database/migrations/0025_translation_task_chunking.sql', import.meta.url));
+const bootstrapPath = fileURLToPath(new URL('../../database/full-bootstrap.sql', import.meta.url));
 
 describe('translation task migration safety', () => {
-  it('splits legacy backlog rows instead of leaving legacy-bat pending rows behind', () => {
+  it('splits legacy backlog rows into single-language rows before dedupe', () => {
     const migration = readFileSync(migrationPath, 'utf8');
 
-    expect(migration).toContain('unnest(target_languages)');
+    expect(migration).toMatch(/WITH legacy_backlog AS \([\s\S]*unnest\(target_languages\)[\s\S]*INSERT INTO translation_tasks[\s\S]*DELETE FROM translation_tasks tt[\s\S]*WHERE tt\.id = lb\.id;/);
     expect(migration).toContain("status IN ('pending', 'processing')");
-    expect(migration).toContain('INSERT INTO translation_tasks');
-    expect(migration).toContain('DELETE FROM translation_tasks');
+  });
+
+  it('prefers the freshest canonical row when collapsing duplicate identities', () => {
+    const migration = readFileSync(migrationPath, 'utf8');
+    expect(migration).toContain('CASE status');
+    expect(migration).toContain("WHEN 'processing' THEN 0");
+    expect(migration).toContain("WHEN 'pending' THEN 1");
+    expect(migration).toContain("WHEN 'completed' THEN 2");
+    expect(migration).toContain('created_at DESC');
+    expect(migration).toContain('id DESC');
   });
 
   it('keeps target_language not null in the synced bootstrap SQL', () => {

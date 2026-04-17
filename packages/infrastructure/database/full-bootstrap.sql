@@ -465,8 +465,8 @@ WITH grouped AS (
         id
         ORDER BY
           CASE WHEN status = 'processing' THEN 0 ELSE 1 END,
-          created_at ASC,
-          id ASC
+          created_at DESC,
+          id DESC
       )
     )[1] AS keep_id
   FROM translation_tasks

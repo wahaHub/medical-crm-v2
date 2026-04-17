@@ -20,6 +20,7 @@ describe('GetPatientSessionStateUseCase', () => {
     };
     mockUserRepo = {
       findById: vi.fn(),
+      listAdminEmails: vi.fn(),
     };
     mockCaseRepo = {
       findById: vi.fn(),

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Card, CardHeader, CardTitle, LoadingSpinner } from '@medical-crm/ui';
-import { useProfile } from '@/queries/use-settings';
+import { useAdminEmails, useProfile } from '@/queries/use-settings';
 import { updateProfile, changePassword } from '@/actions/settings-actions';
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -11,6 +11,67 @@ interface ProfileData {
   email?: string;
   preferredLanguage?: string;
   [key: string]: unknown;
+}
+
+interface AdminEmailsData {
+  emails?: string[];
+}
+
+function AdminEmailsCard({
+  emails,
+  isLoading,
+  error,
+}: {
+  emails: string[];
+  isLoading: boolean;
+  error: string | null;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Admin Emails</CardTitle>
+      </CardHeader>
+      <div className="space-y-3">
+        <p className="text-sm text-slate-500">
+          This list is pulled automatically from all CRM users with the admin role.
+        </p>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <LoadingSpinner />
+            <span>Loading admin emails…</span>
+          </div>
+        ) : null}
+        {error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+        {!isLoading && !error ? (
+          <>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              {emails.length} admin email{emails.length === 1 ? '' : 's'} found
+            </div>
+            {emails.length > 0 ? (
+              <div className="space-y-2">
+                {emails.map((adminEmail) => (
+                  <div
+                    key={adminEmail}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                  >
+                    {adminEmail}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-sm text-slate-500">
+                No admin emails found.
+              </div>
+            )}
+          </>
+        ) : null}
+      </div>
+    </Card>
+  );
 }
 
 // ── Email Card ────────────────────────────────────────────────────────
@@ -294,7 +355,13 @@ function LanguageCard({ preferredLanguage }: { preferredLanguage: string }) {
 
 export function SettingsPage() {
   const { data: raw, isLoading } = useProfile();
+  const {
+    data: adminEmailDataRaw,
+    isLoading: isAdminEmailsLoading,
+    error: adminEmailsError,
+  } = useAdminEmails();
   const profile = raw as ProfileData | undefined;
+  const adminEmailData = adminEmailDataRaw as AdminEmailsData | undefined;
 
   if (isLoading) {
     return (
@@ -306,9 +373,15 @@ export function SettingsPage() {
 
   const email = (profile?.email as string | undefined) ?? '';
   const preferredLanguage = (profile?.preferredLanguage as string | undefined) ?? 'en';
+  const adminEmails = Array.isArray(adminEmailData?.emails) ? adminEmailData.emails : [];
 
   return (
     <div className="max-w-2xl space-y-6">
+      <AdminEmailsCard
+        emails={adminEmails}
+        isLoading={isAdminEmailsLoading}
+        error={adminEmailsError instanceof Error ? adminEmailsError.message : null}
+      />
       <EmailCard email={email} />
       <PasswordCard />
       <LanguageCard preferredLanguage={preferredLanguage} />

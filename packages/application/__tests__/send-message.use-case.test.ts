@@ -105,6 +105,7 @@ describe('SendMessageUseCase', () => {
     mockUserRepo = {
       create: vi.fn(),
       findPreferredLanguage: vi.fn().mockResolvedValue('zh'),
+      listAdminEmails: vi.fn(),
     };
 
     mockCaseRepo = {

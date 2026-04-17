@@ -81,6 +81,7 @@ describe('GetCaseUseCase', () => {
         email: 'jane@example.com',
         phone: '+8613800000000',
       }),
+      listAdminEmails: vi.fn(),
     } as unknown as IUserRepository;
     mockHospitalRepo = {
       findById: vi.fn().mockResolvedValue({

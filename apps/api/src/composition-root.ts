@@ -186,6 +186,7 @@ import {
   UpdateEmailTemplateUseCase,
   DeleteEmailTemplateUseCase,
   GetProfileUseCase,
+  ListAdminEmailsUseCase,
   UpdateProfileUseCase,
   ChangePasswordUseCase,
   TranslationTaskService,
@@ -499,6 +500,7 @@ interface AppServices {
 
   // use cases — user settings
   getProfile: GetProfileUseCase;
+  listAdminEmails: ListAdminEmailsUseCase;
   updateProfile: UpdateProfileUseCase;
   changePassword: ChangePasswordUseCase;
 
@@ -999,6 +1001,7 @@ export function getServices(): AppServices {
       deleteEmailTemplate: new DeleteEmailTemplateUseCase(emailTemplateRepo),
 
       getProfile: new GetProfileUseCase(userRepo),
+      listAdminEmails: new ListAdminEmailsUseCase(userRepo),
       updateProfile: new UpdateProfileUseCase(userRepo, keycloakAdmin),
       changePassword: new ChangePasswordUseCase(
         keycloakAdmin,

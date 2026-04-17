@@ -37,4 +37,5 @@ export interface IUserRepository {
   findPreferredLanguage(hospitalId: string): Promise<string | null>;
   findById(id: string): Promise<UserProfile | null>;
   update(id: string, input: UpdateUserProfileInput): Promise<void>;
+  listAdminEmails(): Promise<string[]>;
 }

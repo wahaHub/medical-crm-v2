@@ -23,6 +23,22 @@ app.openapi(getProfileRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// 1b. GET /api/v2/admin/settings/admin-emails — ListAdminEmails
+// ---------------------------------------------------------------------------
+const listAdminEmailsRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/admin/settings/admin-emails',
+  responses: { 200: { description: 'List of admin email addresses' } },
+});
+
+app.openapi(listAdminEmailsRoute, async (c) => {
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const emails = await svc.listAdminEmails.execute(actor);
+  return c.json({ emails }, 200);
+});
+
+// ---------------------------------------------------------------------------
 // 2. PATCH /api/v2/users/me — UpdateProfile
 // ---------------------------------------------------------------------------
 const updateProfileRoute = createRoute({

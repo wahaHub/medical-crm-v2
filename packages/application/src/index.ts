@@ -491,6 +491,7 @@ export { DeleteEmailTemplateUseCase } from './use-cases/email-templates/delete-e
 
 // Use Cases — User Settings
 export { GetProfileUseCase } from './use-cases/users/get-profile.use-case.js';
+export { ListAdminEmailsUseCase } from './use-cases/users/list-admin-emails.use-case.js';
 export { UpdateProfileUseCase } from './use-cases/users/update-profile.use-case.js';
 export type { UpdateProfileInput } from './use-cases/users/update-profile.use-case.js';
 export { ChangePasswordUseCase } from './use-cases/users/change-password.use-case.js';

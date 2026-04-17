@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import type { IUserRepository, CreateUserInput, UserProfile, UpdateUserProfileInput, NotificationPreferences } from '@medical-crm/domain';
 import { ConflictError } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
@@ -117,5 +117,15 @@ export class DrizzleUserRepository implements IUserRepository {
       .update(users)
       .set(updateFields)
       .where(eq(users.id, id));
+  }
+
+  async listAdminEmails(): Promise<string[]> {
+    const rows = await this.db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.role, 'ADMIN'))
+      .orderBy(asc(users.email));
+
+    return rows.map((row) => row.email);
   }
 }

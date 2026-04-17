@@ -1,4 +1,7 @@
-import type { AiChatStatusSnapshot } from '@medical-crm/domain';
+import {
+  deriveCanonicalTruthFlagsFromStatusSnapshot,
+  type AiChatStatusSnapshot,
+} from '@medical-crm/domain';
 import type { JourneyTruth } from './types.js';
 
 type JourneyTruthOverrides = {
@@ -11,12 +14,12 @@ export function deriveJourneyTruthFromStatusSnapshot(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   overrides: JourneyTruthOverrides = {},
 ): JourneyTruth {
+  const canonicalTruthFlags = deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot);
   const medicalInputsSubmitted = overrides.medicalInputsSubmitted
-    ?? hasPersistedStatus(statusSnapshot?.formStatus, ['COMPLETED', 'SUBMITTED']);
+    ?? canonicalTruthFlags['records.minimal_triage.complete'];
   const onlineConsultSubmitted = overrides.onlineConsultSubmitted
     ?? hasPersistedStatus(statusSnapshot?.consultationStatus, ['SCHEDULED', 'BOOKED', 'COMPLETED']);
-  const persistedRecommendationConfirmed = hasPersistedStatus(statusSnapshot?.recommendationStatus, ['CONFIRMED', 'ACCEPTED'])
-    || hasPersistedStatus(statusSnapshot?.packageStatus, ['CONFIRMED', 'ACCEPTED'])
+  const persistedRecommendationConfirmed = canonicalTruthFlags['recommendation.selected']
     || onlineConsultSubmitted;
   const recommendationConfirmed = overrides.recommendationConfirmed ?? persistedRecommendationConfirmed;
 

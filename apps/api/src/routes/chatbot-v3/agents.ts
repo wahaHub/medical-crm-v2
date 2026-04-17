@@ -21,6 +21,18 @@ import {
   type FaqLlmRunMetadata,
   type FaqPlan,
 } from './faq-llm-adapter.js';
+import {
+  RecordsLlmAdapter,
+  type RecordsLlmRunMetadata,
+} from './records-llm-adapter.js';
+import {
+  RecommendationLlmAdapter,
+  type RecommendationLlmRunMetadata,
+} from './recommendation-llm-adapter.js';
+import {
+  extractRecommendationTask,
+  type RecommendationWorkerResult,
+} from './recommendation-prompts.js';
 
 export type AgentName =
   | 'FaqAgent'
@@ -156,31 +168,49 @@ export class FaqAgent {
 }
 
 export class RecordsAgent {
-  constructor(private readonly gateway: ToolGateway) {}
+  constructor(
+    private readonly gateway: ToolGateway,
+    private readonly worker = new RecordsLlmAdapter(),
+  ) {}
 
-  execute(action: AgentAction<RecordsUploadInput | RecordsSaveInput | RecordsStatusInput>): Promise<ToolResult<unknown>> {
+  async execute(action: AgentAction<RecordsUploadInput | RecordsSaveInput | RecordsStatusInput>): Promise<ToolResult<unknown>> {
     switch (action.type) {
       case 'records.upload':
         return this.gateway.records.upload(action.input as RecordsUploadInput);
       case 'records.save':
         return this.gateway.records.save(action.input as RecordsSaveInput);
       case 'records.status':
-        return this.gateway.records.status(action.input as RecordsStatusInput);
+        return {
+          status: 'ok',
+          data: await this.worker.runStatus({
+            taskPrompt: action.meta?.taskPrompt ?? '',
+          }),
+        };
       default:
-        return Promise.resolve(invalidAction('RecordsAgent', action.type));
+        return invalidAction('RecordsAgent', action.type);
     }
+  }
+
+  getLastLlmRunMetadata(): RecordsLlmRunMetadata | null {
+    return this.worker.getLastRunMetadata();
   }
 }
 
 export class RecommendationAgent {
-  constructor(private readonly gateway: ToolGateway) {}
+  constructor(
+    private readonly gateway: ToolGateway,
+    private readonly worker = new RecommendationLlmAdapter(),
+  ) {}
 
-  execute(
+  async execute(
     action: AgentAction<RecommendationGenerateInput | RecommendationPickInput | RecommendationStatusInput>,
   ): Promise<ToolResult<unknown>> {
     switch (action.type) {
       case 'recommendation.generate':
-        return this.gateway.recommendation.generate(action.input as RecommendationGenerateInput);
+        return this.generateRecommendations(
+          action.input as RecommendationGenerateInput,
+          action.meta?.taskPrompt ?? '',
+        );
       case 'recommendation.pick':
         return this.gateway.recommendation.pick(action.input as RecommendationPickInput);
       case 'recommendation.status':
@@ -188,6 +218,31 @@ export class RecommendationAgent {
       default:
         return Promise.resolve(invalidAction('RecommendationAgent', action.type));
     }
+  }
+
+  getLastLlmRunMetadata(): RecommendationLlmRunMetadata | null {
+    return this.worker.getLastRunMetadata();
+  }
+
+  private async generateRecommendations(
+    input: RecommendationGenerateInput,
+    taskPrompt: string,
+  ): Promise<ToolResult<RecommendationWorkerResult>> {
+    const generated = await this.gateway.recommendation.generate(input);
+    if (generated.status === 'error') {
+      return generated;
+    }
+
+    return {
+      status: 'ok',
+      data: {
+        ...(await this.worker.runGenerate({
+          taskPrompt,
+          recommendations: generated.data.recommendations,
+        })),
+        recommendationTask: extractRecommendationTask(taskPrompt),
+      },
+    };
   }
 }
 

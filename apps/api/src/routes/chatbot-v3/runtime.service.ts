@@ -1,5 +1,25 @@
-import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
+import type {
+  AiChatCanonicalTruthPatch,
+  AiChatStatusSnapshot,
+  ChatJourneyPhase,
+  ChatJourneyStage,
+} from '@medical-crm/domain';
+import {
+  CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
+  type ChatbotV3ConversationSummaryContract,
+  type SupervisorDomainReadResults,
+  type MinimalIntakeSeed,
+  type SupervisorReadDomain,
+} from '@medical-crm/application';
 import type { AgentAction, AgentName } from './agents.js';
+import { buildRecordsMinimalTriagePrompt } from './records-prompts.js';
+import { buildAssistantText } from './response-composer.js';
+import {
+  AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP,
+  deriveCanonicalTruthFlagsFromStatusSnapshot,
+  deriveCanonicalTruthTruePatchFromStatusSnapshot,
+} from '@medical-crm/domain';
+import type { RecommendationTask } from './recommendation-prompts.js';
 import type {
   ChatbotV3RuntimeNodeEventEmitter,
   ChatbotV3RuntimeNodeEventInput,
@@ -40,11 +60,42 @@ export interface ConversationOrchestratorV3HandoffSignals {
   safetyPolicyHit?: boolean;
 }
 
+export interface ConversationOrchestratorV3BootstrapSignals {
+  message: string;
+  attachments?: Array<Record<string, unknown>>;
+  canCreateHandoff?: boolean;
+}
+
 export interface ConversationOrchestratorV3DecisionInput {
-  current: ConversationOrchestratorV3StageRef;
+  current?: ConversationOrchestratorV3StageRef;
+  currentStage?: ChatJourneyStage;
+  conversationSummary?: string;
+  latestUserMessage?: string;
+  intake?: MinimalIntakeSeed;
+  availableReadDomains?: readonly SupervisorReadDomain[];
+  domainReadResults?: SupervisorDomainReadResults;
   suggestion: ConversationOrchestratorV3Suggestion;
+  statusSnapshot?: Partial<AiChatStatusSnapshot> | null;
   facts?: ConversationOrchestratorV3Facts;
   handoff?: ConversationOrchestratorV3HandoffSignals;
+  bootstrap?: ConversationOrchestratorV3BootstrapSignals;
+}
+
+export interface ConversationOrchestratorV3ConversationSummaryPatch {
+  contract: ChatbotV3ConversationSummaryContract;
+  statusPatch: Pick<
+    AiChatStatusSnapshot,
+    'conversationSummary' | 'lastUserMessageAt' | 'lastAssistantMessageAt'
+  >;
+}
+
+export interface ConversationOrchestratorV3WriteIntents {
+  canonicalTruthPatch?: AiChatCanonicalTruthPatch;
+  conversationSummaryPatch: ConversationOrchestratorV3ConversationSummaryPatch;
+}
+
+export interface ConversationOrchestratorV3RenderState {
+  path: 'PROCESS_OVERVIEW' | 'FAQ_ANSWER' | 'STAGE_GUIDANCE';
 }
 
 export interface ConversationOrchestratorV3Decision {
@@ -52,9 +103,14 @@ export interface ConversationOrchestratorV3Decision {
   from: ConversationOrchestratorV3StageRef;
   to: ConversationOrchestratorV3StageRef;
   dispatchAgent?: AgentName;
-  dispatchSource: 'orchestrator';
+  dispatchSource: 'journey-runtime-authority';
   matchedRuleId?: string;
   whyNotSkip?: string;
+  write?: {
+    authority: 'journey-runtime-authority';
+    stage: ConversationOrchestratorV3StageRef;
+    factsPatch: Partial<Record<string, boolean>>;
+  };
 }
 
 export interface ConversationOrchestratorV3HandleTurnInput {
@@ -67,9 +123,12 @@ export interface ConversationOrchestratorV3HandleTurnInput {
     type: 'HOSPITAL_DETAIL';
     hospitalId: string;
   };
-  current: ConversationOrchestratorV3StageRef;
+  current?: ConversationOrchestratorV3StageRef;
+  statusSnapshot?: Partial<AiChatStatusSnapshot> | null;
   facts?: ConversationOrchestratorV3Facts;
+  intake?: MinimalIntakeSeed;
   handoff?: ConversationOrchestratorV3HandoffSignals;
+  bootstrap?: ConversationOrchestratorV3BootstrapSignals;
   suggestion?: ConversationOrchestratorV3Suggestion;
 }
 
@@ -83,11 +142,13 @@ export interface ConversationOrchestratorV3TurnResult {
     status: 'ok' | 'degraded';
     recoverableErrorCode: 'TIMEOUT' | 'UPSTREAM_UNAVAILABLE' | 'UNKNOWN' | null;
   };
+  writeIntents?: ConversationOrchestratorV3WriteIntents;
   runtimeDebug: {
     traceId: string;
     idempotencyKey: string;
-    lastDispatchSource?: 'orchestrator';
+    lastDispatchSource?: 'journey-runtime-authority';
   };
+  render: ConversationOrchestratorV3RenderState;
 }
 
 export interface ConversationOrchestratorV3LlmNodeRunMetadata {
@@ -103,6 +164,7 @@ export interface ConversationOrchestratorV3IdempotencyExecutor {
 
 export interface ConversationOrchestratorV3Supervisor {
   suggest(input: ConversationOrchestratorV3DecisionInput): Promise<ConversationOrchestratorV3Suggestion>;
+  requestDomainReads?(input: ConversationOrchestratorV3DecisionInput): Promise<readonly SupervisorReadDomain[]>;
   getLastLlmRunMetadata?(): ConversationOrchestratorV3LlmNodeRunMetadata | null;
 }
 
@@ -118,8 +180,8 @@ export interface ConversationOrchestratorV3AgentExecutor {
 export interface ConversationOrchestratorV3RuntimeDependencies {
   idempotency: ConversationOrchestratorV3IdempotencyExecutor;
   supervisor: ConversationOrchestratorV3Supervisor;
-  orchestrator: ConversationOrchestratorV3Orchestrator;
-  gateway: Pick<ToolGateway, 'status'>;
+  journeyRuntimeAuthority: ConversationOrchestratorV3Orchestrator;
+  gateway: Pick<ToolGateway, 'status' | 'records' | 'recommendation' | 'consult' | 'handoff'>;
   agents: Partial<Record<AgentName, ConversationOrchestratorV3AgentExecutor>>;
   nodeEventEmitter?: Pick<ChatbotV3RuntimeNodeEventEmitter, 'emit'>;
   now?: () => number;
@@ -164,7 +226,8 @@ export class ConversationOrchestratorV3RuntimeService {
     idempotencyKey: string,
   ): Promise<ConversationOrchestratorV3TurnResult> {
     const turnStartedAt = this.now();
-    const supervisorInput = this.buildDecisionInput(input);
+    const supervisorInput = this.buildSupervisorInput(input);
+    const decisionInput = this.buildDecisionInput(input);
     this.emitNodeEvent(input, {
       node: 'Supervisor',
       action: 'suggest',
@@ -175,7 +238,7 @@ export class ConversationOrchestratorV3RuntimeService {
 
     let suggestion: ConversationOrchestratorV3Suggestion;
     try {
-      suggestion = await this.dependencies.supervisor.suggest(supervisorInput);
+      suggestion = await this.resolveSupervisorSuggestion(input, supervisorInput);
       this.emitNodeEvent(input, {
         node: 'Supervisor',
         action: 'suggest',
@@ -196,7 +259,7 @@ export class ConversationOrchestratorV3RuntimeService {
     }
 
     this.emitNodeEvent(input, {
-      node: 'Orchestrator',
+      node: 'JourneyRuntimeAuthority',
       action: 'decide',
       status: 'started',
       latencyMs: 0,
@@ -204,19 +267,19 @@ export class ConversationOrchestratorV3RuntimeService {
     const orchestratorStartedAt = this.now();
     let decision: ConversationOrchestratorV3Decision;
     try {
-      decision = this.dependencies.orchestrator.decide({
-        ...supervisorInput,
+      decision = this.dependencies.journeyRuntimeAuthority.decide({
+        ...decisionInput,
         suggestion,
       });
       this.emitNodeEvent(input, {
-        node: 'Orchestrator',
+        node: 'JourneyRuntimeAuthority',
         action: 'decide',
         status: 'completed',
         latencyMs: this.elapsedSince(orchestratorStartedAt),
       });
     } catch (error) {
       this.emitNodeEvent(input, {
-        node: 'Orchestrator',
+        node: 'JourneyRuntimeAuthority',
         action: 'decide',
         status: 'failed',
         latencyMs: this.elapsedSince(orchestratorStartedAt),
@@ -228,7 +291,7 @@ export class ConversationOrchestratorV3RuntimeService {
     const runtimeDebug = {
       traceId: input.traceId,
       idempotencyKey,
-      lastDispatchSource: decision.dispatchSource,
+      lastDispatchSource: 'journey-runtime-authority',
     } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
 
     if (!decision.dispatchAgent) {
@@ -243,8 +306,16 @@ export class ConversationOrchestratorV3RuntimeService {
           recoverableErrorCode: null,
         },
         runtimeDebug,
+        render: {
+          path: 'STAGE_GUIDANCE',
+        },
       } satisfies ConversationOrchestratorV3TurnResult;
-      return this.finalizeTurnResult(input, decision, result, turnStartedAt);
+      return this.finalizeTurnResult(
+        input,
+        decision,
+        this.attachWriteIntents(result, input, input.statusSnapshot),
+        turnStartedAt,
+      );
     }
 
     const agent = this.dependencies.agents[decision.dispatchAgent];
@@ -350,8 +421,16 @@ export class ConversationOrchestratorV3RuntimeService {
           recoverableErrorCode: null,
         },
         runtimeDebug,
+        render: {
+          path: 'STAGE_GUIDANCE',
+        },
       } satisfies ConversationOrchestratorV3TurnResult;
-      return this.finalizeTurnResult(input, decision, result, turnStartedAt);
+      return this.finalizeTurnResult(
+        input,
+        decision,
+        this.attachWriteIntents(result, input, input.statusSnapshot),
+        turnStartedAt,
+      );
     } catch (error) {
       this.emitNodeEvent(input, {
         node: 'Tool',
@@ -386,15 +465,61 @@ export class ConversationOrchestratorV3RuntimeService {
   private buildDecisionInput(
     input: ConversationOrchestratorV3HandleTurnInput,
   ): ConversationOrchestratorV3DecisionInput {
+    const current = input.statusSnapshot
+      ? deriveCurrentStageFromStatusSnapshot(input.statusSnapshot)
+      : input.current ?? deriveCurrentStageFromStatusSnapshot(input.statusSnapshot);
     return {
-      current: input.current,
+      current,
+      currentStage: current.stage,
+      conversationSummary: input.statusSnapshot?.conversationSummary ?? '',
+      latestUserMessage: input.message,
+      intake: input.intake,
+      availableReadDomains: deriveSupervisorReadDomains(current.stage, input.facts),
       suggestion: input.suggestion ?? {
         intent: 'unknown',
-        suggestedStage: input.current.stage,
+        suggestedStage: current.stage,
         reason: normalizeReason(input.message),
       },
+      statusSnapshot: input.statusSnapshot,
       facts: input.facts,
       handoff: input.handoff,
+      bootstrap: input.bootstrap,
+    };
+  }
+
+  private buildSupervisorInput(
+    input: ConversationOrchestratorV3HandleTurnInput,
+  ): ConversationOrchestratorV3DecisionInput {
+    return {
+      ...this.buildDecisionInput(input),
+      facts: resolveSupervisorFacts(input.statusSnapshot),
+    };
+  }
+
+  private attachWriteIntents(
+    result: ConversationOrchestratorV3TurnResult,
+    input: ConversationOrchestratorV3HandleTurnInput,
+    statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  ): ConversationOrchestratorV3TurnResult {
+    const render = deriveRenderState(result);
+    const renderedResult = {
+      ...result,
+      render,
+    };
+    const canonicalTruthPatch = result.turnOutcome.status === 'ok'
+      ? deriveCanonicalTruthPatch(statusSnapshot, renderedResult)
+      : undefined;
+
+    return {
+      ...renderedResult,
+      writeIntents: {
+        ...(canonicalTruthPatch ? { canonicalTruthPatch } : {}),
+        conversationSummaryPatch: buildConversationSummaryPatch({
+          result: renderedResult,
+          latestUserMessage: input.message,
+          summaryUpdatedAt: new Date(this.now()),
+        }),
+      },
     };
   }
 
@@ -424,7 +549,118 @@ export class ConversationOrchestratorV3RuntimeService {
         recoverableErrorCode: normalizeRecoverableErrorCode(dispatchResult.code),
       },
       runtimeDebug,
+      render: {
+        path: 'STAGE_GUIDANCE',
+      },
     };
+  }
+
+  private async resolveSupervisorSuggestion(
+    input: ConversationOrchestratorV3HandleTurnInput,
+    supervisorInput: ConversationOrchestratorV3DecisionInput,
+  ): Promise<ConversationOrchestratorV3Suggestion> {
+    const domainReadResults = await this.collectSupervisorReadDomains(input, supervisorInput);
+    if (!domainReadResults) {
+      return this.dependencies.supervisor.suggest(supervisorInput);
+    }
+
+    return this.dependencies.supervisor.suggest({
+      ...supervisorInput,
+      domainReadResults,
+    });
+  }
+
+  private async collectSupervisorReadDomains(
+    input: ConversationOrchestratorV3HandleTurnInput,
+    supervisorInput: ConversationOrchestratorV3DecisionInput,
+  ): Promise<SupervisorDomainReadResults | undefined> {
+    if (!this.dependencies.supervisor.requestDomainReads) {
+      return undefined;
+    }
+
+    let availableReadDomains = [...(supervisorInput.availableReadDomains ?? [])];
+    if (availableReadDomains.length === 0) {
+      return undefined;
+    }
+
+    const domainReadResults: SupervisorDomainReadResults = {};
+
+    for (let pass = 0; pass < 2 && availableReadDomains.length > 0; pass += 1) {
+      const requestedReadDomains: readonly SupervisorReadDomain[] = await this.dependencies.supervisor
+        .requestDomainReads({
+          ...supervisorInput,
+          availableReadDomains,
+          ...(Object.keys(domainReadResults).length > 0 ? { domainReadResults } : {}),
+        });
+      const nextDomain = requestedReadDomains.find((domain) => availableReadDomains.includes(domain));
+      if (!nextDomain) {
+        break;
+      }
+
+      availableReadDomains = availableReadDomains.filter((domain) => domain !== nextDomain);
+
+      const data = await this.querySingleSupervisorReadDomain(input, nextDomain);
+      if (data) {
+        domainReadResults[nextDomain] = data;
+      }
+    }
+
+    return Object.keys(domainReadResults).length > 0 ? domainReadResults : undefined;
+  }
+
+  private async querySingleSupervisorReadDomain(
+    input: ConversationOrchestratorV3HandleTurnInput,
+    domain: SupervisorReadDomain,
+  ): Promise<Record<string, unknown> | null> {
+    this.emitNodeEvent(input, {
+      node: 'Tool',
+      action: domain,
+      status: 'started',
+      latencyMs: 0,
+    });
+    const startedAt = this.now();
+
+    try {
+      const result = await this.runSupervisorReadTool(domain, input.sessionId);
+      this.emitNodeEvent(input, {
+        node: 'Tool',
+        action: domain,
+        status: result.status === 'error' ? this.mapErrorStatus(result.code) : 'completed',
+        latencyMs: this.elapsedSince(startedAt),
+        ...(result.status === 'error' ? { errorCode: result.code } : {}),
+      });
+
+      if (result.status === 'error') {
+        return null;
+      }
+
+      return result.data as Record<string, unknown>;
+    } catch {
+      this.emitNodeEvent(input, {
+        node: 'Tool',
+        action: domain,
+        status: 'failed',
+        latencyMs: this.elapsedSince(startedAt),
+        errorCode: 'UNKNOWN',
+      });
+      return null;
+    }
+  }
+
+  private runSupervisorReadTool(
+    domain: SupervisorReadDomain,
+    sessionId: string,
+  ): Promise<ToolResult<Record<string, unknown>>> {
+    switch (domain) {
+      case 'records.status':
+        return this.dependencies.gateway.records.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+      case 'recommendation.status':
+        return this.dependencies.gateway.recommendation.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+      case 'consult.status':
+        return this.dependencies.gateway.consult.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+      case 'handoff.status':
+        return this.dependencies.gateway.handoff.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+    }
   }
 
   private async queryStatusFallback(
@@ -470,6 +706,10 @@ export class ConversationOrchestratorV3RuntimeService {
     result: ConversationOrchestratorV3TurnResult,
     turnStartedAt: number,
   ): ConversationOrchestratorV3TurnResult {
+    const finalizedResult = {
+      ...result,
+      render: result.render ?? deriveRenderState(result),
+    };
     this.emitNodeEvent(input, {
       node: 'Turn',
       action: 'turn_summary',
@@ -478,10 +718,10 @@ export class ConversationOrchestratorV3RuntimeService {
       decisionAction: decision.action,
       fromStage: decision.from.stage,
       toStage: decision.to.stage,
-      outcomeStatus: result.turnOutcome.status,
-      degradedErrorCode: result.turnOutcome.recoverableErrorCode,
+      outcomeStatus: finalizedResult.turnOutcome.status,
+      degradedErrorCode: finalizedResult.turnOutcome.recoverableErrorCode,
     });
-    return result;
+    return finalizedResult;
   }
 
   private emitNodeEvent(
@@ -529,6 +769,128 @@ export class ConversationOrchestratorV3RuntimeService {
   }
 }
 
+const SUMMARY_STAGE_SNIPPET_MAX_LENGTH = 40;
+const SUMMARY_USER_SNIPPET_MAX_LENGTH = 96;
+const SUMMARY_ASSISTANT_SNIPPET_MAX_LENGTH = 120;
+const SUMMARY_TOTAL_MAX_LENGTH = 280;
+
+function buildConversationSummaryPatch({
+  result,
+  latestUserMessage,
+  summaryUpdatedAt,
+}: {
+  result: ConversationOrchestratorV3TurnResult;
+  latestUserMessage: string;
+  summaryUpdatedAt: Date;
+}): ConversationOrchestratorV3ConversationSummaryPatch {
+  const conversationSummary = clampConversationSummary([
+    `stage=${clampSummaryText(result.journey.stage, SUMMARY_STAGE_SNIPPET_MAX_LENGTH)}`,
+    `user=${clampSummaryText(latestUserMessage, SUMMARY_USER_SNIPPET_MAX_LENGTH)}`,
+    `assistant=${clampSummaryText(buildAssistantText(result), SUMMARY_ASSISTANT_SNIPPET_MAX_LENGTH)}`,
+  ].join(' | '));
+
+  return {
+    contract: CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
+    statusPatch: {
+      conversationSummary,
+      lastUserMessageAt: summaryUpdatedAt,
+      lastAssistantMessageAt: summaryUpdatedAt,
+    },
+  };
+}
+
+function clampConversationSummary(value: string): string {
+  return value.length <= SUMMARY_TOTAL_MAX_LENGTH
+    ? value
+    : `${value.slice(0, SUMMARY_TOTAL_MAX_LENGTH - 3).trimEnd()}...`;
+}
+
+function clampSummaryText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function deriveSupervisorReadDomains(
+  currentStage: ChatJourneyStage,
+  facts: ConversationOrchestratorV3Facts | undefined,
+): readonly SupervisorReadDomain[] {
+  if (currentStage === 'HUMAN_HANDOFF' || facts?.['handoff.active'] === true) {
+    return ['handoff.status'];
+  }
+
+  if (
+    currentStage === 'ONLINE_CONSULT'
+    || facts?.['consult.completed'] === true
+    || facts?.['consult.scheduled'] === true
+  ) {
+    return ['consult.status'];
+  }
+
+  if (currentStage === 'RECOMMENDATION') {
+    return facts?.['recommendation.selected'] === true
+      ? ['recommendation.status', 'consult.status']
+      : ['recommendation.status'];
+  }
+
+  if (currentStage === 'COLLECT_MEDICAL_INPUTS') {
+    return ['records.status', 'consult.status'];
+  }
+
+  if (
+    currentStage === 'COLLECT_MINIMAL_MEDICAL_FACTS'
+    && facts?.['records.minimal_triage.complete'] === true
+  ) {
+    return ['records.status', 'recommendation.status'];
+  }
+
+  return ['records.status'];
+}
+
+function resolveSupervisorFacts(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): ConversationOrchestratorV3Facts {
+  const truthFlags = deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot);
+
+  return {
+    'records.minimal_triage.complete': truthFlags['records.minimal_triage.complete'],
+    'process.explained': truthFlags['process.explained'],
+    'recommendation.generated': truthFlags['recommendation.generated'],
+    'recommendation.selected': truthFlags['recommendation.selected'],
+    'consult.completed': truthFlags['consult.completed'],
+    'handoff.active': truthFlags['handoff.active'],
+  };
+}
+
+export function deriveCurrentStageFromStatusSnapshot(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): ConversationOrchestratorV3StageRef {
+  if (hasActiveHandoffStatus(statusSnapshot) || hasCrisisSafetySignal(statusSnapshot)) {
+    return { stage: 'HUMAN_HANDOFF', phase: 'active' };
+  }
+
+  const canonicalTruthFlags = deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot);
+  if (!canonicalTruthFlags['records.minimal_triage.complete']) {
+    return {
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    };
+  }
+
+  const storedJourney = readStoredJourneySnapshot(statusSnapshot);
+  if (storedJourney) {
+    return storedJourney;
+  }
+
+  return {
+    stage: 'RECOMMENDATION',
+    phase: 'active',
+  };
+}
+
 const FACTS_SNIPPET_MAX_ENTRIES = 6;
 
 function buildDispatchAction(
@@ -556,7 +918,10 @@ function buildDispatchAction(
         meta,
       };
     case 'RecordsAgent':
-      if ((input.attachments?.length ?? 0) > 0) {
+      if (
+        (input.attachments?.length ?? 0) > 0
+        && decision.to.stage !== 'COLLECT_MINIMAL_MEDICAL_FACTS'
+      ) {
         return {
           type: 'records.upload',
           input: {
@@ -633,6 +998,9 @@ function buildTaskPrompt(
   suggestion: ConversationOrchestratorV3Suggestion,
 ): string {
   const factsSummary = summarizeFacts(input.facts);
+  const recommendationTask = decision.dispatchAgent === 'RecommendationAgent'
+    ? resolveRecommendationTask(input.message, decision)
+    : null;
   const contextLines = [
     `agent=${decision.dispatchAgent}`,
     `from=${decision.from.stage}`,
@@ -640,26 +1008,100 @@ function buildTaskPrompt(
     `intent=${suggestion.intent}`,
     `supervisor_reason=${normalizeReason(suggestion.reason)}`,
     `facts=${factsSummary}`,
-    `goal=${buildTaskGoal(decision.dispatchAgent)}`,
+    recommendationTask ? `recommendation_task=${recommendationTask}` : '',
+    `goal=${buildTaskGoal(decision.dispatchAgent, decision, recommendationTask ?? undefined)}`,
     `latest_user_message=${normalizeReason(input.message)}`,
   ].filter((line) => line.length > 0);
 
-  return contextLines.join('\n');
+  const taskPrompt = contextLines.join('\n');
+
+  if (decision.dispatchAgent === 'RecordsAgent' && resolveRecordsWorkerMode(decision) === 'minimal_triage') {
+    return buildRecordsMinimalTriagePrompt(taskPrompt);
+  }
+
+  return taskPrompt;
 }
 
-function buildTaskGoal(agentName: AgentName): string {
+function buildTaskGoal(
+  agentName: AgentName,
+  decision?: ConversationOrchestratorV3Decision & { dispatchAgent: AgentName },
+  recommendationTask?: RecommendationTask,
+): string {
   switch (agentName) {
     case 'FaqAgent':
       return "Answer the user's FAQ using the FAQ toolset only.";
     case 'RecordsAgent':
-      return 'Handle the records task using the records toolset only.';
+      return resolveRecordsWorkerMode(decision) === 'medical_collection'
+        ? 'Continue medical records collection by asking for existing reports, scans, pathology, medications, and treatment history while preserving records.minimal_triage.complete.'
+        : 'Complete minimal medical triage by asking the 3 key medical questions, continuing with records-stage follow-up when answers are incomplete or insufficient, and only exposing records.minimal_triage.complete to the supervisor.';
     case 'RecommendationAgent':
-      return 'Handle the recommendation task using the recommendation toolset only.';
+      switch (recommendationTask) {
+        case 'refresh':
+          return 'Refresh grounded hospital recommendations, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.';
+        case 'revisit':
+          return 'Revisit grounded hospital recommendations from a later stage, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.';
+        case 'compare':
+          return 'Compare the current grounded hospital recommendations briefly, keep the output small, and do not mutate records, consult, or handoff state.';
+        case 'explain':
+          return 'Explain the current grounded hospital recommendations briefly, keep the output small, and do not mutate records, consult, or handoff state.';
+        case 'generate':
+        default:
+          return 'Generate grounded hospital recommendations now that minimal triage is complete, keep the output small, explain or compare only when requested, and do not mutate records, consult, or handoff state.';
+      }
     case 'ConsultAgent':
       return 'Handle the consult task using the consult toolset only.';
     case 'HandoffAgent':
       return 'Handle the handoff task using the handoff toolset only.';
   }
+}
+
+function resolveRecommendationTask(
+  latestUserMessage: string,
+  decision: ConversationOrchestratorV3Decision & { dispatchAgent: AgentName },
+): RecommendationTask {
+  const normalized = latestUserMessage.toLowerCase();
+  const isRecommendationConversation = decision.from.stage === 'RECOMMENDATION' || decision.to.stage === 'RECOMMENDATION';
+  const explicitRecommendationContext = /\b(hospital|hospitals|recommendation|recommendations|option|options|clinic|clinics|suitable|fit|choice|choices)\b/.test(normalized);
+  const deicticRecommendationReference = /\b(this|these|them|those|which|best|better|one|ones|two)\b/.test(normalized);
+  const recommendationContextRequested = explicitRecommendationContext
+    || (isRecommendationConversation && deicticRecommendationReference);
+
+  if (/\b(compare|comparison|versus|vs)\b/.test(normalized) && recommendationContextRequested) {
+    return 'compare';
+  }
+
+  if (isRecommendationConversation && /\b(which|best|better)\b/.test(normalized) && recommendationContextRequested) {
+    return 'compare';
+  }
+
+  if (/\b(explain|why|reason)\b/.test(normalized) && recommendationContextRequested) {
+    return 'explain';
+  }
+
+  if (decision.from.stage === 'RECOMMENDATION' && decision.to.stage === 'RECOMMENDATION') {
+    return 'refresh';
+  }
+
+  if (
+    decision.to.stage === 'RECOMMENDATION'
+    && !['COLLECT_MINIMAL_MEDICAL_FACTS', 'COLLECT_MEDICAL_INPUTS'].includes(decision.from.stage)
+  ) {
+    return 'revisit';
+  }
+
+  return 'generate';
+}
+
+function resolveRecordsWorkerMode(
+  decision: ConversationOrchestratorV3Decision & { dispatchAgent: AgentName } | undefined,
+): 'minimal_triage' | 'medical_collection' {
+  if (!decision) {
+    return 'minimal_triage';
+  }
+
+  return decision.to.stage === 'COLLECT_MEDICAL_INPUTS' || decision.from.stage === 'COLLECT_MEDICAL_INPUTS'
+    ? 'medical_collection'
+    : 'minimal_triage';
 }
 
 function summarizeFacts(facts: ConversationOrchestratorV3Facts | undefined): string {
@@ -680,4 +1122,170 @@ function cloneStageRef(
     stage: stageRef.stage,
     phase: stageRef.phase,
   };
+}
+
+function deriveCanonicalTruthPatch(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  result: ConversationOrchestratorV3TurnResult,
+) {
+  const patch: AiChatCanonicalTruthPatch = deriveCanonicalTruthTruePatchFromStatusSnapshot(statusSnapshot);
+  const currentTruthByField = asRecord(statusSnapshot);
+
+  const authorityFactsPatch = result.decision.write?.factsPatch ?? {};
+  for (const [canonicalKey, value] of Object.entries(authorityFactsPatch)) {
+    if (value !== true) {
+      continue;
+    }
+
+    if (canonicalKey === 'process.explained' && result.render.path !== 'PROCESS_OVERVIEW') {
+      continue;
+    }
+
+    const fieldName = AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP[
+      canonicalKey as keyof typeof AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP
+    ];
+    if (!fieldName || currentTruthByField[fieldName] === true) {
+      continue;
+    }
+
+    patch[fieldName] = true;
+  }
+
+  if (result.dispatchResult?.status !== 'ok') {
+    return patch;
+  }
+
+  const dispatchData = asRecord(result.dispatchResult.data);
+  for (const [canonicalKey, fieldName] of Object.entries(AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP)) {
+    if (canonicalKey === 'process.explained') {
+      continue;
+    }
+    if (dispatchData[canonicalKey] !== true || currentTruthByField[fieldName] === true) {
+      continue;
+    }
+
+    patch[fieldName] = true;
+  }
+
+  return patch;
+}
+
+function deriveRenderState(
+  result: ConversationOrchestratorV3TurnResult,
+) {
+  if (result.turnOutcome.status !== 'ok') {
+    return {
+      path: 'STAGE_GUIDANCE',
+    } satisfies ConversationOrchestratorV3RenderState;
+  }
+
+  if (hasStructuredFaqAnswer(result)) {
+    return {
+      path: 'FAQ_ANSWER',
+    } satisfies ConversationOrchestratorV3RenderState;
+  }
+
+  if (
+    result.journey.stage === 'EXPLAIN_PROCESS'
+    && !isDeniedSemanticHandoff(result)
+  ) {
+    return {
+      path: 'PROCESS_OVERVIEW',
+    } satisfies ConversationOrchestratorV3RenderState;
+  }
+
+  return {
+    path: 'STAGE_GUIDANCE',
+  } satisfies ConversationOrchestratorV3RenderState;
+}
+
+function isDeniedSemanticHandoff(
+  result: ConversationOrchestratorV3TurnResult,
+): boolean {
+  return result.suggestion.intent === 'handoff'
+    && result.decision.action !== 'HANDOFF'
+    && result.journey.stage !== 'HUMAN_HANDOFF';
+}
+
+function hasStructuredFaqAnswer(
+  result: ConversationOrchestratorV3TurnResult,
+): boolean {
+  if (result.decision.dispatchAgent !== 'FaqAgent') {
+    return false;
+  }
+
+  if (result.dispatchResult?.status !== 'ok') {
+    return false;
+  }
+
+  const data = asRecord(result.dispatchResult.data);
+  const answer = asString(data['answer']);
+  const confidence = asString(data['confidence']);
+  const citedFaqIds = asArray(data['citedFaqIds'])
+    .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
+
+  return Boolean(answer && confidence !== 'low' && citedFaqIds.length > 0);
+}
+
+function hasActiveHandoffStatus(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): boolean {
+  return deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot)['handoff.active'];
+}
+
+function hasCrisisSafetySignal(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): boolean {
+  return normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';
+}
+
+function readStoredJourneySnapshot(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): ConversationOrchestratorV3StageRef | null {
+  const record = asRecord(statusSnapshot);
+  const chatbotV2 = asRecord(record['chatbot_v2'] ?? record['chatbotV2']);
+  const journey = asRecord(
+    chatbotV2['journey_snapshot']
+      ?? chatbotV2['journeySnapshot']
+      ?? record['journey_snapshot']
+      ?? record['journeySnapshot'],
+  );
+
+  const stage = asString(journey['current_stage'] ?? journey['currentStage']);
+  const phase = asString(journey['current_phase'] ?? journey['currentPhase']);
+
+  if (!isStage(stage) || !isPhase(phase)) {
+    return null;
+  }
+
+  return { stage, phase };
+}
+
+function normalizeStatus(value: string | null | undefined): string {
+  return (value ?? '').trim().toUpperCase();
+}
+
+function isStage(value: string | null): value is ChatJourneyStage {
+  return value === 'EXPLAIN_PROCESS'
+    || value === 'COLLECT_MINIMAL_MEDICAL_FACTS'
+    || value === 'COLLECT_MEDICAL_INPUTS'
+    || value === 'RECOMMENDATION'
+    || value === 'ONLINE_CONSULT'
+    || value === 'HUMAN_HANDOFF';
+}
+
+function isPhase(value: string | null): value is ChatJourneyPhase {
+  return value === 'pre' || value === 'active' || value === 'post';
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }

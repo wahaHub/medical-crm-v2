@@ -1,95 +1,340 @@
 import { describe, expect, it } from 'vitest';
+import {
+  SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
+  type SupervisorGatewayInput,
+} from '../../chatbot-v3/types.js';
+import {
+  SUPERVISOR_AGENT_REGISTRY,
+  renderSupervisorAgentRegistry,
+} from '../../chatbot-v3/supervisor-registry.js';
 import { SupervisorService } from '../../chatbot-v3/supervisor.service.js';
 
 describe('SupervisorService', () => {
   const supervisor = new SupervisorService();
 
-  const input = {
+  const minimalInput = {
+    currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
+    conversationSummary: 'The session just started and no recommendation has been shown yet.',
+    latestUserMessage: 'Please recommend hospitals for me.',
+    intake: {
+      condition: 'lung cancer',
+      targetDestination: 'Shanghai',
+      language: 'en',
+      gender: 'female',
+    },
     current: {
-      stage: 'COLLECT_MEDICAL_INPUTS' as const,
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
       phase: 'active' as const,
     },
     suggestion: {
       intent: 'progression' as const,
       suggestedStage: 'RECOMMENDATION' as const,
-      reason: 'medical inputs are complete',
+      reason: 'minimal triage is complete',
     },
     facts: {
-      'records.saved': true,
+      'records.minimal_triage.complete': true,
     },
+    availableReadDomains: ['records.status', 'recommendation.status'] as const,
   };
 
-  it('returns suggestion with internal reason and bounded output', async () => {
-    const result = await supervisor.suggest(input);
+  it('returns the full main-agent contract with dispatchAgent and task', async () => {
+    const result = await supervisor.suggest(minimalInput);
 
-    expect(result.suggestedStage).toBeDefined();
-    expect(result.reason.length).toBeLessThanOrEqual(240);
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      dispatchAgent: 'RecommendationAgent',
+      reason: 'minimal triage is complete and recommendation should begin',
+      task: {
+        goal: 'Generate hospital recommendations for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'intake.language': 'en',
+          'intake.gender': 'female',
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
   });
 
-  it('keeps supervisor output suggestion-only without journey mutation fields', async () => {
-    const result = await supervisor.suggest(input);
-    const record = result as unknown as Record<string, unknown>;
+  it('sends minimal context plus read-domain hints to the supervisor gateway', async () => {
+    let capturedInput: SupervisorGatewayInput | undefined;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async (input) => {
+        capturedInput = input;
+        return {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'user is asking an faq',
+        };
+      },
+    });
 
-    expect(record.dispatchAgent).toBeUndefined();
-    expect(record.from).toBeUndefined();
-    expect(record.to).toBeUndefined();
-    expect(record.factsPatch).toBeUndefined();
+    await supervisorWithGateway.suggest({
+      ...minimalInput,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.generated': true,
+        'recommendation.selected': false,
+        'process.explained': false,
+        noisy_blob: 'should-not-be-forwarded',
+      },
+    });
+
+    expect(capturedInput).toEqual({
+      currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      conversationSummary: 'The session just started and no recommendation has been shown yet.',
+      latestUserMessage: 'Please recommend hospitals for me.',
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+      availableReadDomains: ['records.status', 'recommendation.status'],
+      conversationSummaryContract: SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
+    });
   });
 
-  it('accepts only intent/suggestedStage/reason from supervisor llm output', async () => {
-    const supervisorWithLlm = new SupervisorService({
-      promptVersion: 'supervisor-v1',
+  it('lets the gateway request up to two allowed read domains before the final proposal', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
       run: async () => ({
-        intent: 'faq',
-        suggestedStage: 'EXPLAIN_PROCESS',
-        reason: 'user is asking an faq',
-        dispatchAgent: 'HandoffAgent',
-        from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-        to: { stage: 'HUMAN_HANDOFF', phase: 'active' },
-        factsPatch: { escalated: true },
+        requestedReadDomains: [
+          'records.status',
+          'recommendation.status',
+          'consult.status',
+          'not.allowed',
+        ],
       }),
     });
 
-    await expect(supervisorWithLlm.suggest(input)).resolves.toEqual({
+    await expect(supervisorWithGateway.requestDomainReads(minimalInput)).resolves.toEqual([
+      'records.status',
+      'recommendation.status',
+    ]);
+  });
+
+  it('upgrades schema-valid gateway output into the full supervisor contract', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => ({
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: 'user is asking about the process',
+      }),
+    });
+
+    await expect(supervisorWithGateway.suggest(minimalInput)).resolves.toEqual({
       intent: 'faq',
       suggestedStage: 'EXPLAIN_PROCESS',
-      reason: 'user is asking an faq',
-    });
-    expect(supervisorWithLlm.getLastLlmRunMetadata()).toMatchObject({
-      nodePromptVersion: 'supervisor-v1',
-      fallbackUsed: false,
-      schemaValidationFailed: false,
+      dispatchAgent: 'FaqAgent',
+      reason: 'user is asking about the process',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
     });
   });
 
-  it.each([
-    ['blank reason', '   '],
-    ['missing reason', undefined],
-    ['non-string reason', { details: 'faq trace' }],
-  ])(
-    'keeps valid intent and stage when supervisor llm returns %s but falls back to heuristic reason',
-    async (_label, reason) => {
-      const supervisorWithPartialInvalidLlm = new SupervisorService({
-        promptVersion: 'supervisor-v1',
-        run: async () => ({
-          intent: 'faq',
-          suggestedStage: 'EXPLAIN_PROCESS',
-          reason,
-          dispatchAgent: 'HandoffAgent',
-        }),
-      });
+  it('normalizes schema-valid but mismatched dispatch agents back to the canonical stage mapping', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => ({
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        dispatchAgent: 'FaqAgent',
+        reason: 'llm returned the wrong worker',
+      }),
+    });
 
-      await expect(supervisorWithPartialInvalidLlm.suggest(input)).resolves.toEqual({
+    await expect(supervisorWithGateway.suggest(minimalInput)).resolves.toEqual({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      dispatchAgent: 'RecommendationAgent',
+      reason: 'llm returned the wrong worker',
+      task: {
+        goal: 'Generate hospital recommendations for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'intake.language': 'en',
+          'intake.gender': 'female',
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
+  it('uses bootstrap direct human requests to produce the handoff contract', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      latestUserMessage: 'I need a human now',
+      bootstrap: {
+        message: 'I need a human now',
+        canCreateHandoff: true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'handoff',
+      suggestedStage: 'HUMAN_HANDOFF',
+      dispatchAgent: 'HandoffAgent',
+      reason: 'direct user request for a human',
+      task: {
+        goal: 'Initiate a human handoff for this user.',
+        latestUserMessage: 'I need a human now',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'handoff.active': false,
+        },
+      },
+    });
+  });
+
+  it('routes denied direct human requests into an explicit faq explanation path instead of a normal worker', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      latestUserMessage: 'I need a human now',
+      bootstrap: {
+        message: 'I need a human now',
+        canCreateHandoff: false,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'direct human request cannot create handoff ticket for this session',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'I need a human now',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
+  it('uses bootstrap attachments to produce the minimal-triage records task', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      latestUserMessage: 'Here are my documents',
+      bootstrap: {
+        message: 'Here are my documents',
+        attachments: [{ fileName: 'report.pdf' }],
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'attachments provided by user',
+      task: {
+        goal: 'Collect the minimal medical triage needed for this user.',
+        latestUserMessage: 'Here are my documents',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'records.minimal_triage.complete': false,
+        },
+      },
+    });
+  });
+
+  it('changes the records goal when the supervisor is collecting consult-supporting medical inputs', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => ({
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'collect medical inputs required for consult readiness',
+      }),
+    });
+
+    const result = await supervisorWithGateway.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'collect medical inputs required for consult readiness',
+      task: {
+        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
+  it('works from minimal context without requiring a large facts bundle', async () => {
+    const result = await supervisor.suggest({
+      currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      conversationSummary: '',
+      latestUserMessage: 'Can you explain the process?',
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      suggestion: {
         intent: 'faq',
         suggestedStage: 'EXPLAIN_PROCESS',
-        reason: 'medical records are saved and ready for recommendation',
-      });
-    },
-  );
+        reason: 'user asked a process question',
+      },
+    });
 
-  it('falls back to heuristic when llm output is invalid', async () => {
+    expect(result.dispatchAgent).toBe('FaqAgent');
+    expect(result.task.latestUserMessage).toBe('Can you explain the process?');
+  });
+
+  it('keeps supervisor output free of authority-owned mutation fields', async () => {
+    const result = await supervisor.suggest(minimalInput);
+    const record = result as unknown as Record<string, unknown>;
+
+    expect(record.from).toBeUndefined();
+    expect(record.to).toBeUndefined();
+    expect(record.factsPatch).toBeUndefined();
+    expect(record.write).toBeUndefined();
+    expect(record.requestedByUser).toBeUndefined();
+  });
+
+  it('falls back to the derived contract when gateway output is invalid', async () => {
     const gateway = new SupervisorService({
-      promptVersion: 'supervisor-v1',
+      promptVersion: 'supervisor-prompt-v2',
       run: async () => ({
         intent: 'not-a-real-intent',
         suggestedStage: 'NOT_A_STAGE',
@@ -97,56 +342,54 @@ describe('SupervisorService', () => {
       }),
     });
 
-    const result = await gateway.suggest(input);
-
-    expect(result).toEqual({
+    await expect(gateway.suggest(minimalInput)).resolves.toEqual({
       intent: 'progression',
       suggestedStage: 'RECOMMENDATION',
-      reason: 'medical records are saved and ready for recommendation',
-    });
-    expect(gateway.getLastLlmRunMetadata()).toMatchObject({
-      nodePromptVersion: 'supervisor-v1',
-      fallbackUsed: true,
-      schemaValidationFailed: true,
-    });
-  });
-
-  it.each([
-    ['throws', new Error('gateway unavailable')],
-    ['times out', new Error('gateway timeout')],
-  ])('falls back to heuristic when supervisor llm %s', async (_label, error) => {
-    const gateway = new SupervisorService({
-      promptVersion: 'supervisor-v1',
-      run: async () => {
-        throw error;
+      dispatchAgent: 'RecommendationAgent',
+      reason: 'minimal triage is complete and recommendation should begin',
+      task: {
+        goal: 'Generate hospital recommendations for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'intake.language': 'en',
+          'intake.gender': 'female',
+          'records.minimal_triage.complete': true,
+        },
       },
     });
+  });
 
-    await expect(gateway.suggest(input)).resolves.toEqual({
-      intent: 'progression',
-      suggestedStage: 'RECOMMENDATION',
-      reason: 'medical records are saved and ready for recommendation',
+  it('exports an explicit conversation summary contract', () => {
+    expect(SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT).toEqual({
+      owner: 'runtime',
+      refreshTrigger: 'after_final_assistant_response',
+      sizeDiscipline: 'compact',
+      freshness: 'latest_committed_turn',
+      persistenceStrategy: 'persisted_with_session',
     });
   });
 
-  it('records model metadata for successful supervisor llm runs', async () => {
-    const supervisorWithModel = new SupervisorService({
-      promptVersion: 'supervisor-v1',
-      model: 'gpt-4.1-mini',
-      run: async () => ({
-        intent: 'faq',
-        suggestedStage: 'EXPLAIN_PROCESS',
-        reason: 'faq request',
-      }),
-    });
+  it('exports a supervisor-facing registry with the required three-line template only', () => {
+    expect(Object.keys(SUPERVISOR_AGENT_REGISTRY)).toEqual([
+      'FaqAgent',
+      'RecommendationAgent',
+      'RecordsAgent',
+      'ConsultAgent',
+      'HandoffAgent',
+    ]);
 
-    await supervisorWithModel.suggest(input);
+    for (const entry of Object.values(SUPERVISOR_AGENT_REGISTRY)) {
+      expect(entry).toContain('When to use:');
+      expect(entry).toContain('Task style:');
+      expect(entry).toContain('Send these facts:');
+      expect(entry).not.toContain('Tool:');
+      expect(entry).not.toContain('API:');
+    }
 
-    expect(supervisorWithModel.getLastLlmRunMetadata()).toMatchObject({
-      nodePromptVersion: 'supervisor-v1',
-      nodeModel: 'gpt-4.1-mini',
-      fallbackUsed: false,
-      schemaValidationFailed: false,
-    });
+    const rendered = renderSupervisorAgentRegistry();
+    expect(rendered).toContain('Agent: FaqAgent');
+    expect(rendered).toContain('Agent: HandoffAgent');
   });
 });

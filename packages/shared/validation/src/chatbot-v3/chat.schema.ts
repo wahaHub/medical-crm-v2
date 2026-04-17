@@ -38,7 +38,14 @@ export const chatbotV3TurnOutcomeSchema = z.object({
 }).strict();
 
 const chatbotV3JourneySchema = z.object({
-  stage: z.enum(['EXPLAIN_PROCESS', 'COLLECT_MEDICAL_INPUTS', 'RECOMMENDATION', 'ONLINE_CONSULT', 'HUMAN_HANDOFF']),
+  stage: z.enum([
+    'EXPLAIN_PROCESS',
+    'COLLECT_MINIMAL_MEDICAL_FACTS',
+    'COLLECT_MEDICAL_INPUTS',
+    'RECOMMENDATION',
+    'ONLINE_CONSULT',
+    'HUMAN_HANDOFF',
+  ]),
   phase: z.enum(['pre', 'active', 'post']),
 }).strict();
 
@@ -50,7 +57,7 @@ const chatbotV3HandoffSchema = z.object({
 const chatbotV3RuntimeDebugSchema = z.object({
   traceId: z.string().min(1).max(128),
   idempotencyKey: z.string().min(1),
-  lastDispatchSource: z.literal('orchestrator').optional(),
+  lastDispatchSource: z.literal('journey-runtime-authority').optional(),
 }).strict();
 
 const chatbotV3ProcessGuideCardSchema = z.object({

@@ -8,6 +8,7 @@ import type {
   IStorageService,
   IAiChatSessionRepository,
   IAiChatMessageRepository,
+  IAiUserProfileRepository,
   IAiSyncOutboxRepository,
   IDifyDocumentMappingRepository,
 } from '@medical-crm/domain';
@@ -286,6 +287,7 @@ interface AppServices {
   userEmailLookupRepo: IUserEmailLookupRepository;
   aiChatSessionRepo: IAiChatSessionRepository;
   aiChatMessageRepo: IAiChatMessageRepository;
+  aiUserProfileRepo: IAiUserProfileRepository;
   aiSyncOutboxRepo: IAiSyncOutboxRepository;
   difyDocumentMappingRepo: IDifyDocumentMappingRepository;
   storage: IStorageService;
@@ -1007,6 +1009,7 @@ export function getServices(): AppServices {
       processTranslationTasks: new ProcessTranslationTasksUseCase(translationTaskRepo, batchTranslationService, translationWritebackService),
       bootstrapAiSync: new BootstrapAiSyncUseCase(faqRepo, packageRepo, aiSyncTaskService),
       processAiSyncOutbox: new ProcessAiSyncOutboxUseCase(aiSyncOutboxRepo, difyDocumentMappingRepo, difyApiClient),
+      aiUserProfileRepo,
       getAiPolicyContext: new GetAiPolicyContextUseCase(contextBuilderService),
       decideAiPolicy: new DecideAiPolicyUseCase(
         contextBuilderService,

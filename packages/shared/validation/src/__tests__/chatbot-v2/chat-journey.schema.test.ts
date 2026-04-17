@@ -16,6 +16,7 @@ import {
 describe('chatbot-v2 journey schemas', () => {
   it('accepts the canonical journey stages and phases', () => {
     expect(JourneyStageSchema.safeParse('EXPLAIN_PROCESS').success).toBe(true);
+    expect(JourneyStageSchema.safeParse('COLLECT_MINIMAL_MEDICAL_FACTS').success).toBe(true);
     expect(JourneyStageSchema.safeParse('COLLECT_MEDICAL_INPUTS').success).toBe(true);
     expect(JourneyStageSchema.safeParse('RECOMMENDATION').success).toBe(true);
     expect(JourneyStageSchema.safeParse('ONLINE_CONSULT').success).toBe(true);

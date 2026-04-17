@@ -58,6 +58,28 @@ describe('chatbot-v3 chat schemas', () => {
     }).success).toBe(true);
   });
 
+  it('accepts COLLECT_MINIMAL_MEDICAL_FACTS in the v3 journey contract', () => {
+    expect(chatbotV3ChatResponseSchema.safeParse({
+      messages: [{
+        role: 'assistant',
+        text: 'Let us start with a few essential medical facts.',
+      }],
+      turnOutcome: {
+        status: 'ok',
+        recoverableErrorCode: null,
+      },
+      cards: [],
+      journey: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      handoff: {
+        required: false,
+        ticketId: null,
+      },
+    }).success).toBe(true);
+  });
+
   it('rejects legacy response fields such as nextAction', () => {
     expect(chatbotV3ChatResponseSchema.safeParse({
       messages: [{

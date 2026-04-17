@@ -6,23 +6,23 @@ describe('parsePolicyConfig', () => {
   it('loads forceExplainProcessBefore and stagePrerequisites from config', () => {
     const cfg = parsePolicyConfig({
       globalPolicies: {
-        forceExplainProcessBefore: ['RECOMMENDATION'],
+        forceExplainProcessBefore: ['ONLINE_CONSULT'],
       },
       stagePrerequisites: {
         ONLINE_CONSULT: {
-          requiresAll: ['recommendation.picked'],
+          requiresAll: ['recommendation.selected'],
         },
       },
     });
 
-    expect(cfg.globalPolicies.forceExplainProcessBefore).toContain('RECOMMENDATION');
-    expect(cfg.stagePrerequisites.ONLINE_CONSULT?.requiresAll).toContain('recommendation.picked');
+    expect(cfg.globalPolicies.forceExplainProcessBefore).toContain('ONLINE_CONSULT');
+    expect(cfg.stagePrerequisites.ONLINE_CONSULT?.requiresAll).toContain('recommendation.selected');
   });
 
   it('falls back to the default policy bundle for omitted fields', () => {
     const cfg = parsePolicyConfig({});
 
-    expect(cfg.globalPolicies.forceExplainProcessBefore).toEqual(['RECOMMENDATION', 'ONLINE_CONSULT']);
+    expect(cfg.globalPolicies.forceExplainProcessBefore).toEqual(['ONLINE_CONSULT']);
     expect(cfg.globalPolicies.handoffTriggers).toEqual({
       userRequestedHuman: true,
       consecutiveCriticalToolFailures: 2,
@@ -32,10 +32,10 @@ describe('parsePolicyConfig', () => {
       denyIfAny: ['handoff.active'],
     });
     expect(cfg.stagePrerequisites.RECOMMENDATION).toEqual({
-      requiresAll: ['process.explained', 'records.saved'],
+      requiresAll: ['records.minimal_triage.complete'],
     });
     expect(cfg.stagePrerequisites.ONLINE_CONSULT).toEqual({
-      requiresAll: ['process.explained', 'recommendation.picked'],
+      requiresAll: ['process.explained', 'recommendation.selected'],
     });
     expect(cfg.jumpRules).toEqual([]);
   });

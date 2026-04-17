@@ -7,7 +7,7 @@ import {
 } from '../routes/chatbot-v3/observability.js';
 
 describe('chatbot-v3 observability', () => {
-  it('preserves optional LLM node metadata on supervisor and FAQ worker events', () => {
+  it('preserves optional LLM node metadata on supervisor and JourneyRuntimeAuthority events', () => {
     const capturedEvents: Array<Record<string, unknown>> = [];
     const emitter = createChatbotV3RuntimeNodeEventEmitter({
       emit: (event) => {
@@ -33,13 +33,13 @@ describe('chatbot-v3 observability', () => {
       traceId: 'trace-llm-1',
       sessionId: 'session-llm-1',
       turnId: 'turn-llm-1',
-      node: 'Subagent',
-      action: 'FaqAgent',
+      node: 'JourneyRuntimeAuthority',
+      action: 'decide',
       status: 'completed',
       latencyMs: 12,
-      nodePromptVersion: 'faq-answer-prompt-v1',
-      nodeModel: 'gpt-4o-mini',
-      fallbackUsed: true,
+      nodePromptVersion: 'authority-rule-v1',
+      nodeModel: 'gpt-4.1-mini',
+      fallbackUsed: false,
       schemaValidationFailed: false,
     } satisfies ChatbotV3RuntimeNodeEventInput;
 
@@ -53,9 +53,9 @@ describe('chatbot-v3 observability', () => {
       schemaValidationFailed: false,
     });
     expect(faqEvent).toMatchObject({
-      nodePromptVersion: 'faq-answer-prompt-v1',
-      nodeModel: 'gpt-4o-mini',
-      fallbackUsed: true,
+      nodePromptVersion: 'authority-rule-v1',
+      nodeModel: 'gpt-4.1-mini',
+      fallbackUsed: false,
       schemaValidationFailed: false,
     });
     expect(capturedEvents).toHaveLength(2);
@@ -85,7 +85,7 @@ describe('chatbot-v3 observability', () => {
       },
     });
     emitter.emit({
-      name: 'orchestrator_decision_finalized',
+      name: 'journey_runtime_authority_decision_finalized',
       context: {
         ...baseContext,
         childRunId: 'child-1',
@@ -208,7 +208,7 @@ describe('chatbot-v3 observability', () => {
     const names = capturedEvents.map((event) => (event as { name: string }).name);
     expect(names).toEqual(expect.arrayContaining([
       'supervisor_suggestion_created',
-      'orchestrator_decision_finalized',
+      'journey_runtime_authority_decision_finalized',
       'journey_transition_committed',
       'subagent_dispatched',
       'subagent_started',
@@ -231,7 +231,7 @@ describe('chatbot-v3 observability', () => {
     }
 
     const decisionEvent = capturedEvents.find(
-      (event) => (event as { name: string }).name === 'orchestrator_decision_finalized',
+      (event) => (event as { name: string }).name === 'journey_runtime_authority_decision_finalized',
     ) as Record<string, unknown>;
 
     expect(decisionEvent).toMatchObject({

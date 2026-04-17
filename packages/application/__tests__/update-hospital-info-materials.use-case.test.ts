@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UpdateHospitalInfoUseCase } from '../src/use-cases/materials/update-hospital-info.use-case.js';
-import type { IMaterialsRepository } from '@medical-crm/domain';
+import { TRANSLATION_CONFIG, type IMaterialsRepository } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 describe('UpdateHospitalInfoUseCase', () => {
@@ -56,18 +56,26 @@ describe('UpdateHospitalInfoUseCase', () => {
       ],
     }, actor);
 
+    expect(translationTaskService.enqueue).toHaveBeenCalledTimes(
+      TRANSLATION_CONFIG.hospitalInfoTargetLanguages.length * 3,
+    );
     expect(translationTaskService.enqueue).toHaveBeenCalledWith(expect.objectContaining({
       sourceDb: 'supabase_china',
       entityType: 'hospital_info',
       entityId: 'hospital-1',
+      chunkKey: 'core',
       fieldsToTranslate: expect.objectContaining({
-        equipment: [
-          {
-            name: '达芬奇手术机器人',
-            image_url: 'crm/dev/materials-regular/hospital-image/hospital-1/equipment.png',
-            description: '设备中文描述',
-          },
-        ],
+        name: '医院',
+        description: '中文描述',
+      }),
+      targetLanguage: expect.any(String),
+    }));
+    expect(translationTaskService.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      sourceDb: 'supabase_china',
+      entityType: 'hospital_info',
+      entityId: 'hospital-1',
+      chunkKey: 'departments_info',
+      fieldsToTranslate: {
         departments_info: [
           {
             department_code: 'orthopedics',
@@ -79,7 +87,24 @@ describe('UpdateHospitalInfoUseCase', () => {
             annual_patients: 3456,
           },
         ],
-      }),
+      },
+      targetLanguage: expect.any(String),
+    }));
+    expect(translationTaskService.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      sourceDb: 'supabase_china',
+      entityType: 'hospital_info',
+      entityId: 'hospital-1',
+      chunkKey: 'equipment',
+      fieldsToTranslate: {
+        equipment: [
+          {
+            name: '达芬奇手术机器人',
+            image_url: 'crm/dev/materials-regular/hospital-image/hospital-1/equipment.png',
+            description: '设备中文描述',
+          },
+        ],
+      },
+      targetLanguage: expect.any(String),
     }));
   });
 });

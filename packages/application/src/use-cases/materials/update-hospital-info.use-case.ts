@@ -32,7 +32,6 @@ function buildHospitalInfoTranslationFields(
   };
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
 }
-}
 
 export class UpdateHospitalInfoUseCase {
   constructor(

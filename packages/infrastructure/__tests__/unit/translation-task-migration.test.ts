@@ -23,11 +23,23 @@ describe('translation task migration safety', () => {
     return translationBlock.slice(mergeStart, mergeEnd);
   }
 
-  it('splits legacy backlog rows into single-language rows before dedupe', () => {
+  function getBootstrapSplitBlock(bootstrap: string) {
+    const start = bootstrap.indexOf('-- Split legacy multi-language rows into one row per target language before the final');
+    const end = bootstrap.indexOf('-- Merge duplicate pending/processing rows using the chunk-aware, single-language identity.');
+
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    return bootstrap.slice(start, end);
+  }
+
+  it('splits legacy multi-language rows into single-language rows before dedupe', () => {
     const migration = readFileSync(migrationPath, 'utf8');
 
     expect(migration).toMatch(/WITH legacy_backlog AS \([\s\S]*unnest\(target_languages\)[\s\S]*INSERT INTO translation_tasks[\s\S]*DELETE FROM translation_tasks tt[\s\S]*WHERE tt\.id = lb\.id;/);
-    expect(migration).toContain("status IN ('pending', 'processing')");
+    expect(migration).not.toContain("status IN ('pending', 'processing')");
+    expect(migration).not.toContain("ELSE 'legacy-bat'");
+    expect(migration).toMatch(/SET target_language = CASE[\s\S]*WHEN COALESCE\(array_length\(target_languages, 1\), 0\) = 1 THEN target_languages\[1\][\s\S]*ELSE target_language/);
   });
 
   it('prefers the freshest canonical row when collapsing duplicate identities', () => {
@@ -48,5 +60,13 @@ describe('translation task migration safety', () => {
     expect(mergeBlock).toContain('target_language = grouped.target_language');
     expect(mergeBlock).toContain('target_languages = ARRAY[grouped.target_language]::text[]');
     expect(mergeBlock).not.toContain('target_language = CASE');
+  });
+
+  it('does not leave legacy-bat as a fake retry language in the synced bootstrap SQL', () => {
+    const bootstrap = readFileSync(bootstrapPath, 'utf8');
+    const splitBlock = getBootstrapSplitBlock(bootstrap);
+
+    expect(bootstrap).not.toContain('legacy-bat');
+    expect(splitBlock).not.toContain("status IN ('pending', 'processing')");
   });
 });

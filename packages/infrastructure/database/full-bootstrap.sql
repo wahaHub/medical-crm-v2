@@ -360,16 +360,7 @@ SET
   END
 WHERE target_languages = '{}'::text[];
 
-UPDATE translation_tasks
-SET target_language = CASE
-  WHEN COALESCE(array_length(target_languages, 1), 0) = 1 THEN target_languages[1]
-  ELSE 'legacy-bat'
-END
-WHERE target_language IS NULL OR target_language = '';
-
-ALTER TABLE translation_tasks ALTER COLUMN target_language SET NOT NULL;
-
--- Split live backlog rows into one row per target language before the final
+-- Split legacy multi-language rows into one row per target language before the final
 -- chunk-aware identity index is established.
 WITH legacy_backlog AS (
   SELECT
@@ -390,8 +381,7 @@ WITH legacy_backlog AS (
     detected_language,
     unnest(target_languages) AS target_language
   FROM translation_tasks
-  WHERE status IN ('pending', 'processing')
-    AND COALESCE(array_length(target_languages, 1), 0) > 1
+  WHERE COALESCE(array_length(target_languages, 1), 0) > 1
 ), split_rows AS (
   INSERT INTO translation_tasks (
     id,
@@ -436,6 +426,15 @@ WITH legacy_backlog AS (
 DELETE FROM translation_tasks tt
 USING legacy_backlog lb
 WHERE tt.id = lb.id;
+
+UPDATE translation_tasks
+SET target_language = CASE
+  WHEN COALESCE(array_length(target_languages, 1), 0) = 1 THEN target_languages[1]
+  ELSE target_language
+END
+WHERE target_language IS NULL OR target_language = '';
+
+ALTER TABLE translation_tasks ALTER COLUMN target_language SET NOT NULL;
 
 -- Merge duplicate pending/processing rows using the chunk-aware, single-language identity.
 WITH grouped AS (

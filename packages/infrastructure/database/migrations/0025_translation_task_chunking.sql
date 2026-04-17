@@ -3,7 +3,7 @@
 ALTER TABLE translation_tasks
   ADD COLUMN IF NOT EXISTS chunk_key TEXT NOT NULL DEFAULT 'default';
 
--- Split any live backlog rows that still carry multiple target languages so the
+-- Split any legacy multi-language rows so the
 -- new queue shape is one row per single target language.
 WITH legacy_backlog AS (
   SELECT
@@ -24,8 +24,7 @@ WITH legacy_backlog AS (
     detected_language,
     unnest(target_languages) AS target_language
   FROM translation_tasks
-  WHERE status IN ('pending', 'processing')
-    AND COALESCE(array_length(target_languages, 1), 0) > 1
+  WHERE COALESCE(array_length(target_languages, 1), 0) > 1
 ), split_rows AS (
   INSERT INTO translation_tasks (
     id,
@@ -75,7 +74,7 @@ WHERE tt.id = lb.id;
 UPDATE translation_tasks
 SET target_language = CASE
   WHEN COALESCE(array_length(target_languages, 1), 0) = 1 THEN target_languages[1]
-  ELSE 'legacy-bat'
+  ELSE target_language
 END
 WHERE target_language IS NULL OR target_language = '';
 

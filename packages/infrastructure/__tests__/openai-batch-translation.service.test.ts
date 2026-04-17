@@ -142,6 +142,25 @@ describe('OpenAIBatchTranslationService', () => {
         fields: { title: '鼻子整形', description: '改变鼻子形状的手术。' },
         targetLanguages: ['en', 'ko'],
       }),
-    ).rejects.toThrow(/payloadSize=.*fieldKeys=title,description.*targetLanguages=en,ko.*rawPreview=/);
+    ).rejects.toThrow(/payloadSize=.*fieldKeys=title,description.*targetLanguages=en,ko(?!.*rawPreview=)/);
+  });
+
+  it('does not include raw model output in malformed-response errors', async () => {
+    const mockClient = makeMockClient('{"unexpected":"value","sensitive":"do not persist this"}');
+    service['client'] = mockClient as never;
+
+    await expect(
+      service.translateBatch({
+        fields: { title: 'test' },
+        targetLanguages: ['en'],
+      }),
+    ).rejects.toThrow(/OpenAI response is missing required fields/);
+
+    await expect(
+      service.translateBatch({
+        fields: { title: 'test' },
+        targetLanguages: ['en'],
+      }),
+    ).rejects.not.toThrow(/do not persist this|rawPreview=/);
   });
 });

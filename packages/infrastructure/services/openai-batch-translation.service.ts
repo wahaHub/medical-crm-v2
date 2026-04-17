@@ -78,13 +78,15 @@ export class OpenAIBatchTranslationService implements IBatchTranslationService {
   ): string {
     const payloadSize = JSON.stringify(fields).length;
     const fieldKeys = Object.keys(fields).join(',') || '(none)';
-    const rawPreview = raw ? raw.slice(0, 120) : '(empty)';
+    const responseState = raw ? 'present' : 'empty';
+    const rawLength = raw?.length ?? 0;
 
     return [
       `payloadSize=${payloadSize}`,
       `fieldKeys=${fieldKeys}`,
       `targetLanguages=${targetLanguages.join(',') || '(none)'}`,
-      `rawPreview=${rawPreview}`,
+      `responseState=${responseState}`,
+      `rawLength=${rawLength}`,
     ].join(' ');
   }
 }

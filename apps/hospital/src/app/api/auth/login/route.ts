@@ -8,7 +8,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getIronSession, type SessionOptions } from 'iron-session';
 import { cookies } from 'next/headers';
-import { saveSession } from '@/lib/session';
 import { passwordGrant, extractUserFromToken } from '@/lib/keycloak-client';
 
 const HOSPITAL_COOKIE_NAME = 'medical-crm-hospital-session';
@@ -152,19 +151,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store tokens in session cookie
-    await saveSession({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      id_token: tokens.id_token,
-      expires_at: expiresAt,
-    });
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       user: { email: user.email, roles: user.roles },
       redirectTo: '/',
     });
+
+    response.cookies.set(
+      HOSPITAL_COOKIE_NAME,
+      JSON.stringify({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        id_token: tokens.id_token,
+        expires_at: expiresAt,
+      }),
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: MAX_AGE,
+        path: '/',
+      },
+    );
+    response.cookies.set(ADMIN_COOKIE_NAME, '', { maxAge: 0, path: '/' });
+
+    return response;
   } catch (error) {
     console.error('[Login API] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

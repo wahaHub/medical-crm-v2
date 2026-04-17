@@ -125,7 +125,7 @@ describe('hospital auth — login API route', () => {
     expect(data.error).toBe('Invalid credentials');
   });
 
-  it('saves tokens via saveSession and returns success on valid credentials', async () => {
+  it('sets the hospital session cookie on successful hospital login', async () => {
     const payload = { sub: 'user-1', email: 'test@hospital.com', realm_access: { roles: ['hospital'] }, hospital_id: 'h-1' };
     const fakeJwt = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
 
@@ -145,11 +145,8 @@ describe('hospital auth — login API route', () => {
     const data = await res.json();
     expect(data.success).toBe(true);
     expect(data.user.email).toBe('test@hospital.com');
-
-    expect(mockSaveSession).toHaveBeenCalledOnce();
-    const saved = mockSaveSession.mock.calls[0]![0] as Record<string, unknown>;
-    expect(saved.access_token).toBe(fakeJwt);
-    expect(saved.refresh_token).toBe('refresh-xyz');
+    expect(res.headers.get('set-cookie')).toContain('medical-crm-hospital-session=');
+    expect(mockSaveSession).not.toHaveBeenCalled();
   });
 
   it('accepts admin accounts and redirects to admin origin', async () => {

@@ -26,6 +26,7 @@ import {
   approveMessage,
   rejectMessage,
   createConversation,
+  restoreConversationAi,
   uploadMessageFile,
   sendMessageWithAttachments,
 } from '@/actions/message-actions';
@@ -61,6 +62,7 @@ interface ApiConversation {
   id: string;
   caseId?: string;
   category?: string;
+  assistantMode?: 'AI_ACTIVE' | 'HUMAN_TAKEOVER' | null;
   title?: string | null;
   hospitalId?: string | null;
   participantName?: string;
@@ -189,6 +191,103 @@ function resolveChatPerspectiveRole(conversation: ApiConversation): ChatMessage[
 
 function canAdminReply(conversation: ApiConversation): boolean {
   return toAdminCategory(conversation.category) !== null;
+}
+
+function isAdminPatientConversation(conversation: Pick<ApiConversation, 'category'>): boolean {
+  return toAdminCategory(conversation.category) === 'ADMIN_PATIENT';
+}
+
+function canRestoreAssistant(conversation: ApiConversation): boolean {
+  return isAdminPatientConversation(conversation) && conversation.assistantMode === 'HUMAN_TAKEOVER';
+}
+
+function getAssistantControlCopy(conversation: ApiConversation): {
+  toneClassName: string;
+  label: string;
+  description: string;
+} | null {
+  if (!isAdminPatientConversation(conversation)) {
+    return null;
+  }
+
+  if (conversation.assistantMode === 'HUMAN_TAKEOVER') {
+    return {
+      toneClassName: 'border-amber-200 bg-amber-50 text-amber-900',
+      label: '人工接管中',
+      description: 'Medora AI 已暂停自动回复，当前由人工继续处理这段患者对话。',
+    };
+  }
+
+  if (conversation.assistantMode === 'AI_ACTIVE') {
+    return {
+      toneClassName: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+      label: 'Medora AI 当前在线',
+      description: '患者新消息会继续由 Medora AI 提供初步协助。',
+    };
+  }
+
+  return null;
+}
+
+export function ConversationAssistantControlSurface({
+  conversation,
+  errorMessage,
+}: {
+  conversation: ApiConversation;
+  errorMessage?: string | null;
+}) {
+  const copy = getAssistantControlCopy(conversation);
+
+  if (!copy) {
+    return null;
+  }
+
+  return (
+    <div className={`border-b px-4 py-3 ${copy.toneClassName}`}>
+      <p className="text-sm font-semibold">{copy.label}</p>
+      <p className="text-xs opacity-80">{copy.description}</p>
+      {errorMessage && (
+        <p role="alert" className="mt-2 text-xs font-medium text-rose-700">
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RestoreAiHeaderAction({
+  conversationId,
+  onRestoreError,
+  invalidateConversations,
+  refetchMessages,
+}: {
+  conversationId: string;
+  onRestoreError?: (message: string) => void;
+  invalidateConversations: () => Promise<unknown> | unknown;
+  refetchMessages: () => Promise<unknown> | unknown;
+}) {
+  async function handleClick() {
+    try {
+      await restoreConversationAi(conversationId);
+      await Promise.all([
+        invalidateConversations(),
+        refetchMessages(),
+      ]);
+      onRestoreError?.('');
+    } catch (error) {
+      onRestoreError?.(error instanceof Error ? error.message : 'Failed to restore Medora AI');
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 transition-colors hover:bg-amber-100"
+    >
+      恢复 Medora AI
+    </button>
+  );
 }
 
 function matchesSearch(conv: ApiConversation, query: string): boolean {
@@ -354,7 +453,7 @@ function CaseInfoSidebar({ conversation }: { conversation: ApiConversation }) {
 
 // ── Chat Panel ───────────────────────────────────────────────────────
 
-function ChatPanel({
+export function ChatPanel({
   conversation,
   showInfoPanel,
   readOnly = false,
@@ -364,11 +463,13 @@ function ChatPanel({
   readOnly?: boolean;
 }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const conversationId = conversation.id;
   const { data: raw, refetch } = useMessages(conversationId);
   const apiMessages = unwrapList<ApiMessage>(raw);
   const [isSending, startSend] = useTransition();
   const [isModerating, startModerate] = useTransition();
+  const [restoreAiError, setRestoreAiError] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
   const [translatedPreviewUrl, setTranslatedPreviewUrl] = useState<string | null>(null);
@@ -449,6 +550,10 @@ function ChatPanel({
   );
 
   const caseInfo = <CaseInfoSidebar conversation={conversation} />;
+
+  useEffect(() => {
+    setRestoreAiError(null);
+  }, [conversationId]);
 
   useEffect(() => {
     if (user.preferredLanguage) {
@@ -556,37 +661,58 @@ function ChatPanel({
 
   return (
     <>
-      <ChatLayout
-        messages={chatMessages}
-        onSend={handleSend}
-        onUploadFiles={handleUploadFiles}
-        isUploading={isUploading}
-        canSend={canReply && !readOnly}
-        isSending={isSending}
-        currentUserRole={perspectiveRole}
-        showTranslation={true}
-        className="h-full"
-        inputNotice={moderationNotice}
-        readOnlyNotice="Hospital conversation is view-only for admin. Reply is disabled."
-        patientInfo={showInfoPanel && showInfo ? caseInfo : undefined}
-        showInfoToggle={showInfoPanel && !!conversation.caseId}
-        onToggleInfo={() => setShowInfo((v) => !v)}
-        infoPanelOpen={showInfoPanel && showInfo}
-        onOpenAttachment={handleOpenAttachment}
-        header={{
-          name: conversationTitle,
-          subtitle: conversation.participantRole ? `${toRoleLabel(conversation.participantRole)} chat` : undefined,
-          categoryBadge: conversationCategory,
-          isAdminConversation: true,
-        }}
-        emptyState={
-          <EmptyState
-            icon={<MessageSquare size={36} />}
-            title="No messages yet"
-            description="Messages in this conversation will appear here."
+      <div className="flex h-full min-h-0 flex-col">
+        <ConversationAssistantControlSurface
+          conversation={conversation}
+          errorMessage={restoreAiError}
+        />
+        <div className="min-h-0 flex-1">
+          <ChatLayout
+            messages={chatMessages}
+            onSend={handleSend}
+            onUploadFiles={handleUploadFiles}
+            isUploading={isUploading}
+            canSend={canReply && !readOnly}
+            isSending={isSending}
+            currentUserRole={perspectiveRole}
+            showTranslation={true}
+            className="h-full"
+            inputNotice={moderationNotice}
+            readOnlyNotice="Hospital conversation is view-only for admin. Reply is disabled."
+            patientInfo={showInfoPanel && showInfo ? caseInfo : undefined}
+            showInfoToggle={showInfoPanel && !!conversation.caseId}
+            onToggleInfo={() => setShowInfo((v) => !v)}
+            infoPanelOpen={showInfoPanel && showInfo}
+            onOpenAttachment={handleOpenAttachment}
+            header={{
+              name: conversationTitle,
+              subtitle: conversation.participantRole ? `${toRoleLabel(conversation.participantRole)} chat` : undefined,
+              categoryBadge: conversationCategory,
+              isAdminConversation: true,
+              action: canRestoreAssistant(conversation) ? (
+                <RestoreAiHeaderAction
+                  conversationId={conversationId}
+                  invalidateConversations={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })}
+                  refetchMessages={refetch}
+                  onRestoreError={(message) => {
+                    setRestoreAiError(message || null);
+                    if (message) {
+                      console.error('Failed to restore Medora AI', message);
+                    }
+                  }}
+                />
+              ) : undefined,
+            }}
+            emptyState={
+              <EmptyState
+                icon={<MessageSquare size={36} />}
+                title="No messages yet"
+                description="Messages in this conversation will appear here."
+              />
+            }
           />
-        }
-      />
+        </div>
+      </div>
 
       <Modal
         open={!!previewAttachment}

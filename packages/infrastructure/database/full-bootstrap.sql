@@ -202,13 +202,8 @@ CREATE TABLE "translation_tasks" (
 	"hospital_type" text NOT NULL,
 	"entity_type" text NOT NULL,
 	"entity_id" uuid NOT NULL,
-	"chunk_key" text DEFAULT 'default' NOT NULL,
 	"source_language" text DEFAULT 'zh' NOT NULL,
-	"target_language" varchar(10) NOT NULL,
-	"source_db" text DEFAULT 'crm' NOT NULL,
-	"fields_to_translate" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"target_languages" text[] DEFAULT '{}'::text[] NOT NULL,
-	"detected_language" varchar(10),
+	"target_language" text NOT NULL,
 	"status" text DEFAULT 'pending',
 	"error_message" text,
 	"retry_count" integer DEFAULT 0,
@@ -347,8 +342,6 @@ ALTER TABLE translation_tasks
 
 ALTER TABLE translation_tasks ALTER COLUMN hospital_type DROP NOT NULL;
 ALTER TABLE translation_tasks ALTER COLUMN target_language DROP NOT NULL;
-ALTER TABLE translation_tasks ADD COLUMN IF NOT EXISTS chunk_key TEXT NOT NULL DEFAULT 'default';
-ALTER TABLE translation_tasks ALTER COLUMN target_language TYPE VARCHAR(10) USING target_language::varchar(10);
 
 -- Backfill new columns from the legacy one-row-per-target-language model.
 UPDATE translation_tasks
@@ -360,8 +353,105 @@ SET
   END
 WHERE target_languages = '{}'::text[];
 
--- Split legacy multi-language rows into one row per target language before the final
--- chunk-aware identity index is established.
+-- Merge duplicate pending/processing rows created under the old per-language queue model
+-- into the new unified one-row-per-entity model.
+WITH grouped AS (
+  SELECT
+    entity_type,
+    entity_id,
+    CASE
+      WHEN COUNT(DISTINCT hospital_type) = 1 THEN MIN(hospital_type)
+      ELSE NULL
+    END AS merged_hospital_type,
+    CASE
+      WHEN COUNT(DISTINCT source_language) = 1 THEN MIN(source_language)
+      ELSE 'zh'
+    END AS merged_source_language,
+    CASE
+      WHEN BOOL_OR(status = 'processing') THEN 'processing'
+      ELSE 'pending'
+    END AS merged_status,
+    COALESCE(
+      ARRAY_AGG(DISTINCT target_language) FILTER (WHERE target_language IS NOT NULL),
+      '{}'::text[]
+    ) AS merged_target_languages,
+    MAX(retry_count) AS merged_retry_count,
+    (
+      ARRAY_AGG(
+        id
+        ORDER BY
+          CASE WHEN status = 'processing' THEN 0 ELSE 1 END,
+          created_at ASC,
+          id ASC
+      )
+    )[1] AS keep_id
+  FROM translation_tasks
+  WHERE status IN ('pending', 'processing')
+  GROUP BY entity_type, entity_id
+  HAVING COUNT(*) > 1
+), merged_keep_rows AS (
+  UPDATE translation_tasks tt
+  SET
+    hospital_type = grouped.merged_hospital_type,
+    source_language = grouped.merged_source_language,
+    target_language = CASE
+      WHEN COALESCE(array_length(grouped.merged_target_languages, 1), 0) = 1
+        THEN grouped.merged_target_languages[1]
+      ELSE NULL
+    END,
+    target_languages = grouped.merged_target_languages,
+    source_db = 'crm',
+    status = grouped.merged_status,
+    retry_count = grouped.merged_retry_count,
+    error_message = NULL
+  FROM grouped
+  WHERE tt.id = grouped.keep_id
+  RETURNING tt.id
+)
+DELETE FROM translation_tasks tt
+USING grouped
+WHERE tt.entity_type = grouped.entity_type
+  AND tt.entity_id = grouped.entity_id
+  AND tt.status IN ('pending', 'processing')
+  AND tt.id <> grouped.keep_id;
+
+-- Drop old unique constraint, add new partial unique index
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'translation_tasks'::regclass
+      AND conname = 'translation_tasks_hospital_type_entity_type_entity_id_sourc_key'
+  ) THEN
+    ALTER TABLE translation_tasks
+      DROP CONSTRAINT IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
+  ELSE
+    DROP INDEX IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS translation_tasks_entity_dedup
+  ON translation_tasks (source_db, entity_type, entity_id)
+  WHERE status IN ('pending', 'processing');
+
+-- Add translations jsonb to CRM tables
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE support_ticket_replies ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE consultations ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE question_collector_templates ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE question_collector_responses ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE chatbot_faq_items ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE chatbot_faq_categories ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- Migration: 0025_translation_task_chunking.sql
+-- Normalize translation task identity to one chunk + one target language.
+
+ALTER TABLE translation_tasks
+  ADD COLUMN IF NOT EXISTS chunk_key TEXT NOT NULL DEFAULT 'default';
+
+-- Split any legacy multi-language rows so the
+-- new queue shape is one row per single target language.
 WITH legacy_backlog AS (
   SELECT
     id,
@@ -427,6 +517,7 @@ DELETE FROM translation_tasks tt
 USING legacy_backlog lb
 WHERE tt.id = lb.id;
 
+-- Backfill target_language so every task has a single language identity.
 UPDATE translation_tasks
 SET target_language = CASE
   WHEN COALESCE(array_length(target_languages, 1), 0) = 1 THEN target_languages[1]
@@ -434,95 +525,37 @@ SET target_language = CASE
 END
 WHERE target_language IS NULL OR target_language = '';
 
-ALTER TABLE translation_tasks ALTER COLUMN target_language SET NOT NULL;
+ALTER TABLE translation_tasks
+  ALTER COLUMN target_language SET NOT NULL;
 
--- Merge duplicate pending/processing rows using the chunk-aware, single-language identity.
-WITH grouped AS (
+-- Collapse duplicate identities across all statuses before creating the new unique index.
+WITH ranked AS (
   SELECT
-    source_db,
-    entity_type,
-    entity_id,
-    chunk_key,
-    target_language,
-    CASE
-      WHEN COUNT(DISTINCT hospital_type) = 1 THEN MIN(hospital_type)
-      ELSE NULL
-    END AS merged_hospital_type,
-    CASE
-      WHEN COUNT(DISTINCT source_language) = 1 THEN MIN(source_language)
-      ELSE 'zh'
-    END AS merged_source_language,
-    CASE
-      WHEN BOOL_OR(status = 'processing') THEN 'processing'
-      ELSE 'pending'
-    END AS merged_status,
-    MAX(retry_count) AS merged_retry_count,
-    (
-      ARRAY_AGG(
-        id
-        ORDER BY
-          CASE WHEN status = 'processing' THEN 0 ELSE 1 END,
-          created_at DESC,
-          id DESC
-      )
-    )[1] AS keep_id
+    id,
+    ROW_NUMBER() OVER (
+      PARTITION BY source_db, entity_type, entity_id, chunk_key, target_language
+      ORDER BY
+        CASE status
+          WHEN 'processing' THEN 0
+          WHEN 'pending' THEN 1
+          WHEN 'completed' THEN 2
+          ELSE 3
+        END,
+        created_at DESC,
+        id DESC
+    ) AS rn
   FROM translation_tasks
-  WHERE status IN ('pending', 'processing')
-  GROUP BY source_db, entity_type, entity_id, chunk_key, target_language
-  HAVING COUNT(*) > 1
-), merged_keep_rows AS (
-  UPDATE translation_tasks tt
-  SET
-    hospital_type = grouped.merged_hospital_type,
-    source_language = grouped.merged_source_language,
-    target_language = grouped.target_language,
-    target_languages = ARRAY[grouped.target_language]::text[],
-    source_db = grouped.source_db,
-    chunk_key = grouped.chunk_key,
-    status = grouped.merged_status,
-    retry_count = grouped.merged_retry_count,
-    error_message = NULL
-  FROM grouped
-  WHERE tt.id = grouped.keep_id
-  RETURNING tt.id
 )
 DELETE FROM translation_tasks tt
-USING grouped
-WHERE tt.source_db = grouped.source_db
-  AND tt.entity_type = grouped.entity_type
-  AND tt.entity_id = grouped.entity_id
-  AND tt.chunk_key = grouped.chunk_key
-  AND tt.target_language = grouped.target_language
-  AND tt.status IN ('pending', 'processing')
-  AND tt.id <> grouped.keep_id;
+USING ranked
+WHERE tt.id = ranked.id
+  AND ranked.rn > 1;
 
--- Drop old unique constraint, add new partial unique index
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conrelid = 'translation_tasks'::regclass
-      AND conname = 'translation_tasks_hospital_type_entity_type_entity_id_sourc_key'
-  ) THEN
-    ALTER TABLE translation_tasks
-      DROP CONSTRAINT IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
-  ELSE
-    DROP INDEX IF EXISTS translation_tasks_hospital_type_entity_type_entity_id_sourc_key;
-  END IF;
-END $$;
+-- Drop the old entity-only dedupe index and replace it with the chunk-aware identity.
+DROP INDEX IF EXISTS translation_tasks_entity_dedup;
 
 CREATE UNIQUE INDEX IF NOT EXISTS translation_tasks_entity_dedup
-  ON translation_tasks (source_db, entity_type, entity_id, chunk_key, target_language);
-
--- Add translations jsonb to CRM tables
-ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE support_ticket_replies ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE consultations ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE question_collector_templates ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE question_collector_responses ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE chatbot_faq_items ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE chatbot_faq_categories ADD COLUMN IF NOT EXISTS translations JSONB NOT NULL DEFAULT '{}'::jsonb;
+  ON translation_tasks (source_db, entity_type, entity_id, chunk_key, target_language)
 
 -- Migration: 002_create_message_tasks.sql
 -- 002_create_message_tasks.sql
@@ -1670,6 +1703,20 @@ ALTER TABLE ai_chat_sessions
 ALTER TABLE ai_chat_sessions
 ADD COLUMN process_explained boolean NOT NULL DEFAULT false;
 
+-- Migration: 031_ai_chat_canonical_truth_flags.sql
+-- Rollout order for canonical chatbot truth flags:
+-- 1. Deploy read paths that fall back to legacy status fields.
+-- 2. Deploy write paths that set these booleans on deterministic actions.
+-- 3. Backfill legacy sessions after step 2 if historical queries need explicit booleans.
+-- 4. Remove fallback assumptions only after the backfill is stable in production.
+
+ALTER TABLE ai_chat_sessions
+  ADD COLUMN IF NOT EXISTS minimal_triage_complete BOOLEAN,
+  ADD COLUMN IF NOT EXISTS recommendation_generated BOOLEAN,
+  ADD COLUMN IF NOT EXISTS recommendation_selected BOOLEAN,
+  ADD COLUMN IF NOT EXISTS consult_completed BOOLEAN,
+  ADD COLUMN IF NOT EXISTS handoff_active BOOLEAN;
+
 -- Migration: 031_patient_site_identity.sql
 DO $$
 BEGIN
@@ -1759,6 +1806,19 @@ ON users
 FOR EACH ROW
 EXECUTE FUNCTION prevent_cross_role_user_email_duplicates();
 
+-- Migration: 032_ai_chat_canonical_truth_flags_nullable.sql
+ALTER TABLE ai_chat_sessions
+  ALTER COLUMN minimal_triage_complete DROP NOT NULL,
+  ALTER COLUMN minimal_triage_complete DROP DEFAULT,
+  ALTER COLUMN recommendation_generated DROP NOT NULL,
+  ALTER COLUMN recommendation_generated DROP DEFAULT,
+  ALTER COLUMN recommendation_selected DROP NOT NULL,
+  ALTER COLUMN recommendation_selected DROP DEFAULT,
+  ALTER COLUMN consult_completed DROP NOT NULL,
+  ALTER COLUMN consult_completed DROP DEFAULT,
+  ALTER COLUMN handoff_active DROP NOT NULL,
+  ALTER COLUMN handoff_active DROP DEFAULT;
+
 -- Migration: 032_ai_chat_session_site_scope.sql
 ALTER TABLE ai_chat_sessions
   DROP CONSTRAINT IF EXISTS ai_chat_sessions_session_id_key;
@@ -1767,6 +1827,63 @@ DROP INDEX IF EXISTS ai_chat_sessions_session_id_key;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ai_chat_sessions_session_id_site_key
   ON ai_chat_sessions USING btree (session_id text_ops, site enum_ops);
+
+-- Migration: 033_ai_chat_canonical_truth_flags_repair.sql
+-- Repair rows created by an older 031 rollout that materialized canonical truth flags as FALSE.
+-- This is safe and idempotent: it only upgrades rows to TRUE when legacy deterministic statuses
+-- already prove the canonical truth and leaves all other rows unchanged.
+
+UPDATE ai_chat_sessions
+SET minimal_triage_complete = TRUE
+WHERE minimal_triage_complete IS DISTINCT FROM TRUE
+  AND (
+    UPPER(COALESCE(form_status, '')) IN ('COMPLETED', 'SUBMITTED')
+    OR UPPER(COALESCE(doc_upload_status, '')) IN ('COMPLETED', 'SUBMITTED', 'READY')
+  );
+
+UPDATE ai_chat_sessions
+SET recommendation_selected = TRUE
+WHERE recommendation_selected IS DISTINCT FROM TRUE
+  AND (
+    UPPER(COALESCE(recommendation_status, '')) IN ('CONFIRMED', 'ACCEPTED')
+    OR UPPER(COALESCE(package_status, '')) IN ('CONFIRMED', 'ACCEPTED')
+    OR UPPER(COALESCE(consultation_status, '')) IN ('SCHEDULED', 'BOOKED', 'COMPLETED')
+  );
+
+UPDATE ai_chat_sessions
+SET recommendation_generated = TRUE
+WHERE recommendation_generated IS DISTINCT FROM TRUE
+  AND (
+    UPPER(COALESCE(recommendation_status, '')) IN ('CONFIRMED', 'ACCEPTED')
+    OR UPPER(COALESCE(package_status, '')) IN ('CONFIRMED', 'ACCEPTED')
+    OR UPPER(COALESCE(consultation_status, '')) IN ('SCHEDULED', 'BOOKED', 'COMPLETED')
+    OR (
+      UPPER(COALESCE(recommendation_status, '')) <> ''
+      AND UPPER(COALESCE(recommendation_status, '')) <> 'NOT_STARTED'
+    )
+    OR (
+      UPPER(COALESCE(package_status, '')) <> ''
+      AND UPPER(COALESCE(package_status, '')) NOT IN ('NOT_INTRODUCED', 'NOT_STARTED')
+    )
+  );
+
+UPDATE ai_chat_sessions
+SET consult_completed = TRUE
+WHERE consult_completed IS DISTINCT FROM TRUE
+  AND UPPER(COALESCE(consultation_status, '')) = 'COMPLETED';
+
+UPDATE ai_chat_sessions
+SET handoff_active = TRUE
+WHERE handoff_active IS DISTINCT FROM TRUE
+  AND UPPER(COALESCE(handoff_status, '')) IN ('REQUESTED', 'OPEN', 'IN_PROGRESS');
+
+-- Migration: 034_message_sender_overrides.sql
+ALTER TABLE messages
+  ALTER COLUMN sender_id DROP NOT NULL;
+
+ALTER TABLE messages
+  ADD COLUMN sender_role_override varchar(20),
+  ADD COLUMN sender_name_override varchar(255);
 
 -- Track the current schema head so future pnpm db:migrate runs stay incremental.
 CREATE TABLE IF NOT EXISTS _migrations (
@@ -1779,6 +1896,7 @@ INSERT INTO _migrations (name)
 VALUES
   ('001_ai_summary_columns.sql'),
   ('0024_unified_translation.sql'),
+  ('0025_translation_task_chunking.sql'),
   ('002_create_message_tasks.sql'),
   ('003_m0_case_realignment.sql'),
   ('003b_idempotency_keys.sql'),
@@ -1810,6 +1928,10 @@ VALUES
   ('028_backfill_regular_hospitals_from_china.sql'),
   ('029_chatbot_state_truth_consolidation.sql'),
   ('030_ai_chat_process_explained.sql'),
+  ('031_ai_chat_canonical_truth_flags.sql'),
   ('031_patient_site_identity.sql'),
-  ('032_ai_chat_session_site_scope.sql')
+  ('032_ai_chat_canonical_truth_flags_nullable.sql'),
+  ('032_ai_chat_session_site_scope.sql'),
+  ('033_ai_chat_canonical_truth_flags_repair.sql'),
+  ('034_message_sender_overrides.sql')
 ON CONFLICT (name) DO NOTHING;

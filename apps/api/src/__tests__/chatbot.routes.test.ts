@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { AiChatMessage } from '@medical-crm/domain';
+import { AiChatMessage, Conversation } from '@medical-crm/domain';
 import {
   chatbotChatResponseSchema,
   chatbotConvertResponseSchema,
@@ -44,6 +44,19 @@ const mockServices: any = {
   caseRepo: {
     findById: vi.fn(),
     save: vi.fn(),
+  },
+  conversationRepo: {
+    findById: vi.fn(),
+    findMany: vi.fn(),
+    findByPatientId: vi.fn(),
+    save: vi.fn(),
+  },
+  messageRepo: {
+    findById: vi.fn(),
+    findByConversationId: vi.fn(),
+    findPendingReview: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
   },
   createTicket: {
     execute: vi.fn(),
@@ -211,6 +224,16 @@ describe('Chatbot routes', () => {
       restoreCookie: 'restore-cookie-123',
     });
     mockServices.storage.getSignedUrls.mockResolvedValue({});
+    mockServices.conversationRepo.findMany.mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 10,
+      totalPages: 0,
+      hasMore: false,
+    });
+    mockServices.conversationRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.messageRepo.save.mockImplementation(async (entity: unknown) => entity);
     mockServices.getTemplateByDisease.execute.mockRejectedValue(new Error('default questionnaire unavailable'));
     mockServices.getAiPolicyContext.execute.mockResolvedValue({
       chatbot_v2: {
@@ -415,6 +438,166 @@ describe('Chatbot routes', () => {
       mockServices.difyApi.createChatMessage.mock.invocationCallOrder[0]!,
     );
     expect(json.resources).toEqual(expect.arrayContaining(storedChatbotV2.resources));
+  });
+
+  it('POST /api/v2/chatbot/chat mirrors registered widget turns into the admin conversation with explicit AI sender identity', async () => {
+    const mirroredConversation = new Conversation({
+      id: 'conv-admin-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      title: null,
+      hospitalId: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+    });
+    mockServices.conversationRepo.findMany.mockResolvedValue({
+      data: [mirroredConversation],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+      hasMore: false,
+    });
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        answer: 'This is Medora AI, and I can help with that.',
+        intent: 'CONSULT',
+        canAnswer: true,
+        nextAction: 'ANSWER_FAQ',
+      }),
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-token',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        message: 'I want the admin team to see this update.',
+        attachments: [{
+          fileName: 'report.pdf',
+          fileSize: 1024,
+          mimeType: 'application/pdf',
+          storageKey: 'crm/dev/chatbot/report.pdf',
+        }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.messageRepo.save).toHaveBeenCalledTimes(2);
+
+    const mirroredPatientMessage = mockServices.messageRepo.save.mock.calls[0]?.[0];
+    expect(mirroredPatientMessage).toMatchObject({
+      conversationId: 'conv-admin-1',
+      senderId: 'patient-1',
+      content: 'I want the admin team to see this update.',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+        storageKey: 'crm/dev/chatbot/report.pdf',
+      }],
+    });
+
+    const mirroredAssistantMessage = mockServices.messageRepo.save.mock.calls[1]?.[0];
+    expect(mirroredAssistantMessage).toMatchObject({
+      conversationId: 'conv-admin-1',
+      senderId: null,
+      senderRole: 'AI',
+      senderName: 'Medora AI',
+      content: 'This is Medora AI, and I can help with that.',
+    });
+
+    const savedConversation = mockServices.conversationRepo.save.mock.calls.at(-1)?.[0];
+    expect(savedConversation).toMatchObject({
+      id: 'conv-admin-1',
+      lastMessagePreview: 'This is Medora AI, and I can help with that.',
+      lastSenderId: null,
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat keeps the main chatbot response healthy when mirror persistence fails', async () => {
+    const mirroredConversation = new Conversation({
+      id: 'conv-admin-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      title: null,
+      hospitalId: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+    });
+    mockServices.conversationRepo.findMany.mockResolvedValue({
+      data: [mirroredConversation],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+      hasMore: false,
+    });
+    mockServices.messageRepo.save.mockRejectedValue(new Error('mirror persist failed'));
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        answer: 'This is Medora AI, and I can help with that.',
+        intent: 'CONSULT',
+        canAnswer: true,
+        nextAction: 'ANSWER_FAQ',
+      }),
+    });
+
+    try {
+      const res = await app.request('/api/v2/chatbot/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'patient_session=patient-token',
+        },
+        body: JSON.stringify({
+          sessionId: 'widget-chat:patient-1:case-1',
+          message: 'Mirror should be best effort.',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = chatbotChatResponseSchema.parse(await res.json());
+      expect(json.answer).toBe('This is Medora AI, and I can help with that.');
+      expect(mockServices.messageRepo.save).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[chatbot-mirror] failed to mirror message into conversation',
+        expect.objectContaining({
+          conversationId: 'conv-admin-1',
+          error: 'mirror persist failed',
+        }),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it('POST /api/v2/chatbot/chat rejects missing site context before persisting a new session', async () => {

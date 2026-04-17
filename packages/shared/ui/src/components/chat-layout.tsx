@@ -17,7 +17,7 @@ export interface ChatMessage {
   id: string;
   content: string;
   translatedContent?: string | null;
-  senderRole: 'ADMIN' | 'HOSPITAL' | 'PATIENT';
+  senderRole: 'ADMIN' | 'HOSPITAL' | 'PATIENT' | 'AI';
   senderName: string;
   senderId?: string;
   createdAt: string;
@@ -384,11 +384,13 @@ export function ChatLayout({
                     <div
                       className={cn(
                         'w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-[10px] shrink-0 mt-1 shadow-sm',
-                        own
-                          ? 'bg-gradient-to-br from-cyan-500 to-emerald-500'
+                          own
+                            ? 'bg-gradient-to-br from-cyan-500 to-emerald-500'
                           : msg.senderRole === 'ADMIN'
                             ? 'bg-gradient-to-br from-blue-500 to-indigo-500'
-                            : 'bg-gradient-to-br from-cyan-500 to-emerald-500',
+                            : msg.senderRole === 'AI'
+                              ? 'bg-gradient-to-br from-amber-500 to-orange-500'
+                              : 'bg-gradient-to-br from-cyan-500 to-emerald-500',
                       )}
                       title={msg.senderName}
                     >

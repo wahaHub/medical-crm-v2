@@ -44,7 +44,7 @@ export class Conversation {
   updateLastMessage(message: {
     id: string;
     content: string;
-    senderId: string;
+    senderId: string | null;
     createdAt: Date;
   }): void {
     this.lastMessageId = message.id;

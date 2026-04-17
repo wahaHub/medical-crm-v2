@@ -26,6 +26,8 @@ describe('Message', () => {
     expect(m.id).toBe('msg-1');
     expect(m.conversationId).toBe('conv-1');
     expect(m.senderId).toBe('user-1');
+    expect(m.senderRoleOverride).toBeNull();
+    expect(m.senderNameOverride).toBeNull();
     expect(m.content).toBe('Hello world');
     expect(m.originalLanguage).toBe('en');
     expect(m.translatedContent).toBeNull();
@@ -63,5 +65,21 @@ describe('Message', () => {
     const m = makeMessage();
     m.setAiSummary('A greeting message.');
     expect(m.aiSummary).toBe('A greeting message.');
+  });
+
+  it('stores explicit sender overrides for mirrored AI messages', () => {
+    const m = makeMessage({
+      senderId: null,
+      senderRoleOverride: 'AI',
+      senderNameOverride: 'Medora AI',
+      senderRole: 'AI',
+      senderName: 'Medora AI',
+    });
+
+    expect(m.senderId).toBeNull();
+    expect(m.senderRoleOverride).toBe('AI');
+    expect(m.senderNameOverride).toBe('Medora AI');
+    expect(m.senderRole).toBe('AI');
+    expect(m.senderName).toBe('Medora AI');
   });
 });

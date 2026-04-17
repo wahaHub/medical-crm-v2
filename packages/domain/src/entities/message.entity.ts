@@ -11,7 +11,9 @@ export type Attachment = {
 export interface MessageProps {
   id: string;
   conversationId: string;
-  senderId: string;
+  senderId: string | null;
+  senderRoleOverride?: string | null;
+  senderNameOverride?: string | null;
   senderRole?: string | null;
   senderName?: string | null;
   content: string;
@@ -27,7 +29,9 @@ export interface MessageProps {
 export class Message {
   readonly id: string;
   conversationId: string;
-  senderId: string;
+  senderId: string | null;
+  senderRoleOverride: string | null;
+  senderNameOverride: string | null;
   senderRole: string | null;
   senderName: string | null;
   content: string;
@@ -43,6 +47,8 @@ export class Message {
     this.id = props.id;
     this.conversationId = props.conversationId;
     this.senderId = props.senderId;
+    this.senderRoleOverride = props.senderRoleOverride ?? null;
+    this.senderNameOverride = props.senderNameOverride ?? null;
     this.senderRole = props.senderRole ?? null;
     this.senderName = props.senderName ?? null;
     this.content = props.content;

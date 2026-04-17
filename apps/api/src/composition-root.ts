@@ -5,6 +5,8 @@ import type {
   IHospitalRepository,
   IPatientRepository,
   IUserEmailLookupRepository,
+  IConversationRepository,
+  IMessageRepository,
   IStorageService,
   IAiChatSessionRepository,
   IAiChatMessageRepository,
@@ -286,6 +288,8 @@ interface AppServices {
   hospitalRepo: IHospitalRepository;
   patientRepo: IPatientRepository;
   userEmailLookupRepo: IUserEmailLookupRepository;
+  conversationRepo: IConversationRepository;
+  messageRepo: IMessageRepository;
   aiChatSessionRepo: IAiChatSessionRepository;
   aiChatMessageRepo: IAiChatMessageRepository;
   aiUserProfileRepo: IAiUserProfileRepository;
@@ -801,7 +805,7 @@ export function getServices(): AppServices {
     _services = {
       crmDb, mainSupabase, chinaSupabase,
       idempotencyExecutor: idempotencyGuard,
-      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, userEmailLookupRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
+      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,

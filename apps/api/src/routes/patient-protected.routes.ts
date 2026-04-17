@@ -211,7 +211,9 @@ app.get('/conversations/:convId/messages', async (c) => {
   const result = await listMessages.execute(convId, { page: 1, limit: query.limit }, actor);
   const data = result.data.map((message) => ({
     ...message,
-    senderRole: message.senderId === session.userId ? 'PATIENT' : 'HOSPITAL',
+    senderRole: message.senderRole?.toUpperCase() === 'AI'
+      ? 'AI'
+      : (message.senderId === session.userId ? 'PATIENT' : 'HOSPITAL'),
   }));
   const response = { ...result, data };
   return c.json(response);

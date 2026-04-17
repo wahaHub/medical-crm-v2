@@ -275,7 +275,9 @@ export const conversations = pgTable("conversations", {
 export const messages = pgTable("messages", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	conversationId: uuid("conversation_id").notNull(),
-	senderId: uuid("sender_id").notNull(),
+	senderId: uuid("sender_id"),
+	senderRoleOverride: varchar("sender_role_override", { length: 20 }),
+	senderNameOverride: varchar("sender_name_override", { length: 255 }),
 	content: text().notNull(),
 	originalLanguage: varchar("original_language", { length: 10 }).default('en').notNull(),
 	translatedContent: text("translated_content"),

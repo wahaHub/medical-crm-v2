@@ -28,7 +28,7 @@ export interface ConversationDTO {
 export interface MessageDTO {
   id: string;
   conversationId: string;
-  senderId: string;
+  senderId: string | null;
   senderRole: string | null;
   senderName: string | null;
   content: string;

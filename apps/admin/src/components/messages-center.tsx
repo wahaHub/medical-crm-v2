@@ -123,7 +123,16 @@ function toRoleLabel(role?: string): string {
   if (upper === 'PATIENT') return 'Patient';
   if (upper === 'HOSPITAL') return 'Hospital';
   if (upper === 'ADMIN') return 'Admin';
+  if (upper === 'AI') return 'AI';
   return upper;
+}
+
+function normalizeSenderRole(role?: string | null): ChatMessage['senderRole'] {
+  const upper = role?.toUpperCase();
+  if (upper === 'PATIENT' || upper === 'HOSPITAL' || upper === 'ADMIN' || upper === 'AI') {
+    return upper;
+  }
+  return 'ADMIN';
 }
 
 function toDisplaySenderName(message: ApiMessage): string {
@@ -138,7 +147,7 @@ function mapApiMessages(messages: ApiMessage[]): ChatMessage[] {
       id: m.id,
       content: m.content,
       translatedContent: m.translatedContent,
-      senderRole: (m.senderRole?.toUpperCase() ?? 'ADMIN') as ChatMessage['senderRole'],
+      senderRole: normalizeSenderRole(m.senderRole),
       senderName: toDisplaySenderName(m),
       senderId: m.senderId,
       createdAt: m.createdAt,

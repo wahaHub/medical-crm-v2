@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { AiChatCitation, AiChatSession } from '@medical-crm/domain';
-import { AiChatMessage, AiChatSession as AiChatSessionEntity } from '@medical-crm/domain';
+import { AiChatMessage, AiChatSession as AiChatSessionEntity, Conversation, Message } from '@medical-crm/domain';
 import { toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import {
@@ -32,6 +32,8 @@ const app = new OpenAPIHono();
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
 const PATIENT_RESTORE_COOKIE = 'patient_restore';
+const AI_MIRROR_SENDER_NAME = 'Medora AI';
+const AI_MIRROR_SENDER_ROLE = 'AI';
 const DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK = {
   resolvedIntent: 'UNKNOWN',
   engagementSignal: 'LIGHT_DISCOVERY',
@@ -153,6 +155,23 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     },
     createdAt: new Date(),
   }));
+
+  const mirroredConversation = await tryResolveAdminConversationForChatbotSession(svc, session);
+  if (mirroredConversation) {
+    await tryMirrorMessageIntoConversation(svc, mirroredConversation, new Message({
+      id: userMessage.id,
+      conversationId: mirroredConversation.id,
+      senderId: session.patientId,
+      content: normalizedUserMessage,
+      originalLanguage: null,
+      translatedContent: null,
+      messageType: 'TEXT',
+      moderationStatus: 'ALLOWED',
+      attachments: userAttachments,
+      aiSummary: null,
+      createdAt: userMessage.createdAt,
+    }));
+  }
 
   const assistantMessageId = generateId();
   await svc.aiChatMessageRepo.create(new AiChatMessage({
@@ -322,6 +341,26 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
 
   if (!assistantMessage) {
     return c.json({ error: 'Assistant message draft missing after Dify response' }, 500);
+  }
+
+  if (mirroredConversation) {
+    await tryMirrorMessageIntoConversation(svc, mirroredConversation, new Message({
+      id: assistantMessage.id,
+      conversationId: mirroredConversation.id,
+      senderId: null,
+      senderRoleOverride: AI_MIRROR_SENDER_ROLE,
+      senderNameOverride: AI_MIRROR_SENDER_NAME,
+      senderRole: AI_MIRROR_SENDER_ROLE,
+      senderName: AI_MIRROR_SENDER_NAME,
+      content: assistantMessage.content,
+      originalLanguage: null,
+      translatedContent: null,
+      messageType: 'TEXT',
+      moderationStatus: 'ALLOWED',
+      attachments: [],
+      aiSummary: null,
+      createdAt: assistantMessage.createdAt,
+    }));
   }
 
   if (sessionSecretToSet) {
@@ -788,6 +827,104 @@ async function attachPatientFromCookie(
     return { session, error: null };
   } catch {
     return { session, error: null };
+  }
+}
+
+async function resolveAdminConversationForChatbotSession(
+  svc: ReturnType<typeof getServices>,
+  session: AiChatSession,
+): Promise<Conversation | null> {
+  const caseId = await resolveChatbotCaseIdForMirroring(svc, session);
+  if (!caseId) {
+    return null;
+  }
+
+  const existing = await svc.conversationRepo.findMany({
+    page: 1,
+    limit: 10,
+    caseId,
+    category: 'ADMIN_PATIENT',
+  });
+  const conversation = existing.data[0];
+  if (conversation) {
+    return conversation;
+  }
+
+  const now = new Date();
+  return svc.conversationRepo.save(new Conversation({
+    id: generateId(),
+    caseId,
+    hospitalId: null,
+    category: 'ADMIN_PATIENT',
+    title: null,
+    lastMessageId: null,
+    lastMessageAt: null,
+    lastMessagePreview: null,
+    lastSenderId: null,
+    createdAt: now,
+    updatedAt: now,
+  }));
+}
+
+async function tryResolveAdminConversationForChatbotSession(
+  svc: ReturnType<typeof getServices>,
+  session: AiChatSession,
+): Promise<Conversation | null> {
+  try {
+    return await resolveAdminConversationForChatbotSession(svc, session);
+  } catch (error) {
+    console.error('[chatbot-mirror] failed to resolve admin conversation', {
+      sessionId: session.sessionId,
+      patientId: session.patientId,
+      site: session.site,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function resolveChatbotCaseIdForMirroring(
+  svc: ReturnType<typeof getServices>,
+  session: AiChatSession,
+): Promise<string | null> {
+  const widgetCaseId = extractWidgetSessionCaseId(session.sessionId);
+  if (widgetCaseId) {
+    return widgetCaseId;
+  }
+
+  const sessionMessages = await svc.aiChatMessageRepo.listBySession(session.id, 100);
+  return extractWorkflowState(sessionMessages).caseId;
+}
+
+async function mirrorMessageIntoConversation(
+  svc: ReturnType<typeof getServices>,
+  conversation: Conversation,
+  message: Message,
+): Promise<void> {
+  const saved = await svc.messageRepo.save(message);
+  conversation.updateLastMessage({
+    id: saved.id,
+    content: saved.content,
+    senderId: saved.senderId,
+    createdAt: saved.createdAt,
+  });
+  await svc.conversationRepo.save(conversation);
+}
+
+async function tryMirrorMessageIntoConversation(
+  svc: ReturnType<typeof getServices>,
+  conversation: Conversation,
+  message: Message,
+): Promise<void> {
+  try {
+    await mirrorMessageIntoConversation(svc, conversation, message);
+  } catch (error) {
+    console.error('[chatbot-mirror] failed to mirror message into conversation', {
+      conversationId: conversation.id,
+      messageId: message.id,
+      senderId: message.senderId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

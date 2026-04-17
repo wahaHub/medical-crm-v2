@@ -302,10 +302,11 @@ export class TranslationWritebackService {
     translations: Record<string, Record<string, unknown>>,
   ): Promise<void> {
     const hospitalId = task.entityId;
-    // Fetch existing i18n rows so we can deep-merge facilities_info
+
+    // Fetch existing i18n rows so we can deep-merge facilities_info and seed locale names.
     const { data: existingRows, error: fetchError } = await this.chinaSupabase
       .from('hospital_i18n')
-      .select('locale, facilities_info, name, display_name')
+      .select('locale, name, display_name, facilities_info, departments_info')
       .eq('hospital_id', hospitalId);
 
     if (fetchError) throw fetchError;
@@ -317,24 +318,19 @@ export class TranslationWritebackService {
     }
 
     for (const [locale, translatedFields] of Object.entries(translations)) {
-      const existingLocaleRow = existingByLocale.get(locale) ?? {};
       const row: Record<string, unknown> = {
         hospital_id: hospitalId,
         locale,
       };
+      const existingLocaleRow = existingByLocale.get(locale);
+      const nameSeed = this.resolveHospitalLocaleNameSeed(existingRows ?? [], existingLocaleRow, task, locale);
 
       // Apply the same field-mapping rules as updateHospitalInfo in china-medical-materials.repository.ts
       if (translatedFields['name'] !== undefined) {
         row['name'] = translatedFields['name'];
         row['display_name'] = translatedFields['name'];
       }
-      if (row['name'] === undefined && existingLocaleRow['name'] !== undefined) {
-        row['name'] = existingLocaleRow['name'];
-      }
       if (translatedFields['display_name'] !== undefined) row['display_name'] = translatedFields['display_name'];
-      if (row['display_name'] === undefined && existingLocaleRow['display_name'] !== undefined) {
-        row['display_name'] = existingLocaleRow['display_name'];
-      }
       if (translatedFields['tagline'] !== undefined) row['value_proposition'] = translatedFields['tagline'];
       if (translatedFields['value_proposition'] !== undefined) row['value_proposition'] = translatedFields['value_proposition'];
       if (translatedFields['description'] !== undefined) {
@@ -357,7 +353,7 @@ export class TranslationWritebackService {
       if (translatedFields['core_specialties'] !== undefined) row['core_specialties'] = translatedFields['core_specialties'];
 
       // facilities_info: merge with existing row
-      const existingFacilitiesInfo = (existingLocaleRow['facilities_info'] as Record<string, unknown> | null) ?? {};
+      const existingFacilitiesInfo = (existingLocaleRow?.['facilities_info'] as Record<string, unknown> | null) ?? {};
       const hasFacilitiesUpdate =
         translatedFields['promotionalVideos'] !== undefined
         || translatedFields['videoTestimonials'] !== undefined
@@ -376,26 +372,35 @@ export class TranslationWritebackService {
 
       // departments_info: if translated fields contain structured department data
       if (translatedFields['departmentsInfo'] !== undefined) {
-        row['departments_info'] = this.mergeTranslatedDepartmentsInfo(
-          task.fieldsToTranslate['departments_info'],
+        row['departments_info'] = this.mergeDepartmentsInfo(
+          task.fieldsToTranslate['departmentsInfo'],
+          existingLocaleRow?.['departments_info'],
           translatedFields['departmentsInfo'],
         );
       }
       if (translatedFields['departments_info'] !== undefined) {
-        row['departments_info'] = this.mergeTranslatedDepartmentsInfo(
+        row['departments_info'] = this.mergeDepartmentsInfo(
           task.fieldsToTranslate['departments_info'],
+          existingLocaleRow?.['departments_info'],
           translatedFields['departments_info'],
         );
       }
 
-      if (translatedFields['equipment'] !== undefined) {
-        row['equipment_translated'] = this.buildEquipmentTranslations(
-          task.fieldsToTranslate['equipment'],
-          translatedFields['equipment'],
-        );
+      if (translatedFields['equipment_translated'] !== undefined) {
+        row['equipment_translated'] = translatedFields['equipment_translated'];
+      } else if (translatedFields['equipment'] !== undefined) {
+        row['equipment_translated'] = translatedFields['equipment'];
       }
 
       if (Object.keys(row).length === 2) continue;
+
+      if (row['name'] === undefined && nameSeed.name !== undefined) row['name'] = nameSeed.name;
+      if (row['display_name'] === undefined) {
+        row['display_name'] = nameSeed.displayName ?? row['name'];
+      }
+      if (row['name'] === undefined && row['display_name'] !== undefined) {
+        row['name'] = row['display_name'];
+      }
 
       const { error } = await this.chinaSupabase
         .from('hospital_i18n')
@@ -426,52 +431,77 @@ export class TranslationWritebackService {
     return result;
   }
 
-  private mergeTranslatedDepartmentsInfo(
-    sourceValue: unknown,
-    translatedValue: unknown,
-  ): Array<Record<string, unknown>> | undefined {
-    if (!Array.isArray(translatedValue)) return undefined;
+  private resolveHospitalLocaleNameSeed(
+    existingRows: Record<string, unknown>[],
+    existingLocaleRow: Record<string, unknown> | undefined,
+    task: TranslationTask,
+    locale: string,
+  ): { name?: unknown; displayName?: unknown } {
+    const fallbackRow =
+      existingLocaleRow
+      ?? existingRows.find((row) => row['locale'] === locale)
+      ?? existingRows.find((row) => row['locale'] === task.sourceLanguage)
+      ?? existingRows[0];
 
-    const sourceDepartments = Array.isArray(sourceValue) ? sourceValue : [];
+    const taskName = task.fieldsToTranslate['name'] ?? task.fieldsToTranslate['display_name'];
+    const taskDisplayName = task.fieldsToTranslate['display_name'] ?? task.fieldsToTranslate['name'];
+    const rowName = fallbackRow?.['name'] ?? fallbackRow?.['display_name'];
+    const rowDisplayName = fallbackRow?.['display_name'] ?? fallbackRow?.['name'];
 
-    return translatedValue.map((item, index) => {
-      const translatedDepartment = item && typeof item === 'object'
-        ? item as Record<string, unknown>
-        : {};
-      const sourceDepartment = sourceDepartments[index] && typeof sourceDepartments[index] === 'object'
-        ? sourceDepartments[index] as Record<string, unknown>
-        : {};
-
-      return {
-        ...sourceDepartment,
-        ...translatedDepartment,
-        department_code: sourceDepartment['department_code'] ?? translatedDepartment['department_code'],
-        image_url: sourceDepartment['image_url'] ?? translatedDepartment['image_url'],
-      };
-    });
+    return {
+      name: rowName ?? taskName,
+      displayName: rowDisplayName ?? taskDisplayName ?? rowName ?? taskName,
+    };
   }
 
-  private buildEquipmentTranslations(
+  private mergeDepartmentsInfo(
     sourceValue: unknown,
+    existingValue: unknown,
     translatedValue: unknown,
   ): Array<Record<string, unknown>> | undefined {
     if (!Array.isArray(translatedValue)) return undefined;
 
-    const sourceEquipment = Array.isArray(sourceValue) ? sourceValue : [];
+    const existingEntries = Array.isArray(existingValue) ? existingValue.filter(
+      (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+    ) : [];
+    const sourceEntries = Array.isArray(sourceValue) ? sourceValue.filter(
+      (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+    ) : [];
+    const translatedEntries = translatedValue.filter(
+      (entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry),
+    );
 
-    return translatedValue.map((item, index) => {
-      const translatedEquipment = item && typeof item === 'object'
-        ? item as Record<string, unknown>
-        : {};
-      const sourceItem = sourceEquipment[index] && typeof sourceEquipment[index] === 'object'
-        ? sourceEquipment[index] as Record<string, unknown>
-        : {};
+    const mergedByCode = new Map<string, Record<string, unknown>>();
+    const orderedCodes: string[] = [];
+    const anonymousEntries: Array<Record<string, unknown>> = [];
 
-      return {
-        idx: index,
-        name: translatedEquipment['name'] ?? sourceItem['name'],
-        description: translatedEquipment['description'] ?? sourceItem['description'],
-      };
-    });
+    const overlayEntries = (entries: Array<Record<string, unknown>>) => {
+      for (const entry of entries) {
+        const code = entry['department_code'];
+        if (typeof code === 'string' && code.length > 0) {
+          if (!mergedByCode.has(code)) orderedCodes.push(code);
+          mergedByCode.set(code, {
+            ...(mergedByCode.get(code) ?? {}),
+            ...entry,
+          });
+          continue;
+        }
+
+        anonymousEntries.push({ ...entry });
+      }
+    };
+
+    overlayEntries(existingEntries);
+    overlayEntries(sourceEntries);
+    overlayEntries(translatedEntries);
+
+    if (mergedByCode.size === 0 && anonymousEntries.length === 0) {
+      return undefined;
+    }
+
+    return [
+      ...orderedCodes.map((code) => ({ ...mergedByCode.get(code)! })),
+      ...anonymousEntries,
+    ];
   }
 }

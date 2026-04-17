@@ -1,224 +1,421 @@
-import { describe, it, expect, vi } from 'vitest';
-import { TranslationTask } from '@medical-crm/domain';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TranslationTask, type BatchTranslateResult } from '@medical-crm/domain';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { TranslationWritebackService } from '../../services/translation-writeback.service.js';
 
-function makeTask() {
+type HospitalI18nRow = Record<string, unknown>;
+
+function makeTask(overrides: Partial<ConstructorParameters<typeof TranslationTask>[0]> = {}): TranslationTask {
   return new TranslationTask({
     id: 'task-1',
     sourceDb: 'supabase_china',
     entityType: 'hospital_info',
     entityId: 'hospital-1',
+    chunkKey: 'core',
     hospitalType: 'REGULAR',
-    fieldsToTranslate: {
-      name: '示例医院',
-      description: '中文描述',
-      departments_info: [
-        {
-          department_code: 'orthopedics',
-          department_name: 'orthopedics',
-          description: '骨科描述',
-          image_url: 'crm/dev/materials-regular/hospital-image/hospital-1/orthopedics.png',
-          key_services: ['骨科服务'],
-          specialists: 12,
-          annual_patients: 3456,
-        },
-      ],
-      equipment: [
-        {
-          name: '达芬奇手术机器人',
-          image_url: 'crm/dev/materials-regular/hospital-image/hospital-1/equipment.png',
-          description: '设备中文描述',
-        },
-      ],
-    },
-    targetLanguages: ['en', 'fr'],
-    sourceLanguage: null,
-    targetLanguage: null,
+    fieldsToTranslate: {},
+    targetLanguages: ['en'],
+    sourceLanguage: 'zh',
+    targetLanguage: 'en',
     detectedLanguage: null,
     status: 'pending',
     errorMessage: null,
     retryCount: 0,
-    createdAt: new Date('2026-04-16T00:00:00Z'),
+    createdAt: new Date('2026-04-17T00:00:00.000Z'),
     startedAt: null,
     completedAt: null,
+    ...overrides,
   });
 }
 
-describe('TranslationWritebackService', () => {
-  it('does not send updated_at when writing China hospital_i18n rows', async () => {
-    const upsert = vi.fn().mockResolvedValue({ error: null });
-    const selectEq = vi.fn().mockResolvedValue({
-      data: [
-        {
-          locale: 'en',
-          facilities_info: null,
-          name: 'Existing English Hospital',
-          display_name: 'Existing English Hospital',
-        },
-        {
-          locale: 'fr',
-          facilities_info: null,
-          name: 'Hopital Existant',
-          display_name: 'Hopital Existant',
-        },
-      ],
-      error: null,
-    });
-    const from = vi.fn((table: string) => {
+function makeResult(translations: Record<string, Record<string, unknown>>): BatchTranslateResult {
+  return {
+    detectedLanguage: 'zh',
+    translations,
+  };
+}
+
+function cloneRows(rows: HospitalI18nRow[]): HospitalI18nRow[] {
+  return rows.map((row) => structuredClone(row));
+}
+
+function makeChinaSupabase(rows: HospitalI18nRow[]): SupabaseClient & { upsertCalls: Array<Record<string, unknown>> } {
+  const state = cloneRows(rows);
+  const upsertCalls: Array<Record<string, unknown>> = [];
+
+  const client = {
+    from: vi.fn((table: string) => {
       if (table !== 'hospital_i18n') {
         throw new Error(`Unexpected table: ${table}`);
       }
 
       return {
         select: vi.fn(() => ({
-          eq: selectEq,
+          eq: vi.fn(async (column: string, value: string) => {
+            if (column !== 'hospital_id') {
+              throw new Error(`Unexpected filter column: ${column}`);
+            }
+
+            return {
+              data: state.filter((row) => row.hospital_id === value).map((row) => structuredClone(row)),
+              error: null,
+            };
+          }),
         })),
-        upsert,
+        upsert: vi.fn(async (row: Record<string, unknown>) => {
+          upsertCalls.push(structuredClone(row));
+
+          const nextRow = structuredClone(row);
+          const index = state.findIndex(
+            (existing) => existing.hospital_id === nextRow.hospital_id && existing.locale === nextRow.locale,
+          );
+
+          if (index >= 0) {
+            state[index] = {
+              ...state[index],
+              ...nextRow,
+            };
+          } else {
+            state.push(nextRow);
+          }
+
+          return { error: null };
+        }),
       };
-    });
+    }),
+    upsertCalls,
+  };
 
-    const service = new TranslationWritebackService(
+  return client as SupabaseClient & { upsertCalls: Array<Record<string, unknown>> };
+}
+
+describe('TranslationWritebackService hospital chunk writeback', () => {
+  let chinaSupabase: SupabaseClient & { upsertCalls: Array<Record<string, unknown>> };
+  let service: TranslationWritebackService;
+
+  beforeEach(() => {
+    chinaSupabase = makeChinaSupabase([]);
+    service = new TranslationWritebackService(
       {} as never,
-      {} as never,
-      { from } as never,
+      {} as SupabaseClient,
+      chinaSupabase,
     );
-
-    await service.writeback(
-      makeTask(),
-      {
-        detectedLanguage: 'zh',
-        translations: {
-          en: {
-            name: 'Example Hospital',
-            description: 'English description',
-            departments_info: [
-              {
-                department_name: 'Orthopedics',
-                description: 'Orthopedics description',
-              },
-            ],
-            equipment: [
-              {
-                name: 'Da Vinci Surgical Robot',
-                description: 'English equipment description',
-              },
-            ],
-          },
-          fr: {
-            name: 'Hopital Exemple',
-            description: 'Description francaise',
-          },
-        },
-      },
-    );
-
-    expect(upsert).toHaveBeenCalledTimes(2);
-    for (const [row] of upsert.mock.calls) {
-      expect(row).not.toHaveProperty('updated_at');
-      expect(row).toHaveProperty('hospital_id', 'hospital-1');
-      expect(row).toHaveProperty('locale');
-    }
-
-    const englishRow = upsert.mock.calls.find(([row]) => row.locale === 'en')?.[0];
-    expect(englishRow?.departments_info).toEqual([
-      {
-        department_code: 'orthopedics',
-        department_name: 'Orthopedics',
-        description: 'Orthopedics description',
-        image_url: 'crm/dev/materials-regular/hospital-image/hospital-1/orthopedics.png',
-        key_services: ['骨科服务'],
-        specialists: 12,
-        annual_patients: 3456,
-      },
-    ]);
-    expect(englishRow?.equipment_translated).toEqual([
-      {
-        idx: 0,
-        name: 'Da Vinci Surgical Robot',
-        description: 'English equipment description',
-      },
-    ]);
   });
 
-  it('reuses the existing locale name when an equipment-only translation is written back', async () => {
-    const upsert = vi.fn().mockResolvedValue({ error: null });
-    const selectEq = vi.fn().mockResolvedValue({
-      data: [
-        {
-          locale: 'en',
-          facilities_info: null,
-          name: 'Existing English Hospital',
-          display_name: 'Existing English Hospital',
-        },
-      ],
-      error: null,
-    });
-    const from = vi.fn((table: string) => ({
-      select: vi.fn(() => ({
-        eq: selectEq,
-      })),
-      upsert,
-    }));
-
-    const service = new TranslationWritebackService(
-      {} as never,
-      {} as never,
-      { from } as never,
-    );
+  it('merges translated departments_info onto source entries without dropping media, codes, or stats', async () => {
+    chinaSupabase = makeChinaSupabase([
+      {
+        hospital_id: 'hospital-1',
+        locale: 'en',
+        name: 'Existing English Name',
+        display_name: 'Existing English Name',
+      },
+    ]);
+    service = new TranslationWritebackService({} as never, {} as SupabaseClient, chinaSupabase);
 
     await service.writeback(
-      new TranslationTask({
-        id: 'task-2',
-        sourceDb: 'supabase_china',
-        entityType: 'hospital_info',
-        entityId: 'hospital-1',
-        hospitalType: 'REGULAR',
+      makeTask({
+        chunkKey: 'departments_info',
         fieldsToTranslate: {
-          equipment: [
+          departments_info: [
             {
-              name: '达芬奇手术机器人',
-              image_url: 'crm/dev/materials-regular/hospital-image/hospital-1/equipment.png',
-              description: '设备中文描述',
+              department_code: 'cardiology',
+              department_name: 'Cardiology',
+              description: 'Original description',
+              image_url: 'https://example.com/cardiology.jpg',
+              key_services: ['ECG', 'Cath Lab'],
+              specialists: 12,
+              annual_patients: 34000,
             },
           ],
         },
-        targetLanguages: ['en'],
-        sourceLanguage: null,
-        targetLanguage: null,
-        detectedLanguage: null,
-        status: 'pending',
-        errorMessage: null,
-        retryCount: 0,
-        createdAt: new Date('2026-04-16T00:00:00Z'),
-        startedAt: null,
-        completedAt: null,
       }),
-      {
-        detectedLanguage: 'zh',
-        translations: {
-          en: {
-            equipment: [
-              {
-                name: 'Da Vinci Surgical Robot',
-                description: 'English equipment description',
-              },
-            ],
-          },
+      makeResult({
+        en: {
+          departments_info: [
+            {
+              department_code: 'cardiology',
+              department_name: 'Heart Center',
+              description: 'Translated description',
+            },
+          ],
         },
-      },
+      }),
     );
 
-    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+    expect(chinaSupabase.upsertCalls).toHaveLength(1);
+    expect(chinaSupabase.upsertCalls[0]).not.toHaveProperty('updated_at');
+    expect(chinaSupabase.upsertCalls[0]).toMatchObject({
+      hospital_id: 'hospital-1',
       locale: 'en',
-      name: 'Existing English Hospital',
-      display_name: 'Existing English Hospital',
+      name: 'Existing English Name',
+      display_name: 'Existing English Name',
+      departments_info: [
+        {
+          department_code: 'cardiology',
+          department_name: 'Heart Center',
+          description: 'Translated description',
+          image_url: 'https://example.com/cardiology.jpg',
+          key_services: ['ECG', 'Cath Lab'],
+          specialists: 12,
+          annual_patients: 34000,
+        },
+      ],
+    });
+  });
+
+  it('preserves untouched translated departments when a partial task payload updates only one department', async () => {
+    chinaSupabase = makeChinaSupabase([
+      {
+        hospital_id: 'hospital-1',
+        locale: 'en',
+        name: 'Existing English Name',
+        display_name: 'Existing English Name',
+        departments_info: [
+          {
+            department_code: 'cardiology',
+            department_name: 'Heart Center',
+            description: 'Existing translated cardiology description',
+            image_url: 'https://example.com/cardiology-en.jpg',
+            key_services: ['ECG'],
+            specialists: 12,
+            annual_patients: 34000,
+          },
+          {
+            department_code: 'neurology',
+            department_name: 'Brain Center',
+            description: 'Existing translated neurology description',
+            image_url: 'https://example.com/neurology-en.jpg',
+            key_services: ['EEG'],
+            specialists: 6,
+            annual_patients: 12000,
+          },
+        ],
+      },
+    ]);
+    service = new TranslationWritebackService({} as never, {} as SupabaseClient, chinaSupabase);
+
+    await service.writeback(
+      makeTask({
+        chunkKey: 'departments_info',
+        fieldsToTranslate: {
+          departments_info: [
+            {
+              department_code: 'cardiology',
+              department_name: '心内科',
+              description: '源中文描述',
+              image_url: 'https://example.com/cardiology-zh.jpg',
+              key_services: ['心电图', '介入治疗'],
+              specialists: 14,
+              annual_patients: 36000,
+            },
+          ],
+        },
+      }),
+      makeResult({
+        en: {
+          departments_info: [
+            {
+              department_code: 'cardiology',
+              department_name: 'Cardiology',
+              description: 'Updated translated cardiology description',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(chinaSupabase.upsertCalls).toHaveLength(1);
+    expect(chinaSupabase.upsertCalls[0]).not.toHaveProperty('updated_at');
+    expect(chinaSupabase.upsertCalls[0]).toMatchObject({
+      hospital_id: 'hospital-1',
+      locale: 'en',
+      departments_info: [
+        {
+          department_code: 'cardiology',
+          department_name: 'Cardiology',
+          description: 'Updated translated cardiology description',
+          image_url: 'https://example.com/cardiology-zh.jpg',
+          key_services: ['心电图', '介入治疗'],
+          specialists: 14,
+          annual_patients: 36000,
+        },
+        {
+          department_code: 'neurology',
+          department_name: 'Brain Center',
+          description: 'Existing translated neurology description',
+          image_url: 'https://example.com/neurology-en.jpg',
+          key_services: ['EEG'],
+          specialists: 6,
+          annual_patients: 12000,
+        },
+      ],
+    });
+  });
+
+  it('writes equipment translations into equipment_translated while preserving locale names from a core row', async () => {
+    chinaSupabase = makeChinaSupabase([
+      {
+        hospital_id: 'hospital-1',
+        locale: 'en',
+        name: 'Existing English Name',
+        display_name: 'Existing Display Name',
+        short_description: 'Core row already exists',
+      },
+    ]);
+    service = new TranslationWritebackService({} as never, {} as SupabaseClient, chinaSupabase);
+
+    await service.writeback(
+      makeTask({
+        chunkKey: 'equipment',
+        fieldsToTranslate: {
+          equipment: [
+            {
+              name: 'MRI Scanner',
+              image_url: 'https://example.com/mri.jpg',
+              description: 'Original equipment description',
+            },
+          ],
+        },
+      }),
+      makeResult({
+        en: {
+          equipment: [
+            {
+              idx: 0,
+              name: 'MRI Scanner EN',
+              description: 'Translated equipment description',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(chinaSupabase.upsertCalls).toHaveLength(1);
+    expect(chinaSupabase.upsertCalls[0]).not.toHaveProperty('updated_at');
+    expect(chinaSupabase.upsertCalls[0]).toMatchObject({
+      hospital_id: 'hospital-1',
+      locale: 'en',
+      name: 'Existing English Name',
+      display_name: 'Existing Display Name',
       equipment_translated: [
         {
           idx: 0,
-          name: 'Da Vinci Surgical Robot',
-          description: 'English equipment description',
+          name: 'MRI Scanner EN',
+          description: 'Translated equipment description',
         },
       ],
-    }), { onConflict: 'hospital_id,locale' });
+    });
+  });
+
+  it('creates a departments-only locale row from base locale names when the target locale does not exist yet', async () => {
+    chinaSupabase = makeChinaSupabase([
+      {
+        hospital_id: 'hospital-1',
+        locale: 'zh',
+        name: '原医院名称',
+        display_name: '原医院显示名',
+      },
+    ]);
+    service = new TranslationWritebackService({} as never, {} as SupabaseClient, chinaSupabase);
+
+    await service.writeback(
+      makeTask({
+        chunkKey: 'departments_info',
+        fieldsToTranslate: {
+          departments_info: [
+            {
+              department_code: 'dermatology',
+              department_name: '皮肤科',
+              description: '原始描述',
+              image_url: 'https://example.com/dermatology.jpg',
+              key_services: ['激光'],
+              specialists: 8,
+              annual_patients: 12000,
+            },
+          ],
+        },
+      }),
+      makeResult({
+        en: {
+          departments_info: [
+            {
+              department_code: 'dermatology',
+              department_name: 'Dermatology',
+              description: 'Translated dermatology description',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(chinaSupabase.upsertCalls).toHaveLength(1);
+    expect(chinaSupabase.upsertCalls[0]).not.toHaveProperty('updated_at');
+    expect(chinaSupabase.upsertCalls[0]).toMatchObject({
+      hospital_id: 'hospital-1',
+      locale: 'en',
+      name: '原医院名称',
+      display_name: '原医院显示名',
+      departments_info: [
+        expect.objectContaining({
+          department_code: 'dermatology',
+          image_url: 'https://example.com/dermatology.jpg',
+        }),
+      ],
+    });
+  });
+
+  it('creates an equipment-only locale row from base locale names when the target locale does not exist yet', async () => {
+    chinaSupabase = makeChinaSupabase([
+      {
+        hospital_id: 'hospital-1',
+        locale: 'zh',
+        name: '原医院名称',
+        display_name: '原医院显示名',
+      },
+    ]);
+    service = new TranslationWritebackService({} as never, {} as SupabaseClient, chinaSupabase);
+
+    await service.writeback(
+      makeTask({
+        chunkKey: 'equipment',
+        fieldsToTranslate: {
+          equipment: [
+            {
+              name: 'CT Scanner',
+              image_url: 'https://example.com/ct.jpg',
+              description: '原始设备描述',
+            },
+          ],
+        },
+      }),
+      makeResult({
+        en: {
+          equipment: [
+            {
+              idx: 0,
+              name: 'CT Scanner EN',
+              description: 'Translated CT description',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(chinaSupabase.upsertCalls).toHaveLength(1);
+    expect(chinaSupabase.upsertCalls[0]).not.toHaveProperty('updated_at');
+    expect(chinaSupabase.upsertCalls[0]).toMatchObject({
+      hospital_id: 'hospital-1',
+      locale: 'en',
+      name: '原医院名称',
+      display_name: '原医院显示名',
+      equipment_translated: [
+        {
+          idx: 0,
+          name: 'CT Scanner EN',
+          description: 'Translated CT description',
+        },
+      ],
+    });
   });
 });

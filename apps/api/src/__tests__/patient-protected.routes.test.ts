@@ -18,6 +18,7 @@ vi.mock('../routes/patient-widget-starter.js', () => ({
 vi.mock('../middleware/patient-auth.middleware.js', () => ({
   patientAuthMiddleware: () => async (c: any, next: () => Promise<void>) => {
     c.set('patientSession', { userId: 'patient-1' });
+    c.set('patientSite', 'beauty');
     await next();
   },
 }));
@@ -48,7 +49,7 @@ describe('patientProtectedRoutes', () => {
     const res = await patientProtectedRoutes.request('/me');
 
     expect(res.status).toBe(200);
-    expect(execute).toHaveBeenCalledWith({ patientId: 'patient-1' });
+    expect(execute).toHaveBeenCalledWith({ patientId: 'patient-1', site: 'beauty' });
     expect(await res.json()).toEqual({
       id: 'patient-1',
       patientId: 'patient-1',

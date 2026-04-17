@@ -824,7 +824,7 @@ export function getServices(): AppServices {
       listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
       getHospital: new GetHospitalUseCase(hospitalManagementRepo, userRepo, materialsRepo),
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
-      updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo),
+      updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo, syncService),
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
       generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo, emailService),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
@@ -940,7 +940,7 @@ export function getServices(): AppServices {
       submitIntake: new SubmitIntakeUseCase(),
       selectHospitals: new SelectHospitalsUseCase(caseRepo, chcRepo, conversationRepo),
       skipMedicalForm: new SkipMedicalFormUseCase(caseRepo),
-      submitPatientQCResponse: new SubmitPatientQCResponseUseCase(qcRepo, caseRepo, aiChatSessionRepo, aiChatMessageRepo, txRunner),
+      submitPatientQCResponse: new SubmitPatientQCResponseUseCase(qcRepo, caseRepo, patientRepo, aiChatSessionRepo, aiChatMessageRepo, txRunner),
       getPatientQCResponse: new GetPatientQCResponseUseCase(qcRepo, caseRepo),
 
       patientDashboard: new PatientDashboardUseCase(caseRepo, orderRepo, journeyRepo),

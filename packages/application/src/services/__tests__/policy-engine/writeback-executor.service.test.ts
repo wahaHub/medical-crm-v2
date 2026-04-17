@@ -83,6 +83,7 @@ describe('WritebackExecutorService', () => {
 
     const result = await executor.execute({
       sessionId: 'session-0',
+      site: 'china',
       sessionDbId: 'db-session-0',
       patientId: null,
       assistantMessageId: 'assistant-light-1',
@@ -95,7 +96,7 @@ describe('WritebackExecutorService', () => {
       },
     });
 
-    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-0', expect.objectContaining({
+    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-0', 'china', expect.objectContaining({
       engagementMode: 'LIGHT_DISCOVERY',
     }));
     expect(timelineRepo.append).not.toHaveBeenCalled();
@@ -191,6 +192,7 @@ describe('WritebackExecutorService', () => {
 
     const result = await executor.execute({
       sessionId: 'session-1',
+      site: 'china',
       sessionDbId: 'db-session-1',
       patientId: null,
       assistantMessageId: 'assistant-1',
@@ -297,6 +299,7 @@ describe('WritebackExecutorService', () => {
 
     await executor.execute({
       sessionId: 'session-docs',
+      site: 'china',
       sessionDbId: 'db-session-docs',
       patientId: null,
       assistantMessageId: 'assistant-docs-1',
@@ -309,7 +312,7 @@ describe('WritebackExecutorService', () => {
       },
     });
 
-    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-docs', expect.not.objectContaining({
+    expect(sessionRepo.patchStatus).toHaveBeenCalledWith('session-docs', 'china', expect.not.objectContaining({
       pendingQuestion: expect.anything(),
     }));
   });
@@ -365,6 +368,7 @@ describe('WritebackExecutorService', () => {
 
     const result = await executor.execute({
       sessionId: 'session-handoff',
+      site: 'china',
       sessionDbId: 'db-session-handoff',
       patientId: null,
       assistantMessageId: 'assistant-handoff',

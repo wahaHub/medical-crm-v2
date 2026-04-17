@@ -17,17 +17,25 @@ describe('patientAuthMiddleware', () => {
     return app;
   }
 
-  it('returns 401 when no cookie present', async () => {
+  it('returns 400 when site context is missing', async () => {
     const app = createApp();
     const res = await app.request('/test');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 when no cookie present', async () => {
+    const app = createApp();
+    const res = await app.request('/test', {
+      headers: { 'x-medora-site': 'beauty' },
+    });
     expect(res.status).toBe(401);
   });
 
   it('returns 200 with valid session cookie', async () => {
     const app = createApp();
-    const token = await authService.createSessionToken('user-1');
+    const token = await authService.createSessionToken('user-1', 'beauty');
     const res = await app.request('/test', {
-      headers: { Cookie: `patient_session=${token}` },
+      headers: { Cookie: `patient_session=${token}`, 'x-medora-site': 'beauty' },
     });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -36,9 +44,9 @@ describe('patientAuthMiddleware', () => {
 
   it('returns 401 with expired cookie', async () => {
     const app = createApp();
-    const token = await authService.createSessionToken('user-1', -1);
+    const token = await authService.createSessionToken('user-1', 'beauty', -1);
     const res = await app.request('/test', {
-      headers: { Cookie: `patient_session=${token}` },
+      headers: { Cookie: `patient_session=${token}`, 'x-medora-site': 'beauty' },
     });
     expect(res.status).toBe(401);
   });

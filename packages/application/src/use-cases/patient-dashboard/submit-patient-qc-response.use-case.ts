@@ -3,6 +3,7 @@ import type {
   ICaseRepository,
   IAiChatSessionRepository,
   IAiChatMessageRepository,
+  IPatientRepository,
   TransactionRunner,
   Transaction,
 } from '@medical-crm/domain';
@@ -16,6 +17,7 @@ import { toQCResponseDTO } from '../../mappers/question-collector.mapper.js';
 export interface SubmitPatientQCResponseInput {
   caseId: string;
   patientId: string;
+  site: import('@medical-crm/domain').PatientSite;
   templateId: string;
   responses: unknown;
 }
@@ -24,6 +26,7 @@ export class SubmitPatientQCResponseUseCase {
   constructor(
     private readonly qcRepo: IQuestionCollectorRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly patientRepo: IPatientRepository,
     private readonly aiChatSessionRepo: IAiChatSessionRepository,
     private readonly aiChatMessageRepo: IAiChatMessageRepository,
     private readonly txRunner: TransactionRunner,
@@ -34,6 +37,10 @@ export class SubmitPatientQCResponseUseCase {
       const caseEntity = await this.caseRepo.findById(input.caseId, tx);
       if (!caseEntity) {
         throw new NotFoundError(`Case ${input.caseId} not found`);
+      }
+      const patient = await this.patientRepo.findById(input.patientId, input.site);
+      if (!patient) {
+        throw new NotFoundError(`Patient ${input.patientId} not found`);
       }
       if (caseEntity.patientId !== input.patientId) {
         throw new ForbiddenError('Access denied to this case');
@@ -95,6 +102,7 @@ export class SubmitPatientQCResponseUseCase {
       await this.persistWidgetQuestionnaireConfirmation({
         caseId: input.caseId,
         patientId: input.patientId,
+        site: input.site,
         templateId: input.templateId,
         submittedAt: now,
         tx,
@@ -107,16 +115,18 @@ export class SubmitPatientQCResponseUseCase {
   private async persistWidgetQuestionnaireConfirmation(input: {
     caseId: string;
     patientId: string;
+    site: import('@medical-crm/domain').PatientSite;
     templateId: string;
     submittedAt: Date;
     tx: Transaction;
   }): Promise<void> {
     const widgetSessionId = buildWidgetSessionId(input.patientId, input.caseId);
-    let widgetSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.tx);
+    let widgetSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.site, input.tx);
     if (!widgetSession) {
       widgetSession = await this.aiChatSessionRepo.save(new AiChatSession({
         id: generateId(),
         sessionId: widgetSessionId,
+        site: input.site,
         sessionSecretHash: null,
         difyConversationId: null,
         patientId: input.patientId,
@@ -126,7 +136,7 @@ export class SubmitPatientQCResponseUseCase {
         updatedAt: input.submittedAt,
       }), input.tx);
     } else if (!widgetSession.patientId) {
-      widgetSession = (await this.aiChatSessionRepo.attachPatient(widgetSession.sessionId, input.patientId, input.tx)) ?? widgetSession;
+      widgetSession = (await this.aiChatSessionRepo.attachPatient(widgetSession.sessionId, input.site, input.patientId, input.tx)) ?? widgetSession;
     }
 
     await this.aiChatMessageRepo.create(new AiChatMessage({
@@ -149,7 +159,7 @@ export class SubmitPatientQCResponseUseCase {
       createdAt: input.submittedAt,
     }), input.tx);
 
-    await this.aiChatSessionRepo.patchStatus(widgetSessionId, {
+    await this.aiChatSessionRepo.patchStatus(widgetSessionId, input.site, {
       formStatus: 'COMPLETED',
       lastAssistantMessageAt: input.submittedAt,
     }, input.tx);

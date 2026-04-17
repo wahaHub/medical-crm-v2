@@ -22,12 +22,21 @@ const mockServices = {
   difyApi: {
     createChatMessage: vi.fn(),
   },
+  difyClassifierApi: {
+    createChatMessage: vi.fn(),
+  },
+  difyFaqGroundingApi: {
+    createChatMessage: vi.fn(),
+  },
   patientAuthService: {
     verifySessionToken: vi.fn(),
     createSessionToken: vi.fn(),
   },
   mediaUpload: {
     createUploadIntent: vi.fn(),
+  },
+  storage: {
+    getSignedUrls: vi.fn(),
   },
   initOnboarding: {
     execute: vi.fn(),
@@ -40,6 +49,12 @@ const mockServices = {
     execute: vi.fn(),
   },
   bootstrapAiSync: {
+    execute: vi.fn(),
+  },
+  getTemplateByDisease: {
+    execute: vi.fn(),
+  },
+  getAiPolicyContext: {
     execute: vi.fn(),
   },
 };
@@ -69,6 +84,53 @@ beforeAll(async () => {
 beforeEach(async () => {
   vi.clearAllMocks();
   process.env['DIFY_API_KEY'] = 'integration-dify-key';
+  mockServices.difyClassifierApi.createChatMessage.mockResolvedValue({
+    answer: JSON.stringify({
+      requestClass: 'faq',
+      targetResourceTypes: [],
+      includeProgressionFollowUp: false,
+    }),
+  });
+  mockServices.difyFaqGroundingApi.createChatMessage.mockResolvedValue({
+    answer: JSON.stringify({
+      faqScope: 'GENERAL_ONLY',
+      categories: ['Consultation Process'],
+      groundedContext: 'Grounded FAQ context',
+    }),
+  });
+  mockServices.storage.getSignedUrls.mockResolvedValue({});
+  mockServices.getTemplateByDisease.execute.mockRejectedValue(new Error('default questionnaire unavailable'));
+  mockServices.getAiPolicyContext.execute.mockResolvedValue({
+    chatbot_v2: {
+      source: 'status_snapshot_bridge',
+      scope_id: 'session-1',
+      journey_snapshot: {
+        current_stage: 'EXPLAIN_PROCESS',
+        current_phase: 'active',
+      },
+      allowed_resources: [
+        {
+          resource_type: 'PROCESS_GUIDE',
+          resource_id: 'process-guide:session-1',
+          status: 'available',
+          stage_binding: {
+            stage: 'EXPLAIN_PROCESS',
+            phase: 'active',
+          },
+          visibility: {
+            mode: 'journey',
+          },
+          payload: {
+            title: 'Understand our consultation process',
+          },
+          actions: ['open'],
+        },
+      ],
+    },
+    status_snapshot: {
+      form_status: 'NOT_STARTED',
+    },
+  });
   await cleanupAiChatArtifacts();
 });
 
@@ -100,7 +162,7 @@ describe('Chatbot routes integration', () => {
     const sessionId = `${SESSION_PREFIX}${randomUUID()}`;
     const res = await app.request('/api/v2/chatbot/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-medora-site': 'china' },
       body: JSON.stringify({
         sessionId,
         hospitalType: 'COSMETIC',
@@ -122,7 +184,7 @@ describe('Chatbot routes integration', () => {
     const cookie = res.headers.get('set-cookie');
     expect(cookie).toContain('chatbot_session_secret=');
 
-    const session = await mockServices.aiChatSessionRepo.findBySessionId(sessionId);
+    const session = await mockServices.aiChatSessionRepo.findBySessionId(sessionId, 'china');
     expect(session).not.toBeNull();
     expect(session?.difyConversationId).toBe('conv-int-1');
 
@@ -148,6 +210,7 @@ describe('Chatbot routes integration', () => {
     const session = await mockServices.aiChatSessionRepo.save(new AiChatSession({
       id: randomUUID(),
       sessionId: `${SESSION_PREFIX}${randomUUID()}`,
+      site: 'china',
       sessionSecretHash: createHash('sha256').update(secret).digest('hex'),
       difyConversationId: null,
       patientId: null,
@@ -187,6 +250,7 @@ describe('Chatbot routes integration', () => {
     const res = await app.request(`/api/v2/chatbot/history/${session.sessionId}?limit=10`, {
       method: 'GET',
       headers: {
+        'x-medora-site': 'china',
         Cookie: `chatbot_session_secret=${secret}`,
       },
     });
@@ -211,7 +275,7 @@ describe('Chatbot routes integration', () => {
     const sessionId = `${SESSION_PREFIX}${randomUUID()}`;
     const res = await app.request('/api/v2/chatbot/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-medora-site': 'china' },
       body: JSON.stringify({
         sessionId,
         hospitalType: 'COSMETIC',

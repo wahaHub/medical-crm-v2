@@ -1,3 +1,5 @@
+import type { PatientSite } from '@medical-crm/domain';
+
 type MaybePromise<T> = T | Promise<T>;
 
 export type ToolErrorCode =
@@ -26,6 +28,7 @@ export interface FaqCategorySearchInput {
   query: string;
   locale?: string;
   sessionId?: string;
+  site?: PatientSite;
   hospitalId?: string;
 }
 
@@ -41,6 +44,7 @@ export interface FaqSearchInput {
   query: string;
   locale?: string;
   sessionId?: string;
+  site?: PatientSite;
   hospitalId?: string;
 }
 
@@ -59,6 +63,7 @@ export interface FaqGetByIdsInput {
   ids: string[];
   locale?: string;
   sessionId?: string;
+  site?: PatientSite;
   hospitalId?: string;
 }
 
@@ -68,6 +73,7 @@ export interface FaqGetByIdsOutput {
 
 export interface RecordsUploadInput {
   sessionId: string;
+  site?: PatientSite;
   turnId?: string;
   attachments?: Array<Record<string, unknown>>;
 }
@@ -79,6 +85,7 @@ export interface RecordsUploadOutput {
 
 export interface RecordsSaveInput {
   sessionId: string;
+  site?: PatientSite;
   turnId?: string;
   records?: Array<Record<string, unknown>>;
 }
@@ -90,6 +97,7 @@ export interface RecordsSaveOutput {
 
 export interface RecordsStatusInput {
   sessionId: string;
+  site?: PatientSite;
 }
 
 export interface RecordsStatusOutput {
@@ -98,6 +106,7 @@ export interface RecordsStatusOutput {
 
 export interface RecommendationGenerateInput {
   sessionId: string;
+  site?: PatientSite;
   turnId?: string;
 }
 
@@ -107,6 +116,7 @@ export interface RecommendationGenerateOutput {
 
 export interface RecommendationPickInput {
   sessionId: string;
+  site?: PatientSite;
   turnId?: string;
   recommendationId: string;
 }
@@ -117,6 +127,7 @@ export interface RecommendationPickOutput {
 
 export interface RecommendationStatusInput {
   sessionId: string;
+  site?: PatientSite;
 }
 
 export interface RecommendationStatusOutput {
@@ -125,6 +136,7 @@ export interface RecommendationStatusOutput {
 
 export interface ConsultScheduleInput {
   sessionId: string;
+  site?: PatientSite;
   turnId?: string;
   slotId: string;
 }
@@ -136,6 +148,7 @@ export interface ConsultScheduleOutput {
 
 export interface ConsultStatusInput {
   sessionId: string;
+  site?: PatientSite;
 }
 
 export interface ConsultStatusOutput {
@@ -144,6 +157,7 @@ export interface ConsultStatusOutput {
 
 export interface StatusQueryInput {
   sessionId: string;
+  site?: PatientSite;
 }
 
 export interface StatusQueryOutput {
@@ -152,6 +166,7 @@ export interface StatusQueryOutput {
 
 export interface HandoffCreateInput {
   sessionId: string;
+  site?: PatientSite;
   turnId?: string;
   reason: string;
 }

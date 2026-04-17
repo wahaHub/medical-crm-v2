@@ -45,6 +45,7 @@ export function applySecurityMiddleware(app: Hono) {
   const allowedOrigins = [
     process.env.ADMIN_ORIGIN,
     process.env.HOSPITAL_ORIGIN,
+    process.env.BEAUTY_ORIGIN,
     process.env.CHINA_ORIGIN,
   ].filter((origin): origin is string => Boolean(origin));
 
@@ -53,7 +54,7 @@ export function applySecurityMiddleware(app: Hono) {
   app.use('*', cors({
     origin: allowedOrigins,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+    allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Medora-Site'],
     credentials: true,
     maxAge: 86400,
   }));

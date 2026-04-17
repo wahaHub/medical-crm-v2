@@ -149,6 +149,7 @@ app.openapi(aiPolicyContextRoute, async (c) => {
   const svc = getServices();
   const result = await svc.getAiPolicyContext.execute({
     sessionId: parsed.body.session_id,
+    site: parsed.body.site ?? 'china',
     userMessage: parsed.body.payload?.user_message ?? '',
     pageContext: parsed.body.payload?.page_context ?? null,
   });
@@ -176,6 +177,7 @@ app.openapi(aiPolicyDecideRoute, async (c) => {
   const svc = getServices();
   const result = await svc.decideAiPolicy.execute({
     sessionId: parsed.body.session_id,
+    site: parsed.body.site ?? 'china',
     userMessage: parsed.body.payload?.user_message ?? '',
     extraction: readAiPolicyExtraction(parsed.body.payload),
     pageContext: parsed.body.payload?.page_context ?? null,
@@ -207,6 +209,7 @@ app.openapi(aiPolicyWritebackRoute, async (c) => {
   const decision = readAiPolicyWritebackDecision(payload.policy_decision);
   const result = await svc.applyAiPolicyWriteback.execute({
     sessionId: parsed.body.session_id,
+    site: parsed.body.site ?? 'china',
     assistantMessageId: payload.assistant_message_id,
     idempotencyKey: payload.idempotency_key,
     policyDecision: {

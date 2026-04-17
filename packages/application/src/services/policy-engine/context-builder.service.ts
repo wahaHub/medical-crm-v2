@@ -12,6 +12,7 @@ import type {
   IAiFollowupTriggerRepository,
   IAiHandoffRepository,
   IAiUserProfileRepository,
+  PatientSite,
 } from '@medical-crm/domain';
 import type { AiPolicyEngagementMode } from '../../dtos/ai-policy.dto.js';
 import { deriveJourneyTruthFromStatusSnapshot } from '../chatbot-v2/journey-truth.service.js';
@@ -21,6 +22,7 @@ import type { ChatbotV2FoundationState, JourneyTruth } from '../chatbot-v2/types
 
 export interface BuildPolicyContextInput {
   sessionId: string;
+  site: PatientSite;
   userMessage: string;
   depth?: 'light' | 'full';
   pageContext?: PolicyPageContext | null;
@@ -90,7 +92,7 @@ export class ContextBuilderService {
   async build(input: BuildPolicyContextInput & { depth?: 'full' }): Promise<FullPolicyConversationContext>;
   async build(input: BuildPolicyContextInput): Promise<LightPolicyConversationContext | FullPolicyConversationContext> {
     const depth = input.depth ?? 'full';
-    const session = await this.sessionRepo.findBySessionId(input.sessionId);
+    const session = await this.sessionRepo.findBySessionId(input.sessionId, input.site);
     if (!session) {
       throw new Error(`AI chat session not found: ${input.sessionId}`);
     }

@@ -26,6 +26,7 @@ describe('RestoreGuestSessionUseCase', () => {
       verifyMagicLinkToken: vi.fn(),
       verifyGuestRestoreCookie: vi.fn().mockResolvedValue({
         userId: 'patient-1',
+        site: 'beauty',
         purpose: 'guest-restore-cookie',
         restoreToken: 'restore-token-abc',
         exp: Math.floor(Date.now() / 1000) + 3600,
@@ -44,12 +45,13 @@ describe('RestoreGuestSessionUseCase', () => {
     const result = await useCase.execute({
       restoreToken: 'restore-token-abc',
       restoreCookie: 'restore-cookie-abc',
+      site: 'beauty',
     });
 
-    expect(mockAuthService.verifyGuestRestoreCookie).toHaveBeenCalledWith('restore-cookie-abc', 'restore-token-abc');
-    expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1');
-    expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-1');
-    expect(mockAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1');
+    expect(mockAuthService.verifyGuestRestoreCookie).toHaveBeenCalledWith('restore-cookie-abc', 'restore-token-abc', 'beauty');
+    expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(result).toEqual({
       patientId: 'patient-1',
       sessionToken: 'session-token-new',
@@ -61,14 +63,21 @@ describe('RestoreGuestSessionUseCase', () => {
   it('throws when patient no longer exists', async () => {
     mockPatientRepo.findById.mockResolvedValue(null);
 
-    await expect(useCase.execute({ restoreToken: 'restore-token-abc', restoreCookie: 'restore-cookie-abc' }))
+    await expect(useCase.execute({ restoreToken: 'restore-token-abc', restoreCookie: 'restore-cookie-abc', site: 'beauty' }))
       .rejects.toThrow('Patient not found');
   });
 
   it('wraps restore artifact failures as auth errors', async () => {
     mockAuthService.verifyGuestRestoreCookie.mockRejectedValue(new Error('Restore token mismatch'));
 
-    await expect(useCase.execute({ restoreToken: 'restore-token-abc', restoreCookie: 'restore-cookie-abc' }))
+    await expect(useCase.execute({ restoreToken: 'restore-token-abc', restoreCookie: 'restore-cookie-abc', site: 'beauty' }))
+      .rejects.toBeInstanceOf(RestoreGuestSessionAuthError);
+  });
+
+  it('rejects restore attempts on the wrong site', async () => {
+    mockAuthService.verifyGuestRestoreCookie.mockRejectedValue(new Error('Invalid restore cookie'));
+
+    await expect(useCase.execute({ restoreToken: 'restore-token-abc', restoreCookie: 'restore-cookie-abc', site: 'china' }))
       .rejects.toBeInstanceOf(RestoreGuestSessionAuthError);
   });
 });

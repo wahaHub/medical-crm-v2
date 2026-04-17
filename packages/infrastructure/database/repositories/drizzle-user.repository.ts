@@ -12,7 +12,12 @@ export class DrizzleUserRepository implements IUserRepository {
     while (current) {
       if (current instanceof Error) {
         const message = current.message.toLowerCase();
-        if (message.includes('users_email_key') || message.includes('duplicate key value')) {
+        if (
+          message.includes('users_email_key')
+          || message.includes('users_non_patient_email_key')
+          || message.includes('email_role_conflict')
+          || message.includes('duplicate key value')
+        ) {
           return true;
         }
       }

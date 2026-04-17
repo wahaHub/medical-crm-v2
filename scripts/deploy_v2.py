@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -113,6 +114,12 @@ class CommandError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class VercelDeployContext:
+    cwd: Path
+    env: dict[str, str]
+
+
 def print_header(message: str) -> None:
     print(f"\n==> {message}")
 
@@ -123,6 +130,7 @@ def run(
     cwd: Path | None = None,
     capture_output: bool = False,
     dry_run: bool = False,
+    env: dict[str, str] | None = None,
 ) -> str:
     rendered = " ".join(shlex.quote(part) for part in cmd)
     prefix = f"[dry-run] " if dry_run else ""
@@ -136,6 +144,7 @@ def run(
             cmd,
             cwd=str(cwd) if cwd else None,
             text=True,
+            env={**os.environ, **env} if env else None,
             check=False,
         )
         if completed.returncode != 0:
@@ -146,6 +155,7 @@ def run(
         cmd,
         cwd=str(cwd) if cwd else None,
         text=True,
+        env={**os.environ, **env} if env else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         bufsize=1,
@@ -296,6 +306,26 @@ def parse_vercel_url(output: str) -> str:
     return urls[-1]
 
 
+def resolve_vercel_deploy_context(repo_root: Path, project_dir: Path) -> VercelDeployContext:
+    project_link_path = project_dir / ".vercel" / "project.json"
+    if not project_link_path.exists():
+        return VercelDeployContext(cwd=project_dir, env={})
+
+    project_link = json.loads(project_link_path.read_text(encoding="utf-8"))
+    project_id = project_link.get("projectId")
+    org_id = project_link.get("orgId")
+    if not project_id or not org_id:
+        return VercelDeployContext(cwd=project_dir, env={})
+
+    return VercelDeployContext(
+        cwd=repo_root,
+        env={
+            "VERCEL_PROJECT_ID": str(project_id),
+            "VERCEL_ORG_ID": str(org_id),
+        },
+    )
+
+
 def deploy_frontend(
     repo_root: Path,
     target: FrontendTarget,
@@ -304,13 +334,15 @@ def deploy_frontend(
 ) -> str:
     project_dir = repo_root / target.relative_dir
     check_vercel_envs(project_dir, scope, target.required_envs, dry_run)
+    deploy_context = resolve_vercel_deploy_context(repo_root, project_dir)
 
     print_header(f"Deploying {target.name} to Vercel")
     output = run(
         ["vercel", "deploy", "--prod", "--yes", "--archive=tgz", "--scope", scope],
-        cwd=project_dir,
+        cwd=deploy_context.cwd,
         capture_output=True,
         dry_run=dry_run,
+        env=deploy_context.env,
     )
     if dry_run:
         return f"https://{target.name}.example.vercel.app"

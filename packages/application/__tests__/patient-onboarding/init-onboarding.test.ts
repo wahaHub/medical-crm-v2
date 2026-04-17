@@ -83,6 +83,7 @@ describe('InitOnboardingUseCase', () => {
 
     const result = await useCase.execute({
       email: 'new@test.com',
+      site: 'beauty',
       name: 'New User',
       phone: '+1234',
       age: '34',
@@ -98,8 +99,12 @@ describe('InitOnboardingUseCase', () => {
       preferredLanguage: 'en',
     });
 
-    expect(mockUserEmailLookupRepo.findEmailState).toHaveBeenCalledWith('new@test.com');
+    expect(mockUserEmailLookupRepo.findEmailState).toHaveBeenCalledWith('new@test.com', 'beauty');
     expect(mockPatientRepo.createTempPatient).toHaveBeenCalledOnce();
+    expect(mockPatientRepo.createTempPatient).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'new@test.com',
+      site: 'beauty',
+    }));
     expect(mockCaseRepo.findByPatientId).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
     expect(mockConversationRepo.save).toHaveBeenCalledOnce();
@@ -110,6 +115,8 @@ describe('InitOnboardingUseCase', () => {
     });
     expect(result.patientId).toBe('patient-1');
     expect(result.nextStep).toBe('select-hospitals');
+    expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
+    expect(mockAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(result.token).toBe('jwt-token-123');
     expect(result.restoreToken).toBe('restore-token-123');
     expect(result.isExistingPatient).toBe(false);
@@ -137,12 +144,14 @@ describe('InitOnboardingUseCase', () => {
 
     const result = await useCase.execute({
       email: 'existing@test.com',
+      site: 'beauty',
       name: 'Existing Patient',
       phone: '+1234',
       preferredLanguage: 'en',
       authenticatedPatientId: 'patient-123',
     });
 
+    expect(mockPatientRepo.findByEmail).toHaveBeenCalledWith('existing@test.com', 'beauty');
     expect(mockPatientRepo.createTempPatient).not.toHaveBeenCalled();
     expect(mockCaseRepo.findByPatientId).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
@@ -165,6 +174,7 @@ describe('InitOnboardingUseCase', () => {
 
     await expect(useCase.execute({
       email: 'brand-new@test.com',
+      site: 'beauty',
       name: 'Existing Patient',
       phone: '+1234',
       preferredLanguage: 'en',
@@ -181,13 +191,14 @@ describe('InitOnboardingUseCase', () => {
 
     const result = await useCase.execute({
       email: 'brand-new@test.com',
+      site: 'beauty',
       name: 'Recovered Patient',
       phone: '+1234',
       preferredLanguage: 'en',
       authenticatedPatientId: 'patient-deleted-123',
     });
 
-    expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-deleted-123');
+    expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-deleted-123', 'beauty');
     expect(mockPatientRepo.createTempPatient).toHaveBeenCalledOnce();
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
     expect(result.patientId).toBe('patient-1');
@@ -199,6 +210,7 @@ describe('InitOnboardingUseCase', () => {
 
     await expect(useCase.execute({
       email: 'existing@test.com',
+      site: 'beauty',
       name: 'Existing Patient',
       phone: '+1234',
       preferredLanguage: 'en',
@@ -213,6 +225,7 @@ describe('InitOnboardingUseCase', () => {
 
     await expect(useCase.execute({
       email: 'existing-hospital@test.com',
+      site: 'beauty',
       name: 'Existing Hospital User',
       phone: '+1234',
       preferredLanguage: 'en',
@@ -220,5 +233,31 @@ describe('InitOnboardingUseCase', () => {
 
     expect(mockPatientRepo.createTempPatient).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('treats patient identity lookups as site-aware', async () => {
+    mockEmailState({ state: 'PATIENT', userId: 'patient-china-123', site: 'china' });
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-china-123',
+      patientCode: 'P123',
+      preferredLanguage: 'en',
+    });
+
+    await expect(useCase.execute({
+      email: 'shared@test.com',
+      site: 'china',
+      name: 'China Patient',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      authenticatedPatientId: 'patient-china-123',
+    })).resolves.toMatchObject({
+      patientId: 'patient-china-123',
+      isExistingPatient: true,
+    });
+
+    expect(mockUserEmailLookupRepo.findEmailState).toHaveBeenCalledWith('shared@test.com', 'china');
+    expect(mockPatientRepo.findByEmail).not.toHaveBeenCalled();
+    expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-china-123', 'china');
+    expect(mockAuthService.createGuestRestoreArtifacts).toHaveBeenCalledWith('patient-china-123', 'china');
   });
 });

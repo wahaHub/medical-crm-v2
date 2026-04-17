@@ -6,6 +6,23 @@ const migrationPath = fileURLToPath(new URL('../../database/migrations/0025_tran
 const bootstrapPath = fileURLToPath(new URL('../../database/full-bootstrap.sql', import.meta.url));
 
 describe('translation task migration safety', () => {
+  function getBootstrapLegacyMergeBlock(bootstrap: string) {
+    const start = bootstrap.indexOf('-- Migration: 0024_unified_translation.sql');
+    const end = bootstrap.indexOf('-- Migration: 002_create_message_tasks.sql');
+
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const translationBlock = bootstrap.slice(start, end);
+    const mergeStart = translationBlock.indexOf('-- Merge duplicate pending/processing rows using the chunk-aware, single-language identity.');
+    const mergeEnd = translationBlock.indexOf('-- Add translations jsonb to CRM tables');
+
+    expect(mergeStart).toBeGreaterThan(-1);
+    expect(mergeEnd).toBeGreaterThan(mergeStart);
+
+    return translationBlock.slice(mergeStart, mergeEnd);
+  }
+
   it('splits legacy backlog rows into single-language rows before dedupe', () => {
     const migration = readFileSync(migrationPath, 'utf8');
 
@@ -25,6 +42,11 @@ describe('translation task migration safety', () => {
 
   it('keeps target_language not null in the synced bootstrap SQL', () => {
     const bootstrap = readFileSync(bootstrapPath, 'utf8');
+    const mergeBlock = getBootstrapLegacyMergeBlock(bootstrap);
+
     expect(bootstrap).toContain('ALTER TABLE translation_tasks ALTER COLUMN target_language SET NOT NULL;');
+    expect(mergeBlock).toContain('target_language = grouped.target_language');
+    expect(mergeBlock).toContain('target_languages = ARRAY[grouped.target_language]::text[]');
+    expect(mergeBlock).not.toContain('target_language = CASE');
   });
 });

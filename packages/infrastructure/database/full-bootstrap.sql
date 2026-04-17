@@ -437,12 +437,14 @@ DELETE FROM translation_tasks tt
 USING legacy_backlog lb
 WHERE tt.id = lb.id;
 
--- Merge duplicate pending/processing rows created under the old per-language queue model
--- into the new unified one-row-per-entity model.
+-- Merge duplicate pending/processing rows using the chunk-aware, single-language identity.
 WITH grouped AS (
   SELECT
+    source_db,
     entity_type,
     entity_id,
+    chunk_key,
+    target_language,
     CASE
       WHEN COUNT(DISTINCT hospital_type) = 1 THEN MIN(hospital_type)
       ELSE NULL
@@ -455,10 +457,6 @@ WITH grouped AS (
       WHEN BOOL_OR(status = 'processing') THEN 'processing'
       ELSE 'pending'
     END AS merged_status,
-    COALESCE(
-      ARRAY_AGG(DISTINCT target_language) FILTER (WHERE target_language IS NOT NULL),
-      '{}'::text[]
-    ) AS merged_target_languages,
     MAX(retry_count) AS merged_retry_count,
     (
       ARRAY_AGG(
@@ -471,20 +469,17 @@ WITH grouped AS (
     )[1] AS keep_id
   FROM translation_tasks
   WHERE status IN ('pending', 'processing')
-  GROUP BY entity_type, entity_id
+  GROUP BY source_db, entity_type, entity_id, chunk_key, target_language
   HAVING COUNT(*) > 1
 ), merged_keep_rows AS (
   UPDATE translation_tasks tt
   SET
     hospital_type = grouped.merged_hospital_type,
     source_language = grouped.merged_source_language,
-    target_language = CASE
-      WHEN COALESCE(array_length(grouped.merged_target_languages, 1), 0) = 1
-        THEN grouped.merged_target_languages[1]
-      ELSE NULL
-    END,
-    target_languages = grouped.merged_target_languages,
-    source_db = 'crm',
+    target_language = grouped.target_language,
+    target_languages = ARRAY[grouped.target_language]::text[],
+    source_db = grouped.source_db,
+    chunk_key = grouped.chunk_key,
     status = grouped.merged_status,
     retry_count = grouped.merged_retry_count,
     error_message = NULL
@@ -494,8 +489,11 @@ WITH grouped AS (
 )
 DELETE FROM translation_tasks tt
 USING grouped
-WHERE tt.entity_type = grouped.entity_type
+WHERE tt.source_db = grouped.source_db
+  AND tt.entity_type = grouped.entity_type
   AND tt.entity_id = grouped.entity_id
+  AND tt.chunk_key = grouped.chunk_key
+  AND tt.target_language = grouped.target_language
   AND tt.status IN ('pending', 'processing')
   AND tt.id <> grouped.keep_id;
 

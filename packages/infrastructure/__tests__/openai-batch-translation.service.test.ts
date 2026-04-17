@@ -132,4 +132,16 @@ describe('OpenAIBatchTranslationService', () => {
       }),
     ).rejects.toThrow('OpenAI response is missing required fields');
   });
+
+  it('includes request context when JSON parsing fails', async () => {
+    const mockClient = makeMockClient('{"detected_language": "zh"');
+    service['client'] = mockClient as never;
+
+    await expect(
+      service.translateBatch({
+        fields: { title: '鼻子整形', description: '改变鼻子形状的手术。' },
+        targetLanguages: ['en', 'ko'],
+      }),
+    ).rejects.toThrow(/payloadSize=.*fieldKeys=title,description.*targetLanguages=en,ko.*rawPreview=/);
+  });
 });

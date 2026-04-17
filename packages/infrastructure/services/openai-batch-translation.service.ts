@@ -35,17 +35,31 @@ export class OpenAIBatchTranslationService implements IBatchTranslationService {
     });
 
     const raw = response.choices[0]?.message?.content;
+    const context = this.buildRequestContext(fields, targetLanguages, raw);
     if (!raw) {
-      throw new Error('OpenAI returned an empty response for batch translation');
+      throw new Error(`OpenAI returned an empty response for batch translation (${context})`);
     }
 
-    const parsed = JSON.parse(raw) as {
+    let parsed: {
       detected_language?: string;
       translations?: Record<string, Record<string, unknown>>;
     };
+    try {
+      parsed = JSON.parse(raw) as {
+        detected_language?: string;
+        translations?: Record<string, Record<string, unknown>>;
+      };
+    } catch (err) {
+      const parseMessage = err instanceof Error ? err.message : 'Unknown JSON parse error';
+      throw new Error(
+        `Failed to parse OpenAI batch translation response (${context}): ${parseMessage}`,
+      );
+    }
 
     if (!parsed.detected_language || !parsed.translations) {
-      throw new Error('OpenAI response is missing required fields: detected_language or translations');
+      throw new Error(
+        `OpenAI response is missing required fields: detected_language or translations (${context})`,
+      );
     }
 
     const detectedLanguage = parsed.detected_language;
@@ -55,5 +69,22 @@ export class OpenAIBatchTranslationService implements IBatchTranslationService {
     delete translations[detectedLanguage];
 
     return { detectedLanguage, translations };
+  }
+
+  private buildRequestContext(
+    fields: Record<string, unknown>,
+    targetLanguages: string[],
+    raw: string | null | undefined,
+  ): string {
+    const payloadSize = JSON.stringify(fields).length;
+    const fieldKeys = Object.keys(fields).join(',') || '(none)';
+    const rawPreview = raw ? raw.slice(0, 120) : '(empty)';
+
+    return [
+      `payloadSize=${payloadSize}`,
+      `fieldKeys=${fieldKeys}`,
+      `targetLanguages=${targetLanguages.join(',') || '(none)'}`,
+      `rawPreview=${rawPreview}`,
+    ].join(' ');
   }
 }

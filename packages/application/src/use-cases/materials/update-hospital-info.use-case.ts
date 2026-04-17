@@ -1,51 +1,25 @@
 import type { IMaterialsRepository, MaterialsHospitalInfo } from '@medical-crm/domain';
+import { TRANSLATION_CONFIG } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
+import { buildHospitalInfoTranslationChunks } from './hospital-info-translation-chunks.js';
 
 export type UpdateHospitalInfoInput = Partial<MaterialsHospitalInfo>;
-
-function pickDefinedFields(fields: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined) result[key] = value;
-  }
-  return result;
-}
-
-function buildDepartmentsInfo(input: UpdateHospitalInfoInput): Array<Record<string, unknown>> | undefined {
-  const keys = new Set<string>();
-  for (const department of input.departments ?? []) keys.add(department);
-  for (const key of Object.keys(input.departmentDescriptions ?? {})) keys.add(key);
-  for (const key of Object.keys(input.departmentKeyServices ?? {})) keys.add(key);
-  for (const key of Object.keys(input.departmentStats ?? {})) keys.add(key);
-  for (const key of Object.keys(input.departmentImages ?? {})) keys.add(key);
-
-  if (keys.size === 0) return undefined;
-
-  return Array.from(keys).map((code) => ({
-    department_code: code,
-    department_name: code,
-    description: input.departmentDescriptions?.[code] ?? '',
-    image_url: input.departmentImages?.[code] ?? '',
-    key_services: input.departmentKeyServices?.[code] ?? [],
-    specialists: input.departmentStats?.[code]?.specialists ?? null,
-    annual_patients: input.departmentStats?.[code]?.annualPatients ?? null,
-  }));
-}
 
 function buildHospitalInfoTranslationFields(
   input: UpdateHospitalInfoInput,
   sourceDb: 'supabase_beauty' | 'supabase_china',
 ): Record<string, unknown> {
   if (sourceDb === 'supabase_beauty') {
-    return pickDefinedFields({
+    const fields: Record<string, unknown> = {
       tagline: input.tagline ?? input.taglineEn,
       description: input.description ?? input.descriptionEn,
-    });
+    };
+    return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
   }
 
-  return pickDefinedFields({
+  const fields: Record<string, unknown> = {
     name: input.name ?? input.nameEn,
     tagline: input.tagline ?? input.taglineEn,
     description: input.description ?? input.descriptionEn,
@@ -55,9 +29,9 @@ function buildHospitalInfoTranslationFields(
     tier: input.tier,
     ownership_type: input.ownershipType,
     core_specialties: input.coreSpecialties,
-    departments_info: buildDepartmentsInfo(input),
-    equipment: input.equipment,
-  });
+  };
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+}
 }
 
 export class UpdateHospitalInfoUseCase {
@@ -76,15 +50,32 @@ export class UpdateHospitalInfoUseCase {
 
     const hospitalType = await this.resolveHospitalType(hospitalId);
     const sourceDb = hospitalType === 'REGULAR' ? 'supabase_china' as const : 'supabase_beauty' as const;
-    const fieldsToTranslate = buildHospitalInfoTranslationFields(input, sourceDb);
 
-    if (Object.keys(fieldsToTranslate).length > 0) {
-      await this.translationTaskService.enqueue({
-        sourceDb,
-        entityType: 'hospital_info',
-        entityId: hospitalId,
-        fieldsToTranslate,
-      });
+    if (sourceDb === 'supabase_china') {
+      const chunks = buildHospitalInfoTranslationChunks(input);
+      for (const chunk of chunks) {
+        for (const targetLanguage of TRANSLATION_CONFIG.hospitalInfoTargetLanguages) {
+          await this.translationTaskService.enqueue({
+            sourceDb,
+            entityType: 'hospital_info',
+            entityId: hospitalId,
+            chunkKey: chunk.chunkKey,
+            fieldsToTranslate: chunk.fieldsToTranslate,
+            targetLanguage,
+          });
+        }
+      }
+    } else {
+      const fieldsToTranslate = buildHospitalInfoTranslationFields(input, sourceDb);
+
+      if (Object.keys(fieldsToTranslate).length > 0) {
+        await this.translationTaskService.enqueue({
+          sourceDb,
+          entityType: 'hospital_info',
+          entityId: hospitalId,
+          fieldsToTranslate,
+        });
+      }
     }
 
     return saved;

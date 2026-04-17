@@ -3,6 +3,7 @@ import type { SupportedLanguage } from './translation.js';
 export const TRANSLATION_CONFIG = {
   supportedLanguages: ['zh', 'en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as SupportedLanguage[],
   defaultTargetLanguages: ['zh', 'en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as SupportedLanguage[],
+  hospitalInfoTargetLanguages: ['en', 'ru', 'fr', 'es', 'de', 'ar', 'id', 'vi'] as SupportedLanguage[],
   translatableFields: {
     support_ticket: ['subject', 'description', 'resolutionNote'],
     support_ticket_reply: ['content'],

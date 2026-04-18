@@ -19,9 +19,9 @@ export function buildPatientOnboardingEmail(params: {
 }) {
   return buildTransactionalEmail({
     locale: params.locale ?? 'en',
-    subject: 'Your Medora patient case is open',
+    subject: 'Your patient case is open',
     preheader: 'We received your consultation request and opened your Medora patient case.',
-    eyebrow: 'Consultation Request',
+    eyebrow: 'Patient Case',
     title: 'Your patient case is open',
     intro: [
       'We received your consultation request and created your Medora patient case.',

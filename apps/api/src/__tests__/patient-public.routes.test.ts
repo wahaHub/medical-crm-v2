@@ -29,6 +29,7 @@ describe('patientPublicRoutes', () => {
   function createBaseServices(overrides: Record<string, unknown> = {}) {
     return {
       initOnboarding: { execute: vi.fn() },
+      sendPatientLoginLink: { execute: vi.fn().mockResolvedValue({ delivery: 'dashboard-login', token: 'email-token-123' }) },
       patientAuthService: {
         verifySessionToken: vi.fn(),
       },
@@ -254,6 +255,10 @@ describe('patientPublicRoutes', () => {
       'beauty',
       'dify-conversation-1',
     );
+    expect(services.sendPatientLoginLink.execute).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      site: 'beauty',
+    });
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
         faqGrounding: JSON.stringify({
@@ -293,6 +298,81 @@ describe('patientPublicRoutes', () => {
         ],
       }),
     );
+  });
+
+  it('does not send a follow-up onboarding email for existing patients', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'messages-ready',
+      token: 'session-token-123',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+      isExistingPatient: true,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const services = createBaseServices({
+      initOnboarding: { execute },
+    });
+    mockGetServices.mockReturnValue(services);
+
+    const res = await requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'existing@example.com',
+        name: 'Existing User',
+        preferredLanguage: 'en',
+        captchaToken: 'captcha-token',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(services.sendPatientLoginLink.execute).not.toHaveBeenCalled();
+  });
+
+  it('does not send a duplicate onboarding email when the submission is already backed by a register token', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'select-hospitals',
+      token: 'session-token-123',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+      isExistingPatient: false,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const services = createBaseServices({
+      initOnboarding: { execute },
+      verifyPatientEntryToken: {
+        execute: vi.fn().mockResolvedValue({
+          email: 'new@example.com',
+          purpose: 'patient-register',
+        }),
+      },
+    });
+    mockGetServices.mockReturnValue(services);
+
+    const res = await requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        registerToken: 'patient-register-token',
+        captchaToken: 'captcha-token',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(services.sendPatientLoginLink.execute).not.toHaveBeenCalled();
   });
 
   it('does not overwrite an existing ai-v1 widget starter when the session has already been seeded', async () => {

@@ -162,6 +162,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
     patientAuthService,
     getProfile,
     verifyPatientEntryToken,
+    sendPatientLoginLink,
   } = getServices();
 
   let authenticatedPatientId: string | undefined;
@@ -261,6 +262,14 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
     });
   } catch (error) {
     console.warn('Failed to seed initial widget chatbot message:', error);
+  }
+
+  if (!result.isExistingPatient && !body.registerToken) {
+    try {
+      await sendPatientLoginLink.execute({ email: body.email, site });
+    } catch (error) {
+      console.warn('Failed to send onboarding follow-up email:', error);
+    }
   }
 
   return c.json({

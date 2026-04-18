@@ -19,6 +19,8 @@ import type {
 import {
   chatbotV3ChatRequestSchema,
   chatbotV3ChatResponseSchema,
+  chatbotV3UploadInitRequestSchema,
+  chatbotV3UploadInitResponseSchema,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
 import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
@@ -152,6 +154,57 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     setChatbotSessionSecretCookie(c, authorization.sessionSecretToSet);
   }
   return c.json(response);
+});
+
+chatbotV3PublicRoutes.post('/api/v3/chatbot/uploads/init', async (c) => {
+  const body = chatbotV3UploadInitRequestSchema.parse(await c.req.json());
+  const services = getServices();
+  let site;
+  try {
+    site = resolvePatientSiteContext(c);
+  } catch (error) {
+    if (error instanceof PatientSiteContextError) {
+      return c.json({ error: error.message }, 400);
+    }
+    throw error;
+  }
+  let session = await services.aiChatSessionRepo.findBySessionId(body.sessionId, site);
+  if (!session) {
+    return c.json({ error: 'Chatbot session not found' }, 404);
+  }
+  const authorization = await authorizeOrBootstrapSessionAccess(c, services, session);
+  if (!authorization.ok) {
+    return authorization.response;
+  }
+  session = authorization.session;
+
+  const result = await services.mediaUpload.createUploadIntent({
+    policyId: 'chatbot_request_docs',
+    ownerType: 'ai_chat_session',
+    ownerId: session.id,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+  const response = chatbotV3UploadInitResponseSchema.parse({
+    upload: {
+      uploadUrl: result.uploadUrl,
+      storageKey: result.storageKey,
+      expiresIn: result.expiresIn,
+    },
+    asset: {
+      fileName: result.asset.fileName,
+      fileSize: result.asset.fileSize,
+      mimeType: result.asset.mimeType,
+      storageKey: result.asset.storageKey,
+    },
+  });
+
+  if (authorization.sessionSecretToSet) {
+    setChatbotSessionSecretCookie(c, authorization.sessionSecretToSet);
+  }
+
+  return c.json(response, 201);
 });
 
 function getChatbotV3Runtime(): ConversationOrchestratorV3RuntimeService {

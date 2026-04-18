@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   chatbotV3ChatRequestSchema,
   chatbotV3ChatResponseSchema,
+  chatbotV3UploadInitRequestSchema,
+  chatbotV3UploadInitResponseSchema,
 } from '../../chatbot-v3/chat.schema';
 
 describe('chatbot-v3 chat schemas', () => {
@@ -80,6 +82,29 @@ describe('chatbot-v3 chat schemas', () => {
     }).success).toBe(true);
   });
 
+  it('accepts the v3 upload init request and response contract', () => {
+    expect(chatbotV3UploadInitRequestSchema.safeParse({
+      sessionId: 'session-123',
+      fileName: 'report.pdf',
+      fileSize: 2048,
+      mimeType: 'application/pdf',
+    }).success).toBe(true);
+
+    expect(chatbotV3UploadInitResponseSchema.safeParse({
+      upload: {
+        uploadUrl: 'https://upload.example.com',
+        storageKey: 'chatbot/session-123/report.pdf',
+        expiresIn: 900,
+      },
+      asset: {
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-123/report.pdf',
+      },
+    }).success).toBe(true);
+  });
+
   it('rejects legacy response fields such as nextAction', () => {
     expect(chatbotV3ChatResponseSchema.safeParse({
       messages: [{
@@ -100,6 +125,31 @@ describe('chatbot-v3 chat schemas', () => {
         ticketId: null,
       },
       nextAction: 'ANSWER_FAQ',
+    }).success).toBe(false);
+  });
+
+  it('rejects extra fields on the v3 upload init contract', () => {
+    expect(chatbotV3UploadInitRequestSchema.safeParse({
+      sessionId: 'session-123',
+      fileName: 'report.pdf',
+      fileSize: 2048,
+      mimeType: 'application/pdf',
+      hospitalType: 'COSMETIC',
+    }).success).toBe(false);
+
+    expect(chatbotV3UploadInitResponseSchema.safeParse({
+      upload: {
+        uploadUrl: 'https://upload.example.com',
+        storageKey: 'chatbot/session-123/report.pdf',
+        expiresIn: 900,
+      },
+      asset: {
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-123/report.pdf',
+      },
+      sessionId: 'session-123',
     }).success).toBe(false);
   });
 

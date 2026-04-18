@@ -14,6 +14,24 @@ export const chatbotV3AttachmentSchema = z.object({
   storageKey: z.string().min(1).max(2048),
 }).strict();
 
+export const chatbotV3UploadInitRequestSchema = z.object({
+  sessionId: z.string().min(1).max(255),
+  fileName: z.string().min(1).max(255),
+  fileSize: z.number().int().positive(),
+  mimeType: z.string().min(1).max(100),
+}).strict();
+
+const chatbotV3UploadIntentSchema = z.object({
+  uploadUrl: z.string().min(1).max(4096),
+  storageKey: z.string().min(1).max(2048),
+  expiresIn: z.number().int().positive(),
+}).strict();
+
+export const chatbotV3UploadInitResponseSchema = z.object({
+  upload: chatbotV3UploadIntentSchema,
+  asset: chatbotV3AttachmentSchema,
+}).strict();
+
 export const chatbotV3ChatRequestSchema = z.object({
   sessionId: z.string().min(1).max(255),
   message: z.string().max(2000),
@@ -208,6 +226,8 @@ export const chatbotV3ErrorSchema = z.object({
 }).strict();
 
 export type ChatbotV3Attachment = z.infer<typeof chatbotV3AttachmentSchema>;
+export type ChatbotV3UploadInitRequest = z.infer<typeof chatbotV3UploadInitRequestSchema>;
+export type ChatbotV3UploadInitResponse = z.infer<typeof chatbotV3UploadInitResponseSchema>;
 export type ChatbotV3ChatRequest = z.infer<typeof chatbotV3ChatRequestSchema>;
 export type ChatbotV3Message = z.infer<typeof chatbotV3MessageSchema>;
 export type ChatbotV3TurnOutcome = z.infer<typeof chatbotV3TurnOutcomeSchema>;

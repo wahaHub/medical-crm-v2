@@ -204,12 +204,21 @@ describe('chatbot-v3 upload init route', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(res.headers.get('set-cookie')).toContain('chatbot_session_secret=');
+    const setCookie = res.headers.get('set-cookie');
+    const cookieSecret = setCookie?.match(/chatbot_session_secret=([^;]+)/)?.[1];
+    const savedSession = mockServices.aiChatSessionRepo.save.mock.calls[0]?.[0] as {
+      sessionId: string;
+      sessionSecretHash: string;
+    };
+
+    expect(setCookie).toContain('chatbot_session_secret=');
+    expect(cookieSecret).toBeDefined();
     expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledOnce();
     expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: 'session-v3-upload-1',
       sessionSecretHash: expect.any(String),
     }));
+    expect(createHash('sha256').update(cookieSecret ?? '').digest('hex')).toBe(savedSession.sessionSecretHash);
     expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
   });
 

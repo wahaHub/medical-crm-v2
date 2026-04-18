@@ -28,6 +28,7 @@ describe('patientProtectedRoutes', () => {
     mockGetServices.mockReset();
     mockSeedWidgetStarterMessage.mockReset();
     mockSeedWidgetStarterMessage.mockResolvedValue(undefined);
+    vi.unstubAllGlobals();
   });
 
   it('returns a thin patient session state from /me', async () => {
@@ -369,5 +370,47 @@ describe('patientProtectedRoutes', () => {
     }, caseId);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'Template not found' });
+  });
+
+  it('proxies signed patient upload targets through /uploads/proxy', async () => {
+    const upstreamFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', upstreamFetch);
+    mockGetServices.mockReturnValue({});
+
+    const formData = new FormData();
+    formData.append('uploadUrl', 'https://example.r2.cloudflarestorage.com/upload/key');
+    formData.append('file', new File(['report'], 'report.pdf', { type: 'application/pdf' }));
+
+    const res = await patientProtectedRoutes.request('/uploads/proxy', {
+      method: 'POST',
+      body: formData,
+    });
+
+    expect(res.status).toBe(204);
+    expect(upstreamFetch).toHaveBeenCalledWith(
+      'https://example.r2.cloudflarestorage.com/upload/key',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/pdf',
+        },
+      }),
+    );
+  });
+
+  it('rejects invalid patient upload proxy targets', async () => {
+    mockGetServices.mockReturnValue({});
+
+    const formData = new FormData();
+    formData.append('uploadUrl', 'https://example.com/upload/key');
+    formData.append('file', new File(['report'], 'report.pdf', { type: 'application/pdf' }));
+
+    const res = await patientProtectedRoutes.request('/uploads/proxy', {
+      method: 'POST',
+      body: formData,
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'uploadUrl target is not allowed' });
   });
 });

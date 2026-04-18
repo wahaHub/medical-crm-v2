@@ -74,7 +74,13 @@ export function applySecurityMiddleware(app: Hono) {
     limit: 5,
     keyGenerator: getClientIp,
   }));
-  app.use('*', bodyLimit({ maxSize: 10 * 1024 * 1024 }));
+  app.use('*', async (c, next) => {
+    const pathname = new URL(c.req.url).pathname;
+    const maxSize = pathname === '/api/patient/uploads/proxy'
+      ? 30 * 1024 * 1024
+      : 10 * 1024 * 1024;
+    return bodyLimit({ maxSize })(c, next);
+  });
 }
 
 export const perUserRateLimiter = rateLimiter({

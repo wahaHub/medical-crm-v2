@@ -108,6 +108,11 @@ function toPatientTicket<T extends { type: string }>(ticket: T): Omit<T, 'type'>
   };
 }
 
+function isAllowedUploadTarget(url: URL): boolean {
+  const hostname = url.hostname.toLowerCase();
+  return hostname.endsWith('.r2.cloudflarestorage.com') || hostname.endsWith('.amazonaws.com');
+}
+
 // Apply patient auth to ALL routes in this file
 app.use('/*', async (c, next) => {
   const { patientAuthService } = getServices();
@@ -245,6 +250,46 @@ app.post('/conversations/:convId/attachments/upload', async (c) => {
     },
     asset: result.asset,
   }, 201);
+});
+
+// POST /uploads/proxy
+app.post('/uploads/proxy', async (c) => {
+  const formData = await c.req.formData();
+  const uploadUrl = formData.get('uploadUrl');
+  const file = formData.get('file');
+
+  if (typeof uploadUrl !== 'string' || !(file instanceof File)) {
+    return c.json({ error: 'uploadUrl and file are required' }, 400);
+  }
+
+  let normalizedUrl: URL;
+  try {
+    normalizedUrl = new URL(uploadUrl);
+  } catch {
+    return c.json({ error: 'uploadUrl must be a valid absolute URL' }, 400);
+  }
+
+  if (normalizedUrl.protocol !== 'https:' || !isAllowedUploadTarget(normalizedUrl)) {
+    return c.json({ error: 'uploadUrl target is not allowed' }, 400);
+  }
+
+  const upstream = await fetch(normalizedUrl.toString(), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+    },
+    body: Buffer.from(await file.arrayBuffer()),
+  });
+
+  if (!upstream.ok) {
+    const body = await upstream.text();
+    return c.json(
+      { error: body || 'Failed to upload file', status: upstream.status },
+      upstream.status || 502,
+    );
+  }
+
+  return new Response(null, { status: 204 });
 });
 
 // POST /conversations/:convId/messages

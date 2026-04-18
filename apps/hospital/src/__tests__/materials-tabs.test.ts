@@ -92,10 +92,12 @@ describe('materials tabs hook ordering', () => {
       'utf8',
     );
 
-    expect(source).toContain('const HOSPITAL_TIER_OPTIONS = [');
-    expect(source).toContain('const OWNERSHIP_TYPE_OPTIONS = [');
-    expect(source).toContain("options: HOSPITAL_TIER_OPTIONS");
-    expect(source).toContain("options: OWNERSHIP_TYPE_OPTIONS");
+    expect(source).toContain('function getHospitalTierOptions');
+    expect(source).toContain('function getOwnershipTypeOptions');
+    expect(source).toContain('const hospitalTierOptions = getHospitalTierOptions(t);');
+    expect(source).toContain('const ownershipTypeOptions = getOwnershipTypeOptions(t);');
+    expect(source).toContain("options: hospitalTierOptions");
+    expect(source).toContain("options: ownershipTypeOptions");
   });
 
   it('uses upload-only and multi-select controls in the surgeon modal', () => {
@@ -104,8 +106,9 @@ describe('materials tabs hook ordering', () => {
       'utf8',
     );
 
-    expect(source).toContain('const SURGEON_LANGUAGE_OPTIONS = LANGUAGE_OPTIONS.map');
+    expect(source).toContain('function getSurgeonLanguageOptions');
     expect(source).toContain('const specialtyOptions = isRegular ? departmentOptions : procedureOptions;');
+    expect(source).toContain('getSurgeonLanguageOptions(t)');
     expect(source).toContain('allowDirectUrl={false}');
     expect(source).toContain('<MultiSelectDropdown');
     expect(source).toContain("placeholder=\"Select specialties\"");

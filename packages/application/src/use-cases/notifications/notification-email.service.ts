@@ -9,6 +9,7 @@ import { getPatientAppOrigin } from '../patient-auth/patient-app-origin.js';
 
 const DEFAULT_OFFLINE_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_EMAIL_COOLDOWN_MS = 5 * 60 * 1000;
+const ADMIN_ACTIVITY_NOTIFICATION_KIND = 'admin-patient-activity';
 
 type AdminNotificationRecipient = {
   id: string;
@@ -74,8 +75,8 @@ export class NotificationEmailService {
     await Promise.all(recipients.map(async (recipient) => {
       await this.sendWithCooldown({
         recipientId: recipient.id,
-        notificationKind: 'admin-new-case',
-        dedupeKey: input.caseId,
+        notificationKind: ADMIN_ACTIVITY_NOTIFICATION_KIND,
+        dedupeKey: input.patientId,
         send: () => this.emailService.sendAdminNewCaseAlert({
           to: recipient.email,
           patientName,
@@ -102,8 +103,8 @@ export class NotificationEmailService {
     await Promise.all(recipients.map(async (recipient) => {
       await this.sendWithCooldown({
         recipientId: recipient.id,
-        notificationKind: 'admin-new-message',
-        dedupeKey: input.conversationId,
+        notificationKind: ADMIN_ACTIVITY_NOTIFICATION_KIND,
+        dedupeKey: input.patientId,
         send: () => this.emailService.sendAdminNewMessageAlert({
           to: recipient.email,
           patientName,
@@ -132,8 +133,8 @@ export class NotificationEmailService {
     await Promise.all(recipients.map(async (recipient) => {
       await this.sendWithCooldown({
         recipientId: recipient.id,
-        notificationKind: 'admin-new-ticket',
-        dedupeKey: input.ticketId,
+        notificationKind: ADMIN_ACTIVITY_NOTIFICATION_KIND,
+        dedupeKey: input.patientId,
         send: () => this.emailService.sendAdminNewTicketAlert({
           to: recipient.email,
           ticketNumber: input.ticketNumber,

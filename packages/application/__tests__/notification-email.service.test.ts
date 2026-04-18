@@ -20,7 +20,7 @@ describe('NotificationEmailService', () => {
           email: 'contact@medicaltourismchina.health',
           name: 'Contact Admin',
           role: 'ADMIN',
-          notificationSettings: { newCase: true, newMessage: true },
+          notificationSettings: { newCase: true, newMessage: true, newTicket: true },
           lastLoginAt: null,
         },
       ]),
@@ -85,7 +85,7 @@ describe('NotificationEmailService', () => {
         email: 'contact@medicaltourismchina.health',
         name: 'Contact Admin',
         role: 'ADMIN',
-        notificationSettings: { newCase: true, newMessage: true },
+        notificationSettings: { newCase: true, newMessage: true, newTicket: true },
         lastLoginAt: new Date().toISOString(),
       },
     ]);
@@ -129,6 +129,43 @@ describe('NotificationEmailService', () => {
     expect(emailService.sendAdminNewTicketAlert).not.toHaveBeenCalled();
   });
 
+  it('shares one admin cooldown slot across case and message notifications for the same patient', async () => {
+    vi.mocked(cooldownRepo.tryAcquireSlot)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await service.notifyAdminsOfNewCase({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      patientName: 'Patient One',
+      patientEmail: 'patient@example.com',
+      site: 'china',
+    });
+
+    await service.notifyAdminsOfPatientMessage({
+      conversationId: 'conv-1',
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      patientName: 'Patient One',
+      messagePreview: 'Follow-up question right after signup',
+    });
+
+    expect(cooldownRepo.tryAcquireSlot).toHaveBeenNthCalledWith(1, {
+      recipientId: 'admin-1',
+      notificationKind: 'admin-patient-activity',
+      dedupeKey: 'patient-1',
+      cooldownMs: 5 * 60 * 1000,
+    });
+    expect(cooldownRepo.tryAcquireSlot).toHaveBeenNthCalledWith(2, {
+      recipientId: 'admin-1',
+      notificationKind: 'admin-patient-activity',
+      dedupeKey: 'patient-1',
+      cooldownMs: 5 * 60 * 1000,
+    });
+    expect(emailService.sendAdminNewCaseAlert).toHaveBeenCalledOnce();
+    expect(emailService.sendAdminNewMessageAlert).not.toHaveBeenCalled();
+  });
+
   it('releases the cooldown slot when email delivery fails after acquisition', async () => {
     vi.mocked(emailService.sendAdminNewCaseAlert).mockRejectedValueOnce(new Error('smtp down'));
 
@@ -142,8 +179,8 @@ describe('NotificationEmailService', () => {
 
     expect(cooldownRepo.releaseSlot).toHaveBeenCalledWith({
       recipientId: 'admin-1',
-      notificationKind: 'admin-new-case',
-      dedupeKey: 'case-1',
+      notificationKind: 'admin-patient-activity',
+      dedupeKey: 'patient-1',
     });
   });
 });

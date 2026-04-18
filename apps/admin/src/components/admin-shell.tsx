@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SidebarNav, type NavItem } from '@medical-crm/ui';
 import { LayoutDashboard, FolderOpen, Building2, LogOut, MessageSquare, ShoppingCart, Package, Ticket, ClipboardList, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -37,6 +37,40 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+
+  useEffect(() => {
+    const pingPresence = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return;
+      }
+
+      void fetch('/api/users/me', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+      }).catch(() => {});
+    };
+
+    pingPresence();
+    const intervalId = window.setInterval(pingPresence, 60_000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        pingPresence();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', pingPresence);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', pingPresence);
+    };
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB]">

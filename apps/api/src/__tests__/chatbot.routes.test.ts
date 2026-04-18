@@ -73,6 +73,9 @@ const mockServices: any = {
   notifyAdminsOfNewCase: {
     execute: vi.fn(),
   },
+  notifyAdminsOfPatientMessage: {
+    execute: vi.fn(),
+  },
   notifyAdminsOfNewTicket: {
     execute: vi.fn(),
   },
@@ -560,6 +563,13 @@ describe('Chatbot routes', () => {
         conversationId: 'conv-admin-1',
         senderRole: 'AI',
       }),
+    });
+    expect(mockServices.notifyAdminsOfPatientMessage.execute).toHaveBeenCalledWith({
+      conversationId: 'conv-admin-1',
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      patientName: null,
+      messagePreview: 'I want the admin team to see this update.',
     });
   });
 

@@ -53,6 +53,12 @@ const DETERMINISTIC_CANONICAL_SEMANTIC_FALLBACK = {
   mentionsDoctorOrHospitalNeed: boolean;
 };
 
+function buildNotificationPreview(content: string | null | undefined): string {
+  const normalized = (content ?? '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return 'Open Medora to read the latest message.';
+  return normalized.length > 180 ? `${normalized.slice(0, 179).trimEnd()}...` : normalized;
+}
+
 function getDifyChatApiKey(): string | null {
   return process.env['DIFY_APP_API_KEY'] ?? process.env['DIFY_API_KEY'] ?? null;
 }
@@ -202,6 +208,19 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       type: 'new_message',
       data: toMessageDTO(mirroredPatientMessage),
     });
+    if (mirroredConversation.caseId && session.patientId) {
+      try {
+        await svc.notifyAdminsOfPatientMessage.execute({
+          conversationId: mirroredConversation.id,
+          caseId: mirroredConversation.caseId,
+          patientId: session.patientId,
+          patientName: null,
+          messagePreview: buildNotificationPreview(normalizedUserMessage),
+        });
+      } catch (error) {
+        console.warn('Failed to notify admins about a mirrored chatbot patient message:', error);
+      }
+    }
     if (mirroredConversation.assistantMode === 'HUMAN_TAKEOVER') {
       const suppressedAssistant = await svc.aiChatMessageRepo.create(new AiChatMessage({
         id: generateId(),

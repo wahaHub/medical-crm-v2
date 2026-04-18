@@ -17,28 +17,19 @@ export class DrizzleEmailNotificationCooldownRepository implements IEmailNotific
     const nowIso = now.toISOString();
     const cooldownCutoffIso = new Date(now.getTime() - input.cooldownMs).toISOString();
 
-    const existingRows = await this.db
-      .select({
-        id: emailNotificationCooldowns.id,
-        lastSentAt: emailNotificationCooldowns.lastSentAt,
-      })
-      .from(emailNotificationCooldowns)
-      .where(and(
-        eq(emailNotificationCooldowns.recipientId, input.recipientId),
-        eq(emailNotificationCooldowns.notificationKind, input.notificationKind),
-        eq(emailNotificationCooldowns.dedupeKey, input.dedupeKey),
-      ))
-      .limit(1);
-
-    const existing = existingRows[0];
-    if (!existing) {
-      await this.db.insert(emailNotificationCooldowns).values({
+    const inserted = await this.db
+      .insert(emailNotificationCooldowns)
+      .values({
         recipientId: input.recipientId,
         notificationKind: input.notificationKind,
         dedupeKey: input.dedupeKey,
         lastSentAt: nowIso,
         updatedAt: nowIso,
-      });
+      })
+      .onConflictDoNothing()
+      .returning({ id: emailNotificationCooldowns.id });
+
+    if (inserted.length > 0) {
       return true;
     }
 
@@ -49,7 +40,9 @@ export class DrizzleEmailNotificationCooldownRepository implements IEmailNotific
         updatedAt: nowIso,
       })
       .where(and(
-        eq(emailNotificationCooldowns.id, existing.id),
+        eq(emailNotificationCooldowns.recipientId, input.recipientId),
+        eq(emailNotificationCooldowns.notificationKind, input.notificationKind),
+        eq(emailNotificationCooldowns.dedupeKey, input.dedupeKey),
         lte(emailNotificationCooldowns.lastSentAt, cooldownCutoffIso),
       ))
       .returning({ id: emailNotificationCooldowns.id });

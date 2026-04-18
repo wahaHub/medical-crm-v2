@@ -327,6 +327,18 @@ describe('patientPublicRoutes', () => {
     });
     const services = createBaseServices({
       initOnboarding: { execute },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue({
+          id: 'ai-session-1',
+          sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+          site: 'beauty',
+          difyConversationId: 'legacy-dify-conversation-1',
+          hospitalType: 'REGULAR',
+          statusSnapshot: {},
+        }),
+        save: vi.fn().mockImplementation(async (entity) => entity),
+        setDifyConversationId: vi.fn().mockResolvedValue(null),
+      },
       aiChatMessageRepo: {
         listBySession: vi.fn().mockResolvedValue([
           {
@@ -366,6 +378,11 @@ describe('patientPublicRoutes', () => {
         }),
       }),
     );
+    expect(services.aiChatSessionRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      site: 'beauty',
+      difyConversationId: null,
+    }));
     expect(services.aiChatSessionRepo.setDifyConversationId).not.toHaveBeenCalled();
   });
 
@@ -449,6 +466,63 @@ describe('patientPublicRoutes', () => {
     expect(starterUpdate?.metadata?.blocks).toBeUndefined();
     expect(services.difyApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.aiChatSessionRepo.setDifyConversationId).not.toHaveBeenCalled();
+  });
+
+  it('does not overwrite a non-starter assistant message that happens to carry stored blocks', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'select-hospitals',
+      token: 'session-token-123',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+      isExistingPatient: false,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const services = createBaseServices({
+      initOnboarding: { execute },
+      aiChatMessageRepo: {
+        listBySession: vi.fn().mockResolvedValue([
+          {
+            id: 'assistant-follow-up-1',
+            role: 'ASSISTANT',
+            content: 'Here is a follow-up card from a later turn.',
+            metadata: {
+              blocks: [{
+                id: 'process-modal-1',
+                type: 'PROCESS_MODAL_TRIGGER',
+                modalKey: 'MEDICAL_TRAVEL_PROCESS',
+                title: 'How the process works',
+                description: 'See the overall medical travel journey.',
+                ctaLabel: 'Open process guide',
+              }],
+            },
+          },
+        ]),
+        create: vi.fn(),
+        updateMessage: vi.fn(),
+      },
+    });
+    mockGetServices.mockReturnValue(services);
+
+    const res = await requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        destination: 'Shenzhen',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(services.aiChatMessageRepo.create).not.toHaveBeenCalled();
+    expect(services.aiChatMessageRepo.updateMessage).not.toHaveBeenCalled();
+    expect(services.aiChatSessionRepo.save).not.toHaveBeenCalled();
   });
 
   it('allows onboarding without a captcha token while captcha is temporarily disabled', async () => {

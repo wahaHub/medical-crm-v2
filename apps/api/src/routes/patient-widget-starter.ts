@@ -1,4 +1,4 @@
-import { AiChatMessage, type AiChatNextAction } from '@medical-crm/domain';
+import { AiChatMessage, AiChatSession as AiChatSessionEntity, type AiChatNextAction } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { buildChatbotBlocks, extractStoredChatbotBlocks } from './chatbot-block-builder.js';
@@ -13,10 +13,6 @@ function isWidgetStarterMessage(message: { role: string; content: string; metada
   }
 
   if (message.metadata['widgetStarterSeed'] === true) {
-    return true;
-  }
-
-  if (extractStoredChatbotBlocks(message.metadata).length > 0) {
     return true;
   }
 
@@ -70,7 +66,7 @@ export async function seedWidgetStarterMessage(input: {
     return;
   }
 
-  const session = await input.services.aiChatSessionRepo.findBySessionId(input.widgetSessionId, input.site);
+  let session = await input.services.aiChatSessionRepo.findBySessionId(input.widgetSessionId, input.site);
   if (!session) {
     return;
   }
@@ -85,6 +81,14 @@ export async function seedWidgetStarterMessage(input: {
 
   if (existingStarterMessage && isCurrentWidgetStarterVersion(existingStarterMessage)) {
     return;
+  }
+
+  if (existingStarterMessage && session.difyConversationId) {
+    session = await input.services.aiChatSessionRepo.save(new AiChatSessionEntity({
+      ...session,
+      difyConversationId: null,
+      updatedAt: new Date(),
+    }));
   }
 
   const assistantMessageId = existingStarterMessage?.id ?? generateId();

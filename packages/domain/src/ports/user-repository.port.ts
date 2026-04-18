@@ -11,6 +11,7 @@ export interface CreateUserInput {
 export interface NotificationPreferences {
   newCase?: boolean;
   newMessage?: boolean;
+  newTicket?: boolean;
   quoteStatusChange?: boolean;
   consultationReminder?: boolean;
 }

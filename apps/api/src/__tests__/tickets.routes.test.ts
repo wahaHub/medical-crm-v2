@@ -12,6 +12,7 @@ const mockServices = {
   replyToTicket: { execute: vi.fn() },
   updateTicketStatus: { execute: vi.fn() },
   closeTicket: { execute: vi.fn() },
+  notifyAdminsOfNewTicket: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -83,7 +84,7 @@ describe('Tickets routes', () => {
   // -----------------------------------------------------------------------
   describe('POST /api/v2/tickets', () => {
     it('creates a ticket and returns 201', async () => {
-      const ticket = { id: VALID_UUID, ...validCreateBody, status: 'OPEN' };
+      const ticket = { id: VALID_UUID, ticketNumber: 'TKT-20260418-0001', patientId: 'u-1', ...validCreateBody, status: 'OPEN' };
       mockServices.createTicket.execute.mockResolvedValue(ticket);
 
       const res = await app.request('/api/v2/tickets', {
@@ -96,6 +97,14 @@ describe('Tickets routes', () => {
       const body = await res.json();
       expect(body).toEqual(ticket);
       expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
+      expect(mockServices.notifyAdminsOfNewTicket.execute).toHaveBeenCalledWith({
+        ticketId: VALID_UUID,
+        ticketNumber: 'TKT-20260418-0001',
+        patientId: 'u-1',
+        patientName: null,
+        subject: 'Account issue',
+        descriptionPreview: 'I need help with my account',
+      });
     });
 
     it('rejects invalid body (missing description)', async () => {

@@ -7,6 +7,8 @@ export { DrizzleHospitalManagementRepository } from './drizzle-hospital-manageme
 export { DrizzleRegistrationTokenRepository } from './drizzle-registration-token.repository.js';
 export { DrizzleUserRepository } from './drizzle-user.repository.js';
 export { DrizzleUserEmailLookupRepository } from './drizzle-user-email-lookup.repository.js';
+export { DrizzleNotificationRecipientRepository } from './drizzle-notification-recipient.repository.js';
+export { DrizzleEmailNotificationCooldownRepository } from './drizzle-email-notification-cooldown.repository.js';
 export { DrizzleConversationRepository } from './drizzle-conversation.repository.js';
 export { DrizzleMessageRepository } from './drizzle-message.repository.js';
 export { DrizzleMessageTaskRepository } from './drizzle-message-task.repository.js';

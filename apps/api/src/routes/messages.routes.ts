@@ -12,6 +12,12 @@ import { wsManager } from '../ws/ws-manager.js';
 
 const app = new OpenAPIHono();
 
+function buildMessagePreview(content: string | null | undefined): string {
+  const normalized = (content ?? '').trim();
+  if (!normalized) return 'Open Medora to read the latest message.';
+  return normalized.length > 180 ? `${normalized.slice(0, 179).trimEnd()}...` : normalized;
+}
+
 // ---------------------------------------------------------------------------
 // Param schemas
 // ---------------------------------------------------------------------------
@@ -143,6 +149,36 @@ app.openapi(sendMessageRoute, async (c) => {
         type: 'unread_update',
         data: { conversationId: id, unreadDelta: 1 },
       });
+    }
+
+    if (caseEntity && conversation.category === 'ADMIN_PATIENT') {
+      const messagePreview = buildMessagePreview(result.content);
+      if (actor.userId === caseEntity.patientId) {
+        try {
+          await svc.notifyAdminsOfPatientMessage.execute({
+            conversationId: id,
+            caseId: conversation.caseId,
+            patientId: caseEntity.patientId,
+            patientName: null,
+            messagePreview,
+          });
+        } catch (error) {
+          console.warn('Failed to notify admins about a patient message:', error);
+        }
+      } else {
+        try {
+          await svc.notifyPatientOfAdminMessage.execute({
+            conversationId: id,
+            caseId: conversation.caseId,
+            patientId: caseEntity.patientId,
+            messagePreview,
+            site: 'china',
+            isPatientOnline: wsManager.hasSubscribers(`patient:${caseEntity.patientId}`),
+          });
+        } catch (error) {
+          console.warn('Failed to notify patient about an admin reply:', error);
+        }
+      }
     }
   }
 

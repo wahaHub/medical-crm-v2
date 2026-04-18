@@ -2,6 +2,10 @@ import type { IEmailService } from '@medical-crm/domain';
 import { buildHospitalInvitationEmail } from './hospital-invitation-email.template.js';
 import { buildPatientMagicLinkEmail } from './patient-magic-link-email.template.js';
 import { buildPatientOnboardingEmail } from './patient-onboarding-email.template.js';
+import { buildAdminNewCaseEmail } from './admin-new-case-email.template.js';
+import { buildAdminNewMessageEmail } from './admin-new-message-email.template.js';
+import { buildAdminNewTicketEmail } from './admin-new-ticket-email.template.js';
+import { buildPatientNewMessageEmail } from './patient-new-message-email.template.js';
 import { fetchWithEmailTimeout } from './email-delivery.utils.js';
 
 function getResendConfig() {
@@ -127,6 +131,74 @@ export class ResendEmailService implements IEmailService {
         subject: content.subject,
         html: content.html,
         text: content.text,
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      throw new Error(`Resend API failed: ${response.status}${details ? ` ${details}` : ''}`);
+    }
+  }
+
+  async sendAdminNewCaseAlert(params: {
+    to: string;
+    patientName: string;
+    patientEmail: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildAdminNewCaseEmail(params);
+    await this.sendRaw(params.to, content.subject, content.html, content.text);
+  }
+
+  async sendAdminNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildAdminNewMessageEmail(params);
+    await this.sendRaw(params.to, content.subject, content.html, content.text);
+  }
+
+  async sendAdminNewTicketAlert(params: {
+    to: string;
+    ticketNumber: string;
+    patientName: string;
+    subject: string;
+    descriptionPreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildAdminNewTicketEmail(params);
+    await this.sendRaw(params.to, content.subject, content.html, content.text);
+  }
+
+  async sendPatientNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildPatientNewMessageEmail(params);
+    await this.sendRaw(params.to, content.subject, content.html, content.text);
+  }
+
+  private async sendRaw(to: string, subject: string, html: string, text: string): Promise<void> {
+    const response = await fetchWithEmailTimeout('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: [to],
+        subject,
+        html,
+        text,
       }),
     });
 

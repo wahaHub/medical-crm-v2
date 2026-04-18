@@ -201,6 +201,9 @@ export { RetranslateMessageUseCase } from './use-cases/messages/retranslate-mess
 export { ProcessMessageTasksUseCase } from './use-cases/messages/process-message-tasks.use-case.js';
 export type { ProcessMessageTasksResult } from './use-cases/messages/process-message-tasks.use-case.js';
 
+// Use Cases — Notifications
+export { NotificationEmailService } from './use-cases/notifications/notification-email.service.js';
+
 // Use Cases — AI Sync
 export { BootstrapAiSyncUseCase } from './use-cases/ai-sync/bootstrap-ai-sync.use-case.js';
 export type { BootstrapAiSyncResult } from './use-cases/ai-sync/bootstrap-ai-sync.use-case.js';

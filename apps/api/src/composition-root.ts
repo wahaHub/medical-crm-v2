@@ -5,6 +5,8 @@ import type {
   IHospitalRepository,
   IPatientRepository,
   IUserEmailLookupRepository,
+  INotificationRecipientRepository,
+  IEmailNotificationCooldownRepository,
   IConversationRepository,
   IMessageRepository,
   IStorageService,
@@ -192,6 +194,7 @@ import {
   ListAdminEmailsUseCase,
   UpdateProfileUseCase,
   ChangePasswordUseCase,
+  NotificationEmailService,
   TranslationTaskService,
   ProcessTranslationTasksUseCase,
   RetryTranslationUseCase,
@@ -220,6 +223,8 @@ import {
   DrizzleRegistrationTokenRepository,
   DrizzleUserRepository,
   DrizzleUserEmailLookupRepository,
+  DrizzleNotificationRecipientRepository,
+  DrizzleEmailNotificationCooldownRepository,
   DrizzleConversationRepository,
   DrizzleMessageRepository,
   DrizzleMessageTaskRepository,
@@ -298,6 +303,7 @@ interface AppServices {
   aiSyncOutboxRepo: IAiSyncOutboxRepository;
   difyDocumentMappingRepo: IDifyDocumentMappingRepository;
   storage: IStorageService;
+  txRunner: DrizzleTransactionRunner;
   mediaUpload: MediaUploadService;
   difyApi: DifyApiClientService;
   difyClassifierApi?: DifyApiClientService;
@@ -336,6 +342,7 @@ interface AppServices {
   listConversations: ListConversationsUseCase;
   getConversation: GetConversationUseCase;
   updateConversation: UpdateConversationUseCase;
+  resumeConversationAi: ResumeConversationAiUseCase;
 
   // use cases — messages
   sendMessage: SendMessageUseCase;
@@ -466,6 +473,44 @@ interface AppServices {
   patientAuthService: PatientAuthService;
   sendMagicLink: SendMagicLinkUseCase;
   sendPatientOnboardingEmail: SendPatientOnboardingEmailUseCase;
+  notifyAdminsOfNewCase: {
+    execute(input: {
+      caseId: string;
+      patientId: string;
+      patientName: string | null;
+      patientEmail: string;
+      site: import('@medical-crm/domain').PatientSite;
+    }): Promise<void>;
+  };
+  notifyAdminsOfPatientMessage: {
+    execute(input: {
+      conversationId: string;
+      caseId: string;
+      patientId: string;
+      patientName: string | null;
+      messagePreview: string;
+    }): Promise<void>;
+  };
+  notifyAdminsOfNewTicket: {
+    execute(input: {
+      ticketId: string;
+      ticketNumber: string;
+      patientId: string;
+      patientName: string | null;
+      subject: string | null;
+      descriptionPreview: string;
+    }): Promise<void>;
+  };
+  notifyPatientOfAdminMessage: {
+    execute(input: {
+      conversationId: string;
+      caseId: string;
+      patientId: string;
+      messagePreview: string;
+      site: import('@medical-crm/domain').PatientSite;
+      isPatientOnline: boolean;
+    }): Promise<void>;
+  };
   sendPatientLoginLink: SendPatientLoginLinkUseCase;
   verifyPatientEntryToken: VerifyPatientEntryTokenUseCase;
   verifyMagicLink: VerifyMagicLinkUseCase;
@@ -574,6 +619,8 @@ export function getServices(): AppServices {
     const hospitalRepo = new DrizzleHospitalRepository(crmDb);
     const patientRepo = new DrizzlePatientRepository(crmDb);
     const userEmailLookupRepo = new DrizzleUserEmailLookupRepository(crmDb);
+    const notificationRecipientRepo: INotificationRecipientRepository = new DrizzleNotificationRecipientRepository(crmDb);
+    const emailNotificationCooldownRepo: IEmailNotificationCooldownRepository = new DrizzleEmailNotificationCooldownRepository(crmDb);
     const hospitalManagementRepo = new DrizzleHospitalManagementRepository(crmDb);
     const registrationTokenRepo = new DrizzleRegistrationTokenRepository(crmDb);
     const userRepo = new DrizzleUserRepository(crmDb);
@@ -762,6 +809,80 @@ export function getServices(): AppServices {
           throw error;
         }
       },
+      async sendAdminNewCaseAlert(params: {
+        to: string;
+        patientName: string;
+        patientEmail: string;
+        adminPortalLink: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendAdminNewCaseAlert(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Admin new-case delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendAdminNewCaseAlert(params);
+            return;
+          }
+          throw error;
+        }
+      },
+      async sendAdminNewMessageAlert(params: {
+        to: string;
+        patientName: string;
+        messagePreview: string;
+        adminPortalLink: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendAdminNewMessageAlert(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Admin message alert delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendAdminNewMessageAlert(params);
+            return;
+          }
+          throw error;
+        }
+      },
+      async sendAdminNewTicketAlert(params: {
+        to: string;
+        ticketNumber: string;
+        patientName: string;
+        subject: string;
+        descriptionPreview: string;
+        adminPortalLink: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendAdminNewTicketAlert(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Admin ticket alert delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendAdminNewTicketAlert(params);
+            return;
+          }
+          throw error;
+        }
+      },
+      async sendPatientNewMessageAlert(params: {
+        to: string;
+        patientName: string;
+        messagePreview: string;
+        dashboardLink: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendPatientNewMessageAlert(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Patient message alert delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendPatientNewMessageAlert(params);
+            return;
+          }
+          throw error;
+        }
+      },
     };
 
     // Patient auth
@@ -791,6 +912,11 @@ export function getServices(): AppServices {
         });
       },
     };
+    const notificationEmailService = new NotificationEmailService(
+      notificationRecipientRepo,
+      emailNotificationCooldownRepo,
+      emailService,
+    );
 
     const chcRepo = new DrizzleCHCRepository(crmDb);
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
@@ -1011,6 +1137,18 @@ export function getServices(): AppServices {
       patientAuthService,
       sendMagicLink: new SendMagicLinkUseCase(patientRepo, patientAuthService, magicLinkEmailService),
       sendPatientOnboardingEmail: new SendPatientOnboardingEmailUseCase(patientAuthService, patientOnboardingEmailService),
+      notifyAdminsOfNewCase: {
+        execute: (input) => notificationEmailService.notifyAdminsOfNewCase(input),
+      },
+      notifyAdminsOfPatientMessage: {
+        execute: (input) => notificationEmailService.notifyAdminsOfPatientMessage(input),
+      },
+      notifyAdminsOfNewTicket: {
+        execute: (input) => notificationEmailService.notifyAdminsOfNewTicket(input),
+      },
+      notifyPatientOfAdminMessage: {
+        execute: (input) => notificationEmailService.notifyPatientOfAdminMessage(input),
+      },
       sendPatientLoginLink: new SendPatientLoginLinkUseCase(userEmailLookupRepo, patientAuthService, magicLinkEmailService),
       verifyPatientEntryToken: new VerifyPatientEntryTokenUseCase(patientAuthService),
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),
@@ -1087,5 +1225,5 @@ export function getServices(): AppServices {
       deleteBeforeAfterCase: new DeleteBeforeAfterCaseUseCase(materialsRepo),
     };
   }
-  return _services;
+  return _services!;
 }

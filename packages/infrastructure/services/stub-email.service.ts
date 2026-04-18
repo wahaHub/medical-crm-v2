@@ -34,4 +34,46 @@ export class StubEmailService implements IEmailService {
       `[STUB EMAIL] Patient onboarding confirmation to ${params.to} (${params.locale ?? 'default'}): ${params.dashboardLink} :: ${JSON.stringify(params.summary)}`,
     );
   }
+
+  async sendAdminNewCaseAlert(params: {
+    to: string;
+    patientName: string;
+    patientEmail: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    console.log(`[STUB EMAIL] Admin new case alert to ${params.to} (${params.locale ?? 'default'}): ${params.patientName} <${params.patientEmail}> :: ${params.adminPortalLink}`);
+  }
+
+  async sendAdminNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    console.log(`[STUB EMAIL] Admin new message alert to ${params.to} (${params.locale ?? 'default'}): ${params.patientName} :: ${params.messagePreview} :: ${params.adminPortalLink}`);
+  }
+
+  async sendAdminNewTicketAlert(params: {
+    to: string;
+    ticketNumber: string;
+    patientName: string;
+    subject: string;
+    descriptionPreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    console.log(`[STUB EMAIL] Admin new ticket alert to ${params.to} (${params.locale ?? 'default'}): ${params.ticketNumber} :: ${params.patientName} :: ${params.subject} :: ${params.descriptionPreview} :: ${params.adminPortalLink}`);
+  }
+
+  async sendPatientNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    console.log(`[STUB EMAIL] Patient new message alert to ${params.to} (${params.locale ?? 'default'}): ${params.patientName} :: ${params.messagePreview} :: ${params.dashboardLink}`);
+  }
 }

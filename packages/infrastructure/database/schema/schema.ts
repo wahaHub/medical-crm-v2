@@ -103,6 +103,25 @@ export const users = pgTable("users", {
 		}).onUpdate("cascade").onDelete("set null"),
 ]);
 
+export const emailNotificationCooldowns = pgTable("email_notification_cooldowns", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	recipientId: uuid("recipient_id").notNull(),
+	notificationKind: varchar("notification_kind", { length: 80 }).notNull(),
+	dedupeKey: varchar("dedupe_key", { length: 255 }).notNull(),
+	lastSentAt: timestamp("last_sent_at", { precision: 6, mode: 'string' }).notNull(),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+}, (table) => [
+	index("email_notification_cooldowns_recipient_idx").using("btree", table.recipientId.asc().nullsLast().op("uuid_ops")),
+	index("email_notification_cooldowns_kind_idx").using("btree", table.notificationKind.asc().nullsLast().op("text_ops")),
+	uniqueIndex("email_notification_cooldowns_unique_slot_key").using("btree", table.recipientId.asc().nullsLast().op("uuid_ops"), table.notificationKind.asc().nullsLast().op("text_ops"), table.dedupeKey.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.recipientId],
+			foreignColumns: [users.id],
+			name: "email_notification_cooldowns_recipient_id_fkey"
+		}).onUpdate("cascade").onDelete("cascade"),
+]);
+
 export const cases = pgTable("cases", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	caseNumber: varchar("case_number", { length: 50 }).notNull(),

@@ -4,7 +4,7 @@ const { mockBroadcast } = vi.hoisted(() => ({
   mockBroadcast: vi.fn(),
 }));
 vi.mock('../ws/ws-manager.js', () => ({
-  wsManager: { broadcast: mockBroadcast },
+  wsManager: { broadcast: mockBroadcast, hasSubscribers: vi.fn().mockReturnValue(false) },
 }));
 
 // ---------------------------------------------------------------------------
@@ -23,6 +23,8 @@ const mockServices = {
   regenerateSummary: { execute: vi.fn() },
   retranslateMessage: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
+  notifyAdminsOfPatientMessage: { execute: vi.fn() },
+  notifyPatientOfAdminMessage: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -210,6 +212,75 @@ describe('Message routes', () => {
       expect(mockBroadcast).toHaveBeenCalledWith(`conv:${VALID_UUID}`, {
         type: 'new_message',
         data: { id: 'notice-1', content: 'Medora AI 已转人工，现由顾问接手', messageType: 'SYSTEM' },
+      });
+    });
+
+    it('triggers offline patient email notifications for admin replies in admin-patient conversations', async () => {
+      currentSession = {
+        userId: 'admin-1',
+        email: 'admin@test.com',
+        roles: ['ADMIN'],
+        hospitalId: null,
+      };
+      mockServices.getConversation.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+        category: 'ADMIN_PATIENT',
+        assistantMode: 'HUMAN_TAKEOVER',
+      });
+      mockServices.sendMessage.execute.mockResolvedValue({
+        message: { id: VALID_MSG_ID, content: 'Admin reply', senderRole: 'ADMIN' },
+        sideEffectMessages: [],
+      });
+
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Admin reply' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.notifyPatientOfAdminMessage.execute).toHaveBeenCalledWith({
+        conversationId: VALID_UUID,
+        caseId: VALID_UUID,
+        patientId: 'patient-1',
+        messagePreview: 'Admin reply',
+        site: 'china',
+        isPatientOnline: false,
+      });
+    });
+
+    it('triggers offline admin email notifications for patient replies in admin-patient conversations', async () => {
+      currentSession = {
+        userId: 'patient-1',
+        email: 'patient@test.com',
+        roles: ['PATIENT'],
+        hospitalId: null,
+      };
+      mockServices.getConversation.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+        category: 'ADMIN_PATIENT',
+        assistantMode: 'HUMAN_TAKEOVER',
+      });
+      mockServices.sendMessage.execute.mockResolvedValue({
+        message: { id: VALID_MSG_ID, content: 'Patient reply', senderRole: 'PATIENT' },
+        sideEffectMessages: [],
+      });
+
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Patient reply' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.notifyAdminsOfPatientMessage.execute).toHaveBeenCalledWith({
+        conversationId: VALID_UUID,
+        caseId: VALID_UUID,
+        patientId: 'patient-1',
+        patientName: null,
+        messagePreview: 'Patient reply',
       });
     });
   });

@@ -3,6 +3,10 @@ import type { IEmailService } from '@medical-crm/domain';
 import { buildHospitalInvitationEmail } from './hospital-invitation-email.template.js';
 import { buildPatientMagicLinkEmail } from './patient-magic-link-email.template.js';
 import { buildPatientOnboardingEmail } from './patient-onboarding-email.template.js';
+import { buildAdminNewCaseEmail } from './admin-new-case-email.template.js';
+import { buildAdminNewMessageEmail } from './admin-new-message-email.template.js';
+import { buildAdminNewTicketEmail } from './admin-new-ticket-email.template.js';
+import { buildPatientNewMessageEmail } from './patient-new-message-email.template.js';
 
 function readSmtpConfig() {
   const host = process.env['SMTP_HOST'] ?? process.env['AWS_SES_SMTP_HOST'];
@@ -118,6 +122,62 @@ export class SmtpEmailService implements IEmailService {
       subject: content.subject,
       text: content.text,
       html: content.html,
+    });
+  }
+
+  async sendAdminNewCaseAlert(params: {
+    to: string;
+    patientName: string;
+    patientEmail: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildAdminNewCaseEmail(params);
+    await this.sendRaw(params.to, content.subject, content.text, content.html);
+  }
+
+  async sendAdminNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildAdminNewMessageEmail(params);
+    await this.sendRaw(params.to, content.subject, content.text, content.html);
+  }
+
+  async sendAdminNewTicketAlert(params: {
+    to: string;
+    ticketNumber: string;
+    patientName: string;
+    subject: string;
+    descriptionPreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildAdminNewTicketEmail(params);
+    await this.sendRaw(params.to, content.subject, content.text, content.html);
+  }
+
+  async sendPatientNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildPatientNewMessageEmail(params);
+    await this.sendRaw(params.to, content.subject, content.text, content.html);
+  }
+
+  private async sendRaw(to: string, subject: string, text: string, html: string): Promise<void> {
+    await this.transporter.sendMail({
+      from: this.from,
+      to,
+      subject,
+      text,
+      html,
     });
   }
 }

@@ -163,6 +163,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
     getProfile,
     verifyPatientEntryToken,
     sendPatientOnboardingEmail,
+    notifyAdminsOfNewCase,
   } = getServices();
 
   let authenticatedPatientId: string | undefined;
@@ -279,6 +280,18 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
     } catch (error) {
       console.warn('Failed to send onboarding follow-up email:', error);
     }
+  }
+
+  try {
+    await notifyAdminsOfNewCase.execute({
+      caseId: result.caseId,
+      patientId: result.patientId,
+      patientName: body.name,
+      patientEmail: body.email,
+      site,
+    });
+  } catch (error) {
+    console.warn('Failed to notify admins about a new patient case:', error);
   }
 
   return c.json({

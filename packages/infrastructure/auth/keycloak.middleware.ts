@@ -30,6 +30,28 @@ type CrmIdentity = {
   hospitalId: string | null;
 };
 
+async function touchLastLogin(userId: string): Promise<void> {
+  const db = getCrmDb() as ReturnType<typeof getCrmDb> & {
+    update?: ReturnType<typeof getCrmDb>['update'];
+  };
+  if (typeof db.update !== 'function') {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  try {
+    await db
+      .update(users)
+      .set({
+        lastLoginAt: now,
+        updatedAt: now,
+      })
+      .where(eq(users.id, userId));
+  } catch (error) {
+    console.warn('[Auth] Failed to update last_login_at:', error);
+  }
+}
+
 async function findCrmIdentityByKeycloakUserId(
   keycloakUserId: string,
 ): Promise<CrmIdentity | null> {
@@ -87,6 +109,10 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
           ?? (payload as Record<string, unknown>).hospital_id as string
           ?? null,
       });
+      const roles = (payload.realm_access as { roles?: string[] })?.roles ?? [];
+      if (roles.includes('admin') || roles.includes('hospital')) {
+        void touchLastLogin(crmIdentity.id);
+      }
     } catch (err) {
       console.error('[Auth] JWT verification failed:', err instanceof Error ? err.message : err);
       throw new HTTPException(401, { message: 'Invalid or expired token' });

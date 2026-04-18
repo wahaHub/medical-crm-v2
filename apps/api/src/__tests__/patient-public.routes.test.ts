@@ -139,6 +139,9 @@ describe('patientPublicRoutes', () => {
           },
         }),
       },
+      notifyAdminsOfNewCase: {
+        execute: vi.fn().mockResolvedValue(undefined),
+      },
       ...overrides,
     };
   }
@@ -268,6 +271,13 @@ describe('patientPublicRoutes', () => {
         destination: 'Shenzhen',
         treatmentTimeline: undefined,
       },
+    });
+    expect(services.notifyAdminsOfNewCase.execute).toHaveBeenCalledWith({
+      caseId: '11111111-1111-4111-8111-111111111111',
+      patientId: 'patient-1',
+      patientName: 'New User',
+      patientEmail: 'new@example.com',
+      site: 'beauty',
     });
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({

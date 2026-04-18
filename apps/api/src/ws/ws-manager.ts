@@ -20,6 +20,10 @@ export class WsManager {
     }
   }
 
+  hasSubscribers(roomId: string): boolean {
+    return (this.rooms.get(roomId)?.size ?? 0) > 0;
+  }
+
   removeFromAll(ws: any): void {
     for (const [roomId, clients] of this.rooms) {
       clients.delete(ws);

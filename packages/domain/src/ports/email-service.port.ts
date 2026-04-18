@@ -22,4 +22,34 @@ export interface IEmailService {
       treatmentTimeline?: string | null;
     };
   }): Promise<void>;
+  sendAdminNewCaseAlert(params: {
+    to: string;
+    patientName: string;
+    patientEmail: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void>;
+  sendAdminNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void>;
+  sendAdminNewTicketAlert(params: {
+    to: string;
+    ticketNumber: string;
+    patientName: string;
+    subject: string;
+    descriptionPreview: string;
+    adminPortalLink: string;
+    locale?: string | null;
+  }): Promise<void>;
+  sendPatientNewMessageAlert(params: {
+    to: string;
+    patientName: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void>;
 }

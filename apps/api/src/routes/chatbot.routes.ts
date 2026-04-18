@@ -864,31 +864,7 @@ async function resolveAdminConversationForChatbotSession(
     return null;
   }
 
-  const existing = await svc.conversationRepo.findMany({
-    page: 1,
-    limit: 10,
-    caseId,
-    category: 'ADMIN_PATIENT',
-  });
-  const conversation = existing.data[0];
-  if (conversation) {
-    return conversation;
-  }
-
-  const now = new Date();
-  return svc.conversationRepo.save(new Conversation({
-    id: generateId(),
-    caseId,
-    hospitalId: null,
-    category: 'ADMIN_PATIENT',
-    title: null,
-    lastMessageId: null,
-    lastMessageAt: null,
-    lastMessagePreview: null,
-    lastSenderId: null,
-    createdAt: now,
-    updatedAt: now,
-  }));
+  return svc.conversationRepo.findOrCreateAdminPatientConversation(caseId);
 }
 
 async function tryResolveAdminConversationForChatbotSession(

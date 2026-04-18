@@ -5,9 +5,69 @@ import type { PaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
 import { conversations } from '../schema/index.js';
 import { cases } from '../schema/index.js';
+import { generateId } from '@medical-crm/utils';
 
 export class DrizzleConversationRepository implements IConversationRepository {
   constructor(private readonly db: CrmDb) {}
+
+  async findOrCreateAdminPatientConversation(caseId: string): Promise<Conversation> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${caseId}), hashtext('ADMIN_PATIENT'))`,
+      );
+
+      const existing = await tx
+        .select()
+        .from(conversations)
+        .where(and(
+          eq(conversations.caseId, caseId),
+          eq(conversations.category, 'ADMIN_PATIENT'),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return this.rowToEntity(existing[0]!);
+      }
+
+      const now = new Date().toISOString();
+      const inserted = await tx
+        .insert(conversations)
+        .values({
+          id: generateId(),
+          caseId,
+          category: 'ADMIN_PATIENT',
+          title: null,
+          hospitalId: null,
+          lastMessageId: null,
+          lastMessageAt: null,
+          lastMessagePreview: null,
+          lastSenderId: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (inserted.length > 0) {
+        return this.rowToEntity(inserted[0]!);
+      }
+
+      const resolved = await tx
+        .select()
+        .from(conversations)
+        .where(and(
+          eq(conversations.caseId, caseId),
+          eq(conversations.category, 'ADMIN_PATIENT'),
+        ))
+        .limit(1);
+
+      if (resolved.length === 0) {
+        throw new Error(`Failed to resolve ADMIN_PATIENT conversation for case ${caseId}`);
+      }
+
+      return this.rowToEntity(resolved[0]!);
+    });
+  }
 
   async findById(id: string): Promise<Conversation | null> {
     const rows = await this.db

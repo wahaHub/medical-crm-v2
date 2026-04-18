@@ -49,6 +49,7 @@ const mockServices: any = {
     findById: vi.fn(),
     findMany: vi.fn(),
     findByPatientId: vi.fn(),
+    findOrCreateAdminPatientConversation: vi.fn(),
     save: vi.fn(),
   },
   messageRepo: {
@@ -462,14 +463,7 @@ describe('Chatbot routes', () => {
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
       userId: 'patient-1',
     });
-    mockServices.conversationRepo.findMany.mockResolvedValue({
-      data: [mirroredConversation],
-      total: 1,
-      page: 1,
-      limit: 10,
-      totalPages: 1,
-      hasMore: false,
-    });
+    mockServices.conversationRepo.findOrCreateAdminPatientConversation.mockResolvedValue(mirroredConversation);
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       answer: JSON.stringify({
         answer: 'This is Medora AI, and I can help with that.',
@@ -553,14 +547,7 @@ describe('Chatbot routes', () => {
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
       userId: 'patient-1',
     });
-    mockServices.conversationRepo.findMany.mockResolvedValue({
-      data: [mirroredConversation],
-      total: 1,
-      page: 1,
-      limit: 10,
-      totalPages: 1,
-      hasMore: false,
-    });
+    mockServices.conversationRepo.findOrCreateAdminPatientConversation.mockResolvedValue(mirroredConversation);
     mockServices.messageRepo.save.mockRejectedValue(new Error('mirror persist failed'));
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       answer: JSON.stringify({

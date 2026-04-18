@@ -13,5 +13,6 @@ export interface IConversationRepository {
   findById(id: string): Promise<Conversation | null>;
   findMany(query: ConversationListQuery, hospitalId?: string): Promise<PaginatedResult<Conversation>>;
   findByPatientId(patientId: string): Promise<Conversation[]>;
+  findOrCreateAdminPatientConversation(caseId: string): Promise<Conversation>;
   save(entity: Conversation): Promise<Conversation>;
 }

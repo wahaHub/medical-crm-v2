@@ -42,6 +42,19 @@ describe('GetPatientSessionStateUseCase', () => {
       findById: vi.fn(),
       findMany: vi.fn(),
       findByPatientId: vi.fn().mockResolvedValue([]),
+      findOrCreateAdminPatientConversation: vi.fn().mockImplementation(async (caseId: string) => ({
+        id: 'conv-admin-created',
+        caseId,
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+        title: null,
+        lastMessageId: null,
+        lastMessageAt: null,
+        lastMessagePreview: null,
+        lastSenderId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
       save: vi.fn(),
     };
     mockAiChatMessageRepo = {
@@ -178,7 +191,8 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1', 'beauty');
     expect(mockAiChatSessionRepo.findBySessionId).toHaveBeenCalledWith('widget-chat:patient-1:case-2', 'beauty');
     expect(mockConversationRepo.findByPatientId).toHaveBeenCalledWith('patient-1');
-    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledWith('case-2');
   });
 
   it('returns select-hospitals when the patient has no active hospital selections', async () => {
@@ -245,7 +259,7 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.chatbotOrchestrationState).toEqual({
       conversationSummary: '',
     });
-    expect(mockConversationRepo.save).not.toHaveBeenCalled();
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).not.toHaveBeenCalled();
   });
 
   it('provisions the canonical widget chatbot session on restore when it does not exist yet', async () => {

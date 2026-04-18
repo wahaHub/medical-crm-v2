@@ -8,7 +8,7 @@ import type {
   PatientSite,
   IUserRepository,
 } from '@medical-crm/domain';
-import { AiChatSession, Conversation } from '@medical-crm/domain';
+import { AiChatSession } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
 import { asRecord, asNullableString, asNullableDate } from '../../utils/structured-data.js';
 import type { MedicalFormStatus } from '../../utils/structured-data.js';
@@ -181,21 +181,7 @@ export class GetPatientSessionStateUseCase {
       };
     }
 
-    const now = new Date();
-    const conversation = new Conversation({
-      id: generateId(),
-      caseId,
-      hospitalId: null,
-      category: 'ADMIN_PATIENT',
-      title: null,
-      lastMessageId: null,
-      lastMessageAt: null,
-      lastMessagePreview: null,
-      lastSenderId: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await this.conversationRepo.save(conversation);
+    const conversation = await this.conversationRepo.findOrCreateAdminPatientConversation(caseId);
     return {
       activeConversationId: conversation.id,
       conversationIds: [conversation.id, ...hospitalConversationIds],

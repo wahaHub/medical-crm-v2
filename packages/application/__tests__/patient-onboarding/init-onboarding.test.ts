@@ -47,6 +47,19 @@ describe('InitOnboardingUseCase', () => {
       findById: vi.fn(),
       findMany: vi.fn(),
       findByPatientId: vi.fn().mockResolvedValue([]),
+      findOrCreateAdminPatientConversation: vi.fn().mockImplementation(async (caseId: string) => ({
+        id: 'conv-admin-1',
+        caseId,
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+        title: null,
+        lastMessageId: null,
+        lastMessageAt: null,
+        lastMessagePreview: null,
+        lastSenderId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })),
       save: vi.fn().mockImplementation((conversation: any) => Promise.resolve(conversation)),
     };
     mockAiChatSessionRepo = {
@@ -107,12 +120,8 @@ describe('InitOnboardingUseCase', () => {
     }));
     expect(mockCaseRepo.findByPatientId).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
-    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
-    expect(mockConversationRepo.save.mock.calls[0]?.[0]).toMatchObject({
-      caseId: result.caseId,
-      category: 'ADMIN_PATIENT',
-      hospitalId: null,
-    });
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledWith(result.caseId);
     expect(result.patientId).toBe('patient-1');
     expect(result.nextStep).toBe('select-hospitals');
     expect(mockAuthService.createSessionToken).toHaveBeenCalledWith('patient-1', 'beauty');
@@ -155,7 +164,7 @@ describe('InitOnboardingUseCase', () => {
     expect(mockPatientRepo.createTempPatient).not.toHaveBeenCalled();
     expect(mockCaseRepo.findByPatientId).not.toHaveBeenCalled();
     expect(mockCaseRepo.save).toHaveBeenCalledOnce();
-    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
     expect(result.patientId).toBe('patient-123');
     expect(result.isExistingPatient).toBe(true);
     expect(result.widgetChatTarget).toEqual({

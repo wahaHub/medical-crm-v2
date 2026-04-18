@@ -29,7 +29,7 @@ describe('patientPublicRoutes', () => {
   function createBaseServices(overrides: Record<string, unknown> = {}) {
     return {
       initOnboarding: { execute: vi.fn() },
-      sendPatientLoginLink: { execute: vi.fn().mockResolvedValue({ delivery: 'dashboard-login', token: 'email-token-123' }) },
+      sendPatientOnboardingEmail: { execute: vi.fn().mockResolvedValue({ token: 'patient-login-token' }) },
       patientAuthService: {
         verifySessionToken: vi.fn(),
       },
@@ -255,9 +255,17 @@ describe('patientPublicRoutes', () => {
       'beauty',
       'dify-conversation-1',
     );
-    expect(services.sendPatientLoginLink.execute).toHaveBeenCalledWith({
+    expect(services.sendPatientOnboardingEmail.execute).toHaveBeenCalledWith({
       email: 'new@example.com',
       site: 'beauty',
+      locale: 'en',
+      summary: {
+        country: undefined,
+        department: undefined,
+        condition: undefined,
+        destination: 'Shenzhen',
+        treatmentTimeline: undefined,
+      },
     });
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
@@ -331,7 +339,7 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(services.sendPatientLoginLink.execute).not.toHaveBeenCalled();
+    expect(services.sendPatientOnboardingEmail.execute).not.toHaveBeenCalled();
   });
 
   it('does not send a duplicate onboarding email when the submission is already backed by a register token', async () => {
@@ -372,7 +380,7 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(services.sendPatientLoginLink.execute).not.toHaveBeenCalled();
+    expect(services.sendPatientOnboardingEmail.execute).not.toHaveBeenCalled();
   });
 
   it('does not overwrite an existing ai-v1 widget starter when the session has already been seeded', async () => {

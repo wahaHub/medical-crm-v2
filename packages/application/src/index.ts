@@ -413,6 +413,8 @@ export type { MatchHospitalsInput as MatchHospitalsUseCaseInput } from './use-ca
 // Use Cases — Patient Auth
 export { SendMagicLinkUseCase } from './use-cases/patient-auth/send-magic-link.use-case.js';
 export type { IMagicLinkEmailService } from './use-cases/patient-auth/send-magic-link.use-case.js';
+export { SendPatientOnboardingEmailUseCase } from './use-cases/patient-auth/send-patient-onboarding-email.use-case.js';
+export type { IPatientOnboardingEmailService } from './use-cases/patient-auth/send-patient-onboarding-email.use-case.js';
 export { SendPatientLoginLinkUseCase } from './use-cases/patient-auth/send-patient-login-link.use-case.js';
 export { EmailRoleConflictError, PatientAlreadyExistsError } from './use-cases/patient-auth/patient-entry-auth.errors.js';
 export {

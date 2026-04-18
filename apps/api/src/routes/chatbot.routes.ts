@@ -70,6 +70,7 @@ const sendChatRoute = createRoute({
   },
   responses: {
     200: { description: 'Chatbot response' },
+    410: { description: 'Legacy chatbot route retired after cutover' },
     401: { description: 'Missing or invalid chatbot session secret' },
     403: { description: 'Logged-in patient does not own this chatbot session' },
     500: { description: 'Chatbot provider unavailable or misconfigured' },
@@ -440,6 +441,7 @@ const convertChatRoute = createRoute({
   },
   responses: {
     200: { description: 'Chatbot conversation converted into case-first onboarding' },
+    410: { description: 'Legacy chatbot route retired after cutover' },
     401: { description: 'Missing or invalid chatbot session secret' },
     404: { description: 'Chatbot session not found' },
   },
@@ -522,6 +524,7 @@ const escalateChatRoute = createRoute({
   },
   responses: {
     200: { description: 'Chatbot conversation escalated to support ticket' },
+    410: { description: 'Legacy chatbot route retired after cutover' },
     401: { description: 'Missing or invalid chatbot session secret' },
     404: { description: 'Chatbot session not found' },
   },
@@ -624,6 +627,7 @@ const initChatbotUploadRoute = createRoute({
   },
   responses: {
     201: { description: 'Chatbot document upload initialized' },
+    410: { description: 'Legacy chatbot route retired after cutover' },
     401: { description: 'Missing or invalid chatbot session secret' },
     404: { description: 'Chatbot session not found' },
   },
@@ -675,6 +679,7 @@ const getChatbotHistoryRoute = createRoute({
   },
   responses: {
     200: { description: 'Chatbot message history' },
+    410: { description: 'Legacy chatbot route retired after cutover' },
     401: { description: 'Missing or invalid chatbot session secret' },
     403: { description: 'Logged-in patient does not own this chatbot session' },
     404: { description: 'Chatbot session not found' },

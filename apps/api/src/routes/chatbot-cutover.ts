@@ -22,7 +22,7 @@ export function getChatbotV3CutoverActivatedAt(): Date {
 
 function resolveCutoverNow(now = new Date()): Date {
   const override = process.env[CHATBOT_V3_CUTOVER_NOW_ENV];
-  if (!override) {
+  if (process.env.NODE_ENV !== 'test' || !override) {
     return now;
   }
 

@@ -212,8 +212,8 @@ function createChatbotV3Runtime(services: AppServices): ConversationOrchestrator
       handoff: {
         create: async ({ sessionId, site, turnId, reason }) =>
           createHandoff(services, sessionId, site, turnId, reason),
-        status: async ({ sessionId }) => ({
-          state: deriveHandoffState((await services.aiChatSessionRepo.findBySessionId(sessionId))?.statusSnapshot),
+        status: async ({ sessionId, site }) => ({
+          state: deriveHandoffState((site ? await services.aiChatSessionRepo.findBySessionId(sessionId, site) : null)?.statusSnapshot),
         }),
       },
     },

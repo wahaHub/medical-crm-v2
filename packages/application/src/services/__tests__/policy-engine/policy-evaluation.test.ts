@@ -164,6 +164,7 @@ async function runPolicyFixture(
   try {
     const decision = await useCase.execute({
       sessionId: 'session-1',
+      site: 'china',
       userMessage: fixture.userMessage,
       extraction,
       candidateHospitals: fixture.simulate?.malformedToolPayload ? undefined : fixture.candidateHospitals,

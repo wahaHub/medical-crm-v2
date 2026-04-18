@@ -80,6 +80,7 @@ describe('GetAiPolicyContextUseCase', () => {
 
     const result = await useCase.execute({
       sessionId: 'session-123',
+      site: 'china',
       userMessage: 'hello',
     });
 
@@ -224,6 +225,7 @@ describe('GetAiPolicyContextUseCase', () => {
 
     const result = await useCase.execute({
       sessionId: 'session-123',
+      site: 'china',
       userMessage: 'Can you confirm the current status again?',
     });
 
@@ -330,6 +332,7 @@ describe('GetAiPolicyContextUseCase', () => {
 
     const result = await useCase.execute({
       sessionId: 'session-123',
+      site: 'china',
       userMessage: 'What happens next?',
     });
 
@@ -433,6 +436,7 @@ describe('GetAiPolicyContextUseCase', () => {
 
     const result = await useCase.execute({
       sessionId: 'session-123',
+      site: 'china',
       userMessage: 'What happens next?',
     });
 

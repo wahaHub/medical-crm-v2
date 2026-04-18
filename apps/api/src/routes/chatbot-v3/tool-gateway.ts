@@ -178,6 +178,7 @@ export interface HandoffCreateOutput {
 
 export interface HandoffStatusInput {
   sessionId: string;
+  site?: PatientSite;
 }
 
 export interface HandoffStatusOutput {

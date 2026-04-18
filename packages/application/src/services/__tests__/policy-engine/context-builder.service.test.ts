@@ -168,6 +168,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-1',
+      site: 'china',
       userMessage: 'Can we continue with the recommendation you mentioned earlier?',
     });
 
@@ -270,6 +271,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-2',
+      site: 'china',
       userMessage: 'hello',
       depth: 'light',
     });
@@ -374,6 +376,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-legacy-1',
+      site: 'china',
       userMessage: 'hello',
       depth: 'light',
     });
@@ -448,6 +451,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-3',
+      site: 'china',
       userMessage: 'hello',
       depth: 'light',
     });
@@ -538,6 +542,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-4',
+      site: 'china',
       userMessage: 'continue',
       depth: 'full',
     });
@@ -619,6 +624,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-3',
+      site: 'china',
       userMessage: 'hello',
       depth: 'light',
     });
@@ -633,6 +639,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-ctx-1',
+      site: 'china',
       userMessage: 'Can this hospital help?',
       depth: 'light',
       pageContext: {
@@ -669,6 +676,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-ctx-1',
+      site: 'china',
       userMessage: 'What documents does it need?',
       depth: 'light',
     });
@@ -694,6 +702,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-ctx-1',
+      site: 'china',
       userMessage: 'What about that hospital?',
       depth: 'full',
     });
@@ -719,6 +728,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-ctx-1',
+      site: 'china',
       userMessage: 'Tell me about this hospital.',
       depth: 'light',
       pageContext: {
@@ -742,6 +752,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-ctx-1',
+      site: 'china',
       userMessage: 'Just tell me about your process.',
       depth: 'light',
     });
@@ -754,6 +765,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-ctx-1',
+      site: 'china',
       userMessage: 'What should I do next?',
       depth: 'light',
     });
@@ -797,6 +809,7 @@ describe('ContextBuilderService', () => {
 
     const context = await builder.build({
       sessionId: 'policy-session-ctx-1',
+      site: 'china',
       userMessage: 'Okay, continue.',
       depth: 'light',
     });

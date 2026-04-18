@@ -694,7 +694,7 @@ export class ConversationOrchestratorV3RuntimeService {
     const startedAt = this.now();
 
     try {
-      const result = await this.runSupervisorReadTool(domain, input.sessionId);
+      const result = await this.runSupervisorReadTool(domain, input.sessionId, input.site);
       this.emitNodeEvent(input, {
         node: 'Tool',
         action: domain,
@@ -723,16 +723,17 @@ export class ConversationOrchestratorV3RuntimeService {
   private runSupervisorReadTool(
     domain: SupervisorReadDomain,
     sessionId: string,
+    site: PatientSite | undefined,
   ): Promise<ToolResult<Record<string, unknown>>> {
     switch (domain) {
       case 'records.status':
-        return this.dependencies.gateway.records.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+        return this.dependencies.gateway.records.status({ sessionId, site }) as Promise<ToolResult<Record<string, unknown>>>;
       case 'recommendation.status':
-        return this.dependencies.gateway.recommendation.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+        return this.dependencies.gateway.recommendation.status({ sessionId, site }) as Promise<ToolResult<Record<string, unknown>>>;
       case 'consult.status':
-        return this.dependencies.gateway.consult.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+        return this.dependencies.gateway.consult.status({ sessionId, site }) as Promise<ToolResult<Record<string, unknown>>>;
       case 'handoff.status':
-        return this.dependencies.gateway.handoff.status({ sessionId }) as Promise<ToolResult<Record<string, unknown>>>;
+        return this.dependencies.gateway.handoff.status({ sessionId, site }) as Promise<ToolResult<Record<string, unknown>>>;
     }
   }
 

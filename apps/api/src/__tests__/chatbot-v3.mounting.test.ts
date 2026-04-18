@@ -46,7 +46,7 @@ function persistMountingSession(
     persistedSession = entity;
     return entity;
   });
-  mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, patch: Record<string, unknown>) => {
+  mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, _site: string, patch: Record<string, unknown>) => {
     persistedSession = {
       ...persistedSession,
       statusSnapshot: {
@@ -268,7 +268,7 @@ describe('Chatbot v3 public route mounting', () => {
     };
     mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => currentSession);
     mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
-    mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, patch: Record<string, unknown>) => {
+    mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, _site: string, patch: Record<string, unknown>) => {
       if (!currentSession) {
         return null;
       }
@@ -487,6 +487,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.messages[0].text).toContain('arrange an online consultation');
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
+      'beauty',
       expect.objectContaining({
         processExplained: true,
       }),
@@ -497,6 +498,7 @@ describe('Chatbot v3 public route mounting', () => {
     let session = {
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
+      site: 'beauty',
       sessionSecretHash: SESSION_SECRET_HASH,
       difyConversationId: null,
       patientId: null,
@@ -532,7 +534,7 @@ describe('Chatbot v3 public route mounting', () => {
     const capturedSummaries: Array<string | undefined> = [];
 
     mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => session);
-    mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, patch: Record<string, unknown>) => {
+    mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, _site: string, patch: Record<string, unknown>) => {
       session = {
         ...session,
         statusSnapshot: {
@@ -583,6 +585,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(chatbotV3ChatResponseSchema.parse(firstTurn.body)).toBeDefined();
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
+      'beauty',
       expect.objectContaining({
         conversationSummary: 'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an...',
       }),
@@ -641,7 +644,7 @@ describe('Chatbot v3 public route mounting', () => {
     } as const;
 
     const firstRes = await app.request('/api/v3/chatbot/chat', request);
-    const firstPatch = mockServices.aiChatSessionRepo.patchStatus.mock.calls[0]?.[1] as Record<string, unknown>;
+    const firstPatch = mockServices.aiChatSessionRepo.patchStatus.mock.calls[0]?.[2] as Record<string, unknown>;
     const secondRes = await app.request('/api/v3/chatbot/chat', request);
 
     expect(firstRes.status).toBe(200);
@@ -791,6 +794,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.messages[0].text).toContain('share your medical records');
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
+      'beauty',
       expect.objectContaining({
         processExplained: true,
       }),
@@ -864,6 +868,7 @@ describe('Chatbot v3 public route mounting', () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
+      site: 'beauty',
       sessionSecretHash: SESSION_SECRET_HASH,
       difyConversationId: null,
       patientId: null,
@@ -1259,6 +1264,7 @@ describe('Chatbot v3 public route mounting', () => {
     let session = {
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
+      site: 'beauty',
       sessionSecretHash: null,
       difyConversationId: null,
       patientId: null,
@@ -2290,6 +2296,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.messages[0].text).not.toContain('I checked');
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
+      'beauty',
       expect.objectContaining({
         minimalTriageComplete: true,
       }),
@@ -2680,15 +2687,16 @@ describe('Chatbot v3 public route mounting', () => {
       }),
     ]));
     const uploadPatch = mockServices.aiChatSessionRepo.patchStatus.mock.calls.find(
-      ([sessionId, patch]) => sessionId === 'session-v3-1'
+      ([sessionId, , patch]) => sessionId === 'session-v3-1'
         && (patch as Record<string, unknown>).docUploadStatus === 'SUBMITTED',
-    )?.[1] as Record<string, unknown> | undefined;
+    )?.[2] as Record<string, unknown> | undefined;
     expect(uploadPatch).toMatchObject({
       docUploadStatus: 'SUBMITTED',
     });
     expect(uploadPatch?.minimalTriageComplete).not.toBe(true);
     expect(mockServices.aiChatSessionRepo.patchStatus).not.toHaveBeenCalledWith(
       'session-v3-1',
+      'beauty',
       expect.objectContaining({
         processExplained: true,
       }),
@@ -2898,6 +2906,7 @@ describe('Chatbot v3 public route mounting', () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
+      site: 'beauty',
       sessionSecretHash: SESSION_SECRET_HASH,
       difyConversationId: null,
       patientId: null,
@@ -2944,6 +2953,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(res.status).toBe(200);
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
+      'beauty',
       expect.objectContaining({
         recommendationSelected: true,
         consultCompleted: true,

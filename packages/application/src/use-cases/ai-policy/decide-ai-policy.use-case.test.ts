@@ -17,6 +17,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-1',
+      site: 'china',
       userMessage: 'Please recommend a hospital for me.',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -58,6 +59,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-2',
+      site: 'china',
       userMessage: 'Please recommend a hospital for me.',
       extraction: {
         resolvedIntent: 'NOT_REAL',
@@ -86,6 +88,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-3',
+      site: 'china',
       userMessage: 'What documents do you need?',
       extraction: {
         resolvedIntent: 'REQUEST_DOC_UPLOAD',
@@ -111,6 +114,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-4',
+      site: 'china',
       userMessage: 'Please recommend a hospital for me.',
       extraction: {
         possibleIntent: 'ASK_FOR_RECOMMENDATION',
@@ -135,6 +139,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-5',
+      site: 'china',
       userMessage: 'hello',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'GENERAL_INFO',
@@ -305,6 +310,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       const englishHarness = createHarness(harnessOptions);
       const englishResult = await englishHarness.useCase.execute({
         sessionId: 'session-multilingual-regression',
+        site: 'china',
         userMessage: englishMessage,
         extraction: englishExtraction,
         candidateHospitals,
@@ -313,6 +319,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
       const chineseHarness = createHarness(harnessOptions);
       const chineseResult = await chineseHarness.useCase.execute({
         sessionId: 'session-multilingual-regression',
+        site: 'china',
         userMessage: chineseMessage,
         extraction: chineseExtraction,
         candidateHospitals,
@@ -366,6 +373,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     await harness.useCase.execute({
       sessionId: 'session-docs-complete-1',
+      site: 'china',
       userMessage: 'Okay, I can send the records now.',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ACCEPT_DOC_UPLOAD',
@@ -391,6 +399,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-consult-ready-1',
+      site: 'china',
       userMessage: 'How does the online consult work? I am ready to proceed.',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_CONSULT_PROCESS',
@@ -419,6 +428,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-light-recommendation-1',
+      site: 'china',
       userMessage: 'Please recommend a hospital for me.',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -446,6 +456,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-light-shortlist-miss-1',
+      site: 'china',
       userMessage: 'Please recommend a hospital for me.',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -472,6 +483,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-direction-1',
+      site: 'china',
       userMessage: 'Which doctor or hospital should I talk to?',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_DOCTOR_OR_HOSPITAL_DIRECTION',
@@ -500,6 +512,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-accept-docs-shortlist-miss-1',
+      site: 'china',
       userMessage: 'Okay, I can send the records now.',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ACCEPT_DOC_UPLOAD',
@@ -522,6 +535,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-human-handoff-1',
+      site: 'china',
       userMessage: 'I want to talk to a human.',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'REQUEST_HUMAN_HANDOFF',
@@ -557,6 +571,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-accept-1',
+      site: 'china',
       userMessage: 'let us proceed with this hospital',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'GENERAL_INFO',
@@ -593,6 +608,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-accept-2',
+      site: 'china',
       userMessage: 'okay, proceed with this one',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'SMALL_TALK_OR_GREETING',
@@ -627,6 +643,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-selected-1',
+      site: 'china',
       userMessage: 'Can you show me other hospital options?',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -662,6 +679,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-selected-2',
+      site: 'china',
       userMessage: 'Can you show me other hospitals?',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -702,6 +720,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-accept-3',
+      site: 'china',
       userMessage: 'okay, let us proceed with this one',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'GENERAL_INFO',
@@ -738,6 +757,7 @@ describe('DecideAiPolicyUseCase canonical semantics', () => {
 
     const result = await harness.useCase.execute({
       sessionId: 'session-followup-1',
+      site: 'china',
       userMessage: 'what are the next steps?',
       extraction: buildCanonicalExtraction({
         resolvedIntent: 'GENERAL_INFO',
@@ -837,6 +857,7 @@ function buildLightContext(overrides: Record<string, unknown> = {}) {
   return {
     contextDepth: 'light',
     sessionId: 'session-1',
+    site: 'china',
     userMessage: 'hello',
     sessionRef: { id: 'db-session-1', sessionId: 'session-1', patientId: null },
     patientId: null,
@@ -861,6 +882,7 @@ function buildFullContext(overrides: Record<string, unknown> = {}) {
   const base = {
     contextDepth: 'full',
     sessionId: 'session-1',
+    site: 'china',
     userMessage: 'hello',
     sessionRef: { id: 'db-session-1', sessionId: 'session-1', patientId: null },
     patientId: null,

@@ -1,3 +1,5 @@
+'use client';
+
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import { MaterialsTabs } from '@/components/materials-tabs';
 

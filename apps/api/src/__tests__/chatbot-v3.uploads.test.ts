@@ -29,6 +29,11 @@ vi.mock('../composition-root.js', () => ({
   getServices: () => mockServices,
 }));
 
+vi.mock('@medical-crm/infrastructure/auth', () => ({
+  authMiddleware: async (c: { json: (body: unknown, status: number) => Response }) =>
+    c.json({ error: 'Missing or invalid Authorization header' }, 401),
+}));
+
 function withSiteHeaders(headers?: HeadersInit, site = 'beauty') {
   const merged = new Headers(headers);
   if (!merged.has('x-medora-site')) {
@@ -45,6 +50,17 @@ app.request = ((input: string, init?: RequestInit) =>
     ...init,
     headers: withSiteHeaders(init?.headers),
   })) as typeof app.request;
+
+async function loadRealApp() {
+  const { default: realApp } = await import('../index.js');
+  const originalRequest = realApp.request.bind(realApp);
+  realApp.request = ((input: string, init?: RequestInit) =>
+    originalRequest(input, {
+      ...init,
+      headers: withSiteHeaders(init?.headers),
+    })) as typeof realApp.request;
+  return realApp;
+}
 
 function makeSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -168,6 +184,35 @@ describe('chatbot-v3 upload init route', () => {
     expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
   });
 
+  it('POST /api/v3/chatbot/uploads/init bootstraps a chatbot session secret for anonymous sessions without one', async () => {
+    currentSession = makeSession({
+      sessionSecretHash: null,
+      patientId: null,
+    });
+
+    const res = await app.request('/api/v3/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-upload-1',
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.headers.get('set-cookie')).toContain('chatbot_session_secret=');
+    expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledOnce();
+    expect(mockServices.aiChatSessionRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'session-v3-upload-1',
+      sessionSecretHash: expect.any(String),
+    }));
+    expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
+  });
+
   it('POST /api/v3/chatbot/uploads/init rejects a patient-owned widget session without a matching patient session cookie', async () => {
     currentSession = makeSession({
       sessionId: 'widget-chat:patient-1:case-1',
@@ -278,5 +323,47 @@ describe('chatbot-v3 upload init route', () => {
 
     expect(res.status).toBe(403);
     expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+  });
+});
+
+describe('chatbot-v3 upload init app-level error handling', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    currentSession = makeSession();
+    mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => currentSession);
+    mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: Record<string, unknown>) => {
+      currentSession = entity;
+      return entity;
+    });
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-1' });
+  });
+
+  it('maps upload-policy rejections to the user-facing validation response instead of a 500', async () => {
+    const { ValidationError } = await import('@medical-crm/utils');
+    mockServices.mediaUpload.createUploadIntent.mockRejectedValue(
+      new ValidationError('MIME type image/heic is not allowed for chatbot_request_docs'),
+    );
+    const realApp = await loadRealApp();
+
+    const res = await realApp.request('/api/v3/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-upload-1',
+        fileName: 'report.heic',
+        fileSize: 1024,
+        mimeType: 'image/heic',
+      }),
+    });
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({
+      error: 'MIME type image/heic is not allowed for chatbot_request_docs',
+      code: 'VALIDATION_FAILED',
+    });
   });
 });

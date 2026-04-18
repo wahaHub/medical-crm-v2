@@ -209,99 +209,124 @@ export async function seedWidgetStarterMessage(input: {
     }));
   }
 
-  const statusSnapshot = session.statusSnapshot ?? {};
-  const chatbotV2Turn = await buildChatbotV2TurnContext({
-    services: input.services,
-    sessionId: session.sessionId,
-    site: session.site,
-    userMessage: 'Explain the process',
-    classifierOverride: {
-      requestClass: 'process_explanation',
-      targetResourceTypes: ['PROCESS_GUIDE'],
-      includeProgressionFollowUp: false,
-    },
-  });
-  const faqGrounding = chatbotV2Turn.foundation.requiresFaqGrounding
-    ? await resolveChatbotV2FaqGrounding({
-        services: input.services,
-        scopeId: chatbotV2Turn.foundation.scopeId,
-        hospitalType: session.hospitalType,
-        query: 'Explain the process',
-        activeHospitalContext: chatbotV2Turn.foundation.activeHospitalContext,
-      })
-    : null;
-  const difyResponse = await input.services.difyApi.createChatMessage({
-    inputs: {
-      hospitalType: session.hospitalType,
+  try {
+    const statusSnapshot = session.statusSnapshot ?? {};
+    const chatbotV2Turn = await buildChatbotV2TurnContext({
+      services: input.services,
       sessionId: session.sessionId,
-      assistantMessageId,
-      currentStatus: JSON.stringify(statusSnapshot),
-      conversationSummary: statusSnapshot.conversationSummary,
-      destination: input.destination ?? null,
-      category: input.category ?? null,
-      procedureId: input.procedureId ?? null,
-      bootstrapMode: 'WIDGET_STARTER',
-      ...(faqGrounding ? { faqGrounding: JSON.stringify(faqGrounding) } : {}),
-      chatbotV2: JSON.stringify(chatbotV2Turn.preTurn),
-    },
-    query: buildWidgetStarterPrompt(input),
-    user: session.sessionId,
-    conversationId: session.difyConversationId,
-  });
+      site: session.site,
+      userMessage: 'Explain the process',
+      classifierOverride: {
+        requestClass: 'process_explanation',
+        targetResourceTypes: ['PROCESS_GUIDE'],
+        includeProgressionFollowUp: false,
+      },
+    });
+    const faqGrounding = chatbotV2Turn.foundation.requiresFaqGrounding
+      ? await resolveChatbotV2FaqGrounding({
+          services: input.services,
+          scopeId: chatbotV2Turn.foundation.scopeId,
+          hospitalType: session.hospitalType,
+          query: 'Explain the process',
+          activeHospitalContext: chatbotV2Turn.foundation.activeHospitalContext,
+        })
+      : null;
+    const difyResponse = await input.services.difyApi.createChatMessage({
+      inputs: {
+        hospitalType: session.hospitalType,
+        sessionId: session.sessionId,
+        assistantMessageId,
+        currentStatus: JSON.stringify(statusSnapshot),
+        conversationSummary: statusSnapshot.conversationSummary,
+        destination: input.destination ?? null,
+        category: input.category ?? null,
+        procedureId: input.procedureId ?? null,
+        bootstrapMode: 'WIDGET_STARTER',
+        ...(faqGrounding ? { faqGrounding: JSON.stringify(faqGrounding) } : {}),
+        chatbotV2: JSON.stringify(chatbotV2Turn.preTurn),
+      },
+      query: buildWidgetStarterPrompt(input),
+      user: session.sessionId,
+      conversationId: session.difyConversationId,
+    });
 
-  session = await input.services.aiChatSessionRepo.findBySessionId(session.sessionId, session.site) ?? session;
+    session = await input.services.aiChatSessionRepo.findBySessionId(session.sessionId, session.site) ?? session;
 
-  const normalized = normalizeStarterDifyResponse(difyResponse);
-  if (!session.difyConversationId && normalized.conversationId) {
-    const updatedSession = typeof input.services.aiChatSessionRepo.setDifyConversationId === 'function'
-      ? await input.services.aiChatSessionRepo.setDifyConversationId(session.sessionId, session.site, normalized.conversationId)
-      : await input.services.aiChatSessionRepo.save(new AiChatSessionEntity({
-          ...session,
-          difyConversationId: normalized.conversationId,
-          updatedAt: new Date(),
-        }));
-    session = updatedSession ?? session;
+    const normalized = normalizeStarterDifyResponse(difyResponse);
+    if (!session.difyConversationId && normalized.conversationId) {
+      const updatedSession = typeof input.services.aiChatSessionRepo.setDifyConversationId === 'function'
+        ? await input.services.aiChatSessionRepo.setDifyConversationId(session.sessionId, session.site, normalized.conversationId)
+        : await input.services.aiChatSessionRepo.save(new AiChatSessionEntity({
+            ...session,
+            difyConversationId: normalized.conversationId,
+            updatedAt: new Date(),
+          }));
+      session = updatedSession ?? session;
+    }
+
+    const richAction = normalized.internalNextAction ?? normalized.nextAction;
+    const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
+      foundation: chatbotV2Turn.foundation,
+      preTurn: chatbotV2Turn.preTurn,
+      userMessage: 'Explain the process',
+      refreshedStatusSnapshot: session.statusSnapshot,
+      assistantNextAction: normalized.nextAction,
+      assistantInternalNextAction: richAction,
+    });
+    const templateId = await resolveQuestionnaireTemplateId(
+      input.services,
+      richAction,
+      input.caseId,
+    );
+    const blocks = buildChatbotBlocks({
+      richAction,
+      allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
+      shortlist: normalized.shortlist,
+      sessionCaseId: input.caseId,
+      sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
+      templateId,
+    });
+
+    await input.services.aiChatMessageRepo.updateMessage(assistantMessageId, {
+      content: normalized.answer,
+      nextAction: normalized.nextAction,
+      shortlist: normalized.shortlist,
+      writebackStatus: 'succeeded',
+      metadata: {
+        ...normalized.metadata,
+        widgetStarterSeed: true,
+        widgetStarterVersion: WIDGET_STARTER_VERSION,
+        draftState: 'succeeded',
+        internalNextAction: normalized.internalNextAction,
+        chatbotV2: postTurnChatbotV2,
+        classifierResult: chatbotV2Turn.foundation.classification,
+        ...(blocks.length > 0 ? { blocks } : {}),
+      },
+    });
+  } catch (error) {
+    try {
+      await input.services.aiChatMessageRepo.updateMessage(assistantMessageId, {
+        content: GENERIC_WIDGET_STARTER_CONTENT,
+        nextAction: null,
+        shortlist: [],
+        writebackStatus: 'failed',
+        metadata: {
+          widgetStarterSeed: true,
+          widgetStarterVersion: WIDGET_STARTER_VERSION,
+          draftState: 'provider_error',
+          failureStage: 'widget_starter_generation',
+          failureRecordedAt: new Date().toISOString(),
+          internalNextAction: null,
+          chatbotV2: null,
+          classifierResult: null,
+          blocks: [],
+        },
+      });
+    } catch {
+      // Preserve the original provider failure below even if the fallback writeback also fails.
+    }
+    throw error;
   }
-
-  const richAction = normalized.internalNextAction ?? normalized.nextAction;
-  const postTurnChatbotV2 = buildChatbotV2PostTurnContext({
-    foundation: chatbotV2Turn.foundation,
-    preTurn: chatbotV2Turn.preTurn,
-    userMessage: 'Explain the process',
-    refreshedStatusSnapshot: session.statusSnapshot,
-    assistantNextAction: normalized.nextAction,
-    assistantInternalNextAction: richAction,
-  });
-  const templateId = await resolveQuestionnaireTemplateId(
-    input.services,
-    richAction,
-    input.caseId,
-  );
-  const blocks = buildChatbotBlocks({
-    richAction,
-    allowedResourceTypes: postTurnChatbotV2.resources.map((resource) => resource.resourceType),
-    shortlist: normalized.shortlist,
-    sessionCaseId: input.caseId,
-    sessionConsultationStatus: session.statusSnapshot?.consultationStatus,
-    templateId,
-  });
-
-  await input.services.aiChatMessageRepo.updateMessage(assistantMessageId, {
-    content: normalized.answer,
-    nextAction: normalized.nextAction,
-    shortlist: normalized.shortlist,
-    writebackStatus: 'succeeded',
-    metadata: {
-      ...normalized.metadata,
-      widgetStarterSeed: true,
-      widgetStarterVersion: WIDGET_STARTER_VERSION,
-      draftState: 'succeeded',
-      internalNextAction: normalized.internalNextAction,
-      chatbotV2: postTurnChatbotV2,
-      classifierResult: chatbotV2Turn.foundation.classification,
-      ...(blocks.length > 0 ? { blocks } : {}),
-    },
-  });
 }
 
 async function resolveQuestionnaireTemplateId(

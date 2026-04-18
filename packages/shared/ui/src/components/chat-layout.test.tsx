@@ -26,4 +26,24 @@ describe('ChatLayout', () => {
     expect(avatar.className).toContain('from-amber-500');
     expect(avatar.className).toContain('to-orange-500');
   });
+
+  it('renders a custom header action inside the chat header area', () => {
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+    render(
+      <ChatLayout
+        messages={[]}
+        onSend={vi.fn()}
+        canSend={false}
+        currentUserRole="ADMIN"
+        header={{
+          name: 'Patient One',
+          action: <button type="button">恢复 Medora AI</button>,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: '恢复 Medora AI' })).toBeTruthy();
+    expect(screen.getByText('Patient One')).toBeTruthy();
+  });
 });

@@ -51,6 +51,7 @@ export interface PatientSessionState {
   formalConversationState: {
     activeConversationId: string | null;
     conversationIds: string[];
+    activeAssistantMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER' | null;
   };
   journeySnapshot: JourneySnapshot;
   chatbotOrchestrationState: {
@@ -87,7 +88,7 @@ export class GetPatientSessionStateUseCase {
     const chcs = latestCase ? await this.chcRepo.findByCaseId(latestCase.id) : [];
     const conversationState = latestCase
       ? await this.ensureAdminConversation(input.patientId, latestCase.id)
-      : { activeConversationId: null, conversationIds: [] };
+      : { activeConversationId: null, conversationIds: [], activeAssistantMode: null };
     const selectedHospitalIds = chcs
       .filter((contact) => !contact.removedAt)
       .map((contact) => contact.hospitalId);
@@ -161,7 +162,11 @@ export class GetPatientSessionStateUseCase {
   private async ensureAdminConversation(
     patientId: string,
     caseId: string,
-  ): Promise<{ activeConversationId: string; conversationIds: string[] }> {
+  ): Promise<{
+    activeConversationId: string;
+    conversationIds: string[];
+    activeAssistantMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER';
+  }> {
     const conversations = await this.conversationRepo.findByPatientId(patientId);
     const currentCaseConversations = conversations.filter((conversation) =>
       conversation.caseId === caseId
@@ -178,6 +183,7 @@ export class GetPatientSessionStateUseCase {
       return {
         activeConversationId: existingAdminConversation.id,
         conversationIds: [existingAdminConversation.id, ...hospitalConversationIds],
+        activeAssistantMode: existingAdminConversation.assistantMode ?? 'AI_ACTIVE',
       };
     }
 
@@ -195,10 +201,13 @@ export class GetPatientSessionStateUseCase {
       createdAt: now,
       updatedAt: now,
     });
-    await this.conversationRepo.save(conversation);
+    const savedConversation = this.conversationRepo.findOrCreateAdminPatientConversation
+      ? await this.conversationRepo.findOrCreateAdminPatientConversation(conversation)
+      : await this.conversationRepo.save(conversation);
     return {
-      activeConversationId: conversation.id,
-      conversationIds: [conversation.id, ...hospitalConversationIds],
+      activeConversationId: savedConversation.id,
+      conversationIds: [savedConversation.id, ...hospitalConversationIds],
+      activeAssistantMode: savedConversation.assistantMode,
     };
   }
 }

@@ -1,6 +1,7 @@
 import type { IEmailService } from '@medical-crm/domain';
 import { buildHospitalInvitationEmail } from './hospital-invitation-email.template.js';
 import { buildPatientMagicLinkEmail } from './patient-magic-link-email.template.js';
+import { buildPatientOnboardingEmail } from './patient-onboarding-email.template.js';
 import { fetchWithEmailTimeout } from './email-delivery.utils.js';
 
 function getResendConfig() {
@@ -73,6 +74,45 @@ export class ResendEmailService implements IEmailService {
     const content = buildPatientMagicLinkEmail({
       magicLink: params.magicLink,
       locale: params.locale,
+    });
+
+    const response = await fetchWithEmailTimeout('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: [params.to],
+        subject: content.subject,
+        html: content.html,
+        text: content.text,
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      throw new Error(`Resend API failed: ${response.status}${details ? ` ${details}` : ''}`);
+    }
+  }
+
+  async sendPatientOnboardingConfirmation(params: {
+    to: string;
+    dashboardLink: string;
+    locale?: string | null;
+    summary: {
+      country?: string | null;
+      department?: string | null;
+      condition?: string | null;
+      destination?: string | null;
+      treatmentTimeline?: string | null;
+    };
+  }): Promise<void> {
+    const content = buildPatientOnboardingEmail({
+      dashboardLink: params.dashboardLink,
+      locale: params.locale,
+      summary: params.summary,
     });
 
     const response = await fetchWithEmailTimeout('https://api.resend.com/emails', {

@@ -42,6 +42,8 @@ export interface ChatHeaderConfig {
   categoryBadge?: string;
   /** If true, use admin/blue color scheme for the avatar */
   isAdminConversation?: boolean;
+  /** Optional action rendered in the header actions area */
+  action?: ReactNode;
 }
 
 export interface ChatLayoutProps {
@@ -327,6 +329,8 @@ export function ChatLayout({
           </div>
 
           <div className="flex items-center gap-3">
+            {header.action}
+
             {/* Show Translation toggle */}
             {hasAnyTranslation && onToggleTranslation && (
               <label className="flex items-center gap-2 cursor-pointer select-none px-3 py-1.5 rounded-lg hover:bg-purple-50 transition-colors">

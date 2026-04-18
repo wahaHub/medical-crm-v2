@@ -7,6 +7,7 @@ export const caseStage = pgEnum("CaseStage", ['PENDING_ASSIGNMENT', 'TRANSFERRED
 export const caseStatus = pgEnum("CaseStatus", ['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'ARCHIVED'])
 export const consultationStatus = pgEnum("ConsultationStatus", ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW'])
 export const conversationCategory = pgEnum("ConversationCategory", ['HOSPITAL', 'PATIENT', 'ADMIN_HOSPITAL', 'ADMIN_PATIENT', 'HOSPITAL_PATIENT'])
+export const conversationAssistantMode = pgEnum("ConversationAssistantMode", ['AI_ACTIVE', 'HUMAN_TAKEOVER'])
 export const documentStatus = pgEnum("DocumentStatus", ['PENDING', 'ACTIVE', 'DELETED'])
 export const documentType = pgEnum("DocumentType", ['LAB', 'IMAGING', 'DISCHARGE', 'PRESCRIPTION', 'ID', 'DIAGNOSIS', 'QUOTE', 'INVITATION', 'OTHER'])
 export const hospitalStatus = pgEnum("HospitalStatus", ['ACTIVE', 'PENDING', 'INACTIVE'])
@@ -250,6 +251,7 @@ export const conversations = pgTable("conversations", {
 	category: conversationCategory().notNull(),
 	title: varchar({ length: 200 }),
 	hospitalId: uuid("hospital_id"),
+	assistantMode: conversationAssistantMode("assistant_mode").default('AI_ACTIVE').notNull(),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
 	lastMessageId: uuid("last_message_id"),
@@ -260,6 +262,7 @@ export const conversations = pgTable("conversations", {
 	index("conversations_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
 	index("conversations_category_idx").using("btree", table.category.asc().nullsLast().op("enum_ops")),
 	index("idx_conversations_hospital_category_time").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops"), table.category.asc().nullsLast().op("enum_ops"), table.lastMessageAt.desc().nullsLast().op("timestamptz_ops")),
+	uniqueIndex("conversations_admin_patient_case_unique_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")).where(sql`${table.category} = 'ADMIN_PATIENT' and ${table.caseId} is not null`),
 	foreignKey({
 			columns: [table.caseId],
 			foreignColumns: [cases.id],

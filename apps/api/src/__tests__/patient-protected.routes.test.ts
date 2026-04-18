@@ -41,6 +41,11 @@ describe('patientProtectedRoutes', () => {
       caseId: 'case-1',
       nextStep: 'messages-ready',
       selectedHospitalIds: ['hospital-1', 'hospital-2'],
+      formalConversationState: {
+        activeConversationId: 'conv-1',
+        conversationIds: ['conv-1'],
+        activeAssistantMode: 'HUMAN_TAKEOVER',
+      },
       profileSubmitted: true,
       chatUnlocked: true,
     });
@@ -60,8 +65,83 @@ describe('patientProtectedRoutes', () => {
       caseId: 'case-1',
       nextStep: 'messages-ready',
       selectedHospitalIds: ['hospital-1', 'hospital-2'],
+      formalConversationState: {
+        activeConversationId: 'conv-1',
+        conversationIds: ['conv-1'],
+        activeAssistantMode: 'HUMAN_TAKEOVER',
+      },
       profileSubmitted: true,
       chatUnlocked: true,
+    });
+  });
+
+  it('returns assistantMode on patient conversation reads', async () => {
+    const execute = vi.fn().mockResolvedValue([
+      {
+        id: 'conv-1',
+        caseId: 'case-1',
+        category: 'ADMIN_PATIENT',
+        title: null,
+        hospitalId: null,
+        assistantMode: 'HUMAN_TAKEOVER',
+        lastMessageAt: null,
+        lastMessagePreview: null,
+        lastSenderId: null,
+        createdAt: '2026-04-18T00:00:00.000Z',
+        updatedAt: '2026-04-18T00:00:00.000Z',
+      },
+    ]);
+    mockGetServices.mockReturnValue({
+      getPatientConversations: { execute },
+    });
+
+    const res = await patientProtectedRoutes.request('/conversations');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([
+      expect.objectContaining({
+        id: 'conv-1',
+        assistantMode: 'HUMAN_TAKEOVER',
+      }),
+    ]);
+  });
+
+  it('returns assistantMode alongside patient message list responses and preserves explicit sender roles', async () => {
+    const getConversation = { execute: vi.fn().mockResolvedValue({ id: 'conv-1', assistantMode: 'HUMAN_TAKEOVER' }) };
+    const listMessages = {
+      execute: vi.fn().mockResolvedValue({
+        data: [
+          { id: 'msg-ai', senderId: null, senderRole: 'AI', messageType: 'TEXT', content: 'AI reply' },
+          { id: 'msg-admin', senderId: 'admin-1', senderRole: 'ADMIN', messageType: 'TEXT', content: 'Human reply' },
+          { id: 'msg-system', senderId: null, senderRole: 'SYSTEM', messageType: 'SYSTEM', content: 'Notice' },
+        ],
+        total: 3,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        hasMore: false,
+      }),
+    };
+    mockGetServices.mockReturnValue({
+      getConversation,
+      listMessages,
+    });
+
+    const res = await patientProtectedRoutes.request('/conversations/conv-1/messages');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      assistantMode: 'HUMAN_TAKEOVER',
+      data: [
+        expect.objectContaining({ id: 'msg-ai', senderRole: 'AI' }),
+        expect.objectContaining({ id: 'msg-admin', senderRole: 'ADMIN' }),
+        expect.objectContaining({ id: 'msg-system', senderRole: 'SYSTEM' }),
+      ],
+      total: 3,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+      hasMore: false,
     });
   });
 

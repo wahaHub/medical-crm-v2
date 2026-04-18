@@ -165,6 +165,7 @@ import {
   InitOnboardingUseCase,
   MatchHospitalsUseCase,
   SendMagicLinkUseCase,
+  SendPatientOnboardingEmailUseCase,
   SendPatientLoginLinkUseCase,
   VerifyPatientEntryTokenUseCase,
   VerifyMagicLinkUseCase,
@@ -207,7 +208,8 @@ import {
   DecideAiPolicyUseCase,
   ApplyAiPolicyWritebackUseCase,
 } from '@medical-crm/application';
-import type { IMagicLinkEmailService } from '@medical-crm/application';
+import type { IMagicLinkEmailService, IPatientOnboardingEmailService } from '@medical-crm/application';
+import { ResumeConversationAiUseCase } from '../../../packages/application/src/use-cases/conversations/resume-conversation-ai.use-case.js';
 import {
   DrizzleCaseRepository,
   DrizzleDocumentRepository,
@@ -463,6 +465,7 @@ interface AppServices {
   // use cases — patient auth
   patientAuthService: PatientAuthService;
   sendMagicLink: SendMagicLinkUseCase;
+  sendPatientOnboardingEmail: SendPatientOnboardingEmailUseCase;
   sendPatientLoginLink: SendPatientLoginLinkUseCase;
   verifyPatientEntryToken: VerifyPatientEntryTokenUseCase;
   verifyMagicLink: VerifyMagicLinkUseCase;
@@ -736,6 +739,29 @@ export function getServices(): AppServices {
           throw error;
         }
       },
+      async sendPatientOnboardingConfirmation(params: {
+        to: string;
+        dashboardLink: string;
+        locale?: string | null;
+        summary: {
+          country?: string | null;
+          department?: string | null;
+          condition?: string | null;
+          destination?: string | null;
+          treatmentTimeline?: string | null;
+        };
+      }) {
+        try {
+          await rawEmailService.sendPatientOnboardingConfirmation(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Patient onboarding delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendPatientOnboardingConfirmation(params);
+            return;
+          }
+          throw error;
+        }
+      },
     };
 
     // Patient auth
@@ -752,6 +778,16 @@ export function getServices(): AppServices {
           to: email,
           magicLink: link,
           locale,
+        });
+      },
+    };
+    const patientOnboardingEmailService: IPatientOnboardingEmailService = {
+      sendOnboardingEmail: async ({ email, dashboardLink, locale, summary }) => {
+        await emailService.sendPatientOnboardingConfirmation({
+          to: email,
+          dashboardLink,
+          locale,
+          summary,
         });
       },
     };
@@ -807,6 +843,7 @@ export function getServices(): AppServices {
       idempotencyExecutor: idempotencyGuard,
       caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
+      txRunner,
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,
       difyClassifierApi: difyClassifierApiClient,
@@ -842,7 +879,8 @@ export function getServices(): AppServices {
       listConversations: new ListConversationsUseCase(conversationRepo),
       getConversation: new GetConversationUseCase(conversationRepo),
       updateConversation: new UpdateConversationUseCase(conversationRepo),
-      sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo),
+      resumeConversationAi: new ResumeConversationAiUseCase(conversationRepo, messageRepo, txRunner),
+      sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo, txRunner),
       listMessages: new ListMessagesUseCase(conversationRepo, messageRepo, routedStorageService),
       getMessage: new GetMessageUseCase(conversationRepo, messageRepo, routedStorageService),
       updateMessage: new UpdateMessageUseCase(conversationRepo, messageRepo),
@@ -972,6 +1010,7 @@ export function getServices(): AppServices {
 
       patientAuthService,
       sendMagicLink: new SendMagicLinkUseCase(patientRepo, patientAuthService, magicLinkEmailService),
+      sendPatientOnboardingEmail: new SendPatientOnboardingEmailUseCase(patientAuthService, patientOnboardingEmailService),
       sendPatientLoginLink: new SendPatientLoginLinkUseCase(userEmailLookupRepo, patientAuthService, magicLinkEmailService),
       verifyPatientEntryToken: new VerifyPatientEntryTokenUseCase(patientAuthService),
       verifyMagicLink: new VerifyMagicLinkUseCase(patientRepo, patientAuthService),

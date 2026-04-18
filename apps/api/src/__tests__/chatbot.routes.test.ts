@@ -10,6 +10,13 @@ import {
 } from '@medical-crm/validation';
 import chatbotRoutes from '../routes/chatbot.routes.js';
 
+const { mockBroadcast } = vi.hoisted(() => ({
+  mockBroadcast: vi.fn(),
+}));
+vi.mock('../ws/ws-manager.js', () => ({
+  wsManager: { broadcast: mockBroadcast },
+}));
+
 const mockServices: any = {
   aiChatSessionRepo: {
     findBySessionId: vi.fn(),
@@ -47,9 +54,11 @@ const mockServices: any = {
   },
   conversationRepo: {
     findById: vi.fn(),
+    findByIdForUpdate: vi.fn(),
     findMany: vi.fn(),
     findByPatientId: vi.fn(),
     save: vi.fn(),
+    findOrCreateAdminPatientConversation: vi.fn(),
   },
   messageRepo: {
     findById: vi.fn(),
@@ -69,6 +78,9 @@ const mockServices: any = {
   },
   getAiPolicyContext: {
     execute: vi.fn(),
+  },
+  txRunner: {
+    run: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({})),
   },
 };
 
@@ -234,6 +246,9 @@ describe('Chatbot routes', () => {
     });
     mockServices.conversationRepo.save.mockImplementation(async (entity: unknown) => entity);
     mockServices.messageRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.conversationRepo.findOrCreateAdminPatientConversation.mockImplementation(async (entity: unknown) => entity);
+    mockServices.conversationRepo.findByIdForUpdate.mockImplementation(async (id: string) => mockServices.conversationRepo.findById(id));
+    mockServices.txRunner.run.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({}));
     mockServices.getTemplateByDisease.execute.mockRejectedValue(new Error('default questionnaire unavailable'));
     mockServices.getAiPolicyContext.execute.mockResolvedValue({
       chatbot_v2: {
@@ -451,6 +466,7 @@ describe('Chatbot routes', () => {
       lastMessageAt: null,
       lastMessagePreview: null,
       lastSenderId: null,
+      assistantMode: 'AI_ACTIVE',
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -528,9 +544,252 @@ describe('Chatbot routes', () => {
       lastMessagePreview: 'This is Medora AI, and I can help with that.',
       lastSenderId: null,
     });
+    expect(mockBroadcast).toHaveBeenCalledWith('conv:conv-admin-1', {
+      type: 'new_message',
+      data: expect.objectContaining({
+        conversationId: 'conv-admin-1',
+        senderId: 'patient-1',
+      }),
+    });
+    expect(mockBroadcast).toHaveBeenCalledWith('conv:conv-admin-1', {
+      type: 'new_message',
+      data: expect.objectContaining({
+        conversationId: 'conv-admin-1',
+        senderRole: 'AI',
+      }),
+    });
   });
 
-  it('POST /api/v2/chatbot/chat keeps the main chatbot response healthy when mirror persistence fails', async () => {
+  it('POST /api/v2/chatbot/chat preserves the patient turn but skips Dify when the mirrored conversation is already HUMAN_TAKEOVER', async () => {
+    const mirroredConversation = new Conversation({
+      id: 'conv-admin-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      title: null,
+      hospitalId: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      assistantMode: 'HUMAN_TAKEOVER',
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+    });
+    mockServices.conversationRepo.findMany.mockResolvedValue({
+      data: [mirroredConversation],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+      hasMore: false,
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-token',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        message: 'Please help me',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.messageRepo.save).toHaveBeenCalledTimes(1);
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.answer).toBe('');
+    expect(json.nextAction).toBe('HUMAN_HANDOFF');
+  });
+
+  it('POST /api/v2/chatbot/chat fails closed before Dify when mirrored conversation resolution fails', async () => {
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+    });
+    mockServices.conversationRepo.findMany.mockRejectedValue(new Error('resolution failed'));
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-token',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        message: 'Please preserve this turn',
+      }),
+    });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'Unable to preserve patient turn in formal conversation' });
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
+    expect(mockServices.messageRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/chat flips the mirrored conversation to HUMAN_TAKEOVER and emits the handoff notice when Dify requests HUMAN_HANDOFF', async () => {
+    const mirroredConversation = new Conversation({
+      id: 'conv-admin-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      title: null,
+      hospitalId: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      assistantMode: 'AI_ACTIVE',
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+    });
+    mockServices.conversationRepo.findMany.mockResolvedValue({
+      data: [mirroredConversation],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+      hasMore: false,
+    });
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        answer: 'Let me hand this to a human advisor.',
+        intent: 'CONSULT',
+        canAnswer: false,
+        nextAction: 'HUMAN_HANDOFF',
+      }),
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-token',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        message: 'I need a human',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const savedConversation = mockServices.conversationRepo.save.mock.calls.at(-1)?.[0];
+    expect(savedConversation).toMatchObject({
+      id: 'conv-admin-1',
+      assistantMode: 'HUMAN_TAKEOVER',
+    });
+    const persistedNotice = mockServices.messageRepo.save.mock.calls.at(-1)?.[0];
+    expect(persistedNotice).toMatchObject({
+      conversationId: 'conv-admin-1',
+      senderRoleOverride: 'SYSTEM',
+      messageType: 'SYSTEM',
+      content: 'Medora AI 已转人工，现由顾问接手',
+    });
+    expect(mockBroadcast).toHaveBeenCalledWith('conv:conv-admin-1', {
+      type: 'new_message',
+      data: expect.objectContaining({
+        messageType: 'SYSTEM',
+        content: 'Medora AI 已转人工，现由顾问接手',
+      }),
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat drops the in-flight AI mirror atomically when the locked conversation row is already HUMAN_TAKEOVER', async () => {
+    const mirroredConversation = new Conversation({
+      id: 'conv-admin-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      title: null,
+      hospitalId: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      assistantMode: 'AI_ACTIVE',
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+    });
+    mockServices.conversationRepo.findMany.mockResolvedValue({
+      data: [mirroredConversation],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+      hasMore: false,
+    });
+    mockServices.conversationRepo.findById.mockResolvedValue({
+      ...mirroredConversation,
+      assistantMode: 'AI_ACTIVE',
+    });
+    mockServices.conversationRepo.findByIdForUpdate.mockResolvedValue(new Conversation({
+      ...mirroredConversation,
+      assistantMode: 'HUMAN_TAKEOVER',
+    }));
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        answer: 'This reply should be dropped.',
+        intent: 'CONSULT',
+        canAnswer: true,
+        nextAction: 'ANSWER_FAQ',
+      }),
+    });
+
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-token',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        message: 'Please help me',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.txRunner.run).toHaveBeenCalled();
+    expect(mockServices.conversationRepo.findByIdForUpdate).toHaveBeenCalledWith('conv-admin-1', expect.anything());
+    expect(mockServices.messageRepo.save).toHaveBeenCalledTimes(1);
+    const json = chatbotChatResponseSchema.parse(await res.json());
+    expect(json.answer).toBe('');
+    expect(json.nextAction).toBe('HUMAN_HANDOFF');
+    expect(mockBroadcast).not.toHaveBeenCalledWith('conv:conv-admin-1', {
+      type: 'new_message',
+      data: expect.objectContaining({
+        senderRole: 'AI',
+      }),
+    });
+  });
+
+  it('POST /api/v2/chatbot/chat fails closed before Dify when patient-turn mirror persistence fails', async () => {
     const mirroredConversation = new Conversation({
       id: 'conv-admin-1',
       caseId: 'case-1',
@@ -580,19 +839,114 @@ describe('Chatbot routes', () => {
         },
         body: JSON.stringify({
           sessionId: 'widget-chat:patient-1:case-1',
-          message: 'Mirror should be best effort.',
+          message: 'Mirror should be fail closed.',
         }),
       });
 
-      expect(res.status).toBe(200);
-      const json = chatbotChatResponseSchema.parse(await res.json());
-      expect(json.answer).toBe('This is Medora AI, and I can help with that.');
-      expect(mockServices.messageRepo.save).toHaveBeenCalledTimes(2);
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: 'Unable to preserve patient turn in formal conversation' });
+      expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalledWith(
-        '[chatbot-mirror] failed to mirror message into conversation',
+        '[chatbot-mirror] failed to preserve patient turn in conversation',
         expect.objectContaining({
           conversationId: 'conv-admin-1',
           error: 'mirror persist failed',
+        }),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('POST /api/v2/chatbot/chat invalidates the finalized assistant draft and returns 503 when formal assistant mirroring fails after Dify', async () => {
+    const mirroredConversation = new Conversation({
+      id: 'conv-admin-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      title: null,
+      hospitalId: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      assistantMode: 'AI_ACTIVE',
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    }));
+    mockServices.patientAuthService.verifySessionToken.mockResolvedValue({
+      userId: 'patient-1',
+    });
+    mockServices.conversationRepo.findMany.mockResolvedValue({
+      data: [mirroredConversation],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+      hasMore: false,
+    });
+    mockServices.conversationRepo.findById.mockResolvedValue(mirroredConversation);
+    mockServices.conversationRepo.findByIdForUpdate.mockResolvedValue(mirroredConversation);
+    mockServices.messageRepo.save
+      .mockImplementationOnce(async (entity: unknown) => entity)
+      .mockRejectedValueOnce(new Error('assistant mirror persist failed'));
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      answer: JSON.stringify({
+        answer: 'This reply must not remain finalized.',
+        intent: 'CONSULT',
+        canAnswer: true,
+        nextAction: 'ANSWER_FAQ',
+      }),
+    });
+
+    try {
+      const res = await app.request('/api/v2/chatbot/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'patient_session=patient-token',
+        },
+        body: JSON.stringify({
+          sessionId: 'widget-chat:patient-1:case-1',
+          message: 'Trigger assistant mirror failure after Dify.',
+        }),
+      });
+
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: 'Unable to persist assistant reply in formal conversation' });
+      expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledOnce();
+      expect(mockServices.messageRepo.save).toHaveBeenCalledTimes(2);
+      expect(mockBroadcast).not.toHaveBeenCalledWith('conv:conv-admin-1', {
+        type: 'new_message',
+        data: expect.objectContaining({
+          senderRole: 'AI',
+        }),
+      });
+
+      const invalidationPatch = mockServices.aiChatMessageRepo.updateMessage.mock.calls.at(-1)?.[1];
+      expect(invalidationPatch).toMatchObject({
+        content: '',
+        intent: null,
+        resolvedIntent: null,
+        canAnswer: false,
+        nextAction: null,
+        metadata: {
+          draftState: 'delivery_error',
+          failureStage: 'formal_conversation_mirror',
+        },
+        writebackStatus: 'failed',
+      });
+      expect(mockServices.aiChatMessageRepo.deleteById).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[chatbot-mirror] failed to persist assistant reply into formal conversation',
+        expect.objectContaining({
+          conversationId: 'conv-admin-1',
+          error: 'assistant mirror persist failed',
         }),
       );
     } finally {
@@ -2920,13 +3274,13 @@ describe('Chatbot routes', () => {
       expect(json.intent).toBe(expectedIntent);
       expectNoLegacyChatbotUiFields(json as Record<string, unknown>);
       expect(difyPayload).toEqual({
-        inputs: {
+        inputs: expect.objectContaining({
           hospitalType: 'COSMETIC',
           sessionId,
           assistantMessageId: expect.any(String),
           attachmentsJson: '[]',
           pageContextJson: 'null',
-          currentStatus: JSON.stringify(expectedStatusSnapshot),
+          currentStatus: expect.stringContaining(`"conversationSummary":"${expectedStatusSnapshot.conversationSummary}"`),
           conversationSummary: expectedStatusSnapshot.conversationSummary,
           attachments: '[]',
           pageContext: 'null',
@@ -2940,7 +3294,7 @@ describe('Chatbot routes', () => {
                 }),
               }),
           chatbotV2: expect.stringContaining(`"currentStage":"${expectedChatbotV2Journey.currentStage}"`),
-        },
+        }),
         query: prompt,
         user: sessionId,
         conversationId: null,

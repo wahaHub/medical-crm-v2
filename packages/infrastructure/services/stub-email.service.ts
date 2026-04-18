@@ -17,4 +17,21 @@ export class StubEmailService implements IEmailService {
   }): Promise<void> {
     console.log(`[STUB EMAIL] Patient magic link to ${params.to} (${params.locale ?? 'default'}): ${params.magicLink}`);
   }
+
+  async sendPatientOnboardingConfirmation(params: {
+    to: string;
+    dashboardLink: string;
+    locale?: string | null;
+    summary: {
+      country?: string | null;
+      department?: string | null;
+      condition?: string | null;
+      destination?: string | null;
+      treatmentTimeline?: string | null;
+    };
+  }): Promise<void> {
+    console.log(
+      `[STUB EMAIL] Patient onboarding confirmation to ${params.to} (${params.locale ?? 'default'}): ${params.dashboardLink} :: ${JSON.stringify(params.summary)}`,
+    );
+  }
 }

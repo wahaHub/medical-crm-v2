@@ -9,6 +9,7 @@ export const createConversationSchema = z.object({
 
 export const updateConversationSchema = z.object({
   title: z.string().max(200).optional(),
+  assistantMode: z.literal('AI_ACTIVE').optional(),
 });
 
 export const conversationListQuerySchema = z.object({

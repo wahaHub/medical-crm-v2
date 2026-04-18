@@ -21,6 +21,7 @@ CREATE TYPE "public"."AuditEvent" AS ENUM('DOC_UPLOAD', 'DOC_VIEW', 'DOC_DOWNLOA
 CREATE TYPE "public"."CaseStage" AS ENUM('PENDING_ASSIGNMENT', 'TRANSFERRED_TO_HOSPITAL', 'HOSPITAL_CONTACTED', 'CONSULTATION_SCHEDULED', 'IN_TREATMENT', 'TREATMENT_COMPLETED');--> statement-breakpoint
 CREATE TYPE "public"."CaseStatus" AS ENUM('DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'ARCHIVED');--> statement-breakpoint
 CREATE TYPE "public"."ConsultationStatus" AS ENUM('SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW');--> statement-breakpoint
+CREATE TYPE "public"."ConversationAssistantMode" AS ENUM('AI_ACTIVE', 'HUMAN_TAKEOVER');--> statement-breakpoint
 CREATE TYPE "public"."ConversationCategory" AS ENUM('HOSPITAL', 'PATIENT', 'ADMIN_HOSPITAL', 'ADMIN_PATIENT', 'HOSPITAL_PATIENT');--> statement-breakpoint
 CREATE TYPE "public"."DocumentStatus" AS ENUM('PENDING', 'ACTIVE', 'DELETED');--> statement-breakpoint
 CREATE TYPE "public"."DocumentType" AS ENUM('LAB', 'IMAGING', 'DISCHARGE', 'PRESCRIPTION', 'ID', 'DIAGNOSIS', 'QUOTE', 'INVITATION', 'OTHER');--> statement-breakpoint
@@ -219,6 +220,7 @@ CREATE TABLE "conversations" (
 	"category" "ConversationCategory" NOT NULL,
 	"title" varchar(200),
 	"hospital_id" uuid,
+	"assistant_mode" "ConversationAssistantMode" DEFAULT 'AI_ACTIVE' NOT NULL,
 	"created_at" timestamp(6) DEFAULT CURRENT_TIMESTAMP NOT NULL,
 	"updated_at" timestamp(6) NOT NULL,
 	"last_message_id" uuid,
@@ -302,6 +304,7 @@ CREATE INDEX "idx_translation_tasks_pending" ON "translation_tasks" USING btree 
 CREATE INDEX "idx_translation_tasks_status" ON "translation_tasks" USING btree ("status" text_ops);--> statement-breakpoint
 CREATE INDEX "conversations_case_id_idx" ON "conversations" USING btree ("case_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "conversations_category_idx" ON "conversations" USING btree ("category" enum_ops);--> statement-breakpoint
+CREATE UNIQUE INDEX "conversations_admin_patient_case_unique_idx" ON "conversations" USING btree ("case_id" uuid_ops) WHERE "conversations"."category" = 'ADMIN_PATIENT' and "conversations"."case_id" is not null;--> statement-breakpoint
 CREATE INDEX "idx_conversations_hospital_category_time" ON "conversations" USING btree ("hospital_id" uuid_ops,"category" enum_ops,"last_message_at" timestamptz_ops);--> statement-breakpoint
 CREATE INDEX "hospital_registration_tokens_expires_at_idx" ON "hospital_registration_tokens" USING btree ("expires_at" timestamp_ops);--> statement-breakpoint
 CREATE INDEX "hospital_registration_tokens_hospital_id_idx" ON "hospital_registration_tokens" USING btree ("hospital_id" uuid_ops);--> statement-breakpoint

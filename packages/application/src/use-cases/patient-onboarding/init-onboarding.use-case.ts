@@ -204,26 +204,31 @@ export class InitOnboardingUseCase {
       throw new Error('Failed to create case after retries');
     }
 
-    const existingConversations = await this.conversationRepo.findByPatientId(patient.id);
-    const hasAdminConversationForCase = existingConversations.some((conversation) =>
-      conversation.caseId === savedCase.id && conversation.category === 'ADMIN_PATIENT',
-    );
+    const now = new Date();
+    const adminConversation = new Conversation({
+      id: generateId(),
+      caseId: savedCase.id,
+      hospitalId: null,
+      category: 'ADMIN_PATIENT',
+      title: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (this.conversationRepo.findOrCreateAdminPatientConversation) {
+      await this.conversationRepo.findOrCreateAdminPatientConversation(adminConversation);
+    } else {
+      const existingConversations = await this.conversationRepo.findByPatientId(patient.id);
+      const hasAdminConversationForCase = existingConversations.some((conversation) =>
+        conversation.caseId === savedCase.id && conversation.category === 'ADMIN_PATIENT',
+      );
 
-    if (!hasAdminConversationForCase) {
-      const now = new Date();
-      await this.conversationRepo.save(new Conversation({
-        id: generateId(),
-        caseId: savedCase.id,
-        hospitalId: null,
-        category: 'ADMIN_PATIENT',
-        title: null,
-        lastMessageId: null,
-        lastMessageAt: null,
-        lastMessagePreview: null,
-        lastSenderId: null,
-        createdAt: now,
-        updatedAt: now,
-      }));
+      if (!hasAdminConversationForCase) {
+        await this.conversationRepo.save(adminConversation);
+      }
     }
 
     const widgetSessionId = `widget-chat:${patient.id}:${savedCase.id}`;

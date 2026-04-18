@@ -38,6 +38,22 @@ export async function sendMessage(conversationId: string, content: string) {
   return res.json();
 }
 
+export async function restoreConversationAi(conversationId: string) {
+  const res = await apiFetch(`/api/v2/conversations/${conversationId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ assistantMode: 'AI_ACTIVE' }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string };
+    throw new Error(err.message ?? 'Failed to restore Medora AI');
+  }
+
+  revalidatePath('/messages');
+  revalidatePath('/cases');
+  return res.json();
+}
+
 export async function approveMessage(messageId: string) {
   const res = await apiFetch(`/api/v2/messages/${messageId}/approve`, {
     method: 'POST',

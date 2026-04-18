@@ -162,6 +162,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
     patientAuthService,
     getProfile,
     verifyPatientEntryToken,
+    sendPatientOnboardingEmail,
   } = getServices();
 
   let authenticatedPatientId: string | undefined;
@@ -249,18 +250,35 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
     maxAge: 86400,
   });
 
-  try {
-    await seedWidgetStarterMessage({
-      services: getServices(),
-      widgetSessionId: result.widgetChatTarget?.sessionId,
-      caseId: result.caseId,
-      site,
-      destination: body.destination,
-      category: body.category,
-      procedureId: body.procedureId,
-    });
-  } catch (error) {
+  void seedWidgetStarterMessage({
+    services: getServices(),
+    widgetSessionId: result.widgetChatTarget?.sessionId,
+    caseId: result.caseId,
+    site,
+    destination: body.destination,
+    category: body.category,
+    procedureId: body.procedureId,
+  }).catch((error) => {
     console.warn('Failed to seed initial widget chatbot message:', error);
+  });
+
+  if (!result.isExistingPatient && !body.registerToken) {
+    try {
+      await sendPatientOnboardingEmail.execute({
+        email: body.email,
+        site,
+        locale: body.preferredLanguage,
+        summary: {
+          country: body.country,
+          department: body.department,
+          condition: body.disease,
+          destination: body.destination,
+          treatmentTimeline: body.treatmentTime,
+        },
+      });
+    } catch (error) {
+      console.warn('Failed to send onboarding follow-up email:', error);
+    }
   }
 
   return c.json({

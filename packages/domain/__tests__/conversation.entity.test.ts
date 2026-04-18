@@ -34,6 +34,28 @@ describe('Conversation', () => {
     expect(c.lastSenderId).toBeNull();
     expect(c.createdAt).toEqual(new Date('2026-01-01'));
     expect(c.updatedAt).toEqual(new Date('2026-01-01'));
+    expect(c.assistantMode).toBe('AI_ACTIVE');
+  });
+
+  it('defaults new ADMIN_PATIENT conversations to AI_ACTIVE', () => {
+    const conversation = makeConversation({
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      title: null,
+    });
+
+    expect(conversation.assistantMode).toBe('AI_ACTIVE');
+  });
+
+  it('keeps an explicit HUMAN_TAKEOVER assistant mode', () => {
+    const conversation = makeConversation({
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      title: null,
+      assistantMode: 'HUMAN_TAKEOVER',
+    });
+
+    expect(conversation.assistantMode).toBe('HUMAN_TAKEOVER');
   });
 
   it('updateLastMessage() updates denormalized fields', () => {

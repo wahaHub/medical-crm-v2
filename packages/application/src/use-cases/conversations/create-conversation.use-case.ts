@@ -43,7 +43,9 @@ export class CreateConversationUseCase {
       updatedAt: now,
     });
 
-    const saved = await this.conversationRepo.save(entity);
+    const saved = input.category === 'ADMIN_PATIENT' && input.caseId && this.conversationRepo.findOrCreateAdminPatientConversation
+      ? await this.conversationRepo.findOrCreateAdminPatientConversation(entity)
+      : await this.conversationRepo.save(entity);
     return toConversationDTO(saved);
   }
 

@@ -1,11 +1,14 @@
 import type { ConversationCategory } from '../enums/index.js';
 
+export type ConversationAssistantMode = 'AI_ACTIVE' | 'HUMAN_TAKEOVER';
+
 export interface ConversationProps {
   id: string;
   caseId: string | null;
   category: ConversationCategory;
   title: string | null;
   hospitalId: string | null;
+  assistantMode?: ConversationAssistantMode;
   lastMessageId: string | null;
   lastMessageAt: Date | null;
   lastMessagePreview: string | null;
@@ -20,6 +23,7 @@ export class Conversation {
   category: ConversationCategory;
   title: string | null;
   hospitalId: string | null;
+  assistantMode: ConversationAssistantMode;
   lastMessageId: string | null;
   lastMessageAt: Date | null;
   lastMessagePreview: string | null;
@@ -33,6 +37,7 @@ export class Conversation {
     this.category = props.category;
     this.title = props.title;
     this.hospitalId = props.hospitalId;
+    this.assistantMode = props.assistantMode ?? 'AI_ACTIVE';
     this.lastMessageId = props.lastMessageId;
     this.lastMessageAt = props.lastMessageAt;
     this.lastMessagePreview = props.lastMessagePreview;

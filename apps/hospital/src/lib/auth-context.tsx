@@ -1,7 +1,7 @@
 // apps/hospital/src/lib/auth-context.tsx
 'use client';
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 
 export interface AuthUser {
   id: string;
@@ -14,6 +14,7 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser;
   logout: () => void;
+  updatePreferredLanguage: (preferredLanguage: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -25,13 +26,19 @@ export function AuthProvider({
   user: AuthUser;
   children: ReactNode;
 }) {
+  const [currentUser, setCurrentUser] = useState(user);
+
   const logout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     window.location.href = '/auth/login';
   };
 
+  const updatePreferredLanguage = (preferredLanguage: string) => {
+    setCurrentUser((prev) => ({ ...prev, preferredLanguage }));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, logout }}>
+    <AuthContext.Provider value={{ user: currentUser, logout, updatePreferredLanguage }}>
       {children}
     </AuthContext.Provider>
   );

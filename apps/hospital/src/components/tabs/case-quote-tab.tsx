@@ -14,6 +14,7 @@ import {
 import { useCaseQuotes } from '@/queries/use-quotes';
 import { createQuote, sendQuote, updateQuote } from '@/actions/quote-actions';
 import { Edit2 } from 'lucide-react';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 import type { QuoteItem } from '@/lib/api-types';
 
 // ── Status Badge ────────────────────────────────────────────────────
@@ -26,10 +27,11 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 function QuoteStatusBadge({ status }: { status: string }) {
+  const { t } = useHospitalI18n();
   const style = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${style}`}>
-      {status}
+      {t(`hospital.cases.detail.quote.status.${status.toLowerCase()}`, undefined, status)}
     </span>
   );
 }
@@ -72,11 +74,13 @@ function LineItemRow({
   onChange: (index: number, field: keyof LineItem, value: string) => void;
   onRemove: (index: number) => void;
 }) {
+  const { t } = useHospitalI18n();
+
   return (
     <div className="flex items-center gap-3">
       <input
         type="text"
-        placeholder="Item name"
+        placeholder={t('hospital.cases.detail.quote.fields.itemNamePlaceholder', undefined, 'Item name')}
         value={item.name}
         onChange={(e) => onChange(index, 'name', e.target.value)}
         className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
@@ -110,6 +114,7 @@ function CreateQuoteModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const [lineItems, setLineItems] = useState<LineItem[]>([{ name: '', amount: '' }]);
   const [notes, setNotes] = useState('');
   const [validUntil, setValidUntil] = useState(() => toDateInputValue(addDays(new Date(), 14)));
@@ -147,12 +152,12 @@ function CreateQuoteModal({
     setError(null);
     const validItems = lineItems.filter((li) => li.name.trim() && li.amount.trim());
     if (validItems.length === 0) {
-      setError('Please add at least one line item.');
+      setError(t('hospital.cases.detail.quote.validation.lineItemsRequired', undefined, 'Please add at least one line item.'));
       return;
     }
     const validUntilIso = toEndOfDayIso(validUntil);
     if (!validUntilIso) {
-      setError('Please select a valid date for "Valid Until".');
+      setError(t('hospital.cases.detail.quote.validation.validUntilRequired', undefined, 'Please select a valid date for "Valid Until".'));
       return;
     }
     setSubmitting(true);
@@ -170,7 +175,7 @@ function CreateQuoteModal({
       }
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create quote');
+      setError(err instanceof Error ? err.message : t('hospital.cases.detail.quote.errorCreate', undefined, 'Failed to create quote'));
     } finally {
       setSubmitting(false);
     }
@@ -181,7 +186,9 @@ function CreateQuoteModal({
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800">Create Quote</h3>
+          <h3 className="text-lg font-semibold text-slate-800">
+            {t('hospital.cases.detail.quote.createTitle', undefined, 'Create Quote')}
+          </h3>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600">
             <X size={20} />
           </button>
@@ -198,7 +205,9 @@ function CreateQuoteModal({
 
           {/* Currency */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Currency</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {t('hospital.cases.detail.quote.fields.currency', undefined, 'Currency')}
+            </label>
             <select
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
@@ -214,7 +223,9 @@ function CreateQuoteModal({
 
           {/* Line Items */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Line Items</label>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              {t('hospital.cases.detail.quote.fields.lineItems', undefined, 'Line Items')}
+            </label>
             <div className="space-y-2">
               {lineItems.map((item, i) => (
                 <LineItemRow
@@ -231,13 +242,15 @@ function CreateQuoteModal({
               onClick={addLineItem}
               className="mt-2 flex items-center gap-1 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
             >
-              <Plus size={14} /> Add Item
+              <Plus size={14} /> {t('hospital.cases.detail.quote.actions.addItem', undefined, 'Add Item')}
             </button>
           </div>
 
           {/* Total */}
           <div className="flex items-center justify-between bg-slate-50 px-4 py-3 rounded-lg">
-            <span className="text-sm font-medium text-slate-700">Total</span>
+            <span className="text-sm font-medium text-slate-700">
+              {t('hospital.cases.detail.quote.fields.total', undefined, 'Total')}
+            </span>
             <span className="text-lg font-bold text-slate-900">
               {currency} {total.toFixed(2)}
             </span>
@@ -245,19 +258,27 @@ function CreateQuoteModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {t('hospital.cases.detail.quote.fields.notes', undefined, 'Notes')}
+            </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Optional notes for this quote..."
+              placeholder={t(
+                'hospital.cases.detail.quote.fields.notesPlaceholder',
+                undefined,
+                'Optional notes for this quote...',
+              )}
             />
           </div>
 
           {/* Valid Until */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Valid Until</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {t('hospital.cases.detail.quote.fields.validUntil', undefined, 'Valid Until')}
+            </label>
             <input
               type="date"
               value={validUntil}
@@ -275,7 +296,7 @@ function CreateQuoteModal({
             disabled={submitting}
             className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
           >
-            Cancel
+            {t('hospital.common.cancel', undefined, 'Cancel')}
           </button>
           <button
             type="button"
@@ -283,7 +304,7 @@ function CreateQuoteModal({
             disabled={submitting}
             className="px-4 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
           >
-            {submitting ? <Loader2 size={16} className="animate-spin" /> : 'Save'}
+            {submitting ? <Loader2 size={16} className="animate-spin" /> : t('hospital.common.save', undefined, 'Save')}
           </button>
           <button
             type="button"
@@ -295,7 +316,7 @@ function CreateQuoteModal({
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <>
-                <Send size={14} /> Create & Send
+                <Send size={14} /> {t('hospital.cases.detail.quote.actions.createAndSend', undefined, 'Create & Send')}
               </>
             )}
           </button>
@@ -316,6 +337,7 @@ function QuoteCard({
   onSend: (id: string) => void;
   onEdit: (quote: QuoteItem) => void;
 }) {
+  const { locale, t } = useHospitalI18n();
   const canEdit = quote.status === 'PENDING' || quote.isDraft;
   return (
     <div className="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
@@ -333,7 +355,7 @@ function QuoteCard({
               onClick={() => onEdit(quote)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              <Edit2 size={12} /> Edit
+              <Edit2 size={12} /> {t('hospital.common.edit', undefined, 'Edit')}
             </button>
           )}
           {quote.status === 'PENDING' && quote.isDraft && (
@@ -341,7 +363,7 @@ function QuoteCard({
               onClick={() => onSend(quote.id)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
             >
-              <Send size={12} /> Send
+              <Send size={12} /> {t('hospital.common.send', undefined, 'Send')}
             </button>
           )}
         </div>
@@ -362,15 +384,24 @@ function QuoteCard({
       {/* Notes */}
       {quote.notes && (
         <div className="text-sm text-slate-600 bg-slate-50 px-3 py-2 rounded-lg">
-          <span className="font-medium text-slate-700">Notes:</span> {quote.notes}
+          <span className="font-medium text-slate-700">
+            {t('hospital.cases.detail.quote.fields.notes', undefined, 'Notes')}:
+          </span>{' '}
+          {quote.notes}
         </div>
       )}
 
       {/* Meta */}
       <div className="flex items-center gap-4 text-xs text-slate-400">
-        <span>Created {new Date(quote.createdAt).toLocaleDateString()}</span>
+        <span>
+          {t('hospital.cases.detail.quote.meta.created', undefined, 'Created')}{' '}
+          {new Intl.DateTimeFormat(locale).format(new Date(quote.createdAt))}
+        </span>
         {quote.validUntil && (
-          <span>Valid until {new Date(quote.validUntil).toLocaleDateString()}</span>
+          <span>
+            {t('hospital.cases.detail.quote.meta.validUntil', undefined, 'Valid until')}{' '}
+            {new Intl.DateTimeFormat(locale).format(new Date(quote.validUntil))}
+          </span>
         )}
       </div>
     </div>
@@ -380,6 +411,7 @@ function QuoteCard({
 // ── Main Tab ────────────────────────────────────────────────────────
 
 export function CaseQuoteTab({ caseId }: { caseId: string }) {
+  const { t } = useHospitalI18n();
   const { data: quotes, isLoading, error } = useCaseQuotes(caseId);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingQuote, setEditingQuote] = useState<QuoteItem | null>(null);
@@ -411,7 +443,9 @@ export function CaseQuoteTab({ caseId }: { caseId: string }) {
     return (
       <div className="bg-white p-10 rounded-[1.5rem] border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center">
         <AlertCircle size={28} className="text-rose-400 mb-3" />
-        <p className="text-sm text-slate-500">Failed to load quotes.</p>
+        <p className="text-sm text-slate-500">
+          {t('hospital.cases.detail.quote.errorLoad', undefined, 'Failed to load quotes.')}
+        </p>
       </div>
     );
   }
@@ -426,14 +460,14 @@ export function CaseQuoteTab({ caseId }: { caseId: string }) {
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
           <Receipt size={18} className="text-indigo-500" />
-          Quote
+          {t('hospital.cases.detail.quote.title', undefined, 'Quote')}
         </h3>
         {!hasQuote && (
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            <Plus size={14} /> Create Quote
+            <Plus size={14} /> {t('hospital.cases.detail.quote.createButton', undefined, 'Create Quote')}
           </button>
         )}
       </div>
@@ -446,9 +480,15 @@ export function CaseQuoteTab({ caseId }: { caseId: string }) {
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 mb-4">
             <Receipt size={28} className="text-slate-400" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-700 mb-1">No quote yet</h3>
+          <h3 className="text-lg font-semibold text-slate-700 mb-1">
+            {t('hospital.cases.detail.quote.emptyTitle', undefined, 'No quote yet')}
+          </h3>
           <p className="text-sm text-slate-500 max-w-md">
-            Create a quote with line items to send to the patient.
+            {t(
+              'hospital.cases.detail.quote.emptyDescription',
+              undefined,
+              'Create a quote with line items to send to the patient.',
+            )}
           </p>
         </div>
       )}
@@ -488,6 +528,7 @@ function EditQuoteModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const [lineItems, setLineItems] = useState<LineItem[]>(
     quote.lineItems?.map((li) => ({ name: li.name, amount: li.amount })) ?? [{ name: '', amount: '' }],
   );
@@ -529,12 +570,12 @@ function EditQuoteModal({
     setError(null);
     const validItems = lineItems.filter((li) => li.name.trim() && li.amount.trim());
     if (validItems.length === 0) {
-      setError('Please add at least one line item.');
+      setError(t('hospital.cases.detail.quote.validation.lineItemsRequired', undefined, 'Please add at least one line item.'));
       return;
     }
     const validUntilIso = toEndOfDayIso(validUntil);
     if (!validUntilIso) {
-      setError('Please select a valid date for "Valid Until".');
+      setError(t('hospital.cases.detail.quote.validation.validUntilRequired', undefined, 'Please select a valid date for "Valid Until".'));
       return;
     }
     setSubmitting(true);
@@ -548,7 +589,7 @@ function EditQuoteModal({
       });
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update quote');
+      setError(err instanceof Error ? err.message : t('hospital.cases.detail.quote.errorUpdate', undefined, 'Failed to update quote'));
     } finally {
       setSubmitting(false);
     }
@@ -558,7 +599,9 @@ function EditQuoteModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto mx-4">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800">Edit Quote</h3>
+          <h3 className="text-lg font-semibold text-slate-800">
+            {t('hospital.cases.detail.quote.editTitle', undefined, 'Edit Quote')}
+          </h3>
           <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600"><X size={20} /></button>
         </div>
 
@@ -572,9 +615,11 @@ function EditQuoteModal({
           {/* Line Items */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-slate-700">Line Items</label>
+              <label className="text-sm font-medium text-slate-700">
+                {t('hospital.cases.detail.quote.fields.lineItems', undefined, 'Line Items')}
+              </label>
               <button type="button" onClick={addLineItem} className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700">
-                <Plus size={12} /> Add Item
+                <Plus size={12} /> {t('hospital.cases.detail.quote.actions.addItem', undefined, 'Add Item')}
               </button>
             </div>
             <div className="space-y-2">
@@ -583,13 +628,15 @@ function EditQuoteModal({
               ))}
             </div>
             <div className="mt-3 flex justify-end text-sm font-semibold text-slate-800">
-              Total: {currency} {total.toFixed(2)}
+              {t('hospital.cases.detail.quote.fields.total', undefined, 'Total')}: {currency} {total.toFixed(2)}
             </div>
           </div>
 
           {/* Currency */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Currency</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {t('hospital.cases.detail.quote.fields.currency', undefined, 'Currency')}
+            </label>
             <select value={currency} onChange={(e) => setCurrency(e.target.value)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
               <option value="USD">USD</option><option value="CNY">CNY</option><option value="EUR">EUR</option><option value="KRW">KRW</option><option value="THB">THB</option>
@@ -598,15 +645,19 @@ function EditQuoteModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {t('hospital.cases.detail.quote.fields.notes', undefined, 'Notes')}
+            </label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Optional notes..." />
+              placeholder={t('hospital.cases.detail.quote.fields.notesShortPlaceholder', undefined, 'Optional notes...')} />
           </div>
 
           {/* Valid Until */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Valid Until</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {t('hospital.cases.detail.quote.fields.validUntil', undefined, 'Valid Until')}
+            </label>
             <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
@@ -614,10 +665,10 @@ function EditQuoteModal({
 
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100">
           <button type="button" onClick={onClose} disabled={submitting}
-            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors">{t('hospital.common.cancel', undefined, 'Cancel')}</button>
           <button type="button" onClick={handleSubmit} disabled={submitting}
             className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50">
-            {submitting ? <Loader2 size={16} className="animate-spin" /> : 'Save Changes'}
+            {submitting ? <Loader2 size={16} className="animate-spin" /> : t('hospital.cases.detail.quote.actions.saveChanges', undefined, 'Save Changes')}
           </button>
         </div>
       </div>

@@ -1,12 +1,25 @@
 import { apiClient } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api-fetch';
 import type { PaginatedResponse, ConsultationSummary, ConsultationStats, CaseSummary } from '@/lib/api-types';
 import { ConsultationsList } from '@/components/consultations-list';
+import { loadMessages, normalizeLocale, translateMessage } from '@medical-crm/i18n';
 
 const EMPTY_CONSULTATIONS: PaginatedResponse<ConsultationSummary> = { data: [] };
 const EMPTY_STATS: ConsultationStats = {};
 const EMPTY_CASES: PaginatedResponse<CaseSummary> = { data: [] };
 
+interface UserProfileResponse {
+  preferredLanguage?: string;
+}
+
 export default async function ConsultationsPage() {
+  const profileRes = await apiFetch('/api/v2/users/me');
+  const profile = profileRes.ok
+    ? await profileRes.json() as UserProfileResponse
+    : null;
+  const locale = normalizeLocale(profile?.preferredLanguage);
+  const messages = await loadMessages(locale);
+
   // Use Promise.allSettled so one API failure does not crash the entire page.
   const [consultationsResult, statsResult, casesResult] = await Promise.allSettled([
     apiClient<PaginatedResponse<ConsultationSummary>>('/api/v2/consultations?status=SCHEDULED&limit=20'),
@@ -48,8 +61,17 @@ export default async function ConsultationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Consultations</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage and review patient video consultations</p>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {translateMessage(messages, 'hospital.portal.consultations.page.title', undefined, 'Consultations')}
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {translateMessage(
+              messages,
+              'hospital.portal.consultations.page.description',
+              undefined,
+              'Manage and review patient video consultations',
+            )}
+          </p>
         </div>
       </div>
       <ConsultationsList initialData={enrichedData} initialStats={stats} caseMap={Object.fromEntries(caseMap)} cases={cases?.data ?? []} />

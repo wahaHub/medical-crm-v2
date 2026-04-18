@@ -57,7 +57,7 @@ export default async function DashboardPage() {
     const linkedCase = c.caseId ? caseMap.get(c.caseId) : undefined;
     return {
       id: c.id,
-      patientName: c.patientName ?? linkedCase?.patientName ?? 'Unknown',
+      patientName: c.patientName ?? linkedCase?.patientName ?? '',
       caseNumber: linkedCase?.caseNumber ?? '',
       scheduledAt: c.scheduledAt ?? '',
       durationMinutes: c.durationMinutes ?? 30,
@@ -72,7 +72,7 @@ export default async function DashboardPage() {
     const titleName = c.title?.split(' - ')[0];
     return {
       id: c.id,
-      patientName: c.patientName ?? titleName ?? 'Unknown',
+      patientName: c.patientName ?? titleName ?? '',
       category: c.category ?? 'OTHER',
       lastMessage: c.lastMessagePreview ?? '',
       unreadCount: c.unreadCount ?? 0,
@@ -87,7 +87,7 @@ export default async function DashboardPage() {
     return {
       id: c.id,
       caseNumber: c.caseNumber ?? '',
-      patientName: c.patientName ?? 'Unknown',
+      patientName: c.patientName ?? '',
       patientCountry: c.patientCountry ?? null,
       medicalCondition: raw.primaryDiagnosis ?? c.medicalCondition ?? null,
       status: c.status ?? 'UNKNOWN',

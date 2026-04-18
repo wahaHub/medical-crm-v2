@@ -1,46 +1,109 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { changePassword, updatePreferences } from '@/actions/settings-actions';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
-// ── Password Section ────────────────────────────────────────────────
+type FeedbackState = { type: 'success' | 'error'; message: string } | null;
+type NotificationKey = 'newCase' | 'newMessage' | 'quoteStatusChange' | 'consultationReminder';
+
+const LANGUAGE_OPTIONS = [
+  { value: 'en', key: 'hospital.settings.language.options.en', fallback: 'English' },
+  { value: 'zh', key: 'hospital.settings.language.options.zh', fallback: 'Chinese' },
+  { value: 'fr', key: 'hospital.settings.language.options.fr', fallback: 'French' },
+  { value: 'de', key: 'hospital.settings.language.options.de', fallback: 'German' },
+  { value: 'es', key: 'hospital.settings.language.options.es', fallback: 'Spanish' },
+  { value: 'bn', key: 'hospital.settings.language.options.bn', fallback: 'Bengali' },
+] as const;
+
+function FeedbackBanner({ feedback }: { feedback: FeedbackState }) {
+  if (!feedback) return null;
+
+  return (
+    <div
+      className={`mb-5 rounded-xl border px-4 py-3 text-sm font-medium ${
+        feedback.type === 'success'
+          ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+          : 'border-rose-100 bg-rose-50 text-rose-700'
+      }`}
+    >
+      {feedback.message}
+    </div>
+  );
+}
 
 function PasswordSection() {
+  const { t } = useHospitalI18n();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
 
   const handleSave = async () => {
     setFeedback(null);
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setFeedback({ type: 'error', message: 'All fields are required.' });
+      setFeedback({
+        type: 'error',
+        message: t(
+          'hospital.settings.password.feedback.allFieldsRequired',
+          undefined,
+          'All fields are required.',
+        ),
+      });
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setFeedback({ type: 'error', message: 'New password and confirmation do not match.' });
+      setFeedback({
+        type: 'error',
+        message: t(
+          'hospital.settings.password.feedback.mismatch',
+          undefined,
+          'New password and confirmation do not match.',
+        ),
+      });
       return;
     }
 
     if (newPassword.length < 8) {
-      setFeedback({ type: 'error', message: 'New password must be at least 8 characters.' });
+      setFeedback({
+        type: 'error',
+        message: t(
+          'hospital.settings.password.feedback.minimumLength',
+          undefined,
+          'New password must be at least 8 characters.',
+        ),
+      });
       return;
     }
 
     setSaving(true);
     try {
       await changePassword({ currentPassword, newPassword });
-      setFeedback({ type: 'success', message: 'Password updated successfully.' });
+      setFeedback({
+        type: 'success',
+        message: t(
+          'hospital.settings.password.feedback.saved',
+          undefined,
+          'Password updated successfully.',
+        ),
+      });
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to update password.',
+        message:
+          err instanceof Error
+            ? err.message
+            : t(
+                'hospital.settings.password.feedback.saveFailed',
+                undefined,
+                'Failed to update password.',
+              ),
       });
     } finally {
       setSaving(false);
@@ -48,85 +111,122 @@ function PasswordSection() {
   };
 
   return (
-    <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-8">
-      <h2 className="text-lg font-semibold text-slate-800 mb-1">Password</h2>
-      <p className="text-sm text-slate-500 mb-6">Update your account password</p>
+    <div className="rounded-[1.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+      <h2 className="mb-1 text-lg font-semibold text-slate-800">
+        {t('hospital.settings.password.title', undefined, 'Password')}
+      </h2>
+      <p className="mb-6 text-sm text-slate-500">
+        {t('hospital.settings.password.description', undefined, 'Update your account password')}
+      </p>
 
-      {feedback && (
-        <div
-          className={`mb-5 px-4 py-3 rounded-xl text-sm font-medium border ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-              : 'bg-rose-50 text-rose-700 border-rose-100'
-          }`}
-        >
-          {feedback.message}
-        </div>
-      )}
+      <FeedbackBanner feedback={feedback} />
 
-      <div className="space-y-4 max-w-sm">
+      <div className="max-w-sm space-y-4">
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">Current Password</label>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">
+            {t('hospital.settings.password.currentLabel', undefined, 'Current Password')}
+          </label>
           <input
             type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
-            placeholder="Enter current password"
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none"
+            placeholder={t(
+              'hospital.settings.password.currentPlaceholder',
+              undefined,
+              'Enter current password',
+            )}
+            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">New Password</label>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">
+            {t('hospital.settings.password.newLabel', undefined, 'New Password')}
+          </label>
           <input
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Enter new password"
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none"
+            placeholder={t(
+              'hospital.settings.password.newPlaceholder',
+              undefined,
+              'Enter new password',
+            )}
+            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">Confirm New Password</label>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">
+            {t(
+              'hospital.settings.password.confirmLabel',
+              undefined,
+              'Confirm New Password',
+            )}
+          </label>
           <input
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm new password"
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none"
+            placeholder={t(
+              'hospital.settings.password.confirmPlaceholder',
+              undefined,
+              'Confirm new password',
+            )}
+            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
 
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50 transition-colors disabled:opacity-50"
+          className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-200/50 transition-colors hover:bg-indigo-700 disabled:opacity-50"
         >
-          {saving ? 'Saving...' : 'Update Password'}
+          {saving
+            ? t('hospital.common.actions.saving', undefined, 'Saving...')
+            : t('hospital.settings.password.submit', undefined, 'Update Password')}
         </button>
       </div>
     </div>
   );
 }
 
-// ── Language Section ────────────────────────────────────────────────
-
 function LanguageSection() {
-  const [language, setLanguage] = useState('en');
+  const { locale, isSwitchingLocale, setLocale, t } = useHospitalI18n();
+  const [language, setLanguage] = useState<string>(locale);
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+
+  useEffect(() => {
+    setLanguage(locale);
+  }, [locale]);
 
   const handleSave = async () => {
     setFeedback(null);
     setSaving(true);
+
     try {
       await updatePreferences({ preferredLanguage: language });
-      setFeedback({ type: 'success', message: 'Language preference saved.' });
+      await setLocale(language);
+      setFeedback({
+        type: 'success',
+        message: t(
+          'hospital.settings.language.feedback.saved',
+          undefined,
+          'Language preference saved.',
+        ),
+      });
     } catch (err) {
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to save language preference.',
+        message:
+          err instanceof Error
+            ? err.message
+            : t(
+                'hospital.settings.language.feedback.saveFailed',
+                undefined,
+                'Failed to save language preference.',
+              ),
       });
     } finally {
       setSaving(false);
@@ -134,86 +234,67 @@ function LanguageSection() {
   };
 
   return (
-    <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-8">
-      <h2 className="text-lg font-semibold text-slate-800 mb-1">Preferred Language</h2>
-      <p className="text-sm text-slate-500 mb-6">Choose the language for your portal interface</p>
+    <div className="rounded-[1.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+      <h2 className="mb-1 text-lg font-semibold text-slate-800">
+        {t('hospital.settings.language.title', undefined, 'Preferred Language')}
+      </h2>
+      <p className="mb-6 text-sm text-slate-500">
+        {t(
+          'hospital.settings.language.description',
+          undefined,
+          'Choose the language for your portal interface',
+        )}
+      </p>
 
-      {feedback && (
-        <div
-          className={`mb-5 px-4 py-3 rounded-xl text-sm font-medium border ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-              : 'bg-rose-50 text-rose-700 border-rose-100'
-          }`}
-        >
-          {feedback.message}
-        </div>
-      )}
+      <FeedbackBanner feedback={feedback} />
 
-      <div className="space-y-4 max-w-sm">
+      <div className="max-w-sm space-y-4">
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">Language</label>
+          <label className="mb-2 block text-sm font-semibold text-slate-700">
+            {t('hospital.settings.language.label', undefined, 'Language')}
+          </label>
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           >
-            <option value="en">English</option>
-            <option value="zh">中文</option>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.key, undefined, option.fallback)}
+              </option>
+            ))}
           </select>
         </div>
 
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50 transition-colors disabled:opacity-50"
+          disabled={saving || isSwitchingLocale}
+          className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-200/50 transition-colors hover:bg-indigo-700 disabled:opacity-50"
         >
-          {saving ? 'Saving...' : 'Save Language'}
+          {saving || isSwitchingLocale
+            ? t('hospital.common.actions.saving', undefined, 'Saving...')
+            : t('hospital.settings.language.submit', undefined, 'Save Language')}
         </button>
       </div>
     </div>
   );
 }
 
-// ── Notifications Section ───────────────────────────────────────────
-
-type NotificationKey = 'newCase' | 'newMessage' | 'quoteStatusChange' | 'consultationReminder';
-
-const NOTIFICATION_OPTIONS: { key: NotificationKey; label: string; description: string }[] = [
-  {
-    key: 'newCase',
-    label: 'New Case',
-    description: 'Get notified when a new patient case is assigned to your hospital',
-  },
-  {
-    key: 'newMessage',
-    label: 'New Message',
-    description: 'Get notified when you receive a new message from a patient or coordinator',
-  },
-  {
-    key: 'quoteStatusChange',
-    label: 'Quote Status Change',
-    description: 'Get notified when a quote status is updated',
-  },
-  {
-    key: 'consultationReminder',
-    label: 'Consultation Reminder',
-    description: 'Receive reminders for upcoming consultations',
-  },
-];
-
 function ToggleSwitch({
   checked,
   onChange,
+  label,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
+  label: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={label}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
         checked ? 'bg-indigo-600' : 'bg-slate-200'
@@ -230,6 +311,7 @@ function ToggleSwitch({
 }
 
 function NotificationsSection() {
+  const { t } = useHospitalI18n();
   const [notifications, setNotifications] = useState<Record<NotificationKey, boolean>>({
     newCase: true,
     newMessage: true,
@@ -237,7 +319,62 @@ function NotificationsSection() {
     consultationReminder: false,
   });
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+
+  const notificationOptions: {
+    key: NotificationKey;
+    label: string;
+    description: string;
+  }[] = [
+    {
+      key: 'newCase',
+      label: t('hospital.settings.notifications.options.newCase.label', undefined, 'New Case'),
+      description: t(
+        'hospital.settings.notifications.options.newCase.description',
+        undefined,
+        'Get notified when a new patient case is assigned to your hospital',
+      ),
+    },
+    {
+      key: 'newMessage',
+      label: t(
+        'hospital.settings.notifications.options.newMessage.label',
+        undefined,
+        'New Message',
+      ),
+      description: t(
+        'hospital.settings.notifications.options.newMessage.description',
+        undefined,
+        'Get notified when you receive a new message from a patient or coordinator',
+      ),
+    },
+    {
+      key: 'quoteStatusChange',
+      label: t(
+        'hospital.settings.notifications.options.quoteStatusChange.label',
+        undefined,
+        'Quote Status Change',
+      ),
+      description: t(
+        'hospital.settings.notifications.options.quoteStatusChange.description',
+        undefined,
+        'Get notified when a quote status is updated',
+      ),
+    },
+    {
+      key: 'consultationReminder',
+      label: t(
+        'hospital.settings.notifications.options.consultationReminder.label',
+        undefined,
+        'Consultation Reminder',
+      ),
+      description: t(
+        'hospital.settings.notifications.options.consultationReminder.description',
+        undefined,
+        'Receive reminders for upcoming consultations',
+      ),
+    },
+  ];
 
   const handleToggle = (key: NotificationKey, value: boolean) => {
     setNotifications((prev) => ({ ...prev, [key]: value }));
@@ -246,13 +383,28 @@ function NotificationsSection() {
   const handleSave = async () => {
     setFeedback(null);
     setSaving(true);
+
     try {
       await updatePreferences({ notifications });
-      setFeedback({ type: 'success', message: 'Notification preferences saved.' });
+      setFeedback({
+        type: 'success',
+        message: t(
+          'hospital.settings.notifications.feedback.saved',
+          undefined,
+          'Notification preferences saved.',
+        ),
+      });
     } catch (err) {
       setFeedback({
         type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to save notification preferences.',
+        message:
+          err instanceof Error
+            ? err.message
+            : t(
+                'hospital.settings.notifications.feedback.saveFailed',
+                undefined,
+                'Failed to save notification preferences.',
+              ),
       });
     } finally {
       setSaving(false);
@@ -260,32 +412,31 @@ function NotificationsSection() {
   };
 
   return (
-    <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-8">
-      <h2 className="text-lg font-semibold text-slate-800 mb-1">Email Notifications</h2>
-      <p className="text-sm text-slate-500 mb-6">Control which email notifications you receive</p>
+    <div className="rounded-[1.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+      <h2 className="mb-1 text-lg font-semibold text-slate-800">
+        {t('hospital.settings.notifications.title', undefined, 'Email Notifications')}
+      </h2>
+      <p className="mb-6 text-sm text-slate-500">
+        {t(
+          'hospital.settings.notifications.description',
+          undefined,
+          'Control which email notifications you receive',
+        )}
+      </p>
 
-      {feedback && (
-        <div
-          className={`mb-5 px-4 py-3 rounded-xl text-sm font-medium border ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-              : 'bg-rose-50 text-rose-700 border-rose-100'
-          }`}
-        >
-          {feedback.message}
-        </div>
-      )}
+      <FeedbackBanner feedback={feedback} />
 
-      <div className="space-y-5 mb-6">
-        {NOTIFICATION_OPTIONS.map(({ key, label, description }) => (
+      <div className="mb-6 space-y-5">
+        {notificationOptions.map(({ key, label, description }) => (
           <div key={key} className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-slate-800">{label}</p>
-              <p className="text-sm text-slate-500 mt-0.5">{description}</p>
+              <p className="mt-0.5 text-sm text-slate-500">{description}</p>
             </div>
             <ToggleSwitch
               checked={notifications[key]}
               onChange={(value) => handleToggle(key, value)}
+              label={label}
             />
           </div>
         ))}
@@ -294,15 +445,15 @@ function NotificationsSection() {
       <button
         onClick={handleSave}
         disabled={saving}
-        className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50 transition-colors disabled:opacity-50"
+        className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-200/50 transition-colors hover:bg-indigo-700 disabled:opacity-50"
       >
-        {saving ? 'Saving...' : 'Save Notifications'}
+        {saving
+          ? t('hospital.common.actions.saving', undefined, 'Saving...')
+          : t('hospital.settings.notifications.submit', undefined, 'Save Notifications')}
       </button>
     </div>
   );
 }
-
-// ── Main Export ─────────────────────────────────────────────────────
 
 export function SettingsView() {
   return (

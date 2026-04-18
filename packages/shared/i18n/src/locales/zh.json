@@ -1375,6 +1375,49 @@
   },
   "hospital": {
     "title": "医院门户",
+    "portalShell": {
+      "title": "医院门户",
+      "nav": {
+        "dashboard": "首页概览",
+        "cases": "病例管理",
+        "consultations": "在线问诊",
+        "messages": "消息",
+        "materials": "宣传材料",
+        "emailTemplates": "邮件模板",
+        "faq": "聊天机器人与常见问题",
+        "settings": "设置"
+      },
+      "actions": {
+        "logout": "退出登录",
+        "notifications": "通知"
+      },
+      "search": {
+        "placeholder": "搜索患者、病例..."
+      }
+    },
+    "error": {
+      "title": "出了点问题",
+      "tryAgain": "重试"
+    },
+    "loading": {
+      "label": "正在加载"
+    },
+    "login": {
+      "title": "Medical CRM",
+      "subtitle": "统一门户登录",
+      "formTitle": "登录到您的账户",
+      "usernameLabel": "用户名 / 邮箱",
+      "usernamePlaceholder": "请输入用户名或邮箱",
+      "passwordLabel": "密码",
+      "passwordPlaceholder": "请输入密码",
+      "submit": "登录",
+      "submitting": "登录中...",
+      "alternatePortalLabel": "前往管理后台",
+      "errors": {
+        "loginFailed": "登录失败",
+        "requestFailed": "登录时发生错误"
+      }
+    },
     "hospitalStaff": "医院工作人员",
     "welcome": "欢迎回来",
     "welcomeDescription": "查看分配给您的病例，与患者沟通，管理预约",

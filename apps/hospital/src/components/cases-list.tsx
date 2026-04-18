@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge, useDebounce } from '@medical-crm/ui';
 import { useCases } from '@/queries/use-cases';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 import type { PaginatedResponse, CaseSummary, CaseStats } from '@/lib/api-types';
 
 interface CasesListProps {
@@ -21,10 +22,18 @@ interface CasesListProps {
 }
 
 const statusTabs = [
-  { key: 'all', label: 'All' },
-  { key: 'assignmentStatus:UNASSIGNED', label: 'New' },
-  { key: 'status:ACTIVE|assignmentStatus:ASSIGNED', label: 'In Progress' },
-  { key: 'status:COMPLETED', label: 'Completed' },
+  { key: 'all', labelKey: 'hospital.cases.list.tabs.all', fallback: 'All' },
+  { key: 'assignmentStatus:UNASSIGNED', labelKey: 'hospital.cases.list.tabs.new', fallback: 'New' },
+  {
+    key: 'status:ACTIVE|assignmentStatus:ASSIGNED',
+    labelKey: 'hospital.cases.list.tabs.inProgress',
+    fallback: 'In Progress',
+  },
+  {
+    key: 'status:COMPLETED',
+    labelKey: 'hospital.cases.list.tabs.completed',
+    fallback: 'Completed',
+  },
 ];
 
 const AVATAR_COLORS = [
@@ -82,10 +91,10 @@ function conditionLabel(condition: string | null) {
   return words[0] ?? condition.split(' ')[0] ?? 'General';
 }
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr: string, locale: string) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric' }).format(d);
 }
 
 // Country flag emoji helper (ISO 3166-1 alpha-2)
@@ -120,10 +129,12 @@ const STAT_ICONS = [
 
 export function CasesList({ initialCases, initialStats }: CasesListProps) {
   const router = useRouter();
+  const { locale, t } = useHospitalI18n();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 300);
+  const unknownLabel = t('hospital.common.unknown', undefined, 'Unknown');
 
   const filters: Record<string, string> = { page: String(page), limit: '20' };
   if (status !== 'all') {
@@ -141,14 +152,27 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
   const stats = initialStats;
 
   const statValues = [
-    { value: stats.total ?? 0, label: 'All Cases' },
-    { value: stats.unassigned ?? 0, label: 'New' },
-    { value: stats.inTreatment ?? 0, label: 'In Progress' },
-    { value: stats.completed ?? 0, label: 'Completed' },
+    {
+      value: stats.total ?? 0,
+      label: t('hospital.cases.list.stats.allCases', undefined, 'All Cases'),
+    },
+    { value: stats.unassigned ?? 0, label: t('hospital.cases.list.stats.new', undefined, 'New') },
+    {
+      value: stats.inTreatment ?? 0,
+      label: t('hospital.cases.list.stats.inProgress', undefined, 'In Progress'),
+    },
+    {
+      value: stats.completed ?? 0,
+      label: t('hospital.cases.list.stats.completed', undefined, 'Completed'),
+    },
   ];
 
   return (
     <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-slate-900">
+        {t('hospital.cases.title', undefined, 'Cases Management')}
+      </h1>
+
       {/* Search + Filter Bar */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-xl">
@@ -157,13 +181,17 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search caseNumber, patient.name, patient.code..."
+            placeholder={t(
+              'hospital.cases.list.searchPlaceholder',
+              undefined,
+              'Search caseNumber, patient.name, patient.code...',
+            )}
             className="w-full rounded-full border border-slate-200 bg-white py-2.5 pl-11 pr-4 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
         <button className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50">
           <Filter size={16} />
-          Filter
+          {t('hospital.cases.list.filterButton', undefined, 'Filter')}
         </button>
       </div>
 
@@ -202,18 +230,22 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
             }`}
           >
-            {tab.label}
+            {t(tab.labelKey, undefined, tab.fallback)}
           </button>
         ))}
       </div>
 
       {/* Case Cards Grid */}
       {hasActiveFilters && isPending ? (
-        <div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>
+        <div className="flex items-center justify-center py-12 text-slate-400">
+          {t('hospital.common.loading', undefined, 'Loading...')}
+        </div>
       ) : (cases.data ?? []).length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <FolderOpen size={48} className="text-slate-300 mb-3" />
-          <p className="text-slate-500 text-sm">No cases found</p>
+          <p className="text-slate-500 text-sm">
+            {t('hospital.cases.list.empty', undefined, 'No cases found')}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -221,6 +253,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
             const raw = c as CaseSummary & { primaryDiagnosis?: string | null };
             const condition = raw.primaryDiagnosis ?? c.medicalCondition ?? null;
             const flag = getCountryFlag(c.patientCountry);
+            const patientName = c.patientName ?? unknownLabel;
 
             return (
               <div
@@ -232,19 +265,19 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-sm font-semibold text-indigo-600">{c.caseNumber}</span>
-                    <span className="text-xs text-slate-400">{formatDate(c.createdAt ?? '')}</span>
+                    <span className="text-xs text-slate-400">{formatDate(c.createdAt ?? '', locale)}</span>
                   </div>
                   <StatusBadge status={c.status ?? 'UNKNOWN'} />
                 </div>
 
                 {/* Patient row */}
                 <div className="flex items-center gap-4 mb-4">
-                  <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-base font-semibold ${avatarColor(c.patientName ?? 'U')}`}>
-                    {getInitials(c.patientName ?? 'U')}
+                  <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-base font-semibold ${avatarColor(patientName)}`}>
+                    {getInitials(patientName)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-900">{c.patientName ?? 'Unknown'}</span>
+                      <span className="font-semibold text-slate-900">{patientName}</span>
                       {c.patientCode && (
                         <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                           #{c.patientCode}
@@ -253,10 +286,18 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
                       {c.patientAge != null && (
-                        <span>{c.patientAge} y/o</span>
+                        <span>
+                          {t('hospital.common.ageYears', { age: c.patientAge }, '{age} y/o')}
+                        </span>
                       )}
                       {c.patientGender && (
-                        <span>• {c.patientGender === 'MALE' ? 'M' : c.patientGender === 'FEMALE' ? 'F' : c.patientGender}</span>
+                        <span>
+                          • {c.patientGender === 'MALE'
+                            ? t('hospital.common.genderMaleShort', undefined, 'M')
+                            : c.patientGender === 'FEMALE'
+                              ? t('hospital.common.genderFemaleShort', undefined, 'F')
+                              : c.patientGender}
+                        </span>
                       )}
                       {c.patientCountry && (
                         <>

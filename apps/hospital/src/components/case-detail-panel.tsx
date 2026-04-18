@@ -42,6 +42,7 @@ import { useEmailTemplates } from '@/queries/use-email-templates';
 import { addDiagnosis } from '@/actions/case-actions';
 import { CreateConsultationModal } from '@/components/create-consultation-modal';
 import { useAuth } from '@/lib/auth-context';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 import type {
   HospitalCaseDetail,
   CaseSummary,
@@ -74,16 +75,16 @@ function getInitials(name: string) {
 
 // ── Tab Definitions ─────────────────────────────────────────────────
 
-const tabs = [
-  { id: 'ai-summary', label: 'AI Summary', icon: Sparkles },
-  { id: 'intake', label: 'Intake', icon: FileText },
-  { id: 'documents', label: 'Documents', icon: FileText },
-  { id: 'messages', label: 'Messages', icon: MessageSquare },
-  { id: 'diagnosis', label: 'Diagnosis', icon: Stethoscope },
-  { id: 'quote', label: 'Quote', icon: Receipt },
-  { id: 'marketing', label: 'Marketing', icon: Megaphone },
-  { id: 'invitation', label: 'Invitation Letter', icon: FileSignature },
-  { id: 'consultation', label: 'Consultation', icon: Video },
+const tabDefinitions = [
+  { id: 'ai-summary', labelKey: 'hospital.cases.detail.tabs.aiSummary', fallback: 'AI Summary', icon: Sparkles },
+  { id: 'intake', labelKey: 'hospital.cases.detail.tabs.intake', fallback: 'Intake', icon: FileText },
+  { id: 'documents', labelKey: 'hospital.cases.detail.tabs.documents', fallback: 'Documents', icon: FileText },
+  { id: 'messages', labelKey: 'hospital.cases.detail.tabs.messages', fallback: 'Messages', icon: MessageSquare },
+  { id: 'diagnosis', labelKey: 'hospital.cases.detail.tabs.diagnosis', fallback: 'Diagnosis', icon: Stethoscope },
+  { id: 'quote', labelKey: 'hospital.cases.detail.tabs.quote', fallback: 'Quote', icon: Receipt },
+  { id: 'marketing', labelKey: 'hospital.cases.detail.tabs.marketing', fallback: 'Marketing', icon: Megaphone },
+  { id: 'invitation', labelKey: 'hospital.cases.detail.tabs.invitation', fallback: 'Invitation Letter', icon: FileSignature },
+  { id: 'consultation', labelKey: 'hospital.cases.detail.tabs.consultation', fallback: 'Consultation', icon: Video },
 ];
 
 // ── Main Component ──────────────────────────────────────────────────
@@ -91,6 +92,7 @@ const tabs = [
 export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [activeTab, setActiveTab] = useState('ai-summary');
   const router = useRouter();
+  const { t } = useHospitalI18n();
 
   const { data: consultations } = useCaseConsultations(caseDetail.id);
   const consultationsList = (consultations as ConsultationSummary[] | undefined) ?? [];
@@ -105,7 +107,7 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
           onClick={() => router.push('/cases')}
           className="flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-indigo-600 mb-5 transition-colors"
         >
-          <ChevronLeft size={16} /> Back to Cases
+          <ChevronLeft size={16} /> {t('hospital.cases.detail.backToCases', undefined, 'Back to Cases')}
         </button>
 
         <div className="flex items-center gap-6">
@@ -124,8 +126,18 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
               <StatusBadge status={caseDetail.displayStatus} />
             </div>
             <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
-              {patient.age != null && <span>{patient.age} y/o</span>}
-              {patient.gender && <span>• {patient.gender === 'MALE' ? 'M' : patient.gender === 'FEMALE' ? 'F' : patient.gender}</span>}
+              {patient.age != null && (
+                <span>{t('hospital.common.ageYears', { age: patient.age }, '{age} y/o')}</span>
+              )}
+              {patient.gender && (
+                <span>
+                  • {patient.gender === 'MALE'
+                    ? t('hospital.common.genderMaleShort', undefined, 'M')
+                    : patient.gender === 'FEMALE'
+                      ? t('hospital.common.genderFemaleShort', undefined, 'F')
+                      : patient.gender}
+                </span>
+              )}
               {patient.country && (
                 <>
                   <span className="w-1 h-1 bg-slate-300 rounded-full" />
@@ -133,11 +145,17 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
                 </>
               )}
               <span className="w-1 h-1 bg-slate-300 rounded-full" />
-              <span className="flex items-center gap-1.5"><FileText size={14} /> {caseDetail.documents.length} Docs</span>
+              <span className="flex items-center gap-1.5">
+                <FileText size={14} />{' '}
+                {t('hospital.cases.detail.header.documentsCount', { count: caseDetail.documents.length }, '{count} Docs')}
+              </span>
               {caseDetail.totalMessages > 0 && (
                 <>
                   <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                  <span className="flex items-center gap-1.5"><MessageSquare size={14} /> {caseDetail.totalMessages} Messages</span>
+                  <span className="flex items-center gap-1.5">
+                    <MessageSquare size={14} />{' '}
+                    {t('hospital.cases.detail.header.messagesCount', { count: caseDetail.totalMessages }, '{count} Messages')}
+                  </span>
                 </>
               )}
             </div>
@@ -148,7 +166,7 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
       {/* Tabs */}
       <div className="px-10 pt-4 bg-white border-b border-slate-200/60 shrink-0 shadow-sm">
         <div className="flex gap-8 overflow-x-auto">
-          {tabs.map((tab) => (
+          {tabDefinitions.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -158,7 +176,7 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
                   : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
               }`}
             >
-              <tab.icon size={16} /> {tab.label}
+              <tab.icon size={16} /> {t(tab.labelKey, undefined, tab.fallback)}
             </button>
           ))}
         </div>
@@ -201,6 +219,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function IntakeTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
+  const { t } = useHospitalI18n();
   const { data: rawResponse, isLoading, error } = useCaseQuestionnaire(caseDetail.id);
   const questionnairePayload = isRecord(rawResponse) && 'data' in rawResponse
     ? (rawResponse as { data?: unknown }).data
@@ -219,7 +238,9 @@ function IntakeTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   }
 
   if (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load medical intake';
+    const message = error instanceof Error
+      ? error.message
+      : t('hospital.cases.detail.intake.errorLoad', undefined, 'Failed to load medical intake');
     return (
       <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
         {message}
@@ -240,6 +261,7 @@ function formatFileSize(bytes?: number): string {
 }
 
 function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
+  const { locale, t } = useHospitalI18n();
   const docs = caseDetail.documents;
   const groups: Record<string, typeof docs> = {};
   for (const doc of docs) {
@@ -248,13 +270,19 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     groups[type].push(doc);
   }
   const groupLabels: Record<string, string> = {
-    MEDICAL_INTAKE: 'Medical Intake', DIAGNOSIS: 'Diagnosis', INVITATION_LETTER: 'Invitation Letter',
-    INVITATION: 'Invitation Letter', MESSAGE_ATTACHMENT: 'Message Attachments', OTHER: 'Other Documents',
+    MEDICAL_INTAKE: t('hospital.cases.detail.documents.groups.medicalIntake', undefined, 'Medical Intake'),
+    DIAGNOSIS: t('hospital.cases.detail.documents.groups.diagnosis', undefined, 'Diagnosis'),
+    INVITATION_LETTER: t('hospital.cases.detail.documents.groups.invitationLetter', undefined, 'Invitation Letter'),
+    INVITATION: t('hospital.cases.detail.documents.groups.invitationLetter', undefined, 'Invitation Letter'),
+    MESSAGE_ATTACHMENT: t('hospital.cases.detail.documents.groups.messageAttachments', undefined, 'Message Attachments'),
+    OTHER: t('hospital.cases.detail.documents.groups.otherDocuments', undefined, 'Other Documents'),
   };
   if (docs.length === 0) return (
     <div className="text-center py-12 bg-white rounded-[1.5rem] border border-slate-100 shadow-sm">
       <FileText size={40} className="mx-auto mb-3 text-slate-300" />
-      <p className="text-sm text-slate-400">No documents uploaded yet</p>
+      <p className="text-sm text-slate-400">
+        {t('hospital.cases.detail.documents.empty', undefined, 'No documents uploaded yet')}
+      </p>
     </div>
   );
   return (
@@ -271,9 +299,11 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><FileText size={20} /></div>
                   <div>
-                    <div className="text-sm font-semibold text-slate-800 truncate max-w-[200px]">{doc.fileName ?? 'Unnamed'}</div>
+                    <div className="text-sm font-semibold text-slate-800 truncate max-w-[200px]">
+                      {doc.fileName ?? t('hospital.cases.detail.documents.unnamed', undefined, 'Unnamed')}
+                    </div>
                     <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                      {doc.createdAt && <span>{new Date(doc.createdAt).toLocaleDateString()}</span>}
+                      {doc.createdAt && <span>{new Intl.DateTimeFormat(locale).format(new Date(doc.createdAt))}</span>}
                       {doc.fileSize != null && doc.fileSize > 0 && <><span>-</span><span>{formatFileSize(doc.fileSize)}</span></>}
                       {doc.language && <><span>-</span><span>{doc.language}</span></>}
                     </div>
@@ -300,6 +330,7 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 
 function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const { user } = useAuth();
+  const { locale, t } = useHospitalI18n();
   // Step 1: Find conversations for this case
   const { data: convsRaw, isLoading: convsLoading } = useCaseConversations(caseDetail.id);
   const convs = ((convsRaw as PaginatedResponse<ConversationSummary>)?.data ?? []) as ConversationSummary[];
@@ -335,7 +366,7 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       : 'PATIENT');
                 const isHospital = senderRole === 'HOSPITAL' || senderRole === 'hospital';
                 const msgTime = new Date(msg.createdAt);
-                const timeStr = msgTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const timeStr = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(msgTime);
                 const prevMsg = idx > 0 ? reversed[idx - 1] : null;
                 const showDate = !prevMsg || new Date(prevMsg!.createdAt).toDateString() !== msgTime.toDateString();
                 const translatedCopy = msg.translatedContent ?? msg.contentTranslated;
@@ -345,7 +376,7 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                     {showDate && (
                       <div className="text-center mb-4">
                         <span className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
-                          {msgTime.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          {new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric' }).format(msgTime)}
                         </span>
                       </div>
                     )}
@@ -380,7 +411,13 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <MessageSquare size={40} className="mb-3 text-slate-300" />
-              <p className="text-sm">No messages yet. Start a conversation from the Messages page.</p>
+              <p className="text-sm">
+                {t(
+                  'hospital.cases.detail.messages.empty',
+                  undefined,
+                  'No messages yet. Start a conversation from the Messages page.',
+                )}
+              </p>
             </div>
           )}
         </div>
@@ -389,11 +426,17 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
           <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
             <AlertCircle size={14} className="text-amber-600 shrink-0" />
-            <p className="text-xs text-amber-700">Privacy Notice: Patient contact information is hidden for privacy.</p>
+            <p className="text-xs text-amber-700">
+              {t(
+                'hospital.cases.detail.messages.privacyNotice',
+                undefined,
+                'Privacy Notice: Patient contact information is hidden for privacy.',
+              )}
+            </p>
           </div>
           <div className="flex gap-2">
             <textarea
-              placeholder="Type a message..."
+              placeholder={t('hospital.cases.detail.messages.inputPlaceholder', undefined, 'Type a message...')}
               className="flex-1 resize-none h-14 p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 text-sm"
             />
             <button className="h-14 w-14 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center">
@@ -407,7 +450,7 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
       <MessageCaseDetailPanel
         caseId={caseDetail.id}
         category={selectedConversation?.category ?? null}
-        participantRole="Patient"
+        participantRole={t('hospital.common.patient', undefined, 'Patient')}
         participantName={patientName}
         patientCode={caseDetail.patient.code}
         patientAge={caseDetail.patient.age}
@@ -436,6 +479,7 @@ const SEVERITY_STYLES: Record<string, string> = {
 };
 
 function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
+  const { locale, t } = useHospitalI18n();
   const [showAddModal, setShowAddModal] = useState(false);
   const router = useRouter();
   const diagnoses = caseDetail.diagnoses;
@@ -443,35 +487,37 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     <div className="space-y-6">
       <div className="flex justify-end">
         <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-full shadow-md shadow-cyan-200/50 transition-colors">
-          <Plus size={16} /> Add Diagnosis
+          <Plus size={16} /> {t('hospital.cases.detail.diagnosis.addButton', undefined, 'Add Diagnosis')}
         </button>
       </div>
       {diagnoses.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-[1.5rem] border border-slate-100 shadow-sm">
           <Stethoscope size={40} className="mx-auto mb-3 text-slate-300" />
-          <p className="text-sm text-slate-400">No diagnoses recorded yet</p>
+          <p className="text-sm text-slate-400">
+            {t('hospital.cases.detail.diagnosis.empty', undefined, 'No diagnoses recorded yet')}
+          </p>
         </div>
       ) : (
         diagnoses.map((d, i) => {
           const severityKey = (d.severity ?? '').toLowerCase();
           const severityStyle = SEVERITY_STYLES[severityKey] ?? 'bg-amber-50 text-amber-700 border-amber-200/50';
-          const title = d.title || d.condition || 'Unknown Condition';
+          const title = d.title || d.condition || t('hospital.cases.detail.diagnosis.unknownCondition', undefined, 'Unknown Condition');
           return (
             <div key={d.id ?? i} className="bg-white p-6 rounded-[1.5rem] border border-slate-100 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
                 {d.severity && (
                   <span className={`px-2.5 py-1 border rounded-md text-xs font-semibold uppercase tracking-wide ${severityStyle}`}>
-                    {d.severity}
+                    {t(`hospital.cases.detail.diagnosis.severity.${severityKey}`, undefined, d.severity)}
                   </span>
                 )}
                 {d.icdCode && (
                   <span className="px-2.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-xs font-medium">
-                    ICD: {d.icdCode}
+                    {t('hospital.cases.detail.diagnosis.icdCode', undefined, 'ICD')}: {d.icdCode}
                   </span>
                 )}
                 {d.recordedAt && (
                   <span className="ml-auto text-xs text-slate-400">
-                    {new Date(d.recordedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                    {new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(d.recordedAt))}
                   </span>
                 )}
               </div>
@@ -482,25 +528,33 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                 <div className="grid grid-cols-2 gap-4 mt-4">
                   {d.treatmentRecommendation && (
                     <div className="bg-slate-50 p-3 rounded-lg">
-                      <p className="text-xs text-slate-500 mb-1">Treatment Recommendation</p>
+                      <p className="text-xs text-slate-500 mb-1">
+                        {t('hospital.cases.detail.diagnosis.fields.treatmentRecommendation', undefined, 'Treatment Recommendation')}
+                      </p>
                       <p className="text-sm text-slate-700">{d.treatmentRecommendation}</p>
                     </div>
                   )}
                   {d.suggestedTests && (
                     <div className="bg-slate-50 p-3 rounded-lg">
-                      <p className="text-xs text-slate-500 mb-1">Suggested Tests</p>
+                      <p className="text-xs text-slate-500 mb-1">
+                        {t('hospital.cases.detail.diagnosis.fields.suggestedTests', undefined, 'Suggested Tests')}
+                      </p>
                       <p className="text-sm text-slate-700">{d.suggestedTests}</p>
                     </div>
                   )}
                   {d.costEstimate && (
                     <div className="bg-slate-50 p-3 rounded-lg">
-                      <p className="text-xs text-slate-500 mb-1">Estimated Cost</p>
+                      <p className="text-xs text-slate-500 mb-1">
+                        {t('hospital.cases.detail.diagnosis.fields.estimatedCost', undefined, 'Estimated Cost')}
+                      </p>
                       <p className="text-sm font-medium text-slate-700">{d.costEstimate}</p>
                     </div>
                   )}
                   {d.treatmentDuration && (
                     <div className="bg-slate-50 p-3 rounded-lg">
-                      <p className="text-xs text-slate-500 mb-1">Treatment Duration</p>
+                      <p className="text-xs text-slate-500 mb-1">
+                        {t('hospital.cases.detail.diagnosis.fields.treatmentDuration', undefined, 'Treatment Duration')}
+                      </p>
                       <p className="text-sm font-medium text-slate-700">{d.treatmentDuration}</p>
                     </div>
                   )}
@@ -510,7 +564,9 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
               {/* Backward compat: show old condition/notes fields if present */}
               {d.notes && (
                 <div className="mt-4 bg-slate-50 p-3 rounded-lg">
-                  <p className="text-xs text-slate-500 mb-1">Details</p>
+                  <p className="text-xs text-slate-500 mb-1">
+                    {t('hospital.cases.detail.diagnosis.fields.details', undefined, 'Details')}
+                  </p>
                   <p className="text-sm text-slate-600">{d.notes}</p>
                 </div>
               )}
@@ -542,6 +598,7 @@ function AddDiagnosisModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const [diagnosisType, setDiagnosisType] = useState('Preliminary');
   const [title, setTitle] = useState('');
   const [icdCode, setIcdCode] = useState('');
@@ -557,7 +614,7 @@ function AddDiagnosisModal({
 
   const handleSave = () => {
     if (!title.trim()) {
-      setError('Diagnosis name is required.');
+      setError(t('hospital.cases.detail.diagnosis.validation.nameRequired', undefined, 'Diagnosis name is required.'));
       return;
     }
 
@@ -577,7 +634,7 @@ function AddDiagnosisModal({
           });
           onSuccess();
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to save diagnosis');
+          setError(err instanceof Error ? err.message : t('hospital.cases.detail.diagnosis.errorSave', undefined, 'Failed to save diagnosis'));
         }
       })();
     });
@@ -587,7 +644,7 @@ function AddDiagnosisModal({
     <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10 rounded-t-[2rem]">
-          <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2"><Stethoscope size={20} className="text-cyan-600" /> Add Diagnosis</h2>
+          <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2"><Stethoscope size={20} className="text-cyan-600" /> {t('hospital.cases.detail.diagnosis.addModal.title', undefined, 'Add Diagnosis')}</h2>
           <button onClick={onClose} className="p-2 text-slate-400 hover:bg-slate-50 rounded-full"><X size={20} /></button>
         </div>
         <div className="p-6 space-y-6">
@@ -598,10 +655,15 @@ function AddDiagnosisModal({
             </div>
           )}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-3">Diagnosis Type</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-3">{t('hospital.cases.detail.diagnosis.addModal.type', undefined, 'Diagnosis Type')}</label>
             <div className="grid grid-cols-3 gap-3">
               {['Preliminary', 'Confirmed', 'Follow-up'].map((option) => {
                 const selected = diagnosisType === option;
+                const optionKey = option === 'Preliminary'
+                  ? 'hospital.cases.detail.diagnosis.type.preliminary'
+                  : option === 'Confirmed'
+                    ? 'hospital.cases.detail.diagnosis.type.confirmed'
+                    : 'hospital.cases.detail.diagnosis.type.followUp';
                 return (
                   <button
                     key={option}
@@ -613,18 +675,18 @@ function AddDiagnosisModal({
                         : 'border border-slate-200 text-slate-600 font-medium hover:bg-slate-50'
                     }`}
                   >
-                    {option}
+                    {t(optionKey, undefined, option)}
                   </button>
                 );
               })}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-6">
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Diagnosis Name *</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder="e.g. Coronary Artery Disease" /></div>
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">ICD-10 Code</label><input type="text" value={icdCode} onChange={(e) => setIcdCode(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder="e.g. I25.10" /></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.name', undefined, 'Diagnosis Name *')}</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder={t('hospital.cases.detail.diagnosis.addModal.namePlaceholder', undefined, 'e.g. Coronary Artery Disease')} /></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.icdCode', undefined, 'ICD-10 Code')}</label><input type="text" value={icdCode} onChange={(e) => setIcdCode(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none" placeholder={t('hospital.cases.detail.diagnosis.addModal.icdCodePlaceholder', undefined, 'e.g. I25.10')} /></div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-3">Severity</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-3">{t('hospital.cases.detail.diagnosis.addModal.severity', undefined, 'Severity')}</label>
             <div className="flex gap-4">
               {[
                 { value: 'severe', label: 'Severe', color: 'text-rose-600' },
@@ -638,27 +700,29 @@ function AddDiagnosisModal({
                     checked={severity === option.value}
                     onChange={() => setSeverity(option.value)}
                   />
-                  <span className={`${option.color} font-medium`}>{option.label}</span>
+                  <span className={`${option.color} font-medium`}>
+                    {t(`hospital.cases.detail.diagnosis.severity.${option.value}`, undefined, option.label)}
+                  </span>
                 </label>
               ))}
             </div>
           </div>
-          <div><label className="block text-sm font-semibold text-slate-700 mb-2">Detailed Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-24 resize-none" /></div>
-          <div><label className="block text-sm font-semibold text-slate-700 mb-2">Treatment Recommendation</label><textarea value={treatmentRecommendation} onChange={(e) => setTreatmentRecommendation(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-20 resize-none" /></div>
+          <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.description', undefined, 'Detailed Description')}</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-24 resize-none" /></div>
+          <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.treatmentRecommendation', undefined, 'Treatment Recommendation')}</label><textarea value={treatmentRecommendation} onChange={(e) => setTreatmentRecommendation(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-20 resize-none" /></div>
           <div className="grid grid-cols-2 gap-6">
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Estimated Cost</label><select value={costEstimate} onChange={(e) => setCostEstimate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; $5k</option><option>$5k - $10k</option><option>$10k - $20k</option><option>$20k - $50k</option><option>&gt; $50k</option></select></div>
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">Treatment Duration</label><select value={treatmentDuration} onChange={(e) => setTreatmentDuration(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; 1 Week</option><option>1 - 2 Weeks</option><option>2 Weeks - 1 Month</option><option>1 - 3 Months</option><option>&gt; 3 Months</option></select></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.estimatedCost', undefined, 'Estimated Cost')}</label><select value={costEstimate} onChange={(e) => setCostEstimate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; $5k</option><option>$5k - $10k</option><option>$10k - $20k</option><option>$20k - $50k</option><option>&gt; $50k</option></select></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.treatmentDuration', undefined, 'Treatment Duration')}</label><select value={treatmentDuration} onChange={(e) => setTreatmentDuration(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; 1 Week</option><option>1 - 2 Weeks</option><option>2 Weeks - 1 Month</option><option>1 - 3 Months</option><option>&gt; 3 Months</option></select></div>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Attachments (Max 10MB)</label>
-            <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 bg-slate-50/60"><FileText size={32} className="mb-2 text-slate-300" /><span className="text-sm font-medium">Attachment upload is not wired yet</span></div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.attachments', undefined, 'Attachments (Max 10MB)')}</label>
+            <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 bg-slate-50/60"><FileText size={32} className="mb-2 text-slate-300" /><span className="text-sm font-medium">{t('hospital.cases.detail.diagnosis.addModal.attachmentsPlaceholder', undefined, 'Attachment upload is not wired yet')}</span></div>
           </div>
         </div>
         <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50 rounded-b-[2rem]">
-          <button onClick={onClose} disabled={isPending} className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-full disabled:opacity-50">Cancel</button>
+          <button onClick={onClose} disabled={isPending} className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-full disabled:opacity-50">{t('hospital.common.cancel', undefined, 'Cancel')}</button>
           <button onClick={handleSave} disabled={isPending} className="px-6 py-2.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-full flex items-center gap-2 shadow-md shadow-cyan-200/50 disabled:opacity-50">
             {isPending ? <Loader2 size={16} className="animate-spin" /> : <Stethoscope size={16} />}
-            Save Diagnosis
+            {t('hospital.cases.detail.diagnosis.addModal.save', undefined, 'Save Diagnosis')}
           </button>
         </div>
       </div>
@@ -669,9 +733,12 @@ function AddDiagnosisModal({
 // ── Tab: Marketing ──────────────────────────────────────────────────
 
 function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
+  const { t } = useHospitalI18n();
   const [activeSubTab, setActiveSubTab] = useState('Email');
   const [selectedModules, setSelectedModules] = useState(['Logo / Slogan', 'Success Cases', 'Patient Reviews']);
-  const [emailSubject, setEmailSubject] = useState('Your Personalized Treatment Plan');
+  const [emailSubject, setEmailSubject] = useState(
+    t('hospital.cases.detail.marketing.defaultSubject', undefined, 'Your Personalized Treatment Plan'),
+  );
   const [emailBody, setEmailBody] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const { data: templatesData } = useEmailTemplates();
@@ -712,8 +779,8 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     <div className="space-y-8">
       <div className="flex justify-center mb-2">
         <div className="bg-slate-200/50 p-1 rounded-xl flex gap-1 border border-slate-200/60">
-          <button onClick={() => setActiveSubTab('Email')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'Email' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Send size={16} /> Email Outreach</button>
-          <button onClick={() => setActiveSubTab('Call')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'Call' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><PhoneCall size={16} /> Phone Outreach</button>
+          <button onClick={() => setActiveSubTab('Email')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'Email' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Send size={16} /> {t('hospital.cases.detail.marketing.emailOutreach', undefined, 'Email Outreach')}</button>
+          <button onClick={() => setActiveSubTab('Call')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'Call' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><PhoneCall size={16} /> {t('hospital.cases.detail.marketing.phoneOutreach', undefined, 'Phone Outreach')}</button>
         </div>
       </div>
       {activeSubTab === 'Email' && (

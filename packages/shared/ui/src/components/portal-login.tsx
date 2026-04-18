@@ -12,12 +12,30 @@ type LoginResponse = {
 export type PortalLoginProps = {
   title?: string;
   subtitle?: string;
+  formTitle?: string;
+  usernameLabel?: string;
+  usernamePlaceholder?: string;
+  passwordLabel?: string;
+  passwordPlaceholder?: string;
+  submitLabel?: string;
+  submittingLabel?: string;
+  genericLoginFailedMessage?: string;
+  genericLoginErrorMessage?: string;
   alternatePortalLabel?: string;
 };
 
 export function PortalLogin({
   title = 'Medical CRM',
   subtitle = 'Unified Portal Login',
+  formTitle = 'Sign in to your account',
+  usernameLabel = 'Username / Email',
+  usernamePlaceholder = 'Enter username or email',
+  passwordLabel = 'Password',
+  passwordPlaceholder = 'Enter password',
+  submitLabel = 'Sign In',
+  submittingLabel = 'Signing in...',
+  genericLoginFailedMessage = 'Login failed',
+  genericLoginErrorMessage = 'An error occurred during login',
   alternatePortalLabel,
 }: PortalLoginProps) {
   const [username, setUsername] = useState('');
@@ -45,11 +63,11 @@ export function PortalLogin({
         return;
       }
 
-      setError(data.details || data.error || 'Login failed');
+      setError(data.details || data.error || genericLoginFailedMessage);
       setRedirectTo(data.redirectTo || null);
       setIsSubmitting(false);
     } catch {
-      setError('An error occurred during login');
+      setError(genericLoginErrorMessage);
       setIsSubmitting(false);
     }
   };
@@ -69,7 +87,7 @@ export function PortalLogin({
 
         <div className="rounded-2xl border border-teal-100 bg-white p-8 shadow-xl">
           <h2 className="mb-5 text-center text-lg font-semibold text-slate-800">
-            Sign in to your account
+            {formTitle}
           </h2>
 
           {error && (
@@ -81,7 +99,7 @@ export function PortalLogin({
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label htmlFor="username" className="mb-2 block text-sm font-medium text-slate-700">
-                Username / Email
+                {usernameLabel}
               </label>
               <input
                 id="username"
@@ -91,13 +109,13 @@ export function PortalLogin({
                 disabled={isSubmitting}
                 required
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 disabled:bg-slate-50"
-                placeholder="Enter username or email"
+                placeholder={usernamePlaceholder}
               />
             </div>
 
             <div>
               <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700">
-                Password
+                {passwordLabel}
               </label>
               <input
                 id="password"
@@ -107,7 +125,7 @@ export function PortalLogin({
                 disabled={isSubmitting}
                 required
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 disabled:bg-slate-50"
-                placeholder="Enter password"
+                placeholder={passwordPlaceholder}
               />
             </div>
 
@@ -117,7 +135,7 @@ export function PortalLogin({
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 py-3 text-sm font-semibold text-white shadow-md transition hover:from-teal-600 hover:to-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
-              <span>{isSubmitting ? 'Signing in...' : 'Sign In'}</span>
+              <span>{isSubmitting ? submittingLabel : submitLabel}</span>
             </button>
           </form>
 

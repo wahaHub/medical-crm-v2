@@ -1374,6 +1374,49 @@
   },
   "hospital": {
     "title": "Hospital Portal",
+    "portalShell": {
+      "title": "Hospital Portal",
+      "nav": {
+        "dashboard": "Dashboard",
+        "cases": "Cases",
+        "consultations": "Consultations",
+        "messages": "Messages",
+        "materials": "Materials",
+        "emailTemplates": "Email Templates",
+        "faq": "Chatbot & FAQ",
+        "settings": "Settings"
+      },
+      "actions": {
+        "logout": "Logout",
+        "notifications": "Notifications"
+      },
+      "search": {
+        "placeholder": "Search patients, cases..."
+      }
+    },
+    "error": {
+      "title": "Something went wrong",
+      "tryAgain": "Try again"
+    },
+    "loading": {
+      "label": "Loading"
+    },
+    "login": {
+      "title": "Medical CRM",
+      "subtitle": "Unified Portal Login",
+      "formTitle": "Sign in to your account",
+      "usernameLabel": "Username / Email",
+      "usernamePlaceholder": "Enter username or email",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Enter password",
+      "submit": "Sign In",
+      "submitting": "Signing in...",
+      "alternatePortalLabel": "Go to Admin Portal",
+      "errors": {
+        "loginFailed": "Login failed",
+        "requestFailed": "An error occurred during login"
+      }
+    },
     "hospitalStaff": "Hospital Staff",
     "welcome": "Welcome back",
     "welcomeDescription": "View assigned cases, communicate with patients, and manage appointments",

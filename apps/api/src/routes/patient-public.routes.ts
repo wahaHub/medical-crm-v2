@@ -250,19 +250,17 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => 
     maxAge: 86400,
   });
 
-  try {
-    await seedWidgetStarterMessage({
-      services: getServices(),
-      widgetSessionId: result.widgetChatTarget?.sessionId,
-      caseId: result.caseId,
-      site,
-      destination: body.destination,
-      category: body.category,
-      procedureId: body.procedureId,
-    });
-  } catch (error) {
+  void seedWidgetStarterMessage({
+    services: getServices(),
+    widgetSessionId: result.widgetChatTarget?.sessionId,
+    caseId: result.caseId,
+    site,
+    destination: body.destination,
+    category: body.category,
+    procedureId: body.procedureId,
+  }).catch((error) => {
     console.warn('Failed to seed initial widget chatbot message:', error);
-  }
+  });
 
   if (!result.isExistingPatient && !body.registerToken) {
     try {

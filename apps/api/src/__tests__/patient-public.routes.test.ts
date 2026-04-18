@@ -220,11 +220,13 @@ describe('patientPublicRoutes', () => {
     });
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-123');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
+    await vi.waitFor(() => {
+      expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledOnce();
+    });
     expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
     expect(services.difyFaqGroundingApi.createChatMessage).toHaveBeenCalledOnce();
     expect(services.difyClassifierApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.matchHospitals.execute).not.toHaveBeenCalled();
-    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledOnce();
     const starterUpdate = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];
     expect(starterUpdate).toMatchObject({
       nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
@@ -306,6 +308,69 @@ describe('patientPublicRoutes', () => {
         ],
       }),
     );
+  });
+
+  it('returns onboarding success without blocking on widget starter generation', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'select-hospitals',
+      token: 'session-token-123',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+      isExistingPatient: false,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const starterDeferred = new Promise(() => {});
+    const services = createBaseServices({
+      initOnboarding: { execute },
+      difyApi: {
+        createChatMessage: vi.fn().mockReturnValue(starterDeferred),
+      },
+    });
+    mockGetServices.mockReturnValue(services);
+
+    const requestPromise = requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        destination: 'Shenzhen',
+        captchaToken: 'captcha-token',
+      }),
+    });
+
+    const requestState = await Promise.race([
+      requestPromise.then(async (response) => ({
+        kind: 'resolved' as const,
+        status: response.status,
+        body: await response.json(),
+      })),
+      new Promise<{ kind: 'timeout' }>((resolve) => {
+        setTimeout(() => resolve({ kind: 'timeout' }), 25);
+      }),
+    ]);
+
+    expect(requestState).toEqual({
+      kind: 'resolved',
+      status: 200,
+      body: {
+        patientId: 'patient-1',
+        caseId: '11111111-1111-4111-8111-111111111111',
+        nextStep: 'select-hospitals',
+        isExistingPatient: false,
+        restoreToken: 'restore-token-123',
+        widgetChatTarget: {
+          kind: 'CHATBOT_SESSION',
+          sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+        },
+      },
+    });
   });
 
   it('does not send a follow-up onboarding email for existing patients', async () => {
@@ -434,6 +499,100 @@ describe('patientPublicRoutes', () => {
     expect(services.aiChatMessageRepo.updateMessage).not.toHaveBeenCalled();
   });
 
+  it('clears stale starter metadata when async widget seeding fails on a reused starter row', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'select-hospitals',
+      token: 'session-token-123',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+      isExistingPatient: false,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const services = createBaseServices({
+      initOnboarding: { execute },
+      aiChatMessageRepo: {
+        listBySession: vi.fn().mockResolvedValue([
+          {
+            id: 'assistant-1',
+            role: 'ASSISTANT',
+            content: '',
+            metadata: {
+              widgetStarterSeed: true,
+              widgetStarterVersion: 'old-version',
+              draftState: 'provider_error',
+              internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+              chatbotV2: {
+                journeySnapshot: {
+                  currentStage: 'RECOMMENDATION',
+                  currentPhase: 'active',
+                },
+              },
+              classifierResult: {
+                requestClass: 'process_explanation',
+              },
+              blocks: [
+                {
+                  id: 'hospital-cards-1',
+                  type: 'HOSPITAL_RECOMMENDATION_CARDS',
+                  title: 'Recommended hospitals',
+                  caseId: '11111111-1111-4111-8111-111111111111',
+                  selectPath: '/select-hospitals',
+                  hospitals: [
+                    { hospitalId: 'hospital-1', name: 'Old Hospital' },
+                  ],
+                },
+              ],
+            },
+          },
+        ]),
+        create: vi.fn(),
+        updateMessage: vi.fn(),
+      },
+      difyApi: {
+        createChatMessage: vi.fn().mockRejectedValue(new Error('starter provider down')),
+      },
+    });
+    mockGetServices.mockReturnValue(services);
+
+    const res = await requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        destination: 'Shenzhen',
+        captchaToken: 'captcha-token',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalled();
+    });
+    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      'assistant-1',
+      expect.objectContaining({
+        content: 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.',
+        nextAction: null,
+        shortlist: [],
+        writebackStatus: 'failed',
+        metadata: expect.objectContaining({
+          draftState: 'provider_error',
+          internalNextAction: null,
+          chatbotV2: null,
+          classifierResult: null,
+          blocks: [],
+        }),
+      }),
+    );
+  });
+
   it('preserves refreshed writeback status before saving a widget starter difyConversationId', async () => {
     const questionnaireTemplateId = '55555555-5555-4555-8555-555555555555';
     const execute = vi.fn().mockResolvedValue({
@@ -519,6 +678,9 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalled();
+    });
     expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
       'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
       'beauty',
@@ -628,6 +790,9 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalled();
+    });
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -725,6 +890,9 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalled();
+    });
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({

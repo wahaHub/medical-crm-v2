@@ -913,7 +913,18 @@ async function createHandoff(
   site: import('@medical-crm/domain').PatientSite | undefined,
   turnId: string | undefined,
   reason: string,
-): Promise<{ handoffId?: string; created?: boolean }> {
+): Promise<{
+  handoffId?: string;
+  created?: boolean;
+  notification?: {
+    ticketId: string;
+    ticketNumber: string;
+    patientId: string;
+    patientName: null;
+    subject: string;
+    descriptionPreview: string;
+  };
+}> {
   if (!site) {
     return { created: false };
   }
@@ -929,7 +940,7 @@ async function createHandoff(
     .digest('hex');
   const idempotencyKey = `chatbot-v3:handoff:${handoffTurnDigest}`;
 
-  return services.idempotencyExecutor.execute(
+  const result = await services.idempotencyExecutor.execute(
     idempotencyKey,
     'chatbot_v3_handoff_ticket',
     async () => {
@@ -953,18 +964,6 @@ async function createHandoff(
         role: 'PATIENT',
         hospitalId: null,
       });
-      try {
-        await services.notifyAdminsOfNewTicket.execute({
-          ticketId: ticket.id,
-          ticketNumber: ticket.ticketNumber,
-          patientId: latestSession.patientId,
-          patientName: null,
-          subject: 'Chatbot v3 handoff request',
-          descriptionPreview: reason,
-        });
-      } catch (error) {
-        console.warn('Failed to notify admins about chatbot v3 handoff ticket:', error);
-      }
       await patchSessionStatus(services, latestSession, {
         handoffStatus: 'REQUESTED',
         handoffActive: true,
@@ -973,9 +972,27 @@ async function createHandoff(
       return {
         created: true,
         handoffId: ticket.id,
+        notification: {
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          patientId: latestSession.patientId,
+          patientName: null,
+          subject: 'Chatbot v3 handoff request',
+          descriptionPreview: reason,
+        },
       };
     },
   );
+
+  if (result.notification) {
+    try {
+      await services.notifyAdminsOfNewTicket.execute(result.notification);
+    } catch (error) {
+      console.warn('Failed to notify admins about chatbot v3 handoff ticket:', error);
+    }
+  }
+
+  return result;
 }
 
 function canCreateHandoffTicket(

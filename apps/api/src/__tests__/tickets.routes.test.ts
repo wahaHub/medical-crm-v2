@@ -97,14 +97,7 @@ describe('Tickets routes', () => {
       const body = await res.json();
       expect(body).toEqual(ticket);
       expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
-      expect(mockServices.notifyAdminsOfNewTicket.execute).toHaveBeenCalledWith({
-        ticketId: VALID_UUID,
-        ticketNumber: 'TKT-20260418-0001',
-        patientId: 'u-1',
-        patientName: null,
-        subject: 'Account issue',
-        descriptionPreview: 'I need help with my account',
-      });
+      expect(mockServices.notifyAdminsOfNewTicket.execute).not.toHaveBeenCalled();
     });
 
     it('rejects invalid body (missing description)', async () => {

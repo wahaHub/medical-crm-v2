@@ -48,18 +48,6 @@ app.openapi(createTicketRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
   const result = await svc.createTicket.execute(body, actor);
-  try {
-    await svc.notifyAdminsOfNewTicket.execute({
-      ticketId: result.id,
-      ticketNumber: result.ticketNumber,
-      patientId: result.patientId,
-      patientName: null,
-      subject: result.subject ?? null,
-      descriptionPreview: result.description,
-    });
-  } catch (error) {
-    console.warn('Failed to notify admins about new ticket:', error);
-  }
   return c.json(result, 201);
 });
 

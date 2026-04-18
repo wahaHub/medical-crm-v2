@@ -201,9 +201,7 @@ export class GetPatientSessionStateUseCase {
       createdAt: now,
       updatedAt: now,
     });
-    const savedConversation = this.conversationRepo.findOrCreateAdminPatientConversation
-      ? await this.conversationRepo.findOrCreateAdminPatientConversation(conversation)
-      : await this.conversationRepo.save(conversation);
+    const savedConversation = await this.conversationRepo.findOrCreateAdminPatientConversation(conversation);
     return {
       activeConversationId: savedConversation.id,
       conversationIds: [savedConversation.id, ...hospitalConversationIds],

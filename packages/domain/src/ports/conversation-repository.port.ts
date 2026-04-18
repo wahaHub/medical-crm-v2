@@ -14,6 +14,7 @@ export interface IConversationRepository {
   findById(id: string, tx?: Transaction): Promise<Conversation | null>;
   findMany(query: ConversationListQuery, hospitalId?: string, tx?: Transaction): Promise<PaginatedResult<Conversation>>;
   findByPatientId(patientId: string, tx?: Transaction): Promise<Conversation[]>;
+  findOrCreateAdminPatientConversation(entity: Conversation, tx?: Transaction): Promise<Conversation>;
   save(entity: Conversation, tx?: Transaction): Promise<Conversation>;
   findByIdForUpdate?(id: string, tx?: Transaction): Promise<Conversation | null>;
   findAdminPatientByCaseId?(caseId: string, tx?: Transaction): Promise<Conversation | null>;
@@ -23,5 +24,4 @@ export interface IConversationRepository {
     toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
     tx?: Transaction,
   ): Promise<Conversation | null>;
-  findOrCreateAdminPatientConversation?(entity: Conversation, tx?: Transaction): Promise<Conversation>;
 }

@@ -981,9 +981,7 @@ async function resolveAdminConversationForChatbotSession(
     updatedAt: now,
   });
 
-  return svc.conversationRepo.findOrCreateAdminPatientConversation
-    ? svc.conversationRepo.findOrCreateAdminPatientConversation(newConversation)
-    : svc.conversationRepo.save(newConversation);
+  return svc.conversationRepo.findOrCreateAdminPatientConversation(newConversation);
 }
 
 async function tryResolveAdminConversationForChatbotSession(

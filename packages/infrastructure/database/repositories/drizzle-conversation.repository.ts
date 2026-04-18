@@ -16,7 +16,8 @@ export class DrizzleConversationRepository implements IConversationRepository {
       if (current instanceof Error) {
         const message = current.message.toLowerCase();
         if (
-          message.includes('conversations_admin_patient_case_unique_idx')
+          message.includes('conversations_admin_patient_case_unique')
+          || message.includes('conversations_admin_patient_case_unique_idx')
           || message.includes('duplicate key value')
         ) {
           return true;
@@ -203,6 +204,17 @@ export class DrizzleConversationRepository implements IConversationRepository {
     if (entity.category !== 'ADMIN_PATIENT' || !entity.caseId) {
       return this.save(entity, tx);
     }
+
+    if (!tx) {
+      return this.db.transaction(async (innerTx) =>
+        this.findOrCreateAdminPatientConversation(entity, innerTx as unknown as Transaction),
+      );
+    }
+
+    const db = tx as CrmDb;
+    await db.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${entity.caseId}), hashtext('ADMIN_PATIENT'))`,
+    );
 
     const existing = await this.findAdminPatientByCaseId(entity.caseId, tx);
     if (existing) {

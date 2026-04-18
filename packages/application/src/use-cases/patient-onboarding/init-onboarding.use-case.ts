@@ -218,18 +218,7 @@ export class InitOnboardingUseCase {
       createdAt: now,
       updatedAt: now,
     });
-    if (this.conversationRepo.findOrCreateAdminPatientConversation) {
-      await this.conversationRepo.findOrCreateAdminPatientConversation(adminConversation);
-    } else {
-      const existingConversations = await this.conversationRepo.findByPatientId(patient.id);
-      const hasAdminConversationForCase = existingConversations.some((conversation) =>
-        conversation.caseId === savedCase.id && conversation.category === 'ADMIN_PATIENT',
-      );
-
-      if (!hasAdminConversationForCase) {
-        await this.conversationRepo.save(adminConversation);
-      }
-    }
+    await this.conversationRepo.findOrCreateAdminPatientConversation(adminConversation);
 
     const widgetSessionId = `widget-chat:${patient.id}:${savedCase.id}`;
     const existingWidgetChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.site);

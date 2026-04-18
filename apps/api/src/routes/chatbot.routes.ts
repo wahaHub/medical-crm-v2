@@ -15,6 +15,11 @@ import {
   chatbotUploadInitSchema,
 } from '@medical-crm/validation';
 import {
+  isChatbotV3HistoryDrainWindowOpen,
+  isChatbotV3WriteCutoverActive,
+  legacyChatbotGoneResponse,
+} from './chatbot-cutover.js';
+import {
   AI_POLICY_ENGAGEMENT_SIGNALS,
   AI_POLICY_PROGRESSION_SIGNALS,
   AI_POLICY_RECOMMENDATION_SIGNALS,
@@ -73,6 +78,9 @@ const sendChatRoute = createRoute({
 
 chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
   const body = c.req.valid('json');
+  if (isChatbotV3WriteCutoverActive()) {
+    return legacyChatbotGoneResponse(c);
+  }
   const svc = getServices();
   let site;
 
@@ -439,6 +447,9 @@ const convertChatRoute = createRoute({
 
 chatbotPublicRoutes.openapi(convertChatRoute, async (c) => {
   const body = c.req.valid('json');
+  if (isChatbotV3WriteCutoverActive()) {
+    return legacyChatbotGoneResponse(c);
+  }
   const svc = getServices();
   const site = resolvePatientSiteContext(c);
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId, site);
@@ -518,6 +529,9 @@ const escalateChatRoute = createRoute({
 
 chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
   const body = c.req.valid('json');
+  if (isChatbotV3WriteCutoverActive()) {
+    return legacyChatbotGoneResponse(c);
+  }
   const svc = getServices();
   const site = resolvePatientSiteContext(c);
   let session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId, site);
@@ -617,6 +631,9 @@ const initChatbotUploadRoute = createRoute({
 
 chatbotPublicRoutes.openapi(initChatbotUploadRoute, async (c) => {
   const body = c.req.valid('json');
+  if (isChatbotV3WriteCutoverActive()) {
+    return legacyChatbotGoneResponse(c);
+  }
   const svc = getServices();
   const site = resolvePatientSiteContext(c);
   const session = await svc.aiChatSessionRepo.findBySessionId(body.sessionId, site);
@@ -667,6 +684,9 @@ const getChatbotHistoryRoute = createRoute({
 chatbotPublicRoutes.openapi(getChatbotHistoryRoute, async (c) => {
   const { sessionId } = c.req.valid('param');
   const { limit } = c.req.valid('query');
+  if (!isChatbotV3HistoryDrainWindowOpen()) {
+    return legacyChatbotGoneResponse(c);
+  }
   const svc = getServices();
   const site = resolvePatientSiteContext(c);
   const session = await svc.aiChatSessionRepo.findBySessionId(sessionId, site);

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { chatbotChatResponseSchema, chatbotHistoryResponseSchema } from '@medical-crm/validation';
 import {
@@ -65,6 +65,10 @@ vi.mock('../composition-root.js', () => ({
 
 const app = new OpenAPIHono();
 app.route('/', chatbotRoutes);
+
+const CUTOVER_ACTIVATED_AT = '2026-03-20T00:00:00.000Z';
+const CUTOVER_IN_WINDOW_NOW = '2026-03-26T10:00:00.000Z';
+const CUTOVER_AFTER_WINDOW_NOW = '2026-03-28T00:00:00.000Z';
 
 async function cleanupAiChatArtifacts() {
   await testDb.execute(`
@@ -134,12 +138,20 @@ beforeEach(async () => {
   await cleanupAiChatArtifacts();
 });
 
+afterEach(() => {
+  delete process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'];
+  delete process.env['CHATBOT_V3_CUTOVER_NOW'];
+});
+
 afterAll(async () => {
   await cleanupAiChatArtifacts();
 });
 
 describe('Chatbot routes integration', () => {
-  it('POST /api/v2/chatbot/chat creates a real DB session and persists user/assistant messages', async () => {
+  it('POST /api/v2/chatbot/chat returns 410 Gone after cutover', async () => {
+    process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'] = CUTOVER_ACTIVATED_AT;
+    process.env['CHATBOT_V3_CUTOVER_NOW'] = CUTOVER_IN_WINDOW_NOW;
+
     mockServices.difyApi.createChatMessage.mockResolvedValue({
       conversation_id: 'conv-int-1',
       answer: JSON.stringify({
@@ -170,42 +182,14 @@ describe('Chatbot routes integration', () => {
       }),
     });
 
-    expect(res.status).toBe(200);
-    const json = chatbotChatResponseSchema.parse(await res.json());
-    expect(json.sessionId).toBe(sessionId);
-    expect(json.topic).toBe('DOCUMENTS');
-    expect(json.nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(json.secondaryAction).toBe('CONSULT_CONVERSION');
-    expect(json.responseMode).toBe('grounded_plus_guidance');
-    expect(json.reasonCodes).toEqual(['documents_requested']);
-    expect(json.shortlist).toEqual([{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }]);
-    expect(json.missingItems).toEqual(['medical report']);
-
-    const cookie = res.headers.get('set-cookie');
-    expect(cookie).toContain('chatbot_session_secret=');
-
-    const session = await mockServices.aiChatSessionRepo.findBySessionId(sessionId, 'china');
-    expect(session).not.toBeNull();
-    expect(session?.difyConversationId).toBe('conv-int-1');
-
-    const messages = await mockServices.aiChatMessageRepo.listBySession(session!.id, 10);
-    expect(messages).toHaveLength(2);
-    expect(messages[0]?.role).toBe('ASSISTANT');
-    expect(messages[1]?.role).toBe('USER');
-    expect(messages[0]?.nextAction).toBe('REQUEST_DOC_UPLOAD');
-    expect(messages[0]?.resolvedIntent).toBe('CONSULT');
-    expect(messages[0]?.secondaryAction).toBe('CONSULT_CONVERSION');
-    expect(messages[0]?.responseMode).toBe('grounded_plus_guidance');
-    expect(messages[0]?.reasonCodes).toEqual(['documents_requested']);
-    expect(messages[0]?.shortlist).toEqual([{ hospitalId: 'hospital-2', matchType: 'matched', reasonCodes: ['docs_ready'] }]);
-    expect(messages[0]?.metadata).toMatchObject({
-      topic: 'DOCUMENTS',
-    });
-    expect(messages[0]?.metadata.rawResponse).toBeUndefined();
-    expect(messages[0]?.content).toBe('Please share your reports.');
+    expect(res.status).toBe(410);
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
   }, 15000);
 
-  it('GET /api/v2/chatbot/history/{sessionId} reads ordered history from the real database', async () => {
+  it('GET /api/v2/chatbot/history/{sessionId} reads ordered history from the real database during the drain window', async () => {
+    process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'] = CUTOVER_ACTIVATED_AT;
+    process.env['CHATBOT_V3_CUTOVER_NOW'] = CUTOVER_IN_WINDOW_NOW;
+
     const secret = 'route-secret-123';
     const session = await mockServices.aiChatSessionRepo.save(new AiChatSession({
       id: randomUUID(),
@@ -263,6 +247,49 @@ describe('Chatbot routes integration', () => {
     expect(json.messages[0]?.content).toBe('First question');
     expect(json.messages[1]?.content).toBe('Second answer');
     expect(json.messages[1]?.nextAction).toBe('ANSWER_FAQ');
+  }, 15000);
+
+  it('GET /api/v2/chatbot/history/{sessionId} returns 410 Gone after the drain window closes', async () => {
+    process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'] = CUTOVER_ACTIVATED_AT;
+    process.env['CHATBOT_V3_CUTOVER_NOW'] = CUTOVER_AFTER_WINDOW_NOW;
+
+    const secret = 'route-secret-123';
+    const session = await mockServices.aiChatSessionRepo.save(new AiChatSession({
+      id: randomUUID(),
+      sessionId: `${SESSION_PREFIX}${randomUUID()}`,
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update(secret).digest('hex'),
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+
+    await mockServices.aiChatMessageRepo.create(new AiChatMessage({
+      id: randomUUID(),
+      sessionId: session.id,
+      role: 'USER',
+      content: 'First question',
+      intent: null,
+      riskLevel: null,
+      canAnswer: null,
+      nextAction: null,
+      citations: [],
+      metadata: {},
+      createdAt: new Date('2026-03-27T08:00:00Z'),
+    }));
+
+    const res = await app.request(`/api/v2/chatbot/history/${session.sessionId}?limit=10`, {
+      method: 'GET',
+      headers: {
+        'x-medora-site': 'china',
+        Cookie: `chatbot_session_secret=${secret}`,
+      },
+    });
+
+    expect(res.status).toBe(410);
   }, 15000);
 
   it('POST /api/v2/chatbot/chat falls back safely when Dify returns plain text instead of structured JSON', async () => {

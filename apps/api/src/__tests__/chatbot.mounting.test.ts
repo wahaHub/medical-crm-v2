@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockServices = {
   aiChatSessionRepo: {
@@ -77,6 +77,7 @@ describe('Chatbot public route mounting', () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
     mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
     mockServices.aiChatMessageRepo.create.mockImplementation(async (entity: unknown) => entity);
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
     mockServices.aiChatMessageRepo.updateMessage.mockImplementation(async (id: string, patch: Record<string, unknown>) => ({
       id,
       sessionId: 'db-session-1',
@@ -110,12 +111,19 @@ describe('Chatbot public route mounting', () => {
     mockServices.bootstrapAiSync.execute.mockResolvedValue({ faq: 1, packages: 1 });
   });
 
+  afterEach(() => {
+    delete process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'];
+    delete process.env['CHATBOT_V3_CUTOVER_NOW'];
+  });
+
   it('keeps POST /api/v2/chatbot/chat public even when global auth rejects /api/v2/*', async () => {
+    process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'] = '2026-04-10T00:00:00.000Z';
+    process.env['CHATBOT_V3_CUTOVER_NOW'] = '2026-04-18T12:00:00.000Z';
     const { default: app } = await import('../index.js');
 
     const res = await app.request('/api/v2/chatbot/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-medora-site': 'china' },
       body: JSON.stringify({
         sessionId: 'policy-e2e-1',
         hospitalType: 'COSMETIC',
@@ -123,9 +131,8 @@ describe('Chatbot public route mounting', () => {
       }),
     });
 
-    expect(res.status).toBe(200);
-    expect(mockServices.difyApi.createChatMessage).toHaveBeenCalledOnce();
-    expect(res.headers.get('set-cookie')).toContain('chatbot_session_secret=');
+    expect(res.status).toBe(410);
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
   });
 
   it('keeps POST /api/v2/chatbot/sync behind authenticated routing', async () => {

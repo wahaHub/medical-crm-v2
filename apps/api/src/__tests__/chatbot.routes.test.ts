@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash, randomUUID } from 'node:crypto';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { AiChatMessage, Conversation } from '@medical-crm/domain';
 import {
@@ -5734,5 +5734,253 @@ describe('Chatbot routes', () => {
 
     expect(res.status).toBe(403);
     expect(mockServices.bootstrapAiSync.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('Chatbot cutover guardrails', () => {
+  const CUTOVER_ACTIVATED_AT = '2026-03-20T00:00:00.000Z';
+  const CUTOVER_IN_WINDOW = new Date('2026-03-26T10:00:00.000Z');
+  const CUTOVER_AFTER_WINDOW = new Date('2026-03-28T00:00:00.000Z');
+  const LEGACY_SESSION_SECRET = 'legacy-cutover-secret';
+
+  function cutoverSession(sessionId: string, overrides: Record<string, unknown> = {}) {
+    return makeSession({
+      sessionId,
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update(LEGACY_SESSION_SECRET).digest('hex'),
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(CUTOVER_IN_WINDOW);
+    process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'] = CUTOVER_ACTIVATED_AT;
+    mockServices.difyApi.createChatMessage.mockResolvedValue({
+      conversation_id: 'cutover-conv-1',
+      answer: JSON.stringify({
+        answer: 'Legacy chatbot response should never be reached during cutover.',
+        intent: 'FAQ',
+        riskLevel: 'NORMAL',
+        canAnswer: true,
+        nextAction: 'ANSWER_FAQ',
+        citations: [],
+      }),
+      metadata: { retriever_resources: [] },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env['CHATBOT_V3_CUTOVER_ACTIVATED_AT'];
+  });
+
+  it('POST /api/v2/chatbot/chat returns 410 Gone after cutover', async () => {
+    const res = await app.request('/api/v2/chatbot/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-medora-site': 'china' },
+      body: JSON.stringify({
+        sessionId: 'cutover-chat-session',
+        hospitalType: 'COSMETIC',
+        message: 'I want to continue my chatbot flow.',
+      }),
+    });
+
+    expect(res.status).toBe(410);
+    expect(mockServices.difyApi.createChatMessage).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/uploads/init returns 410 Gone after cutover', async () => {
+    const session = cutoverSession('cutover-upload-session');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(session);
+    mockServices.mediaUpload.createUploadIntent.mockResolvedValue({
+      uploadUrl: 'https://uploads.example.com/upload',
+      storageKey: 'chatbot/cutover-upload-session/report.pdf',
+      expiresIn: 3600,
+      asset: { id: 'asset-1' },
+    });
+
+    const res = await app.request('/api/v2/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        Cookie: `chatbot_session_secret=${LEGACY_SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: session.sessionId,
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(410);
+    expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/convert returns 410 Gone after cutover', async () => {
+    const session = cutoverSession('cutover-convert-session');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(session);
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+    mockServices.aiChatSessionRepo.attachPatient.mockResolvedValue(session);
+    mockServices.initOnboarding.execute.mockResolvedValue({
+      token: 'patient-token',
+      restoreCookie: 'restore-cookie',
+      patientId: 'patient-1',
+      caseId: 'case-1',
+      isExistingPatient: false,
+      restoreToken: 'restore-token',
+    });
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-1',
+      patientId: null,
+      patientName: null,
+      patientCountry: null,
+      conditionSummary: null,
+      structuredData: {},
+    });
+    mockServices.caseRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.patientAuthService.createSessionToken.mockResolvedValue('patient-token');
+    mockServices.patientAuthService.createGuestRestoreArtifacts.mockResolvedValue({
+      restoreToken: 'restore-token',
+      restoreCookie: 'restore-cookie',
+    });
+
+    const res = await app.request('/api/v2/chatbot/convert', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        Cookie: `chatbot_session_secret=${LEGACY_SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: session.sessionId,
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Need consultation',
+        budget: '1000',
+      }),
+    });
+
+    expect(res.status).toBe(410);
+    expect(mockServices.initOnboarding.execute).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v2/chatbot/escalate returns 410 Gone after cutover', async () => {
+    const session = cutoverSession('cutover-escalate-session');
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(session);
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([]);
+    mockServices.aiChatSessionRepo.attachPatient.mockResolvedValue(session);
+    mockServices.aiChatSessionRepo.updateStatus.mockResolvedValue(session);
+    mockServices.initOnboarding.execute.mockResolvedValue({
+      token: 'patient-token',
+      restoreCookie: 'restore-cookie',
+      patientId: 'patient-1',
+      caseId: 'case-1',
+      isExistingPatient: false,
+      restoreToken: 'restore-token',
+    });
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-1',
+      patientId: null,
+      patientName: null,
+      patientCountry: null,
+      conditionSummary: null,
+      structuredData: {},
+    });
+    mockServices.caseRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.patientAuthService.createSessionToken.mockResolvedValue('patient-token');
+    mockServices.patientAuthService.createGuestRestoreArtifacts.mockResolvedValue({
+      restoreToken: 'restore-token',
+      restoreCookie: 'restore-cookie',
+    });
+    mockServices.createTicket.execute.mockResolvedValue({ id: 'ticket-1' });
+
+    const res = await app.request('/api/v2/chatbot/escalate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        Cookie: `chatbot_session_secret=${LEGACY_SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: session.sessionId,
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        country: 'Singapore',
+        conditionSummary: 'Need urgent support',
+        budget: '1000',
+      }),
+    });
+
+    expect(res.status).toBe(410);
+    expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} remains read-only during the drain window', async () => {
+    const secret = 'history-window-secret';
+    const session = makeSession({
+      sessionId: 'cutover-history-window-session',
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update(secret).digest('hex'),
+      createdAt: CUTOVER_IN_WINDOW,
+      updatedAt: CUTOVER_IN_WINDOW,
+    });
+    const message = makeMessage({
+      id: randomUUID(),
+      sessionId: session.id,
+      role: 'USER',
+      content: 'First question',
+      createdAt: new Date('2026-03-26T11:00:00.000Z'),
+    });
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(session);
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([message]);
+
+    const res = await app.request(`/api/v2/chatbot/history/${session.sessionId}?limit=10`, {
+      method: 'GET',
+      headers: {
+        'x-medora-site': 'china',
+        Cookie: `chatbot_session_secret=${secret}`,
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const json = chatbotHistoryResponseSchema.parse(await res.json());
+    expect(json.session.sessionId).toBe(session.sessionId);
+    expect(json.messages).toHaveLength(1);
+  });
+
+  it('GET /api/v2/chatbot/history/{sessionId} returns 410 Gone after the drain window closes', async () => {
+    vi.setSystemTime(CUTOVER_AFTER_WINDOW);
+
+    const secret = 'history-expired-secret';
+    const session = makeSession({
+      sessionId: 'cutover-history-expired-session',
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update(secret).digest('hex'),
+      createdAt: CUTOVER_IN_WINDOW,
+      updatedAt: CUTOVER_IN_WINDOW,
+    });
+    const message = makeMessage({
+      id: randomUUID(),
+      sessionId: session.id,
+      role: 'USER',
+      content: 'First question',
+      createdAt: new Date('2026-03-26T11:00:00.000Z'),
+    });
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(session);
+    mockServices.aiChatMessageRepo.listBySession.mockResolvedValue([message]);
+
+    const res = await app.request(`/api/v2/chatbot/history/${session.sessionId}?limit=10`, {
+      method: 'GET',
+      headers: {
+        'x-medora-site': 'china',
+        Cookie: `chatbot_session_secret=${secret}`,
+      },
+    });
+
+    expect(res.status).toBe(410);
   });
 });

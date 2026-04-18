@@ -22,10 +22,5 @@ export default async function CasesPage() {
     console.error('[CasesPage] Failed to load stats:', statsResult.reason);
   }
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Cases Management</h1>
-      <CasesList initialCases={cases} initialStats={stats} />
-    </div>
-  );
+  return <CasesList initialCases={cases} initialStats={stats} />;
 }

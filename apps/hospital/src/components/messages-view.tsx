@@ -36,6 +36,7 @@ import { useMessages } from '@/queries/use-messages';
 import { useCases, useCase } from '@/queries/use-cases';
 import { sendMessage, sendMessageWithAttachments, createConversation, uploadFile } from '@/actions/message-actions';
 import type { PaginatedResponse, ConversationSummary, CaseSummary, HospitalCaseDetail } from '@/lib/api-types';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 /** Raw message shape from the backend API */
 interface ApiMessage {
@@ -94,11 +95,14 @@ function mapApiMessages(
     conversationCategory?: string;
     otherPartyName?: string;
     currentUserId?: string;
+    adminName: string;
+    patientName: string;
+    hospitalName: string;
   },
 ): ChatMessage[] {
   const otherPartyRole: ChatMessage['senderRole'] = options.conversationCategory === 'ADMIN_HOSPITAL' ? 'ADMIN' : 'PATIENT';
   const otherPartyName = options.otherPartyName
-    ?? (options.conversationCategory === 'ADMIN_HOSPITAL' ? 'Admin' : 'Patient');
+    ?? (options.conversationCategory === 'ADMIN_HOSPITAL' ? options.adminName : options.patientName);
 
   return raw.map((m) => ({
     id: m.id,
@@ -109,7 +113,7 @@ function mapApiMessages(
         ? m.senderRole
         : (m.senderId === options.currentUserId ? 'HOSPITAL' : otherPartyRole)
     ),
-    senderName: m.senderName ?? (m.senderId === options.currentUserId ? 'Hospital' : otherPartyName),
+    senderName: m.senderName ?? (m.senderId === options.currentUserId ? options.hospitalName : otherPartyName),
     senderId: m.senderId,
     createdAt: m.createdAt,
     isAiTranslated: !!m.translatedContent,
@@ -195,21 +199,37 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function formatMessageTime(dateStr: string) {
+function formatMessageTime(
+  dateStr: string,
+  locale: string,
+  translate: (key: string, fallback: string, values?: Record<string, string | number>) => string,
+) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
   const now = new Date();
   const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
   if (diffDays === 0) {
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return new Intl.DateTimeFormat(locale, {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d);
   }
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (diffDays === 1) return translate('hospital.messages.conversationList.time.yesterday', 'Yesterday');
+  if (diffDays < 7) {
+    return translate('hospital.portal.messages.conversationList.time.daysAgoCompact', '{days}d ago', {
+      days: diffDays,
+    });
+  }
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(d);
 }
 
 export function MessagesView({ initialConversations, initialConversationId }: MessagesViewProps) {
   const { user } = useAuth();
+  const { locale, t } = useHospitalI18n();
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
   const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -249,8 +269,11 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
       conversationCategory: selectedConvo?.category,
       otherPartyName: selectedConvo?.patientName ?? selectedConvo?.title ?? undefined,
       currentUserId: user.id,
+      adminName: tx('hospital.messages.chat.admin', 'Admin'),
+      patientName: tx('hospital.portal.messages.chat.patient', 'Patient'),
+      hospitalName: tx('hospital.messages.chat.hospital', 'Hospital'),
     }),
-    [messagesResponse?.data, selectedConvo?.category, selectedConvo?.patientName, selectedConvo?.title, user.id],
+    [messagesResponse?.data, selectedConvo?.category, selectedConvo?.patientName, selectedConvo?.title, user.id, locale],
   );
 
   const filteredConversations = conversations.filter((c) => {
@@ -443,7 +466,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         translatedPath: translatedPdf.path,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to translate PDF preview';
+      const message = error instanceof Error
+        ? error.message
+        : tx('hospital.portal.messages.preview.translationFailed', 'Failed to translate PDF preview');
       if (previewRequestRef.current !== requestId) {
         return;
       }
@@ -487,18 +512,21 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         <div className="flex items-center gap-3 text-white">
           <MessageSquare size={18} className="opacity-90" />
           <span className="text-sm font-medium">
-            All patient communications are automatically forwarded and synced to this CRM.
+            {tx(
+              'hospital.portal.messages.banner.description',
+              'All patient communications are automatically forwarded and synced to this CRM.',
+            )}
           </span>
         </div>
         <div className="flex items-center gap-3">
           <span className="px-2.5 py-1 bg-blue-500/20 text-blue-50 border border-blue-400/30 rounded-md text-xs font-semibold flex items-center gap-1.5 backdrop-blur-sm">
-            <Mail size={12} /> Email
+            <Mail size={12} /> {tx('hospital.messages.forwardingInfo.emailSupport', 'Email')}
           </span>
           <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-50 border border-emerald-400/30 rounded-md text-xs font-semibold flex items-center gap-1.5 backdrop-blur-sm">
-            <MessageCircle size={12} /> WhatsApp
+            <MessageCircle size={12} /> {tx('hospital.messages.forwardingInfo.whatsappSupport', 'WhatsApp')}
           </span>
           <span className="px-2.5 py-1 bg-amber-500/20 text-amber-50 border border-amber-400/30 rounded-md text-xs font-semibold flex items-center gap-1.5 backdrop-blur-sm">
-            <Sparkles size={12} /> Auto-Classification
+            <Sparkles size={12} /> {tx('hospital.messages.forwardingInfo.autoClassification', 'Auto-Classification')}
           </span>
         </div>
       </div>
@@ -512,13 +540,13 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               onClick={() => setShowNewModal(true)}
               className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm shadow-cyan-500/20 transition-all"
             >
-              <Plus size={16} /> New Conversation
+              <Plus size={16} /> {tx('hospital.messages.conversationList.newMessage', 'New Conversation')}
             </button>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search conversations..."
+                placeholder={tx('hospital.messages.conversationList.searchPlaceholder', 'Search conversations...')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200/60 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
@@ -536,7 +564,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                 <div className="flex items-center gap-2">
                   {expandedSections.admin ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   <Building2 size={16} className="text-blue-500" />
-                  <span className="text-xs font-semibold uppercase tracking-wider">Admin</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider">
+                    {tx('hospital.messages.conversationList.sections.admin', 'Admin')}
+                  </span>
                   <span className="text-[10px] font-medium bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">
                     {adminConvos.length}
                   </span>
@@ -563,7 +593,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   ) : (
                     <div className="px-4 py-6 flex flex-col items-center justify-center text-slate-400 gap-2">
                       <User size={24} className="opacity-50" />
-                      <span className="text-xs font-medium">No conversations</span>
+                      <span className="text-xs font-medium">
+                        {tx('hospital.messages.conversationList.empty.noConversations', 'No conversations')}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -579,7 +611,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                 <div className="flex items-center gap-2">
                   {expandedSections.patient ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   <Users size={16} className="text-cyan-500" />
-                  <span className="text-xs font-semibold uppercase tracking-wider">Patients</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider">
+                    {tx('hospital.messages.conversationList.sections.patients', 'Patients')}
+                  </span>
                   <span className="text-[10px] font-medium bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">
                     {patientConvos.length}
                   </span>
@@ -606,7 +640,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   ) : (
                     <div className="px-4 py-6 flex flex-col items-center justify-center text-slate-400 gap-2">
                       <User size={24} className="opacity-50" />
-                      <span className="text-xs font-medium">No conversations</span>
+                      <span className="text-xs font-medium">
+                        {tx('hospital.messages.conversationList.empty.noConversations', 'No conversations')}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -623,22 +659,30 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               <div className="bg-orange-50 border-b border-orange-100 px-6 py-2.5 flex items-center justify-center gap-2 text-orange-600 shrink-0">
                 <ShieldAlert size={14} />
                 <span className="text-xs font-medium">
-                  Privacy Notice: Patient contact information is hidden for privacy.
+                  {tx(
+                    'hospital.portal.messages.chat.privacyNotice',
+                    'Privacy Notice: Patient contact information is hidden for privacy.',
+                  )}
                 </span>
               </div>
               {isMessagesLoading ? (
                 <div className="flex flex-1 items-center justify-center bg-slate-50/40">
                   <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-600 border-t-transparent" />
-                    Loading conversation...
+                    {tx('hospital.portal.messages.chat.loadingConversation', 'Loading conversation...')}
                   </div>
                 </div>
               ) : isMessagesError ? (
                 <div className="flex flex-1 items-center justify-center px-6">
                   <EmptyState
                     icon={<MessageSquare size={48} />}
-                    title="Conversation failed to load"
-                    description={messagesError instanceof Error ? messagesError.message : 'Unable to load conversation messages.'}
+                    title={tx('hospital.portal.messages.chat.loadFailed', 'Conversation failed to load')}
+                    description={messagesError instanceof Error
+                      ? messagesError.message
+                      : tx(
+                        'hospital.portal.messages.chat.loadFailedDescription',
+                        'Unable to load conversation messages.',
+                      )}
                   />
                 </div>
 	              ) : (
@@ -652,12 +696,24 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 	                          </div>
 	                          <div className="mt-1 text-xs text-slate-500">
 	                            {activeTranslationState.status === 'translating'
-	                              ? `Translating to ${activeTranslationState.targetLanguage}...`
+	                              ? tx(
+                                  'hospital.portal.messages.preview.translatingTo',
+                                  'Translating to {language}...',
+                                  { language: activeTranslationState.targetLanguage.toUpperCase() },
+                                )
 	                              : activeTranslationState.status === 'ready'
-	                                ? `Translation ready in ${activeTranslationState.targetLanguage}. Reopening this PDF will reuse the cached result.`
+	                                ? tx(
+                                    'hospital.portal.messages.preview.translationReady',
+                                    'Translation ready in {language}. Reopening this PDF will reuse the cached result.',
+                                    { language: activeTranslationState.targetLanguage.toUpperCase() },
+                                  )
 	                                : activeTranslationState.status === 'failed'
-	                                  ? `Translation failed: ${activeTranslationState.error}`
-	                                  : 'Translation idle'}
+	                                  ? tx(
+                                      'hospital.portal.messages.preview.translationFailedWithError',
+                                      'Translation failed: {message}',
+                                      { message: activeTranslationState.error ?? '' },
+                                    )
+	                                  : tx('hospital.portal.messages.preview.translationIdle', 'Translation idle')}
 	                          </div>
 	                        </div>
 	                        <span
@@ -671,7 +727,13 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 	                                  : 'bg-slate-100 text-slate-600'
 	                          }`}
 	                        >
-	                          {activeTranslationState.status}
+	                          {activeTranslationState.status === 'translating'
+                              ? tx('hospital.portal.messages.preview.status.translating', 'Translating')
+                              : activeTranslationState.status === 'ready'
+                                ? tx('hospital.portal.messages.preview.status.ready', 'Ready')
+                                : activeTranslationState.status === 'failed'
+                                  ? tx('hospital.portal.messages.preview.status.failed', 'Failed')
+                                  : tx('hospital.portal.messages.preview.status.idle', 'Idle')}
 	                        </span>
 	                      </div>
 	                    </div>
@@ -688,10 +750,15 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 	                    isUploading={isUploading}
 	                    onOpenAttachment={handleOpenAttachment}
 	                    header={{
-	                      name: caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? 'Unknown',
+	                      name: caseDetail?.patient?.name
+                          ?? selectedConvo.patientName
+                          ?? selectedConvo.title
+                          ?? tx('hospital.messages.chat.unknown', 'Unknown'),
 	                      subtitle: caseDetail?.caseNumber ?? undefined,
 	                      isOnline: undefined,
-	                      categoryBadge: selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : undefined,
+	                      categoryBadge: selectedConvo.category === 'ADMIN_HOSPITAL'
+                          ? tx('hospital.messages.chat.admin', 'Admin')
+                          : undefined,
 	                      isAdminConversation: selectedConvo.category === 'ADMIN_HOSPITAL',
 	                    }}
 	                    showInfoToggle={!!selectedConvo.caseId}
@@ -702,7 +769,10 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 	                        <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
 	                          <Info size={14} className="text-amber-600 shrink-0" />
 	                          <p className="text-xs text-amber-700">
-	                            Messages are automatically forwarded to the patient via their preferred communication channel (Email/WhatsApp).
+	                            {tx(
+                                'hospital.portal.messages.chat.forwardingNotice',
+                                'Messages are automatically forwarded to the patient via their preferred communication channel (Email/WhatsApp).',
+                              )}
 	                          </p>
 	                        </div>
 	                      ) : undefined
@@ -710,8 +780,11 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 	                    emptyState={
 	                      <EmptyState
 	                        icon={<MessageSquare size={48} />}
-	                        title="No messages yet"
-	                        description="Start the conversation by sending a message."
+	                        title={tx('hospital.messages.chat.noMessages', 'No messages yet')}
+	                        description={tx(
+                            'hospital.portal.messages.chat.emptyDescription',
+                            'Start the conversation by sending a message.',
+                          )}
 	                      />
 	                    }
 	                    className="flex-1"
@@ -723,9 +796,14 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
             <div className="flex flex-1 items-center justify-center">
               <div className="text-center">
                 <MessageSquare size={48} className="mx-auto mb-4 text-slate-200" />
-                <p className="text-lg font-medium text-slate-500">Select a conversation</p>
+                <p className="text-lg font-medium text-slate-500">
+                  {tx('hospital.portal.messages.chat.selectConversationTitle', 'Select a conversation')}
+                </p>
                 <p className="text-sm text-slate-400 mt-1">
-                  Choose a conversation from the list to start chatting.
+                  {tx(
+                    'hospital.portal.messages.chat.selectConversationDescription',
+                    'Choose a conversation from the list to start chatting.',
+                  )}
                 </p>
               </div>
             </div>
@@ -739,7 +817,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               caseId={selectedConvo.caseId ?? null}
               caseNumber={caseDetail?.caseNumber ?? null}
               category={selectedConvo.category ?? null}
-              participantRole={selectedConvo.category === 'ADMIN_HOSPITAL' ? 'Admin' : 'Patient'}
+              participantRole={selectedConvo.category === 'ADMIN_HOSPITAL'
+                ? tx('hospital.messages.chat.admin', 'Admin')
+                : tx('hospital.portal.messages.chat.patient', 'Patient')}
               participantName={caseDetail?.patient?.name ?? selectedConvo.patientName ?? selectedConvo.title ?? null}
               patientCode={caseDetail?.patient?.code ?? null}
               patientAge={caseDetail?.patient?.age ?? null}
@@ -755,9 +835,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               diagnosis={caseDetail?.medicalCondition?.primaryDiagnosis ?? null}
               documentCount={caseDetail?.documents?.length ?? null}
               messageCount={caseDetail?.totalMessages ?? messages.length}
-              conversationTitle={selectedConvo.title ?? 'General'}
+              conversationTitle={selectedConvo.title ?? tx('hospital.portal.messages.chat.generalConversation', 'General')}
               caseLinkHref={selectedConvo.caseId ? `/cases/${selectedConvo.caseId}` : null}
-              caseLinkLabel="View Full Case Details"
+              caseLinkLabel={tx('hospital.messages.chat.viewFullCaseDetails', 'View Full Case Details')}
             />
           </div>
         )}
@@ -777,32 +857,36 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
       <Modal
         open={!!previewAttachment}
         onClose={handleCloseAttachmentPreview}
-        title={previewAttachment?.name ?? 'Attachment Preview'}
+        title={previewAttachment?.name ?? tx('hospital.portal.messages.preview.modalTitle', 'Attachment Preview')}
         maxWidth="max-w-7xl"
       >
         {previewAttachment && (
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-900">Original</h3>
-                <span className="text-xs text-slate-500">{previewAttachment.type ?? 'attachment'}</span>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {tx('hospital.portal.messages.preview.original', 'Original')}
+                </h3>
+                <span className="text-xs text-slate-500">
+                  {previewAttachment.type ?? tx('hospital.portal.messages.preview.attachmentType', 'attachment')}
+                </span>
               </div>
               <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                 {isImageAttachment(previewAttachment) && previewAttachment.url ? (
                   <img
                     src={previewAttachment.url}
-                    alt={previewAttachment.name ?? 'Attachment'}
+                    alt={previewAttachment.name ?? tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment')}
                     className="h-full w-full object-contain bg-slate-950/5"
                   />
                 ) : isPdfAttachment(previewAttachment) && previewAttachment.url ? (
                   <PdfPreview
-                    title={`${previewAttachment.name ?? 'Attachment'} original`}
+                    title={`${previewAttachment.name ?? tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment')} ${tx('hospital.portal.messages.preview.originalLower', 'original')}`}
                     url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? 'document.pdf')}
                     className="bg-slate-50"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
-                    Preview is not available for this file type.
+                    {tx('hospital.portal.messages.preview.unavailableForType', 'Preview is not available for this file type.')}
                   </div>
                 )}
               </div>
@@ -810,38 +894,57 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-900">Translated</h3>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {tx('hospital.portal.messages.preview.translated', 'Translated')}
+                </h3>
                 <span className="text-xs text-slate-500">
                   {isPdfAttachment(previewAttachment)
-                    ? `Target: ${portalLanguage}`
-                    : 'Preview only'}
+                    ? tx('hospital.portal.messages.preview.targetLanguage', 'Target: {language}', {
+                      language: portalLanguage.toUpperCase(),
+                    })
+                    : tx('hospital.portal.messages.preview.previewOnly', 'Preview only')}
                 </span>
               </div>
               <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                 {isPdfAttachment(previewAttachment) ? (
                   isTranslatingPreview ? (
                     <AsyncStatusCard
-                      title="Translating PDF preview"
-                      description={`BabelDOC is preparing a ${portalLanguage.toUpperCase()} preview for ${activeTranslationState?.fileName ?? previewAttachment.name ?? 'this document'}.`}
+                      title={tx('hospital.portal.messages.preview.translatingTitle', 'Translating PDF preview')}
+                      description={tx(
+                        'hospital.portal.messages.preview.translatingDescription',
+                        'BabelDOC is preparing a {language} preview for {fileName}.',
+                        {
+                          language: portalLanguage.toUpperCase(),
+                          fileName: activeTranslationState?.fileName
+                            ?? previewAttachment.name
+                            ?? tx('hospital.portal.messages.preview.thisDocument', 'this document'),
+                        },
+                      )}
                     />
                   ) : translatedPreviewUrl ? (
                     <PdfPreview
-                      title={`${previewAttachment.name ?? 'Attachment'} translated`}
+                      title={`${previewAttachment.name ?? tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment')} ${tx('hospital.portal.messages.preview.translatedLower', 'translated')}`}
                       url={translatedPreviewUrl}
                       className="bg-slate-50"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
-                      {translationError ?? 'Translation preview is not available.'}
+                      {translationError ?? tx('hospital.portal.messages.preview.notAvailable', 'Translation preview is not available.')}
                     </div>
                   )
                 ) : isImageAttachment(previewAttachment) ? (
                   <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
-                    Image preview is supported here. Structured image or scanned-document translation is not enabled yet in this BabelDOC flow.
+                    {tx(
+                      'hospital.portal.messages.preview.imageOnlyNote',
+                      'Image preview is supported here. Structured image or scanned-document translation is not enabled yet in this BabelDOC flow.',
+                    )}
                   </div>
                 ) : (
                   <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
-                    Translation preview is currently available for PDF attachments only.
+                    {tx(
+                      'hospital.portal.messages.preview.pdfOnlyNote',
+                      'Translation preview is currently available for PDF attachments only.',
+                    )}
                   </div>
                 )}
               </div>
@@ -868,7 +971,10 @@ function ChatItem({
   onClick: () => void;
   isAdmin: boolean;
 }) {
-  const name = conversation.patientName ?? conversation.title ?? 'Conversation';
+  const { locale, t } = useHospitalI18n();
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
+  const name = conversation.patientName ?? conversation.title ?? tx('hospital.portal.messages.chat.conversation', 'Conversation');
   const initials = getInitials(name);
   const unread = conversation.unreadCount ?? 0;
 
@@ -904,7 +1010,7 @@ function ChatItem({
             {name}
           </span>
           <span className="text-[10px] text-slate-400 shrink-0 ml-2">
-            {formatMessageTime(conversation.updatedAt ?? '')}
+            {formatMessageTime(conversation.updatedAt ?? '', locale, tx)}
           </span>
         </div>
         <p className="text-xs text-slate-500 truncate">{conversation.lastMessagePreview ?? ''}</p>
@@ -926,6 +1032,9 @@ function NewConversationModal({
   conversations: ConversationSummary[];
   onSelectConversation: (id: string, category: 'ADMIN_HOSPITAL' | 'HOSPITAL_PATIENT') => void;
 }) {
+  const { t } = useHospitalI18n();
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
   const [caseSearch, setCaseSearch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const queryClient = useQueryClient();
@@ -990,11 +1099,13 @@ function NewConversationModal({
   const renderCaseList = (convMap: Map<string, string>, category: string) => (
     <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200/60 bg-white">
       {casesLoading ? (
-        <div className="py-6 text-center text-sm text-slate-400">Loading cases...</div>
+        <div className="py-6 text-center text-sm text-slate-400">
+          {tx('hospital.portal.messages.newConversation.loadingCases', 'Loading cases...')}
+        </div>
       ) : filteredCases.length === 0 ? (
         <div className="py-6 text-center text-sm text-slate-400">
           <FolderOpen size={20} className="mx-auto mb-1.5 opacity-50" />
-          No cases found
+          {tx('hospital.portal.messages.newConversation.noCasesFound', 'No cases found')}
         </div>
       ) : (
         filteredCases.map((c) => {
@@ -1021,11 +1132,13 @@ function NewConversationModal({
                   existingConvId ? 'bg-emerald-100 text-emerald-600' : 'bg-indigo-100 text-indigo-600'
                 }`}
               >
-                {getInitials(c.patientName ?? 'U')}
+                {getInitials(c.patientName ?? tx('hospital.portal.messages.newConversation.unknownInitial', 'U'))}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-slate-900 truncate">{c.patientName ?? 'Unknown'}</span>
+                  <span className="font-medium text-sm text-slate-900 truncate">
+                    {c.patientName ?? tx('hospital.messages.conversationList.newConversationDialog.unknownPatient', 'Unknown')}
+                  </span>
                   {c.caseNumber && (
                     <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{c.caseNumber}</span>
                   )}
@@ -1034,11 +1147,11 @@ function NewConversationModal({
               </div>
               {existingConvId ? (
                 <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
-                  <MessageSquare size={10} /> Go to Chat
+                  <MessageSquare size={10} /> {tx('hospital.portal.messages.newConversation.goToChat', 'Go to Chat')}
                 </span>
               ) : (
                 <span className="text-[10px] font-medium text-blue-500 opacity-0 group-hover:opacity-100 shrink-0">
-                  + New
+                  {tx('hospital.portal.messages.newConversation.newBadge', '+ New')}
                 </span>
               )}
             </button>
@@ -1049,14 +1162,22 @@ function NewConversationModal({
   );
 
   return (
-    <Modal open={open} onClose={onClose} title="New Conversation" maxWidth="max-w-2xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={tx('hospital.portal.messages.newConversation.title', 'New Conversation')}
+      maxWidth="max-w-2xl"
+    >
       <div className="space-y-6">
         {/* Search (shared for both sections) */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search cases by patient, case number..."
+            placeholder={tx(
+              'hospital.portal.messages.newConversation.searchPlaceholder',
+              'Search cases by patient, case number...',
+            )}
             value={caseSearch}
             onChange={(e) => setCaseSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
@@ -1069,7 +1190,9 @@ function NewConversationModal({
             <div className="w-6 h-6 rounded-lg bg-purple-100 flex items-center justify-center">
               <MessageSquarePlus size={14} className="text-purple-600" />
             </div>
-            <h3 className="text-sm font-semibold text-slate-700">Message Admin</h3>
+            <h3 className="text-sm font-semibold text-slate-700">
+              {tx('hospital.portal.messages.newConversation.messageAdmin', 'Message Admin')}
+            </h3>
           </div>
 
           {/* General admin message (no case) */}
@@ -1088,16 +1211,27 @@ function NewConversationModal({
               <MessageSquarePlus size={16} className="text-white" />
             </div>
             <div className="flex-1">
-              <div className="font-semibold text-sm">General Message</div>
-              <div className="text-xs text-indigo-100">No case attached</div>
+              <div className="font-semibold text-sm">
+                {tx('hospital.messages.conversationList.newConversationDialog.generalMessage.title', 'General Message')}
+              </div>
+              <div className="text-xs text-indigo-100">
+                {tx('hospital.portal.messages.newConversation.noCaseAttached', 'No case attached')}
+              </div>
             </div>
             {generalAdminConvId && (
-              <span className="text-[10px] font-semibold text-white/90 bg-white/20 px-2 py-0.5 rounded-full">Go to Chat</span>
+              <span className="text-[10px] font-semibold text-white/90 bg-white/20 px-2 py-0.5 rounded-full">
+                {tx('hospital.portal.messages.newConversation.goToChat', 'Go to Chat')}
+              </span>
             )}
           </button>
 
           {/* Case-specific admin messages */}
-          <p className="text-xs text-slate-400 mb-2">Or message admin about a specific case:</p>
+          <p className="text-xs text-slate-400 mb-2">
+            {tx(
+              'hospital.portal.messages.newConversation.messageAdminCaseHint',
+              'Or message admin about a specific case:',
+            )}
+          </p>
           {renderCaseList(adminConvMap, 'ADMIN_HOSPITAL')}
         </div>
 
@@ -1110,14 +1244,20 @@ function NewConversationModal({
             <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
               <MessageSquare size={14} className="text-blue-600" />
             </div>
-            <h3 className="text-sm font-semibold text-slate-700">Message Patient</h3>
-            <span className="text-xs text-slate-400">(select a case)</span>
+            <h3 className="text-sm font-semibold text-slate-700">
+              {tx('hospital.portal.messages.newConversation.messagePatient', 'Message Patient')}
+            </h3>
+            <span className="text-xs text-slate-400">
+              {tx('hospital.portal.messages.newConversation.selectCaseHint', '(select a case)')}
+            </span>
           </div>
           {renderCaseList(patientConvMap, 'HOSPITAL_PATIENT')}
         </div>
 
         <div className="flex justify-end pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>Close</Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {tx('hospital.portal.messages.newConversation.close', 'Close')}
+          </Button>
         </div>
       </div>
     </Modal>

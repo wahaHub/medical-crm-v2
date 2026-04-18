@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const profileLocaleSchema = z.enum(['en', 'zh', 'fr', 'de', 'es', 'bn']);
+
 export const notificationPreferencesSchema = z.object({
   newCase: z.boolean().optional(),
   newMessage: z.boolean().optional(),
@@ -9,7 +11,7 @@ export const notificationPreferencesSchema = z.object({
 
 export const updateProfileSchema = z.object({
   email: z.string().email().optional(),
-  preferredLanguage: z.enum(['en', 'zh']).optional(),
+  preferredLanguage: profileLocaleSchema.optional(),
   notifications: notificationPreferencesSchema.optional(),
 });
 

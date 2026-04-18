@@ -70,7 +70,10 @@ import type {
   MaterialsBeforeAfterCaseDTO,
 } from '@/lib/api-types';
 import { useAuth } from '@/lib/auth-context';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 import { sanitizeDepartmentStats } from '@/lib/materials-payload';
+
+type TranslationFn = (key: string, values?: Record<string, string | number>, fallback?: string) => string;
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -142,10 +145,12 @@ function extractDebugDetails(error: unknown): string | undefined {
   return undefined;
 }
 
-function extractSaveFailureMessage(error: unknown): string {
+function extractSaveFailureMessage(error: unknown, t: TranslationFn): string {
   const debugDetails = extractDebugDetails(error);
   if (!debugDetails) {
-    return error instanceof Error ? error.message : 'Failed to save hospital information.';
+    return error instanceof Error
+      ? error.message
+      : t('hospital.materials.save.failure', undefined, 'Failed to save hospital information.');
   }
 
   try {
@@ -162,10 +167,18 @@ function extractSaveFailureMessage(error: unknown): string {
       return `${firstIssue.message}${fieldPath}`;
     }
   } catch {
-    return 'Failed to save hospital information. Expand the debug logs for details.';
+    return t(
+      'hospital.materials.save.failureWithDebug',
+      undefined,
+      'Failed to save hospital information. Expand the debug logs for details.',
+    );
   }
 
-  return 'Failed to save hospital information. Expand the debug logs for details.';
+  return t(
+    'hospital.materials.save.failureWithDebug',
+    undefined,
+    'Failed to save hospital information. Expand the debug logs for details.',
+  );
 }
 
 function getFlashClass(active: boolean) {
@@ -181,6 +194,7 @@ function UploadProgressModal({
   state: SaveProgressState;
   onDismiss: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const completedCount = state.items.filter((item) => item.status === 'done').length;
   const progress = state.items.length > 0 ? Math.round((completedCount / state.items.length) * 100) : 0;
 
@@ -189,7 +203,11 @@ function UploadProgressModal({
       <div className="space-y-5">
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm text-slate-500">
-            <span>{state.failedTargetKey ? 'Upload finished with errors' : 'Uploading and saving your changes'}</span>
+            <span>
+              {state.failedTargetKey
+                ? t('hospital.materials.uploadProgress.errorSummary', undefined, 'Upload finished with errors')
+                : t('hospital.materials.uploadProgress.inProgressSummary', undefined, 'Uploading and saving your changes')}
+            </span>
             <span>{progress}%</span>
           </div>
           <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -223,11 +241,11 @@ function UploadProgressModal({
               <div className="min-w-0">
                 <div className="text-sm font-medium text-slate-800">{item.label}</div>
                 <div className="text-xs text-slate-500 mt-0.5">
-                  {item.status === 'pending' && 'Waiting'}
-                  {item.status === 'uploading' && 'Uploading...'}
-                  {item.status === 'saving' && 'Saving...'}
-                  {item.status === 'done' && 'Done'}
-                  {item.status === 'failed' && (item.error || 'Upload failed')}
+                  {item.status === 'pending' && t('hospital.materials.uploadProgress.pending', undefined, 'Waiting')}
+                  {item.status === 'uploading' && t('hospital.materials.uploadProgress.uploading', undefined, 'Uploading...')}
+                  {item.status === 'saving' && t('hospital.materials.uploadProgress.saving', undefined, 'Saving...')}
+                  {item.status === 'done' && t('hospital.materials.uploadProgress.done', undefined, 'Done')}
+                  {item.status === 'failed' && (item.error || t('hospital.materials.uploadProgress.uploadFailed', undefined, 'Upload failed'))}
                 </div>
               </div>
             </div>
@@ -237,8 +255,12 @@ function UploadProgressModal({
         {state.showDebugDetails && state.debugDetails ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-slate-800">Technical debug logs</div>
-              <div className="text-xs text-slate-500">Raw backend error / validation JSON</div>
+              <div className="text-sm font-semibold text-slate-800">
+                {t('hospital.materials.uploadProgress.debugTitle', undefined, 'Technical debug logs')}
+              </div>
+              <div className="text-xs text-slate-500">
+                {t('hospital.materials.uploadProgress.debugDescription', undefined, 'Raw backend error / validation JSON')}
+              </div>
             </div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950 shadow-inner">
               <pre className="max-h-64 overflow-auto px-4 py-3 text-xs leading-5 text-slate-100 whitespace-pre-wrap break-words">
@@ -255,7 +277,9 @@ function UploadProgressModal({
             disabled={!state.canDismiss}
             className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {state.failedTargetKey ? 'Dismiss and locate issue' : 'Close'}
+            {state.failedTargetKey
+              ? t('hospital.materials.uploadProgress.dismissAndLocate', undefined, 'Dismiss and locate issue')
+              : t('hospital.materials.uploadProgress.close', undefined, 'Close')}
           </button>
         </div>
       </div>
@@ -269,8 +293,8 @@ function ImageUploadWidget({
   onChange,
   onFileSelect,
   onUpload,
-  label = 'Image',
-  placeholder = 'https://... or click Upload',
+  label,
+  placeholder,
   previewClassName = 'h-40 w-full',
   compact = false,
   allowDirectUrl = true,
@@ -285,8 +309,11 @@ function ImageUploadWidget({
   compact?: boolean;
   allowDirectUrl?: boolean;
 }) {
+  const { t } = useHospitalI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [_uploading, setUploading] = useState(false);
+  const resolvedLabel = label || t('hospital.materials.media.image', undefined, 'Image');
+  const resolvedPlaceholder = placeholder || t('hospital.materials.media.imagePlaceholder', undefined, 'https://... or click Upload');
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -321,18 +348,20 @@ function ImageUploadWidget({
     return (
       <div>
         <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
-        <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+        <label className="block text-xs font-medium text-slate-500 mb-1">{resolvedLabel}</label>
         <div className="flex items-start gap-3">
           <div
             onClick={() => fileInputRef.current?.click()}
             className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-colors cursor-pointer overflow-hidden shrink-0"
           >
             {value ? (
-              <img src={value} alt={label} className="w-full h-full object-cover" />
+              <img src={value} alt={resolvedLabel} className="w-full h-full object-cover" />
             ) : (
               <>
                 <Upload size={20} className="mb-1" />
-                <span className="text-[10px] font-medium">Upload</span>
+                <span className="text-[10px] font-medium">
+                  {t('hospital.materials.actions.upload', undefined, 'Upload')}
+                </span>
               </>
             )}
           </div>
@@ -343,7 +372,7 @@ function ImageUploadWidget({
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 className={inputClass}
-                placeholder={placeholder}
+                placeholder={resolvedPlaceholder}
               />
             )}
             <button
@@ -351,7 +380,7 @@ function ImageUploadWidget({
               onClick={() => fileInputRef.current?.click()}
               className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
             >
-              <Upload size={12} /> Choose File
+              <Upload size={12} /> {t('hospital.materials.actions.chooseFile', undefined, 'Choose File')}
             </button>
             {value && (
               <button
@@ -359,7 +388,7 @@ function ImageUploadWidget({
                 onClick={() => onChange('')}
                 className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-rose-100 transition-colors"
               >
-                <Trash2 size={12} /> Remove
+                <Trash2 size={12} /> {t('hospital.materials.actions.remove', undefined, 'Remove')}
               </button>
             )}
           </div>
@@ -372,7 +401,7 @@ function ImageUploadWidget({
   return (
     <div>
       <input type="file" ref={fileInputRef} accept="image/*" className="hidden" onChange={handleFileChange} />
-      <label className="block text-xs font-medium text-slate-500 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-slate-500 mb-1">{resolvedLabel}</label>
       <div className="space-y-2">
         <div className="flex gap-2">
           {allowDirectUrl && (
@@ -381,7 +410,7 @@ function ImageUploadWidget({
               value={value}
               onChange={(e) => onChange(e.target.value)}
               className={`flex-1 ${inputClass}`}
-              placeholder={placeholder}
+              placeholder={resolvedPlaceholder}
             />
           )}
           <button
@@ -389,7 +418,7 @@ function ImageUploadWidget({
             onClick={() => fileInputRef.current?.click()}
             className="px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors shrink-0"
           >
-            <Upload size={14} /> Upload
+            <Upload size={14} /> {t('hospital.materials.actions.upload', undefined, 'Upload')}
           </button>
           {value && (
             <button
@@ -397,12 +426,12 @@ function ImageUploadWidget({
               onClick={() => onChange('')}
               className="px-3 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-rose-100 transition-colors shrink-0"
             >
-              <Trash2 size={14} /> Remove
+              <Trash2 size={14} /> {t('hospital.materials.actions.remove', undefined, 'Remove')}
             </button>
           )}
         </div>
         {value && (
-          <img src={value} alt={label} className={`${previewClassName} rounded-lg object-cover`} />
+          <img src={value} alt={resolvedLabel} className={`${previewClassName} rounded-lg object-cover`} />
         )}
       </div>
     </div>
@@ -414,8 +443,8 @@ function VideoUploadWidget({
   videos,
   onAdd,
   onRemove,
-  label = 'Videos',
-  emptyText = 'No videos uploaded',
+  label,
+  emptyText,
   editing = false,
 }: {
   videos: string[];
@@ -425,8 +454,11 @@ function VideoUploadWidget({
   emptyText?: string;
   editing?: boolean;
 }) {
+  const { t } = useHospitalI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [playingIdx, setPlayingIdx] = useState<number | null>(null);
+  const resolvedLabel = label || t('hospital.materials.media.videos', undefined, 'Videos');
+  const resolvedEmptyText = emptyText || t('hospital.materials.media.noVideosUploaded', undefined, 'No videos uploaded');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -446,14 +478,14 @@ function VideoUploadWidget({
         onChange={handleFileChange}
       />
       <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-medium text-slate-700">{label}</h4>
+        <h4 className="text-sm font-medium text-slate-700">{resolvedLabel}</h4>
         {editing && (
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
           >
-            <Video size={12} /> Add Videos
+            <Video size={12} /> {t('hospital.materials.actions.addVideos', undefined, 'Add Videos')}
           </button>
         )}
       </div>
@@ -498,14 +530,14 @@ function VideoUploadWidget({
         <div className="h-32 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400">
           <div className="text-center">
             <Video size={24} className="mx-auto mb-1" />
-            <span className="text-xs">{emptyText}</span>
+            <span className="text-xs">{resolvedEmptyText}</span>
             {editing && (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="block mx-auto mt-2 text-xs font-medium text-blue-600"
               >
-                <Upload size={12} className="inline mr-1" /> Upload Video
+                <Upload size={12} className="inline mr-1" /> {t('hospital.materials.actions.uploadVideo', undefined, 'Upload Video')}
               </button>
             )}
           </div>
@@ -515,14 +547,17 @@ function VideoUploadWidget({
   );
 }
 
-const TABS = [
-  { id: 'info', label: 'Hospital Info', icon: Building2 },
-  { id: 'procedures', label: 'Procedures', icon: Stethoscope },
-  { id: 'surgeons', label: 'Surgeons', icon: Users },
-  { id: 'cases', label: 'Case Gallery', icon: Camera },
-];
+function getMaterialsTabs(t: TranslationFn) {
+  return [
+    { id: 'info', label: t('hospital.materials.tabs.info', undefined, 'Hospital Info'), icon: Building2 },
+    { id: 'procedures', label: t('hospital.materials.tabs.procedures', undefined, 'Procedures'), icon: Stethoscope },
+    { id: 'surgeons', label: t('hospital.materials.tabs.surgeons', undefined, 'Surgeons'), icon: Users },
+    { id: 'cases', label: t('hospital.materials.tabs.cases', undefined, 'Case Gallery'), icon: Camera },
+  ];
+}
 
 function ConsumerWebsiteLink({ slug, hospitalType }: { slug: string; hospitalType: 'hospital' | 'regular_hospital' }) {
+  const { t } = useHospitalI18n();
   const [copied, setCopied] = useState(false);
   const isRegular = hospitalType === 'regular_hospital';
   const url = slug
@@ -531,8 +566,16 @@ function ConsumerWebsiteLink({ slug, hospitalType }: { slug: string; hospitalTyp
       : `https://www.medorabeauty.com/hospital/${slug}`
     : '';
   const description = isRegular
-    ? 'The following information will be published as hospital information on www.medicaltourismchina.health'
-    : 'The following information will be published as hospital information on www.medorabeauty.com';
+    ? t(
+      'hospital.materials.consumerWebsite.regularDescription',
+      undefined,
+      'The following information will be published as hospital information on www.medicaltourismchina.health',
+    )
+    : t(
+      'hospital.materials.consumerWebsite.defaultDescription',
+      undefined,
+      'The following information will be published as hospital information on www.medorabeauty.com',
+    );
 
   const handleCopy = () => {
     if (!url) return;
@@ -549,7 +592,9 @@ function ConsumerWebsiteLink({ slug, hospitalType }: { slug: string; hospitalTyp
             <Globe size={20} className="text-white" />
           </div>
           <div>
-            <h3 className="font-semibold text-sm text-slate-800">Consumer Website Link</h3>
+            <h3 className="font-semibold text-sm text-slate-800">
+              {t('hospital.materials.consumerWebsite.title', undefined, 'Consumer Website Link')}
+            </h3>
             <p className="text-sm text-slate-600 mt-0.5">{description}</p>
           </div>
         </div>
@@ -567,7 +612,9 @@ function ConsumerWebsiteLink({ slug, hospitalType }: { slug: string; hospitalTyp
               className="px-3 py-2 border border-green-300 hover:bg-green-100 rounded-lg text-sm font-medium text-slate-700 flex items-center gap-1.5 transition-colors shrink-0"
             >
               <Copy size={14} />
-              {copied ? 'Copied!' : 'Copy'}
+              {copied
+                ? t('hospital.materials.consumerWebsite.copied', undefined, 'Copied!')
+                : t('hospital.materials.consumerWebsite.copy', undefined, 'Copy')}
             </button>
             <a
               href={url}
@@ -576,7 +623,7 @@ function ConsumerWebsiteLink({ slug, hospitalType }: { slug: string; hospitalTyp
               className="px-3 py-2 border border-green-300 hover:bg-green-100 rounded-lg text-sm font-medium text-slate-700 flex items-center gap-1.5 transition-colors shrink-0"
             >
               <ExternalLink size={14} />
-              Jump
+              {t('hospital.materials.consumerWebsite.open', undefined, 'Open')}
             </a>
           </div>
         )}
@@ -586,6 +633,7 @@ function ConsumerWebsiteLink({ slug, hospitalType }: { slug: string; hospitalTyp
 }
 
 export function MaterialsTabs() {
+  const { t } = useHospitalI18n();
   const [activeTab, setActiveTab] = useState('info');
   const { data: infoData } = useMaterialsInfo();
   const { user } = useAuth();
@@ -593,7 +641,8 @@ export function MaterialsTabs() {
   const hospitalType: 'hospital' | 'regular_hospital' = user.roles.includes('regular_hospital') ? 'regular_hospital' : 'hospital';
   const isRegular = hospitalType === 'regular_hospital';
 
-  const visibleTabs = isRegular ? TABS.filter((t) => t.id !== 'procedures') : TABS;
+  const tabs = getMaterialsTabs(t);
+  const visibleTabs = isRegular ? tabs.filter((tab) => tab.id !== 'procedures') : tabs;
 
   return (
     <div className="space-y-6">
@@ -607,18 +656,32 @@ export function MaterialsTabs() {
             <Building2 size={20} className="text-white" />
           </div>
           <div className="flex-1">
-            <h4 className="font-semibold text-slate-800 mb-1">Review Instructions</h4>
+            <h4 className="font-semibold text-slate-800 mb-1">
+              {t('hospital.materials.reviewBanner.title', undefined, 'Review Instructions')}
+            </h4>
             <p className="text-sm text-slate-600 mb-2">
-              Your submitted materials will be pre-reviewed by AI and verified by our team before publication. Please ensure information is accurate and professional.
+              {t(
+                'hospital.materials.reviewBanner.description',
+                undefined,
+                'Your submitted materials will be pre-reviewed by AI and verified by our team before publication. Please ensure information is accurate and professional.',
+              )}
             </p>
             <div className="flex gap-4 text-xs text-slate-500">
               <span className="flex items-center gap-1">
                 <Clock size={14} className="text-amber-500" />
-                AI review + human verification, within 0.5 business days
+                {t(
+                  'hospital.materials.reviewBanner.aiReview',
+                  undefined,
+                  'AI review + human verification, within 0.5 business days',
+                )}
               </span>
               <span className="flex items-center gap-1">
                 <Languages size={14} className="text-blue-500" />
-                Content will be AI-translated into multiple languages
+                {t(
+                  'hospital.materials.reviewBanner.translation',
+                  undefined,
+                  'Content will be AI-translated into multiple languages',
+                )}
               </span>
             </div>
           </div>
@@ -672,94 +735,112 @@ function SectionHeader({ icon: Icon, title }: { icon: React.ElementType; title: 
 }
 
 // ── Options constants from CRM v1 ──────────────────────────────────
-const LANGUAGE_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'zh', label: 'Chinese' },
-  { value: 'kr', label: 'Korean' },
-  { value: 'jp', label: 'Japanese' },
-  { value: 'ar', label: 'Arabic' },
-  { value: 'th', label: 'Thai' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'ru', label: 'Russian' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-];
+function getLanguageOptions(t: TranslationFn) {
+  return [
+    { value: 'en', label: t('hospital.materials.languages.english', undefined, 'English') },
+    { value: 'zh', label: t('hospital.materials.languages.chinese', undefined, 'Chinese') },
+    { value: 'kr', label: t('hospital.materials.languages.korean', undefined, 'Korean') },
+    { value: 'jp', label: t('hospital.materials.languages.japanese', undefined, 'Japanese') },
+    { value: 'ar', label: t('hospital.materials.languages.arabic', undefined, 'Arabic') },
+    { value: 'th', label: t('hospital.materials.languages.thai', undefined, 'Thai') },
+    { value: 'es', label: t('hospital.materials.languages.spanish', undefined, 'Spanish') },
+    { value: 'ru', label: t('hospital.materials.languages.russian', undefined, 'Russian') },
+    { value: 'fr', label: t('hospital.materials.languages.french', undefined, 'French') },
+    { value: 'de', label: t('hospital.materials.languages.german', undefined, 'German') },
+  ];
+}
 
-const SURGEON_LANGUAGE_OPTIONS = LANGUAGE_OPTIONS.map((option) => ({
-  value: option.label,
-  label: option.label,
-}));
+function getSurgeonLanguageOptions(t: TranslationFn) {
+  return getLanguageOptions(t).map((option) => ({
+    value: option.label,
+    label: option.label,
+  }));
+}
 
-const HOSPITAL_TIER_OPTIONS = [
-  { value: '三甲', label: '三甲' },
-  { value: '三乙', label: '三乙' },
-  { value: '二甲', label: '二甲' },
-  { value: '二乙', label: '二乙' },
-  { value: '一级', label: '一级' },
-  { value: '国际医院', label: '国际医院' },
-  { value: '未评级', label: '未评级' },
-];
+function getHospitalTierOptions(t: TranslationFn) {
+  return [
+    { value: '三甲', label: t('hospital.materials.hospitalTier.class3a', undefined, 'Class 3A (三甲)') },
+    { value: '三乙', label: t('hospital.materials.hospitalTier.class3b', undefined, 'Class 3B (三乙)') },
+    { value: '二甲', label: t('hospital.materials.hospitalTier.class2a', undefined, 'Class 2A (二甲)') },
+    { value: '二乙', label: t('hospital.materials.hospitalTier.class2b', undefined, 'Class 2B (二乙)') },
+    { value: '一级', label: t('hospital.materials.hospitalTier.class1', undefined, 'Class 1 (一级)') },
+    { value: '国际医院', label: t('hospital.materials.hospitalTier.international', undefined, 'International Hospital (国际医院)') },
+    { value: '未评级', label: t('hospital.materials.hospitalTier.unrated', undefined, 'Unrated (未评级)') },
+  ];
+}
 
-const OWNERSHIP_TYPE_OPTIONS = [
-  { value: 'Public', label: 'Public' },
-  { value: 'Private', label: 'Private' },
-  { value: 'University-affiliated', label: 'University-affiliated' },
-  { value: 'Military', label: 'Military' },
-  { value: 'Joint Venture', label: 'Joint Venture' },
-  { value: 'Non-profit', label: 'Non-profit' },
-];
+function getOwnershipTypeOptions(t: TranslationFn) {
+  return [
+    { value: 'Public', label: t('hospital.materials.ownership.public', undefined, 'Public') },
+    { value: 'Private', label: t('hospital.materials.ownership.private', undefined, 'Private') },
+    { value: 'University-affiliated', label: t('hospital.materials.ownership.universityAffiliated', undefined, 'University-affiliated') },
+    { value: 'Military', label: t('hospital.materials.ownership.military', undefined, 'Military') },
+    { value: 'Joint Venture', label: t('hospital.materials.ownership.jointVenture', undefined, 'Joint Venture') },
+    { value: 'Non-profit', label: t('hospital.materials.ownership.nonProfit', undefined, 'Non-profit') },
+  ];
+}
 
-const AIRPORT_SERVICE_OPTIONS = [
-  { value: 'complimentary_transfer', label: 'Complimentary Airport Transfer' },
-  { value: 'paid_transfer', label: 'Paid Airport Pickup' },
-  { value: 'airport_assistance', label: 'Airport Assistance' },
-  { value: 'visa_on_arrival', label: 'Visa on Arrival Assistance' },
-];
+function getAirportServiceOptions(t: TranslationFn) {
+  return [
+    { value: 'complimentary_transfer', label: t('hospital.materials.airportServices.complimentaryTransfer', undefined, 'Complimentary Airport Transfer') },
+    { value: 'paid_transfer', label: t('hospital.materials.airportServices.paidTransfer', undefined, 'Paid Airport Pickup') },
+    { value: 'airport_assistance', label: t('hospital.materials.airportServices.assistance', undefined, 'Airport Assistance') },
+    { value: 'visa_on_arrival', label: t('hospital.materials.airportServices.visaOnArrival', undefined, 'Visa on Arrival Assistance') },
+  ];
+}
 
-const AMENITY_OPTIONS = [
-  { value: 'private_suite', label: 'Private Recovery Suites' },
-  { value: 'wifi', label: 'Free Wi-Fi' },
-  { value: 'concierge', label: 'Medical Tourism Concierge' },
-  { value: 'insurance_coord', label: 'International Insurance Coordination' },
-  { value: 'visa_assistance', label: 'Visa Assistance' },
-  { value: 'interpreter', label: 'Interpreter Services' },
-  { value: 'halal_food', label: 'Halal Food Available' },
-  { value: 'vegetarian', label: 'Vegetarian Options' },
-  { value: 'family_accommodation', label: 'Family Accommodation' },
-  { value: 'pharmacy', label: '24/7 Pharmacy' },
-];
+function getAmenityOptions(t: TranslationFn) {
+  return [
+    { value: 'private_suite', label: t('hospital.materials.amenities.privateSuite', undefined, 'Private Recovery Suites') },
+    { value: 'wifi', label: t('hospital.materials.amenities.wifi', undefined, 'Free Wi-Fi') },
+    { value: 'concierge', label: t('hospital.materials.amenities.concierge', undefined, 'Medical Tourism Concierge') },
+    { value: 'insurance_coord', label: t('hospital.materials.amenities.insuranceCoordination', undefined, 'International Insurance Coordination') },
+    { value: 'visa_assistance', label: t('hospital.materials.amenities.visaAssistance', undefined, 'Visa Assistance') },
+    { value: 'interpreter', label: t('hospital.materials.amenities.interpreter', undefined, 'Interpreter Services') },
+    { value: 'halal_food', label: t('hospital.materials.amenities.halalFood', undefined, 'Halal Food Available') },
+    { value: 'vegetarian', label: t('hospital.materials.amenities.vegetarian', undefined, 'Vegetarian Options') },
+    { value: 'family_accommodation', label: t('hospital.materials.amenities.familyAccommodation', undefined, 'Family Accommodation') },
+    { value: 'pharmacy', label: t('hospital.materials.amenities.pharmacy', undefined, '24/7 Pharmacy') },
+  ];
+}
 
-const PAYMENT_METHOD_OPTIONS = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'credit_card', label: 'Credit Card' },
-  { value: 'debit_card', label: 'Debit Card' },
-  { value: 'wechat_pay', label: 'WeChat Pay' },
-  { value: 'alipay', label: 'Alipay' },
-  { value: 'unionpay', label: 'UnionPay' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'international_transfer', label: 'International Transfer' },
-  { value: 'paypal', label: 'PayPal' },
-  { value: 'apple_pay', label: 'Apple Pay' },
-  { value: 'google_pay', label: 'Google Pay' },
-  { value: 'insurance_direct', label: 'Insurance Direct Billing' },
-];
+function getPaymentMethodOptions(t: TranslationFn) {
+  return [
+    { value: 'cash', label: t('hospital.materials.paymentMethods.cash', undefined, 'Cash') },
+    { value: 'credit_card', label: t('hospital.materials.paymentMethods.creditCard', undefined, 'Credit Card') },
+    { value: 'debit_card', label: t('hospital.materials.paymentMethods.debitCard', undefined, 'Debit Card') },
+    { value: 'wechat_pay', label: t('hospital.materials.paymentMethods.wechatPay', undefined, 'WeChat Pay') },
+    { value: 'alipay', label: t('hospital.materials.paymentMethods.alipay', undefined, 'Alipay') },
+    { value: 'unionpay', label: t('hospital.materials.paymentMethods.unionPay', undefined, 'UnionPay') },
+    { value: 'bank_transfer', label: t('hospital.materials.paymentMethods.bankTransfer', undefined, 'Bank Transfer') },
+    { value: 'international_transfer', label: t('hospital.materials.paymentMethods.internationalTransfer', undefined, 'International Transfer') },
+    { value: 'paypal', label: t('hospital.materials.paymentMethods.paypal', undefined, 'PayPal') },
+    { value: 'apple_pay', label: t('hospital.materials.paymentMethods.applePay', undefined, 'Apple Pay') },
+    { value: 'google_pay', label: t('hospital.materials.paymentMethods.googlePay', undefined, 'Google Pay') },
+    { value: 'insurance_direct', label: t('hospital.materials.paymentMethods.insuranceDirect', undefined, 'Insurance Direct Billing') },
+  ];
+}
 
-const CERTIFICATION_PRESETS = [
-  { value: 'jci', label: 'JCI Accreditation' },
-  { value: 'iso_9001', label: 'ISO 9001:2015' },
-  { value: 'iso_15189', label: 'ISO 15189' },
-  { value: 'nabh', label: 'NABH Accreditation' },
-  { value: 'aahrpp', label: 'AAHRPP' },
-  { value: 'cap', label: 'CAP Accreditation' },
-];
+function getCertificationPresets(t: TranslationFn) {
+  return [
+    { value: 'jci', label: t('hospital.materials.certifications.jci', undefined, 'JCI Accreditation') },
+    { value: 'iso_9001', label: t('hospital.materials.certifications.iso9001', undefined, 'ISO 9001:2015') },
+    { value: 'iso_15189', label: t('hospital.materials.certifications.iso15189', undefined, 'ISO 15189') },
+    { value: 'nabh', label: t('hospital.materials.certifications.nabh', undefined, 'NABH Accreditation') },
+    { value: 'aahrpp', label: t('hospital.materials.certifications.aahrpp', undefined, 'AAHRPP') },
+    { value: 'cap', label: t('hospital.materials.certifications.cap', undefined, 'CAP Accreditation') },
+  ];
+}
 
-const FOLLOWUP_OPTIONS = [
-  { value: 'lifetime', label: 'Lifetime Follow-up Care' },
-  { value: '1_year', label: '1 Year Follow-up' },
-  { value: '6_months', label: '6 Months Follow-up' },
-  { value: 'telemedicine', label: 'Remote Telemedicine' },
-  { value: 'local_partner', label: 'Local Partner Clinic Referral' },
-];
+function getFollowupOptions(t: TranslationFn) {
+  return [
+    { value: 'lifetime', label: t('hospital.materials.followup.lifetime', undefined, 'Lifetime Follow-up Care') },
+    { value: '1_year', label: t('hospital.materials.followup.oneYear', undefined, '1 Year Follow-up') },
+    { value: '6_months', label: t('hospital.materials.followup.sixMonths', undefined, '6 Months Follow-up') },
+    { value: 'telemedicine', label: t('hospital.materials.followup.telemedicine', undefined, 'Remote Telemedicine') },
+    { value: 'local_partner', label: t('hospital.materials.followup.localPartner', undefined, 'Local Partner Clinic Referral') },
+  ];
+}
 
 function mergeOptionLists(...groups: Array<Array<{ value: string; label: string }>>): Array<{ value: string; label: string }> {
   const seen = new Set<string>();
@@ -784,6 +865,7 @@ function ChipSelector({
   editing: boolean;
   label?: string;
 }) {
+  const { t } = useHospitalI18n();
   const [showAddModal, setShowAddModal] = useState(false);
   const selectedLabels = options.filter((o) => selected.includes(o.value));
 
@@ -809,7 +891,9 @@ function ChipSelector({
             </span>
           ))
         ) : (
-          <span className="text-sm text-slate-400">None selected</span>
+          <span className="text-sm text-slate-400">
+            {t('hospital.materials.empty.noneSelected', undefined, 'None selected')}
+          </span>
         )}
         {editing && (
           <button
@@ -822,7 +906,7 @@ function ChipSelector({
       </div>
       {showAddModal && (
         <AddOptionsModal
-          title={label ?? 'Select Options'}
+          title={label ?? t('hospital.materials.actions.selectOptions', undefined, 'Select Options')}
           options={options}
           selected={selected}
           onChange={onChange}
@@ -846,6 +930,7 @@ function AddOptionsModal({
   onChange: (values: string[]) => void;
   onClose: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const [localSelected, setLocalSelected] = useState<string[]>([...selected]);
 
   const toggle = (value: string) => {
@@ -886,10 +971,14 @@ function AddOptionsModal({
       </div>
       <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 mt-4">
         <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
-          Cancel
+          {t('hospital.materials.actions.cancel', undefined, 'Cancel')}
         </button>
         <button onClick={handleDone} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors">
-          Done ({localSelected.length} selected)
+          {t(
+            'hospital.materials.actions.doneSelected',
+            { count: localSelected.length },
+            'Done ({count} selected)',
+          )}
         </button>
       </div>
     </Modal>
@@ -900,13 +989,14 @@ function MultiSelectDropdown({
   options,
   selected,
   onChange,
-  placeholder = 'Select options',
+  placeholder,
 }: {
   options: { value: string; label: string }[];
   selected: string[];
   onChange: (values: string[]) => void;
   placeholder?: string;
 }) {
+  const { t } = useHospitalI18n();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const optionMap = new Map(options.map((option) => [option.value, option.label]));
@@ -935,7 +1025,9 @@ function MultiSelectDropdown({
         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-left flex items-center justify-between gap-3 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
       >
         <span className={selectedLabels.length > 0 ? 'text-slate-700' : 'text-slate-400'}>
-          {selectedLabels.length > 0 ? selectedLabels.join(', ') : placeholder}
+          {selectedLabels.length > 0
+            ? selectedLabels.join(', ')
+            : (placeholder || t('hospital.materials.actions.selectOptions', undefined, 'Select options'))}
         </span>
         <ChevronDown
           size={16}
@@ -982,19 +1074,24 @@ const TIME_OPTIONS = [
   '20:00', '20:30', '21:00', '21:30', '22:00', '22:30', '23:00', '23:30',
 ];
 
-const DAY_NAMES = [
-  { key: 'monday', label: 'Mon', labelFull: 'Monday' },
-  { key: 'tuesday', label: 'Tue', labelFull: 'Tuesday' },
-  { key: 'wednesday', label: 'Wed', labelFull: 'Wednesday' },
-  { key: 'thursday', label: 'Thu', labelFull: 'Thursday' },
-  { key: 'friday', label: 'Fri', labelFull: 'Friday' },
-  { key: 'saturday', label: 'Sat', labelFull: 'Saturday' },
-  { key: 'sunday', label: 'Sun', labelFull: 'Sunday' },
-];
+function getDayNames(t: TranslationFn) {
+  return [
+    { key: 'monday', label: t('hospital.materials.days.mon', undefined, 'Mon'), labelFull: t('hospital.materials.days.monday', undefined, 'Monday') },
+    { key: 'tuesday', label: t('hospital.materials.days.tue', undefined, 'Tue'), labelFull: t('hospital.materials.days.tuesday', undefined, 'Tuesday') },
+    { key: 'wednesday', label: t('hospital.materials.days.wed', undefined, 'Wed'), labelFull: t('hospital.materials.days.wednesday', undefined, 'Wednesday') },
+    { key: 'thursday', label: t('hospital.materials.days.thu', undefined, 'Thu'), labelFull: t('hospital.materials.days.thursday', undefined, 'Thursday') },
+    { key: 'friday', label: t('hospital.materials.days.fri', undefined, 'Fri'), labelFull: t('hospital.materials.days.friday', undefined, 'Friday') },
+    { key: 'saturday', label: t('hospital.materials.days.sat', undefined, 'Sat'), labelFull: t('hospital.materials.days.saturday', undefined, 'Saturday') },
+    { key: 'sunday', label: t('hospital.materials.days.sun', undefined, 'Sun'), labelFull: t('hospital.materials.days.sunday', undefined, 'Sunday') },
+  ];
+}
 
-function parseHoursString(hours: string | undefined): Record<string, { open: string; close: string; closed: boolean }> {
+function parseHoursString(
+  hours: string | undefined,
+  dayNames: Array<{ key: string; label: string; labelFull: string }>,
+): Record<string, { open: string; close: string; closed: boolean }> {
   const result: Record<string, { open: string; close: string; closed: boolean }> = {};
-  DAY_NAMES.forEach((day) => {
+  dayNames.forEach((day) => {
     result[day.key] = { open: '09:00', close: '18:00', closed: false };
   });
   if (!hours) return result;
@@ -1082,9 +1179,15 @@ function OperatingHoursModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const [structuredHours, setStructuredHours] = useState(() => parseHoursString(hours));
+  const { t } = useHospitalI18n();
+  const dayNames = getDayNames(t);
+  const [structuredHours, setStructuredHours] = useState(() => parseHoursString(hours, dayNames));
   const [quickOpen, setQuickOpen] = useState('09:00');
   const [quickClose, setQuickClose] = useState('18:00');
+
+  useEffect(() => {
+    setStructuredHours(parseHoursString(hours, dayNames));
+  }, [dayNames, hours]);
 
   const updateDay = (dayKey: string, field: 'open' | 'close' | 'closed', value: string | boolean) => {
     setStructuredHours((prev) => ({
@@ -1111,11 +1214,18 @@ function OperatingHoursModal({
   const timeSelectOptions = TIME_OPTIONS.filter((_, i) => i % 2 === 0); // whole hours only in dropdown
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Operating Hours" maxWidth="max-w-md">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title={t('hospital.materials.operatingHours.title', undefined, 'Operating Hours')}
+      maxWidth="max-w-md"
+    >
       <div className="space-y-4">
         {/* Quick Set Weekdays */}
         <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg">
-          <span className="text-sm text-slate-600 shrink-0">Weekdays:</span>
+          <span className="text-sm text-slate-600 shrink-0">
+            {t('hospital.materials.operatingHours.weekdays', undefined, 'Weekdays:')}
+          </span>
           <select
             value={quickOpen}
             onChange={(e) => setQuickOpen(e.target.value)}
@@ -1140,13 +1250,13 @@ function OperatingHoursModal({
             onClick={applyToWeekdays}
             className="ml-auto h-8 px-3 text-xs font-medium border border-slate-200 rounded-md hover:bg-slate-100 transition-colors"
           >
-            Apply
+            {t('hospital.materials.actions.apply', undefined, 'Apply')}
           </button>
         </div>
 
         {/* Day-by-day */}
         <div className="space-y-2 max-h-64 overflow-y-auto">
-          {DAY_NAMES.map((day) => {
+          {dayNames.map((day) => {
             const dayData = structuredHours[day.key]!;
             return (
               <div key={day.key} className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg">
@@ -1183,7 +1293,9 @@ function OperatingHoursModal({
                     </select>
                   </>
                 ) : (
-                  <span className="text-xs text-slate-400">Closed</span>
+                  <span className="text-xs text-slate-400">
+                    {t('hospital.materials.operatingHours.closed', undefined, 'Closed')}
+                  </span>
                 )}
               </div>
             );
@@ -1192,13 +1304,16 @@ function OperatingHoursModal({
 
         {/* Preview & Save */}
         <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-          <span className="text-xs text-slate-500">{formatHoursToString(structuredHours) || 'No hours set'}</span>
+          <span className="text-xs text-slate-500">
+            {formatHoursToString(structuredHours)
+              || t('hospital.materials.operatingHours.none', undefined, 'No hours set')}
+          </span>
           <button
             type="button"
             onClick={handleSave}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors"
           >
-            Save
+            {t('hospital.materials.actions.save', undefined, 'Save')}
           </button>
         </div>
       </div>
@@ -1217,6 +1332,7 @@ type EditablePhoto = { previewUrl: string; storageKey: string | null };
 type EditableVideo = { previewUrl: string; storageKey: string | null };
 
 function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular_hospital' }) {
+  const { t } = useHospitalI18n();
   const { data, isLoading } = useMaterialsInfo();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -1248,6 +1364,15 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     canDismiss: false,
   });
   const isRegular = hospitalType === 'regular_hospital';
+  const languageOptions = getLanguageOptions(t);
+  const airportServiceOptions = getAirportServiceOptions(t);
+  const amenityOptions = getAmenityOptions(t);
+  const paymentMethodOptions = getPaymentMethodOptions(t);
+  const certificationPresets = getCertificationPresets(t);
+  const followupOptions = getFollowupOptions(t);
+  const hospitalTierOptions = getHospitalTierOptions(t);
+  const ownershipTypeOptions = getOwnershipTypeOptions(t);
+  const departmentOptions = getDepartmentOptions(t);
 
   // Department state (regular_hospital only)
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
@@ -1546,7 +1671,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     if (pendingHeroFile && form.heroImage && isLocalPreviewUrl(form.heroImage)) {
       uploadTasks.push({
         id: 'upload-hero-image',
-        label: `Upload hero image: ${pendingHeroFile.name}`,
+        label: t(
+          'hospital.materials.save.uploadHeroImage',
+          { fileName: pendingHeroFile.name },
+          'Upload hero image: {fileName}',
+        ),
         targetKey: 'hero-image',
         run: async () => {
           const asset = await uploadMaterialAsset(pendingHeroFile, 'hero');
@@ -1560,7 +1689,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       if (photoIndex === -1) return;
       uploadTasks.push({
         id: `upload-photo-${index}`,
-        label: `Upload hospital photo: ${file.name}`,
+        label: t(
+          'hospital.materials.save.uploadHospitalPhoto',
+          { fileName: file.name },
+          'Upload hospital photo: {fileName}',
+        ),
         targetKey: 'hospital-photos',
         run: async () => {
           const asset = await uploadMaterialAsset(file, 'gallery');
@@ -1574,7 +1707,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       if (videoIndex === -1) return;
       uploadTasks.push({
         id: `upload-promotional-video-${index}`,
-        label: `Upload promotional video: ${file.name}`,
+        label: t(
+          'hospital.materials.save.uploadPromotionalVideo',
+          { fileName: file.name },
+          'Upload promotional video: {fileName}',
+        ),
         targetKey: 'promotional-videos',
         run: async () => {
           const asset = await uploadMaterialAsset(file, 'hospital_video');
@@ -1590,7 +1727,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       if (testimonialIndex === -1) return;
       uploadTasks.push({
         id: `upload-testimonial-video-${index}`,
-        label: `Upload testimonial video: ${pending.file.name}`,
+        label: t(
+          'hospital.materials.save.uploadTestimonialVideo',
+          { fileName: pending.file.name },
+          'Upload testimonial video: {fileName}',
+        ),
         targetKey: 'video-testimonials',
         run: async () => {
           const asset = await uploadMaterialAsset(pending.file, 'testimonial_video');
@@ -1606,7 +1747,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       if (!nextDepartmentImages[deptValue] || nextDepartmentImageStorageKeys[deptValue]) return;
       uploadTasks.push({
         id: `upload-department-image-${index}`,
-        label: `Upload department image: ${pending.file.name}`,
+        label: t(
+          'hospital.materials.save.uploadDepartmentImage',
+          { fileName: pending.file.name },
+          'Upload department image: {fileName}',
+        ),
         targetKey: `department:${deptValue}`,
         run: async () => {
           const asset = await uploadMaterialAsset(pending.file, 'gallery');
@@ -1621,7 +1766,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       if (equipmentIndex === -1) return;
       uploadTasks.push({
         id: `upload-equipment-image-${index}`,
-        label: `Upload equipment image: ${file.name}`,
+        label: t(
+          'hospital.materials.save.uploadEquipmentImage',
+          { fileName: file.name },
+          'Upload equipment image: {fileName}',
+        ),
         targetKey: `equipment:${equipmentIndex}`,
         run: async () => {
           const asset = await uploadMaterialAsset(file, 'equipment');
@@ -1632,7 +1781,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 
     setSaveProgress({
       open: true,
-      title: 'Saving hospital information',
+      title: t('hospital.materials.save.hospitalInfoTitle', undefined, 'Saving hospital information'),
       canDismiss: false,
       items: [
         ...uploadTasks.map((task) => ({
@@ -1643,7 +1792,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         })),
         {
           id: 'save-hospital-info',
-          label: 'Save hospital information',
+          label: t('hospital.materials.save.hospitalInfoAction', undefined, 'Save hospital information'),
           targetKey: 'hospital-info-root',
           status: 'pending' as const,
         },
@@ -1696,22 +1845,34 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         | undefined;
 
       if (typeof nextHeroImage === 'string' && isLocalPreviewUrl(nextHeroImage)) {
-        unresolvedMedia = { targetKey: 'hero-image', message: 'Hero image upload did not finalize.' };
+        unresolvedMedia = {
+          targetKey: 'hero-image',
+          message: t('hospital.materials.save.heroImageIncomplete', undefined, 'Hero image upload did not finalize.'),
+        };
       } else if (unresolvedPhoto) {
-        unresolvedMedia = { targetKey: 'hospital-photos', message: 'At least one hospital photo is still a local preview.' };
+        unresolvedMedia = {
+          targetKey: 'hospital-photos',
+          message: t('hospital.materials.save.hospitalPhotoIncomplete', undefined, 'At least one hospital photo is still a local preview.'),
+        };
       } else if (unresolvedPromotionalVideo) {
-        unresolvedMedia = { targetKey: 'promotional-videos', message: 'At least one promotional video is still a local preview.' };
+        unresolvedMedia = {
+          targetKey: 'promotional-videos',
+          message: t('hospital.materials.save.promotionalVideoIncomplete', undefined, 'At least one promotional video is still a local preview.'),
+        };
       } else if (unresolvedTestimonial) {
-        unresolvedMedia = { targetKey: 'video-testimonials', message: 'At least one testimonial video is still a local preview.' };
+        unresolvedMedia = {
+          targetKey: 'video-testimonials',
+          message: t('hospital.materials.save.testimonialVideoIncomplete', undefined, 'At least one testimonial video is still a local preview.'),
+        };
       } else if (unresolvedDepartmentKey) {
         unresolvedMedia = {
           targetKey: `department:${unresolvedDepartmentKey}`,
-          message: 'A department image is still a local preview.',
+          message: t('hospital.materials.save.departmentImageIncomplete', undefined, 'A department image is still a local preview.'),
         };
       } else if (unresolvedEquipmentIndex >= 0) {
         unresolvedMedia = {
           targetKey: `equipment:${unresolvedEquipmentIndex}`,
-          message: 'An equipment image is still a local preview.',
+          message: t('hospital.materials.save.equipmentImageIncomplete', undefined, 'An equipment image is still a local preview.'),
         };
       }
 
@@ -1816,7 +1977,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       failedTargetKey ??= 'hospital-info-root';
       updateSaveProgress('save-hospital-info', {
         status: 'failed',
-        error: extractSaveFailureMessage(error),
+        error: extractSaveFailureMessage(error, t),
       });
       setSaveProgress((prev) => ({
         ...prev,
@@ -1877,7 +2038,10 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
               onChange={(e) => setForm({ ...form, [key]: e.target.value })}
               className={inputClass}
             >
-              <option value="">{opts.placeholder ?? `Select ${label}`}</option>
+              <option value="">
+                {opts.placeholder
+                  ?? t('hospital.materials.fields.selectField', { field: label }, 'Select {field}')}
+              </option>
               {opts.options.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -1896,7 +2060,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         ) : (
           <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
             {selectedOption?.label ?? form[key] ?? (
-              <span className="text-slate-400">{opts?.placeholder ?? 'Not set'}</span>
+              <span className="text-slate-400">
+                {opts?.placeholder ?? t('hospital.materials.fields.notSet', undefined, 'Not set')}
+              </span>
             )}
           </div>
         )}
@@ -1931,7 +2097,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       {/* Edit Profile sticky bar */}
       <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm sticky top-0 z-10">
         <div className="text-sm text-slate-500">
-          {editing ? 'Editing hospital information...' : 'Viewing hospital information'}
+          {editing
+            ? t('hospital.materials.header.editing', undefined, 'Editing hospital information...')
+            : t('hospital.materials.header.viewing', undefined, 'Viewing hospital information')}
         </div>
         <div className="flex items-center gap-3">
           {editing ? (
@@ -1958,14 +2126,16 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                 }}
                 className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
               >
-                Cancel
+                {t('hospital.materials.actions.cancel', undefined, 'Cancel')}
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50"
               >
-                <Check size={16} /> {saving ? 'Saving...' : 'Save Changes'}
+                <Check size={16} /> {saving
+                  ? t('hospital.materials.actions.saving', undefined, 'Saving...')
+                  : t('hospital.materials.actions.saveChanges', undefined, 'Save Changes')}
               </button>
             </>
           ) : (
@@ -1973,7 +2143,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
               onClick={startEdit}
               className="px-4 py-2 text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors flex items-center gap-2"
             >
-              <Edit2 size={16} /> Edit Profile
+              <Edit2 size={16} /> {t('hospital.materials.actions.editProfile', undefined, 'Edit Profile')}
             </button>
           )}
         </div>
@@ -1984,16 +2154,32 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         <div className="lg:col-span-2 space-y-6">
           {/* Basic Information */}
           <div ref={registerSectionRef('hero-image')} className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm ${getFlashClass(flashTargetKey === 'hero-image')}`}>
-            <SectionHeader icon={Building2} title="Basic Information" />
+            <SectionHeader icon={Building2} title={t('hospital.materials.sections.basicInformation', undefined, 'Basic Information')} />
             <div className="space-y-4">
               <div>
-                {renderField('Hospital Name', 'name', { placeholder: 'Hospital name' })}
+                {renderField(
+                  t('hospital.materials.fields.hospitalName', undefined, 'Hospital Name'),
+                  'name',
+                  { placeholder: t('hospital.materials.placeholders.hospitalName', undefined, 'Hospital name') },
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
-                {renderField('Year Established', 'yearEstablished', { type: 'number', placeholder: 'e.g. 2005' })}
-                {renderField('Tagline', 'tagline', { placeholder: 'A short tagline' })}
+                {renderField(
+                  t('hospital.materials.fields.yearEstablished', undefined, 'Year Established'),
+                  'yearEstablished',
+                  { type: 'number', placeholder: t('hospital.materials.placeholders.yearEstablished', undefined, 'e.g. 2005') },
+                )}
+                {renderField(
+                  t('hospital.materials.fields.tagline', undefined, 'Tagline'),
+                  'tagline',
+                  { placeholder: t('hospital.materials.placeholders.tagline', undefined, 'A short tagline') },
+                )}
               </div>
-              {renderField('Description', 'description', { rows: 4, placeholder: 'Hospital description...' })}
+              {renderField(
+                t('hospital.materials.fields.description', undefined, 'Description'),
+                'description',
+                { rows: 4, placeholder: t('hospital.materials.placeholders.hospitalDescription', undefined, 'Hospital description...') },
+              )}
               {editing ? (
                 <ImageUploadWidget
                   value={form.heroImage ?? ''}
@@ -2009,20 +2195,28 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                     setForm({ ...form, heroImage: previewUrl });
                     setHeroImageStorageKey(null);
                   }}
-                  label="Hero Image"
+                  label={t('hospital.materials.fields.heroImage', undefined, 'Hero Image')}
                   previewClassName="h-40 w-full"
                   allowDirectUrl={false}
                 />
               ) : (
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Hero Image</label>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    {t('hospital.materials.fields.heroImage', undefined, 'Hero Image')}
+                  </label>
                   {info.heroImage ? (
-                    <img src={info.heroImage} alt="Hero" className="h-40 w-full rounded-lg object-cover" />
+                    <img
+                      src={info.heroImage}
+                      alt={t('hospital.materials.media.heroAlt', undefined, 'Hero')}
+                      className="h-40 w-full rounded-lg object-cover"
+                    />
                   ) : (
                     <div className="h-32 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400">
                       <div className="text-center">
                         <ImageIcon size={24} className="mx-auto mb-1" />
-                        <span className="text-xs">No hero image</span>
+                        <span className="text-xs">
+                          {t('hospital.materials.empty.noHeroImage', undefined, 'No hero image')}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -2033,18 +2227,31 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 
           {/* Contact & Location */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <SectionHeader icon={MapPin} title="Contact & Location" />
+            <SectionHeader icon={MapPin} title={t('hospital.materials.sections.contactLocation', undefined, 'Contact & Location')} />
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                {renderField('Phone', 'phone', { icon: Phone, placeholder: '+1 234 567 890' })}
-                {renderField('Email', 'email', { icon: Mail, placeholder: 'hospital@example.com' })}
+                {renderField(t('hospital.materials.fields.phone', undefined, 'Phone'), 'phone', {
+                  icon: Phone,
+                  placeholder: t('hospital.materials.placeholders.phone', undefined, '+1 234 567 890'),
+                })}
+                {renderField(t('hospital.materials.fields.email', undefined, 'Email'), 'email', {
+                  icon: Mail,
+                  placeholder: t('hospital.materials.placeholders.email', undefined, 'hospital@example.com'),
+                })}
               </div>
-              {renderField('Address', 'address', { icon: MapPin, placeholder: 'Full address' })}
-              {renderField('Website', 'website', { icon: Globe, placeholder: 'https://...' })}
+              {renderField(t('hospital.materials.fields.address', undefined, 'Address'), 'address', {
+                icon: MapPin,
+                placeholder: t('hospital.materials.placeholders.address', undefined, 'Full address'),
+              })}
+              {renderField(t('hospital.materials.fields.website', undefined, 'Website'), 'website', {
+                icon: Globe,
+                placeholder: t('hospital.materials.placeholders.website', undefined, 'https://...'),
+              })}
               {/* Operating Hours with picker */}
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">
-                  <Clock size={12} className="inline mr-1" />Operating Hours
+                  <Clock size={12} className="inline mr-1" />
+                  {t('hospital.materials.fields.operatingHours', undefined, 'Operating Hours')}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -2053,7 +2260,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                     onChange={(e) => setForm({ ...form, operatingHours: e.target.value })}
                     readOnly={!editing}
                     className={inputClass}
-                    placeholder="e.g. Mon-Fri 09:00-18:00"
+                    placeholder={t('hospital.materials.placeholders.operatingHours', undefined, 'e.g. Mon-Fri 09:00-18:00')}
                   />
                   {editing && (
                     <button
@@ -2062,7 +2269,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                       className="shrink-0 px-3 py-2 border border-slate-300 hover:bg-slate-50 rounded-lg text-sm font-medium text-slate-700 flex items-center gap-1.5 transition-colors"
                     >
                       <Clock size={14} />
-                      Set Hours
+                      {t('hospital.materials.actions.setHours', undefined, 'Set Hours')}
                     </button>
                   )}
                 </div>
@@ -2078,18 +2285,20 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 
           {/* Hospital Photos & Videos */}
           <div className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm ${getFlashClass(flashTargetKey === 'hospital-photos' || flashTargetKey === 'promotional-videos')}`}>
-            <SectionHeader icon={ImageIcon} title="Hospital Photos & Videos" />
+            <SectionHeader icon={ImageIcon} title={t('hospital.materials.sections.photosVideos', undefined, 'Hospital Photos & Videos')} />
             <input type="file" ref={photoInputRef} accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
             <div className="space-y-6">
               <div ref={registerSectionRef('hospital-photos')}>
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-medium text-slate-700">Photos</h4>
+                  <h4 className="text-sm font-medium text-slate-700">
+                    {t('hospital.materials.fields.photos', undefined, 'Photos')}
+                  </h4>
                   {editing && (
                     <button
                       onClick={() => photoInputRef.current?.click()}
                       className="text-xs font-medium text-blue-600 flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
                     >
-                      <Upload size={12} /> Upload Photos
+                      <Upload size={12} /> {t('hospital.materials.actions.uploadPhotos', undefined, 'Upload Photos')}
                     </button>
                   )}
                 </div>
@@ -2100,7 +2309,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                         key={`${editing ? 'editing' : 'existing'}-${i}-${url}`}
                         className="aspect-square rounded-lg bg-slate-100 border border-slate-200 overflow-hidden relative group"
                       >
-                        <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                        <img
+                          src={url}
+                          alt={t('hospital.materials.media.photoNumber', { count: i + 1 }, 'Photo {count}')}
+                          className="w-full h-full object-cover"
+                        />
                         {editing && (
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <button
@@ -2124,7 +2337,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                   >
                     <div className="text-center">
                       <ImageIcon size={24} className="mx-auto mb-1" />
-                      <span className="text-xs">{editing ? 'Click to upload photos' : 'No photos uploaded'}</span>
+                      <span className="text-xs">
+                        {editing
+                          ? t('hospital.materials.empty.clickToUploadPhotos', undefined, 'Click to upload photos')
+                          : t('hospital.materials.empty.noPhotosUploaded', undefined, 'No photos uploaded')}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -2133,8 +2350,8 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                 <VideoUploadWidget
                   videos={editing ? promotionalVideos.map((video) => video.previewUrl) : (info.promotionalVideos ?? [])}
                   editing={editing}
-                  label="Promotional Videos"
-                  emptyText="No videos uploaded"
+                  label={t('hospital.materials.fields.promotionalVideos', undefined, 'Promotional Videos')}
+                  emptyText={t('hospital.materials.media.noVideosUploaded', undefined, 'No videos uploaded')}
                   onAdd={(file) => {
                     const previewUrl = URL.createObjectURL(file);
                     setPendingVideos((prev) => new Map(prev).set(previewUrl, file));
@@ -2158,7 +2375,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             ref={registerSectionRef('video-testimonials')}
             className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm ${getFlashClass(flashTargetKey === 'video-testimonials')}`}
           >
-              <SectionHeader icon={Video} title="Video Testimonials" />
+              <SectionHeader icon={Video} title={t('hospital.materials.sections.videoTestimonials', undefined, 'Video Testimonials')} />
               <input
                 type="file"
                 ref={testimonialInputRef}
@@ -2183,13 +2400,13 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
               {editing && (
                 <div className="mb-4 flex justify-end">
                   <button
-                    type="button"
-                    onClick={() => testimonialInputRef.current?.click()}
-                    className="px-3 py-1.5 bg-purple-50 text-purple-600 border border-purple-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-purple-100 transition-colors"
-                  >
-                    <Plus size={12} /> Add Testimonial
-                  </button>
-                </div>
+                  type="button"
+                  onClick={() => testimonialInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-purple-50 text-purple-600 border border-purple-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-purple-100 transition-colors"
+                >
+                  <Plus size={12} /> {t('hospital.materials.actions.addTestimonial', undefined, 'Add Testimonial')}
+                </button>
+              </div>
               )}
               {(() => {
                 const testimonials = editing ? videoTestimonials : (info.videoTestimonials ?? []);
@@ -2230,13 +2447,15 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                 }}
                                 className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-rose-700 transition-colors"
                               >
-                                <Trash2 size={12} /> Remove
+                                <Trash2 size={12} /> {t('hospital.materials.actions.remove', undefined, 'Remove')}
                               </button>
                             </div>
                           )}
                         </div>
                         <div className="p-3 bg-white">
-                          <p className="font-medium text-sm">{testimonial.patientName || 'Unknown Patient'}</p>
+                          <p className="font-medium text-sm">
+                            {testimonial.patientName || t('hospital.materials.testimonials.unknownPatient', undefined, 'Unknown Patient')}
+                          </p>
                           <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
                             {testimonial.patientCountry && (
                               <span className="flex items-center gap-1">
@@ -2262,10 +2481,12 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                         </div>
                         <div className="space-y-2">
                           <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Patient Name *</label>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">
+                              {t('hospital.materials.fields.patientNameRequired', undefined, 'Patient Name *')}
+                            </label>
                             <input
                               type="text"
-                              placeholder="e.g. John D."
+                              placeholder={t('hospital.materials.placeholders.patientName', undefined, 'e.g. John D.')}
                               value={pendingTestimonial.patientName}
                               onChange={(e) => setPendingTestimonial({ ...pendingTestimonial, patientName: e.target.value })}
                               className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
@@ -2273,20 +2494,24 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="block text-xs font-medium text-slate-500 mb-1">Country</label>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">
+                                {t('hospital.materials.fields.country', undefined, 'Country')}
+                              </label>
                               <input
                                 type="text"
-                                placeholder="e.g. USA"
+                                placeholder={t('hospital.materials.placeholders.country', undefined, 'e.g. USA')}
                                 value={pendingTestimonial.patientCountry}
                                 onChange={(e) => setPendingTestimonial({ ...pendingTestimonial, patientCountry: e.target.value })}
                                 className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                               />
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-slate-500 mb-1">Procedure</label>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">
+                                {t('hospital.materials.fields.procedure', undefined, 'Procedure')}
+                              </label>
                               <input
                                 type="text"
-                                placeholder="e.g. Rhinoplasty"
+                                placeholder={t('hospital.materials.placeholders.procedure', undefined, 'e.g. Rhinoplasty')}
                                 value={pendingTestimonial.procedureName}
                                 onChange={(e) => setPendingTestimonial({ ...pendingTestimonial, procedureName: e.target.value })}
                                 className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
@@ -2304,7 +2529,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                             }}
                             className="flex-1 px-3 py-1.5 bg-white text-slate-600 border border-slate-300 rounded-lg text-xs font-medium flex items-center justify-center gap-1 hover:bg-slate-50 transition-colors"
                           >
-                            <X size={12} /> Cancel
+                            <X size={12} /> {t('hospital.materials.actions.cancel', undefined, 'Cancel')}
                           </button>
                           <button
                             type="button"
@@ -2334,7 +2559,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                             }}
                             className="flex-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                           >
-                            <Check size={12} /> Confirm
+                            <Check size={12} /> {t('hospital.materials.actions.confirm', undefined, 'Confirm')}
                           </button>
                         </div>
                       </div>
@@ -2344,14 +2569,16 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                   <div className="h-32 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400">
                     <div className="text-center">
                       <Video size={24} className="mx-auto mb-1" />
-                      <span className="text-xs">No video testimonials yet</span>
+                      <span className="text-xs">
+                        {t('hospital.materials.empty.noVideoTestimonials', undefined, 'No video testimonials yet')}
+                      </span>
                       {editing && (
                         <button
                           type="button"
                           onClick={() => testimonialInputRef.current?.click()}
                           className="block mx-auto mt-2 text-xs font-medium text-purple-600"
                         >
-                          <Plus size={12} className="inline mr-1" /> Add Testimonial
+                          <Plus size={12} className="inline mr-1" /> {t('hospital.materials.actions.addTestimonial', undefined, 'Add Testimonial')}
                         </button>
                       )}
                     </div>
@@ -2362,12 +2589,24 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 
           {/* Hospital Capacity */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <SectionHeader icon={BedDouble} title="Hospital Capacity" />
+            <SectionHeader icon={BedDouble} title={t('hospital.materials.sections.hospitalCapacity', undefined, 'Hospital Capacity')} />
             <div className="grid grid-cols-3 gap-4">
               {[
-                { key: 'bedCount', label: 'Beds', placeholder: 'e.g. 200' },
-                { key: 'patientCapacity', label: 'Patient Capacity', placeholder: 'e.g. 500' },
-                { key: 'totalPatients', label: 'Total Patients Served', placeholder: 'e.g. 10000' },
+                {
+                  key: 'bedCount',
+                  label: t('hospital.materials.fields.beds', undefined, 'Beds'),
+                  placeholder: t('hospital.materials.placeholders.bedCount', undefined, 'e.g. 200'),
+                },
+                {
+                  key: 'patientCapacity',
+                  label: t('hospital.materials.fields.patientCapacity', undefined, 'Patient Capacity'),
+                  placeholder: t('hospital.materials.placeholders.patientCapacity', undefined, 'e.g. 500'),
+                },
+                {
+                  key: 'totalPatients',
+                  label: t('hospital.materials.fields.totalPatientsServed', undefined, 'Total Patients Served'),
+                  placeholder: t('hospital.materials.placeholders.totalPatientsServed', undefined, 'e.g. 10000'),
+                },
               ].map((item) => (
                 <div key={item.key} className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center">
                   {editing ? (
@@ -2391,7 +2630,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 
           {/* Nearby Attractions */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <SectionHeader icon={MapIcon} title="Nearby Attractions" />
+            <SectionHeader icon={MapIcon} title={t('hospital.materials.sections.nearbyAttractions', undefined, 'Nearby Attractions')} />
             <div className="space-y-3">
               {attractions.length > 0 && attractions.map((attraction) => (
                 <div key={attraction.id} className="flex items-center justify-between p-3 bg-teal-50 rounded-lg border border-teal-100">
@@ -2417,14 +2656,14 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                   <div className="grid grid-cols-[1fr_1fr_auto] gap-3">
                     <input
                       type="text"
-                      placeholder="Attraction name"
+                      placeholder={t('hospital.materials.placeholders.attractionName', undefined, 'Attraction name')}
                       value={newAttractionName}
                       onChange={(e) => setNewAttractionName(e.target.value)}
                       className={inputClass}
                     />
                     <input
                       type="text"
-                      placeholder="Distance (e.g. 2km)"
+                      placeholder={t('hospital.materials.placeholders.attractionDistance', undefined, 'Distance (e.g. 2km)')}
                       value={newAttractionDistance}
                       onChange={(e) => setNewAttractionDistance(e.target.value)}
                       className={inputClass}
@@ -2441,7 +2680,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                       }}
                       className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
-                      <Plus size={14} /> Add
+                      <Plus size={14} /> {t('hospital.materials.actions.add', undefined, 'Add')}
                     </button>
                   </div>
                 </div>
@@ -2449,7 +2688,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                 <div className="h-24 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400">
                   <div className="text-center">
                     <MapIcon size={20} className="mx-auto mb-1" />
-                    <span className="text-xs">No nearby attractions added</span>
+                    <span className="text-xs">
+                      {t('hospital.materials.empty.noNearbyAttractions', undefined, 'No nearby attractions added')}
+                    </span>
                   </div>
                 </div>
               ) : null}
@@ -2459,13 +2700,13 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           {/* Departments — regular_hospital only */}
           {isRegular && (
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <SectionHeader icon={Building2} title="Departments" />
+              <SectionHeader icon={Building2} title={t('hospital.materials.sections.departments', undefined, 'Departments')} />
               {/* Department selector chips */}
               {editing && (
                 <div className="mb-4">
                   <div className="flex flex-wrap gap-2">
                     {selectedDepartments.map((dept) => {
-                      const opt = DEPARTMENT_OPTIONS.find((o) => o.value === dept);
+                      const opt = departmentOptions.find((o) => o.value === dept);
                       return (
                         <span key={dept} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-xs font-medium">
                           {opt?.label ?? dept}
@@ -2477,13 +2718,13 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                       onClick={() => setShowDeptSelector(true)}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-md text-xs font-medium hover:bg-blue-50 transition-colors"
                     >
-                      <Plus size={12} /> Add Departments
+                      <Plus size={12} /> {t('hospital.materials.actions.addDepartments', undefined, 'Add Departments')}
                     </button>
                   </div>
                   {showDeptSelector && (
                     <AddOptionsModal
-                      title="Select Departments"
-                      options={DEPARTMENT_OPTIONS}
+                      title={t('hospital.materials.actions.selectDepartments', undefined, 'Select Departments')}
+                      options={departmentOptions}
                       selected={selectedDepartments}
                       onChange={setSelectedDepartments}
                       onClose={() => setShowDeptSelector(false)}
@@ -2496,7 +2737,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
               {!editing && selectedDepartments.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-4">
                   {selectedDepartments.map((dept) => {
-                    const opt = DEPARTMENT_OPTIONS.find((o) => o.value === dept);
+                    const opt = departmentOptions.find((o) => o.value === dept);
                     return (
                       <span key={dept} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg text-sm font-medium">
                         {opt?.label ?? dept}
@@ -2507,14 +2748,16 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
               )}
 
               {!editing && selectedDepartments.length === 0 && (
-                <p className="text-sm text-slate-400">No departments configured.</p>
+                <p className="text-sm text-slate-400">
+                  {t('hospital.materials.empty.noDepartmentsConfigured', undefined, 'No departments configured.')}
+                </p>
               )}
 
               {/* Department detail cards */}
               {selectedDepartments.length > 0 && (
                 <div className="space-y-3 mt-2 pt-4 border-t border-slate-200">
                   {selectedDepartments.map((deptValue) => {
-                    const opt = DEPARTMENT_OPTIONS.find((o) => o.value === deptValue);
+                    const opt = departmentOptions.find((o) => o.value === deptValue);
                     const deptLabel = opt?.label ?? deptValue;
                     const isExpanded = expandedDepts.has(deptValue);
                     const keyServices = deptKeyServices[deptValue] ?? [];
@@ -2551,13 +2794,17 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                               {hasSpecialists && (
                                 <span className="flex items-center gap-1">
                                   <Users size={12} />
-                                  {stats.specialists} Specialists
+                                  {t('hospital.materials.departments.specialistsCount', { count: stats.specialists! }, '{count} Specialists')}
                                 </span>
                               )}
                               {hasAnnualPatients && (
                                 <span className="flex items-center gap-1">
                                   <Heart size={12} />
-                                  {stats.annualPatients?.toLocaleString()} Annual Patients
+                                  {t(
+                                    'hospital.materials.departments.annualPatientsCount',
+                                    { count: stats.annualPatients?.toLocaleString() ?? '' },
+                                    '{count} Annual Patients',
+                                  )}
                                 </span>
                               )}
                             </div>
@@ -2604,7 +2851,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                       ) : (
                                         <label className="w-32 h-24 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 transition-colors">
                                           <Camera size={18} className="text-slate-400" />
-                                          <span className="text-xs text-slate-400 mt-1">Upload</span>
+                                          <span className="text-xs text-slate-400 mt-1">
+                                            {t('hospital.materials.actions.upload', undefined, 'Upload')}
+                                          </span>
                                           <input
                                             type="file"
                                             accept="image/*"
@@ -2627,8 +2876,12 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                       )}
                                     </div>
                                     <div className="flex-1">
-                                      <label className="block text-xs font-medium text-slate-500 mb-1">Department Image</label>
-                                      <p className="text-xs text-slate-400">Upload an image representing this department</p>
+                                      <label className="block text-xs font-medium text-slate-500 mb-1">
+                                        {t('hospital.materials.fields.departmentImage', undefined, 'Department Image')}
+                                      </label>
+                                      <p className="text-xs text-slate-400">
+                                        {t('hospital.materials.hints.departmentImage', undefined, 'Upload an image representing this department')}
+                                      </p>
                                     </div>
                                   </div>
                                 ) : imageUrl ? (
@@ -2644,7 +2897,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                 <div className="flex-1">
                                   <label className="block text-xs font-medium text-slate-500 mb-1">
                                     <Users size={10} className="inline mr-1" />
-                                    Specialists
+                                    {t('hospital.materials.fields.specialists', undefined, 'Specialists')}
                                   </label>
                                   <input
                                     type="number"
@@ -2664,7 +2917,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                 <div className="flex-1">
                                   <label className="block text-xs font-medium text-slate-500 mb-1">
                                     <Heart size={10} className="inline mr-1" />
-                                    Annual Patients
+                                    {t('hospital.materials.fields.annualPatients', undefined, 'Annual Patients')}
                                   </label>
                                   <input
                                     type="number"
@@ -2686,7 +2939,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 
                             {/* Key Services */}
                             <div className="pt-2">
-                              <label className="block text-xs font-medium text-slate-500 mb-1">Key Services</label>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">
+                                {t('hospital.materials.fields.keyServices', undefined, 'Key Services')}
+                              </label>
                               {editing ? (
                                 <div className="space-y-2">
                                   <div className="rounded-lg border border-slate-200 px-2 py-1.5 focus-within:ring-2 focus-within:ring-blue-500/30">
@@ -2727,7 +2982,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                           setDeptKeyServices((prev) => ({ ...prev, [deptValue]: merged }));
                                           setDeptServiceInputs((prev) => ({ ...prev, [deptValue]: '' }));
                                         }}
-                                        placeholder="Press Enter/Tab/comma to add tags"
+                                        placeholder={t('hospital.materials.placeholders.keyServices', undefined, 'Press Enter/Tab/comma to add tags')}
                                         className="h-7 min-w-[180px] flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
                                       />
                                     </div>
@@ -2740,7 +2995,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                       {svc}
                                     </span>
                                   )) : (
-                                    <span className="text-xs text-slate-400">No key services set</span>
+                                    <span className="text-xs text-slate-400">
+                                      {t('hospital.materials.empty.noKeyServices', undefined, 'No key services set')}
+                                    </span>
                                   )}
                                 </div>
                               )}
@@ -2748,12 +3005,14 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 
                             {/* Description */}
                             <div>
-                              <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">
+                                {t('hospital.materials.fields.description', undefined, 'Description')}
+                              </label>
                               {editing ? (
                                 <textarea
                                   value={desc}
                                   onChange={(e) => setDeptDescriptions((prev) => ({ ...prev, [deptValue]: e.target.value }))}
-                                  placeholder="Describe the department and its capabilities..."
+                                  placeholder={t('hospital.materials.placeholders.departmentDescription', undefined, 'Describe the department and its capabilities...')}
                                   className={`${inputClass} resize-none`}
                                   rows={3}
                                 />
@@ -2774,14 +3033,14 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           {/* Medical Equipment — regular_hospital only */}
           {isRegular && (
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <SectionHeader icon={Sparkles} title="Medical Equipment" />
+              <SectionHeader icon={Sparkles} title={t('hospital.materials.sections.medicalEquipment', undefined, 'Medical Equipment')} />
               {editing && (
                 <button
                   type="button"
                   onClick={() => setEquipment((prev) => [...prev, { name: '', description: '', imageUrl: '' }])}
                   className="mb-4 inline-flex items-center gap-1 px-3 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-lg text-xs font-medium hover:bg-blue-50 transition-colors"
                 >
-                  <Plus size={12} /> Add Equipment
+                  <Plus size={12} /> {t('hospital.materials.actions.addEquipment', undefined, 'Add Equipment')}
                 </button>
               )}
               <div className="space-y-4">
@@ -2900,11 +3159,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                 <div className="grid grid-cols-3 gap-4">
                   {renderField('Hospital Tier', 'tier', {
                     placeholder: 'Select tier',
-                    options: HOSPITAL_TIER_OPTIONS,
+                    options: hospitalTierOptions,
                   })}
                   {renderField('Ownership Type', 'ownershipType', {
                     placeholder: 'Select ownership',
-                    options: OWNERSHIP_TYPE_OPTIONS,
+                    options: ownershipTypeOptions,
                   })}
                   {renderField('Hospital Type', 'hospitalType', { placeholder: 'e.g. General' })}
                 </div>
@@ -2968,7 +3227,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
                     >
                       <option value="">Select certification type...</option>
-                      {CERTIFICATION_PRESETS.map((cert) => (
+                      {certificationPresets.map((cert) => (
                         <option key={cert.value} value={cert.value}>{cert.label}</option>
                       ))}
                     </select>
@@ -2983,7 +3242,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                       type="button"
                       disabled={!newCertType}
                       onClick={() => {
-                        const certPreset = CERTIFICATION_PRESETS.find((c) => c.value === newCertType);
+                        const certPreset = certificationPresets.find((c) => c.value === newCertType);
                         if (certPreset) {
                           setCertifications((prev) => [
                             ...prev,
@@ -3012,7 +3271,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             <div>
               <SectionHeader icon={Languages} title="Multilingual Staff" />
               <ChipSelector
-                options={LANGUAGE_OPTIONS}
+                options={languageOptions}
                 selected={languages}
                 onChange={setLanguages}
                 editing={editing}
@@ -3023,7 +3282,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             <div>
               <SectionHeader icon={Plane} title="Airport Services" />
               <ChipSelector
-                options={AIRPORT_SERVICE_OPTIONS}
+                options={airportServiceOptions}
                 selected={airportServices}
                 onChange={setAirportServices}
                 editing={editing}
@@ -3034,7 +3293,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             <div>
               <SectionHeader icon={Heart} title="Amenities" />
               <ChipSelector
-                options={AMENITY_OPTIONS}
+                options={amenityOptions}
                 selected={amenities}
                 onChange={setAmenities}
                 editing={editing}
@@ -3045,7 +3304,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             <div>
               <SectionHeader icon={CreditCard} title="Payment Methods" />
               <ChipSelector
-                options={PAYMENT_METHOD_OPTIONS}
+                options={paymentMethodOptions}
                 selected={paymentMethods}
                 onChange={setPaymentMethods}
                 editing={editing}
@@ -3056,7 +3315,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             <div>
               <SectionHeader icon={UserCheck} title="Follow-up Care" />
               <ChipSelector
-                options={FOLLOWUP_OPTIONS}
+                options={followupOptions}
                 selected={followupCare}
                 onChange={setFollowupCare}
                 editing={editing}
@@ -3071,41 +3330,43 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
 }
 
 // ── Department options (regular_hospital) ──────────────────────────
-const DEPARTMENT_OPTIONS = [
-  { value: 'cardiology', label: 'Cardiology (心血管内科)' },
-  { value: 'respiratory', label: 'Respiratory Medicine (呼吸内科)' },
-  { value: 'gastroenterology', label: 'Gastroenterology (消化内科)' },
-  { value: 'nephrology', label: 'Nephrology (肾内科)' },
-  { value: 'neurology', label: 'Neurology (神经内科)' },
-  { value: 'endocrinology', label: 'Endocrinology (内分泌科)' },
-  { value: 'hematology', label: 'Hematology (血液科)' },
-  { value: 'rheumatology', label: 'Rheumatology (风湿免疫科)' },
-  { value: 'general_surgery', label: 'General Surgery (普外科)' },
-  { value: 'orthopedics', label: 'Orthopedics (骨科)' },
-  { value: 'neurosurgery', label: 'Neurosurgery (神经外科)' },
-  { value: 'cardiothoracic', label: 'Cardiothoracic Surgery (心胸外科)' },
-  { value: 'urology', label: 'Urology (泌尿外科)' },
-  { value: 'vascular', label: 'Vascular Surgery (血管外科)' },
-  { value: 'obgyn', label: 'Obstetrics & Gynecology (妇产科)' },
-  { value: 'pediatrics', label: 'Pediatrics (儿科)' },
-  { value: 'neonatology', label: 'Neonatology (新生儿科)' },
-  { value: 'ophthalmology', label: 'Ophthalmology (眼科)' },
-  { value: 'ent', label: 'ENT (耳鼻喉科)' },
-  { value: 'stomatology', label: 'Stomatology (口腔科)' },
-  { value: 'dermatology', label: 'Dermatology (皮肤科)' },
-  { value: 'tcm', label: 'Traditional Chinese Medicine (中医科)' },
-  { value: 'rehabilitation', label: 'Rehabilitation (康复科)' },
-  { value: 'oncology', label: 'Oncology (肿瘤科)' },
-  { value: 'emergency', label: 'Emergency (急诊科)' },
-  { value: 'icu', label: 'ICU (重症医学科)' },
-  { value: 'infectious', label: 'Infectious Disease (感染科)' },
-  { value: 'psychiatry', label: 'Psychiatry (精神科)' },
-  { value: 'radiology', label: 'Radiology (放射科)' },
-  { value: 'laboratory', label: 'Laboratory (检验科)' },
-  { value: 'pathology', label: 'Pathology (病理科)' },
-  { value: 'pharmacy', label: 'Pharmacy (药剂科)' },
-  { value: 'anesthesiology', label: 'Anesthesiology (麻醉科)' },
-];
+function getDepartmentOptions(t: TranslationFn) {
+  return [
+    { value: 'cardiology', label: t('hospital.materials.departments.cardiology', undefined, 'Cardiology (心血管内科)') },
+    { value: 'respiratory', label: t('hospital.materials.departments.respiratory', undefined, 'Respiratory Medicine (呼吸内科)') },
+    { value: 'gastroenterology', label: t('hospital.materials.departments.gastroenterology', undefined, 'Gastroenterology (消化内科)') },
+    { value: 'nephrology', label: t('hospital.materials.departments.nephrology', undefined, 'Nephrology (肾内科)') },
+    { value: 'neurology', label: t('hospital.materials.departments.neurology', undefined, 'Neurology (神经内科)') },
+    { value: 'endocrinology', label: t('hospital.materials.departments.endocrinology', undefined, 'Endocrinology (内分泌科)') },
+    { value: 'hematology', label: t('hospital.materials.departments.hematology', undefined, 'Hematology (血液科)') },
+    { value: 'rheumatology', label: t('hospital.materials.departments.rheumatology', undefined, 'Rheumatology (风湿免疫科)') },
+    { value: 'general_surgery', label: t('hospital.materials.departments.generalSurgery', undefined, 'General Surgery (普外科)') },
+    { value: 'orthopedics', label: t('hospital.materials.departments.orthopedics', undefined, 'Orthopedics (骨科)') },
+    { value: 'neurosurgery', label: t('hospital.materials.departments.neurosurgery', undefined, 'Neurosurgery (神经外科)') },
+    { value: 'cardiothoracic', label: t('hospital.materials.departments.cardiothoracic', undefined, 'Cardiothoracic Surgery (心胸外科)') },
+    { value: 'urology', label: t('hospital.materials.departments.urology', undefined, 'Urology (泌尿外科)') },
+    { value: 'vascular', label: t('hospital.materials.departments.vascular', undefined, 'Vascular Surgery (血管外科)') },
+    { value: 'obgyn', label: t('hospital.materials.departments.obgyn', undefined, 'Obstetrics & Gynecology (妇产科)') },
+    { value: 'pediatrics', label: t('hospital.materials.departments.pediatrics', undefined, 'Pediatrics (儿科)') },
+    { value: 'neonatology', label: t('hospital.materials.departments.neonatology', undefined, 'Neonatology (新生儿科)') },
+    { value: 'ophthalmology', label: t('hospital.materials.departments.ophthalmology', undefined, 'Ophthalmology (眼科)') },
+    { value: 'ent', label: t('hospital.materials.departments.ent', undefined, 'ENT (耳鼻喉科)') },
+    { value: 'stomatology', label: t('hospital.materials.departments.stomatology', undefined, 'Stomatology (口腔科)') },
+    { value: 'dermatology', label: t('hospital.materials.departments.dermatology', undefined, 'Dermatology (皮肤科)') },
+    { value: 'tcm', label: t('hospital.materials.departments.tcm', undefined, 'Traditional Chinese Medicine (中医科)') },
+    { value: 'rehabilitation', label: t('hospital.materials.departments.rehabilitation', undefined, 'Rehabilitation (康复科)') },
+    { value: 'oncology', label: t('hospital.materials.departments.oncology', undefined, 'Oncology (肿瘤科)') },
+    { value: 'emergency', label: t('hospital.materials.departments.emergency', undefined, 'Emergency (急诊科)') },
+    { value: 'icu', label: t('hospital.materials.departments.icu', undefined, 'ICU (重症医学科)') },
+    { value: 'infectious', label: t('hospital.materials.departments.infectious', undefined, 'Infectious Disease (感染科)') },
+    { value: 'psychiatry', label: t('hospital.materials.departments.psychiatry', undefined, 'Psychiatry (精神科)') },
+    { value: 'radiology', label: t('hospital.materials.departments.radiology', undefined, 'Radiology (放射科)') },
+    { value: 'laboratory', label: t('hospital.materials.departments.laboratory', undefined, 'Laboratory (检验科)') },
+    { value: 'pathology', label: t('hospital.materials.departments.pathology', undefined, 'Pathology (病理科)') },
+    { value: 'pharmacy', label: t('hospital.materials.departments.pharmacy', undefined, 'Pharmacy (药剂科)') },
+    { value: 'anesthesiology', label: t('hospital.materials.departments.anesthesiology', undefined, 'Anesthesiology (麻醉科)') },
+  ];
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /*  Tab 2 — Procedures                                                        */
@@ -3898,6 +4159,7 @@ function SurgeonModal({
   existing: MaterialsSurgeonDTO | null;
   specialtyOptions: Array<{ value: string; label: string }>;
 }) {
+  const { t } = useHospitalI18n();
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
@@ -3928,7 +4190,7 @@ function SurgeonModal({
     specialties.map((value) => ({ value, label: value })),
   );
   const languageOptions = mergeOptionLists(
-    SURGEON_LANGUAGE_OPTIONS,
+    getSurgeonLanguageOptions(t),
     languages.map((value) => ({ value, label: value })),
   );
 

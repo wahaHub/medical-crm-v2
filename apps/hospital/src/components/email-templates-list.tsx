@@ -12,17 +12,18 @@ import {
 } from '@/actions/email-template-actions';
 import type { EmailTemplateItem, EmailTemplateAttachmentItem } from '@/lib/api-types';
 import { AttachmentPreviewCard, isPreviewableAttachment } from '@/components/attachment-preview-card';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 // ── Constants ────────────────────────────────────────────────────────
 
 const TEMPLATE_TYPES = [
-  { value: 'all', label: 'All' },
-  { value: 'intro', label: 'Intro' },
-  { value: 'quote', label: 'Quote' },
-  { value: 'marketing', label: 'Marketing' },
-  { value: 'followup', label: 'Follow-up' },
-  { value: 'post_ops', label: 'Post-Ops' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'all', key: 'hospital.emailTemplates.types.all', fallback: 'All' },
+  { value: 'intro', key: 'hospital.emailTemplates.types.intro', fallback: 'Intro' },
+  { value: 'quote', key: 'hospital.emailTemplates.types.quote', fallback: 'Quote' },
+  { value: 'marketing', key: 'hospital.emailTemplates.types.marketing', fallback: 'Marketing' },
+  { value: 'followup', key: 'hospital.emailTemplates.types.followup', fallback: 'Follow-up' },
+  { value: 'post_ops', key: 'hospital.emailTemplates.types.postOps', fallback: 'Post-Ops' },
+  { value: 'custom', key: 'hospital.emailTemplates.types.custom', fallback: 'Custom' },
 ] as const;
 
 const TEMPLATE_VARIABLES = [
@@ -34,9 +35,11 @@ const TEMPLATE_VARIABLES = [
   '{{procedure_name}}',
 ] as const;
 
-function getTemplateTypeLabel(type: string): string {
+type TranslateFn = ReturnType<typeof useHospitalI18n>['t'];
+
+function getTemplateTypeLabel(type: string, t: TranslateFn): string {
   const mapped = TEMPLATE_TYPES.find((item) => item.value === type);
-  if (mapped) return mapped.label;
+  if (mapped) return t(mapped.key, undefined, mapped.fallback);
   return type.replace(/_/g, ' ');
 }
 
@@ -72,6 +75,7 @@ function UploadProgressModal({
   state: SaveProgressState;
   onDismiss: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const completedCount = state.items.filter((item) => item.status === 'done').length;
   const progress = state.items.length > 0 ? Math.round((completedCount / state.items.length) * 100) : 0;
 
@@ -86,7 +90,19 @@ function UploadProgressModal({
         <div className="px-6 py-5 space-y-5">
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm text-slate-500">
-              <span>{state.items.some((item) => item.status === 'failed') ? 'Finished with errors' : 'Uploading and saving'}</span>
+              <span>
+                {state.items.some((item) => item.status === 'failed')
+                  ? t(
+                      'hospital.common.progress.finishedWithErrors',
+                      undefined,
+                      'Finished with errors',
+                    )
+                  : t(
+                      'hospital.common.progress.uploadingAndSaving',
+                      undefined,
+                      'Uploading and saving',
+                    )}
+              </span>
               <span>{progress}%</span>
             </div>
             <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -124,11 +140,16 @@ function UploadProgressModal({
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-slate-800">{item.label}</div>
                   <div className="text-xs text-slate-500 mt-0.5">
-                    {item.status === 'pending' && 'Waiting'}
-                    {item.status === 'uploading' && 'Uploading...'}
-                    {item.status === 'saving' && 'Saving...'}
-                    {item.status === 'done' && 'Done'}
-                    {item.status === 'failed' && (item.error || 'Failed')}
+                    {item.status === 'pending' &&
+                      t('hospital.common.progress.waiting', undefined, 'Waiting')}
+                    {item.status === 'uploading' &&
+                      t('hospital.common.progress.uploading', undefined, 'Uploading...')}
+                    {item.status === 'saving' &&
+                      t('hospital.common.actions.saving', undefined, 'Saving...')}
+                    {item.status === 'done' &&
+                      t('hospital.common.progress.done', undefined, 'Done')}
+                    {item.status === 'failed' &&
+                      (item.error || t('hospital.common.progress.failed', undefined, 'Failed'))}
                   </div>
                 </div>
               </div>
@@ -142,7 +163,7 @@ function UploadProgressModal({
               disabled={!state.canDismiss}
               className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Close
+              {t('hospital.common.actions.close', undefined, 'Close')}
             </button>
           </div>
         </div>
@@ -154,12 +175,18 @@ function UploadProgressModal({
 // ── Main Component ──────────────────────────────────────────────────
 
 export function EmailTemplatesList() {
+  const { locale, t } = useHospitalI18n();
   const queryClient = useQueryClient();
   const { data, isLoading } = useEmailTemplates();
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale), [locale]);
   const templates: EmailTemplateItem[] = useMemo(() => {
     if (!data) return [];
     return Array.isArray(data) ? data : (data as { data?: EmailTemplateItem[] }).data ?? [];
   }, [data]);
+  const templateTypes = useMemo(
+    () => TEMPLATE_TYPES.map((item) => ({ ...item, label: t(item.key, undefined, item.fallback) })),
+    [t],
+  );
 
   const [activeType, setActiveType] = useState('all');
   const [search, setSearch] = useState('');
@@ -212,17 +239,17 @@ export function EmailTemplatesList() {
       {/* Type filter tabs */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex gap-2 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60">
-          {TEMPLATE_TYPES.map((t) => (
+          {templateTypes.map((item) => (
             <button
-              key={t.value}
-              onClick={() => setActiveType(t.value)}
+              key={item.value}
+              onClick={() => setActiveType(item.value)}
               className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
-                activeType === t.value
+                activeType === item.value
                   ? 'bg-white text-indigo-600 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {t.label}
+              {item.label}
             </button>
           ))}
         </div>
@@ -230,7 +257,8 @@ export function EmailTemplatesList() {
           onClick={openCreate}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full shadow-md shadow-indigo-200/50 transition-colors"
         >
-          <Plus size={16} /> New Template
+          <Plus size={16} />
+          {t('hospital.emailTemplates.actions.newTemplate', undefined, 'New Template')}
         </button>
       </div>
 
@@ -239,7 +267,11 @@ export function EmailTemplatesList() {
         <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
-          placeholder="Search by name..."
+          placeholder={t(
+            'hospital.emailTemplates.search.placeholder',
+            undefined,
+            'Search by name...',
+          )}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -249,23 +281,45 @@ export function EmailTemplatesList() {
       {/* Table */}
       <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm overflow-hidden">
         {isLoading ? (
-          <div className="p-12 text-center text-sm text-slate-400">Loading templates...</div>
+          <div className="p-12 text-center text-sm text-slate-400">
+            {t('hospital.emailTemplates.loading', undefined, 'Loading templates...')}
+          </div>
         ) : filteredTemplates.length === 0 ? (
           <div className="p-12 text-center text-sm text-slate-400">
             {templates.length === 0
-              ? 'No email templates yet. Create your first template to get started.'
-              : 'No templates match your search.'}
+              ? t(
+                  'hospital.emailTemplates.empty.noTemplates',
+                  undefined,
+                  'No email templates yet. Create your first template to get started.',
+                )
+              : t(
+                  'hospital.emailTemplates.empty.noResults',
+                  undefined,
+                  'No templates match your search.',
+                )}
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
-                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Name</th>
-                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Type</th>
-                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Subject</th>
-                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Status</th>
-                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Last Updated</th>
-                <th className="text-right px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">Actions</th>
+                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+                  {t('hospital.emailTemplates.table.name', undefined, 'Name')}
+                </th>
+                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+                  {t('hospital.emailTemplates.table.type', undefined, 'Type')}
+                </th>
+                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+                  {t('hospital.emailTemplates.table.subject', undefined, 'Subject')}
+                </th>
+                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+                  {t('hospital.emailTemplates.table.status', undefined, 'Status')}
+                </th>
+                <th className="text-left px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+                  {t('hospital.emailTemplates.table.lastUpdated', undefined, 'Last Updated')}
+                </th>
+                <th className="text-right px-6 py-4 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+                  {t('hospital.emailTemplates.table.actions', undefined, 'Actions')}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -274,7 +328,7 @@ export function EmailTemplatesList() {
                   <td className="px-6 py-4 font-medium text-slate-800">{tpl.name}</td>
                   <td className="px-6 py-4">
                     <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-xs font-medium capitalize">
-                      {getTemplateTypeLabel(tpl.type)}
+                      {getTemplateTypeLabel(tpl.type, t)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-slate-600 max-w-xs truncate">{tpl.subject}</td>
@@ -286,25 +340,29 @@ export function EmailTemplatesList() {
                           : 'bg-amber-50 text-amber-700'
                       }`}
                     >
-                      {tpl.status === 'active' ? 'Active' : 'Draft'}
+                      {tpl.status === 'active'
+                        ? t('hospital.common.status.active', undefined, 'Active')
+                        : t('hospital.common.status.draft', undefined, 'Draft')}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-slate-500">
-                    {new Date(tpl.updatedAt).toLocaleDateString()}
+                    {dateFormatter.format(new Date(tpl.updatedAt))}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => openEdit(tpl)}
                         className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                        title="Edit"
+                        title={t('hospital.common.actions.edit', undefined, 'Edit')}
+                        aria-label={t('hospital.common.actions.edit', undefined, 'Edit')}
                       >
                         <Edit2 size={16} />
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(tpl.id)}
                         className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                        title="Delete"
+                        title={t('hospital.common.actions.delete', undefined, 'Delete')}
+                        aria-label={t('hospital.common.actions.delete', undefined, 'Delete')}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -330,23 +388,31 @@ export function EmailTemplatesList() {
       {deleteConfirmId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete Template</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              {t('hospital.emailTemplates.delete.title', undefined, 'Delete Template')}
+            </h3>
             <p className="text-sm text-slate-500 mb-6">
-              Are you sure you want to delete this template? This action cannot be undone.
+              {t(
+                'hospital.emailTemplates.delete.message',
+                undefined,
+                'Are you sure you want to delete this template? This action cannot be undone.',
+              )}
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteConfirmId(null)}
                 className="px-5 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full transition-colors"
               >
-                Cancel
+                {t('hospital.common.actions.cancel', undefined, 'Cancel')}
               </button>
               <button
                 onClick={() => deleteMutation.mutate(deleteConfirmId)}
                 disabled={deleteMutation.isPending}
                 className="px-5 py-2.5 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-full shadow-md transition-colors disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                {deleteMutation.isPending
+                  ? t('hospital.common.actions.deleting', undefined, 'Deleting...')
+                  : t('hospital.common.actions.delete', undefined, 'Delete')}
               </button>
             </div>
           </div>
@@ -367,6 +433,7 @@ function TemplateModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const [name, setName] = useState(template?.name ?? '');
   const [type, setType] = useState(template?.type ?? 'intro');
   const [subject, setSubject] = useState(template?.subject ?? '');
@@ -434,7 +501,13 @@ function TemplateModal({
 
   const handleSave = async () => {
     if (!name.trim() || !subject.trim()) {
-      setError('Name and Subject are required.');
+      setError(
+        t(
+          'hospital.emailTemplates.modal.validation.nameAndSubjectRequired',
+          undefined,
+          'Name and Subject are required.',
+        ),
+      );
       return;
     }
     setSaving(true);
@@ -460,18 +533,42 @@ function TemplateModal({
       const progressItems: SaveProgressItem[] = [
         {
           id: existingTemplateId ? 'save-template' : 'create-template',
-          label: existingTemplateId ? 'Save template details' : 'Create template',
+          label: existingTemplateId
+            ? t(
+                'hospital.emailTemplates.progress.saveDetails',
+                undefined,
+                'Save template details',
+              )
+            : t(
+                'hospital.emailTemplates.progress.createTemplate',
+                undefined,
+                'Create template',
+              ),
           status: 'pending',
         },
         ...pendingAttachments.map((attachment) => ({
           id: `upload-${attachment.localId}`,
-          label: `Upload attachment: ${attachment.fileName}`,
+          label: t(
+            'hospital.emailTemplates.progress.uploadAttachment',
+            { fileName: attachment.fileName },
+            'Upload attachment: {fileName}',
+          ),
           status: 'pending' as const,
         })),
         ...(pendingAttachments.length > 0
           ? [{
             id: 'finalize-template',
-            label: template ? 'Save attachments' : 'Attach uploads to template',
+            label: template
+              ? t(
+                  'hospital.emailTemplates.progress.saveAttachments',
+                  undefined,
+                  'Save attachments',
+                )
+              : t(
+                  'hospital.emailTemplates.progress.attachUploads',
+                  undefined,
+                  'Attach uploads to template',
+                ),
             status: 'pending' as const,
           }]
           : []),
@@ -479,7 +576,9 @@ function TemplateModal({
 
       setSaveProgress({
         open: true,
-        title: existingTemplateId ? 'Updating template' : 'Creating template',
+        title: existingTemplateId
+          ? t('hospital.emailTemplates.progress.updatingTitle', undefined, 'Updating template')
+          : t('hospital.emailTemplates.progress.creatingTitle', undefined, 'Creating template'),
         items: progressItems,
         canDismiss: false,
       });
@@ -525,7 +624,13 @@ function TemplateModal({
       }
 
       if (!templateId) {
-        throw new Error('Template ID missing after save');
+        throw new Error(
+          t(
+            'hospital.emailTemplates.errors.templateIdMissing',
+            undefined,
+            'Template ID missing after save',
+          ),
+        );
       }
 
       const uploadedAttachments = [...persistedAttachments];
@@ -556,11 +661,21 @@ function TemplateModal({
             throw new Error(
               uploadError instanceof Error
                 ? `${uploadError.message}. Upload request did not reach storage. Check browser CORS/network errors.`
-                : 'Upload request did not reach storage. Check browser CORS/network errors.',
+                : t(
+                    'hospital.emailTemplates.errors.uploadRequestFailed',
+                    undefined,
+                    'Upload request did not reach storage. Check browser CORS/network errors.',
+                  ),
             );
           }
           if (!uploadResponse.ok) {
-            throw new Error(`Upload failed for "${file.name}" (status ${uploadResponse.status})`);
+            throw new Error(
+              t(
+                'hospital.emailTemplates.errors.uploadFailed',
+                { fileName: file.name, status: uploadResponse.status },
+                'Upload failed for "{fileName}" (status {status})',
+              ),
+            );
           }
           uploadedAttachments.push({
             fileName: asset.fileName,
@@ -575,7 +690,14 @@ function TemplateModal({
             )),
           }));
         } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to upload attachment';
+          const message =
+            err instanceof Error
+              ? err.message
+              : t(
+                  'hospital.emailTemplates.errors.uploadAttachmentFailed',
+                  undefined,
+                  'Failed to upload attachment',
+                );
           setSaveProgress((prev) => ({
             ...prev,
             canDismiss: true,
@@ -610,7 +732,14 @@ function TemplateModal({
       setSaveProgress((prev) => ({ ...prev, canDismiss: true }));
       onSaved();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save template';
+      const message =
+        err instanceof Error
+          ? err.message
+          : t(
+              'hospital.emailTemplates.errors.saveFailed',
+              undefined,
+              'Failed to save template',
+            );
       setError(message);
       setSaveProgress((prev) => ({
         ...prev,
@@ -639,11 +768,14 @@ function TemplateModal({
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-900">
-            {template ? 'Edit Template' : 'Create Template'}
+            {template
+              ? t('hospital.emailTemplates.modal.title.edit', undefined, 'Edit Template')
+              : t('hospital.emailTemplates.modal.title.create', undefined, 'Create Template')}
           </h2>
           <button
             onClick={onClose}
             className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            aria-label={t('hospital.common.actions.close', undefined, 'Close')}
           >
             <X size={20} />
           </button>
@@ -659,12 +791,18 @@ function TemplateModal({
 
           {/* Name */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Template Name</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('hospital.emailTemplates.modal.fields.name', undefined, 'Template Name')}
+            </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Welcome Patient"
+              placeholder={t(
+                'hospital.emailTemplates.modal.fields.namePlaceholder',
+                undefined,
+                'e.g. Welcome Patient',
+              )}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none"
             />
           </div>
@@ -672,21 +810,25 @@ function TemplateModal({
           {/* Type + Status row */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Type</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {t('hospital.emailTemplates.modal.fields.type', undefined, 'Type')}
+              </label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               >
-                {TEMPLATE_TYPES.filter((t) => t.value !== 'all').map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
+                {TEMPLATE_TYPES.filter((item) => item.value !== 'all').map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {t(item.key, undefined, item.fallback)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {t('hospital.emailTemplates.modal.fields.status', undefined, 'Status')}
+              </label>
               <div className="flex items-center gap-4 mt-1">
                 <button
                   onClick={() => setStatus('draft')}
@@ -696,7 +838,7 @@ function TemplateModal({
                       : 'bg-slate-50 text-slate-500 border border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  Draft
+                  {t('hospital.common.status.draft', undefined, 'Draft')}
                 </button>
                 <button
                   onClick={() => setStatus('active')}
@@ -706,7 +848,7 @@ function TemplateModal({
                       : 'bg-slate-50 text-slate-500 border border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  Active
+                  {t('hospital.common.status.active', undefined, 'Active')}
                 </button>
               </div>
             </div>
@@ -714,27 +856,39 @@ function TemplateModal({
 
           {/* Subject */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Subject</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('hospital.emailTemplates.modal.fields.subject', undefined, 'Subject')}
+            </label>
             <VariableChips onInsert={(v) => insertVariable(v, 'subject')} />
             <input
               ref={subjectRef}
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder="Email subject line..."
+              placeholder={t(
+                'hospital.emailTemplates.modal.fields.subjectPlaceholder',
+                undefined,
+                'Email subject line...',
+              )}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none"
             />
           </div>
 
           {/* Body */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Body</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('hospital.emailTemplates.modal.fields.body', undefined, 'Body')}
+            </label>
             <VariableChips onInsert={(v) => insertVariable(v, 'body')} />
             <textarea
               ref={bodyRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Email body content..."
+              placeholder={t(
+                'hospital.emailTemplates.modal.fields.bodyPlaceholder',
+                undefined,
+                'Email body content...',
+              )}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none h-48 resize-none"
             />
           </div>
@@ -743,7 +897,7 @@ function TemplateModal({
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               <Paperclip size={14} className="inline mr-1.5" />
-              Attachments
+              {t('hospital.common.labels.attachments', undefined, 'Attachments')}
             </label>
 
             {/* Existing attachments */}
@@ -781,10 +935,18 @@ function TemplateModal({
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-sm text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/50 transition-colors w-full justify-center disabled:opacity-50"
             >
               <Upload size={16} />
-              Add Photos or Files
+              {t(
+                'hospital.emailTemplates.modal.actions.addFiles',
+                undefined,
+                'Add Photos or Files',
+              )}
             </button>
             <p className="mt-1.5 text-xs text-slate-400">
-              Supported: JPEG, PNG, WebP, GIF, PDF, DOCX (max 10MB)
+              {t(
+                'hospital.emailTemplates.modal.attachments.supportedFormats',
+                undefined,
+                'Supported: JPEG, PNG, WebP, GIF, PDF, DOCX (max 10MB)',
+              )}
             </p>
           </div>
         </div>
@@ -795,14 +957,26 @@ function TemplateModal({
             onClick={onClose}
             className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full transition-colors"
           >
-            Cancel
+            {t('hospital.common.actions.cancel', undefined, 'Cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50 transition-colors disabled:opacity-50"
           >
-            {saving ? 'Saving...' : template ? 'Update Template' : 'Create Template'}
+            {saving
+              ? t('hospital.common.actions.saving', undefined, 'Saving...')
+              : template
+                ? t(
+                    'hospital.emailTemplates.modal.actions.update',
+                    undefined,
+                    'Update Template',
+                  )
+                : t(
+                    'hospital.emailTemplates.modal.actions.create',
+                    undefined,
+                    'Create Template',
+                  )}
           </button>
         </div>
       </div>

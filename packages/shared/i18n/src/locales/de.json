@@ -1214,6 +1214,49 @@
   },
   "hospital": {
     "title": "Krankenhausportal",
+    "portalShell": {
+      "title": "Krankenhausportal",
+      "nav": {
+        "dashboard": "Dashboard",
+        "cases": "Fälle",
+        "consultations": "Konsultationen",
+        "messages": "Nachrichten",
+        "materials": "Materialien",
+        "emailTemplates": "E-Mail-Vorlagen",
+        "faq": "Chatbot & FAQ",
+        "settings": "Einstellungen"
+      },
+      "actions": {
+        "logout": "Abmelden",
+        "notifications": "Benachrichtigungen"
+      },
+      "search": {
+        "placeholder": "Patienten, Fälle durchsuchen..."
+      }
+    },
+    "error": {
+      "title": "Etwas ist schiefgelaufen",
+      "tryAgain": "Erneut versuchen"
+    },
+    "loading": {
+      "label": "Wird geladen"
+    },
+    "login": {
+      "title": "Medical CRM",
+      "subtitle": "Einheitliche Portalanmeldung",
+      "formTitle": "Bei Ihrem Konto anmelden",
+      "usernameLabel": "Benutzername / E-Mail",
+      "usernamePlaceholder": "Benutzernamen oder E-Mail eingeben",
+      "passwordLabel": "Passwort",
+      "passwordPlaceholder": "Passwort eingeben",
+      "submit": "Anmelden",
+      "submitting": "Anmeldung läuft...",
+      "alternatePortalLabel": "Zum Admin-Portal",
+      "errors": {
+        "loginFailed": "Anmeldung fehlgeschlagen",
+        "requestFailed": "Während der Anmeldung ist ein Fehler aufgetreten"
+      }
+    },
     "dashboard": {
       "pendingCases": {
         "title": "Ausstehende Fälle",

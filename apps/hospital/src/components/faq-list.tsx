@@ -15,6 +15,7 @@ import {
 import { uploadFaqAttachment } from '@/actions/faq-upload-actions';
 import type { FaqItem, FaqAttachmentItem } from '@/lib/api-types';
 import { AttachmentPreviewCard, isPreviewableAttachment } from '@/components/attachment-preview-card';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ type SaveProgressState = {
   canDismiss: boolean;
 };
 
+type TranslateFn = ReturnType<typeof useHospitalI18n>['t'];
+
 function createLocalAttachmentId() {
   return globalThis.crypto?.randomUUID?.() ?? `faq-att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -50,6 +53,7 @@ function UploadProgressModal({
   state: SaveProgressState;
   onDismiss: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const completedCount = state.items.filter((item) => item.status === 'done').length;
   const progress = state.items.length > 0 ? Math.round((completedCount / state.items.length) * 100) : 0;
 
@@ -64,7 +68,19 @@ function UploadProgressModal({
         <div className="px-6 py-5 space-y-5">
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm text-slate-500">
-              <span>{state.items.some((item) => item.status === 'failed') ? 'Finished with errors' : 'Uploading and saving'}</span>
+              <span>
+                {state.items.some((item) => item.status === 'failed')
+                  ? t(
+                      'hospital.common.progress.finishedWithErrors',
+                      undefined,
+                      'Finished with errors',
+                    )
+                  : t(
+                      'hospital.common.progress.uploadingAndSaving',
+                      undefined,
+                      'Uploading and saving',
+                    )}
+              </span>
               <span>{progress}%</span>
             </div>
             <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -102,11 +118,16 @@ function UploadProgressModal({
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-slate-800">{item.label}</div>
                   <div className="text-xs text-slate-500 mt-0.5">
-                    {item.status === 'pending' && 'Waiting'}
-                    {item.status === 'uploading' && 'Uploading...'}
-                    {item.status === 'saving' && 'Saving...'}
-                    {item.status === 'done' && 'Done'}
-                    {item.status === 'failed' && (item.error || 'Failed')}
+                    {item.status === 'pending' &&
+                      t('hospital.common.progress.waiting', undefined, 'Waiting')}
+                    {item.status === 'uploading' &&
+                      t('hospital.common.progress.uploading', undefined, 'Uploading...')}
+                    {item.status === 'saving' &&
+                      t('hospital.common.actions.saving', undefined, 'Saving...')}
+                    {item.status === 'done' &&
+                      t('hospital.common.progress.done', undefined, 'Done')}
+                    {item.status === 'failed' &&
+                      (item.error || t('hospital.common.progress.failed', undefined, 'Failed'))}
                   </div>
                 </div>
               </div>
@@ -120,7 +141,7 @@ function UploadProgressModal({
               disabled={!state.canDismiss}
               className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Close
+              {t('hospital.common.actions.close', undefined, 'Close')}
             </button>
           </div>
         </div>
@@ -132,8 +153,10 @@ function UploadProgressModal({
 // ── Main Component ──────────────────────────────────────────────────
 
 export function FaqList() {
+  const { locale, t } = useHospitalI18n();
   const queryClient = useQueryClient();
   const { data: categoriesData, isLoading: categoriesLoading } = useFaqCategories();
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale), [locale]);
   const categories: FaqCategoryItem[] = categoriesData ?? [];
 
   const [activeCategory, setActiveCategory] = useState('all');
@@ -226,10 +249,12 @@ export function FaqList() {
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            All
+            {t('hospital.faq.filters.all', undefined, 'All')}
           </button>
           {categoriesLoading ? (
-            <span className="px-4 py-2 text-sm text-slate-400">Loading...</span>
+            <span className="px-4 py-2 text-sm text-slate-400">
+              {t('hospital.common.status.loading', undefined, 'Loading...')}
+            </span>
           ) : (
             categories.map((cat) => (
               <button
@@ -252,13 +277,15 @@ export function FaqList() {
             onClick={() => setCategoryModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-indigo-600 border border-indigo-200 hover:bg-indigo-50 rounded-full transition-colors"
           >
-            <FolderPlus size={16} /> New Category
+            <FolderPlus size={16} />
+            {t('hospital.faq.actions.newCategory', undefined, 'New Category')}
           </button>
           <button
             onClick={openCreate}
             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full shadow-md shadow-indigo-200/50 transition-colors"
           >
-            <Plus size={16} /> New FAQ
+            <Plus size={16} />
+            {t('hospital.faq.actions.newFaq', undefined, 'New FAQ')}
           </button>
         </div>
       </div>
@@ -268,7 +295,11 @@ export function FaqList() {
         <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
-          placeholder="Search by question, answer, or keywords..."
+          placeholder={t(
+            'hospital.faq.search.placeholder',
+            undefined,
+            'Search by question, answer, or keywords...',
+          )}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -278,13 +309,17 @@ export function FaqList() {
       {/* Content */}
       {isLoading ? (
         <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-12 text-center text-sm text-slate-400">
-          Loading FAQs...
+          {t('hospital.faq.loading', undefined, 'Loading FAQs...')}
         </div>
       ) : filteredFaqs.length === 0 ? (
         <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm p-12 text-center text-sm text-slate-400">
           {faqs.length === 0
-            ? 'No FAQ items yet. Create your first FAQ to get started.'
-            : 'No FAQs match your search.'}
+            ? t(
+                'hospital.faq.empty.noFaqs',
+                undefined,
+                'No FAQ items yet. Create your first FAQ to get started.',
+              )
+            : t('hospital.faq.empty.noResults', undefined, 'No FAQs match your search.')}
         </div>
       ) : groupedFaqs ? (
         // Grouped view (All tab)
@@ -303,13 +338,24 @@ export function FaqList() {
                     <button
                       onClick={() => setDeleteCategoryConfirm(cat)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
-                      title="Delete category"
+                      title={t('hospital.faq.actions.deleteCategory', undefined, 'Delete category')}
+                      aria-label={t(
+                        'hospital.faq.actions.deleteCategory',
+                        undefined,
+                        'Delete category',
+                      )}
                     >
                       <Trash2 size={14} />
                     </button>
                   )}
                 </div>
-                <FaqTable faqs={categoryFaqs} onEdit={openEdit} onDelete={setDeleteConfirmId} />
+                <FaqTable
+                  faqs={categoryFaqs}
+                  onEdit={openEdit}
+                  onDelete={setDeleteConfirmId}
+                  dateFormatter={dateFormatter}
+                  t={t}
+                />
               </div>
             );
           })}
@@ -317,7 +363,13 @@ export function FaqList() {
       ) : (
         // Flat view (specific category selected)
         <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-sm overflow-hidden">
-          <FaqTable faqs={filteredFaqs} onEdit={openEdit} onDelete={setDeleteConfirmId} />
+          <FaqTable
+            faqs={filteredFaqs}
+            onEdit={openEdit}
+            onDelete={setDeleteConfirmId}
+            dateFormatter={dateFormatter}
+            t={t}
+          />
         </div>
       )}
 
@@ -346,8 +398,12 @@ export function FaqList() {
       {/* Delete FAQ Confirmation */}
       {deleteConfirmId && (
         <ConfirmDialog
-          title="Delete FAQ"
-          message="Are you sure you want to delete this FAQ item? This action cannot be undone."
+          title={t('hospital.faq.deleteFaq.title', undefined, 'Delete FAQ')}
+          message={t(
+            'hospital.faq.deleteFaq.message',
+            undefined,
+            'Are you sure you want to delete this FAQ item? This action cannot be undone.',
+          )}
           isPending={deleteMutation.isPending}
           onConfirm={() => deleteMutation.mutate(deleteConfirmId)}
           onCancel={() => setDeleteConfirmId(null)}
@@ -357,11 +413,19 @@ export function FaqList() {
       {/* Delete Category Confirmation */}
       {deleteCategoryConfirm && (
         <ConfirmDialog
-          title="Delete Category"
+          title={t('hospital.faq.deleteCategory.title', undefined, 'Delete Category')}
           message={
             deleteCategoryConfirm.questionCount > 0
-              ? `This category has ${deleteCategoryConfirm.questionCount} FAQ(s). You must delete or move all FAQs before deleting the category.`
-              : 'Are you sure you want to delete this category? This action cannot be undone.'
+              ? t(
+                  'hospital.faq.deleteCategory.blockedMessage',
+                  { count: deleteCategoryConfirm.questionCount },
+                  'This category has {count} FAQ(s). You must delete or move all FAQs before deleting the category.',
+                )
+              : t(
+                  'hospital.faq.deleteCategory.message',
+                  undefined,
+                  'Are you sure you want to delete this category? This action cannot be undone.',
+                )
           }
           isPending={deleteCategoryMutation.isPending}
           disableConfirm={deleteCategoryConfirm.questionCount > 0}
@@ -379,19 +443,38 @@ function FaqTable({
   faqs,
   onEdit,
   onDelete,
+  dateFormatter,
+  t,
 }: {
   faqs: FaqItem[];
   onEdit: (faq: FaqItem) => void;
   onDelete: (id: string) => void;
+  dateFormatter: Intl.DateTimeFormat;
+  t: TranslateFn;
 }) {
+  const attachmentLabel = (count: number) =>
+    t(
+      'hospital.faq.table.attachmentsCount',
+      { count, suffix: count > 1 ? 's' : '' },
+      '{count} attachment{suffix}',
+    );
+
   return (
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-slate-100 bg-slate-50/50">
-          <th className="text-left px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">Question</th>
-          <th className="text-left px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">Status</th>
-          <th className="text-left px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">Updated</th>
-          <th className="text-right px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">Actions</th>
+          <th className="text-left px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+            {t('hospital.faq.table.question', undefined, 'Question')}
+          </th>
+          <th className="text-left px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+            {t('hospital.faq.table.status', undefined, 'Status')}
+          </th>
+          <th className="text-left px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+            {t('hospital.faq.table.updated', undefined, 'Updated')}
+          </th>
+          <th className="text-right px-6 py-3 font-semibold text-slate-500 uppercase tracking-wider text-xs">
+            {t('hospital.faq.table.actions', undefined, 'Actions')}
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -402,7 +485,7 @@ function FaqTable({
               <p className="text-xs text-slate-400 truncate mt-0.5">{faq.answer}</p>
               {(faq.attachments?.length ?? 0) > 0 && (
                 <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-slate-400">
-                  <Paperclip size={10} /> {faq.attachments!.length} attachment{faq.attachments!.length > 1 ? 's' : ''}
+                  <Paperclip size={10} /> {attachmentLabel(faq.attachments!.length)}
                 </span>
               )}
             </td>
@@ -410,16 +493,30 @@ function FaqTable({
               <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                 faq.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
               }`}>
-                {faq.isActive ? 'Active' : 'Inactive'}
+                {faq.isActive
+                  ? t('hospital.common.status.active', undefined, 'Active')
+                  : t('hospital.common.status.inactive', undefined, 'Inactive')}
               </span>
             </td>
-            <td className="px-6 py-3.5 text-slate-500">{new Date(faq.updatedAt).toLocaleDateString()}</td>
+            <td className="px-6 py-3.5 text-slate-500">
+              {dateFormatter.format(new Date(faq.updatedAt))}
+            </td>
             <td className="px-6 py-3.5">
               <div className="flex items-center justify-end gap-2">
-                <button onClick={() => onEdit(faq)} className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors" title="Edit">
+                <button
+                  onClick={() => onEdit(faq)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                  title={t('hospital.common.actions.edit', undefined, 'Edit')}
+                  aria-label={t('hospital.common.actions.edit', undefined, 'Edit')}
+                >
                   <Edit2 size={16} />
                 </button>
-                <button onClick={() => onDelete(faq.id)} className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors" title="Delete">
+                <button
+                  onClick={() => onDelete(faq.id)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                  title={t('hospital.common.actions.delete', undefined, 'Delete')}
+                  aria-label={t('hospital.common.actions.delete', undefined, 'Delete')}
+                >
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -446,6 +543,7 @@ function FaqModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const [question, setQuestion] = useState(faq?.question ?? '');
   const [answer, setAnswer] = useState(faq?.answer ?? '');
   const [category, setCategory] = useState(faq?.category ?? defaultCategory ?? (categories[0]?.name || ''));
@@ -489,11 +587,23 @@ function FaqModal({
 
   const handleSave = async () => {
     if (!question.trim() || !answer.trim()) {
-      setError('Question and Answer are required.');
+      setError(
+        t(
+          'hospital.faq.modal.validation.questionAndAnswerRequired',
+          undefined,
+          'Question and Answer are required.',
+        ),
+      );
       return;
     }
     if (!category.trim()) {
-      setError('Category is required. Create a category first.');
+      setError(
+        t(
+          'hospital.faq.modal.validation.categoryRequired',
+          undefined,
+          'Category is required. Create a category first.',
+        ),
+      );
       return;
     }
     setSaving(true);
@@ -511,23 +621,33 @@ function FaqModal({
 
       setSaveProgress({
         open: true,
-        title: existingFaqId ? 'Updating FAQ' : 'Creating FAQ',
+        title: existingFaqId
+          ? t('hospital.faq.progress.updatingTitle', undefined, 'Updating FAQ')
+          : t('hospital.faq.progress.creatingTitle', undefined, 'Creating FAQ'),
         canDismiss: false,
         items: [
           {
             id: existingFaqId ? 'save-faq' : 'create-faq',
-            label: existingFaqId ? 'Save FAQ details' : 'Create FAQ',
+            label: existingFaqId
+              ? t('hospital.faq.progress.saveDetails', undefined, 'Save FAQ details')
+              : t('hospital.faq.progress.createFaq', undefined, 'Create FAQ'),
             status: 'pending',
           },
           ...pendingAttachments.map((attachment) => ({
             id: `upload-${attachment.localId}`,
-            label: `Upload attachment: ${attachment.fileName}`,
+            label: t(
+              'hospital.faq.progress.uploadAttachment',
+              { fileName: attachment.fileName },
+              'Upload attachment: {fileName}',
+            ),
             status: 'pending' as const,
           })),
           ...(pendingAttachments.length > 0
             ? [{
               id: 'finalize-faq',
-              label: existingFaqId ? 'Save attachments' : 'Attach uploads to FAQ',
+              label: existingFaqId
+                ? t('hospital.faq.progress.saveAttachments', undefined, 'Save attachments')
+                : t('hospital.faq.progress.attachUploads', undefined, 'Attach uploads to FAQ'),
               status: 'pending' as const,
             }]
             : []),
@@ -568,7 +688,11 @@ function FaqModal({
         }));
       }
 
-      if (!faqId) throw new Error('FAQ ID missing after save');
+      if (!faqId) {
+        throw new Error(
+          t('hospital.faq.errors.faqIdMissing', undefined, 'FAQ ID missing after save'),
+        );
+      }
 
       const uploadedAttachments = [...persistedAttachments];
       for (const attachment of pendingAttachments) {
@@ -599,11 +723,21 @@ function FaqModal({
             throw new Error(
               uploadError instanceof Error
                 ? `${uploadError.message}. Upload request did not reach storage. Check browser CORS/network errors.`
-                : 'Upload request did not reach storage. Check browser CORS/network errors.',
+                : t(
+                    'hospital.faq.errors.uploadRequestFailed',
+                    undefined,
+                    'Upload request did not reach storage. Check browser CORS/network errors.',
+                  ),
             );
           }
           if (!uploadResponse.ok) {
-            throw new Error(`Upload failed for "${file.name}" (status ${uploadResponse.status})`);
+            throw new Error(
+              t(
+                'hospital.faq.errors.uploadFailed',
+                { fileName: file.name, status: uploadResponse.status },
+                'Upload failed for "{fileName}" (status {status})',
+              ),
+            );
           }
           uploadedAttachments.push({
             fileName: init.asset.fileName,
@@ -618,7 +752,14 @@ function FaqModal({
             )),
           }));
         } catch (err) {
-          const message = err instanceof Error ? err.message : 'Failed to upload attachment';
+          const message =
+            err instanceof Error
+              ? err.message
+              : t(
+                  'hospital.faq.errors.uploadAttachmentFailed',
+                  undefined,
+                  'Failed to upload attachment',
+                );
           setError(message);
           setSaveProgress((prev) => ({
             ...prev,
@@ -650,7 +791,10 @@ function FaqModal({
       setSaveProgress((prev) => ({ ...prev, canDismiss: true }));
       onSaved();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save FAQ';
+      const message =
+        err instanceof Error
+          ? err.message
+          : t('hospital.faq.errors.saveFailed', undefined, 'Failed to save FAQ');
       setError(message);
       setSaveProgress((prev) => ({
         ...prev,
@@ -677,8 +821,16 @@ function FaqModal({
       />
       <div className="bg-white rounded-[1.5rem] w-full max-w-2xl mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-900">{faq ? 'Edit FAQ' : 'Create FAQ'}</h2>
-          <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+          <h2 className="text-lg font-semibold text-slate-900">
+            {faq
+              ? t('hospital.faq.modal.title.edit', undefined, 'Edit FAQ')
+              : t('hospital.faq.modal.title.create', undefined, 'Create FAQ')}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            aria-label={t('hospital.common.actions.close', undefined, 'Close')}
+          >
             <X size={20} />
           </button>
         </div>
@@ -690,59 +842,96 @@ function FaqModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Category</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {t('hospital.faq.modal.fields.category', undefined, 'Category')}
+              </label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               >
-                {categories.length === 0 && <option value="">-- Create a category first --</option>}
+                {categories.length === 0 && (
+                  <option value="">
+                    {t(
+                      'hospital.faq.modal.fields.noCategoriesOption',
+                      undefined,
+                      '-- Create a category first --',
+                    )}
+                  </option>
+                )}
                 {categories.map((c) => (
                   <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {t('hospital.faq.modal.fields.status', undefined, 'Status')}
+              </label>
               <div className="flex items-center gap-4 mt-1">
                 <button type="button" onClick={() => setIsActive(false)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${!isActive ? 'bg-slate-100 text-slate-700 border border-slate-300' : 'bg-slate-50 text-slate-400 border border-slate-200 hover:border-slate-300'}`}>
-                  Inactive
+                  {t('hospital.common.status.inactive', undefined, 'Inactive')}
                 </button>
                 <button type="button" onClick={() => setIsActive(true)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:border-slate-300'}`}>
-                  Active
+                  {t('hospital.common.status.active', undefined, 'Active')}
                 </button>
               </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Question</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('hospital.faq.modal.fields.question', undefined, 'Question')}
+            </label>
             <input type="text" value={question} onChange={(e) => setQuestion(e.target.value)}
-              placeholder="e.g. What procedures do you offer?"
+              placeholder={t(
+                'hospital.faq.modal.fields.questionPlaceholder',
+                undefined,
+                'e.g. What procedures do you offer?',
+              )}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none" />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Answer</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('hospital.faq.modal.fields.answer', undefined, 'Answer')}
+            </label>
             <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Provide a clear answer..."
+              placeholder={t(
+                'hospital.faq.modal.fields.answerPlaceholder',
+                undefined,
+                'Provide a clear answer...',
+              )}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none h-32 resize-none" />
           </div>
 
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">
-              Keywords <span className="font-normal text-slate-400">(comma-separated)</span>
+              {t('hospital.faq.modal.fields.keywords', undefined, 'Keywords')}{' '}
+              <span className="font-normal text-slate-400">
+                {t(
+                  'hospital.faq.modal.fields.keywordsHint',
+                  undefined,
+                  '(comma-separated)',
+                )}
+              </span>
             </label>
             <input type="text" value={keywords} onChange={(e) => setKeywords(e.target.value)}
-              placeholder="e.g. rhinoplasty, nose, surgery"
+              placeholder={t(
+                'hospital.faq.modal.fields.keywordsPlaceholder',
+                undefined,
+                'e.g. rhinoplasty, nose, surgery',
+              )}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none" />
           </div>
 
           {/* Attachments */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Attachments</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('hospital.common.labels.attachments', undefined, 'Attachments')}
+            </label>
             <input
               ref={fileInputRef}
               type="file"
@@ -757,7 +946,7 @@ function FaqModal({
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               <Paperclip size={14} />
-              Add Attachment
+              {t('hospital.faq.modal.actions.addAttachment', undefined, 'Add Attachment')}
             </button>
 
             {/* Uploaded attachments */}
@@ -778,16 +967,28 @@ function FaqModal({
             )}
 
             {attachments.some((attachment) => attachment.pendingFile) && (
-              <div className="mt-2 text-xs text-amber-600">Pending attachments will upload when you save.</div>
+              <div className="mt-2 text-xs text-amber-600">
+                {t(
+                  'hospital.faq.modal.attachments.pendingNote',
+                  undefined,
+                  'Pending attachments will upload when you save.',
+                )}
+              </div>
             )}
           </div>
         </div>
 
         <div className="flex justify-end gap-3 px-8 py-6 border-t border-slate-100">
-          <button onClick={onClose} className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full transition-colors">
+            {t('hospital.common.actions.cancel', undefined, 'Cancel')}
+          </button>
           <button onClick={handleSave} disabled={saving}
             className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50 transition-colors disabled:opacity-50">
-            {saving ? 'Saving...' : faq ? 'Update FAQ' : 'Create FAQ'}
+            {saving
+              ? t('hospital.common.actions.saving', undefined, 'Saving...')
+              : faq
+                ? t('hospital.faq.modal.actions.update', undefined, 'Update FAQ')
+                : t('hospital.faq.modal.actions.create', undefined, 'Create FAQ')}
           </button>
         </div>
       </div>
@@ -804,13 +1005,20 @@ function CategoryModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useHospitalI18n();
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setError('Category name is required.');
+      setError(
+        t(
+          'hospital.faq.categoryModal.validation.nameRequired',
+          undefined,
+          'Category name is required.',
+        ),
+      );
       return;
     }
     setSaving(true);
@@ -819,7 +1027,15 @@ function CategoryModal({
       await createFaqCategory({ name: name.trim(), hospitalType: 'COSMETIC' });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create category');
+      setError(
+        err instanceof Error
+          ? err.message
+          : t(
+              'hospital.faq.categoryModal.errors.createFailed',
+              undefined,
+              'Failed to create category',
+            ),
+      );
     } finally {
       setSaving(false);
     }
@@ -829,8 +1045,14 @@ function CategoryModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
       <div className="bg-white rounded-[1.5rem] w-full max-w-md mx-4 shadow-2xl">
         <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-900">New Category</h2>
-          <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+          <h2 className="text-lg font-semibold text-slate-900">
+            {t('hospital.faq.categoryModal.title', undefined, 'New Category')}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            aria-label={t('hospital.common.actions.close', undefined, 'Close')}
+          >
             <X size={20} />
           </button>
         </div>
@@ -841,19 +1063,29 @@ function CategoryModal({
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Category Name</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              {t('hospital.faq.categoryModal.fields.name', undefined, 'Category Name')}
+            </label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Pre-Surgery, Post-Surgery, Pricing"
+              placeholder={t(
+                'hospital.faq.categoryModal.fields.namePlaceholder',
+                undefined,
+                'e.g. Pre-Surgery, Post-Surgery, Pricing',
+              )}
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm outline-none" />
           </div>
 
         </div>
 
         <div className="flex justify-end gap-3 px-8 py-6 border-t border-slate-100">
-          <button onClick={onClose} className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full transition-colors">
+            {t('hospital.common.actions.cancel', undefined, 'Cancel')}
+          </button>
           <button onClick={handleSave} disabled={saving}
             className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50 transition-colors disabled:opacity-50">
-            {saving ? 'Creating...' : 'Create Category'}
+            {saving
+              ? t('hospital.common.actions.creating', undefined, 'Creating...')
+              : t('hospital.faq.categoryModal.actions.create', undefined, 'Create Category')}
           </button>
         </div>
       </div>
@@ -878,6 +1110,7 @@ function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useHospitalI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
       <div className="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
@@ -886,11 +1119,13 @@ function ConfirmDialog({
         <div className="flex justify-end gap-3">
           <button onClick={onCancel}
             className="px-5 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full transition-colors">
-            Cancel
+            {t('hospital.common.actions.cancel', undefined, 'Cancel')}
           </button>
           <button onClick={onConfirm} disabled={isPending || disableConfirm}
             className="px-5 py-2.5 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-full shadow-md transition-colors disabled:opacity-50">
-            {isPending ? 'Deleting...' : 'Delete'}
+            {isPending
+              ? t('hospital.common.actions.deleting', undefined, 'Deleting...')
+              : t('hospital.common.actions.delete', undefined, 'Delete')}
           </button>
         </div>
       </div>

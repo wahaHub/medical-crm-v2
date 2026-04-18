@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@medical-crm/ui';
 import { updateConsultationStatus } from '@/actions/consultation-actions';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 interface VideoRoomProps {
   consultationId: string;
@@ -22,6 +23,8 @@ interface VideoRoomProps {
 type RoomState = 'pre-join' | 'in-call';
 
 export function VideoRoom({ consultationId }: VideoRoomProps) {
+  const { t } = useHospitalI18n();
+  const tx = (key: string, fallback: string) => t(key, undefined, fallback);
   const router = useRouter();
   const [roomState, setRoomState] = useState<RoomState>('pre-join');
   const [micOn, setMicOn] = useState(true);
@@ -67,10 +70,13 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
         <div className="w-full max-w-lg space-y-6 text-center">
           <h1 className="text-2xl font-semibold text-slate-900">
-            Ready to join?
+            {tx('hospital.portal.videoRoom.preJoin.title', 'Ready to join?')}
           </h1>
           <p className="text-sm text-slate-500">
-            Check your camera and microphone before joining the call.
+            {tx(
+              'hospital.portal.videoRoom.preJoin.description',
+              'Check your camera and microphone before joining the call.',
+            )}
           </p>
 
           {/* Camera preview placeholder */}
@@ -93,7 +99,9 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
                   ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   : 'bg-rose-100 text-rose-600 hover:bg-rose-200'
               }`}
-              title={micOn ? 'Mute microphone' : 'Unmute microphone'}
+              title={micOn
+                ? tx('hospital.portal.videoRoom.controls.muteMicrophone', 'Mute microphone')
+                : tx('hospital.portal.videoRoom.controls.unmuteMicrophone', 'Unmute microphone')}
             >
               {micOn ? <Mic size={20} /> : <MicOff size={20} />}
             </button>
@@ -104,7 +112,9 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
                   ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   : 'bg-rose-100 text-rose-600 hover:bg-rose-200'
               }`}
-              title={cameraOn ? 'Turn off camera' : 'Turn on camera'}
+              title={cameraOn
+                ? tx('hospital.portal.videoRoom.controls.turnOffCamera', 'Turn off camera')
+                : tx('hospital.portal.videoRoom.controls.turnOnCamera', 'Turn on camera')}
             >
               {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
             </button>
@@ -112,7 +122,7 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
 
           <Button onClick={handleJoin} className="gap-2 px-8">
             <Phone size={16} />
-            Join Call
+            {tx('hospital.portal.videoRoom.preJoin.joinCall', 'Join Call')}
           </Button>
         </div>
       </div>
@@ -130,7 +140,7 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
         {recording && (
           <span className="ml-3 flex items-center gap-1 text-xs text-rose-400">
             <Circle size={8} className="fill-rose-500 text-rose-500 animate-pulse" />
-            REC
+            {tx('hospital.portal.videoRoom.inCall.recordingIndicator', 'REC')}
           </span>
         )}
       </div>
@@ -164,7 +174,9 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
               ? 'bg-slate-700 text-white hover:bg-slate-600'
               : 'bg-rose-500 text-white hover:bg-rose-600'
           }`}
-          title={micOn ? 'Mute' : 'Unmute'}
+          title={micOn
+            ? tx('hospital.portal.videoRoom.controls.mute', 'Mute')
+            : tx('hospital.portal.videoRoom.controls.unmute', 'Unmute')}
         >
           {micOn ? <Mic size={20} /> : <MicOff size={20} />}
         </button>
@@ -176,7 +188,9 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
               ? 'bg-slate-700 text-white hover:bg-slate-600'
               : 'bg-rose-500 text-white hover:bg-rose-600'
           }`}
-          title={cameraOn ? 'Stop video' : 'Start video'}
+          title={cameraOn
+            ? tx('hospital.portal.videoRoom.controls.stopVideo', 'Stop video')
+            : tx('hospital.portal.videoRoom.controls.startVideo', 'Start video')}
         >
           {cameraOn ? <Video size={20} /> : <VideoOff size={20} />}
         </button>
@@ -188,7 +202,9 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
               ? 'bg-rose-500 text-white hover:bg-rose-600'
               : 'bg-slate-700 text-white hover:bg-slate-600'
           }`}
-          title={recording ? 'Stop recording' : 'Start recording'}
+          title={recording
+            ? tx('hospital.portal.videoRoom.controls.stopRecording', 'Stop recording')
+            : tx('hospital.portal.videoRoom.controls.startRecording', 'Start recording')}
         >
           <Circle size={20} className={recording ? 'fill-white' : ''} />
         </button>
@@ -200,7 +216,9 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
               ? 'bg-indigo-500 text-white hover:bg-indigo-600'
               : 'bg-slate-700 text-white hover:bg-slate-600'
           }`}
-          title={subtitles ? 'Hide subtitles' : 'Show subtitles'}
+          title={subtitles
+            ? tx('hospital.portal.videoRoom.controls.hideSubtitles', 'Hide subtitles')
+            : tx('hospital.portal.videoRoom.controls.showSubtitles', 'Show subtitles')}
         >
           <Captions size={20} />
         </button>
@@ -208,7 +226,7 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
         <button
           onClick={handleEndCall}
           className="flex h-12 w-16 items-center justify-center rounded-full bg-rose-600 text-white transition-colors hover:bg-rose-700"
-          title="End call"
+          title={tx('hospital.portal.videoRoom.controls.endCall', 'End call')}
         >
           <PhoneOff size={20} />
         </button>
@@ -217,7 +235,9 @@ export function VideoRoom({ consultationId }: VideoRoomProps) {
       {/* Subtitles overlay */}
       {subtitles && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 rounded-lg bg-black/70 px-6 py-2">
-          <p className="text-sm text-white">Subtitles will appear here...</p>
+          <p className="text-sm text-white">
+            {tx('hospital.portal.videoRoom.inCall.subtitlesPlaceholder', 'Subtitles will appear here...')}
+          </p>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { FolderOpen, Clock, Sparkles, ChevronRight } from 'lucide-react';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface ScheduledConsultation {
@@ -40,41 +41,39 @@ interface DashboardData {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
-function formatTimeBox(dateStr: string) {
+function formatTimeBox(dateStr: string, locale: string) {
   if (!dateStr) return { time: '--:--', period: '' };
   const d = new Date(dateStr);
-  const hours = d.getHours();
-  const minutes = d.getMinutes();
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const h12 = hours % 12 || 12;
   return {
-    time: `${h12}:${minutes.toString().padStart(2, '0')}`,
-    period,
+    time: new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(d),
+    period: '',
   };
 }
 
-function timeAgo(dateStr: string) {
+function timeAgo(dateStr: string, locale: string) {
   if (!dateStr) return '';
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  if (mins < 60) return formatter.format(-mins, 'minute');
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return formatter.format(-hours, 'hour');
   const days = Math.floor(hours / 24);
-  if (days === 1) return 'Yesterday';
-  return `${days}d ago`;
+  return formatter.format(-days, 'day');
 }
 
-function formatMessageTime(dateStr: string) {
+function formatMessageTime(dateStr: string, locale: string) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   const now = new Date();
   const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
   if (diffDays === 0) {
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(d);
   }
-  if (diffDays === 1) return 'Yesterday';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (diffDays === 1) {
+    return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(-1, 'day');
+  }
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(d);
 }
 
 const AVATAR_COLORS = [
@@ -134,21 +133,38 @@ function conditionLabel(condition: string | null) {
 // ── Component ──────────────────────────────────────────────────────
 export function DashboardWidgets({ data }: { data: DashboardData }) {
   const router = useRouter();
+  const { locale, t } = useHospitalI18n();
+  const unknownLabel = t('hospital.common.unknown', undefined, 'Unknown');
+  const notAvailableLabel = t('hospital.common.notAvailable', undefined, 'N/A');
+  const consultationsTitle = t(
+    'hospital.dashboard.sections.consultations.title',
+    undefined,
+    "Today's Consultations",
+  );
 
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+      <h1 className="text-2xl font-bold text-slate-900">
+        {t('hospital.dashboard.title', undefined, 'Dashboard')}
+      </h1>
 
       {/* Today's Consultations */}
       <section className="rounded-[2rem] border border-slate-100 bg-white p-8 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.02)]">
-        <h2 className="mb-6 text-lg font-semibold text-slate-900">Today&apos;s Consultations</h2>
+        <h2 className="mb-6 text-lg font-semibold text-slate-900">{consultationsTitle}</h2>
         {data.scheduledConsultations.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400">No consultations scheduled</p>
+          <p className="py-8 text-center text-sm text-slate-400">
+            {t(
+              'hospital.dashboard.sections.consultations.empty',
+              undefined,
+              'No consultations scheduled',
+            )}
+          </p>
         ) : (
           <div className="space-y-4">
             {data.scheduledConsultations.map((c) => {
-              const { time, period } = formatTimeBox(c.scheduledAt);
+              const { time, period } = formatTimeBox(c.scheduledAt, locale);
+              const patientName = c.patientName || unknownLabel;
               return (
                 <div
                   key={c.id}
@@ -158,28 +174,34 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
                     {/* Time box */}
                     <div className="flex h-16 w-16 flex-col items-center justify-center rounded-xl bg-slate-50">
                       <span className="text-lg font-bold text-slate-900">{time}</span>
-                      <span className="text-[11px] font-medium uppercase text-slate-400">{period}</span>
+                      {period ? (
+                        <span className="text-[11px] font-medium uppercase text-slate-400">{period}</span>
+                      ) : null}
                     </div>
                     {/* Info */}
                     <div>
                       <div className="flex items-center gap-3">
-                        <span className="font-semibold text-slate-900">{c.patientName}</span>
+                        <span className="font-semibold text-slate-900">{patientName}</span>
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-sm text-slate-500">
                         <span className="flex items-center gap-1">
                           <FolderOpen size={14} />
-                          {c.caseNumber || 'N/A'}
+                          {c.caseNumber || notAvailableLabel}
                         </span>
                         <span>·</span>
                         <span className="flex items-center gap-1">
                           <Clock size={14} />
-                          {c.durationMinutes} min
+                          {t('hospital.common.durationMinutes', { count: c.durationMinutes }, '{count} min')}
                         </span>
                       </div>
                       {c.aiTranslation && (
                         <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-600">
                           <Sparkles size={12} />
-                          AI Translation
+                          {t(
+                            'hospital.dashboard.sections.consultations.aiTranslation',
+                            undefined,
+                            'AI Translation',
+                          )}
                         </span>
                       )}
                     </div>
@@ -188,7 +210,11 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
                     onClick={() => router.push(`/consultations/${c.id}/room`)}
                     className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition-all hover:bg-indigo-700 hover:shadow-lg"
                   >
-                    Enter Consultation
+                    {t(
+                      'hospital.dashboard.sections.consultations.enter',
+                      undefined,
+                      'Enter Consultation',
+                    )}
                   </button>
                 </div>
               );
@@ -202,44 +228,51 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
         {/* New Cases */}
         <section className="rounded-[2rem] border border-slate-100 bg-white p-8 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.02)]">
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">New Cases</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {t('hospital.dashboard.sections.newCases.title', undefined, 'New Cases')}
+            </h2>
             <button
               onClick={() => router.push('/cases')}
               className="flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-700"
             >
-              View All <ChevronRight size={16} />
+              {t('hospital.common.viewAll', undefined, 'View All')} <ChevronRight size={16} />
             </button>
           </div>
           {data.recentCases.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No cases yet</p>
+            <p className="py-8 text-center text-sm text-slate-400">
+              {t('hospital.dashboard.sections.newCases.empty', undefined, 'No cases yet')}
+            </p>
           ) : (
             <div className="space-y-4">
-              {data.recentCases.map((c) => (
-                <div
-                  key={c.id}
-                  onClick={() => router.push(`/cases/${c.id}`)}
-                  className="flex cursor-pointer items-center gap-4 rounded-xl p-2 transition-colors hover:bg-slate-50"
-                >
-                  {/* Avatar */}
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarColor(c.patientName)}`}>
-                    {getInitials(c.patientName)}
-                  </div>
-                  {/* Info */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-900">{c.patientName}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${conditionBadgeColor(c.medicalCondition)}`}>
-                        {conditionLabel(c.medicalCondition)}
-                      </span>
+              {data.recentCases.map((c) => {
+                const patientName = c.patientName || unknownLabel;
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => router.push(`/cases/${c.id}`)}
+                    className="flex cursor-pointer items-center gap-4 rounded-xl p-2 transition-colors hover:bg-slate-50"
+                  >
+                    {/* Avatar */}
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarColor(patientName)}`}>
+                      {getInitials(patientName)}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      {c.caseNumber}
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-900">{patientName}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${conditionBadgeColor(c.medicalCondition)}`}>
+                          {conditionLabel(c.medicalCondition)}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {c.caseNumber || notAvailableLabel}
+                      </div>
                     </div>
+                    {/* Time */}
+                    <span className="shrink-0 text-xs text-slate-400">{timeAgo(c.createdAt, locale)}</span>
                   </div>
-                  {/* Time */}
-                  <span className="shrink-0 text-xs text-slate-400">{timeAgo(c.createdAt)}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -247,44 +280,57 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
         {/* Pending Messages */}
         <section className="rounded-[2rem] border border-slate-100 bg-white p-8 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.02)]">
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Pending Messages</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {t('hospital.dashboard.sections.pendingMessages.title', undefined, 'Pending Messages')}
+            </h2>
             <button
               onClick={() => router.push('/messages')}
               className="flex items-center gap-1 text-sm font-semibold text-indigo-600 hover:text-indigo-700"
             >
-              View All <ChevronRight size={16} />
+              {t('hospital.common.viewAll', undefined, 'View All')} <ChevronRight size={16} />
             </button>
           </div>
           {data.pendingMessages.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No pending messages</p>
+            <p className="py-8 text-center text-sm text-slate-400">
+              {t(
+                'hospital.dashboard.sections.pendingMessages.empty',
+                undefined,
+                'No pending messages',
+              )}
+            </p>
           ) : (
             <div className="space-y-4">
-              {data.pendingMessages.map((m) => (
-                <div
-                  key={m.id}
-                  onClick={() => router.push(`/messages?conversation=${m.id}`)}
-                  className="flex cursor-pointer items-center gap-4 rounded-xl p-2 transition-colors hover:bg-slate-50"
-                >
-                  {/* Avatar with unread badge */}
-                  <div className="relative shrink-0">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold ${avatarColor(m.patientName)}`}>
-                      {getInitials(m.patientName)}
+              {data.pendingMessages.map((m) => {
+                const patientName = m.patientName || unknownLabel;
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => router.push(`/messages?conversation=${m.id}`)}
+                    className="flex cursor-pointer items-center gap-4 rounded-xl p-2 transition-colors hover:bg-slate-50"
+                  >
+                    {/* Avatar with unread badge */}
+                    <div className="relative shrink-0">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold ${avatarColor(patientName)}`}>
+                        {getInitials(patientName)}
+                      </div>
+                      {m.unreadCount > 0 && (
+                        <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                          {m.unreadCount}
+                        </span>
+                      )}
                     </div>
-                    {m.unreadCount > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-                        {m.unreadCount}
-                      </span>
-                    )}
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-slate-900">{patientName}</div>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">{m.lastMessage}</p>
+                    </div>
+                    {/* Time */}
+                    <span className="shrink-0 text-xs text-indigo-500 font-medium">
+                      {formatMessageTime(m.updatedAt, locale)}
+                    </span>
                   </div>
-                  {/* Info */}
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-slate-900">{m.patientName}</div>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">{m.lastMessage}</p>
-                  </div>
-                  {/* Time */}
-                  <span className="shrink-0 text-xs text-indigo-500 font-medium">{formatMessageTime(m.updatedAt)}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

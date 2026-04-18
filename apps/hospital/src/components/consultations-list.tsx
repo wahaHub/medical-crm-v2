@@ -25,6 +25,7 @@ import {
 import { useConsultations, useConsultationStats, useConsultationTranscript } from '@/queries/use-consultations';
 import { CreateConsultationModal } from '@/components/create-consultation-modal';
 import type { PaginatedResponse, ConsultationSummary, ConsultationStats, CaseSummary } from '@/lib/api-types';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 interface ConsultationsListProps {
   initialData: PaginatedResponse<ConsultationSummary>;
@@ -33,41 +34,70 @@ interface ConsultationsListProps {
   cases?: CaseSummary[];
 }
 
-const statusTabs = [
-  { key: 'SCHEDULED', label: 'Scheduled' },
-  { key: 'COMPLETED', label: 'Completed' },
-  { key: 'all', label: 'All' },
-];
-
-const STAT_CARDS = [
-  { key: 'scheduled', label: 'Scheduled', colorClass: 'bg-blue-50 text-blue-600', icon: Calendar },
-  { key: 'today', label: 'Today', colorClass: 'bg-cyan-50 text-cyan-600', icon: Clock },
-  { key: 'needTranslation', label: 'Need Translation', colorClass: 'bg-purple-50 text-purple-600', icon: Languages },
-  { key: 'completed', label: 'Completed', colorClass: 'bg-emerald-50 text-emerald-600', icon: CheckCircle },
-];
-
-function formatTimeBox(dateStr: string) {
+function formatTimeBox(dateStr: string, locale: string) {
   if (!dateStr) return { date: '--/--', time: '--:--', period: '' };
   const d = new Date(dateStr);
-  const month = (d.getMonth() + 1).toString().padStart(2, '0');
-  const day = d.getDate().toString().padStart(2, '0');
-  const hours = d.getHours();
-  const minutes = d.getMinutes();
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const h12 = hours % 12 || 12;
+  if (Number.isNaN(d.getTime())) return { date: '--/--', time: '--:--', period: '' };
+
+  const date = new Intl.DateTimeFormat(locale, {
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+  const timeParts = new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(d);
+  const hour = timeParts.find((part) => part.type === 'hour')?.value ?? '--';
+  const minute = timeParts.find((part) => part.type === 'minute')?.value ?? '--';
+  const period = timeParts.find((part) => part.type === 'dayPeriod')?.value ?? '';
+
   return {
-    date: `${month}/${day}`,
-    time: `${h12}:${minutes.toString().padStart(2, '0')}`,
+    date,
+    time: `${hour}:${minute}`,
     period,
   };
 }
 
 export function ConsultationsList({ initialData, initialStats, caseMap = {}, cases = [] }: ConsultationsListProps) {
+  const { locale, t } = useHospitalI18n();
+  const tx = (key: string, fallback: string) => t(key, undefined, fallback);
   const router = useRouter();
   const [status, setStatus] = useState('SCHEDULED');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [transcriptId, setTranscriptId] = useState<string | null>(null);
+  const statusTabs = [
+    { key: 'SCHEDULED', label: tx('hospital.consultations.tabs.scheduled', 'Scheduled') },
+    { key: 'COMPLETED', label: tx('hospital.consultations.tabs.completed', 'Completed') },
+    { key: 'all', label: tx('hospital.consultations.tabs.all', 'All') },
+  ];
+  const statCards = [
+    {
+      key: 'scheduled',
+      label: tx('hospital.consultations.stats.scheduled', 'Scheduled'),
+      colorClass: 'bg-blue-50 text-blue-600',
+      icon: Calendar,
+    },
+    {
+      key: 'today',
+      label: tx('hospital.consultations.stats.today', 'Today'),
+      colorClass: 'bg-cyan-50 text-cyan-600',
+      icon: Clock,
+    },
+    {
+      key: 'needTranslation',
+      label: tx('hospital.consultations.stats.needTranslation', 'Need Translation'),
+      colorClass: 'bg-purple-50 text-purple-600',
+      icon: Languages,
+    },
+    {
+      key: 'completed',
+      label: tx('hospital.consultations.stats.completed', 'Completed'),
+      colorClass: 'bg-emerald-50 text-emerald-600',
+      icon: CheckCircle,
+    },
+  ];
 
   const params: Record<string, string> = { limit: '20' };
   if (status !== 'all') params.status = status;
@@ -85,7 +115,7 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
 
   // Resolve patient name from caseMap if not available on consultation
   const resolvePatientName = (c: ConsultationSummary) =>
-    c.patientName || (c.caseId ? caseMap[c.caseId] : undefined) || 'Unknown';
+    c.patientName || (c.caseId ? caseMap[c.caseId] : undefined) || tx('hospital.messages.chat.unknown', 'Unknown');
 
   const statValues = [
     stats.scheduled ?? 0,
@@ -98,7 +128,7 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
     <div className="space-y-6">
       {/* Stat Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {STAT_CARDS.map((card, i) => {
+        {statCards.map((card, i) => {
           const Icon = card.icon;
           return (
             <div
@@ -138,23 +168,28 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full shadow-md shadow-indigo-200/50 transition-colors"
         >
-          <Plus size={16} /> Create Consultation
+          <Plus size={16} /> {tx('hospital.portal.consultations.list.createButton', 'Create Consultation')}
         </button>
       </div>
 
       {/* Consultation Cards */}
       {!filtersMatchSSR && isPending ? (
-        <div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>
+        <div className="flex items-center justify-center py-12 text-slate-400">
+          {tx('hospital.portal.consultations.list.loading', 'Loading...')}
+        </div>
       ) : consultations.length === 0 ? (
         <EmptyState
           icon={<Video size={48} />}
-          title="No consultations found"
-          description="Create a new consultation to get started."
+          title={tx('hospital.consultations.empty', 'No consultations found')}
+          description={tx(
+            'hospital.portal.consultations.list.emptyDescription',
+            'Create a new consultation to get started.',
+          )}
         />
       ) : (
         <div className="space-y-4">
           {consultations.map((c) => {
-            const { date, time, period } = formatTimeBox(c.scheduledAt ?? '');
+            const { date, time, period } = formatTimeBox(c.scheduledAt ?? '', locale);
             const isExpanded = expandedId === c.id;
             const patientName = resolvePatientName(c);
 
@@ -199,7 +234,7 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
                         onClick={() => router.push(`/consultations/${c.id}/room`)}
                         className="flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-200 hover:bg-indigo-700 transition-colors"
                       >
-                        <Video size={16} /> Enter
+                        <Video size={16} /> {tx('hospital.consultations.card.enterConsultation', 'Enter')}
                       </button>
                     )}
                     {c.status === 'COMPLETED' && (
@@ -207,7 +242,10 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
                         onClick={() => setExpandedId(isExpanded ? null : c.id)}
                         className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors"
                       >
-                        View Details {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        {isExpanded
+                          ? tx('hospital.consultations.card.collapse', 'Collapse Details')
+                          : tx('hospital.consultations.card.viewDetails', 'View Details')}{' '}
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </button>
                     )}
                   </div>
@@ -219,22 +257,31 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <Sparkles size={18} className="text-indigo-600" />
-                        <h4 className="font-semibold text-slate-900">AI Summary</h4>
-                        <span className="text-xs text-slate-400 uppercase">AI Generated</span>
+                        <h4 className="font-semibold text-slate-900">
+                          {tx('hospital.consultations.card.aiSummary', 'AI Summary')}
+                        </h4>
+                        <span className="text-xs text-slate-400 uppercase">
+                          {tx('hospital.consultations.card.aiGenerated', 'AI Generated')}
+                        </span>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => setTranscriptId(c.id)}
                           className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50"
                         >
-                          <FileText size={14} /> Transcript
+                          <FileText size={14} /> {tx('hospital.portal.consultations.card.transcript', 'Transcript')}
                         </button>
                         <button className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50">
-                          <Video size={14} /> Video
+                          <Video size={14} /> {tx('hospital.portal.consultations.card.video', 'Video')}
                         </button>
                       </div>
                     </div>
-                    <p className="text-sm text-slate-500 text-center py-4">AI summary will be available after consultation recording is processed.</p>
+                    <p className="py-4 text-center text-sm text-slate-500">
+                      {tx(
+                        'hospital.portal.consultations.card.summaryPending',
+                        'AI summary will be available after consultation recording is processed.',
+                      )}
+                    </p>
                   </div>
                 )}
               </div>
@@ -249,7 +296,9 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
                 onClick={() => fetchNextPage()}
                 disabled={isFetchingNextPage}
               >
-                {isFetchingNextPage ? 'Loading...' : 'Load More'}
+                {isFetchingNextPage
+                  ? tx('hospital.portal.consultations.list.loadingMore', 'Loading...')
+                  : tx('hospital.portal.consultations.list.loadMore', 'Load More')}
               </Button>
             </div>
           )}
@@ -289,6 +338,8 @@ function TranscriptModal({
   consultationId: string | null;
   onClose: () => void;
 }) {
+  const { t } = useHospitalI18n();
+  const tx = (key: string, fallback: string) => t(key, undefined, fallback);
   const [showTranslation, setShowTranslation] = useState(true);
   const { data, isPending } = useConsultationTranscript(consultationId);
 
@@ -306,7 +357,9 @@ function TranscriptModal({
             <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center">
               <FileText size={18} className="text-purple-600" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-900">Full Transcript</h3>
+            <h3 className="text-lg font-semibold text-slate-900">
+              {tx('hospital.consultations.transcriptModal.title', 'Full Transcript')}
+            </h3>
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -316,7 +369,9 @@ function TranscriptModal({
                 onChange={(e) => setShowTranslation(e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
               />
-              <span className="text-sm text-slate-600">Show Translation</span>
+              <span className="text-sm text-slate-600">
+                {tx('hospital.consultations.transcriptModal.showTranslation', 'Show Translation')}
+              </span>
             </label>
             <button
               onClick={onClose}
@@ -330,12 +385,21 @@ function TranscriptModal({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
           {isPending ? (
-            <div className="flex items-center justify-center py-12 text-slate-400">Loading transcript...</div>
+            <div className="flex items-center justify-center py-12 text-slate-400">
+              {tx('hospital.consultations.transcriptModal.loading', 'Loading transcript...')}
+            </div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <FileText size={40} className="mb-3 opacity-50" />
-              <p className="text-sm">No transcript entries available yet.</p>
-              <p className="text-xs mt-1">Transcript will be generated after the consultation recording is processed.</p>
+              <p className="text-sm">
+                {tx('hospital.portal.consultations.transcriptModal.emptyTitle', 'No transcript entries available yet.')}
+              </p>
+              <p className="mt-1 text-xs">
+                {tx(
+                  'hospital.consultations.transcriptModal.willGenerateAfter',
+                  'Transcript will be generated after the consultation recording is processed.',
+                )}
+              </p>
             </div>
           ) : (
             entries.map((entry, i) => {
@@ -372,7 +436,7 @@ function TranscriptModal({
         {/* Footer */}
         <div className="flex justify-end p-4 border-t border-slate-100 shrink-0">
           <button className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-full shadow-md shadow-purple-200/50 transition-colors">
-            <Download size={16} /> Export PDF
+            <Download size={16} /> {tx('hospital.consultations.transcriptModal.exportPDF', 'Export PDF')}
           </button>
         </div>
       </div>

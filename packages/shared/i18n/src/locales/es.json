@@ -1214,6 +1214,49 @@
   },
   "hospital": {
     "title": "Portal Hospitalario",
+    "portalShell": {
+      "title": "Portal Hospitalario",
+      "nav": {
+        "dashboard": "Panel",
+        "cases": "Casos",
+        "consultations": "Consultas",
+        "messages": "Mensajes",
+        "materials": "Materiales",
+        "emailTemplates": "Plantillas de correo",
+        "faq": "Chatbot y FAQ",
+        "settings": "Configuración"
+      },
+      "actions": {
+        "logout": "Cerrar sesión",
+        "notifications": "Notificaciones"
+      },
+      "search": {
+        "placeholder": "Buscar pacientes, casos..."
+      }
+    },
+    "error": {
+      "title": "Algo salió mal",
+      "tryAgain": "Intentar de nuevo"
+    },
+    "loading": {
+      "label": "Cargando"
+    },
+    "login": {
+      "title": "Medical CRM",
+      "subtitle": "Inicio de sesión unificado del portal",
+      "formTitle": "Inicia sesión en tu cuenta",
+      "usernameLabel": "Usuario / Correo",
+      "usernamePlaceholder": "Ingresa usuario o correo",
+      "passwordLabel": "Contraseña",
+      "passwordPlaceholder": "Ingresa la contraseña",
+      "submit": "Iniciar sesión",
+      "submitting": "Iniciando sesión...",
+      "alternatePortalLabel": "Ir al portal de admin",
+      "errors": {
+        "loginFailed": "Error al iniciar sesión",
+        "requestFailed": "Ocurrió un error durante el inicio de sesión"
+      }
+    },
     "dashboard": {
       "pendingCases": {
         "title": "Casos pendientes",

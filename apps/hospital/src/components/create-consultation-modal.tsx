@@ -7,6 +7,7 @@ import { CheckCircle } from 'lucide-react';
 import { Modal, Button } from '@medical-crm/ui';
 import { createConsultation } from '@/actions/consultation-actions';
 import type { CaseSummary } from '@/lib/api-types';
+import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 interface CreateConsultationModalProps {
   open: boolean;
@@ -22,11 +23,13 @@ interface CreateConsultationModalProps {
 export function CreateConsultationModal({
   open,
   onClose,
-  title = 'Create Consultation',
-  submitLabel = 'Create Consultation',
+  title: titleProp,
+  submitLabel: submitLabelProp,
   fixedCaseId,
   cases = [],
 }: CreateConsultationModalProps) {
+  const { t } = useHospitalI18n();
+  const tx = (key: string, fallback: string) => t(key, undefined, fallback);
   const router = useRouter();
   const queryClient = useQueryClient();
   const [caseId, setCaseId] = useState(fixedCaseId ?? '');
@@ -41,6 +44,9 @@ export function CreateConsultationModal({
   const availableCases = fixedCaseId
     ? cases.filter((c) => c.id === fixedCaseId)
     : cases;
+  const title = titleProp ?? tx('hospital.consultations.createModal.title', 'Create Consultation');
+  const submitLabel = submitLabelProp ?? tx('hospital.consultations.createModal.create', 'Create Consultation');
+  const doctorPrefix = tx('hospital.portal.consultations.createModal.doctorPrefix', 'Doctor');
 
   const resetForm = () => {
     setCaseId(fixedCaseId ?? '');
@@ -66,7 +72,7 @@ export function CreateConsultationModal({
     setIsSubmitting(true);
     try {
       const combinedNotes = doctorName
-        ? `医生: ${doctorName}${notes ? '\n' + notes : ''}`
+        ? `${doctorPrefix}: ${doctorName}${notes ? `\n${notes}` : ''}`
         : notes || undefined;
       await createConsultation({
         caseId: effectiveCaseId,
@@ -96,7 +102,9 @@ export function CreateConsultationModal({
     <Modal open={open} onClose={handleClose} title={title}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Select Case</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            {tx('hospital.consultations.createModal.selectCase', 'Select Case')}
+          </label>
           <select
             value={effectiveCaseId}
             onChange={(e) => setCaseId(e.target.value)}
@@ -104,33 +112,48 @@ export function CreateConsultationModal({
             disabled={!!fixedCaseId}
             className={`${inputClass} bg-white disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500`}
           >
-            {!fixedCaseId && <option value="">Choose a case...</option>}
+            {!fixedCaseId && (
+              <option value="">
+                {tx('hospital.consultations.createModal.chooseCase', 'Choose a case...')}
+              </option>
+            )}
             {availableCases.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.caseNumber ? `${c.caseNumber} - ` : ''}{c.patientName ?? 'Unknown'}{c.patientCode ? ` (${c.patientCode})` : ''}
+                {c.caseNumber ? `${c.caseNumber} - ` : ''}
+                {c.patientName ?? tx('hospital.messages.chat.unknown', 'Unknown')}
+                {c.patientCode ? ` (${c.patientCode})` : ''}
               </option>
             ))}
             {fixedCaseId && availableCases.length === 0 && (
-              <option value={fixedCaseId}>Current Case</option>
+              <option value={fixedCaseId}>
+                {tx('hospital.portal.consultations.createModal.currentCase', 'Current Case')}
+              </option>
             )}
           </select>
         </div>
 
         {/* Doctor Name */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Doctor Name</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            {tx('hospital.consultations.createModal.doctor', 'Doctor Name')}
+          </label>
           <input
             type="text"
             value={doctorName}
             onChange={(e) => setDoctorName(e.target.value)}
             className={inputClass}
-            placeholder="Enter doctor name (optional)"
+            placeholder={tx(
+              'hospital.portal.consultations.createModal.doctorPlaceholder',
+              'Enter doctor name (optional)',
+            )}
           />
         </div>
 
         {/* Scheduled Date & Time */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Scheduled Date & Time</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            {tx('hospital.consultations.createModal.scheduledTime', 'Scheduled Date & Time')}
+          </label>
           <input
             type="datetime-local"
             value={scheduledAt}
@@ -143,16 +166,18 @@ export function CreateConsultationModal({
 
         {/* Duration */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Duration</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            {tx('hospital.consultations.createModal.duration', 'Duration')}
+          </label>
           <select
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(e.target.value)}
             className={`${inputClass} bg-white`}
           >
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="45">45 minutes</option>
-            <option value="60">60 minutes</option>
+            <option value="15">{tx('hospital.consultations.createModal.duration15', '15 minutes')}</option>
+            <option value="30">{tx('hospital.consultations.createModal.duration30', '30 minutes')}</option>
+            <option value="45">{tx('hospital.consultations.createModal.duration45', '45 minutes')}</option>
+            <option value="60">{tx('hospital.consultations.createModal.duration60', '60 minutes')}</option>
           </select>
         </div>
 
@@ -166,19 +191,21 @@ export function CreateConsultationModal({
             className="h-4 w-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
           />
           <label htmlFor="aiTranslationModal" className="text-sm text-purple-700 flex-1">
-            Enable AI Translation
+            {tx('hospital.portal.consultations.createModal.enableAiTranslation', 'Enable AI Translation')}
           </label>
         </div>
 
         {/* Notes */}
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Notes</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            {tx('hospital.consultations.createModal.notes', 'Notes')}
+          </label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             className={`${inputClass} resize-none`}
-            placeholder="Optional notes..."
+            placeholder={tx('hospital.portal.consultations.createModal.notesPlaceholder', 'Optional notes...')}
           />
         </div>
 
@@ -186,14 +213,19 @@ export function CreateConsultationModal({
         <div className="flex items-center gap-3 p-3 bg-teal-50 border border-teal-200 rounded-xl">
           <CheckCircle size={16} className="text-teal-600 shrink-0" />
           <p className="text-xs text-teal-700">
-            A CRM notification will be sent to the patient when the consultation is scheduled.
+            {tx(
+              'hospital.portal.consultations.createModal.crmNotification',
+              'A CRM notification will be sent to the patient when the consultation is scheduled.',
+            )}
           </p>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={handleClose}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={handleClose}>
+            {tx('hospital.consultations.createModal.cancel', 'Cancel')}
+          </Button>
           <Button type="submit" disabled={isSubmitting || !effectiveCaseId || !scheduledAt}>
-            {isSubmitting ? 'Creating...' : submitLabel}
+            {isSubmitting ? tx('hospital.consultations.createModal.creating', 'Creating...') : submitLabel}
           </Button>
         </div>
       </form>

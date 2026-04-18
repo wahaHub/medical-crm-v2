@@ -1205,6 +1205,49 @@
   },
   "hospital": {
     "title": "হাসপাতাল পোর্টাল",
+    "portalShell": {
+      "title": "হাসপাতাল পোর্টাল",
+      "nav": {
+        "dashboard": "ড্যাশবোর্ড",
+        "cases": "কেস",
+        "consultations": "পরামর্শ",
+        "messages": "বার্তা",
+        "materials": "ম্যাটেরিয়ালস",
+        "emailTemplates": "ইমেইল টেমপ্লেট",
+        "faq": "চ্যাটবট ও FAQ",
+        "settings": "সেটিংস"
+      },
+      "actions": {
+        "logout": "লগ আউট",
+        "notifications": "নোটিফিকেশন"
+      },
+      "search": {
+        "placeholder": "রোগী, কেস খুঁজুন..."
+      }
+    },
+    "error": {
+      "title": "কিছু সমস্যা হয়েছে",
+      "tryAgain": "আবার চেষ্টা করুন"
+    },
+    "loading": {
+      "label": "লোড হচ্ছে"
+    },
+    "login": {
+      "title": "Medical CRM",
+      "subtitle": "একীভূত পোর্টাল লগইন",
+      "formTitle": "আপনার অ্যাকাউন্টে সাইন ইন করুন",
+      "usernameLabel": "ব্যবহারকারীর নাম / ইমেইল",
+      "usernamePlaceholder": "ব্যবহারকারীর নাম বা ইমেইল লিখুন",
+      "passwordLabel": "পাসওয়ার্ড",
+      "passwordPlaceholder": "পাসওয়ার্ড লিখুন",
+      "submit": "সাইন ইন",
+      "submitting": "সাইন ইন হচ্ছে...",
+      "alternatePortalLabel": "অ্যাডমিন পোর্টালে যান",
+      "errors": {
+        "loginFailed": "সাইন ইন ব্যর্থ হয়েছে",
+        "requestFailed": "সাইন ইন করার সময় একটি ত্রুটি হয়েছে"
+      }
+    },
     "dashboard": {
       "pendingCases": {
         "title": "মুলতুবি কেস",

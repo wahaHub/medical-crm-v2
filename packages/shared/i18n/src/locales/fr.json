@@ -1214,6 +1214,49 @@
   },
   "hospital": {
     "title": "Portail Hospitalier",
+    "portalShell": {
+      "title": "Portail Hospitalier",
+      "nav": {
+        "dashboard": "Tableau de bord",
+        "cases": "Cas",
+        "consultations": "Consultations",
+        "messages": "Messages",
+        "materials": "Ressources",
+        "emailTemplates": "Modèles d'e-mail",
+        "faq": "Chatbot et FAQ",
+        "settings": "Paramètres"
+      },
+      "actions": {
+        "logout": "Se déconnecter",
+        "notifications": "Notifications"
+      },
+      "search": {
+        "placeholder": "Rechercher des patients, des cas..."
+      }
+    },
+    "error": {
+      "title": "Une erreur s'est produite",
+      "tryAgain": "Réessayer"
+    },
+    "loading": {
+      "label": "Chargement"
+    },
+    "login": {
+      "title": "Medical CRM",
+      "subtitle": "Connexion unifiée au portail",
+      "formTitle": "Connectez-vous à votre compte",
+      "usernameLabel": "Nom d'utilisateur / E-mail",
+      "usernamePlaceholder": "Entrez le nom d'utilisateur ou l'e-mail",
+      "passwordLabel": "Mot de passe",
+      "passwordPlaceholder": "Entrez le mot de passe",
+      "submit": "Se connecter",
+      "submitting": "Connexion en cours...",
+      "alternatePortalLabel": "Aller au portail admin",
+      "errors": {
+        "loginFailed": "Échec de la connexion",
+        "requestFailed": "Une erreur s'est produite pendant la connexion"
+      }
+    },
     "dashboard": {
       "pendingCases": {
         "title": "Cas en attente",

@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
+import { loadMessages, normalizeLocale } from '@medical-crm/i18n';
 import { getSession } from '@/lib/session';
 import { AuthProvider, type AuthUser } from '@/lib/auth-context';
 import { PortalShell } from '@/components/portal-shell';
+import { HospitalI18nProvider } from '@/lib/hospital-i18n';
 import { extractUserFromToken } from '@/lib/keycloak-client';
 import { apiFetch } from '@/lib/api-fetch';
 
@@ -25,6 +27,8 @@ export default async function PortalLayout({ children }: { children: React.React
   const profile = profileRes.ok
     ? await profileRes.json() as UserProfileResponse
     : null;
+  const locale = normalizeLocale(profile?.preferredLanguage);
+  const messages = await loadMessages(locale);
 
   const user: AuthUser = {
     id: keycloakUser.sub,
@@ -36,7 +40,9 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <AuthProvider user={user}>
-      <PortalShell>{children}</PortalShell>
+      <HospitalI18nProvider initialLocale={locale} initialMessages={messages}>
+        <PortalShell>{children}</PortalShell>
+      </HospitalI18nProvider>
     </AuthProvider>
   );
 }

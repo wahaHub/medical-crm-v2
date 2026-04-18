@@ -96,6 +96,7 @@ interface AttachmentTranslationState {
 }
 
 type AdminVisibleConversationCategory = 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT';
+type IncludedConversationCategory = AdminVisibleConversationCategory | 'HOSPITAL_PATIENT';
 
 interface PaginatedLike<T> {
   data?: T[];
@@ -367,6 +368,12 @@ const CATEGORY_SECTION_ORDER: Array<{ key: AdminVisibleConversationCategory; lab
   { key: 'ADMIN_HOSPITAL', label: 'Admin / Hospital' },
   { key: 'ADMIN_PATIENT', label: 'Admin / Patient' },
 ];
+
+function getCategorySectionLabel(category: IncludedConversationCategory): string {
+  if (category === 'ADMIN_HOSPITAL') return 'Admin / Hospital';
+  if (category === 'ADMIN_PATIENT') return 'Admin / Patient';
+  return 'Hospital / Patient';
+}
 
 function getInitials(name: string): string {
   return name.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
@@ -836,12 +843,23 @@ export function MessagesCenter({
   const selectedConversation = conversations.find((conv) => conv.id === selectedConvId) ?? null;
 
   const groupedConversations = useMemo(
-    () =>
-      CATEGORY_SECTION_ORDER.map((section) => ({
+    () => {
+      const sectionOrder: Array<{ key: IncludedConversationCategory; label: string }> = includedCategories
+        ? includedCategories.map((category) => ({
+            key: category as IncludedConversationCategory,
+            label: getCategorySectionLabel(category as IncludedConversationCategory),
+          }))
+        : CATEGORY_SECTION_ORDER.map((section) => ({
+            key: section.key,
+            label: section.label,
+          }));
+
+      return sectionOrder.map((section) => ({
         ...section,
-        conversations: conversations.filter((c) => toAdminCategory(c.category) === section.key),
-      })).filter((section) => section.conversations.length > 0),
-    [conversations],
+        conversations: conversations.filter((c) => (c.category?.toUpperCase() ?? '') === section.key),
+      })).filter((section) => section.conversations.length > 0);
+    },
+    [conversations, includedCategories],
   );
 
   const sidebarSections: MessageConversationSection[] = useMemo(

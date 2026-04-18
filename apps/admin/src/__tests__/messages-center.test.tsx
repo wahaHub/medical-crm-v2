@@ -30,6 +30,11 @@ const {
   mockUseMessages,
   mockUseQueryClient,
   mockUseConversations,
+  mockUseHospitals,
+  mockUseHospitalCases,
+  mockUseCase,
+  mockUseCaseDocuments,
+  mockUseCases,
 } = vi.hoisted(() => ({
   mockApiFetch: vi.fn(),
   mockRevalidatePath: vi.fn(),
@@ -38,6 +43,11 @@ const {
   mockUseMessages: vi.fn(),
   mockUseQueryClient: vi.fn(),
   mockUseConversations: vi.fn(),
+  mockUseHospitals: vi.fn(),
+  mockUseHospitalCases: vi.fn(),
+  mockUseCase: vi.fn(),
+  mockUseCaseDocuments: vi.fn(),
+  mockUseCases: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -57,7 +67,18 @@ vi.mock('@medical-crm/ui', () => ({
     </div>
   ),
   EmptyState: ({ title }: { title: string }) => <div>{title}</div>,
-  MessageConversationSidebar: () => <div>Sidebar</div>,
+  MessageConversationSidebar: ({
+    sections,
+  }: {
+    sections?: Array<{ key: string; items: Array<{ id: string; title: string }> }>;
+  }) => (
+    <div>
+      <div>Sidebar</div>
+      {sections?.flatMap((section) => section.items).map((item) => (
+        <div key={item.id}>{item.title}</div>
+      ))}
+    </div>
+  ),
   MessageCaseDetailPanel: () => <div>Case Panel</div>,
   Modal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   PdfPreview: () => <div>PDF Preview</div>,
@@ -92,14 +113,14 @@ vi.mock('@/queries/use-conversations', () => ({
 }));
 
 vi.mock('@/queries/use-hospitals', () => ({
-  useHospitals: vi.fn(),
-  useHospitalCases: vi.fn(),
+  useHospitals: mockUseHospitals,
+  useHospitalCases: mockUseHospitalCases,
 }));
 
 vi.mock('@/queries/use-cases', () => ({
-  useCase: vi.fn(),
-  useCaseDocuments: vi.fn(),
-  useCases: vi.fn(),
+  useCase: mockUseCase,
+  useCaseDocuments: mockUseCaseDocuments,
+  useCases: mockUseCases,
 }));
 
 vi.mock('@/lib/api-fetch', () => ({
@@ -112,7 +133,7 @@ vi.mock('next/cache', () => ({
 
 import { restoreConversationAi } from '../actions/message-actions';
 import * as messageActions from '../actions/message-actions';
-import { ChatPanel, ConversationAssistantControlSurface } from '../components/messages-center';
+import { ChatPanel, ConversationAssistantControlSurface, MessagesCenter } from '../components/messages-center';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -133,6 +154,11 @@ describe('ConversationAssistantControlSurface', () => {
       data: [],
       isLoading: false,
     });
+    mockUseHospitals.mockReturnValue({ data: { data: [] } });
+    mockUseHospitalCases.mockReturnValue({ data: { data: [] } });
+    mockUseCase.mockReturnValue({ data: null });
+    mockUseCaseDocuments.mockReturnValue({ data: [] });
+    mockUseCases.mockReturnValue({ data: { data: [] } });
   });
 
   it('renders the AI-active status for admin-patient conversations', () => {
@@ -221,11 +247,60 @@ describe('ConversationAssistantControlSurface', () => {
 
     await waitFor(() => {
       expect(restoreSpy).toHaveBeenCalledWith('conv-human');
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['conversations'] });
-      expect(mockRefetch).toHaveBeenCalled();
     });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['conversations'] });
+    expect(mockRefetch).toHaveBeenCalled();
+  });
+});
+
+describe('MessagesCenter', () => {
+  beforeEach(() => {
+    globalThis.React = React;
+    vi.clearAllMocks();
+    mockUseQueryClient.mockReturnValue({
+      invalidateQueries: mockInvalidateQueries,
+    });
+    mockUseMessages.mockReturnValue({
+      data: [],
+      refetch: mockRefetch,
+    });
+    mockUseHospitals.mockReturnValue({ data: { data: [] } });
+    mockUseHospitalCases.mockReturnValue({ data: { data: [] } });
+    mockUseCase.mockReturnValue({ data: null });
+    mockUseCaseDocuments.mockReturnValue({ data: [] });
+    mockUseCases.mockReturnValue({ data: { data: [] } });
   });
 
+  it('shows hospital-patient conversations when the case tab restricts included categories', () => {
+    mockUseConversations.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'conv-hospital',
+            category: 'HOSPITAL_PATIENT',
+            title: 'Hospital Thread',
+            participantName: 'Hospital Thread',
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    render(
+      <MessagesCenter
+        caseId="case-1"
+        showSearch={false}
+        showCategoryFilter={false}
+        showInfoPanel={false}
+        allowCreateConversation={false}
+        groupByCategorySections={false}
+        includedCategories={['HOSPITAL_PATIENT']}
+        readOnly
+      />,
+    );
+
+    expect(screen.getByText('Hospital Thread')).toBeTruthy();
+  });
 });
 
 describe('restoreConversationAi', () => {

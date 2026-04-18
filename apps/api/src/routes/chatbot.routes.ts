@@ -237,7 +237,9 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     canAnswer: null,
     nextAction: null,
     citations: [],
-    metadata: {},
+    metadata: {
+      draftState: 'pending',
+    },
     createdAt: new Date(),
   }));
 
@@ -376,6 +378,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
     shortlist: normalized.shortlist,
     metadata: {
       ...normalized.metadata,
+      draftState: 'succeeded',
       chatbotV2: {
         ...publicChatbotV2,
         resources: enrichChatbotV2Resources({

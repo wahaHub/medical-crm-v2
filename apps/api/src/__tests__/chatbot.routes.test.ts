@@ -413,6 +413,9 @@ describe('Chatbot routes', () => {
         id: expect.any(String),
         role: 'ASSISTANT',
         content: '',
+        metadata: expect.objectContaining({
+          draftState: 'pending',
+        }),
       }),
     );
     expect(mockServices.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
@@ -425,6 +428,7 @@ describe('Chatbot routes', () => {
         reasonCodes: ['consult_interest_detected'],
         shortlist: [{ hospitalId: 'hospital-1', matchType: 'matched', reasonCodes: ['goal_fit'] }],
         metadata: expect.objectContaining({
+          draftState: 'succeeded',
           topic: 'PROCEDURE',
         }),
       }),

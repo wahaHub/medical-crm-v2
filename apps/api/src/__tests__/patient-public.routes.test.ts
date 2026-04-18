@@ -146,7 +146,7 @@ describe('patientPublicRoutes', () => {
     mockGetServices.mockReset();
   });
 
-  it('returns a restore token from onboarding and seeds the widget through Dify instead of local hospital matching', async () => {
+  it('returns a restore token from onboarding and seeds the widget with a local process starter', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -219,18 +219,21 @@ describe('patientPublicRoutes', () => {
     });
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-123');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
-    expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
-    expect(services.difyFaqGroundingApi.createChatMessage).toHaveBeenCalledOnce();
+    expect(services.difyApi.createChatMessage).not.toHaveBeenCalled();
+    expect(services.difyFaqGroundingApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.difyClassifierApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.matchHospitals.execute).not.toHaveBeenCalled();
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledOnce();
     const starterUpdate = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];
     expect(starterUpdate).toMatchObject({
-      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+      content: 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.',
+      nextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
+      writebackStatus: 'succeeded',
       metadata: {
         widgetStarterSeed: true,
-        widgetStarterVersion: 'ai-v1',
-        internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+        widgetStarterVersion: 'crm-v1',
+        draftState: 'succeeded',
+        internalNextAction: 'EXPLAIN_MEDICAL_TRAVEL_PROCESS',
         classifierResult: {
           requestClass: 'process_explanation',
           targetResourceTypes: ['PROCESS_GUIDE'],
@@ -244,58 +247,20 @@ describe('patientPublicRoutes', () => {
           requestClass: 'process_explanation',
           responseIntent: 'process_explanation',
         }),
+        blocks: [
+          expect.objectContaining({
+            type: 'PROCESS_MODAL_TRIGGER',
+            modalKey: 'MEDICAL_TRAVEL_PROCESS',
+          }),
+        ],
       },
     });
     expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).toContain('PROCESS_GUIDE');
     expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
-    expect(starterUpdate?.metadata?.blocks).toBeUndefined();
-    expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
-      'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-      'beauty',
-      'dify-conversation-1',
-    );
-    expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
-      inputs: expect.objectContaining({
-        faqGrounding: JSON.stringify({
-          faqScope: 'GENERAL_ONLY',
-          categories: ['Consultation Process'],
-          groundedContext: 'Grounded process context',
-        }),
-        chatbotV2: expect.any(String),
-      }),
-    }));
-    const starterDifyPayload = services.difyApi.createChatMessage.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(JSON.parse(((starterDifyPayload.inputs as Record<string, unknown>).chatbotV2 as string))).toEqual(
-      expect.objectContaining({
-        journeySnapshot: {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
-        },
-        requestClass: 'process_explanation',
-        responseIntent: 'process_explanation',
-        resources: [
-          expect.objectContaining({
-            resourceType: 'PROCESS_GUIDE',
-            resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            status: 'available',
-            stageBinding: {
-              stage: 'EXPLAIN_PROCESS',
-              phase: 'active',
-            },
-            visibility: {
-              mode: 'global',
-            },
-            payload: {
-              title: 'Understand our consultation process',
-            },
-            actions: ['open'],
-          }),
-        ],
-      }),
-    );
+    expect(services.aiChatSessionRepo.setDifyConversationId).not.toHaveBeenCalled();
   });
 
-  it('does not overwrite an existing ai-v1 widget starter when the session has already been seeded', async () => {
+  it('does not overwrite an existing crm-v1 widget starter when the session has already been seeded', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -319,7 +284,7 @@ describe('patientPublicRoutes', () => {
             content: 'Thanks for sharing your details. Let us walk through the next step.',
             metadata: {
               widgetStarterSeed: true,
-              widgetStarterVersion: 'ai-v1',
+              widgetStarterVersion: 'crm-v1',
             },
           },
         ]),
@@ -346,8 +311,7 @@ describe('patientPublicRoutes', () => {
     expect(services.aiChatMessageRepo.updateMessage).not.toHaveBeenCalled();
   });
 
-  it('preserves refreshed writeback status before saving a widget starter difyConversationId', async () => {
-    const questionnaireTemplateId = '55555555-5555-4555-8555-555555555555';
+  it('refreshes an older ai-v1 widget starter to the current local starter version', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -363,58 +327,20 @@ describe('patientPublicRoutes', () => {
     });
     const services = createBaseServices({
       initOnboarding: { execute },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn()
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          })
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          }),
-        save: vi.fn().mockImplementation(async (entity) => entity),
-        setDifyConversationId: vi.fn().mockResolvedValue(null),
-      },
-      difyApi: {
-        createChatMessage: vi.fn().mockResolvedValue({
-          conversation_id: 'dify-conversation-docs-1',
-          answer: JSON.stringify({
-            answer: 'Please upload your reports so I can guide the next step.',
-            nextAction: 'REQUEST_DOC_UPLOAD',
-            internalNextAction: 'REQUEST_DOC_UPLOAD',
-          }),
-          metadata: { retriever_resources: [] },
-        }),
-      },
-      caseRepo: {
-        findById: vi.fn().mockResolvedValue({
-          id: '11111111-1111-4111-8111-111111111111',
-          structuredData: {
-            patientHospitalSelection: {
-              medicalFormStatus: 'NOT_STARTED',
+      aiChatMessageRepo: {
+        listBySession: vi.fn().mockResolvedValue([
+          {
+            id: 'assistant-1',
+            role: 'ASSISTANT',
+            content: 'Legacy seeded content',
+            metadata: {
+              widgetStarterSeed: true,
+              widgetStarterVersion: 'ai-v1',
             },
           },
-        }),
-      },
-      getTemplateByDisease: {
-        execute: vi.fn().mockResolvedValue({
-          template: {
-            id: questionnaireTemplateId,
-          },
-        }),
+        ]),
+        create: vi.fn(),
+        updateMessage: vi.fn(),
       },
     });
     mockGetServices.mockReturnValue(services);
@@ -431,32 +357,19 @@ describe('patientPublicRoutes', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
-      'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-      'beauty',
-      'dify-conversation-docs-1',
-    );
+    expect(services.aiChatMessageRepo.create).not.toHaveBeenCalled();
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
-      expect.any(String),
+      'assistant-1',
       expect.objectContaining({
-        nextAction: 'REQUEST_DOC_UPLOAD',
         metadata: expect.objectContaining({
-          internalNextAction: 'REQUEST_DOC_UPLOAD',
-          chatbotV2: expect.objectContaining({
-            journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
-            },
-            requestClass: 'process_explanation',
-            responseIntent: 'process_explanation',
-          }),
+          widgetStarterVersion: 'crm-v1',
         }),
       }),
     );
+    expect(services.aiChatSessionRepo.setDifyConversationId).not.toHaveBeenCalled();
   });
 
-  it('builds REQUEST_DOC_UPLOAD starter blocks from the default questionnaire when questionnaire truth is still not submitted', async () => {
-    const questionnaireTemplateId = '66666666-6666-4666-8666-666666666666';
+  it('falls back to a generic safe starter when no local process block is available', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -472,153 +385,31 @@ describe('patientPublicRoutes', () => {
     });
     const services = createBaseServices({
       initOnboarding: { execute },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn()
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          })
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          }),
-        save: vi.fn().mockImplementation(async (entity) => entity),
-        setDifyConversationId: vi.fn().mockResolvedValue(null),
-      },
-      difyApi: {
-        createChatMessage: vi.fn().mockResolvedValue({
-          conversation_id: 'dify-conversation-docs-2',
-          answer: JSON.stringify({
-            answer: 'Please upload your reports so I can guide the next step.',
-            nextAction: 'REQUEST_DOC_UPLOAD',
-            internalNextAction: 'REQUEST_DOC_UPLOAD',
-          }),
-          metadata: { retriever_resources: [] },
-        }),
-      },
-      getTemplateByDisease: {
+      getAiPolicyContext: {
         execute: vi.fn().mockResolvedValue({
-          template: {
-            id: questionnaireTemplateId,
-          },
-        }),
-      },
-      caseRepo: {
-        findById: vi.fn().mockResolvedValue({
-          id: '11111111-1111-4111-8111-111111111111',
-          structuredData: {
-            patientHospitalSelection: {
-              medicalFormStatus: 'NOT_STARTED',
+          chatbot_v2: {
+            source: 'status_snapshot_bridge',
+            scope_id: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+            journey_snapshot: {
+              current_stage: 'RECOMMENDATION',
+              current_phase: 'active',
             },
-          },
-        }),
-      },
-    });
-    mockGetServices.mockReturnValue(services);
-
-    const res = await requestWithSite('/onboarding/init', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: 'new@example.com',
-        name: 'New User',
-        preferredLanguage: 'en',
-        destination: 'Shenzhen',
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        nextAction: 'REQUEST_DOC_UPLOAD',
-        metadata: expect.objectContaining({
-          internalNextAction: 'REQUEST_DOC_UPLOAD',
-          chatbotV2: expect.objectContaining({
-            journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
-            },
-          }),
-        }),
-      }),
-    );
-    expect(services.getTemplateByDisease.execute).toHaveBeenCalledWith('DEFAULT');
-  });
-
-  it('prefers a case-specific questionnaire template when seeding REQUEST_DOC_UPLOAD starter blocks', async () => {
-    const questionnaireTemplateId = '77777777-7777-4777-8777-777777777777';
-    const execute = vi.fn().mockResolvedValue({
-      patientId: 'patient-1',
-      caseId: '11111111-1111-4111-8111-111111111111',
-      nextStep: 'select-hospitals',
-      token: 'session-token-123',
-      restoreToken: 'restore-token-123',
-      restoreCookie: 'restore-cookie-123',
-      isExistingPatient: false,
-      widgetChatTarget: {
-        kind: 'CHATBOT_SESSION',
-        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-      },
-    });
-    const services = createBaseServices({
-      initOnboarding: { execute },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn()
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          })
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          }),
-        save: vi.fn().mockImplementation(async (entity) => entity),
-        setDifyConversationId: vi.fn().mockResolvedValue(null),
-      },
-      difyApi: {
-        createChatMessage: vi.fn().mockResolvedValue({
-          conversation_id: 'dify-conversation-docs-case-template',
-          answer: JSON.stringify({
-            answer: 'Please upload your reports so I can guide the next step.',
-            nextAction: 'REQUEST_DOC_UPLOAD',
-            internalNextAction: 'REQUEST_DOC_UPLOAD',
-          }),
-          metadata: { retriever_resources: [] },
-        }),
-      },
-      caseRepo: {
-        findById: vi.fn().mockResolvedValue({
-          id: '11111111-1111-4111-8111-111111111111',
-          questionCollectorTemplateId: questionnaireTemplateId,
-          structuredData: {
-            patientHospitalSelection: {
-              medicalFormStatus: 'NOT_STARTED',
-            },
+            allowed_resources: [{
+              resource_type: 'HOSPITAL_RECOMMENDATION',
+              resource_id: 'hospital-recommendation:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+              status: 'available',
+              stage_binding: {
+                stage: 'RECOMMENDATION',
+                phase: 'active',
+              },
+              visibility: {
+                mode: 'journey',
+              },
+              payload: {
+                recommendationKind: 'hospital',
+              },
+              actions: ['open', 'submit'],
+            }],
           },
         }),
       },
@@ -640,9 +431,11 @@ describe('patientPublicRoutes', () => {
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        nextAction: 'REQUEST_DOC_UPLOAD',
+        content: 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.',
+        nextAction: null,
         metadata: expect.objectContaining({
-          internalNextAction: 'REQUEST_DOC_UPLOAD',
+          widgetStarterVersion: 'crm-v1',
+          internalNextAction: null,
           chatbotV2: expect.objectContaining({
             journeySnapshot: {
               currentStage: 'RECOMMENDATION',
@@ -652,7 +445,10 @@ describe('patientPublicRoutes', () => {
         }),
       }),
     );
-    expect(services.getTemplateByDisease.execute).not.toHaveBeenCalled();
+    const starterUpdate = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];
+    expect(starterUpdate?.metadata?.blocks).toBeUndefined();
+    expect(services.difyApi.createChatMessage).not.toHaveBeenCalled();
+    expect(services.aiChatSessionRepo.setDifyConversationId).not.toHaveBeenCalled();
   });
 
   it('allows onboarding without a captcha token while captcha is temporarily disabled', async () => {

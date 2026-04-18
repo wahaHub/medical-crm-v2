@@ -167,13 +167,16 @@ app.openapi(sendMessageRoute, async (c) => {
         }
       } else {
         try {
+          const patient = await svc.patientRepo.findById(caseEntity.patientId);
           await svc.notifyPatientOfAdminMessage.execute({
             conversationId: id,
             caseId: conversation.caseId,
             patientId: caseEntity.patientId,
             messagePreview,
-            site: 'china',
-            isPatientOnline: wsManager.hasSubscribers(`patient:${caseEntity.patientId}`),
+            site: patient?.site ?? 'china',
+            isPatientOnline:
+              wsManager.hasSubscribers(`patient:${caseEntity.patientId}`)
+              || wsManager.hasSubscribers(`conv:${id}`),
           });
         } catch (error) {
           console.warn('Failed to notify patient about an admin reply:', error);

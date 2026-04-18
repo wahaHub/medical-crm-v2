@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockBroadcast } = vi.hoisted(() => ({
+const { mockBroadcast, mockHasSubscribers } = vi.hoisted(() => ({
   mockBroadcast: vi.fn(),
+  mockHasSubscribers: vi.fn().mockReturnValue(false),
 }));
 vi.mock('../ws/ws-manager.js', () => ({
-  wsManager: { broadcast: mockBroadcast, hasSubscribers: vi.fn().mockReturnValue(false) },
+  wsManager: { broadcast: mockBroadcast, hasSubscribers: mockHasSubscribers },
 }));
 
 // ---------------------------------------------------------------------------
@@ -23,6 +24,7 @@ const mockServices = {
   regenerateSummary: { execute: vi.fn() },
   retranslateMessage: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
+  patientRepo: { findById: vi.fn() },
   notifyAdminsOfPatientMessage: { execute: vi.fn() },
   notifyPatientOfAdminMessage: { execute: vi.fn() },
 };
@@ -79,6 +81,14 @@ describe('Message routes', () => {
       id: VALID_UUID,
       patientId: 'patient-1',
     });
+    mockServices.patientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+      site: 'beauty',
+    });
+    mockHasSubscribers.mockReset();
+    mockHasSubscribers.mockReturnValue(false);
     currentSession = {
       userId: 'u-1',
       email: 'admin@test.com',
@@ -245,7 +255,7 @@ describe('Message routes', () => {
         caseId: VALID_UUID,
         patientId: 'patient-1',
         messagePreview: 'Admin reply',
-        site: 'china',
+        site: 'beauty',
         isPatientOnline: false,
       });
     });
@@ -281,6 +291,42 @@ describe('Message routes', () => {
         patientId: 'patient-1',
         patientName: null,
         messagePreview: 'Patient reply',
+      });
+    });
+
+    it('treats a subscribed conversation room as online for admin-reply email suppression', async () => {
+      currentSession = {
+        userId: 'admin-1',
+        email: 'admin@test.com',
+        roles: ['ADMIN'],
+        hospitalId: null,
+      };
+      mockServices.getConversation.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+        category: 'ADMIN_PATIENT',
+        assistantMode: 'HUMAN_TAKEOVER',
+      });
+      mockServices.sendMessage.execute.mockResolvedValue({
+        message: { id: VALID_MSG_ID, content: 'Admin reply', senderRole: 'ADMIN' },
+        sideEffectMessages: [],
+      });
+      mockHasSubscribers.mockImplementation((roomId: string) => roomId === `conv:${VALID_UUID}`);
+
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Admin reply' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.notifyPatientOfAdminMessage.execute).toHaveBeenCalledWith({
+        conversationId: VALID_UUID,
+        caseId: VALID_UUID,
+        patientId: 'patient-1',
+        messagePreview: 'Admin reply',
+        site: 'beauty',
+        isPatientOnline: true,
       });
     });
   });

@@ -70,6 +70,9 @@ const mockServices: any = {
   createTicket: {
     execute: vi.fn(),
   },
+  notifyAdminsOfNewCase: {
+    execute: vi.fn(),
+  },
   notifyAdminsOfNewTicket: {
     execute: vi.fn(),
   },
@@ -5868,6 +5871,13 @@ describe('Chatbot routes', () => {
       alreadyExists: false,
     });
     expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
+    expect(mockServices.notifyAdminsOfNewCase.execute).toHaveBeenCalledWith({
+      caseId: 'case-2',
+      patientId: 'patient-2',
+      patientName: 'Alice',
+      patientEmail: 'alice@example.com',
+      site: 'beauty',
+    });
     expect(mockServices.aiChatSessionRepo.updateStatus).toHaveBeenCalledWith('session-1', 'beauty', 'ESCALATED');
     expect(mockServices.aiChatMessageRepo.create).toHaveBeenCalledOnce();
     expect(mockServices.aiChatMessageRepo.create).toHaveBeenCalledWith(expect.objectContaining({

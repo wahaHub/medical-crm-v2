@@ -1342,6 +1342,17 @@ async function ensureCaseForSession(
 
   hydrateCaseFromChatbot(caseEntity, session, input);
   await svc.caseRepo.save(caseEntity);
+  try {
+    await svc.notifyAdminsOfNewCase.execute({
+      caseId: onboarding.caseId,
+      patientId: onboarding.patientId,
+      patientName: input.name,
+      patientEmail: input.email,
+      site,
+    });
+  } catch (error) {
+    console.warn('Failed to notify admins about chatbot-created case:', error);
+  }
 
   return {
     session,

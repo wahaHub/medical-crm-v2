@@ -953,6 +953,18 @@ async function createHandoff(
         role: 'PATIENT',
         hospitalId: null,
       });
+      try {
+        await services.notifyAdminsOfNewTicket.execute({
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticketNumber,
+          patientId: latestSession.patientId,
+          patientName: null,
+          subject: 'Chatbot v3 handoff request',
+          descriptionPreview: reason,
+        });
+      } catch (error) {
+        console.warn('Failed to notify admins about chatbot v3 handoff ticket:', error);
+      }
       await patchSessionStatus(services, latestSession, {
         handoffStatus: 'REQUESTED',
         handoffActive: true,

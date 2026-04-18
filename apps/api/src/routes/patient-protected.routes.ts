@@ -108,6 +108,12 @@ function toPatientTicket<T extends { type: string }>(ticket: T): Omit<T, 'type'>
   };
 }
 
+function buildNotificationPreview(content: string | null | undefined): string {
+  const normalized = (content ?? '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return 'Open Medora to read the latest message.';
+  return normalized.length > 180 ? `${normalized.slice(0, 179).trimEnd()}...` : normalized;
+}
+
 function isAllowedUploadTarget(url: URL): boolean {
   const hostname = url.hostname.toLowerCase();
   return hostname.endsWith('.r2.cloudflarestorage.com') || hostname.endsWith('.amazonaws.com');
@@ -297,8 +303,9 @@ app.post('/conversations/:convId/messages', async (c) => {
   const body = sendPatientMessageSchema.parse(await c.req.json());
   const session = c.get('patientSession');
   const convId = c.req.param('convId');
-  const { sendMessage } = getServices();
+  const { sendMessage, getConversation, caseRepo, notifyAdminsOfPatientMessage } = getServices();
   const actor = toPatientActor(session);
+  const conversation = await getConversation.execute(convId, actor);
   const executionResult = await sendMessage.execute(convId, {
     content: body.content,
     messageType: body.messageType,
@@ -313,6 +320,22 @@ app.post('/conversations/:convId/messages', async (c) => {
     type: 'new_message',
     data: response,
   });
+  if (conversation.caseId && conversation.category === 'ADMIN_PATIENT') {
+    const caseEntity = await caseRepo.findById(conversation.caseId);
+    if (caseEntity) {
+      try {
+        await notifyAdminsOfPatientMessage.execute({
+          conversationId: convId,
+          caseId: conversation.caseId,
+          patientId: caseEntity.patientId,
+          patientName: null,
+          messagePreview: buildNotificationPreview(response.content),
+        });
+      } catch (error) {
+        console.warn('Failed to notify admins about a patient portal message:', error);
+      }
+    }
+  }
   return c.json(response);
 });
 
@@ -437,7 +460,7 @@ app.get('/tickets/:ticketId', async (c) => {
 app.post('/tickets', async (c) => {
   const body = patientCreateTicketSchema.parse(await c.req.json());
   const session = c.get('patientSession');
-  const { createTicket } = getServices();
+  const { createTicket, notifyAdminsOfNewTicket } = getServices();
   const result = await createTicket.execute({
     caseId: body.caseId,
     type: patientTicketTypeToDomain[body.type],
@@ -446,6 +469,18 @@ app.post('/tickets', async (c) => {
     description: body.description,
     sourcePage: body.sourcePage,
   }, toPatientActor(session));
+  try {
+    await notifyAdminsOfNewTicket.execute({
+      ticketId: result.id,
+      ticketNumber: result.ticketNumber,
+      patientId: result.patientId,
+      patientName: null,
+      subject: result.subject ?? null,
+      descriptionPreview: result.description,
+    });
+  } catch (error) {
+    console.warn('Failed to notify admins about a patient-created ticket:', error);
+  }
 
   return c.json(toPatientTicket(result), 201);
 });

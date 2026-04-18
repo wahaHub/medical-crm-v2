@@ -72,20 +72,17 @@ export class NotificationEmailService {
     const patientName = input.patientName?.trim() || input.patientEmail;
 
     await Promise.all(recipients.map(async (recipient) => {
-      const acquired = await this.cooldownRepo.tryAcquireSlot({
+      await this.sendWithCooldown({
         recipientId: recipient.id,
         notificationKind: 'admin-new-case',
         dedupeKey: input.caseId,
-        cooldownMs: this.cooldownMs,
-      });
-      if (!acquired) return;
-
-      await this.emailService.sendAdminNewCaseAlert({
-        to: recipient.email,
-        patientName,
-        patientEmail: input.patientEmail,
-        adminPortalLink: `${getAdminOrigin()}/cases/${input.caseId}`,
-        locale: recipient.preferredLanguage ?? null,
+        send: () => this.emailService.sendAdminNewCaseAlert({
+          to: recipient.email,
+          patientName,
+          patientEmail: input.patientEmail,
+          adminPortalLink: `${getAdminOrigin()}/cases/${input.caseId}`,
+          locale: recipient.preferredLanguage ?? null,
+        }),
       });
     }));
   }
@@ -103,20 +100,17 @@ export class NotificationEmailService {
     const messagePreview = truncatePreview(input.messagePreview);
 
     await Promise.all(recipients.map(async (recipient) => {
-      const acquired = await this.cooldownRepo.tryAcquireSlot({
+      await this.sendWithCooldown({
         recipientId: recipient.id,
         notificationKind: 'admin-new-message',
         dedupeKey: input.conversationId,
-        cooldownMs: this.cooldownMs,
-      });
-      if (!acquired) return;
-
-      await this.emailService.sendAdminNewMessageAlert({
-        to: recipient.email,
-        patientName,
-        messagePreview,
-        adminPortalLink: `${getAdminOrigin()}/cases/${input.caseId}`,
-        locale: recipient.preferredLanguage ?? null,
+        send: () => this.emailService.sendAdminNewMessageAlert({
+          to: recipient.email,
+          patientName,
+          messagePreview,
+          adminPortalLink: `${getAdminOrigin()}/cases/${input.caseId}`,
+          locale: recipient.preferredLanguage ?? null,
+        }),
       });
     }));
   }
@@ -136,22 +130,19 @@ export class NotificationEmailService {
     const descriptionPreview = truncatePreview(input.descriptionPreview);
 
     await Promise.all(recipients.map(async (recipient) => {
-      const acquired = await this.cooldownRepo.tryAcquireSlot({
+      await this.sendWithCooldown({
         recipientId: recipient.id,
         notificationKind: 'admin-new-ticket',
         dedupeKey: input.ticketId,
-        cooldownMs: this.cooldownMs,
-      });
-      if (!acquired) return;
-
-      await this.emailService.sendAdminNewTicketAlert({
-        to: recipient.email,
-        ticketNumber: input.ticketNumber,
-        patientName,
-        subject,
-        descriptionPreview,
-        adminPortalLink: `${getAdminOrigin()}/tickets/${input.ticketId}`,
-        locale: recipient.preferredLanguage ?? null,
+        send: () => this.emailService.sendAdminNewTicketAlert({
+          to: recipient.email,
+          ticketNumber: input.ticketNumber,
+          patientName,
+          subject,
+          descriptionPreview,
+          adminPortalLink: `${getAdminOrigin()}/tickets/${input.ticketId}`,
+          locale: recipient.preferredLanguage ?? null,
+        }),
       });
     }));
   }
@@ -173,22 +164,17 @@ export class NotificationEmailService {
       return;
     }
 
-    const acquired = await this.cooldownRepo.tryAcquireSlot({
+    await this.sendWithCooldown({
       recipientId: patient.id,
       notificationKind: 'patient-new-message',
       dedupeKey: input.conversationId,
-      cooldownMs: this.cooldownMs,
-    });
-    if (!acquired) {
-      return;
-    }
-
-    await this.emailService.sendPatientNewMessageAlert({
-      to: patient.email,
-      patientName: patient.name || 'Patient',
-      messagePreview: truncatePreview(input.messagePreview),
-      dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
-      locale: patient.preferredLanguage ?? null,
+      send: () => this.emailService.sendPatientNewMessageAlert({
+        to: patient.email,
+        patientName: patient.name || 'Patient',
+        messagePreview: truncatePreview(input.messagePreview),
+        dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
+        locale: patient.preferredLanguage ?? null,
+      }),
     });
   }
 
@@ -200,5 +186,33 @@ export class NotificationEmailService {
       preferenceEnabled(recipient.notificationSettings, preferenceKey)
       && !wasRecentlyActive(recipient.lastLoginAt, this.offlineWindowMs),
     );
+  }
+
+  private async sendWithCooldown(input: {
+    recipientId: string;
+    notificationKind: string;
+    dedupeKey: string;
+    send: () => Promise<void>;
+  }): Promise<void> {
+    const acquired = await this.cooldownRepo.tryAcquireSlot({
+      recipientId: input.recipientId,
+      notificationKind: input.notificationKind,
+      dedupeKey: input.dedupeKey,
+      cooldownMs: this.cooldownMs,
+    });
+    if (!acquired) {
+      return;
+    }
+
+    try {
+      await input.send();
+    } catch (error) {
+      await this.cooldownRepo.releaseSlot({
+        recipientId: input.recipientId,
+        notificationKind: input.notificationKind,
+        dedupeKey: input.dedupeKey,
+      });
+      throw error;
+    }
   }
 }

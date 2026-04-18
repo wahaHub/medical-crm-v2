@@ -142,6 +142,9 @@ const mockServices = {
   createTicket: {
     execute: vi.fn(),
   },
+  notifyAdminsOfNewTicket: {
+    execute: vi.fn(),
+  },
   listFaqItems: {
     execute: vi.fn(),
   },
@@ -285,7 +288,11 @@ describe('Chatbot v3 public route mounting', () => {
       return currentSession;
     });
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-1' });
-    mockServices.createTicket.execute.mockResolvedValue({ id: 'ticket-v3-1' });
+    mockServices.createTicket.execute.mockResolvedValue({
+      id: 'ticket-v3-1',
+      ticketNumber: 'TKT-20260418-0101',
+    });
+    mockServices.notifyAdminsOfNewTicket.execute.mockResolvedValue(undefined);
     mockServices.matchHospitals.execute.mockResolvedValue({
       hospitals: [
         {
@@ -3393,5 +3400,13 @@ describe('Chatbot v3 public route mounting', () => {
       ticketId: 'ticket-v3-1',
     });
     expect(mockServices.createTicket.execute).toHaveBeenCalledOnce();
+    expect(mockServices.notifyAdminsOfNewTicket.execute).toHaveBeenCalledWith({
+      ticketId: 'ticket-v3-1',
+      ticketNumber: 'TKT-20260418-0101',
+      patientId: 'patient-1',
+      patientName: null,
+      subject: 'Chatbot v3 handoff request',
+      descriptionPreview: 'user requested a human',
+    });
   });
 });

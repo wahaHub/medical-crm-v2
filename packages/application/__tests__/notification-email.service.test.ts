@@ -36,6 +36,7 @@ describe('NotificationEmailService', () => {
 
     cooldownRepo = {
       tryAcquireSlot: vi.fn().mockResolvedValue(true),
+      releaseSlot: vi.fn().mockResolvedValue(undefined),
     };
 
     emailService = {
@@ -126,5 +127,23 @@ describe('NotificationEmailService', () => {
     });
 
     expect(emailService.sendAdminNewTicketAlert).not.toHaveBeenCalled();
+  });
+
+  it('releases the cooldown slot when email delivery fails after acquisition', async () => {
+    vi.mocked(emailService.sendAdminNewCaseAlert).mockRejectedValueOnce(new Error('smtp down'));
+
+    await expect(service.notifyAdminsOfNewCase({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      patientName: 'Patient One',
+      patientEmail: 'patient@example.com',
+      site: 'china',
+    })).rejects.toThrow('smtp down');
+
+    expect(cooldownRepo.releaseSlot).toHaveBeenCalledWith({
+      recipientId: 'admin-1',
+      notificationKind: 'admin-new-case',
+      dedupeKey: 'case-1',
+    });
   });
 });

@@ -70,6 +70,9 @@ const mockServices: any = {
   createTicket: {
     execute: vi.fn(),
   },
+  notifyAdminsOfNewTicket: {
+    execute: vi.fn(),
+  },
   bootstrapAiSync: {
     execute: vi.fn(),
   },
@@ -5828,6 +5831,7 @@ describe('Chatbot routes', () => {
     });
     mockServices.createTicket.execute.mockResolvedValue({
       id: 'ticket-2',
+      ticketNumber: 'TKT-20260418-0012',
     });
     mockServices.aiChatSessionRepo.updateStatus.mockResolvedValue(makeSession({
       sessionSecretHash: secretHash,
@@ -5878,6 +5882,14 @@ describe('Chatbot routes', () => {
         }),
       }),
     }));
+    expect(mockServices.notifyAdminsOfNewTicket.execute).toHaveBeenCalledWith({
+      ticketId: 'ticket-2',
+      ticketNumber: 'TKT-20260418-0012',
+      patientId: 'patient-2',
+      patientName: 'Alice',
+      subject: 'AI chatbot escalation: Revision rhinoplasty consultation',
+      descriptionPreview: expect.stringContaining('Revision rhinoplasty consultation'),
+    });
   });
 
   it('POST /api/v2/chatbot/escalate prefers existing workflow ownership over a mismatched patient session cookie when session.patientId is null', async () => {

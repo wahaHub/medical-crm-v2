@@ -413,4 +413,100 @@ describe('patientProtectedRoutes', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'uploadUrl target is not allowed' });
   });
+
+  it('notifies offline admins when a patient sends a message from the patient portal', async () => {
+    const getConversation = {
+      execute: vi.fn().mockResolvedValue({
+        id: 'conv-1',
+        caseId: '11111111-1111-4111-8111-111111111111',
+        category: 'ADMIN_PATIENT',
+      }),
+    };
+    const sendMessage = {
+      execute: vi.fn().mockResolvedValue({
+        message: {
+          id: 'msg-1',
+          content: 'Need help with my case',
+          senderRole: 'PATIENT',
+        },
+        sideEffectMessages: [],
+      }),
+    };
+    const caseRepo = {
+      findById: vi.fn().mockResolvedValue({
+        id: '11111111-1111-4111-8111-111111111111',
+        patientId: 'patient-1',
+      }),
+    };
+    const notifyAdminsOfPatientMessage = {
+      execute: vi.fn().mockResolvedValue(undefined),
+    };
+    mockGetServices.mockReturnValue({
+      getConversation,
+      sendMessage,
+      caseRepo,
+      notifyAdminsOfPatientMessage,
+      patientAuthService: { verifySessionToken: vi.fn() },
+    });
+
+    const res = await patientProtectedRoutes.request('/conversations/conv-1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'Need help with my case' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(notifyAdminsOfPatientMessage.execute).toHaveBeenCalledWith({
+      conversationId: 'conv-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      patientId: 'patient-1',
+      patientName: null,
+      messagePreview: 'Need help with my case',
+    });
+  });
+
+  it('notifies offline admins when a patient creates a support ticket from the patient portal', async () => {
+    const createTicket = {
+      execute: vi.fn().mockResolvedValue({
+        id: 'ticket-1',
+        ticketNumber: 'TKT-20260418-0009',
+        patientId: 'patient-1',
+        type: 'GENERAL_QUESTIONS',
+        priority: 'MEDIUM',
+        subject: 'Need help',
+        description: 'Please contact me about travel timing.',
+        sourcePage: '/dashboard',
+        status: 'OPEN',
+      }),
+    };
+    const notifyAdminsOfNewTicket = {
+      execute: vi.fn().mockResolvedValue(undefined),
+    };
+    mockGetServices.mockReturnValue({
+      createTicket,
+      notifyAdminsOfNewTicket,
+      patientAuthService: { verifySessionToken: vi.fn() },
+    });
+
+    const res = await patientProtectedRoutes.request('/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'GENERAL_SUPPORT',
+        subject: 'Need help',
+        description: 'Please contact me about travel timing.',
+        sourcePage: '/dashboard',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(notifyAdminsOfNewTicket.execute).toHaveBeenCalledWith({
+      ticketId: 'ticket-1',
+      ticketNumber: 'TKT-20260418-0009',
+      patientId: 'patient-1',
+      patientName: null,
+      subject: 'Need help',
+      descriptionPreview: 'Please contact me about travel timing.',
+    });
+  });
 });

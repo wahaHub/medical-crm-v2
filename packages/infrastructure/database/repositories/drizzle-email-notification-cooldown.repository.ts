@@ -56,4 +56,18 @@ export class DrizzleEmailNotificationCooldownRepository implements IEmailNotific
 
     return updated.length > 0;
   }
+
+  async releaseSlot(input: {
+    recipientId: string;
+    notificationKind: string;
+    dedupeKey: string;
+  }): Promise<void> {
+    await this.db
+      .delete(emailNotificationCooldowns)
+      .where(and(
+        eq(emailNotificationCooldowns.recipientId, input.recipientId),
+        eq(emailNotificationCooldowns.notificationKind, input.notificationKind),
+        eq(emailNotificationCooldowns.dedupeKey, input.dedupeKey),
+      ));
+  }
 }

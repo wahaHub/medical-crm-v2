@@ -696,6 +696,18 @@ chatbotPublicRoutes.openapi(escalateChatRoute, async (c) => {
     role: 'PATIENT',
     hospitalId: null,
   });
+  try {
+    await svc.notifyAdminsOfNewTicket.execute({
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      patientId: ensured.patientId,
+      patientName: body.name,
+      subject: buildEscalationSubject(body.conditionSummary),
+      descriptionPreview: buildEscalationDescription(body, transcriptMessages),
+    });
+  } catch (error) {
+    console.warn('Failed to notify admins about chatbot escalation ticket:', error);
+  }
 
   session = (await svc.aiChatSessionRepo.updateStatus(session.sessionId, session.site, 'ESCALATED')) ?? session;
 

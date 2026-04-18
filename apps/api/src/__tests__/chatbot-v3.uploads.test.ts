@@ -168,6 +168,56 @@ describe('chatbot-v3 upload init route', () => {
     expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
   });
 
+  it('POST /api/v3/chatbot/uploads/init rejects a patient-owned widget session without a matching patient session cookie', async () => {
+    currentSession = makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      sessionSecretHash: null,
+      patientId: 'patient-1',
+    });
+
+    const res = await app.request('/api/v3/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockServices.patientAuthService.verifySessionToken).not.toHaveBeenCalled();
+    expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/v3/chatbot/uploads/init prefers a valid patient session over a stale chatbot secret for widget sessions', async () => {
+    currentSession = makeSession({
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+    });
+
+    const res = await app.request('/api/v3/chatbot/uploads/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'chatbot_session_secret=secret-stale; patient_session=patient-cookie-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(mockServices.patientAuthService.verifySessionToken).toHaveBeenCalledWith('patient-cookie-1', 'beauty');
+    expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
+  });
+
   it('POST /api/v3/chatbot/uploads/init rejects access without a matching chatbot session secret', async () => {
     const res = await app.request('/api/v3/chatbot/uploads/init', {
       method: 'POST',

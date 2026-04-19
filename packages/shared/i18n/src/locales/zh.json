@@ -1393,6 +1393,23 @@
       },
       "search": {
         "placeholder": "搜索患者、病例..."
+      },
+      "language": {
+        "label": "语言",
+        "current": "当前语言",
+        "switchTo": "切换语言",
+        "options": {
+          "en": "英语",
+          "zh": "中文",
+          "fr": "法语",
+          "de": "德语",
+          "es": "西班牙语",
+          "bn": "孟加拉语"
+        }
+      },
+      "languageSwitcher": {
+        "label": "语言",
+        "saving": "正在保存语言..."
       }
     },
     "error": {
@@ -1485,6 +1502,23 @@
       },
       "errors": {
         "loadFailed": "加载失败，请刷新页面重试"
+      },
+      "title": "首页概览",
+      "sections": {
+        "consultations": {
+          "title": "今日问诊",
+          "empty": "今日暂无问诊安排",
+          "aiTranslation": "AI翻译",
+          "enter": "进入问诊"
+        },
+        "newCases": {
+          "title": "新病例",
+          "empty": "暂无病例"
+        },
+        "pendingMessages": {
+          "title": "待处理消息",
+          "empty": "暂无待处理消息"
+        }
       }
     },
     "materials": {
@@ -1718,6 +1752,166 @@
       "empty": "暂无符合条件的病例",
       "errors": {
         "loadFailed": "加载失败: {message}"
+      },
+      "list": {
+        "searchPlaceholder": "搜索病例编号、患者姓名或患者编码...",
+        "filterButton": "筛选",
+        "stats": {
+          "allCases": "全部病例",
+          "new": "新病例",
+          "inProgress": "进行中",
+          "completed": "已完成"
+        },
+        "tabs": {
+          "all": "全部",
+          "new": "新病例",
+          "inProgress": "进行中",
+          "completed": "已完成"
+        },
+        "empty": "未找到病例",
+        "diagnosisBadge": "诊断"
+      },
+      "detail": {
+        "backToCases": "返回病例列表",
+        "header": {
+          "documentsCount": "{count} 份文档",
+          "messagesCount": "{count} 条消息"
+        },
+        "intake": {
+          "errorLoad": "加载失败:",
+          "emptyTitle": "暂无问诊表数据",
+          "emptyDescription": "患者尚未完成问诊表。",
+          "responsesTitle": "问诊表回答",
+          "summaryTitle": "摘要与评估"
+        },
+        "documents": {
+          "empty": "暂无医疗档案",
+          "groups": {
+            "medicalIntake": "医疗档案",
+            "diagnosis": "诊断附件",
+            "invitationLetter": "医疗邀请函",
+            "messageAttachments": "消息附件",
+            "otherDocuments": "其他文档"
+          },
+          "unnamed": "未命名"
+        },
+        "messages": {
+          "empty": "暂无消息记录",
+          "inputPlaceholder": "输入消息内容...",
+          "privacyNotice": "消息将通过 CRM 系统转发至患者（为保护患者隐私，您无法直接查看联系方式）"
+        },
+        "diagnosis": {
+          "addButton": "添加诊断意见",
+          "empty": "暂无诊断意见",
+          "icdCode": "ICD-10 编码",
+          "unknownCondition": "未知病情",
+          "validation": {
+            "nameRequired": "诊断名称不能为空。"
+          },
+          "errorSave": "保存诊断失败",
+          "fields": {
+            "details": "详细诊断说明",
+            "estimatedCost": "预估费用范围",
+            "suggestedTests": "建议进一步检查",
+            "treatmentDuration": "预估治疗周期",
+            "treatmentRecommendation": "治疗建议"
+          },
+          "addModal": {
+            "title": "添加诊断意见",
+            "type": "诊断类型",
+            "name": "诊断名称 *",
+            "namePlaceholder": "例如：冠状动脉粥样硬化性心脏病",
+            "icdCode": "ICD-10 编码",
+            "icdCodePlaceholder": "例如：I25.1",
+            "severity": "严重程度",
+            "description": "详细诊断说明",
+            "treatmentRecommendation": "治疗建议",
+            "estimatedCost": "预估费用范围",
+            "treatmentDuration": "预估治疗周期",
+            "attachments": "附件文档（可选）",
+            "attachmentsPlaceholder": "点击上传诊断报告或检查结果",
+            "save": "保存诊断意见"
+          }
+        },
+        "marketing": {
+          "defaultSubject": "您的个性化治疗方案",
+          "emailOutreach": "邮件触达",
+          "phoneOutreach": "电话跟进",
+          "composeTitle": "编写邮件",
+          "subject": "邮件主题",
+          "emailContent": "邮件内容",
+          "emailContentPlaceholder": "生成的内容会显示在这里……",
+          "generateEmail": "一键生成邮件内容",
+          "loadTemplate": "加载模板",
+          "noActiveTemplates": "暂无启用中的模板，请先在邮件模板页创建",
+          "privacyNotice": "营销邮件将通过 CRM 系统发送。为保护患者隐私，您无法直接查看患者的邮箱地址。",
+          "saveDraft": "保存草稿",
+          "selectTemplate": "-- 选择模板 --",
+          "sendEmail": "发送邮件",
+          "templatesActiveHint": "模板需设为“启用”状态后才会显示在这里。",
+          "variables": {
+            "hospitalName": "本院"
+          },
+          "modules": {
+            "title": "邮件内容模块",
+            "coreIncluded": "核心模块",
+            "optional": "可选模块（点击添加）",
+            "logoSlogan": "Logo / Slogan",
+            "successCases": "成功案例",
+            "patientReviews": "患者评价",
+            "hospitalIntroduction": "医院介绍",
+            "expertTeam": "专家团队",
+            "serviceFeatures": "服务特色",
+            "pricingPlans": "价格方案",
+            "travelServices": "出行服务",
+            "contactInformation": "联系方式"
+          },
+          "call": {
+            "makeCall": "发起通话",
+            "recording": "自动录音",
+            "saveRecords": "通话记录自动保存",
+            "aiSummaryActive": "AI 通话摘要",
+            "logTitle": "记录通话",
+            "type": "通话类型",
+            "typeOutbound": "外呼 - 主动联系患者",
+            "typeInbound": "来电 - 患者回拨",
+            "typeMissed": "未接通",
+            "result": "通话结果",
+            "resultInterested": "有意向 - 继续跟进",
+            "resultScheduled": "已预约 - 确定就诊时间",
+            "resultCallback": "需回访 - 患者需考虑",
+            "resultNotInterested": "无意向 - 暂不需要",
+            "resultNoAnswer": "未接听",
+            "summary": "通话摘要",
+            "summaryPlaceholder": "记录通话内容要点...\n\n例如：患者对治疗方案感兴趣，询问了费用和住院时间，需要与家人商量后回复。",
+            "nextFollowUpDate": "下次跟进日期",
+            "saveRecord": "保存记录",
+            "historyTitle": "通话记录",
+            "empty": "暂无通话记录"
+          }
+        },
+        "invitation": {
+          "title": "医疗邀请函上传",
+          "description": "请上传医院正式签发的邀请函文件。系统将自动处理并验证文件内容。",
+          "uploadPrompt": "点击上传或拖拽到此处",
+          "uploadHint": "支持格式: PDF, DOC, DOCX, JPG, PNG | 最大文件大小: 10MB",
+          "submit": "提交邀请函"
+        },
+        "consultation": {
+          "scheduleButton": "安排会诊",
+          "empty": "暂无会诊，先安排一次开始吧。",
+          "enter": "进入",
+          "viewDetails": "查看详情",
+          "aiSummary": "AI 摘要",
+          "aiGenerated": "AI 生成",
+          "aiSummaryPending": "AI 总结将在问诊完成后自动生成",
+          "transcript": "转录记录",
+          "video": "视频",
+          "fullTranscript": "完整对话记录",
+          "transcriptLoading": "加载对话记录中…",
+          "transcriptEmpty": "对话记录暂未生成",
+          "transcriptPending": "视频问诊结束后，AI 将自动转录完整对话内容"
+        }
       }
     },
     "messages": {
@@ -1836,7 +2030,8 @@
           "fr": "法文",
           "de": "德文",
           "ar": "阿拉伯文"
-        }
+        },
+        "patientCodeLabel": "患者编号"
       }
     },
     "caseDetail": {
@@ -2363,10 +2558,10 @@
         },
         "copied": "已复制",
         "copyLink": "复制链接",
-        "enterConsultation": "进入问诊",
+        "enterConsultation": "进入",
         "collapse": "收起详情",
         "viewDetails": "查看详情",
-        "aiSummary": "AI 问诊总结",
+        "aiSummary": "AI 摘要",
         "aiGenerated": "AI 生成",
         "symptoms": "主要症状",
         "diagnosis": "初步诊断",
@@ -2381,7 +2576,83 @@
         "viewFullTranscript": "查看完整对话",
         "viewFullVideo": "查看完整视频"
       },
-      "empty": "暂无问诊记录"
+      "empty": "暂无问诊"
+    },
+    "common": {
+      "unknown": "未知",
+      "notAvailable": "暂无",
+      "durationMinutes": "{count} 分钟",
+      "viewAll": "查看全部",
+      "loading": "加载中...",
+      "ageYears": "{age} 岁",
+      "genderMaleShort": "男",
+      "genderFemaleShort": "女",
+      "cancel": "取消",
+      "case": "病例",
+      "caseStatus": "病例状态",
+      "documents": "文档",
+      "messages": "消息",
+      "patient": "患者",
+      "profile": "档案",
+      "role": "角色",
+      "stats": "统计"
+    },
+    "portal": {
+      "consultations": {
+        "page": {
+          "title": "在线问诊",
+          "description": "管理和查看患者视频问诊"
+        },
+        "list": {
+          "createButton": "创建问诊",
+          "loading": "加载中...",
+          "emptyDescription": "创建新的问诊即可开始。",
+          "loadingMore": "加载中...",
+          "loadMore": "加载更多"
+        },
+        "card": {
+          "transcript": "转录记录",
+          "video": "视频",
+          "summaryPending": "问诊录制处理完成后即可生成 AI 总结。"
+        },
+        "transcriptModal": {
+          "emptyTitle": "暂无转录内容。"
+        },
+        "createModal": {
+          "doctorPrefix": "医生",
+          "currentCase": "当前病例",
+          "doctorPlaceholder": "请输入医生姓名（可选）",
+          "enableAiTranslation": "启用 AI 翻译",
+          "notesPlaceholder": "可选备注...",
+          "crmNotification": "问诊安排后，系统将通过 CRM 向患者发送提醒。"
+        }
+      },
+      "videoRoom": {
+        "preJoin": {
+          "title": "准备加入吗？",
+          "description": "加入通话前请检查摄像头和麦克风。",
+          "joinCall": "加入通话"
+        },
+        "controls": {
+          "muteMicrophone": "关闭麦克风",
+          "unmuteMicrophone": "打开麦克风",
+          "turnOffCamera": "关闭摄像头",
+          "turnOnCamera": "打开摄像头",
+          "mute": "静音",
+          "unmute": "取消静音",
+          "stopVideo": "停止视频",
+          "startVideo": "开始视频",
+          "stopRecording": "停止录制",
+          "startRecording": "开始录制",
+          "hideSubtitles": "隐藏字幕",
+          "showSubtitles": "显示字幕",
+          "endCall": "结束通话"
+        },
+        "inCall": {
+          "recordingIndicator": "录制中",
+          "subtitlesPlaceholder": "字幕会显示在这里..."
+        }
+      }
     }
   },
   "caseDetail": {

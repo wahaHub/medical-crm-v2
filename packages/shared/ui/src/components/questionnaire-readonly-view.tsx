@@ -35,6 +35,10 @@ function humanizeKey(key: string): string {
     .join(' ');
 }
 
+function defaultFormatFieldLabel(key: string): string {
+  return humanizeKey(key);
+}
+
 function parseMaybeJsonObject(value: unknown): Record<string, unknown> | null {
   if (isRecord(value)) {
     return value;
@@ -171,9 +175,14 @@ function flattenArrayValues(values: unknown[]): string[] {
   });
 }
 
-function renderValue(value: unknown) {
+type RenderValueOptions = {
+  emptyValueLabel: string;
+  formatFieldLabel: (key: string) => string;
+};
+
+function renderValue(value: unknown, options: RenderValueOptions) {
   if (!hasMeaningfulValue(value)) {
-    return <span className="text-slate-400">—</span>;
+    return <span className="text-slate-400">{options.emptyValueLabel}</span>;
   }
 
   if (Array.isArray(value)) {
@@ -199,8 +208,10 @@ function renderValue(value: unknown) {
           .filter(([, nested]) => hasMeaningfulValue(nested))
           .map(([key, nested]) => (
             <div key={key} className="rounded-lg bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{humanizeKey(key)}</p>
-              <div className="mt-1 text-sm text-slate-700">{renderValue(nested)}</div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                {options.formatFieldLabel(key)}
+              </p>
+              <div className="mt-1 text-sm text-slate-700">{renderValue(nested, options)}</div>
             </div>
           ))}
       </div>
@@ -210,23 +221,43 @@ function renderValue(value: unknown) {
   return <span>{String(value)}</span>;
 }
 
-function ResponseField({ label, value }: { label: string; value: unknown }) {
+function ResponseField({
+  label,
+  value,
+  renderValueOptions,
+}: {
+  label: string;
+  value: unknown;
+  renderValueOptions: RenderValueOptions;
+}) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <p className="text-xs font-semibold text-slate-500">{label}</p>
-      <div className="mt-2 text-sm text-slate-800">{renderValue(value)}</div>
+      <div className="mt-2 text-sm text-slate-800">{renderValue(value, renderValueOptions)}</div>
     </div>
   );
+}
+
+export interface QuestionnaireReadonlyViewCopy {
+  emptyStateTitle?: string;
+  emptyStateDescription?: string;
+  fallbackSectionTitle?: string;
+  summarySectionTitle?: string;
+  emptyValueLabel?: string;
 }
 
 export interface QuestionnaireReadonlyViewProps {
   template?: unknown | null;
   response?: unknown | null;
+  copy?: QuestionnaireReadonlyViewCopy;
+  formatFieldLabel?: (key: string) => string;
 }
 
 export function QuestionnaireReadonlyView({
   template = null,
   response = null,
+  copy,
+  formatFieldLabel = defaultFormatFieldLabel,
 }: QuestionnaireReadonlyViewProps) {
   const normalizedResponse = normalizeResponseEnvelope(response);
   const responses = normalizedResponse?.responses ?? {};
@@ -241,13 +272,17 @@ export function QuestionnaireReadonlyView({
       answeredQuestions: step.questions.filter((question) => hasMeaningfulValue(responses[question.id])),
     }))
     .filter((step) => step.answeredQuestions.length > 0);
+  const renderValueOptions: RenderValueOptions = {
+    emptyValueLabel: copy?.emptyValueLabel ?? '—',
+    formatFieldLabel,
+  };
 
   if (renderedTemplateSteps.length === 0 && fallbackEntries.length === 0 && summaryEntries.length === 0) {
     return (
       <EmptyState
         icon={<FileText size={40} />}
-        title="No medical intake data"
-        description="The patient has not completed the medical intake questionnaire yet."
+        title={copy?.emptyStateTitle ?? 'No medical intake data'}
+        description={copy?.emptyStateDescription ?? 'The patient has not completed the medical intake questionnaire yet.'}
       />
     );
   }
@@ -275,16 +310,24 @@ export function QuestionnaireReadonlyView({
                 key={question.id}
                 label={question.required ? `${question.prompt} *` : question.prompt}
                 value={responses[question.id]}
+                renderValueOptions={renderValueOptions}
               />
             ))}
           </div>
         </section>
       )) : (
         <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-900">Medical intake responses</h3>
+          <h3 className="text-lg font-semibold text-slate-900">
+            {copy?.fallbackSectionTitle ?? 'Medical intake responses'}
+          </h3>
           <div className="grid gap-3 md:grid-cols-2">
             {fallbackEntries.map(([key, value]) => (
-              <ResponseField key={key} label={humanizeKey(key)} value={value} />
+              <ResponseField
+                key={key}
+                label={formatFieldLabel(key)}
+                value={value}
+                renderValueOptions={renderValueOptions}
+              />
             ))}
           </div>
         </section>
@@ -292,10 +335,17 @@ export function QuestionnaireReadonlyView({
 
       {summaryEntries.length > 0 && (
         <section className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-          <h3 className="text-lg font-semibold text-slate-900">Summary & Assessment</h3>
+          <h3 className="text-lg font-semibold text-slate-900">
+            {copy?.summarySectionTitle ?? 'Summary & Assessment'}
+          </h3>
           <div className="grid gap-3 md:grid-cols-2">
             {summaryEntries.map(([key, value]) => (
-              <ResponseField key={key} label={humanizeKey(key)} value={value} />
+              <ResponseField
+                key={key}
+                label={formatFieldLabel(key)}
+                value={value}
+                renderValueOptions={renderValueOptions}
+              />
             ))}
           </div>
         </section>

@@ -73,4 +73,20 @@ describe('QuestionnaireReadonlyView', () => {
     expect(screen.getByText('No medical intake data')).toBeTruthy();
     expect(screen.getByText('The patient has not completed the medical intake questionnaire yet.')).toBeTruthy();
   });
+
+  it('supports caller-provided copy overrides', () => {
+    render(
+      <QuestionnaireReadonlyView
+        template={null}
+        response={null}
+        copy={{
+          emptyStateTitle: 'No translated intake yet',
+          emptyStateDescription: 'Waiting for the patient to complete the localized form.',
+        }}
+      />,
+    );
+
+    expect(screen.getByText('No translated intake yet')).toBeTruthy();
+    expect(screen.getByText('Waiting for the patient to complete the localized form.')).toBeTruthy();
+  });
 });

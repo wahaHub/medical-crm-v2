@@ -42,6 +42,13 @@ import { useEmailTemplates } from '@/queries/use-email-templates';
 import { addDiagnosis } from '@/actions/case-actions';
 import { CreateConsultationModal } from '@/components/create-consultation-modal';
 import { useAuth } from '@/lib/auth-context';
+import {
+  formatDurationMinutesLabel,
+  getHospitalGenderShortLabel,
+  getHospitalStatusLabel,
+  getLocalizedCountryLabel,
+  getLocalizedLanguageLabel,
+} from '@/lib/hospital-display';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import type {
   HospitalCaseDetail,
@@ -73,6 +80,40 @@ function getInitials(name: string) {
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
+function formatConsultationDateTime(
+  value: string | null | undefined,
+  locale: string,
+  options: Intl.DateTimeFormatOptions,
+  fallback: string,
+) {
+  if (!value) return fallback;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat(locale, options).format(date);
+}
+
+function formatTranscriptTimestamp(timestamp: string | null | undefined, locale: string) {
+  if (!timestamp) return '';
+
+  const parsed = new Date(timestamp);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return timestamp;
+  }
+
+  return new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsed);
+}
+
 // ── Tab Definitions ─────────────────────────────────────────────────
 
 const tabDefinitions = [
@@ -92,7 +133,7 @@ const tabDefinitions = [
 export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [activeTab, setActiveTab] = useState('ai-summary');
   const router = useRouter();
-  const { t } = useHospitalI18n();
+  const { locale, t } = useHospitalI18n();
 
   const { data: consultations } = useCaseConsultations(caseDetail.id);
   const consultationsList = (consultations as ConsultationSummary[] | undefined) ?? [];
@@ -123,7 +164,10 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
                   #{patient.code}
                 </span>
               )}
-              <StatusBadge status={caseDetail.displayStatus} />
+              <StatusBadge
+                status={caseDetail.displayStatus}
+                label={getHospitalStatusLabel(caseDetail.displayStatus, t)}
+              />
             </div>
             <div className="flex items-center gap-3 text-sm font-medium text-slate-500">
               {patient.age != null && (
@@ -141,7 +185,9 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
               {patient.country && (
                 <>
                   <span className="w-1 h-1 bg-slate-300 rounded-full" />
-                  <span className="flex items-center gap-1.5"><Globe size={14} /> {patient.country}</span>
+                  <span className="flex items-center gap-1.5">
+                    <Globe size={14} /> {getLocalizedCountryLabel(patient.country, locale)}
+                  </span>
                 </>
               )}
               <span className="w-1 h-1 bg-slate-300 rounded-full" />
@@ -248,7 +294,30 @@ function IntakeTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     );
   }
 
-  return <QuestionnaireReadonlyView template={template ?? null} response={questionnairePayload ?? null} />;
+  return (
+    <QuestionnaireReadonlyView
+      template={template ?? null}
+      response={questionnairePayload ?? null}
+      copy={{
+        emptyStateTitle: t('hospital.cases.detail.intake.emptyTitle', undefined, 'No medical intake data'),
+        emptyStateDescription: t(
+          'hospital.cases.detail.intake.emptyDescription',
+          undefined,
+          'The patient has not completed the medical intake questionnaire yet.',
+        ),
+        fallbackSectionTitle: t(
+          'hospital.cases.detail.intake.responsesTitle',
+          undefined,
+          'Medical intake responses',
+        ),
+        summarySectionTitle: t(
+          'hospital.cases.detail.intake.summaryTitle',
+          undefined,
+          'Summary & Assessment',
+        ),
+      }}
+    />
+  );
 }
 
 // ── Tab: Documents ──────────────────────────────────────────────────
@@ -305,7 +374,12 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                     <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
                       {doc.createdAt && <span>{new Intl.DateTimeFormat(locale).format(new Date(doc.createdAt))}</span>}
                       {doc.fileSize != null && doc.fileSize > 0 && <><span>-</span><span>{formatFileSize(doc.fileSize)}</span></>}
-                      {doc.language && <><span>-</span><span>{doc.language}</span></>}
+                      {doc.language && (
+                        <>
+                          <span>-</span>
+                          <span>{getLocalizedLanguageLabel(doc.language, locale)}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -343,6 +417,26 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 
   const isLoading = convsLoading || msgsLoading;
   const patientName = caseDetail.patient.name;
+  const patientContextLabels = {
+    unknownParticipant: t('hospital.common.unknown', undefined, 'Unknown'),
+    patientCode: t('hospital.messages.chat.patientCodeLabel', undefined, 'Patient Code'),
+    primaryDiagnosis: t('hospital.messages.chat.primaryDiagnosis', undefined, 'Primary Diagnosis'),
+    language: t('hospital.messages.chat.language', undefined, 'Language'),
+    profile: t('hospital.common.profile', undefined, 'Profile'),
+    caseStatus: t('hospital.common.caseStatus', undefined, 'Case Status'),
+    stats: t('hospital.common.stats', undefined, 'Stats'),
+    documents: t('hospital.common.documents', undefined, 'Documents'),
+    messages: t('hospital.common.messages', undefined, 'Messages'),
+    role: t('hospital.common.role', undefined, 'Role'),
+    case: t('hospital.common.case', undefined, 'Case'),
+    hospital: t('hospital.messages.chat.hospital', undefined, 'Hospital'),
+  };
+  const formatConversationCategoryLabel = (category: string) =>
+    category.includes('PATIENT')
+      ? t('hospital.common.patient', undefined, 'Patient')
+      : category.includes('ADMIN')
+        ? t('hospital.messages.chat.admin', undefined, 'Admin')
+        : category.replace(/_/g, ' / ');
 
   return (
     <div className="flex gap-6 h-[600px]">
@@ -465,6 +559,14 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
         diagnosis={caseDetail.medicalCondition.primaryDiagnosis}
         documentCount={caseDetail.documents.length}
         messageCount={caseDetail.totalMessages}
+        patientLanguage={caseDetail.patient.language}
+        labels={patientContextLabels}
+        formatCategoryLabel={formatConversationCategoryLabel}
+        formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale)}
+        formatStatusLabel={(status) => getHospitalStatusLabel(status, t)}
+        formatGenderLabel={(gender) => getHospitalGenderShortLabel(gender, t)}
+        formatAgeLabel={(age) => t('hospital.common.ageYears', { age }, '{age} y/o')}
+        formatParticipantRoleLabel={(role) => role}
       />
     </div>
   );
@@ -710,8 +812,8 @@ function AddDiagnosisModal({
           <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.description', undefined, 'Detailed Description')}</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-24 resize-none" /></div>
           <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.treatmentRecommendation', undefined, 'Treatment Recommendation')}</label><textarea value={treatmentRecommendation} onChange={(e) => setTreatmentRecommendation(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cyan-500/20 text-sm outline-none h-20 resize-none" /></div>
           <div className="grid grid-cols-2 gap-6">
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.estimatedCost', undefined, 'Estimated Cost')}</label><select value={costEstimate} onChange={(e) => setCostEstimate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; $5k</option><option>$5k - $10k</option><option>$10k - $20k</option><option>$20k - $50k</option><option>&gt; $50k</option></select></div>
-            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.treatmentDuration', undefined, 'Treatment Duration')}</label><select value={treatmentDuration} onChange={(e) => setTreatmentDuration(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>&lt; 1 Week</option><option>1 - 2 Weeks</option><option>2 Weeks - 1 Month</option><option>1 - 3 Months</option><option>&gt; 3 Months</option></select></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.estimatedCost', undefined, 'Estimated Cost')}</label><select value={costEstimate} onChange={(e) => setCostEstimate(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option value="&lt; $5k">{t('hospital.caseDetail.diagnosisDialog.costOptions.5k', undefined, 'Under 5K USD')}</option><option value="$5k - $10k">{t('hospital.caseDetail.diagnosisDialog.costOptions.5-10k', undefined, '5-10K USD')}</option><option value="$10k - $20k">{t('hospital.caseDetail.diagnosisDialog.costOptions.10-20k', undefined, '10-20K USD')}</option><option value="$20k - $50k">{t('hospital.caseDetail.diagnosisDialog.costOptions.20-50k', undefined, '20-50K USD')}</option><option value="&gt; $50k">{t('hospital.caseDetail.diagnosisDialog.costOptions.50k+', undefined, 'Over 50K USD')}</option></select></div>
+            <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.treatmentDuration', undefined, 'Treatment Duration')}</label><select value={treatmentDuration} onChange={(e) => setTreatmentDuration(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option value="&lt; 1 Week">{t('hospital.caseDetail.diagnosisDialog.durationOptions.1week', undefined, 'Within 1 week')}</option><option value="1 - 2 Weeks">{t('hospital.caseDetail.diagnosisDialog.durationOptions.2weeks', undefined, '1-2 weeks')}</option><option value="2 Weeks - 1 Month">{t('hospital.caseDetail.diagnosisDialog.durationOptions.1month', undefined, '2 weeks - 1 month')}</option><option value="1 - 3 Months">{t('hospital.caseDetail.diagnosisDialog.durationOptions.3months', undefined, '1-3 months')}</option><option value="&gt; 3 Months">{t('hospital.caseDetail.diagnosisDialog.durationOptions.6months', undefined, 'Over 3 months')}</option></select></div>
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.attachments', undefined, 'Attachments (Max 10MB)')}</label>
@@ -734,8 +836,12 @@ function AddDiagnosisModal({
 
 function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const { t } = useHospitalI18n();
-  const [activeSubTab, setActiveSubTab] = useState('Email');
-  const [selectedModules, setSelectedModules] = useState(['Logo / Slogan', 'Success Cases', 'Patient Reviews']);
+  const [activeSubTab, setActiveSubTab] = useState<'email' | 'call'>('email');
+  const [selectedModules, setSelectedModules] = useState([
+    'hospitalIntroduction',
+    'expertTeam',
+    'serviceFeatures',
+  ]);
   const [emailSubject, setEmailSubject] = useState(
     t('hospital.cases.detail.marketing.defaultSubject', undefined, 'Your Personalized Treatment Plan'),
   );
@@ -755,7 +861,7 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     return text
       .replace(/\{\{patient_name\}\}/g, caseDetail.patient.name ?? '')
       .replace(/\{\{case_number\}\}/g, caseDetail.caseNumber ?? '')
-      .replace(/\{\{hospital_name\}\}/g, 'Our Hospital')
+      .replace(/\{\{hospital_name\}\}/g, t('hospital.cases.detail.marketing.variables.hospitalName', undefined, 'Our Hospital'))
       .replace(/\{\{quote_total\}\}/g, '')
       .replace(/\{\{doctor_name\}\}/g, '')
       .replace(/\{\{procedure_name\}\}/g, caseDetail.medicalCondition?.primaryDiagnosis ?? '');
@@ -770,41 +876,113 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     setEmailBody(replaceVariables(template.body));
   };
 
-  const optionalModules = ['Hospital Introduction', 'Expert Team', 'Service Features', 'Pricing Plans', 'Travel Services', 'Contact Information'];
-  const toggleModule = (mod: string) => {
-    if (selectedModules.includes(mod)) setSelectedModules(selectedModules.filter((m) => m !== mod));
-    else setSelectedModules([...selectedModules, mod]);
+  const coreModules = [
+    {
+      id: 'logoSlogan',
+      label: t('hospital.cases.detail.marketing.modules.logoSlogan', undefined, 'Logo / Slogan'),
+    },
+    {
+      id: 'successCases',
+      label: t('hospital.cases.detail.marketing.modules.successCases', undefined, 'Success Cases'),
+    },
+    {
+      id: 'patientReviews',
+      label: t('hospital.cases.detail.marketing.modules.patientReviews', undefined, 'Patient Reviews'),
+    },
+  ];
+  const optionalModules = [
+    {
+      id: 'hospitalIntroduction',
+      label: t('hospital.cases.detail.marketing.modules.hospitalIntroduction', undefined, 'Hospital Introduction'),
+    },
+    {
+      id: 'expertTeam',
+      label: t('hospital.cases.detail.marketing.modules.expertTeam', undefined, 'Expert Team'),
+    },
+    {
+      id: 'serviceFeatures',
+      label: t('hospital.cases.detail.marketing.modules.serviceFeatures', undefined, 'Service Features'),
+    },
+    {
+      id: 'pricingPlans',
+      label: t('hospital.cases.detail.marketing.modules.pricingPlans', undefined, 'Pricing Plans'),
+    },
+    {
+      id: 'travelServices',
+      label: t('hospital.cases.detail.marketing.modules.travelServices', undefined, 'Travel Services'),
+    },
+    {
+      id: 'contactInformation',
+      label: t('hospital.cases.detail.marketing.modules.contactInformation', undefined, 'Contact Information'),
+    },
+  ];
+  const toggleModule = (moduleId: string) => {
+    if (selectedModules.includes(moduleId)) {
+      setSelectedModules(selectedModules.filter((id) => id !== moduleId));
+      return;
+    }
+
+    setSelectedModules([...selectedModules, moduleId]);
   };
   return (
     <div className="space-y-8">
       <div className="flex justify-center mb-2">
         <div className="bg-slate-200/50 p-1 rounded-xl flex gap-1 border border-slate-200/60">
-          <button onClick={() => setActiveSubTab('Email')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'Email' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Send size={16} /> {t('hospital.cases.detail.marketing.emailOutreach', undefined, 'Email Outreach')}</button>
-          <button onClick={() => setActiveSubTab('Call')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'Call' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><PhoneCall size={16} /> {t('hospital.cases.detail.marketing.phoneOutreach', undefined, 'Phone Outreach')}</button>
+          <button onClick={() => setActiveSubTab('email')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'email' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Send size={16} /> {t('hospital.cases.detail.marketing.emailOutreach', undefined, 'Email Outreach')}</button>
+          <button onClick={() => setActiveSubTab('call')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeSubTab === 'call' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><PhoneCall size={16} /> {t('hospital.cases.detail.marketing.phoneOutreach', undefined, 'Phone Outreach')}</button>
         </div>
       </div>
-      {activeSubTab === 'Email' && (
+      {activeSubTab === 'email' && (
         <div className="space-y-8">
           <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900 mb-6">Email Content Modules</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-6">
+              {t('hospital.cases.detail.marketing.modules.title', undefined, 'Email Content Modules')}
+            </h3>
             <div className="space-y-6">
               <div>
-                <div className="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">Core & Recommended (Included)</div>
-                <div className="flex flex-wrap gap-3">{['Logo / Slogan', 'Success Cases', 'Patient Reviews'].map((mod) => (<div key={mod} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200/50 rounded-xl text-sm font-medium"><CheckCircle size={16} /> {mod}</div>))}</div>
+                <div className="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">
+                  {t('hospital.cases.detail.marketing.modules.coreIncluded', undefined, 'Core & Recommended (Included)')}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {coreModules.map((module) => (
+                    <div key={module.id} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200/50 rounded-xl text-sm font-medium">
+                      <CheckCircle size={16} /> {module.label}
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
-                <div className="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">Optional Modules</div>
-                <div className="flex flex-wrap gap-3">{optionalModules.map((mod) => { const isSelected = selectedModules.includes(mod); return (<button key={mod} onClick={() => toggleModule(mod)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${isSelected ? 'bg-indigo-50 text-indigo-700 border-indigo-200/50' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>{isSelected ? <CheckCircle size={16} /> : <Plus size={16} className="text-slate-400" />} {mod}</button>); })}</div>
+                <div className="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">
+                  {t('hospital.cases.detail.marketing.modules.optional', undefined, 'Optional Modules')}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {optionalModules.map((module) => {
+                    const isSelected = selectedModules.includes(module.id);
+                    return (
+                      <button key={module.id} onClick={() => toggleModule(module.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${isSelected ? 'bg-indigo-50 text-indigo-700 border-indigo-200/50' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                        {isSelected ? <CheckCircle size={16} /> : <Plus size={16} className="text-slate-400" />} {module.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="pt-4"><button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-indigo-500 hover:from-pink-600 hover:to-indigo-600 text-white text-sm font-semibold rounded-full shadow-lg shadow-pink-200/50"><Sparkles size={16} /> One-Click Generate Email</button></div>
+              <div className="pt-4">
+                <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-indigo-500 hover:from-pink-600 hover:to-indigo-600 text-white text-sm font-semibold rounded-full shadow-lg shadow-pink-200/50">
+                  <Sparkles size={16} /> {t('hospital.cases.detail.marketing.generateEmail', undefined, 'One-Click Generate Email')}
+                </button>
+              </div>
             </div>
           </div>
           <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900 mb-6">Compose Email</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-6">
+              {t('hospital.cases.detail.marketing.composeTitle', undefined, 'Compose Email')}
+            </h3>
             <div className="space-y-5">
               {/* Load Template dropdown */}
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Load Template</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  {t('hospital.cases.detail.marketing.loadTemplate', undefined, 'Load Template')}
+                </label>
                 <select
                   value={selectedTemplateId}
                   onChange={(e) => handleTemplateSelect(e.target.value)}
@@ -813,8 +991,8 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                 >
                   <option value="">
                     {activeTemplates.length === 0
-                      ? 'No active templates — create one in Email Templates page'
-                      : '-- Select a template --'}
+                      ? t('hospital.cases.detail.marketing.noActiveTemplates', undefined, 'No active templates - create one in Email Templates page')
+                      : t('hospital.cases.detail.marketing.selectTemplate', undefined, '-- Select a template --')}
                   </option>
                   {activeTemplates.map((t) => (
                     <option key={t.id} value={t.id}>{t.name} ({formatTemplateType(t.type)})</option>
@@ -822,47 +1000,58 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                 </select>
                 {activeTemplates.length === 0 && templatesData && (
                   <p className="mt-1.5 text-xs text-amber-600">
-                    Templates must be set to &quot;Active&quot; status to appear here.
+                    {t(
+                      'hospital.cases.detail.marketing.templatesActiveHint',
+                      undefined,
+                      'Templates must be set to "Active" status to appear here.',
+                    )}
                   </p>
                 )}
               </div>
-              <div className="bg-amber-50 border border-amber-100/50 p-3 rounded-xl text-amber-700 text-sm font-medium flex items-center gap-2"><AlertCircle size={16} /> Privacy Notice: Patient email address is hidden for privacy.</div>
-              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Subject</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none" /></div>
-              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Email Content</label><textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none h-48 resize-none" placeholder="Generated content will appear here..." /></div>
+              <div className="bg-amber-50 border border-amber-100/50 p-3 rounded-xl text-amber-700 text-sm font-medium flex items-center gap-2">
+                <AlertCircle size={16} />
+                {t(
+                  'hospital.cases.detail.marketing.privacyNotice',
+                  undefined,
+                  'Privacy Notice: Patient email address is hidden for privacy.',
+                )}
+              </div>
+              <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.marketing.subject', undefined, 'Subject')}</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none" /></div>
+              <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.marketing.emailContent', undefined, 'Email Content')}</label><textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none h-48 resize-none" placeholder={t('hospital.cases.detail.marketing.emailContentPlaceholder', undefined, 'Generated content will appear here...')} /></div>
               <div className="flex justify-end gap-3 pt-4">
-                <button className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full">Save Draft</button>
-                <button className="px-6 py-2.5 text-sm font-semibold text-white bg-pink-600 hover:bg-pink-700 rounded-full flex items-center gap-2 shadow-md shadow-pink-200/50"><Send size={16} /> Send Email</button>
+                <button className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full">{t('hospital.cases.detail.marketing.saveDraft', undefined, 'Save Draft')}</button>
+                <button className="px-6 py-2.5 text-sm font-semibold text-white bg-pink-600 hover:bg-pink-700 rounded-full flex items-center gap-2 shadow-md shadow-pink-200/50"><Send size={16} /> {t('hospital.cases.detail.marketing.sendEmail', undefined, 'Send Email')}</button>
               </div>
             </div>
           </div>
         </div>
       )}
-      {activeSubTab === 'Call' && (
+      {activeSubTab === 'call' && (
         <div className="space-y-8">
           <div className="flex items-center justify-between">
-            <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-full shadow-md shadow-blue-200/50"><PhoneCall size={16} /> Make Call</button>
+            <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-full shadow-md shadow-blue-200/50"><PhoneCall size={16} /> {t('hospital.cases.detail.marketing.call.makeCall', undefined, 'Make Call')}</button>
             <div className="flex items-center gap-4 text-sm font-medium text-slate-500 bg-white px-6 py-3 rounded-full border border-slate-100 shadow-sm">
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> Recording</span><span className="w-1 h-1 bg-slate-300 rounded-full" /><span>Save Records</span><span className="w-1 h-1 bg-slate-300 rounded-full" /><span className="text-indigo-600">AI Summary Active</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> {t('hospital.cases.detail.marketing.call.recording', undefined, 'Recording')}</span><span className="w-1 h-1 bg-slate-300 rounded-full" /><span>{t('hospital.cases.detail.marketing.call.saveRecords', undefined, 'Save Records')}</span><span className="w-1 h-1 bg-slate-300 rounded-full" /><span className="text-indigo-600">{t('hospital.cases.detail.marketing.call.aiSummaryActive', undefined, 'AI Summary Active')}</span>
             </div>
           </div>
           <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900 mb-6">Log New Call</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-6">{t('hospital.cases.detail.marketing.call.logTitle', undefined, 'Log New Call')}</h3>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-6">
-                <div><label className="block text-sm font-semibold text-slate-700 mb-3">Call Type</label><div className="flex gap-3"><label className="flex items-center gap-2 text-sm"><input type="radio" name="callType" defaultChecked /> <span className="font-medium text-slate-700">Outbound</span></label><label className="flex items-center gap-2 text-sm"><input type="radio" name="callType" /> <span className="font-medium text-slate-700">Inbound</span></label><label className="flex items-center gap-2 text-sm"><input type="radio" name="callType" /> <span className="font-medium text-slate-700">Missed</span></label></div></div>
-                <div><label className="block text-sm font-semibold text-slate-700 mb-3">Call Result</label><select className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>Interested</option><option>Scheduled</option><option>Callback</option><option>Not Interested</option><option>No Answer</option></select></div>
+                <div><label className="block text-sm font-semibold text-slate-700 mb-3">{t('hospital.cases.detail.marketing.call.type', undefined, 'Call Type')}</label><div className="flex gap-3"><label className="flex items-center gap-2 text-sm"><input type="radio" name="callType" defaultChecked /> <span className="font-medium text-slate-700">{t('hospital.cases.detail.marketing.call.typeOutbound', undefined, 'Outbound')}</span></label><label className="flex items-center gap-2 text-sm"><input type="radio" name="callType" /> <span className="font-medium text-slate-700">{t('hospital.cases.detail.marketing.call.typeInbound', undefined, 'Inbound')}</span></label><label className="flex items-center gap-2 text-sm"><input type="radio" name="callType" /> <span className="font-medium text-slate-700">{t('hospital.cases.detail.marketing.call.typeMissed', undefined, 'Missed')}</span></label></div></div>
+                <div><label className="block text-sm font-semibold text-slate-700 mb-3">{t('hospital.cases.detail.marketing.call.result', undefined, 'Call Result')}</label><select className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white"><option>{t('hospital.cases.detail.marketing.call.resultInterested', undefined, 'Interested')}</option><option>{t('hospital.cases.detail.marketing.call.resultScheduled', undefined, 'Scheduled')}</option><option>{t('hospital.cases.detail.marketing.call.resultCallback', undefined, 'Callback')}</option><option>{t('hospital.cases.detail.marketing.call.resultNotInterested', undefined, 'Not Interested')}</option><option>{t('hospital.cases.detail.marketing.call.resultNoAnswer', undefined, 'No Answer')}</option></select></div>
               </div>
-              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Summary</label><textarea className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none h-24 resize-none" placeholder="Briefly summarize the conversation..." /></div>
-              <div><label className="block text-sm font-semibold text-slate-700 mb-2">Next Follow-up Date</label><input type="date" className="w-full max-w-xs px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white" /></div>
+              <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.marketing.call.summary', undefined, 'Summary')}</label><textarea className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none h-24 resize-none" placeholder={t('hospital.cases.detail.marketing.call.summaryPlaceholder', undefined, 'Briefly summarize the conversation...')} /></div>
+              <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.marketing.call.nextFollowUpDate', undefined, 'Next Follow-up Date')}</label><input type="date" className="w-full max-w-xs px-4 py-2.5 rounded-xl border border-slate-200 text-sm outline-none bg-white" /></div>
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 rounded-full">Cancel</button>
-                <button className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-full flex items-center gap-2 shadow-md shadow-blue-200/50"><CheckCircle size={16} /> Save Record</button>
+                <button className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 rounded-full">{t('hospital.common.cancel', undefined, 'Cancel')}</button>
+                <button className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-full flex items-center gap-2 shadow-md shadow-blue-200/50"><CheckCircle size={16} /> {t('hospital.cases.detail.marketing.call.saveRecord', undefined, 'Save Record')}</button>
               </div>
             </div>
           </div>
           <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900 mb-6">Call History</h3>
-            <p className="text-sm text-slate-400 text-center py-4">No call records yet</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-6">{t('hospital.cases.detail.marketing.call.historyTitle', undefined, 'Call History')}</h3>
+            <p className="text-sm text-slate-400 text-center py-4">{t('hospital.cases.detail.marketing.call.empty', undefined, 'No call records yet')}</p>
           </div>
         </div>
       )}
@@ -873,17 +1062,19 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 // ── Tab: Invitation Letter ──────────────────────────────────────────
 
 function InvitationLetterTab() {
+  const { t } = useHospitalI18n();
+
   return (
     <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2"><FileSignature size={20} className="text-indigo-600" /> Invitation Letter Upload</h3>
+      <h3 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2"><FileSignature size={20} className="text-indigo-600" /> {t('hospital.cases.detail.invitation.title', undefined, 'Invitation Letter Upload')}</h3>
       <div className="space-y-6">
-        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl text-sm text-indigo-800">Upload the official hospital invitation letter required for the patient&apos;s medical visa application.</div>
+        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl text-sm text-indigo-800">{t('hospital.cases.detail.invitation.description', undefined, "Upload the official hospital invitation letter required for the patient's medical visa application.")}</div>
         <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 hover:border-indigo-300 transition-colors cursor-pointer">
           <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-4"><Upload size={32} /></div>
-          <span className="text-base font-semibold text-slate-700 mb-1">Click to upload or drag and drop</span>
-          <span className="text-sm">PDF format only (Max 5MB)</span>
+          <span className="text-base font-semibold text-slate-700 mb-1">{t('hospital.cases.detail.invitation.uploadPrompt', undefined, 'Click to upload or drag and drop')}</span>
+          <span className="text-sm">{t('hospital.cases.detail.invitation.uploadHint', undefined, 'PDF format only (Max 5MB)')}</span>
         </div>
-        <div className="flex justify-end pt-4"><button className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50">Submit Letter</button></div>
+        <div className="flex justify-end pt-4"><button className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50">{t('hospital.cases.detail.invitation.submit', undefined, 'Submit Letter')}</button></div>
       </div>
     </div>
   );
@@ -902,6 +1093,7 @@ function ConsultationTab({
   caseId: string;
   currentCase: CaseSummary;
 }) {
+  const { locale, t } = useHospitalI18n();
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [transcriptId, setTranscriptId] = useState<string | null>(null);
@@ -914,7 +1106,7 @@ function ConsultationTab({
           onClick={() => setShowScheduleModal(true)}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-full shadow-md shadow-indigo-200/50 transition-colors"
         >
-          <Video size={16} /> Schedule Consultation
+          <Video size={16} /> {t('hospital.cases.detail.consultation.scheduleButton', undefined, 'Schedule Consultation')}
         </button>
       </div>
 
@@ -929,7 +1121,7 @@ function ConsultationTab({
       {/* Consultation list */}
       {consultations.length === 0 ? (
         <div className="bg-white p-12 rounded-[2rem] border border-slate-100 shadow-sm text-center text-sm text-slate-400">
-          No consultations yet. Schedule one to get started.
+          {t('hospital.cases.detail.consultation.empty', undefined, 'No consultations yet. Schedule one to get started.')}
         </div>
       ) : (
         <div className="space-y-4">
@@ -941,16 +1133,29 @@ function ConsultationTab({
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-16 flex-col items-center justify-center rounded-xl bg-slate-50">
                       <span className="text-xs font-medium text-slate-400">
-                        {c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
+                        {formatConsultationDateTime(
+                          c.scheduledAt,
+                          locale,
+                          { month: 'short', day: 'numeric' },
+                          t('hospital.common.notAvailable', undefined, 'N/A'),
+                        )}
                       </span>
                       <span className="text-base font-bold text-slate-900">
-                        {c.scheduledAt ? new Date(c.scheduledAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '--'}
+                        {formatConsultationDateTime(
+                          c.scheduledAt,
+                          locale,
+                          { hour: 'numeric', minute: '2-digit' },
+                          '--',
+                        )}
                       </span>
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <StatusBadge status={c.status ?? 'UNKNOWN'} />
-                        <span className="flex items-center gap-1 text-xs text-slate-500"><Clock size={12} /> {c.durationMinutes ?? 30} min</span>
+                        <StatusBadge
+                          status={c.status ?? 'UNKNOWN'}
+                          label={getHospitalStatusLabel(c.status, t)}
+                        />
+                        <span className="flex items-center gap-1 text-xs text-slate-500"><Clock size={12} /> {formatDurationMinutesLabel(c.durationMinutes ?? 30, t)}</span>
                       </div>
                       {c.notes && <p className="mt-1 text-xs text-slate-400">{c.notes}</p>}
                     </div>
@@ -959,13 +1164,13 @@ function ConsultationTab({
                     {c.status === 'SCHEDULED' && (
                       <button onClick={() => router.push(`/consultations/${c.id}/room`)}
                         className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-sm">
-                        <Video size={16} /> Enter
+                        <Video size={16} /> {t('hospital.cases.detail.consultation.enter', undefined, 'Enter')}
                       </button>
                     )}
                     {c.status === 'COMPLETED' && (
                       <button onClick={() => setExpandedId(isExpanded ? null : c.id)}
                         className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
-                        View Details {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        {t('hospital.cases.detail.consultation.viewDetails', undefined, 'View Details')} {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </button>
                     )}
                   </div>
@@ -988,30 +1193,33 @@ function ConsultationTab({
 }
 
 function CompletedConsultationDetails({ consultationId: _consultationId, onViewTranscript }: { consultationId: string; onViewTranscript: () => void }) {
+  const { t } = useHospitalI18n();
+
   return (
     <div className="border-t border-slate-100 bg-indigo-50/50 p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Sparkles size={18} className="text-indigo-600" />
-          <h4 className="font-semibold text-slate-900">AI Summary</h4>
-          <span className="text-xs text-slate-400 uppercase">AI Generated</span>
+          <h4 className="font-semibold text-slate-900">{t('hospital.cases.detail.consultation.aiSummary', undefined, 'AI Summary')}</h4>
+          <span className="text-xs text-slate-400 uppercase">{t('hospital.cases.detail.consultation.aiGenerated', undefined, 'AI Generated')}</span>
         </div>
         <div className="flex gap-2">
           <button onClick={onViewTranscript}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50">
-            <FileText size={14} /> Transcript
+            <FileText size={14} /> {t('hospital.cases.detail.consultation.transcript', undefined, 'Transcript')}
           </button>
           <button className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-full hover:bg-indigo-50">
-            <Video size={14} /> Video
+            <Video size={14} /> {t('hospital.cases.detail.consultation.video', undefined, 'Video')}
           </button>
         </div>
       </div>
-      <p className="text-sm text-slate-500 text-center py-4">AI summary will be available after consultation recording is processed.</p>
+      <p className="text-sm text-slate-500 text-center py-4">{t('hospital.cases.detail.consultation.aiSummaryPending', undefined, 'AI summary will be available after consultation recording is processed.')}</p>
     </div>
   );
 }
 
 function ConsultationTranscriptModal({ consultationId, onClose }: { consultationId: string; onClose: () => void }) {
+  const { locale, t } = useHospitalI18n();
   const { data, isPending } = useConsultationTranscript(consultationId);
   const transcript = data as { entries?: Array<{ speaker: string; timestamp: string; original: string; translated?: string }> } | null;
   const entries = transcript?.entries ?? [];
@@ -1022,27 +1230,27 @@ function ConsultationTranscriptModal({ consultationId, onClose }: { consultation
         <div className="flex items-center justify-between p-6 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center"><FileText size={18} className="text-purple-600" /></div>
-            <h3 className="text-lg font-semibold text-slate-900">Full Transcript</h3>
+            <h3 className="text-lg font-semibold text-slate-900">{t('hospital.cases.detail.consultation.fullTranscript', undefined, 'Full Transcript')}</h3>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"><X size={20} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
           {isPending ? (
-            <div className="flex items-center justify-center py-12 text-slate-400">Loading transcript...</div>
+            <div className="flex items-center justify-center py-12 text-slate-400">{t('hospital.cases.detail.consultation.transcriptLoading', undefined, 'Loading transcript...')}</div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <FileText size={40} className="mb-3 opacity-50" />
-              <p className="text-sm">No transcript entries available yet.</p>
-              <p className="text-xs mt-1">Transcript will be generated after the consultation recording is processed.</p>
+              <p className="text-sm">{t('hospital.cases.detail.consultation.transcriptEmpty', undefined, 'No transcript entries available yet.')}</p>
+              <p className="text-xs mt-1">{t('hospital.cases.detail.consultation.transcriptPending', undefined, 'Transcript will be generated after the consultation recording is processed.')}</p>
             </div>
           ) : (
             entries.map((entry, i) => {
-              const isDoctor = entry.speaker?.toLowerCase().includes('dr') || i % 2 === 0;
+              const isDoctor = i % 2 === 0;
               return (
                 <div key={i} className={`flex flex-col ${isDoctor ? 'items-start' : 'items-end'}`}>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold text-slate-700">{entry.speaker}</span>
-                    <span className="text-[10px] font-mono text-slate-400">{entry.timestamp}</span>
+                    <span className="text-xs font-semibold text-slate-700">{entry.speaker || t('hospital.common.unknown', undefined, 'Unknown')}</span>
+                    <span className="text-[10px] font-mono text-slate-400">{formatTranscriptTimestamp(entry.timestamp, locale)}</span>
                   </div>
                   <div className={`max-w-[80%] p-4 border ${isDoctor ? 'bg-blue-50 border-blue-100 rounded-2xl rounded-tl-none' : 'bg-cyan-50 border-cyan-100 rounded-2xl rounded-tr-none'}`}>
                     <p className="text-sm text-slate-700">{entry.original}</p>

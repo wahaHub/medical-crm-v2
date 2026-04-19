@@ -46,7 +46,6 @@ export function CreateConsultationModal({
     : cases;
   const title = titleProp ?? tx('hospital.consultations.createModal.title', 'Create Consultation');
   const submitLabel = submitLabelProp ?? tx('hospital.consultations.createModal.create', 'Create Consultation');
-  const doctorPrefix = tx('hospital.portal.consultations.createModal.doctorPrefix', 'Doctor');
 
   const resetForm = () => {
     setCaseId(fixedCaseId ?? '');
@@ -71,9 +70,7 @@ export function CreateConsultationModal({
     if (!effectiveCaseId || !scheduledAt) return;
     setIsSubmitting(true);
     try {
-      const combinedNotes = doctorName
-        ? `${doctorPrefix}: ${doctorName}${notes ? `\n${notes}` : ''}`
-        : notes || undefined;
+      const combinedNotes = [doctorName.trim(), notes.trim()].filter(Boolean).join('\n') || undefined;
       await createConsultation({
         caseId: effectiveCaseId,
         scheduledAt: new Date(scheduledAt).toISOString(),
@@ -159,7 +156,7 @@ export function CreateConsultationModal({
             value={scheduledAt}
             onChange={(e) => setScheduledAt(e.target.value)}
             required
-            min={new Date().toISOString().slice(0, 16)}
+            min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
             className={inputClass}
           />
         </div>

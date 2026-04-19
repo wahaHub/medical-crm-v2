@@ -1232,6 +1232,23 @@
       },
       "search": {
         "placeholder": "Patienten, Fälle durchsuchen..."
+      },
+      "language": {
+        "label": "Sprache",
+        "current": "Aktuelle Sprache",
+        "switchTo": "Sprache wechseln",
+        "options": {
+          "en": "Englisch",
+          "zh": "Chinesisch",
+          "fr": "Französisch",
+          "de": "Deutsch",
+          "es": "Spanisch",
+          "bn": "Bengalisch"
+        }
+      },
+      "languageSwitcher": {
+        "label": "Sprache",
+        "saving": "Sprache wird gespeichert..."
       }
     },
     "error": {
@@ -1300,7 +1317,24 @@
           "description": "Labor- und Bildgebungsberichte prüfen"
         }
       },
-      "welcome": "Willkommen zurück, überprüfen Sie die heutige Arbeitsübersicht"
+      "welcome": "Willkommen zurück, überprüfen Sie die heutige Arbeitsübersicht",
+      "title": "Dashboard",
+      "sections": {
+        "consultations": {
+          "title": "Heutige Konsultationen",
+          "empty": "Keine Konsultationen geplant",
+          "aiTranslation": "KI-Übersetzung",
+          "enter": "Konsultation öffnen"
+        },
+        "newCases": {
+          "title": "Neue Fälle",
+          "empty": "Noch keine Fälle"
+        },
+        "pendingMessages": {
+          "title": "Ausstehende Nachrichten",
+          "empty": "Keine ausstehenden Nachrichten"
+        }
+      }
     },
     "profile": {
       "shareProfile": "Profil teilen",
@@ -1497,6 +1531,325 @@
         "50-60": "50-60 years",
         "60-70": "60-70 years",
         "70+": "70+ years"
+      }
+    },
+    "common": {
+      "unknown": "Unbekannt",
+      "notAvailable": "k. A.",
+      "durationMinutes": "{count} Min.",
+      "viewAll": "Alle ansehen",
+      "loading": "Wird geladen...",
+      "ageYears": "{age} Jahre",
+      "genderMaleShort": "M",
+      "genderFemaleShort": "W",
+      "cancel": "Abbrechen",
+      "case": "Fall",
+      "caseStatus": "Fallstatus",
+      "documents": "Dokumente",
+      "messages": "Nachrichten",
+      "patient": "Patient",
+      "profile": "Profil",
+      "role": "Rolle",
+      "stats": "Statistiken"
+    },
+    "cases": {
+      "list": {
+        "searchPlaceholder": "Fallnummer, Patientenname oder Patientencode suchen...",
+        "filterButton": "Filtern",
+        "stats": {
+          "allCases": "Alle Fälle",
+          "new": "Neu",
+          "inProgress": "In Bearbeitung",
+          "completed": "Abgeschlossen"
+        },
+        "tabs": {
+          "all": "Alle",
+          "new": "Neu",
+          "inProgress": "In Bearbeitung",
+          "completed": "Abgeschlossen"
+        },
+        "empty": "Keine Fälle gefunden",
+        "diagnosisBadge": "Diagnose"
+      },
+      "title": "Fallverwaltung",
+      "detail": {
+        "backToCases": "Back to Case List",
+        "header": {
+          "documentsCount": "{count} Dokumente",
+          "messagesCount": "{count} Nachrichten"
+        },
+        "intake": {
+          "errorLoad": "Loading failed:",
+          "emptyTitle": "Keine medizinischen Aufnahmeangaben",
+          "emptyDescription": "Der Patient hat den medizinischen Aufnahmebogen noch nicht ausgefüllt.",
+          "responsesTitle": "Antworten zum medizinischen Aufnahmebogen",
+          "summaryTitle": "Zusammenfassung und Bewertung"
+        },
+        "documents": {
+          "empty": "No medical records yet",
+          "groups": {
+            "medicalIntake": "Medical Records",
+            "diagnosis": "Diagnosis Attachments",
+            "invitationLetter": "Medical Invitation Letter",
+            "messageAttachments": "Message Attachments",
+            "otherDocuments": "Weitere Dokumente"
+          },
+          "unnamed": "Unbenannt"
+        },
+        "messages": {
+          "empty": "No message records",
+          "inputPlaceholder": "Enter message content...",
+          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)"
+        },
+        "diagnosis": {
+          "addButton": "Add Diagnosis",
+          "empty": "No diagnosis yet",
+          "icdCode": "ICD-10 Code",
+          "unknownCondition": "Unbekannte Erkrankung",
+          "validation": {
+            "nameRequired": "Ein Diagnosebegriff ist erforderlich."
+          },
+          "errorSave": "Diagnose konnte nicht gespeichert werden",
+          "fields": {
+            "details": "Detailed Diagnosis",
+            "estimatedCost": "Estimated Cost",
+            "suggestedTests": "Suggested Further Tests",
+            "treatmentDuration": "Treatment Duration",
+            "treatmentRecommendation": "Treatment Recommendation"
+          },
+          "addModal": {
+            "title": "Add Diagnosis",
+            "type": "Diagnosis Type",
+            "name": "Diagnosis Name *",
+            "namePlaceholder": "e.g., Coronary Atherosclerotic Heart Disease",
+            "icdCode": "ICD-10 Code",
+            "icdCodePlaceholder": "e.g., I25.1",
+            "severity": "Severity",
+            "description": "Detailed Diagnosis",
+            "treatmentRecommendation": "Treatment Recommendation",
+            "estimatedCost": "Estimated Cost Range",
+            "treatmentDuration": "Estimated Treatment Duration",
+            "attachments": "Attachment Document (Optional)",
+            "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
+            "save": "Save Diagnosis"
+          }
+        },
+        "marketing": {
+          "defaultSubject": "Ihr personalisierter Behandlungsplan",
+          "emailOutreach": "E-Mail-Kontakt",
+          "phoneOutreach": "Telefonische Nachverfolgung",
+          "composeTitle": "Compose Email",
+          "subject": "Email Subject",
+          "emailContent": "Email Content",
+          "emailContentPlaceholder": "Der generierte Inhalt erscheint hier...",
+          "generateEmail": "Auto-generate Email Content",
+          "loadTemplate": "Vorlage laden",
+          "noActiveTemplates": "Keine aktiven Vorlagen. Erstellen Sie eine auf der Seite E-Mail-Vorlagen.",
+          "privacyNotice": "Marketing emails will be sent through CRM system. To protect patient privacy, you cannot directly view patients' email addresses.",
+          "saveDraft": "Save Draft",
+          "selectTemplate": "-- Vorlage auswählen --",
+          "sendEmail": "Send Email",
+          "templatesActiveHint": "Vorlagen müssen den Status „Aktiv“ haben, um hier angezeigt zu werden.",
+          "variables": {
+            "hospitalName": "Unser Krankenhaus"
+          },
+          "modules": {
+            "title": "Email Content Modules",
+            "coreIncluded": "Core Modules",
+            "optional": "Optional Modules (Click to Add)",
+            "logoSlogan": "Logo / Slogan",
+            "successCases": "Success Stories",
+            "patientReviews": "Patient Reviews",
+            "hospitalIntroduction": "Hospital Introduction",
+            "expertTeam": "Expert Team",
+            "serviceFeatures": "Service Features",
+            "pricingPlans": "Pricing Plans",
+            "travelServices": "Travel Services",
+            "contactInformation": "Contact Information"
+          },
+          "call": {
+            "makeCall": "Make Call",
+            "recording": "Auto recording",
+            "saveRecords": "Call records auto-saved",
+            "aiSummaryActive": "AI call summary",
+            "logTitle": "Log Call",
+            "type": "Call Type",
+            "typeOutbound": "Outbound - Initiated contact",
+            "typeInbound": "Inbound - Patient callback",
+            "typeMissed": "Not connected",
+            "result": "Call Result",
+            "resultInterested": "Interested - Continue follow-up",
+            "resultScheduled": "Scheduled - Confirmed appointment",
+            "resultCallback": "Callback - Patient considering",
+            "resultNotInterested": "Not interested - Not needed now",
+            "resultNoAnswer": "No answer",
+            "summary": "Call Summary",
+            "summaryPlaceholder": "Record key points of call...\n\nExample: Patient interested in treatment plan, asked about costs and hospitalization time, needs to discuss with family before replying.",
+            "nextFollowUpDate": "Next Follow-up Date",
+            "saveRecord": "Save Record",
+            "historyTitle": "Call Records",
+            "empty": "No call records"
+          }
+        },
+        "invitation": {
+          "title": "Medical Invitation Letter Upload",
+          "description": "Please upload the official invitation letter issued by the hospital. The system will automatically process and verify the file content.",
+          "uploadPrompt": "Zum Hochladen klicken oder Datei hierher ziehen",
+          "uploadHint": "Supported formats: PDF, DOC, DOCX, JPG, PNG | Max file size: 10MB",
+          "submit": "Einladungsschreiben einreichen"
+        },
+        "consultation": {
+          "scheduleButton": "Konsultation planen",
+          "empty": "Noch keine Konsultationen. Planen Sie eine, um zu starten.",
+          "enter": "Beitreten",
+          "viewDetails": "Details anzeigen",
+          "aiSummary": "KI-Zusammenfassung",
+          "aiGenerated": "KI-generiert",
+          "aiSummaryPending": "AI summary will be auto-generated after consultation completes",
+          "transcript": "Transkript",
+          "video": "Video",
+          "fullTranscript": "Vollständiges Protokoll",
+          "transcriptLoading": "Protokoll wird geladen...",
+          "transcriptEmpty": "Transcript Not Yet Generated",
+          "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        }
+      }
+    },
+    "consultations": {
+      "title": "Online-Konsultationen",
+      "description": "Video-Konsultationen, KI-Übersetzung und Aufzeichnungen verwalten",
+      "tabs": {
+        "all": "Alle",
+        "scheduled": "Geplant",
+        "completed": "Abgeschlossen"
+      },
+      "stats": {
+        "scheduled": "Geplante Konsultationen",
+        "today": "Heutige Konsultationen",
+        "needTranslation": "Übersetzung erforderlich",
+        "completed": "Abgeschlossen"
+      },
+      "empty": "Keine Konsultationen",
+      "createModal": {
+        "title": "Konsultationslink erstellen",
+        "description": "Einen Videotermin für den Patienten erstellen",
+        "selectCase": "Fall auswählen *",
+        "loading": "Wird geladen...",
+        "chooseCase": "Fall auswählen",
+        "doctor": "Konsultierender Arzt (optional)",
+        "doctorPlaceholder": "Arztname eingeben...",
+        "scheduledTime": "Konsultationszeit *",
+        "duration": "Dauer der Konsultation (Minuten)",
+        "duration15": "15 Minuten",
+        "duration30": "30 Minuten",
+        "duration45": "45 Minuten",
+        "duration60": "60 Minuten",
+        "enableAiTranslation": "KI-Echtzeitübersetzung aktivieren",
+        "notes": "Notizen (optional)",
+        "notesPlaceholder": "Notizen zur Konsultation eingeben...",
+        "crmNotification": "Nach dem Erstellen wird der Patient automatisch per CRM benachrichtigt.",
+        "cancel": "Abbrechen",
+        "create": "Konsultation erstellen",
+        "creating": "Wird erstellt..."
+      },
+      "transcriptModal": {
+        "title": "Vollständiges Protokoll",
+        "showTranslation": "Übersetzung anzeigen",
+        "loading": "Protokoll wird geladen...",
+        "willGenerateAfter": "Das Protokoll wird nach der Verarbeitung der Aufnahme erstellt.",
+        "exportPDF": "Als PDF exportieren"
+      },
+      "card": {
+        "aiGenerated": "KI-generiert",
+        "aiSummary": "KI-Zusammenfassung",
+        "collapse": "Details ausblenden",
+        "enterConsultation": "Beitreten",
+        "viewDetails": "Details anzeigen"
+      }
+    },
+    "portal": {
+      "consultations": {
+        "page": {
+          "title": "Konsultationen",
+          "description": "Video-Konsultationen von Patienten verwalten und prüfen"
+        },
+        "list": {
+          "createButton": "Konsultation erstellen",
+          "loading": "Wird geladen...",
+          "emptyDescription": "Erstellen Sie eine neue Konsultation, um zu beginnen.",
+          "loadingMore": "Wird geladen...",
+          "loadMore": "Mehr laden"
+        },
+        "card": {
+          "transcript": "Transkript",
+          "video": "Video",
+          "summaryPending": "Die KI-Zusammenfassung ist verfügbar, sobald die Aufnahme verarbeitet wurde."
+        },
+        "transcriptModal": {
+          "emptyTitle": "Noch keine Transkripteinträge vorhanden."
+        },
+        "createModal": {
+          "doctorPrefix": "Arzt",
+          "currentCase": "Aktueller Fall",
+          "doctorPlaceholder": "Arztnamen eingeben (optional)",
+          "enableAiTranslation": "KI-Übersetzung aktivieren",
+          "notesPlaceholder": "Optionale Notizen...",
+          "crmNotification": "Eine CRM-Benachrichtigung wird an den Patienten gesendet, sobald die Konsultation geplant ist."
+        }
+      },
+      "videoRoom": {
+        "preJoin": {
+          "title": "Bereit beizutreten?",
+          "description": "Prüfen Sie Kamera und Mikrofon, bevor Sie dem Anruf beitreten.",
+          "joinCall": "Anruf beitreten"
+        },
+        "controls": {
+          "muteMicrophone": "Mikrofon stummschalten",
+          "unmuteMicrophone": "Mikrofon aktivieren",
+          "turnOffCamera": "Kamera ausschalten",
+          "turnOnCamera": "Kamera einschalten",
+          "mute": "Stumm",
+          "unmute": "Ton an",
+          "stopVideo": "Video stoppen",
+          "startVideo": "Video starten",
+          "stopRecording": "Aufnahme stoppen",
+          "startRecording": "Aufnahme starten",
+          "hideSubtitles": "Untertitel ausblenden",
+          "showSubtitles": "Untertitel anzeigen",
+          "endCall": "Anruf beenden"
+        },
+        "inCall": {
+          "recordingIndicator": "REC",
+          "subtitlesPlaceholder": "Untertitel erscheinen hier..."
+        }
+      }
+    },
+    "messages": {
+      "chat": {
+        "unknown": "Unbekannt",
+        "admin": "Rolle",
+        "hospital": "Krankenhaus",
+        "language": "Sprache",
+        "patientCodeLabel": "Patientencode",
+        "primaryDiagnosis": "Hauptdiagnose"
+      }
+    },
+    "caseDetail": {
+      "diagnosisDialog": {
+        "costOptions": {
+          "5k": "Unter 5 Tsd. USD",
+          "5-10k": "5 bis 10 Tsd. USD",
+          "10-20k": "10 bis 20 Tsd. USD",
+          "20-50k": "20 bis 50 Tsd. USD",
+          "50k+": "Über 50 Tsd. USD"
+        },
+        "durationOptions": {
+          "1week": "Innerhalb von 1 Woche",
+          "2weeks": "1 bis 2 Wochen",
+          "1month": "2 Wochen bis 1 Monat",
+          "3months": "1 bis 3 Monate",
+          "6months": "Mehr als 3 Monate"
+        }
       }
     }
   },

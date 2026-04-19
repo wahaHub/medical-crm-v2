@@ -37,6 +37,11 @@ import { useCases, useCase } from '@/queries/use-cases';
 import { sendMessage, sendMessageWithAttachments, createConversation, uploadFile } from '@/actions/message-actions';
 import type { PaginatedResponse, ConversationSummary, CaseSummary, HospitalCaseDetail } from '@/lib/api-types';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
+import {
+  getHospitalGenderShortLabel,
+  getHospitalStatusLabel,
+  getLocalizedLanguageLabel,
+} from '@/lib/hospital-display';
 
 /** Raw message shape from the backend API */
 interface ApiMessage {
@@ -504,6 +509,33 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   }, []);
 
   const activeTranslationState = activeTranslationKey ? attachmentTranslations[activeTranslationKey] : null;
+  const messageCasePanelLabels = {
+    unknownParticipant: tx('hospital.messages.chat.unknown', 'Unknown'),
+    conversation: tx('hospital.messages.chat.caseInfo', 'Case Info'),
+    patientCode: tx('hospital.messages.chat.patientCodeLabel', 'Patient Code'),
+    primaryDiagnosis: tx('hospital.messages.chat.primaryDiagnosis', 'Primary Diagnosis'),
+    language: tx('hospital.messages.chat.language', 'Language'),
+    profile: tx('hospital.common.profile', 'Profile'),
+    caseStatus: tx('hospital.common.caseStatus', 'Case Status'),
+    stats: tx('hospital.common.stats', 'Stats'),
+    documents: tx('hospital.common.documents', 'Documents'),
+    messages: tx('hospital.common.messages', 'Messages'),
+    role: tx('hospital.common.role', 'Role'),
+    case: tx('hospital.common.case', 'Case'),
+    hospital: tx('hospital.messages.chat.hospital', 'Hospital'),
+  };
+  const formatConversationCategoryLabel = (category: string) =>
+    category === 'ADMIN_HOSPITAL'
+      ? tx('hospital.messages.chat.admin', 'Admin')
+      : category === 'ADMIN_PATIENT'
+        ? tx('hospital.portal.messages.chat.patient', 'Patient')
+        : category.replace(/_/g, ' / ');
+  const formatParticipantRoleLabel = (role: string) =>
+    role === 'ADMIN_HOSPITAL'
+      ? tx('hospital.messages.chat.admin', 'Admin')
+      : role === 'ADMIN_PATIENT'
+        ? tx('hospital.portal.messages.chat.patient', 'Patient')
+        : role;
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)]">
@@ -838,6 +870,13 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               conversationTitle={selectedConvo.title ?? tx('hospital.portal.messages.chat.generalConversation', 'General')}
               caseLinkHref={selectedConvo.caseId ? `/cases/${selectedConvo.caseId}` : null}
               caseLinkLabel={tx('hospital.messages.chat.viewFullCaseDetails', 'View Full Case Details')}
+              labels={messageCasePanelLabels}
+              formatCategoryLabel={formatConversationCategoryLabel}
+              formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale)}
+              formatStatusLabel={(status) => getHospitalStatusLabel(status, t)}
+              formatGenderLabel={(gender) => getHospitalGenderShortLabel(gender, t)}
+              formatAgeLabel={(age) => tx('hospital.common.ageYears', '{age} y/o', { age })}
+              formatParticipantRoleLabel={formatParticipantRoleLabel}
             />
           </div>
         )}

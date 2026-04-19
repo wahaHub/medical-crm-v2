@@ -26,6 +26,10 @@ import { useConsultations, useConsultationStats, useConsultationTranscript } fro
 import { CreateConsultationModal } from '@/components/create-consultation-modal';
 import type { PaginatedResponse, ConsultationSummary, ConsultationStats, CaseSummary } from '@/lib/api-types';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
+import {
+  formatDurationMinutesLabel,
+  getHospitalStatusLabel,
+} from '@/lib/hospital-display';
 
 interface ConsultationsListProps {
   initialData: PaginatedResponse<ConsultationSummary>;
@@ -46,7 +50,6 @@ function formatTimeBox(dateStr: string, locale: string) {
   const timeParts = new Intl.DateTimeFormat(locale, {
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
   }).formatToParts(d);
   const hour = timeParts.find((part) => part.type === 'hour')?.value ?? '--';
   const minute = timeParts.find((part) => part.type === 'minute')?.value ?? '--';
@@ -57,6 +60,18 @@ function formatTimeBox(dateStr: string, locale: string) {
     time: `${hour}:${minute}`,
     period,
   };
+}
+
+function formatTranscriptTimestamp(timestamp: string, locale: string) {
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) return timestamp;
+
+  return new Intl.DateTimeFormat(locale, {
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short',
+    day: 'numeric',
+  }).format(parsed);
 }
 
 export function ConsultationsList({ initialData, initialStats, caseMap = {}, cases = [] }: ConsultationsListProps) {
@@ -192,6 +207,7 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
             const { date, time, period } = formatTimeBox(c.scheduledAt ?? '', locale);
             const isExpanded = expandedId === c.id;
             const patientName = resolvePatientName(c);
+            const statusLabel = getHospitalStatusLabel(c.status ?? 'UNKNOWN', t);
 
             return (
               <div
@@ -211,7 +227,7 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
                     <div>
                       <div className="flex items-center gap-3">
                         <span className="font-semibold text-slate-900">{patientName}</span>
-                        <StatusBadge status={c.status ?? 'UNKNOWN'} />
+                        <StatusBadge status={c.status ?? 'UNKNOWN'} label={statusLabel} />
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-sm text-slate-500">
                         {c.caseId && (
@@ -220,7 +236,7 @@ export function ConsultationsList({ initialData, initialStats, caseMap = {}, cas
                           </span>
                         )}
                         <span className="flex items-center gap-1">
-                          <Clock size={14} /> {c.durationMinutes ?? 30} min
+                          <Clock size={14} /> {formatDurationMinutesLabel(c.durationMinutes ?? 30, t)}
                         </span>
                       </div>
                       {c.notes && (
@@ -338,7 +354,7 @@ function TranscriptModal({
   consultationId: string | null;
   onClose: () => void;
 }) {
-  const { t } = useHospitalI18n();
+  const { locale, t } = useHospitalI18n();
   const tx = (key: string, fallback: string) => t(key, undefined, fallback);
   const [showTranslation, setShowTranslation] = useState(true);
   const { data, isPending } = useConsultationTranscript(consultationId);
@@ -403,7 +419,7 @@ function TranscriptModal({
             </div>
           ) : (
             entries.map((entry, i) => {
-              const isDoctor = entry.speaker?.toLowerCase().includes('dr') || i % 2 === 0;
+              const isDoctor = i % 2 === 0;
               return (
                 <div
                   key={i}
@@ -411,7 +427,9 @@ function TranscriptModal({
                 >
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-semibold text-slate-700">{entry.speaker}</span>
-                    <span className="text-[10px] font-mono text-slate-400">{entry.timestamp}</span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {formatTranscriptTimestamp(entry.timestamp, locale)}
+                    </span>
                   </div>
                   <div
                     className={`max-w-[80%] p-4 border ${

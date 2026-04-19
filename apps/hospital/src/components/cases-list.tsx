@@ -14,6 +14,10 @@ import {
 import { StatusBadge, useDebounce } from '@medical-crm/ui';
 import { useCases } from '@/queries/use-cases';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
+import {
+  getHospitalStatusLabel,
+  getLocalizedCountryLabel,
+} from '@/lib/hospital-display';
 import type { PaginatedResponse, CaseSummary, CaseStats } from '@/lib/api-types';
 
 interface CasesListProps {
@@ -83,12 +87,6 @@ function conditionBadgeColor(condition: string | null) {
     if (condition.toLowerCase().includes(key.toLowerCase())) return color;
   }
   return CONDITION_COLORS.default;
-}
-
-function conditionLabel(condition: string | null) {
-  if (!condition) return 'General';
-  const words = condition.split(/[\s-]+/).filter((w) => w.length > 3);
-  return words[0] ?? condition.split(' ')[0] ?? 'General';
 }
 
 function formatDate(dateStr: string, locale: string) {
@@ -254,6 +252,8 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
             const condition = raw.primaryDiagnosis ?? c.medicalCondition ?? null;
             const flag = getCountryFlag(c.patientCountry);
             const patientName = c.patientName ?? unknownLabel;
+            const countryLabel = getLocalizedCountryLabel(c.patientCountry, locale);
+            const statusLabel = getHospitalStatusLabel(c.status ?? 'UNKNOWN', t);
 
             return (
               <div
@@ -267,7 +267,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
                     <span className="font-mono text-sm font-semibold text-indigo-600">{c.caseNumber}</span>
                     <span className="text-xs text-slate-400">{formatDate(c.createdAt ?? '', locale)}</span>
                   </div>
-                  <StatusBadge status={c.status ?? 'UNKNOWN'} />
+                  <StatusBadge status={c.status ?? 'UNKNOWN'} label={statusLabel} />
                 </div>
 
                 {/* Patient row */}
@@ -304,7 +304,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
                           <span>•</span>
                           <span className="flex items-center gap-1">
                             <Globe size={12} />
-                            {flag} {c.patientCountry}
+                            {flag} {countryLabel}
                           </span>
                         </>
                       )}
@@ -319,7 +319,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
                       <>
                         <div className="text-sm font-semibold text-slate-800 mb-1">{condition}</div>
                         <span className={`inline-block rounded-md border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${conditionBadgeColor(condition)}`}>
-                          {conditionLabel(condition)}
+                          {t('hospital.cases.list.diagnosisBadge', undefined, 'Diagnosis')}
                         </span>
                       </>
                     )}

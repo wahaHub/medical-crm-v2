@@ -2009,13 +2009,15 @@
         "withDetail": "{summary} Details: {detail}"
       },
       "actions": {
-        "cancel": "Cancel",
-        "close": "Close",
-        "creating": "Creating...",
-        "delete": "Delete",
-        "deleting": "Deleting...",
-        "edit": "Edit",
-        "saving": "Saving..."
+        "cancel": "Cancelar",
+        "close": "Cerrar",
+        "creating": "Creando...",
+        "delete": "Eliminar",
+        "deleting": "Eliminando...",
+        "edit": "Editar",
+        "save": "Guardar",
+        "send": "Enviar",
+        "saving": "Guardando..."
       },
       "labels": {
         "attachments": "Attachments"
@@ -2027,6 +2029,21 @@
         "uploading": "Uploading...",
         "uploadingAndSaving": "Uploading and saving",
         "waiting": "Waiting"
+      },
+      "statuses": {
+        "new": "Nuevo",
+        "scheduled": "Programado",
+        "active": "Activo",
+        "assigned": "Asignado",
+        "unassigned": "Sin asignar",
+        "inProgress": "En curso",
+        "completed": "Completado",
+        "cancelled": "Cancelado",
+        "noShow": "No asistió",
+        "pendingReview": "Revisión pendiente",
+        "approved": "Aprobado",
+        "rejected": "Rechazado",
+        "unknown": "Desconocido"
       },
       "status": {
         "active": "Active",
@@ -2088,6 +2105,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "severity": {
+            "mild": "Leve",
+            "moderate": "Moderada",
+            "severe": "Grave"
+          },
           "unknownCondition": "Condición desconocida",
           "validation": {
             "nameRequired": "El nombre del diagnóstico es obligatorio."
@@ -2115,6 +2137,46 @@
             "attachments": "Attachment Document (Optional)",
             "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
             "save": "Save Diagnosis"
+          }
+        },
+        "quote": {
+          "title": "Presupuesto",
+          "createTitle": "Crear presupuesto",
+          "editTitle": "Editar presupuesto",
+          "createButton": "Crear presupuesto",
+          "emptyTitle": "Aún no hay presupuesto",
+          "emptyDescription": "Crea un presupuesto para compartir los costos estimados con el paciente.",
+          "errorLoad": "No se pudieron cargar los presupuestos.",
+          "errorCreate": "No se pudo crear el presupuesto.",
+          "errorUpdate": "No se pudo actualizar el presupuesto.",
+          "fields": {
+            "currency": "Moneda",
+            "itemNamePlaceholder": "Nombre del concepto",
+            "lineItems": "Partidas",
+            "notes": "Notas",
+            "notesPlaceholder": "Agrega notas internas o para el paciente...",
+            "notesShortPlaceholder": "Agrega notas...",
+            "total": "Total",
+            "validUntil": "Válido hasta"
+          },
+          "actions": {
+            "addItem": "Agregar concepto",
+            "createAndSend": "Crear y enviar",
+            "saveChanges": "Guardar cambios"
+          },
+          "meta": {
+            "created": "Creado",
+            "validUntil": "Válido hasta"
+          },
+          "status": {
+            "pending": "Pendiente",
+            "accepted": "Aceptado",
+            "rejected": "Rechazado",
+            "expired": "Vencido"
+          },
+          "validation": {
+            "lineItemsRequired": "Agrega al menos una partida.",
+            "validUntilRequired": "Selecciona una fecha válida para \"Válido hasta\"."
           }
         },
         "marketing": {
@@ -2195,6 +2257,11 @@
           "transcriptLoading": "Cargando registro...",
           "transcriptEmpty": "Transcript Not Yet Generated",
           "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        },
+        "aiSummary": {
+          "title": "Resumen de IA",
+          "emptyTitle": "No hay resumen de IA disponible",
+          "emptyDescription": "Un resumen generado por IA aparecerá aquí una vez que se haya procesado el caso."
         }
       }
     },
@@ -2398,6 +2465,7 @@
         "attachFiles": "Attach files",
         "caseInfo": "Case Info",
         "file": "File",
+        "pdf": "PDF",
         "fileType": "FILE",
         "image": "Image",
         "noMessages": "No messages yet",
@@ -2720,6 +2788,11 @@
           "image": "Image preview",
           "file": "File attachment"
         }
+      },
+      "fileSize": {
+        "bytes": "{value} B",
+        "kb": "{value} KB",
+        "mb": "{value} MB"
       }
     }
   },

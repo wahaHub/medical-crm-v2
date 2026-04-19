@@ -75,23 +75,19 @@ export function AttachmentPreviewCard({
   const imagePreview = hasPreview && isImageMimeType(mimeType);
   const pdfPreview = hasPreview && isPdfMimeType(mimeType);
   const previewTitle = t(
-    'hospital.attachments.preview.title',
+    'hospital.attachments.preview.frameTitle',
     { fileName },
-    'Preview of {fileName}',
+    '{fileName} preview',
   );
-  const removeLabel = t(
-    'hospital.attachments.actions.remove',
-    { fileName },
-    'Remove {fileName}',
-  );
+  const removeLabel = t('hospital.attachments.preview.remove', undefined, 'Remove attachment');
   const statusLabel = pending
-    ? t('hospital.attachments.status.pending', undefined, 'Pending upload')
-    : t('hospital.attachments.status.attached', undefined, 'Attached');
+    ? t('hospital.attachments.preview.status.pending', undefined, 'Pending upload')
+    : t('hospital.attachments.preview.status.attached', undefined, 'Attached');
   const previewLabel = pdfPreview
-    ? t('hospital.attachments.preview.pdf', undefined, 'PDF preview')
+    ? t('hospital.attachments.preview.kind.pdf', undefined, 'PDF preview')
     : imagePreview
-      ? t('hospital.attachments.preview.image', undefined, 'Image preview')
-      : t('hospital.attachments.preview.file', undefined, 'File attachment');
+      ? t('hospital.attachments.preview.kind.image', undefined, 'Image preview')
+      : t('hospital.attachments.preview.kind.file', undefined, 'File attachment');
 
   return (
     <div

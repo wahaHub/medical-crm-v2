@@ -2009,13 +2009,15 @@
         "withDetail": "{summary} Details: {detail}"
       },
       "actions": {
-        "cancel": "Cancel",
-        "close": "Close",
-        "creating": "Creating...",
-        "delete": "Delete",
-        "deleting": "Deleting...",
-        "edit": "Edit",
-        "saving": "Saving..."
+        "cancel": "Annuler",
+        "close": "Fermer",
+        "creating": "Création...",
+        "delete": "Supprimer",
+        "deleting": "Suppression...",
+        "edit": "Modifier",
+        "save": "Enregistrer",
+        "send": "Envoyer",
+        "saving": "Enregistrement..."
       },
       "labels": {
         "attachments": "Attachments"
@@ -2027,6 +2029,21 @@
         "uploading": "Uploading...",
         "uploadingAndSaving": "Uploading and saving",
         "waiting": "Waiting"
+      },
+      "statuses": {
+        "new": "Nouveau",
+        "scheduled": "Planifié",
+        "active": "Actif",
+        "assigned": "Attribué",
+        "unassigned": "Non attribué",
+        "inProgress": "En cours",
+        "completed": "Terminé",
+        "cancelled": "Annulé",
+        "noShow": "Absence",
+        "pendingReview": "En attente de révision",
+        "approved": "Approuvé",
+        "rejected": "Rejeté",
+        "unknown": "Inconnu"
       },
       "status": {
         "active": "Active",
@@ -2088,6 +2105,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "severity": {
+            "mild": "Légère",
+            "moderate": "Modérée",
+            "severe": "Sévère"
+          },
           "unknownCondition": "Affection inconnue",
           "validation": {
             "nameRequired": "Le nom du diagnostic est requis."
@@ -2115,6 +2137,46 @@
             "attachments": "Attachment Document (Optional)",
             "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
             "save": "Save Diagnosis"
+          }
+        },
+        "quote": {
+          "title": "Devis",
+          "createTitle": "Créer un devis",
+          "editTitle": "Modifier le devis",
+          "createButton": "Créer un devis",
+          "emptyTitle": "Aucun devis pour le moment",
+          "emptyDescription": "Créez un devis pour partager les coûts estimés avec le patient.",
+          "errorLoad": "Impossible de charger les devis.",
+          "errorCreate": "Impossible de créer le devis.",
+          "errorUpdate": "Impossible de mettre à jour le devis.",
+          "fields": {
+            "currency": "Devise",
+            "itemNamePlaceholder": "Nom de l'article",
+            "lineItems": "Lignes",
+            "notes": "Notes",
+            "notesPlaceholder": "Ajoutez des notes internes ou destinées au patient...",
+            "notesShortPlaceholder": "Ajoutez des notes...",
+            "total": "Total",
+            "validUntil": "Valable jusqu'au"
+          },
+          "actions": {
+            "addItem": "Ajouter un article",
+            "createAndSend": "Créer et envoyer",
+            "saveChanges": "Enregistrer les modifications"
+          },
+          "meta": {
+            "created": "Créé",
+            "validUntil": "Valable jusqu'au"
+          },
+          "status": {
+            "pending": "En attente",
+            "accepted": "Accepté",
+            "rejected": "Rejeté",
+            "expired": "Expiré"
+          },
+          "validation": {
+            "lineItemsRequired": "Ajoutez au moins un article.",
+            "validUntilRequired": "Sélectionnez une date valide pour « Valable jusqu'au »."
           }
         },
         "marketing": {
@@ -2195,6 +2257,11 @@
           "transcriptLoading": "Chargement du compte rendu...",
           "transcriptEmpty": "Transcript Not Yet Generated",
           "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        },
+        "aiSummary": {
+          "title": "Résumé IA",
+          "emptyTitle": "Aucun résumé IA disponible",
+          "emptyDescription": "Un résumé généré par l'IA apparaîtra ici une fois le dossier traité."
         }
       }
     },
@@ -2398,6 +2465,7 @@
         "attachFiles": "Attach files",
         "caseInfo": "Case Info",
         "file": "File",
+        "pdf": "PDF",
         "fileType": "FILE",
         "image": "Image",
         "noMessages": "No messages yet",
@@ -2720,6 +2788,11 @@
           "image": "Image preview",
           "file": "File attachment"
         }
+      },
+      "fileSize": {
+        "bytes": "{value} o",
+        "kb": "{value} Ko",
+        "mb": "{value} Mo"
       }
     }
   },

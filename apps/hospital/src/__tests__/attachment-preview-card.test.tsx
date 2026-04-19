@@ -15,16 +15,16 @@ describe('AttachmentPreviewCard', () => {
       locale: 'fr',
       t: (key: string, values?: Record<string, string | number>, fallback?: string) => {
         const messages: Record<string, string> = {
-          'hospital.attachments.status.pending': 'Televersement en attente',
-          'hospital.attachments.status.attached': 'Joint',
-          'hospital.attachments.preview.pdf': 'Apercu PDF',
-          'hospital.attachments.preview.image': 'Apercu image',
-          'hospital.attachments.preview.file': 'Piece jointe',
+          'hospital.attachments.preview.status.pending': 'Televersement en attente',
+          'hospital.attachments.preview.status.attached': 'Joint',
+          'hospital.attachments.preview.kind.pdf': 'Apercu PDF',
+          'hospital.attachments.preview.kind.image': 'Apercu image',
+          'hospital.attachments.preview.kind.file': 'Piece jointe',
           'hospital.attachments.fileSize.kb': '{value} Ko',
           'hospital.attachments.fileSize.mb': '{value} Mo',
           'hospital.attachments.fileSize.bytes': '{value} o',
-          'hospital.attachments.actions.remove': 'Supprimer {fileName}',
-          'hospital.attachments.preview.title': 'Apercu de {fileName}',
+          'hospital.attachments.preview.remove': 'Supprimer la piece jointe',
+          'hospital.attachments.preview.frameTitle': 'Apercu de {fileName}',
         };
 
         const template = messages[key] ?? fallback ?? key;
@@ -54,7 +54,7 @@ describe('AttachmentPreviewCard', () => {
     expect(markup).toContain('Televersement en attente');
     expect(markup).toContain('Apercu PDF');
     expect(markup).toContain('2 Ko');
-    expect(markup).toContain('Supprimer brochure.pdf');
+    expect(markup).toContain('Supprimer la piece jointe');
     expect(markup).toContain('title="Apercu de brochure.pdf"');
   });
 });

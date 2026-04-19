@@ -1362,13 +1362,15 @@
         "withDetail": "{summary} Details: {detail}"
       },
       "actions": {
-        "cancel": "Cancel",
-        "close": "Close",
-        "creating": "Creating...",
-        "delete": "Delete",
-        "deleting": "Deleting...",
-        "edit": "Edit",
-        "saving": "Saving..."
+        "cancel": "বাতিল",
+        "close": "বন্ধ করুন",
+        "creating": "তৈরি করা হচ্ছে...",
+        "delete": "মুছুন",
+        "deleting": "মুছে ফেলা হচ্ছে...",
+        "edit": "সম্পাদনা",
+        "save": "সংরক্ষণ",
+        "send": "পাঠান",
+        "saving": "সংরক্ষণ করা হচ্ছে..."
       },
       "labels": {
         "attachments": "Attachments"
@@ -1380,6 +1382,21 @@
         "uploading": "Uploading...",
         "uploadingAndSaving": "Uploading and saving",
         "waiting": "Waiting"
+      },
+      "statuses": {
+        "new": "নতুন",
+        "scheduled": "নির্ধারিত",
+        "active": "সক্রিয়",
+        "assigned": "বরাদ্দ করা হয়েছে",
+        "unassigned": "অনির্ধারিত",
+        "inProgress": "চলমান",
+        "completed": "সম্পন্ন",
+        "cancelled": "বাতিল",
+        "noShow": "উপস্থিত হননি",
+        "pendingReview": "পর্যালোচনার অপেক্ষায়",
+        "approved": "অনুমোদিত",
+        "rejected": "প্রত্যাখ্যাত",
+        "unknown": "অজানা"
       },
       "status": {
         "active": "Active",
@@ -1441,6 +1458,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "severity": {
+            "mild": "হালকা",
+            "moderate": "মাঝারি",
+            "severe": "তীব্র"
+          },
           "unknownCondition": "অজানা অবস্থা",
           "validation": {
             "nameRequired": "রোগ নির্ণয়ের নাম আবশ্যক।"
@@ -1468,6 +1490,46 @@
             "attachments": "Attachment Document (Optional)",
             "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
             "save": "Save Diagnosis"
+          }
+        },
+        "quote": {
+          "title": "খরচের কোটেশন",
+          "createTitle": "কোটেশন তৈরি করুন",
+          "editTitle": "কোটেশন সম্পাদনা করুন",
+          "createButton": "কোটেশন তৈরি করুন",
+          "emptyTitle": "এখনও কোনো কোটেশন নেই",
+          "emptyDescription": "রোগীর সঙ্গে আনুমানিক খরচ শেয়ার করতে একটি কোটেশন তৈরি করুন।",
+          "errorLoad": "কোটেশন লোড করা যায়নি।",
+          "errorCreate": "কোটেশন তৈরি করা যায়নি।",
+          "errorUpdate": "কোটেশন আপডেট করা যায়নি।",
+          "fields": {
+            "currency": "মুদ্রা",
+            "itemNamePlaceholder": "আইটেমের নাম",
+            "lineItems": "আইটেমসমূহ",
+            "notes": "নোট",
+            "notesPlaceholder": "অভ্যন্তরীণ বা রোগীর জন্য নোট যোগ করুন...",
+            "notesShortPlaceholder": "নোট যোগ করুন...",
+            "total": "মোট",
+            "validUntil": "পর্যন্ত বৈধ"
+          },
+          "actions": {
+            "addItem": "আইটেম যোগ করুন",
+            "createAndSend": "তৈরি করে পাঠান",
+            "saveChanges": "পরিবর্তন সংরক্ষণ করুন"
+          },
+          "meta": {
+            "created": "তৈরি হয়েছে",
+            "validUntil": "পর্যন্ত বৈধ"
+          },
+          "status": {
+            "pending": "অপেক্ষমাণ",
+            "accepted": "গৃহীত",
+            "rejected": "প্রত্যাখ্যাত",
+            "expired": "মেয়াদোত্তীর্ণ"
+          },
+          "validation": {
+            "lineItemsRequired": "অন্তত একটি আইটেম যোগ করুন।",
+            "validUntilRequired": "\"পর্যন্ত বৈধ\" এর জন্য একটি বৈধ তারিখ নির্বাচন করুন।"
           }
         },
         "marketing": {
@@ -1548,6 +1610,11 @@
           "transcriptLoading": "রেকর্ড লোড হচ্ছে...",
           "transcriptEmpty": "Transcript Not Yet Generated",
           "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        },
+        "aiSummary": {
+          "title": "AI সারাংশ",
+          "emptyTitle": "কোনো AI সারাংশ উপলভ্য নয়",
+          "emptyDescription": "কেস প্রক্রিয়াকরণের পর এখানে AI-উৎপাদিত সারাংশ দেখা যাবে।"
         }
       }
     },
@@ -1751,6 +1818,7 @@
         "attachFiles": "Attach files",
         "caseInfo": "Case Info",
         "file": "File",
+        "pdf": "PDF",
         "fileType": "FILE",
         "image": "Image",
         "noMessages": "No messages yet",
@@ -2570,6 +2638,11 @@
           "image": "Image preview",
           "file": "File attachment"
         }
+      },
+      "fileSize": {
+        "bytes": "{value} বাইট",
+        "kb": "{value} কেবি",
+        "mb": "{value} এমবি"
       }
     }
   },

@@ -2255,6 +2255,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "severity": {
+            "mild": "Mild",
+            "moderate": "Moderate",
+            "severe": "Severe"
+          },
           "unknownCondition": "Unknown Condition",
           "validation": {
             "nameRequired": "Diagnosis name is required."
@@ -2282,6 +2287,46 @@
             "attachments": "Attachment Document (Optional)",
             "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
             "save": "Save Diagnosis"
+          }
+        },
+        "quote": {
+          "title": "Quotes",
+          "createTitle": "Create Quote",
+          "editTitle": "Edit Quote",
+          "createButton": "Create Quote",
+          "emptyTitle": "No quotes yet",
+          "emptyDescription": "Create the first quote to share pricing with the patient.",
+          "errorLoad": "Failed to load quotes",
+          "errorCreate": "Failed to create quote",
+          "errorUpdate": "Failed to update quote",
+          "fields": {
+            "currency": "Currency",
+            "itemNamePlaceholder": "Item name",
+            "lineItems": "Line Items",
+            "notes": "Notes",
+            "notesPlaceholder": "Add quote notes for the patient",
+            "notesShortPlaceholder": "Add notes",
+            "total": "Total",
+            "validUntil": "Valid Until"
+          },
+          "actions": {
+            "addItem": "Add Item",
+            "createAndSend": "Create & Send",
+            "saveChanges": "Save Changes"
+          },
+          "meta": {
+            "created": "Created",
+            "validUntil": "Valid Until"
+          },
+          "status": {
+            "pending": "Pending",
+            "accepted": "Accepted",
+            "rejected": "Rejected",
+            "expired": "Expired"
+          },
+          "validation": {
+            "lineItemsRequired": "Please add at least one line item.",
+            "validUntilRequired": "Please select a valid date for \"Valid Until\"."
           }
         },
         "marketing": {
@@ -2362,6 +2407,11 @@
           "transcriptLoading": "Loading conversation record...",
           "transcriptEmpty": "Transcript Not Yet Generated",
           "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        },
+        "aiSummary": {
+          "title": "AI Summary",
+          "emptyTitle": "No AI summary available",
+          "emptyDescription": "An AI-generated summary will appear here once the case has been processed."
         }
       }
     },
@@ -2445,6 +2495,8 @@
         "sent": "Sent",
         "sendFailed": "Send failed",
         "file": "File",
+        "pdf": "PDF",
+        "image": "Image",
         "patientCode": "Patient Code:",
         "male": "Male",
         "female": "Female",
@@ -2486,7 +2538,6 @@
         "aiTranslated": "AI Translated",
         "attachFiles": "Attach files",
         "fileType": "FILE",
-        "image": "Image",
         "readOnlyConversation": "Read-only conversation",
         "removeFile": "Remove file",
         "retranslate": "Retranslate",
@@ -3066,6 +3117,8 @@
         "delete": "Delete",
         "deleting": "Deleting...",
         "edit": "Edit",
+        "save": "Save",
+        "send": "Send",
         "saving": "Saving..."
       },
       "labels": {
@@ -3078,6 +3131,21 @@
         "uploading": "Uploading...",
         "uploadingAndSaving": "Uploading and saving",
         "waiting": "Waiting"
+      },
+      "statuses": {
+        "new": "New",
+        "scheduled": "Scheduled",
+        "active": "Active",
+        "assigned": "Assigned",
+        "unassigned": "Unassigned",
+        "inProgress": "In Progress",
+        "completed": "Completed",
+        "cancelled": "Cancelled",
+        "noShow": "No Show",
+        "pendingReview": "Pending Review",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "unknown": "Unknown"
       },
       "status": {
         "active": "Active",
@@ -3487,6 +3555,11 @@
           "image": "Image preview",
           "file": "File attachment"
         }
+      },
+      "fileSize": {
+        "bytes": "{value} B",
+        "kb": "{value} KB",
+        "mb": "{value} MB"
       }
     }
   },

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractSafeMessageErrorDetail,
+  formatAttachmentTypeForDisplay,
   formatConversationCategoryForDisplay,
   formatParticipantRoleForDisplay,
   formatUserFacingMessageError,
@@ -50,5 +51,17 @@ describe('messages view error formatting', () => {
     expect(formatParticipantRoleForDisplay('PATIENT', translate)).toBe('Patient');
     expect(formatParticipantRoleForDisplay('HOSPITAL', translate)).toBe('Hospital');
     expect(formatParticipantRoleForDisplay('UNKNOWN_ENUM', translate)).toBe('Other');
+  });
+
+  it('keeps attachment preview type labels bounded and user-friendly', () => {
+    const translate = (key: string, _values?: Record<string, string | number>, fallback?: string) => {
+      if (key === 'hospital.messages.chat.pdf') return 'Localized PDF';
+      return fallback ?? key;
+    };
+
+    expect(formatAttachmentTypeForDisplay({ type: 'application/pdf' }, translate)).toBe('Localized PDF');
+    expect(formatAttachmentTypeForDisplay({ type: 'image/png' }, translate)).toBe('Image');
+    expect(formatAttachmentTypeForDisplay({ type: 'application/vnd.ms-excel' }, translate)).toBe('File');
+    expect(formatAttachmentTypeForDisplay({ type: undefined }, translate)).toBe('File');
   });
 });

@@ -2009,13 +2009,15 @@
         "withDetail": "{summary} Details: {detail}"
       },
       "actions": {
-        "cancel": "Cancel",
-        "close": "Close",
-        "creating": "Creating...",
-        "delete": "Delete",
-        "deleting": "Deleting...",
-        "edit": "Edit",
-        "saving": "Saving..."
+        "cancel": "Abbrechen",
+        "close": "Schließen",
+        "creating": "Wird erstellt...",
+        "delete": "Löschen",
+        "deleting": "Wird gelöscht...",
+        "edit": "Bearbeiten",
+        "save": "Speichern",
+        "send": "Senden",
+        "saving": "Wird gespeichert..."
       },
       "labels": {
         "attachments": "Attachments"
@@ -2027,6 +2029,21 @@
         "uploading": "Uploading...",
         "uploadingAndSaving": "Uploading and saving",
         "waiting": "Waiting"
+      },
+      "statuses": {
+        "new": "Neu",
+        "scheduled": "Geplant",
+        "active": "Aktiv",
+        "assigned": "Zugewiesen",
+        "unassigned": "Nicht zugewiesen",
+        "inProgress": "In Bearbeitung",
+        "completed": "Abgeschlossen",
+        "cancelled": "Abgebrochen",
+        "noShow": "Nicht erschienen",
+        "pendingReview": "Zur Prüfung",
+        "approved": "Genehmigt",
+        "rejected": "Abgelehnt",
+        "unknown": "Unbekannt"
       },
       "status": {
         "active": "Active",
@@ -2088,6 +2105,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "severity": {
+            "mild": "Leicht",
+            "moderate": "Mittel",
+            "severe": "Schwer"
+          },
           "unknownCondition": "Unbekannte Erkrankung",
           "validation": {
             "nameRequired": "Ein Diagnosebegriff ist erforderlich."
@@ -2115,6 +2137,46 @@
             "attachments": "Attachment Document (Optional)",
             "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
             "save": "Save Diagnosis"
+          }
+        },
+        "quote": {
+          "title": "Kostenvoranschlag",
+          "createTitle": "Kostenvoranschlag erstellen",
+          "editTitle": "Kostenvoranschlag bearbeiten",
+          "createButton": "Kostenvoranschlag erstellen",
+          "emptyTitle": "Noch kein Kostenvoranschlag",
+          "emptyDescription": "Erstellen Sie einen Kostenvoranschlag, um dem Patienten die geschätzten Kosten mitzuteilen.",
+          "errorLoad": "Kostenvoranschläge konnten nicht geladen werden.",
+          "errorCreate": "Kostenvoranschlag konnte nicht erstellt werden.",
+          "errorUpdate": "Kostenvoranschlag konnte nicht aktualisiert werden.",
+          "fields": {
+            "currency": "Währung",
+            "itemNamePlaceholder": "Positionsname",
+            "lineItems": "Positionen",
+            "notes": "Hinweise",
+            "notesPlaceholder": "Fügen Sie interne oder patientenbezogene Hinweise hinzu...",
+            "notesShortPlaceholder": "Hinweise hinzufügen...",
+            "total": "Gesamt",
+            "validUntil": "Gültig bis"
+          },
+          "actions": {
+            "addItem": "Position hinzufügen",
+            "createAndSend": "Erstellen und senden",
+            "saveChanges": "Änderungen speichern"
+          },
+          "meta": {
+            "created": "Erstellt",
+            "validUntil": "Gültig bis"
+          },
+          "status": {
+            "pending": "Ausstehend",
+            "accepted": "Akzeptiert",
+            "rejected": "Abgelehnt",
+            "expired": "Abgelaufen"
+          },
+          "validation": {
+            "lineItemsRequired": "Bitte fügen Sie mindestens eine Position hinzu.",
+            "validUntilRequired": "Bitte wählen Sie ein gültiges Datum für „Gültig bis“ aus."
           }
         },
         "marketing": {
@@ -2195,6 +2257,11 @@
           "transcriptLoading": "Protokoll wird geladen...",
           "transcriptEmpty": "Transcript Not Yet Generated",
           "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        },
+        "aiSummary": {
+          "title": "KI-Zusammenfassung",
+          "emptyTitle": "Keine KI-Zusammenfassung verfügbar",
+          "emptyDescription": "Eine KI-generierte Zusammenfassung erscheint hier, sobald der Fall verarbeitet wurde."
         }
       }
     },
@@ -2398,6 +2465,7 @@
         "attachFiles": "Attach files",
         "caseInfo": "Case Info",
         "file": "File",
+        "pdf": "PDF",
         "fileType": "FILE",
         "image": "Image",
         "noMessages": "No messages yet",
@@ -2720,6 +2788,11 @@
           "image": "Image preview",
           "file": "File attachment"
         }
+      },
+      "fileSize": {
+        "bytes": "{value} Byte",
+        "kb": "{value} KB",
+        "mb": "{value} MB"
       }
     }
   },

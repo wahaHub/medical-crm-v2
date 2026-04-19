@@ -2256,6 +2256,11 @@
           "addButton": "添加诊断意见",
           "empty": "暂无诊断意见",
           "icdCode": "ICD-10 编码",
+          "severity": {
+            "mild": "轻度",
+            "moderate": "中度",
+            "severe": "重度"
+          },
           "unknownCondition": "未知病情",
           "validation": {
             "nameRequired": "诊断名称不能为空。"
@@ -2283,6 +2288,46 @@
             "attachments": "附件文档（可选）",
             "attachmentsPlaceholder": "点击上传诊断报告或检查结果",
             "save": "保存诊断意见"
+          }
+        },
+        "quote": {
+          "title": "报价单",
+          "createTitle": "创建报价单",
+          "editTitle": "编辑报价单",
+          "createButton": "创建报价单",
+          "emptyTitle": "暂无报价单",
+          "emptyDescription": "创建第一份报价单以向患者分享费用信息。",
+          "errorLoad": "加载报价单失败",
+          "errorCreate": "创建报价单失败",
+          "errorUpdate": "更新报价单失败",
+          "fields": {
+            "currency": "币种",
+            "itemNamePlaceholder": "项目名称",
+            "lineItems": "报价项目",
+            "notes": "备注",
+            "notesPlaceholder": "添加要给患者看的报价备注",
+            "notesShortPlaceholder": "添加备注",
+            "total": "总计",
+            "validUntil": "有效期至"
+          },
+          "actions": {
+            "addItem": "添加项目",
+            "createAndSend": "创建并发送",
+            "saveChanges": "保存修改"
+          },
+          "meta": {
+            "created": "创建时间",
+            "validUntil": "有效期至"
+          },
+          "status": {
+            "pending": "待处理",
+            "accepted": "已接受",
+            "rejected": "已拒绝",
+            "expired": "已过期"
+          },
+          "validation": {
+            "lineItemsRequired": "请至少添加一项报价内容。",
+            "validUntilRequired": "请选择有效的“有效期至”日期。"
           }
         },
         "marketing": {
@@ -2363,6 +2408,11 @@
           "transcriptLoading": "加载对话记录中…",
           "transcriptEmpty": "对话记录暂未生成",
           "transcriptPending": "视频问诊结束后，AI 将自动转录完整对话内容"
+        },
+        "aiSummary": {
+          "title": "AI 摘要",
+          "emptyTitle": "暂无 AI 摘要",
+          "emptyDescription": "病例处理完成后，这里将显示 AI 生成的摘要。"
         }
       }
     },
@@ -2446,6 +2496,8 @@
         "sent": "已发送",
         "sendFailed": "发送失败",
         "file": "文件",
+        "pdf": "PDF",
+        "image": "图片",
         "patientCode": "患者代号:",
         "male": "男",
         "female": "女",
@@ -2487,7 +2539,6 @@
         "aiTranslated": "AI 已翻译",
         "attachFiles": "添加附件",
         "fileType": "文件",
-        "image": "图片",
         "readOnlyConversation": "只读会话",
         "removeFile": "移除文件",
         "retranslate": "重新翻译",
@@ -3067,6 +3118,8 @@
         "delete": "删除",
         "deleting": "删除中...",
         "edit": "编辑",
+        "save": "保存",
+        "send": "发送",
         "saving": "保存中..."
       },
       "labels": {
@@ -3079,6 +3132,21 @@
         "uploading": "上传中...",
         "uploadingAndSaving": "正在上传并保存",
         "waiting": "等待中"
+      },
+      "statuses": {
+        "new": "新建",
+        "scheduled": "已安排",
+        "active": "进行中",
+        "assigned": "已分配",
+        "unassigned": "未分配",
+        "inProgress": "处理中",
+        "completed": "已完成",
+        "cancelled": "已取消",
+        "noShow": "未出席",
+        "pendingReview": "待审核",
+        "approved": "已批准",
+        "rejected": "已拒绝",
+        "unknown": "未知"
       },
       "status": {
         "active": "启用",
@@ -3488,6 +3556,11 @@
           "image": "图片预览",
           "file": "文件附件"
         }
+      },
+      "fileSize": {
+        "bytes": "{value} B",
+        "kb": "{value} KB",
+        "mb": "{value} MB"
       }
     }
   },

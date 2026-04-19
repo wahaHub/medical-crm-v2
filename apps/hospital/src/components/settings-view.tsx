@@ -8,25 +8,66 @@ import { HOSPITAL_LANGUAGE_OPTIONS } from '@/lib/hospital-language-options';
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
 type NotificationKey = 'newCase' | 'newMessage' | 'quoteStatusChange' | 'consultationReminder';
+type TranslateFn = ReturnType<typeof useHospitalI18n>['t'];
+
+const SAFE_USER_ERROR_PATTERNS = [
+  /^please\b/i,
+  /^select\b/i,
+  /^choose\b/i,
+  /^enter\b/i,
+  /^provide\b/i,
+  /^upload\b/i,
+  /^add\b/i,
+  /^remove\b/i,
+  /^set\b/i,
+  /\brequired\b/i,
+  /\binvalid\b/i,
+  /\bmissing\b/i,
+  /\bmust\b/i,
+  /\bcannot\b/i,
+  /\bcan't\b/i,
+  /\bincorrect\b/i,
+  /\bmatch\b/i,
+  /\bat least\b/i,
+  /\btoo\b/i,
+  /\bneeds?\s+to\b/i,
+  /\bis\s+required\b/i,
+  /\bis\s+invalid\b/i,
+  /\bis\s+missing\b/i,
+];
+
+const UNSAFE_USER_ERROR_PATTERNS = [
+  /\b(database|db|sql|prisma|orm|postgres|mysql|redis|mongo|server|service|gateway|proxy|network|fetch|request|response|timeout|exception|stack|trace|traceback|econn|enotfound|econnreset|unauthorized|forbidden|internal|bucket|storage|cdn|cloudflare|token)\b/i,
+  /^failed\b/i,
+  /^unable\b/i,
+  /\bstatus\s*\d{3}\b/i,
+  /\bcode\s*\d{3}\b/i,
+  /\bnot found\b/i,
+];
 
 function getErrorDetail(err: unknown): string | null {
   if (!(err instanceof Error)) return null;
 
-  const detail = err.message.replace(/\s+/g, ' ').trim();
-  if (!detail || detail.length > 160) return null;
+  const rawDetail = err.message.trim();
+  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    !detail
+    || /[\r\n]/.test(rawDetail)
+    || detail.length > 160
+    || UNSAFE_USER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+    || !SAFE_USER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+  ) {
+    return null;
+  }
 
   return detail;
 }
 
-function formatUserFacingError(err: unknown, fallback: string): string {
+function formatUserFacingError(err: unknown, t: TranslateFn, fallback: string): string {
   const detail = getErrorDetail(err);
 
   if (!detail) return fallback;
-  if (detail === fallback || detail.startsWith(`${fallback}:`) || detail.startsWith(`${fallback} `)) {
-    return detail;
-  }
-
-  return `${fallback}${fallback.endsWith('.') ? ' ' : ': '}${detail}`;
+  return t('hospital.common.errors.withDetail', { summary: fallback, detail }, '{summary} Details: {detail}');
 }
 
 function FeedbackBanner({ feedback }: { feedback: FeedbackState }) {
@@ -114,7 +155,7 @@ function PasswordSection() {
       );
       setFeedback({
         type: 'error',
-        message: formatUserFacingError(err, fallback),
+        message: formatUserFacingError(err, t, fallback),
       });
     } finally {
       setSaving(false);
@@ -237,7 +278,7 @@ function LanguageSection() {
       );
       setFeedback({
         type: 'error',
-        message: formatUserFacingError(err, fallback),
+        message: formatUserFacingError(err, t, fallback),
       });
     } finally {
       setSaving(false);
@@ -413,7 +454,7 @@ function NotificationsSection() {
       );
       setFeedback({
         type: 'error',
-        message: formatUserFacingError(err, fallback),
+        message: formatUserFacingError(err, t, fallback),
       });
     } finally {
       setSaving(false);

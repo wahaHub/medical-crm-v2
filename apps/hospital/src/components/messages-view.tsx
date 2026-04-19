@@ -185,6 +185,23 @@ export function formatParticipantRoleForDisplay(role: string, t: TranslationFn):
   return t('common.labels.other', undefined, 'Other');
 }
 
+export function formatAttachmentTypeForDisplay(
+  attachment: Pick<ChatAttachment, 'type'>,
+  t: TranslationFn,
+): string {
+  const type = attachment.type?.toLowerCase();
+
+  if (type === 'application/pdf') {
+    return t('hospital.messages.chat.pdf', undefined, 'PDF');
+  }
+
+  if (type?.startsWith('image/')) {
+    return t('hospital.messages.chat.image', undefined, 'Image');
+  }
+
+  return t('hospital.messages.chat.file', undefined, 'File');
+}
+
 /** Map raw API messages to the ChatMessage shape expected by the UI */
 function mapApiMessages(
   raw: ApiMessage[],
@@ -354,7 +371,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   const previewRequestRef = useRef(0);
   const fallbackPreviewFileName = tx('hospital.portal.messages.preview.fallbackFileName', 'document.pdf');
   const fallbackAttachmentLabel = tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment');
-  const localizedPortalLanguage = getLocalizedLanguageLabel(portalLanguage, locale) || portalLanguage.toUpperCase();
+  const localizedPortalLanguage = getLocalizedLanguageLabel(portalLanguage, locale, t);
 
   const { data: liveConversations } = useConversations();
   const liveResponse = liveConversations as PaginatedResponse<ConversationSummary> | undefined;
@@ -520,8 +537,8 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   }, [locale, tx]);
 
   const formatPreviewLanguageLabel = useCallback((language: string) => {
-    return getLocalizedLanguageLabel(language, locale) || language.toUpperCase();
-  }, [locale]);
+    return getLocalizedLanguageLabel(language, locale, t);
+  }, [locale, t]);
 
   const previewPdfLabels = useMemo(() => ({
     unavailableTitle: tx('hospital.portal.messages.preview.pdfUnavailable', 'PDF preview is unavailable'),
@@ -564,9 +581,8 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   }, [fallbackAttachmentLabel]);
 
   const formatChatAttachmentTypeLabel = useCallback((attachment: ChatAttachment) => {
-    return attachment.type?.split('/')[1]?.toUpperCase()
-      ?? tx('hospital.messages.chat.fileType', 'FILE');
-  }, [tx]);
+    return formatAttachmentTypeForDisplay(attachment, t);
+  }, [t]);
 
   const handleOpenAttachment = useCallback(async (attachment: ChatAttachment) => {
     const requestId = previewRequestRef.current + 1;
@@ -1030,11 +1046,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               patientCode={caseDetail?.patient?.code ?? null}
               patientAge={caseDetail?.patient?.age ?? null}
               patientGender={
-                caseDetail?.patient?.gender === 'MALE'
-                  ? 'M'
-                  : caseDetail?.patient?.gender === 'FEMALE'
-                    ? 'F'
-                    : caseDetail?.patient?.gender ?? null
+                getHospitalGenderShortLabel(caseDetail?.patient?.gender, t) || null
               }
               patientLanguage={caseDetail?.patient?.language ?? null}
               caseStatus={caseDetail?.displayStatus ?? null}
@@ -1046,7 +1058,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               caseLinkLabel={tx('hospital.messages.chat.viewFullCaseDetails', 'View Full Case Details')}
               labels={messageCasePanelLabels}
               formatCategoryLabel={formatConversationCategoryLabel}
-              formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale)}
+              formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale, t)}
               formatStatusLabel={(status) => getHospitalStatusLabel(status, t)}
               formatGenderLabel={(gender) => getHospitalGenderShortLabel(gender, t)}
               formatAgeLabel={(age) => tx('hospital.common.ageYears', '{age} y/o', { age })}
@@ -1081,7 +1093,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   {tx('hospital.portal.messages.preview.original', 'Original')}
                 </h3>
                 <span className="text-xs text-slate-500">
-                  {previewAttachment.type ?? tx('hospital.portal.messages.preview.attachmentType', 'attachment')}
+                  {formatAttachmentTypeForDisplay(previewAttachment, t)}
                 </span>
               </div>
               <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">

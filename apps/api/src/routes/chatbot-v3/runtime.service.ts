@@ -606,10 +606,12 @@ export class ConversationOrchestratorV3RuntimeService {
       input,
       statusSnapshot,
     );
+    const journeyStatusPatch = deriveJourneyStatusPatch(result);
     const statusPatch = mergeStatusPatches(
       input.normalizedActionStatusPatch,
       stageEntryStatusPatch,
       recommendationPresentationStatusPatch,
+      journeyStatusPatch,
     );
     const renderedResult = {
       ...result,
@@ -1579,6 +1581,28 @@ function deriveRecommendationPresentationStatusPatch(
     recommendationSelectedHospitalIds: [],
     recommendationSelected: false,
   };
+}
+
+function deriveJourneyStatusPatch(
+  result: ConversationOrchestratorV3TurnResult,
+): Partial<AiChatStatusSnapshot> | undefined {
+  if (result.turnOutcome.status !== 'ok') {
+    return undefined;
+  }
+
+  const targetStage = result.decision.to.stage;
+  const targetPhase = normalizePersistedJourneyPhase(result.decision.to.phase);
+
+  return {
+    journeyCurrentStage: targetStage,
+    journeyCurrentPhase: targetPhase,
+  };
+}
+
+function normalizePersistedJourneyPhase(
+  phase: ChatJourneyPhase,
+): AiChatStatusSnapshot['journeyCurrentPhase'] {
+  return phase === 'post' ? 'post' : 'active';
 }
 
 function readRenderableRecommendationCandidates(

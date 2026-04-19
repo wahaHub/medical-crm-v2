@@ -223,6 +223,13 @@ describe('ResponseComposer', () => {
     expect(response.messages[0]?.text).toContain('share');
   });
 
+  it('renders the repaired post-recommendation sequence copy before consult', () => {
+    expect(PROCESS_OVERVIEW_TEXT).toContain('hospital recommendation');
+    expect(PROCESS_OVERVIEW_TEXT).toContain('explain the Medora medical-travel process and policy');
+    expect(PROCESS_OVERVIEW_TEXT).toContain('supporting documents');
+    expect(PROCESS_OVERVIEW_TEXT).toContain('consult');
+  });
+
   it('surfaces RecordsAgent triage follow-up and the 3 key questions on incomplete minimal triage turns', () => {
     const response = composeResponse({
       body: createRequest({
@@ -521,6 +528,49 @@ describe('ResponseComposer', () => {
     expect(response.messages[0]?.text).toContain('diagnosis certificate');
   });
 
+  it('keeps the persisted primary journey stage visible during a revisit explanation turn', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Please explain the process again.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'revisit the process explanation',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'RECOMMENDATION', phase: 'post' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+        render: {
+          path: 'PROCESS_OVERVIEW',
+        },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [
+          {
+            path: 'uploads/supporting-doc-a.pdf',
+            name: 'supporting-doc-a.pdf',
+          },
+        ],
+      } as any,
+    });
+
+    expect(response.journey).toEqual({
+      stage: 'RECOMMENDATION',
+      phase: 'post',
+    });
+  });
+
   it('does not let stale pre-stage upload residue count as diagnosis-proof completion on stage entry', () => {
     const response = composeResponse({
       body: createRequest({
@@ -784,7 +834,7 @@ describe('ResponseComposer', () => {
 
     expect(response.messages[0]?.text).toBe(PROCESS_OVERVIEW_TEXT);
     expect(response.messages[0]?.text).toContain('review the hospital recommendation');
-    expect(response.messages[0]?.text).toContain('upload your diagnosis proof');
+    expect(response.messages[0]?.text).toContain('supporting documents');
   });
 
   it('uses the render-path signal for faq answers', () => {

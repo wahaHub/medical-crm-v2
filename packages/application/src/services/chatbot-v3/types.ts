@@ -1,5 +1,6 @@
 import type {
   AiChatStatusSnapshot,
+  AiChatJourneyPhase,
   ChatJourneyPhase,
   ChatJourneyStage,
 } from '@medical-crm/domain';
@@ -196,6 +197,8 @@ export interface JourneyRuntimeAuthorityDispatch {
 export interface JourneyRuntimeAuthorityWrite {
   authority: 'journey-runtime-authority';
   stage: ChatbotV3StageRef;
+  journeyCurrentStage: ChatJourneyStage;
+  journeyCurrentPhase: AiChatJourneyPhase;
   factsPatch: Partial<Record<string, boolean>>;
 }
 

@@ -58,6 +58,8 @@ describe('JourneyRuntimeAuthorityService', () => {
         stage: 'RECOMMENDATION',
         phase: 'active',
       },
+      journeyCurrentStage: 'RECOMMENDATION',
+      journeyCurrentPhase: 'active',
       factsPatch: {},
     });
   });
@@ -246,6 +248,8 @@ describe('JourneyRuntimeAuthorityService', () => {
         stage: 'EXPLAIN_PROCESS',
         phase: 'active',
       },
+      journeyCurrentStage: 'EXPLAIN_PROCESS',
+      journeyCurrentPhase: 'active',
       factsPatch: {
         'process.explained': true,
       },
@@ -481,6 +485,12 @@ describe('JourneyRuntimeAuthorityService', () => {
       statusSnapshot: {
         recommendationSelectionStatus: 'selected',
         recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [
+          {
+            path: 'uploads/supporting-doc-a.pdf',
+            name: 'supporting-doc-a.pdf',
+          },
+        ],
       },
       facts: {
         'records.minimal_triage.complete': true,
@@ -569,6 +579,12 @@ describe('JourneyRuntimeAuthorityService', () => {
       statusSnapshot: {
         recommendationSelectionStatus: 'selected',
         recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [
+          {
+            path: 'uploads/supporting-doc-a.pdf',
+            name: 'supporting-doc-a.pdf',
+          },
+        ],
       },
       facts: {
         'records.minimal_triage.complete': true,
@@ -604,6 +620,7 @@ describe('JourneyRuntimeAuthorityService', () => {
         recommendationSelectionStatus: 'selected',
         recommendationSelectedHospitalIds: ['hospital-1'],
       },
+      supportingDocuments: [{ path: '/docs/labs.pdf', name: 'labs.pdf' }],
       facts: {
         'records.minimal_triage.complete': true,
         'process.explained': true,
@@ -616,6 +633,69 @@ describe('JourneyRuntimeAuthorityService', () => {
       stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
+  });
+
+  it('writes the repaired journey snapshot when recommendation is skipped into process explanation', () => {
+    const decision = service.decide(createInput({
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'post',
+      },
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: 'FaqAgent',
+        reason: 'continue into the process explanation after skipping recommendation',
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'skipped',
+        recommendationSelectedHospitalIds: [],
+        supportingDocuments: [],
+      },
+      facts: {
+        'process.explained': false,
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ADVANCE');
+    expect((decision.write as any)).toMatchObject({
+      stage: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      journeyCurrentStage: 'EXPLAIN_PROCESS',
+      journeyCurrentPhase: 'active',
+    });
+  });
+
+  it('denies online consult until supporting documents exist after the repaired post-recommendation sequence', () => {
+    const decision = service.decide(createInput({
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      proposal: {
+        intent: 'consult',
+        suggestedStage: 'ONLINE_CONSULT',
+        dispatchAgent: 'ConsultAgent',
+        reason: 'schedule the consult',
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+      },
+      facts: {
+        'process.explained': true,
+      },
+    }));
+
+    expect(decision.outcome).toBe('DENY');
+    expect(decision.dispatch).toEqual({
+      outcome: 'DENY',
+    });
+    expect(decision.reason).toContain('supporting document');
   });
 
   it('denies a second progression explanation after it has already been shown', () => {
@@ -669,7 +749,7 @@ describe('JourneyRuntimeAuthorityService', () => {
     expect(denied.dispatch).toEqual({
       outcome: 'DENY',
     });
-    expect(denied.reason).toContain('process.explained');
+    expect(denied.reason).toContain('supporting document');
 
     const allowed = service.decide(createInput({
       current: {
@@ -686,6 +766,7 @@ describe('JourneyRuntimeAuthorityService', () => {
         recommendationSelectionStatus: 'selected',
         recommendationSelectedHospitalIds: ['hospital-1'],
       },
+      supportingDocuments: [{ path: '/docs/labs.pdf', name: 'labs.pdf' }],
       facts: {
         'records.minimal_triage.complete': true,
         'process.explained': true,
@@ -735,6 +816,8 @@ describe('JourneyRuntimeAuthorityService', () => {
         stage: 'HUMAN_HANDOFF',
         phase: 'active',
       },
+      journeyCurrentStage: 'HUMAN_HANDOFF',
+      journeyCurrentPhase: 'active',
       factsPatch: {
         'handoff.active': true,
       },

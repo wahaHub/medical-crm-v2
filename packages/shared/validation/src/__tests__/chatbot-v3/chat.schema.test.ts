@@ -47,6 +47,16 @@ describe('chatbot-v3 chat schemas', () => {
     }).success).toBe(false);
 
     expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-no-message-no-action-attachments-1',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-no-message-no-action-attachments-1/report.pdf',
+      }],
+    }).success).toBe(false);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
       sessionId: 'session-recommendation-skipped-1',
       action: {
         type: 'RECOMMENDATION_SKIPPED',

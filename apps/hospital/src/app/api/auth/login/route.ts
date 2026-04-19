@@ -30,6 +30,13 @@ interface AdminSessionData {
   code_verifier?: string;
 }
 
+type LoginErrorCode =
+  | 'LOGIN_FIELDS_REQUIRED'
+  | 'INVALID_CREDENTIALS'
+  | 'LOGIN_NOT_AUTHORIZED'
+  | 'LOGIN_FAILED'
+  | 'LOGIN_REQUEST_FAILED';
+
 function getTokenLength(token: string | undefined): number {
   return token?.length ?? 0;
 }
@@ -86,14 +93,23 @@ async function saveAdminSession(data: Partial<AdminSessionData>): Promise<void> 
   }
 }
 
+function createErrorResponse(
+  errorCode: LoginErrorCode,
+  error: string,
+  status: number,
+) {
+  return NextResponse.json({ error, errorCode }, { status });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { username, password } = await request.json();
 
     if (!username || !password) {
-      return NextResponse.json(
-        { error: 'Username and password are required' },
-        { status: 400 },
+      return createErrorResponse(
+        'LOGIN_FIELDS_REQUIRED',
+        'Username and password are required',
+        400,
       );
     }
 
@@ -101,23 +117,14 @@ export async function POST(request: NextRequest) {
     let tokens;
     try {
       tokens = await passwordGrant(username, password);
-    } catch (err) {
-      return NextResponse.json(
-        {
-          error: 'Invalid credentials',
-          details: err instanceof Error ? err.message : 'Authentication failed',
-        },
-        { status: 401 },
-      );
+    } catch {
+      return createErrorResponse('INVALID_CREDENTIALS', 'Invalid credentials', 401);
     }
 
     // Extract user info from JWT
     const user = extractUserFromToken(tokens.access_token);
     if (!user) {
-      return NextResponse.json(
-        { error: 'Failed to extract user information from token' },
-        { status: 500 },
-      );
+      return createErrorResponse('LOGIN_FAILED', 'Failed to complete login', 500);
     }
 
     const roles = (user.roles ?? []).map((role) => role.toLowerCase());
@@ -143,11 +150,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isHospitalUser) {
-      return NextResponse.json(
-        {
-          error: 'This account is not authorized for Medical CRM',
-        },
-        { status: 403 },
+      return createErrorResponse(
+        'LOGIN_NOT_AUTHORIZED',
+        'This account is not authorized for Medical CRM',
+        403,
       );
     }
 
@@ -178,6 +184,10 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('[Login API] Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return createErrorResponse(
+      'LOGIN_REQUEST_FAILED',
+      'An error occurred during login',
+      500,
+    );
   }
 }

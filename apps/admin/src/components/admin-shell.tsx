@@ -1,8 +1,8 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { SidebarNav, type NavItem } from '@medical-crm/ui';
+import { useEffect, useState, useTransition } from 'react';
+import { LoadingSpinner, SidebarNav, type NavItem, useOptimisticNavigationState } from '@medical-crm/ui';
 import { LayoutDashboard, FolderOpen, Building2, LogOut, MessageSquare, ShoppingCart, Package, Ticket, ClipboardList, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
@@ -35,8 +35,16 @@ function getActiveKey(pathname: string): string {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [isRoutePending, startRouteTransition] = useTransition();
   const { user, logout } = useAuth();
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+  const committedActiveKey = getActiveKey(pathname);
+  const {
+    displayActiveKey,
+    pendingKey,
+    isNavigating,
+    navigateTo,
+  } = useOptimisticNavigationState(committedActiveKey, isRoutePending);
 
   useEffect(() => {
     const pingPresence = () => {
@@ -76,8 +84,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-[#F8F9FB]">
       <SidebarNav
         items={NAV_ITEMS}
-        activeKey={getActiveKey(pathname)}
-        onNavigate={(href) => router.push(href)}
+        activeKey={displayActiveKey}
+        committedKey={committedActiveKey}
+        pendingKey={pendingKey}
+        pendingLabel="Loading section"
+        onNavigate={(item) => navigateTo(item.key, () => startRouteTransition(() => router.push(item.href)))}
       />
       <div className="ml-[72px] flex flex-1 flex-col">
         <header className="fixed left-[72px] right-0 top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200/50 bg-white/75 px-8 backdrop-blur-md">
@@ -109,7 +120,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
-        <main className="flex-1 p-8 pt-24">{children}</main>
+        <main aria-busy={isNavigating} className="relative flex-1 p-8 pt-24">
+          {children}
+          {isNavigating && (
+            <div className="absolute inset-0 z-20 flex cursor-progress items-center justify-center bg-[#F8F9FB]/72 backdrop-blur-[1px]" role="status" aria-live="polite" aria-label="Loading section">
+              <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white/92 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
+                <LoadingSpinner size="sm" />
+                <span>Loading...</span>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );

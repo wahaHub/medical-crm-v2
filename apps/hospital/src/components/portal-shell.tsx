@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, FolderOpen, Video, MessageSquare, Megaphone, LogOut, Search, Bell, Mail, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
-import { SidebarNav, type NavItem } from '@medical-crm/ui';
+import { LoadingSpinner, SidebarNav, type NavItem, useOptimisticNavigationState } from '@medical-crm/ui';
 import { updatePreferences } from '@/actions/settings-actions';
 import { useAuth } from '@/lib/auth-context';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
@@ -12,6 +12,7 @@ import { HOSPITAL_LANGUAGE_OPTIONS } from '@/lib/hospital-language-options';
 export function PortalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [isRoutePending, startRouteTransition] = useTransition();
   const { logout, updatePreferredLanguage } = useAuth();
   const { locale, isSwitchingLocale, setLocale, t } = useHospitalI18n();
   const [isSavingLocale, setIsSavingLocale] = useState(false);
@@ -105,7 +106,14 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
   };
 
   const isFullscreen = pathname.includes('/room');
-  const activeKey = navItems.find((item) => pathname.startsWith(item.href))?.key ?? 'dashboard';
+  const committedActiveKey = navItems.find((item) => pathname.startsWith(item.href))?.key ?? 'dashboard';
+  const {
+    displayActiveKey,
+    pendingKey,
+    isNavigating,
+    navigateTo,
+  } = useOptimisticNavigationState(committedActiveKey, isRoutePending);
+  const navigationLoadingLabel = t('hospital.loading.label', undefined, 'Loading');
 
   if (isFullscreen) {
     return <main className="min-h-screen">{children}</main>;
@@ -115,8 +123,11 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-[#F8F9FB]">
       <SidebarNav
         items={navItems}
-        activeKey={activeKey}
-        onNavigate={(href) => router.push(href)}
+        activeKey={displayActiveKey}
+        committedKey={committedActiveKey}
+        pendingKey={pendingKey}
+        pendingLabel={navigationLoadingLabel}
+        onNavigate={(item) => navigateTo(item.key, () => startRouteTransition(() => router.push(item.href)))}
         footer={
           <div className="relative group flex items-center">
             <button
@@ -196,7 +207,17 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         {/* Main content */}
-        <main className="flex-1 p-8 pt-24">{children}</main>
+        <main aria-busy={isNavigating} className="relative flex-1 p-8 pt-24">
+          {children}
+          {isNavigating && (
+            <div className="absolute inset-0 z-20 flex cursor-progress items-center justify-center bg-[#F8F9FB]/72 backdrop-blur-[1px]" role="status" aria-live="polite" aria-label={navigationLoadingLabel}>
+              <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white/92 px-4 py-2 text-sm font-medium text-slate-600 shadow-sm">
+                <LoadingSpinner size="sm" />
+                <span>{navigationLoadingLabel}...</span>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );

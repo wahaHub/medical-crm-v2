@@ -15,6 +15,7 @@ import { StatusBadge, useDebounce } from '@medical-crm/ui';
 import { useCases } from '@/queries/use-cases';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import {
+  getHospitalGenderShortLabel,
   getHospitalStatusLabel,
   getLocalizedCountryLabel,
 } from '@/lib/hospital-display';
@@ -252,7 +253,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
             const condition = raw.primaryDiagnosis ?? c.medicalCondition ?? null;
             const flag = getCountryFlag(c.patientCountry);
             const patientName = c.patientName ?? unknownLabel;
-            const countryLabel = getLocalizedCountryLabel(c.patientCountry, locale);
+            const countryLabel = getLocalizedCountryLabel(c.patientCountry, locale, t);
             const statusLabel = getHospitalStatusLabel(c.status ?? 'UNKNOWN', t);
 
             return (
@@ -292,11 +293,7 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
                       )}
                       {c.patientGender && (
                         <span>
-                          • {c.patientGender === 'MALE'
-                            ? t('hospital.common.genderMaleShort', undefined, 'M')
-                            : c.patientGender === 'FEMALE'
-                              ? t('hospital.common.genderFemaleShort', undefined, 'F')
-                              : c.patientGender}
+                          • {getHospitalGenderShortLabel(c.patientGender, t)}
                         </span>
                       )}
                       {c.patientCountry && (

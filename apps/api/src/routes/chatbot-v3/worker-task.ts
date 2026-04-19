@@ -15,6 +15,10 @@ export type RecommendationTask =
   | 'compare'
   | 'explain';
 
+export type RecommendationBasis =
+  | 'INTAKE_AND_FOLLOW_UP_SUMMARY'
+  | 'INTAKE_ONLY_AFTER_TRIAGE_SKIP';
+
 export type RecordsWorkerMode = 'minimal_triage' | 'medical_collection';
 
 interface WorkerTaskBase<TAgent extends 'FaqAgent' | 'RecordsAgent' | 'RecommendationAgent'> {
@@ -35,6 +39,8 @@ export interface RecordsWorkerTask extends WorkerTaskBase<'RecordsAgent'> {
 
 export interface RecommendationWorkerTask extends WorkerTaskBase<'RecommendationAgent'> {
   recommendationTask: RecommendationTask;
+  recommendationBasis?: RecommendationBasis;
+  minimalTriageAnswersSummary?: string | null;
 }
 
 export type WorkerTask =

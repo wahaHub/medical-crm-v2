@@ -3,6 +3,7 @@ import {
   CHATBOT_V3_JOURNEY_STAGES,
   type ChatbotV3DispatchAgent,
   type ChatbotV3Facts,
+  hasChatbotV3MinimalTriageComplete,
   type JourneyRuntimeAuthorityDecision,
   type JourneyRuntimeAuthorityInput,
   type JourneyRuntimeAuthorityWrite,
@@ -59,7 +60,7 @@ export class JourneyRuntimeAuthorityService {
           reason: input.proposal.reason,
         });
       case 'RECOMMENDATION':
-        if (!hasMinimalTriageComplete(input.facts)) {
+        if (!hasChatbotV3MinimalTriageComplete(input)) {
           return denyDecision(input, 'Recommendation requires records.minimal_triage.complete');
         }
 
@@ -257,10 +258,6 @@ function canCollectMedicalInputs(input: JourneyRuntimeAuthorityInput): boolean {
 
 function isPostRecommendationStage(stage: ChatJourneyStage): boolean {
   return CHATBOT_V3_JOURNEY_STAGES.indexOf(stage) >= CHATBOT_V3_JOURNEY_STAGES.indexOf('RECOMMENDATION');
-}
-
-function hasMinimalTriageComplete(facts: ChatbotV3Facts | undefined): boolean {
-  return hasAnyTruthyFact(facts, ['records.minimal_triage.complete']);
 }
 
 function hasRecommendationSelected(facts: ChatbotV3Facts | undefined): boolean {

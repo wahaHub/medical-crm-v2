@@ -266,7 +266,16 @@ export function hasChatbotV3MinimalTriageComplete(input: {
   facts?: ChatbotV3Facts;
   statusSnapshot?: ChatbotV3StatusSnapshot | null;
 }): boolean {
-  if (input.statusSnapshot != null) {
+  const statusSnapshot = input.statusSnapshot;
+  const hasMinimalTriageSnapshotFields =
+    statusSnapshot != null &&
+    (
+      Object.prototype.hasOwnProperty.call(statusSnapshot, 'minimalTriageStatus') ||
+      Object.prototype.hasOwnProperty.call(statusSnapshot, 'minimalTriageAnswersSummary') ||
+      Object.prototype.hasOwnProperty.call(statusSnapshot, 'minimalTriageComplete')
+    );
+
+  if (hasMinimalTriageSnapshotFields) {
     return deriveCanonicalTruthFlagsFromStatusSnapshot(input.statusSnapshot)[
       'records.minimal_triage.complete'
     ];

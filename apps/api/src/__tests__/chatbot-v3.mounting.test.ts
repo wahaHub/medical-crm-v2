@@ -69,6 +69,7 @@ function mapAuthorityInputToCompatibilityInput(
     current: input.current,
     suggestion: input.proposal,
     facts: input.facts,
+    statusSnapshot: input.statusSnapshot,
     handoff: input.handoff,
     bootstrap: input.bootstrap,
     intake: input.intake,
@@ -435,6 +436,55 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.runtimeDebug).toMatchObject({
       lastDispatchSource: 'journey-runtime-authority',
     });
+  });
+
+  it('forwards statusSnapshot through the compatibility authority shim', async () => {
+    currentSession = createPersistedMountingSession({
+      statusSnapshot: {
+        ...currentSession?.statusSnapshot,
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
+      },
+    });
+    applicationOverrides.suggest = async () => ({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      dispatchAgent: 'RecommendationAgent',
+      reason: 'snapshot-backed triage is complete',
+    });
+    applicationOverrides.decide = vi.fn((input) => {
+      expect(input.statusSnapshot).toEqual(expect.objectContaining({
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
+      }));
+
+      return {
+        action: 'ADVANCE',
+        from: input.current,
+        to: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchAgent: 'RecommendationAgent',
+        dispatchSource: 'orchestrator',
+      };
+    });
+
+    const app = await loadApp();
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please recommend hospitals for me.',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(applicationOverrides.decide).toHaveBeenCalledOnce();
   });
 
   it('returns a real process overview before persisting process.explained', async () => {
@@ -1393,6 +1443,90 @@ describe('Chatbot v3 public route mounting', () => {
 
     const recommendationTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'What should I do next?',
+    })).body);
+
+    expect(recommendationTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(recommendationTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+  });
+
+  it('treats pending minimal triage with a persisted answers summary as ready for recommendation', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
+        processExplained: false,
+        recommendationGenerated: false,
+      },
+    }));
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const recommendationTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Please recommend a hospital.',
+    })).body);
+
+    expect(recommendationTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(recommendationTurn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+  });
+
+  it('treats skipped minimal triage as ready for recommendation', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+        processExplained: false,
+        recommendationGenerated: false,
+      },
+    }));
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const recommendationTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Please recommend a hospital.',
     })).body);
 
     expect(recommendationTurn.journey).toMatchObject({

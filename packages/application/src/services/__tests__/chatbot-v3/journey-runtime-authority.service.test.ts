@@ -190,6 +190,28 @@ describe('JourneyRuntimeAuthorityService', () => {
     expect(decision.reason).toContain('records.minimal_triage.complete');
   });
 
+  it('falls back to facts when the status snapshot has no minimal triage fields', () => {
+    const decision = service.decide(createInput({
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'empty snapshots should not override facts',
+      },
+      statusSnapshot: {},
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ADVANCE');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'RecommendationAgent',
+    });
+  });
+
   it('treats the authority result as the final journey writer when process explanation is shown', () => {
     const decision = service.decide(createInput({
       current: {

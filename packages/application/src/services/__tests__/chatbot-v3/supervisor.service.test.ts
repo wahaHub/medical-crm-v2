@@ -159,6 +159,39 @@ describe('SupervisorService', () => {
     expect(result.reason).toBe('triage is still incomplete');
   });
 
+  it('falls back to facts when the status snapshot has no minimal triage fields', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: 'empty snapshots should not override facts',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+      statusSnapshot: {},
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      dispatchAgent: 'RecommendationAgent',
+      reason: 'minimal triage is complete and recommendation should begin',
+      task: {
+        goal: 'Generate hospital recommendations for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'intake.language': 'en',
+          'intake.gender': 'female',
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
   it('prefers process explanation after recommendation selection when the process has not been explained', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,

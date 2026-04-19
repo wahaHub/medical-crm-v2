@@ -35,6 +35,7 @@ import {
   type ConversationOrchestratorV3Decision,
   type ConversationOrchestratorV3DecisionInput,
   ConversationOrchestratorV3RuntimeService,
+  InvalidChatbotV3ActionError,
   type ConversationOrchestratorV3TurnResult,
   deriveCurrentStageFromStatusSnapshot,
 } from './chatbot-v3/runtime.service.js';
@@ -106,24 +107,40 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   }
   session = authorization.session;
 
-  const result = await getChatbotV3Runtime().handleTurn({
-    traceId,
-    sessionId: body.sessionId,
-    site,
-    turnId,
-    message: body.message,
-    attachments: body.attachments,
-    pageContext: body.pageContext,
-    statusSnapshot: session?.statusSnapshot,
-    facts: resolveFacts(session?.statusSnapshot),
-    intake: await resolveSupervisorIntakeSeed(services, session),
-    handoff: resolveHandoffSignals(session?.statusSnapshot),
-    bootstrap: {
-      message: body.message,
+  let result: ConversationOrchestratorV3TurnResult;
+  try {
+    result = await getChatbotV3Runtime().handleTurn({
+      traceId,
+      sessionId: body.sessionId,
+      site,
+      turnId,
+      message: body.message ?? '',
+      userAction: body.action,
       attachments: body.attachments,
-      canCreateHandoff: canCreateHandoffTicket(session, services),
-    },
-  });
+      pageContext: body.pageContext,
+      statusSnapshot: session?.statusSnapshot,
+      facts: resolveFacts(session?.statusSnapshot),
+      intake: await resolveSupervisorIntakeSeed(services, session),
+      handoff: resolveHandoffSignals(session?.statusSnapshot),
+      bootstrap: {
+        message: body.message ?? '',
+        attachments: body.attachments,
+        canCreateHandoff: canCreateHandoffTicket(session, services),
+      },
+    });
+  } catch (error) {
+    if (error instanceof InvalidChatbotV3ActionError) {
+      return c.json({
+        error: {
+          code: error.code,
+          message: error.message,
+          traceId,
+        },
+      }, error.status);
+    }
+
+    throw error;
+  }
 
   if (session && shouldPersistAttachmentUpload(body.attachments, result)) {
     session = await patchSessionStatus(services, session, {
@@ -142,6 +159,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
       session.statusSnapshot,
       Object.assign(
         {},
+        result.writeIntents?.statusPatch ?? {},
         result.writeIntents?.canonicalTruthPatch ?? {},
         result.writeIntents?.conversationSummaryPatch?.statusPatch ?? {},
       ),
@@ -315,6 +333,7 @@ function createJourneyRuntimeAuthorityAdapter() {
         current,
         proposal: input.suggestion,
         facts: input.facts,
+        statusSnapshot: input.statusSnapshot,
         handoff: input.handoff,
         bootstrap: input.bootstrap,
         intake: input.intake,

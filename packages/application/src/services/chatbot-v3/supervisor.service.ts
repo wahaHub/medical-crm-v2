@@ -17,6 +17,7 @@ import type {
 import type { LlmNodeAdapter } from './llm-adapter.types.js';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
+  hasChatbotV3MinimalTriageComplete,
   resolveChatbotV3DispatchAgent,
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
 } from './types.js';
@@ -185,7 +186,7 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     };
   }
 
-  if (input.facts?.['records.minimal_triage.complete']) {
+  if (hasChatbotV3MinimalTriageComplete(input)) {
     return {
       intent: 'progression',
       suggestedStage: 'RECOMMENDATION',
@@ -354,6 +355,7 @@ function buildNecessaryFacts(
   input: OrchestratorV3DecisionInput,
 ): ChatbotV3Facts {
   const necessaryFacts: ChatbotV3Facts = {};
+  const minimalTriageComplete = hasChatbotV3MinimalTriageComplete(input);
 
   switch (dispatchAgent) {
     case 'FaqAgent':
@@ -370,7 +372,7 @@ function buildNecessaryFacts(
       addFact(
         necessaryFacts,
         'records.minimal_triage.complete',
-        readBooleanFact(input.facts, 'records.minimal_triage.complete') ?? false,
+        minimalTriageComplete,
       );
       if (suggestedStage === 'COLLECT_MEDICAL_INPUTS') {
         copyFact(necessaryFacts, input.facts, 'recommendation.selected');
@@ -378,7 +380,7 @@ function buildNecessaryFacts(
       return necessaryFacts;
     case 'RecommendationAgent':
       appendIntakeFacts(necessaryFacts, input);
-      copyFact(necessaryFacts, input.facts, 'records.minimal_triage.complete');
+      addFact(necessaryFacts, 'records.minimal_triage.complete', minimalTriageComplete);
       copyFact(necessaryFacts, input.facts, 'recommendation.generated');
       copyFact(necessaryFacts, input.facts, 'recommendation.selected');
       return necessaryFacts;

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
+  JourneyRuntimeAuthorityService,
   SupervisorService,
 } from '@medical-crm/application';
 import { FaqLlmAdapter } from '../routes/chatbot-v3/faq-llm-adapter.js';
@@ -10,6 +11,7 @@ import { buildRecordsMinimalTriagePrompt } from '../routes/chatbot-v3/records-pr
 import { createChatbotV3RuntimeNodeEventEmitter } from '../routes/chatbot-v3/observability.js';
 import {
   ConversationOrchestratorV3RuntimeService,
+  InvalidChatbotV3ActionError,
   deriveCurrentStageFromStatusSnapshot,
 } from '../routes/chatbot-v3/runtime.service.js';
 import { createToolGateway } from '../routes/chatbot-v3/tool-gateway.js';
@@ -460,6 +462,282 @@ describe('chatbot-v3 agents', () => {
         recommendationTask: 'compare',
       },
     });
+  });
+});
+
+describe('chatbot-v3 structured action runtime normalization', () => {
+  it('treats TRIAGE_SUBMITTED as summary-backed triage completion without persisting answered status', async () => {
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [{ hospitalId: 'hospital-1' }],
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'triage was submitted',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn((input) => {
+          expect(input.statusSnapshot).toMatchObject({
+            minimalTriageStatus: 'pending',
+            minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+            minimalTriageComplete: true,
+          });
+          expect(input.facts?.['records.minimal_triage.complete']).toBe(true);
+
+          return {
+            action: 'ADVANCE' as const,
+            from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+            to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+            dispatchAgent: 'RecommendationAgent' as const,
+            dispatchSource: 'journey-runtime-authority' as const,
+          };
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: recommendationAgent as any,
+      },
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-triage-submitted-1',
+      sessionId: 'session-triage-submitted-1',
+      turnId: 'turn-triage-submitted-1',
+      message: 'I have chest pain for three days, it feels moderate, and I already had a blood test.',
+      userAction: {
+        type: 'TRIAGE_SUBMITTED',
+      },
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    expect(recommendationAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'recommendation.generate',
+      meta: {
+        task: expect.objectContaining({
+          recommendationBasis: 'INTAKE_AND_FOLLOW_UP_SUMMARY',
+          minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        }),
+      },
+    }));
+  });
+
+  it('fails RECOMMENDATION_SELECTED before recommendation has been presented', async () => {
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'user selected a hospital',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    await expect(runtime.handleTurn({
+      traceId: 'trace-invalid-selection-1',
+      sessionId: 'session-invalid-selection-1',
+      turnId: 'turn-invalid-selection-1',
+      message: '',
+      userAction: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: 'hospital-1',
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        recommendationGenerated: false,
+        recommendationSelected: false,
+      } as any,
+      facts: {
+        'recommendation.generated': false,
+        'recommendation.selected': false,
+      },
+    })).rejects.toBeInstanceOf(InvalidChatbotV3ActionError);
+  });
+
+  it('persists RECOMMENDATION_SELECTED through the structured action path once recommendation is presented', async () => {
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'user selected a hospital',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn((input) => {
+          expect(input.statusSnapshot).toMatchObject({
+            recommendationGenerated: true,
+            recommendationSelected: true,
+          });
+          expect(input.facts).toMatchObject({
+            'recommendation.generated': true,
+            'recommendation.selected': true,
+          });
+
+          return {
+            action: 'STAY' as const,
+            from: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+            to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+            dispatchSource: 'journey-runtime-authority' as const,
+          };
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-selection-success-1',
+      sessionId: 'session-selection-success-1',
+      turnId: 'turn-selection-success-1',
+      message: '',
+      userAction: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: 'hospital-1',
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationSelected: null,
+      } as any,
+      facts: {
+        'recommendation.generated': true,
+        'recommendation.selected': false,
+      },
+    });
+
+    expect(result.writeIntents).toEqual(expect.objectContaining({
+      statusPatch: {
+        recommendationSelected: true,
+      },
+    }));
+  });
+
+  it('persists RECOMMENDATION_SKIPPED through the same structured action path', async () => {
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'user skipped hospital selection',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn((input) => {
+          expect(input.statusSnapshot).toMatchObject({
+            recommendationGenerated: true,
+            recommendationSelected: false,
+          });
+          expect(input.facts).toMatchObject({
+            'recommendation.generated': true,
+            'recommendation.selected': false,
+          });
+
+          return {
+            action: 'STAY' as const,
+            from: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+            to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+            dispatchSource: 'journey-runtime-authority' as const,
+          };
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-selection-skip-1',
+      sessionId: 'session-selection-skip-1',
+      turnId: 'turn-selection-skip-1',
+      message: '',
+      userAction: {
+        type: 'RECOMMENDATION_SKIPPED',
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationSelected: null,
+      } as any,
+      facts: {
+        'recommendation.generated': true,
+        'recommendation.selected': false,
+      },
+    });
+
+    expect(result.writeIntents).toEqual(expect.objectContaining({
+      statusPatch: {
+        recommendationSelected: false,
+      },
+    }));
   });
 });
 
@@ -2570,6 +2848,113 @@ describe('chatbot-v3 runtime', () => {
     expect(call?.meta?.task).toEqual(expect.objectContaining({
       mode: 'medical_collection',
       minimalTriageComplete: true,
+    }));
+  });
+
+  it('prefers statusSnapshot triage completion over stale false facts before progressing to recommendation', async () => {
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [{ hospitalId: 'hospital-1' }],
+        },
+      })),
+    };
+    const authority = new JourneyRuntimeAuthorityService();
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide(input) {
+          const decision = authority.decide({
+            current: input.current ?? {
+              stage: input.currentStage ?? 'COLLECT_MINIMAL_MEDICAL_FACTS',
+              phase: 'active',
+            },
+            proposal: input.suggestion,
+            facts: input.facts,
+            handoff: input.handoff,
+            bootstrap: input.bootstrap,
+            intake: input.intake,
+            statusSnapshot: input.statusSnapshot,
+          });
+
+          if (decision.outcome === 'DENY') {
+            return {
+              action: 'STAY' as const,
+              from: decision.from,
+              to: decision.to,
+              dispatchSource: 'journey-runtime-authority' as const,
+              whyNotSkip: decision.reason,
+              write: decision.write,
+            };
+          }
+
+          return {
+            action: decision.action === 'REPEAT' ? 'STAY' : 'ADVANCE' as const,
+            from: decision.from,
+            to: decision.to,
+            dispatchAgent: decision.dispatch.outcome === 'ALLOW'
+              ? decision.dispatch.agent
+              : undefined,
+            dispatchSource: 'journey-runtime-authority' as const,
+            write: decision.write,
+          };
+        },
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: recommendationAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-summary-backed-triage-1',
+      sessionId: 'session-summary-backed-triage-1',
+      turnId: 'turn-summary-backed-triage-1',
+      message: 'Please recommend hospitals for me.',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
+        conversationSummary: 'Minimal triage answers are already summarized.',
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+    });
+
+    expect(result.suggestion.suggestedStage).toBe('RECOMMENDATION');
+    expect(result.decision.to).toEqual({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(recommendationAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'recommendation.generate',
+      meta: {
+        task: expect.objectContaining({
+          agent: 'RecommendationAgent',
+          fromStage: 'RECOMMENDATION',
+          toStage: 'RECOMMENDATION',
+        }),
+      },
     }));
   });
 

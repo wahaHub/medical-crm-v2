@@ -24,6 +24,69 @@ describe('chatbot-v3 chat schemas', () => {
     }).success).toBe(true);
   });
 
+  it('accepts structured TRIAGE_SUBMITTED and TRIAGE_SKIPPED action payloads', () => {
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-triage-submitted-1',
+      message: 'I have had chest pain for three days and already did a blood test.',
+      action: {
+        type: 'TRIAGE_SUBMITTED',
+      },
+    }).success).toBe(true);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-triage-skipped-1',
+      action: {
+        type: 'TRIAGE_SKIPPED',
+      },
+    }).success).toBe(true);
+  });
+
+  it('allows message to be omitted only when a structured action is present', () => {
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-no-message-no-action-1',
+    }).success).toBe(false);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-recommendation-skipped-1',
+      action: {
+        type: 'RECOMMENDATION_SKIPPED',
+      },
+    }).success).toBe(true);
+  });
+
+  it('requires exactly one non-empty hospitalId for RECOMMENDATION_SELECTED', () => {
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-recommendation-selected-1',
+      action: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: 'hospital-123',
+      },
+    }).success).toBe(true);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-recommendation-selected-missing',
+      action: {
+        type: 'RECOMMENDATION_SELECTED',
+      },
+    }).success).toBe(false);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-recommendation-selected-blank',
+      action: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: '',
+      },
+    }).success).toBe(false);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-recommendation-selected-many',
+      action: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: ['hospital-1', 'hospital-2'],
+      },
+    }).success).toBe(false);
+  });
+
   it('accepts a valid v3 chat response', () => {
     expect(chatbotV3ChatResponseSchema.safeParse({
       messages: [{

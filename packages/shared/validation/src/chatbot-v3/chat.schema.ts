@@ -32,18 +32,53 @@ export const chatbotV3UploadInitResponseSchema = z.object({
   asset: chatbotV3AttachmentSchema,
 }).strict();
 
+export const chatbotV3ChatActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('TRIAGE_SUBMITTED'),
+  }).strict(),
+  z.object({
+    type: z.literal('TRIAGE_SKIPPED'),
+  }).strict(),
+  z.object({
+    type: z.literal('RECOMMENDATION_SELECTED'),
+    hospitalId: z.string().trim().min(1).max(255),
+  }).strict(),
+  z.object({
+    type: z.literal('RECOMMENDATION_SKIPPED'),
+  }).strict(),
+]);
+
 export const chatbotV3ChatRequestSchema = z.object({
   sessionId: z.string().min(1).max(255),
-  message: z.string().max(2000),
+  message: z.string().max(2000).optional(),
+  action: chatbotV3ChatActionSchema.optional(),
   attachments: z.array(chatbotV3AttachmentSchema).max(10).optional(),
   pageContext: chatbotV3PageContextSchema.optional(),
-}).strict().refine(
-  (value) => value.message.trim().length > 0 || (value.attachments?.length ?? 0) > 0,
-  {
-    message: 'Message text or attachments are required',
-    path: ['message'],
-  },
-);
+}).strict()
+  .refine(
+    (value) => {
+      if (value.action) return true;
+      if ((value.message?.trim().length ?? 0) > 0) return true;
+      return (value.attachments?.length ?? 0) > 0;
+    },
+    {
+      message: 'Message text is required unless an action is present or attachments are included',
+      path: ['message'],
+    },
+  )
+  .refine(
+    (value) => {
+      if (value.action?.type !== 'TRIAGE_SUBMITTED') {
+        return true;
+      }
+
+      return (value.message?.trim().length ?? 0) > 0;
+    },
+    {
+      message: 'TRIAGE_SUBMITTED requires non-empty follow-up text',
+      path: ['message'],
+    },
+  );
 
 const chatbotV3MessageSchema = z.object({
   role: z.literal('assistant'),
@@ -138,7 +173,7 @@ const chatbotV3UploadRecordsCardSchema = z.object({
         actionKey: z.literal('UPLOAD_RECORDS'),
       }).strict(),
     }).strict(),
-  ])).max(5),
+  ])).max(6),
 }).strict();
 
 const chatbotV3RecommendationListCardSchema = z.object({
@@ -151,13 +186,22 @@ const chatbotV3RecommendationListCardSchema = z.object({
       reason: z.string().min(1).optional(),
     }).strict()),
   }).strict(),
-  actions: z.array(z.object({
-    actionType: z.literal('SUBMIT'),
-    label: z.string().min(1),
-    params: z.object({
-      hospitalId: z.string().min(1),
+  actions: z.array(z.union([
+    z.object({
+      actionType: z.literal('SUBMIT'),
+      label: z.string().min(1),
+      params: z.object({
+        hospitalId: z.string().min(1),
+      }).strict(),
     }).strict(),
-  }).strict()).max(5),
+    z.object({
+      actionType: z.literal('SUBMIT'),
+      label: z.string().min(1),
+      params: z.object({
+        actionKey: z.literal('RECOMMENDATION_SKIPPED'),
+      }).strict(),
+    }).strict(),
+  ])).max(6),
 }).strict();
 
 const chatbotV3ConsultBookingCardSchema = z.object({
@@ -219,7 +263,14 @@ export const chatbotV3ChatResponseSchema = z.object({
 
 export const chatbotV3ErrorSchema = z.object({
   error: z.object({
-    code: z.enum(['INVALID_REQUEST', 'UNAUTHORIZED', 'FORBIDDEN', 'SERVICE_UNAVAILABLE', 'INTERNAL_ERROR']),
+    code: z.enum([
+      'INVALID_REQUEST',
+      'INVALID_ACTION_STATE',
+      'UNAUTHORIZED',
+      'FORBIDDEN',
+      'SERVICE_UNAVAILABLE',
+      'INTERNAL_ERROR',
+    ]),
     message: z.string().min(1),
     traceId: z.string().min(1),
   }).strict(),
@@ -228,6 +279,7 @@ export const chatbotV3ErrorSchema = z.object({
 export type ChatbotV3Attachment = z.infer<typeof chatbotV3AttachmentSchema>;
 export type ChatbotV3UploadInitRequest = z.infer<typeof chatbotV3UploadInitRequestSchema>;
 export type ChatbotV3UploadInitResponse = z.infer<typeof chatbotV3UploadInitResponseSchema>;
+export type ChatbotV3ChatAction = z.infer<typeof chatbotV3ChatActionSchema>;
 export type ChatbotV3ChatRequest = z.infer<typeof chatbotV3ChatRequestSchema>;
 export type ChatbotV3Message = z.infer<typeof chatbotV3MessageSchema>;
 export type ChatbotV3TurnOutcome = z.infer<typeof chatbotV3TurnOutcomeSchema>;

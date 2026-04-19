@@ -39,6 +39,7 @@ import type {
   ToolGateway,
   ToolResult,
 } from './tool-gateway.js';
+import type { ChatbotV3ChatAction } from '@medical-crm/validation';
 
 export interface ConversationOrchestratorV3StageRef {
   stage: ChatJourneyStage;
@@ -79,6 +80,7 @@ export interface ConversationOrchestratorV3DecisionInput {
   currentStage?: ChatJourneyStage;
   conversationSummary?: string;
   latestUserMessage?: string;
+  userAction?: ChatbotV3ChatAction;
   intake?: MinimalIntakeSeed;
   availableReadDomains?: readonly SupervisorReadDomain[];
   domainReadResults?: SupervisorDomainReadResults;
@@ -98,6 +100,7 @@ export interface ConversationOrchestratorV3ConversationSummaryPatch {
 }
 
 export interface ConversationOrchestratorV3WriteIntents {
+  statusPatch?: Partial<AiChatStatusSnapshot>;
   canonicalTruthPatch?: AiChatCanonicalTruthPatch;
   conversationSummaryPatch: ConversationOrchestratorV3ConversationSummaryPatch;
 }
@@ -127,6 +130,7 @@ export interface ConversationOrchestratorV3HandleTurnInput {
   site: PatientSite;
   turnId: string;
   message: string;
+  userAction?: ChatbotV3ChatAction;
   attachments?: Array<Record<string, unknown>>;
   pageContext?: {
     type: 'HOSPITAL_DETAIL';
@@ -169,6 +173,13 @@ interface ConversationOrchestratorV3SupervisorReadDomainCollection {
   >;
 }
 
+interface ConversationOrchestratorV3NormalizedTurnInput extends ConversationOrchestratorV3HandleTurnInput {
+  message: string;
+  statusSnapshot?: Partial<AiChatStatusSnapshot> | null;
+  facts?: ConversationOrchestratorV3Facts;
+  normalizedActionStatusPatch?: Partial<AiChatStatusSnapshot>;
+}
+
 export interface ConversationOrchestratorV3LlmNodeRunMetadata {
   nodePromptVersion?: string;
   nodeModel?: string;
@@ -204,6 +215,16 @@ export interface ConversationOrchestratorV3RuntimeDependencies {
   agents: Partial<Record<AgentName, ConversationOrchestratorV3AgentExecutor>>;
   nodeEventEmitter?: Pick<ChatbotV3RuntimeNodeEventEmitter, 'emit'>;
   now?: () => number;
+}
+
+export class InvalidChatbotV3ActionError extends Error {
+  readonly code = 'INVALID_ACTION_STATE';
+  readonly status = 409;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidChatbotV3ActionError';
+  }
 }
 
 export class ConversationOrchestratorV3RuntimeService {
@@ -248,10 +269,11 @@ export class ConversationOrchestratorV3RuntimeService {
     input: ConversationOrchestratorV3HandleTurnInput,
     idempotencyKey: string,
   ): Promise<ConversationOrchestratorV3TurnResult> {
+    const normalizedInput = normalizeStructuredUserAction(input);
     const turnStartedAt = this.now();
-    const supervisorInput = this.buildSupervisorInput(input);
-    const decisionInput = this.buildDecisionInput(input);
-    this.emitNodeEvent(input, {
+    const supervisorInput = this.buildSupervisorInput(normalizedInput);
+    const decisionInput = this.buildDecisionInput(normalizedInput);
+    this.emitNodeEvent(normalizedInput, {
       node: 'Supervisor',
       action: 'suggest',
       status: 'started',
@@ -264,7 +286,7 @@ export class ConversationOrchestratorV3RuntimeService {
     let supervisorReadDomainCollection: ConversationOrchestratorV3SupervisorReadDomainCollection | undefined;
     let supervisorDecisionLineage: SupervisorDecisionLineage | null | undefined;
     try {
-      supervisorReadDomainCollection = await this.collectSupervisorReadDomains(input, supervisorInput);
+      supervisorReadDomainCollection = await this.collectSupervisorReadDomains(normalizedInput, supervisorInput);
       const supervisorSuggestInput = supervisorReadDomainCollection.domainReadResults
         ? {
             ...supervisorInput,
@@ -279,7 +301,7 @@ export class ConversationOrchestratorV3RuntimeService {
         supervisorReadDomainCollection,
         supervisorDecisionLineage,
       );
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'Supervisor',
         action: 'suggest',
         status: 'completed',
@@ -292,7 +314,7 @@ export class ConversationOrchestratorV3RuntimeService {
         supervisorReadDomainCollection,
         supervisorDecisionLineage,
       );
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'Supervisor',
         action: 'suggest',
         status: 'failed',
@@ -304,7 +326,7 @@ export class ConversationOrchestratorV3RuntimeService {
       throw error;
     }
 
-    this.emitNodeEvent(input, {
+    this.emitNodeEvent(normalizedInput, {
       node: 'JourneyRuntimeAuthority',
       action: 'decide',
       status: 'started',
@@ -321,7 +343,7 @@ export class ConversationOrchestratorV3RuntimeService {
         ...supervisorReplayLineage,
         ...(decision.matchedRuleId ? { matchedRuleId: decision.matchedRuleId } : {}),
       });
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'JourneyRuntimeAuthority',
         action: 'decide',
         status: 'completed',
@@ -332,7 +354,7 @@ export class ConversationOrchestratorV3RuntimeService {
       const authorityFailureReplayLineage = compactReplayLineage({
         ...(supervisorReplayLineage ?? {}),
       });
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'JourneyRuntimeAuthority',
         action: 'decide',
         status: 'failed',
@@ -372,9 +394,9 @@ export class ConversationOrchestratorV3RuntimeService {
         },
       } satisfies ConversationOrchestratorV3TurnResult;
       return this.finalizeTurnResult(
-        input,
+        normalizedInput,
         decision,
-        this.attachWriteIntents(result, input, input.statusSnapshot),
+        this.attachWriteIntents(result, normalizedInput, normalizedInput.statusSnapshot),
         turnStartedAt,
       );
     }
@@ -396,7 +418,7 @@ export class ConversationOrchestratorV3RuntimeService {
         errorCode: 'UPSTREAM_UNAVAILABLE',
       });
       const degraded = await this.buildDegradedResult({
-        input,
+        input: normalizedInput,
         suggestion,
         decision,
         dispatchResult: {
@@ -406,20 +428,20 @@ export class ConversationOrchestratorV3RuntimeService {
         },
         runtimeDebug,
       });
-      return this.finalizeTurnResult(input, decision, degraded, turnStartedAt);
+      return this.finalizeTurnResult(normalizedInput, decision, degraded, turnStartedAt);
     }
 
-    const dispatchAction = buildDispatchAction(input, decision as ConversationOrchestratorV3Decision & {
+    const dispatchAction = buildDispatchAction(normalizedInput, decision as ConversationOrchestratorV3Decision & {
       dispatchAgent: AgentName;
     }, suggestion);
-    this.emitNodeEvent(input, {
+    this.emitNodeEvent(normalizedInput, {
       node: 'Subagent',
       action: decision.dispatchAgent,
       status: 'started',
       latencyMs: 0,
     });
     const subagentStartedAt = this.now();
-    this.emitNodeEvent(input, {
+    this.emitNodeEvent(normalizedInput, {
       node: 'Tool',
       action: dispatchAction.type,
       status: 'started',
@@ -432,14 +454,14 @@ export class ConversationOrchestratorV3RuntimeService {
 
       if (dispatchResult.status === 'error') {
         const status = this.mapErrorStatus(dispatchResult.code);
-        this.emitNodeEvent(input, {
+        this.emitNodeEvent(normalizedInput, {
           node: 'Tool',
           action: dispatchAction.type,
           status,
           latencyMs: this.elapsedSince(toolStartedAt),
           errorCode: dispatchResult.code,
         });
-        this.emitNodeEvent(input, {
+        this.emitNodeEvent(normalizedInput, {
           node: 'Subagent',
           action: decision.dispatchAgent,
           status,
@@ -448,22 +470,22 @@ export class ConversationOrchestratorV3RuntimeService {
           ...this.resolveLlmNodeMetadata(agent),
         });
         const degraded = await this.buildDegradedResult({
-          input,
+          input: normalizedInput,
           suggestion,
           decision,
           dispatchResult,
           runtimeDebug,
         });
-        return this.finalizeTurnResult(input, decision, degraded, turnStartedAt);
+        return this.finalizeTurnResult(normalizedInput, decision, degraded, turnStartedAt);
       }
 
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'Tool',
         action: dispatchAction.type,
         status: 'completed',
         latencyMs: this.elapsedSince(toolStartedAt),
       });
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'Subagent',
         action: decision.dispatchAgent,
         status: 'completed',
@@ -487,20 +509,20 @@ export class ConversationOrchestratorV3RuntimeService {
         },
       } satisfies ConversationOrchestratorV3TurnResult;
       return this.finalizeTurnResult(
-        input,
+        normalizedInput,
         decision,
-        this.attachWriteIntents(result, input, input.statusSnapshot),
+        this.attachWriteIntents(result, normalizedInput, normalizedInput.statusSnapshot),
         turnStartedAt,
       );
     } catch (error) {
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'Tool',
         action: dispatchAction.type,
         status: 'failed',
         latencyMs: this.elapsedSince(toolStartedAt),
         errorCode: 'UNKNOWN',
       });
-      this.emitNodeEvent(input, {
+      this.emitNodeEvent(normalizedInput, {
         node: 'Subagent',
         action: decision.dispatchAgent,
         status: 'failed',
@@ -509,7 +531,7 @@ export class ConversationOrchestratorV3RuntimeService {
         ...this.resolveLlmNodeMetadata(agent),
       });
       const degraded = await this.buildDegradedResult({
-        input,
+        input: normalizedInput,
         suggestion,
         decision,
         dispatchResult: {
@@ -519,7 +541,7 @@ export class ConversationOrchestratorV3RuntimeService {
         },
         runtimeDebug,
       });
-      return this.finalizeTurnResult(input, decision, degraded, turnStartedAt);
+      return this.finalizeTurnResult(normalizedInput, decision, degraded, turnStartedAt);
     }
   }
 
@@ -534,6 +556,7 @@ export class ConversationOrchestratorV3RuntimeService {
       currentStage: current.stage,
       conversationSummary: input.statusSnapshot?.conversationSummary ?? '',
       latestUserMessage: input.message,
+      userAction: input.userAction,
       intake: input.intake,
       availableReadDomains: deriveSupervisorReadDomains(current.stage, input.facts),
       suggestion: input.suggestion ?? {
@@ -559,7 +582,7 @@ export class ConversationOrchestratorV3RuntimeService {
 
   private attachWriteIntents(
     result: ConversationOrchestratorV3TurnResult,
-    input: ConversationOrchestratorV3HandleTurnInput,
+    input: ConversationOrchestratorV3NormalizedTurnInput,
     statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   ): ConversationOrchestratorV3TurnResult {
     const render = deriveRenderState(result);
@@ -574,6 +597,9 @@ export class ConversationOrchestratorV3RuntimeService {
     return {
       ...renderedResult,
       writeIntents: {
+        ...(input.normalizedActionStatusPatch
+          ? { statusPatch: input.normalizedActionStatusPatch }
+          : {}),
         ...(canonicalTruthPatch ? { canonicalTruthPatch } : {}),
         conversationSummaryPatch: buildConversationSummaryPatch({
           result: renderedResult,
@@ -891,6 +917,246 @@ function clampSummaryText(value: string, maxLength: number): string {
   return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
+function normalizeStructuredUserAction(
+  input: ConversationOrchestratorV3HandleTurnInput,
+): ConversationOrchestratorV3NormalizedTurnInput {
+  if (!input.userAction) {
+    return {
+      ...input,
+      message: input.message ?? '',
+    };
+  }
+
+  const currentStatusSnapshot = {
+    ...(input.statusSnapshot ?? {}),
+  };
+  const currentFacts = {
+    ...(input.facts ?? {}),
+  };
+  const normalizedMessage = input.message ?? '';
+
+  switch (input.userAction.type) {
+    case 'TRIAGE_SUBMITTED': {
+      const minimalTriageAnswersSummary = compactMinimalTriageAnswersSummary(normalizedMessage);
+      if (!minimalTriageAnswersSummary) {
+        throw new InvalidChatbotV3ActionError(
+          'TRIAGE_SUBMITTED requires enough follow-up detail to build a summary.',
+        );
+      }
+
+      return {
+        ...input,
+        message: normalizedMessage,
+        statusSnapshot: {
+          ...currentStatusSnapshot,
+          minimalTriageStatus: 'pending',
+          minimalTriageAnswersSummary,
+          minimalTriageComplete: true,
+        },
+        facts: {
+          ...currentFacts,
+          'records.minimal_triage.complete': true,
+        },
+        normalizedActionStatusPatch: {
+          minimalTriageStatus: 'pending',
+          minimalTriageAnswersSummary,
+          minimalTriageComplete: true,
+        },
+      };
+    }
+    case 'TRIAGE_SKIPPED':
+      return {
+        ...input,
+        message: normalizedMessage,
+        statusSnapshot: {
+          ...currentStatusSnapshot,
+          minimalTriageStatus: 'skipped',
+          minimalTriageAnswersSummary: null,
+          minimalTriageComplete: true,
+        },
+        facts: {
+          ...currentFacts,
+          'records.minimal_triage.complete': true,
+        },
+        normalizedActionStatusPatch: {
+          minimalTriageStatus: 'skipped',
+          minimalTriageAnswersSummary: null,
+          minimalTriageComplete: true,
+        },
+      };
+    case 'RECOMMENDATION_SELECTED': {
+      if (!isRecommendationPresented(currentStatusSnapshot, currentFacts)) {
+        throw new InvalidChatbotV3ActionError(
+          'RECOMMENDATION_SELECTED is invalid before recommendation is presented.',
+        );
+      }
+
+      return {
+        ...input,
+        message: normalizedMessage,
+        statusSnapshot: {
+          ...currentStatusSnapshot,
+          recommendationSelected: true,
+        },
+        facts: {
+          ...currentFacts,
+          'recommendation.selected': true,
+          'recommendation.picked': true,
+        },
+        normalizedActionStatusPatch: {
+          recommendationSelected: true,
+        },
+      };
+    }
+    case 'RECOMMENDATION_SKIPPED':
+      return {
+        ...input,
+        message: normalizedMessage,
+        statusSnapshot: {
+          ...currentStatusSnapshot,
+          recommendationSelected: false,
+        },
+        facts: {
+          ...currentFacts,
+          'recommendation.selected': false,
+          'recommendation.picked': false,
+        },
+        normalizedActionStatusPatch: {
+          recommendationSelected: false,
+        },
+      };
+  }
+}
+
+function compactMinimalTriageAnswersSummary(
+  message: string,
+): string | null {
+  const normalized = message.replace(/\s+/g, ' ').trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  const parts: string[] = [];
+  const lower = normalized.toLowerCase();
+  const symptomLabel = resolveMinimalTriageSymptomLabel(normalized);
+  const duration = resolveMinimalTriageDuration(lower);
+
+  if (symptomLabel && duration) {
+    parts.push(`${symptomLabel} ${duration}`.replace(/\s+/g, ' ').trim());
+  } else if (symptomLabel) {
+    parts.push(symptomLabel);
+  }
+
+  const severity = resolveMinimalTriageSeverity(lower);
+  if (severity) {
+    parts.push(severity);
+  }
+
+  const evidence = resolveMinimalTriageExistingEvidence(lower);
+  if (evidence) {
+    parts.push(evidence);
+  }
+
+  if (parts.length === 0) {
+    return normalized.length <= 200 ? normalized : `${normalized.slice(0, 197).trimEnd()}...`;
+  }
+
+  return `${parts.join('; ')}.`;
+}
+
+function resolveMinimalTriageSymptomLabel(
+  original: string,
+): string | null {
+  const knownSymptoms: Array<{ pattern: RegExp; summary: string }> = [
+    { pattern: /\bchest pain\b/i, summary: 'Chest pain' },
+    { pattern: /\bbreast lump\b/i, summary: 'Breast lump' },
+    { pattern: /\bheadache\b/i, summary: 'Headache' },
+    { pattern: /\bcough\b/i, summary: 'Cough' },
+  ];
+
+  for (const candidate of knownSymptoms) {
+    if (candidate.pattern.test(original)) {
+      return candidate.summary;
+    }
+  }
+
+  const leadMatch = /(?:i have|i'm having|i am having|main problem:)\s+([^,.]+?)(?:\s+for\b|,|\.|$)/i.exec(original);
+  const lead = leadMatch?.[1]?.trim();
+  if (!lead) {
+    return null;
+  }
+
+  const cleanedLead = lead.replace(/^(a|an|the)\s+/i, '').trim();
+  if (cleanedLead.length === 0) {
+    return null;
+  }
+
+  return cleanedLead.charAt(0).toUpperCase() + cleanedLead.slice(1);
+}
+
+function resolveMinimalTriageDuration(
+  lower: string,
+): string | null {
+  const forMatch = /\bfor\s+([^,.]+?)(?:,| and\b| but\b|$)/i.exec(lower);
+  if (forMatch?.[1]) {
+    return `for ${forMatch[1].trim()}`;
+  }
+
+  const sinceMatch = /\bsince\s+([^,.]+?)(?:,| and\b| but\b|$)/i.exec(lower);
+  if (sinceMatch?.[1]) {
+    return `since ${sinceMatch[1].trim()}`;
+  }
+
+  return null;
+}
+
+function resolveMinimalTriageSeverity(
+  lower: string,
+): string | null {
+  const severityMatch = /\b(mild|moderate|severe)\b/i.exec(lower);
+  if (severityMatch?.[1]) {
+    return `${severityMatch[1].trim()} severity`;
+  }
+
+  return null;
+}
+
+function resolveMinimalTriageExistingEvidence(
+  lower: string,
+): string | null {
+  const evidenceMatchers: Array<[RegExp, string]> = [
+    [/\bblood test\b/i, 'blood test already completed'],
+    [/\bultrasound\b/i, 'ultrasound already completed'],
+    [/\bmri\b/i, 'MRI already completed'],
+    [/\bbiopsy\b/i, 'biopsy already completed'],
+    [/\bct scan\b/i, 'CT scan already completed'],
+    [/\bx-ray\b/i, 'X-ray already completed'],
+  ];
+
+  for (const [pattern, summary] of evidenceMatchers) {
+    if (pattern.test(lower)) {
+      return summary;
+    }
+  }
+
+  if (/\bnothing yet\b/i.test(lower)) {
+    return 'no prior tests or treatment yet';
+  }
+
+  return null;
+}
+
+function isRecommendationPresented(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  facts: ConversationOrchestratorV3Facts | undefined,
+): boolean {
+  if (statusSnapshot?.recommendationGenerated === true) {
+    return true;
+  }
+
+  return facts?.['recommendation.generated'] === true;
+}
+
 function deriveSupervisorReadDomains(
   currentStage: ChatJourneyStage,
   facts: ConversationOrchestratorV3Facts | undefined,
@@ -1103,6 +1369,7 @@ function buildWorkerTask(
         agent: 'RecommendationAgent',
         ...baseTask,
         recommendationTask: resolveRecommendationTask(input.message, decision),
+        ...resolveRecommendationBasis(input.statusSnapshot),
       } satisfies RecommendationWorkerTask;
     default:
       return {
@@ -1122,6 +1389,27 @@ function resolveRecordsMinimalTriageComplete(
   }
 
   return input.facts?.['records.minimal_triage.complete'] === true;
+}
+
+function resolveRecommendationBasis(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): Pick<RecommendationWorkerTask, 'recommendationBasis' | 'minimalTriageAnswersSummary'> {
+  const minimalTriageAnswersSummary = statusSnapshot?.minimalTriageAnswersSummary ?? null;
+  if (minimalTriageAnswersSummary) {
+    return {
+      recommendationBasis: 'INTAKE_AND_FOLLOW_UP_SUMMARY',
+      minimalTriageAnswersSummary,
+    };
+  }
+
+  if (statusSnapshot?.minimalTriageStatus === 'skipped') {
+    return {
+      recommendationBasis: 'INTAKE_ONLY_AFTER_TRIAGE_SKIP',
+      minimalTriageAnswersSummary: null,
+    };
+  }
+
+  return {};
 }
 
 function resolveRecommendationTask(

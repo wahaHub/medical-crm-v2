@@ -1986,6 +1986,17 @@ ADD COLUMN IF NOT EXISTS minimal_triage_status VARCHAR(20) NOT NULL DEFAULT 'pen
 ALTER TABLE ai_chat_sessions
 ADD COLUMN IF NOT EXISTS minimal_triage_answers_summary TEXT;
 
+-- Migration: 037_ai_chat_recommendation_selection_structured.sql
+ALTER TABLE ai_chat_sessions
+  ADD COLUMN IF NOT EXISTS recommendation_selection_status TEXT,
+  ADD COLUMN IF NOT EXISTS recommendation_selected_hospital_ids JSONB;
+
+-- Migration: 038_ai_chat_journey_snapshot_and_supporting_documents.sql
+ALTER TABLE ai_chat_sessions
+  ADD COLUMN IF NOT EXISTS journey_current_stage TEXT,
+  ADD COLUMN IF NOT EXISTS journey_current_phase TEXT,
+  ADD COLUMN IF NOT EXISTS supporting_documents JSONB;
+
 -- Track the current schema head so future pnpm db:migrate runs stay incremental.
 CREATE TABLE IF NOT EXISTS _migrations (
   id SERIAL PRIMARY KEY,
@@ -2036,5 +2047,7 @@ VALUES
   ('033_ai_chat_canonical_truth_flags_repair.sql'),
   ('034_message_sender_overrides.sql'),
   ('035_admin_patient_conversation_uniqueness.sql'),
-  ('036_ai_chat_minimal_triage_summary.sql')
+  ('036_ai_chat_minimal_triage_summary.sql'),
+  ('037_ai_chat_recommendation_selection_structured.sql'),
+  ('038_ai_chat_journey_snapshot_and_supporting_documents.sql')
 ON CONFLICT (name) DO NOTHING;

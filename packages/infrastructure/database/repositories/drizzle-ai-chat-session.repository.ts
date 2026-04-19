@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { IAiChatSessionRepository, PatientSite } from '@medical-crm/domain';
-import { AiChatSession } from '@medical-crm/domain';
+import { AiChatSession, normalizeSupportingDocuments } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { aiChatSessions } from '../schema/index.js';
 
@@ -31,6 +31,8 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
 
   async save(entity: AiChatSession, tx?: unknown): Promise<AiChatSession> {
     const db = (tx as CrmDb) ?? this.db;
+    const supportingDocuments = normalizeSupportingDocuments(entity.statusSnapshot.supportingDocuments);
+
     const rows = await db
       .insert(aiChatSessions)
       .values({
@@ -52,7 +54,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         riskLevel: entity.statusSnapshot.riskLevel,
         trustOrObjection: entity.statusSnapshot.trustOrObjection,
         engagementMode: entity.statusSnapshot.engagementMode,
-        enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+        enteredDeepWorkflowAt: serializeOptionalTimestamp(entity.statusSnapshot.enteredDeepWorkflowAt),
         minimalTriageStatus: entity.statusSnapshot.minimalTriageStatus,
         minimalTriageAnswersSummary: entity.statusSnapshot.minimalTriageAnswersSummary,
         minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
@@ -61,12 +63,15 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         recommendationSelectionStatus: entity.statusSnapshot.recommendationSelectionStatus,
         recommendationSelectedHospitalIds: entity.statusSnapshot.recommendationSelectedHospitalIds,
         recommendationSelected: entity.statusSnapshot.recommendationSelected,
+        journeyCurrentStage: normalizeJourneyCurrentStage(entity.statusSnapshot.journeyCurrentStage),
+        journeyCurrentPhase: normalizeJourneyCurrentPhase(entity.statusSnapshot.journeyCurrentPhase),
+        supportingDocuments,
         consultCompleted: entity.statusSnapshot.consultCompleted,
         handoffActive: entity.statusSnapshot.handoffActive,
         conversationSummary: entity.statusSnapshot.conversationSummary,
-        lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
-        lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
-        lastAssistantMessageAt: entity.statusSnapshot.lastAssistantMessageAt?.toISOString() ?? null,
+        lastPolicyDecisionAt: serializeOptionalTimestamp(entity.statusSnapshot.lastPolicyDecisionAt),
+        lastUserMessageAt: serializeOptionalTimestamp(entity.statusSnapshot.lastUserMessageAt),
+        lastAssistantMessageAt: serializeOptionalTimestamp(entity.statusSnapshot.lastAssistantMessageAt),
         createdAt: entity.createdAt.toISOString(),
         updatedAt: entity.updatedAt.toISOString(),
       })
@@ -89,7 +94,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           riskLevel: entity.statusSnapshot.riskLevel,
           trustOrObjection: entity.statusSnapshot.trustOrObjection,
           engagementMode: entity.statusSnapshot.engagementMode,
-          enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+          enteredDeepWorkflowAt: serializeOptionalTimestamp(entity.statusSnapshot.enteredDeepWorkflowAt),
           minimalTriageStatus: entity.statusSnapshot.minimalTriageStatus,
           minimalTriageAnswersSummary: entity.statusSnapshot.minimalTriageAnswersSummary,
           minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
@@ -98,12 +103,15 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           recommendationSelectionStatus: entity.statusSnapshot.recommendationSelectionStatus,
           recommendationSelectedHospitalIds: entity.statusSnapshot.recommendationSelectedHospitalIds,
           recommendationSelected: entity.statusSnapshot.recommendationSelected,
+          journeyCurrentStage: normalizeJourneyCurrentStage(entity.statusSnapshot.journeyCurrentStage),
+          journeyCurrentPhase: normalizeJourneyCurrentPhase(entity.statusSnapshot.journeyCurrentPhase),
+          supportingDocuments,
           consultCompleted: entity.statusSnapshot.consultCompleted,
           handoffActive: entity.statusSnapshot.handoffActive,
           conversationSummary: entity.statusSnapshot.conversationSummary,
-          lastPolicyDecisionAt: entity.statusSnapshot.lastPolicyDecisionAt?.toISOString() ?? null,
-          lastUserMessageAt: entity.statusSnapshot.lastUserMessageAt?.toISOString() ?? null,
-          lastAssistantMessageAt: entity.statusSnapshot.lastAssistantMessageAt?.toISOString() ?? null,
+          lastPolicyDecisionAt: serializeOptionalTimestamp(entity.statusSnapshot.lastPolicyDecisionAt),
+          lastUserMessageAt: serializeOptionalTimestamp(entity.statusSnapshot.lastUserMessageAt),
+          lastAssistantMessageAt: serializeOptionalTimestamp(entity.statusSnapshot.lastAssistantMessageAt),
           updatedAt: sql`NOW()`,
         },
       })
@@ -153,7 +161,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
   async patchStatus(
     sessionId: string,
     site: PatientSite,
-    patch: Partial<AiChatSession['statusSnapshot']>,
+    patch: Parameters<IAiChatSessionRepository['patchStatus']>[2],
     tx?: unknown,
   ): Promise<AiChatSession | null> {
     const db = (tx as CrmDb) ?? this.db;
@@ -172,7 +180,10 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.trustOrObjection !== undefined) updates.trustOrObjection = patch.trustOrObjection;
     if (patch.engagementMode !== undefined) updates.engagementMode = patch.engagementMode;
     if (patch.enteredDeepWorkflowAt !== undefined) {
-      updates.enteredDeepWorkflowAt = patch.enteredDeepWorkflowAt?.toISOString() ?? null;
+      const serializedTimestamp = serializeOptionalTimestampForPatch(patch.enteredDeepWorkflowAt);
+      if (serializedTimestamp !== SKIP_TIMESTAMP_UPDATE) {
+        updates.enteredDeepWorkflowAt = serializedTimestamp;
+      }
     }
     if (patch.minimalTriageStatus !== undefined) updates.minimalTriageStatus = patch.minimalTriageStatus;
     if (patch.minimalTriageAnswersSummary !== undefined) {
@@ -188,17 +199,41 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
       updates.recommendationSelectedHospitalIds = patch.recommendationSelectedHospitalIds;
     }
     if (patch.recommendationSelected !== undefined) updates.recommendationSelected = patch.recommendationSelected;
+    if (patch.journeyCurrentStage !== undefined) {
+      const journeyCurrentStage = normalizeJourneyCurrentStage(patch.journeyCurrentStage);
+      if (journeyCurrentStage !== undefined) {
+        updates.journeyCurrentStage = journeyCurrentStage;
+      }
+    }
+    if (patch.journeyCurrentPhase !== undefined) {
+      const journeyCurrentPhase = normalizeJourneyCurrentPhase(patch.journeyCurrentPhase);
+      if (journeyCurrentPhase !== undefined) {
+        updates.journeyCurrentPhase = journeyCurrentPhase;
+      }
+    }
+    if (patch.supportingDocuments !== undefined) {
+      updates.supportingDocuments = normalizeSupportingDocuments(patch.supportingDocuments);
+    }
     if (patch.consultCompleted !== undefined) updates.consultCompleted = patch.consultCompleted;
     if (patch.handoffActive !== undefined) updates.handoffActive = patch.handoffActive;
     if (patch.conversationSummary !== undefined) updates.conversationSummary = patch.conversationSummary;
     if (patch.lastPolicyDecisionAt !== undefined) {
-      updates.lastPolicyDecisionAt = patch.lastPolicyDecisionAt?.toISOString() ?? null;
+      const serializedTimestamp = serializeOptionalTimestampForPatch(patch.lastPolicyDecisionAt);
+      if (serializedTimestamp !== SKIP_TIMESTAMP_UPDATE) {
+        updates.lastPolicyDecisionAt = serializedTimestamp;
+      }
     }
     if (patch.lastUserMessageAt !== undefined) {
-      updates.lastUserMessageAt = patch.lastUserMessageAt?.toISOString() ?? null;
+      const serializedTimestamp = serializeOptionalTimestampForPatch(patch.lastUserMessageAt);
+      if (serializedTimestamp !== SKIP_TIMESTAMP_UPDATE) {
+        updates.lastUserMessageAt = serializedTimestamp;
+      }
     }
     if (patch.lastAssistantMessageAt !== undefined) {
-      updates.lastAssistantMessageAt = patch.lastAssistantMessageAt?.toISOString() ?? null;
+      const serializedTimestamp = serializeOptionalTimestampForPatch(patch.lastAssistantMessageAt);
+      if (serializedTimestamp !== SKIP_TIMESTAMP_UPDATE) {
+        updates.lastAssistantMessageAt = serializedTimestamp;
+      }
     }
 
     const rows = await db
@@ -242,6 +277,11 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           ? row.recommendationSelectedHospitalIds.filter((candidate): candidate is string => typeof candidate === 'string')
           : null,
         recommendationSelected: row.recommendationSelected,
+        journeyCurrentStage: row.journeyCurrentStage as import('@medical-crm/domain').AiChatStatusSnapshot['journeyCurrentStage'],
+        journeyCurrentPhase: row.journeyCurrentPhase as import('@medical-crm/domain').AiChatStatusSnapshot['journeyCurrentPhase'],
+        supportingDocuments: Array.isArray(row.supportingDocuments)
+          ? row.supportingDocuments
+          : [],
         consultCompleted: row.consultCompleted,
         handoffActive: row.handoffActive,
         conversationSummary: row.conversationSummary,
@@ -253,4 +293,96 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
       updatedAt: new Date(row.updatedAt),
     });
   }
+}
+
+const SKIP_TIMESTAMP_UPDATE = Symbol('skip-timestamp-update');
+
+function serializeOptionalTimestamp(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    if (normalized.length === 0) {
+      return null;
+    }
+
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error(`Invalid timestamp string: ${normalized}`);
+    }
+
+    return parsed.toISOString();
+  }
+
+  return null;
+}
+
+function serializeOptionalTimestampForPatch(
+  value: Date | string | null | undefined,
+): string | null | typeof SKIP_TIMESTAMP_UPDATE {
+  if (typeof value !== 'string') {
+    return serializeOptionalTimestamp(value);
+  }
+
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    return SKIP_TIMESTAMP_UPDATE;
+  }
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? SKIP_TIMESTAMP_UPDATE : parsed.toISOString();
+}
+
+function normalizeJourneyCurrentStage(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  switch (normalized) {
+    case 'COLLECT_MINIMAL_MEDICAL_FACTS':
+    case 'RECOMMENDATION':
+    case 'EXPLAIN_PROCESS':
+    case 'COLLECT_MEDICAL_INPUTS':
+    case 'ONLINE_CONSULT':
+    case 'HUMAN_HANDOFF':
+      return normalized;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeJourneyCurrentPhase(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'active' || normalized === 'post') {
+    return normalized;
+  }
+
+  return undefined;
 }

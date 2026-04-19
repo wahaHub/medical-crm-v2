@@ -154,7 +154,10 @@ export { AiChatSession } from './entities/ai-chat-session.entity.js';
 export type {
   AiChatCanonicalTruthPatch,
   AiChatCanonicalTruthFlags,
+  AiChatJourneyPhase,
+  AiChatJourneyStage,
   AiChatPendingState,
+  AiChatSupportingDocument,
   AiChatSessionProps,
   AiChatStatusSnapshot,
 } from './entities/ai-chat-session.entity.js';
@@ -162,6 +165,7 @@ export {
   AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP,
   deriveCanonicalTruthFlagsFromStatusSnapshot,
   deriveCanonicalTruthTruePatchFromStatusSnapshot,
+  normalizeSupportingDocuments,
 } from './entities/ai-chat-session.entity.js';
 export { AiChatMessage } from './entities/ai-chat-message.entity.js';
 export type { AiChatMessageProps, AiChatCitation } from './entities/ai-chat-message.entity.js';

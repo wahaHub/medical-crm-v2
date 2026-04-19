@@ -53,6 +53,8 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         trustOrObjection: entity.statusSnapshot.trustOrObjection,
         engagementMode: entity.statusSnapshot.engagementMode,
         enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+        minimalTriageStatus: entity.statusSnapshot.minimalTriageStatus,
+        minimalTriageAnswersSummary: entity.statusSnapshot.minimalTriageAnswersSummary,
         minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
         processExplained: entity.statusSnapshot.processExplained,
         recommendationGenerated: entity.statusSnapshot.recommendationGenerated,
@@ -86,6 +88,8 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           trustOrObjection: entity.statusSnapshot.trustOrObjection,
           engagementMode: entity.statusSnapshot.engagementMode,
           enteredDeepWorkflowAt: entity.statusSnapshot.enteredDeepWorkflowAt?.toISOString() ?? null,
+          minimalTriageStatus: entity.statusSnapshot.minimalTriageStatus,
+          minimalTriageAnswersSummary: entity.statusSnapshot.minimalTriageAnswersSummary,
           minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
           processExplained: entity.statusSnapshot.processExplained,
           recommendationGenerated: entity.statusSnapshot.recommendationGenerated,
@@ -166,6 +170,10 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.enteredDeepWorkflowAt !== undefined) {
       updates.enteredDeepWorkflowAt = patch.enteredDeepWorkflowAt?.toISOString() ?? null;
     }
+    if (patch.minimalTriageStatus !== undefined) updates.minimalTriageStatus = patch.minimalTriageStatus;
+    if (patch.minimalTriageAnswersSummary !== undefined) {
+      updates.minimalTriageAnswersSummary = patch.minimalTriageAnswersSummary;
+    }
     if (patch.minimalTriageComplete !== undefined) updates.minimalTriageComplete = patch.minimalTriageComplete;
     if (patch.processExplained !== undefined) updates.processExplained = patch.processExplained;
     if (patch.recommendationGenerated !== undefined) updates.recommendationGenerated = patch.recommendationGenerated;
@@ -214,6 +222,8 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         trustOrObjection: row.trustOrObjection,
         engagementMode: row.engagementMode,
         enteredDeepWorkflowAt: row.enteredDeepWorkflowAt ? new Date(row.enteredDeepWorkflowAt) : null,
+        minimalTriageStatus: row.minimalTriageStatus as import('@medical-crm/domain').AiChatStatusSnapshot['minimalTriageStatus'],
+        minimalTriageAnswersSummary: row.minimalTriageAnswersSummary,
         minimalTriageComplete: row.minimalTriageComplete,
         processExplained: row.processExplained,
         recommendationGenerated: row.recommendationGenerated,

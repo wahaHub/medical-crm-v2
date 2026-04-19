@@ -88,12 +88,14 @@ Semantics:
 ```ts
 records.minimal_triage.status: 'pending' | 'answered' | 'skipped'
 records.minimal_triage.answersSummary: string | null
+records.minimal_triage.complete: boolean // compatibility alias during rollout
 ```
 
 Semantics:
 - `pending`: 3 follow-up questions still need user action
 - `answered`: user answered; summary is available for recommendation
 - `skipped`: user explicitly skipped the follow-up questions; recommendation may still proceed
+- `complete`: compatibility alias required by existing gates; it must be derived from `status !== 'pending'` and may not diverge
 
 ### 3. Recommendation presentation and selection
 
@@ -101,13 +103,20 @@ Semantics:
 recommendation.presented: boolean
 recommendation.selection.status: 'pending' | 'selected' | 'skipped'
 recommendation.selection.selectedHospitalIds: string[]
+recommendation.selected: boolean // compatibility alias during rollout
 ```
 
 Semantics:
 - `presented`: recommendation results were actually shown to the user
 - `pending`: recommendation shown, no selection action yet
-- `selected`: user selected one or more hospitals
+- `selected`: user selected a hospital
 - `skipped`: user explicitly chose not to select a hospital yet
+- `selected` boolean alias: required by existing runtime gates during rollout; it must be derived from `selection.status === 'selected'` and may not diverge
+
+V1 selection semantics are **single-select** at the product level.
+`selectedHospitalIds` remains an array only for forward compatibility, but in v1 it must contain either:
+- `[]`
+- or exactly one hospital id
 
 ### 4. Process explanation
 
@@ -123,6 +132,55 @@ Semantics remain unchanged:
 ## Authority And Write Ownership
 
 This spec keeps the same ownership model used by supervisor-led v3.
+
+### Persisted write shape
+
+The current supervisor-led runtime still depends on boolean compatibility facts for some stage gates.
+Therefore this refinement requires the authority-owned write contract to expand from "boolean-only facts" into a single final write that can atomically persist:
+
+1. structured domain status patches
+2. compatibility boolean aliases that existing runtime logic still consumes
+
+Conceptually, one authority-approved write should be able to persist both of the following in the same final write path:
+
+```ts
+structuredStatusPatch: {
+  intake?: { acknowledged?: boolean }
+  records?: {
+    minimal_triage?: {
+      status?: 'pending' | 'answered' | 'skipped'
+      answersSummary?: string | null
+    }
+  }
+  recommendation?: {
+    presented?: boolean
+    selection?: {
+      status?: 'pending' | 'selected' | 'skipped'
+      selectedHospitalIds?: string[]
+    }
+  }
+}
+
+factsPatch: {
+  'records.minimal_triage.complete'?: boolean
+  'recommendation.selected'?: boolean
+  'process.explained'?: boolean
+}
+```
+
+Authority remains the single writer because both patches are emitted and persisted together as one final authority-approved write.
+
+### Compatibility and migration rule
+
+To avoid dual truths:
+
+- `records.minimal_triage.status` is the richer semantic truth
+- `records.minimal_triage.complete` is a derived compatibility alias
+- `recommendation.selection.status` is the richer semantic truth
+- `recommendation.selected` is a derived compatibility alias
+
+During rollout, the authority must write both the structured field and its compatibility boolean alias **atomically**.
+No other writer may update either side independently.
 
 ### Front-end responsibility
 
@@ -220,6 +278,7 @@ If answered:
 ```ts
 records.minimal_triage.status = 'answered'
 records.minimal_triage.answersSummary = compact summary
+records.minimal_triage.complete = true // derived compatibility alias
 ```
 
 If skipped:
@@ -227,7 +286,15 @@ If skipped:
 ```ts
 records.minimal_triage.status = 'skipped'
 records.minimal_triage.answersSummary = null
+records.minimal_triage.complete = true // derived compatibility alias
 ```
+
+### Stage advancement rule
+
+When `records.minimal_triage.status` transitions from `pending` to either `answered` or `skipped`, the next default main-journey step must become `RECOMMENDATION`.
+
+That progression should be automatic unless the turn is explicitly routed into a non-progressing detour such as FAQ/resource handling.
+The session must not remain stuck in `COLLECT_MINIMAL_MEDICAL_FACTS` once follow-up completion is committed.
 
 ## 3. Recommendation stage
 
@@ -264,6 +331,8 @@ When recommendation results are actually rendered:
 ```ts
 recommendation.presented = true
 recommendation.selection.status = 'pending'
+recommendation.selection.selectedHospitalIds = []
+recommendation.selected = false // derived compatibility alias
 ```
 
 ## 4. Hospital selection
@@ -271,7 +340,7 @@ recommendation.selection.status = 'pending'
 ### User options
 
 After recommendation is shown, the user may:
-- select one or more hospitals
+- select exactly one hospital in v1
 - explicitly skip selection for now
 
 ### Truth writes
@@ -280,7 +349,8 @@ If selected:
 
 ```ts
 recommendation.selection.status = 'selected'
-recommendation.selection.selectedHospitalIds = [...]
+recommendation.selection.selectedHospitalIds = [hospitalId] // exactly one in v1
+recommendation.selected = true // derived compatibility alias
 ```
 
 If skipped:
@@ -288,6 +358,7 @@ If skipped:
 ```ts
 recommendation.selection.status = 'skipped'
 recommendation.selection.selectedHospitalIds = []
+recommendation.selected = false // derived compatibility alias
 ```
 
 ## 5. Process explanation
@@ -403,7 +474,7 @@ The canonical product flow after this refinement is:
 3. assistant asks 3 follow-up questions
 4. user may answer or skip
 5. system generates recommendation either way
-6. user may select hospital or skip selection
+6. user may select one hospital or skip selection
 7. assistant explains process and required documents
 
 This is the intended post-intake conversation contract for supervisor-led `chatbot-v3`.

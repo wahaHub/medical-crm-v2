@@ -573,6 +573,8 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	trustOrObjection: varchar("trust_or_objection", { length: 30 }).default('none').notNull(),
 	engagementMode: varchar("engagement_mode", { length: 30 }).default('LIGHT_DISCOVERY').notNull(),
 	enteredDeepWorkflowAt: timestamp("entered_deep_workflow_at", { withTimezone: true, mode: 'string' }),
+	minimalTriageStatus: varchar("minimal_triage_status", { length: 20 }).default('pending').notNull(),
+	minimalTriageAnswersSummary: text("minimal_triage_answers_summary"),
 	minimalTriageComplete: boolean("minimal_triage_complete"),
 	processExplained: boolean("process_explained").default(false).notNull(),
 	recommendationGenerated: boolean("recommendation_generated"),

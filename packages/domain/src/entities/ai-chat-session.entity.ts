@@ -6,6 +6,8 @@ export interface AiChatPendingState {
   payload: Record<string, unknown>;
 }
 
+export type AiChatMinimalTriageStatus = 'pending' | 'skipped';
+
 export interface AiChatStatusSnapshot {
   conditionStatus: string;
   formStatus: string;
@@ -18,6 +20,8 @@ export interface AiChatStatusSnapshot {
   trustOrObjection: string;
   engagementMode: string;
   enteredDeepWorkflowAt: Date | null;
+  minimalTriageStatus: AiChatMinimalTriageStatus;
+  minimalTriageAnswersSummary: string | null;
   minimalTriageComplete: boolean | null;
   processExplained: boolean;
   recommendationGenerated: boolean | null;
@@ -86,6 +90,8 @@ export class AiChatSession {
   updatedAt: Date;
 
   constructor(props: AiChatSessionProps) {
+    const normalizedMinimalTriage = normalizeMinimalTriageSnapshot(props.statusSnapshot);
+
     this.id = props.id;
     this.sessionId = props.sessionId;
     this.site = props.site ?? 'china';
@@ -106,7 +112,9 @@ export class AiChatSession {
       trustOrObjection: props.statusSnapshot?.trustOrObjection ?? 'none',
       engagementMode: props.statusSnapshot?.engagementMode ?? 'LIGHT_DISCOVERY',
       enteredDeepWorkflowAt: props.statusSnapshot?.enteredDeepWorkflowAt ?? null,
-      minimalTriageComplete: props.statusSnapshot?.minimalTriageComplete ?? null,
+      minimalTriageStatus: normalizedMinimalTriage.status,
+      minimalTriageAnswersSummary: normalizedMinimalTriage.answersSummary,
+      minimalTriageComplete: normalizedMinimalTriage.complete,
       processExplained: props.statusSnapshot?.processExplained ?? false,
       recommendationGenerated: props.statusSnapshot?.recommendationGenerated ?? null,
       recommendationSelected: props.statusSnapshot?.recommendationSelected ?? null,
@@ -125,6 +133,7 @@ export class AiChatSession {
 export function deriveCanonicalTruthFlagsFromStatusSnapshot(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): AiChatCanonicalTruthFlags {
+  const normalizedMinimalTriage = normalizeMinimalTriageSnapshot(statusSnapshot);
   const processExplained = statusSnapshot?.processExplained === true;
   const legacyRecommendationSelected = hasAnyStatus(statusSnapshot?.recommendationStatus, ['CONFIRMED', 'ACCEPTED'])
     || hasAnyStatus(statusSnapshot?.packageStatus, ['CONFIRMED', 'ACCEPTED'])
@@ -135,7 +144,7 @@ export function deriveCanonicalTruthFlagsFromStatusSnapshot(
   const legacyConsultCompleted = hasAnyStatus(statusSnapshot?.consultationStatus, ['COMPLETED']);
   const legacyHandoffActive = deriveHandoffLifecycleActive(statusSnapshot?.handoffStatus);
 
-  const minimalTriageComplete = readPersistedBoolean(statusSnapshot?.minimalTriageComplete) ?? false;
+  const minimalTriageComplete = normalizedMinimalTriage.complete === true;
   const recommendationSelected = readPersistedBoolean(statusSnapshot?.recommendationSelected) || legacyRecommendationSelected;
   const recommendationGenerated = readPersistedBoolean(statusSnapshot?.recommendationGenerated) || legacyRecommendationGenerated;
   const consultCompleted = readPersistedBoolean(statusSnapshot?.consultCompleted) || legacyConsultCompleted;
@@ -170,6 +179,102 @@ export function deriveCanonicalTruthTruePatchFromStatusSnapshot(
 
 function readPersistedBoolean(value: boolean | null | undefined): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+interface MinimalTriageNormalization {
+  status: AiChatMinimalTriageStatus;
+  answersSummary: string | null;
+  complete: boolean | null;
+}
+
+function normalizeMinimalTriageSnapshot(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): MinimalTriageNormalization {
+  const rawStatus = readMinimalTriageStatus(statusSnapshot);
+  const persistedComplete = readPersistedBoolean(statusSnapshot?.minimalTriageComplete);
+  const explicitSummary = normalizeCompactSummary(statusSnapshot?.minimalTriageAnswersSummary);
+  const legacySummary = rawStatus === 'answered'
+    ? deriveLegacySummaryFromConversation(statusSnapshot?.conversationSummary)
+    : null;
+  const answersSummary = explicitSummary ?? legacySummary;
+
+  if (answersSummary !== null) {
+    return {
+      status: rawStatus === 'skipped' ? 'skipped' : 'pending',
+      answersSummary,
+      complete: true,
+    };
+  }
+
+  if (rawStatus === 'skipped') {
+    return {
+      status: 'skipped',
+      answersSummary: null,
+      complete: true,
+    };
+  }
+
+  if (rawStatus === 'answered') {
+    return {
+      status: 'pending',
+      answersSummary: null,
+      complete: false,
+    };
+  }
+
+  if (rawStatus === null) {
+    return {
+      status: 'pending',
+      answersSummary: null,
+      complete: persistedComplete ?? null,
+    };
+  }
+
+  return {
+    status: rawStatus,
+    answersSummary: null,
+    complete: persistedComplete === false ? false : null,
+  };
+}
+
+function readMinimalTriageStatus(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): AiChatMinimalTriageStatus | 'answered' | null {
+  const rawValue = (statusSnapshot as { minimalTriageStatus?: string | null } | null | undefined)
+    ?.minimalTriageStatus;
+  const normalized = (rawValue ?? '').trim().toLowerCase();
+
+  if (normalized === 'pending' || normalized === 'skipped' || normalized === 'answered') {
+    return normalized;
+  }
+
+  return null;
+}
+
+function normalizeCompactSummary(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+function deriveLegacySummaryFromConversation(value: string | null | undefined): string | null {
+  const normalizedConversation = value?.trim();
+  if (!normalizedConversation) {
+    return null;
+  }
+
+  const labelMatch = /minimal triage summary:\s*(.+)$/i.exec(normalizedConversation);
+  if (!labelMatch) {
+    return null;
+  }
+
+  const labeledSection = labelMatch[1]?.trim();
+  if (!labeledSection) {
+    return null;
+  }
+
+  const sentenceMatch = /^(.+?\.)\s+[A-Z]/.exec(labeledSection);
+  const normalizedSummary = (sentenceMatch?.[1] ?? labeledSection).trim();
+  return normalizedSummary.length > 0 ? normalizedSummary : null;
 }
 
 function deriveHandoffLifecycleActive(value: string | null | undefined): boolean | undefined {

@@ -35,9 +35,14 @@ function normalizeBaseUrl(rawBaseUrl: string) {
 
   const parsed = new URL(trimmed);
   const pathname = parsed.pathname.replace(/\/+$/, '');
-  const normalizedPathname = pathname || ((parsed.search || parsed.hash) ? '/' : '');
+  parsed.pathname = pathname || '/';
 
-  return `${parsed.origin}${normalizedPathname}${parsed.search}${parsed.hash}`;
+  const serialized = parsed.toString();
+  if (!parsed.search && !parsed.hash && parsed.pathname === '/') {
+    return serialized.replace(/\/$/, '');
+  }
+
+  return serialized;
 }
 
 function requireNonEmpty(value: string | undefined, errorMessage: string) {

@@ -1232,6 +1232,23 @@
       },
       "search": {
         "placeholder": "Buscar pacientes, casos..."
+      },
+      "language": {
+        "label": "Idioma",
+        "current": "Idioma actual",
+        "switchTo": "Cambiar idioma",
+        "options": {
+          "en": "Inglés",
+          "zh": "Chino",
+          "fr": "Francés",
+          "de": "Alemán",
+          "es": "Español",
+          "bn": "Bengalí"
+        }
+      },
+      "languageSwitcher": {
+        "label": "Idioma",
+        "saving": "Guardando idioma..."
       }
     },
     "error": {
@@ -1300,7 +1317,24 @@
           "description": "Revisar informes de laboratorio e imágenes"
         }
       },
-      "welcome": "Bienvenido de nuevo, revise la descripción general del trabajo de hoy"
+      "welcome": "Bienvenido de nuevo, revise la descripción general del trabajo de hoy",
+      "title": "Panel",
+      "sections": {
+        "consultations": {
+          "title": "Consultas de hoy",
+          "empty": "No hay consultas programadas",
+          "aiTranslation": "Traducción IA",
+          "enter": "Entrar en consulta"
+        },
+        "newCases": {
+          "title": "Nuevos casos",
+          "empty": "Todavía no hay casos"
+        },
+        "pendingMessages": {
+          "title": "Mensajes pendientes",
+          "empty": "No hay mensajes pendientes"
+        }
+      }
     },
     "profile": {
       "shareProfile": "Compartir perfil",
@@ -1497,6 +1531,325 @@
         "50-60": "50-60 years",
         "60-70": "60-70 years",
         "70+": "70+ years"
+      }
+    },
+    "common": {
+      "unknown": "Desconocido",
+      "notAvailable": "N/D",
+      "durationMinutes": "{count} min",
+      "viewAll": "Ver todo",
+      "loading": "Cargando...",
+      "ageYears": "{age} años",
+      "genderMaleShort": "M",
+      "genderFemaleShort": "F",
+      "cancel": "Cancelar",
+      "case": "Caso",
+      "caseStatus": "Estado del caso",
+      "documents": "Documentos",
+      "messages": "Mensajes",
+      "patient": "Paciente",
+      "profile": "Perfil",
+      "role": "Rol",
+      "stats": "Estadísticas"
+    },
+    "cases": {
+      "list": {
+        "searchPlaceholder": "Buscar número de caso, nombre del paciente o código del paciente...",
+        "filterButton": "Filtrar",
+        "stats": {
+          "allCases": "Todos los casos",
+          "new": "Nuevo",
+          "inProgress": "En progreso",
+          "completed": "Completados"
+        },
+        "tabs": {
+          "all": "Todos",
+          "new": "Nuevo",
+          "inProgress": "En progreso",
+          "completed": "Completados"
+        },
+        "empty": "No se encontraron casos",
+        "diagnosisBadge": "Diagnóstico"
+      },
+      "title": "Gestión de casos",
+      "detail": {
+        "backToCases": "Back to Case List",
+        "header": {
+          "documentsCount": "{count} documentos",
+          "messagesCount": "{count} mensajes"
+        },
+        "intake": {
+          "errorLoad": "Loading failed:",
+          "emptyTitle": "No hay datos de admisión médica",
+          "emptyDescription": "El paciente aún no ha completado el cuestionario de admisión médica.",
+          "responsesTitle": "Respuestas del formulario médico",
+          "summaryTitle": "Resumen y evaluación"
+        },
+        "documents": {
+          "empty": "No medical records yet",
+          "groups": {
+            "medicalIntake": "Medical Records",
+            "diagnosis": "Diagnosis Attachments",
+            "invitationLetter": "Medical Invitation Letter",
+            "messageAttachments": "Message Attachments",
+            "otherDocuments": "Otros documentos"
+          },
+          "unnamed": "Sin nombre"
+        },
+        "messages": {
+          "empty": "No message records",
+          "inputPlaceholder": "Enter message content...",
+          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)"
+        },
+        "diagnosis": {
+          "addButton": "Add Diagnosis",
+          "empty": "No diagnosis yet",
+          "icdCode": "ICD-10 Code",
+          "unknownCondition": "Condición desconocida",
+          "validation": {
+            "nameRequired": "El nombre del diagnóstico es obligatorio."
+          },
+          "errorSave": "No se pudo guardar el diagnóstico",
+          "fields": {
+            "details": "Detailed Diagnosis",
+            "estimatedCost": "Estimated Cost",
+            "suggestedTests": "Suggested Further Tests",
+            "treatmentDuration": "Treatment Duration",
+            "treatmentRecommendation": "Treatment Recommendation"
+          },
+          "addModal": {
+            "title": "Add Diagnosis",
+            "type": "Diagnosis Type",
+            "name": "Diagnosis Name *",
+            "namePlaceholder": "e.g., Coronary Atherosclerotic Heart Disease",
+            "icdCode": "ICD-10 Code",
+            "icdCodePlaceholder": "e.g., I25.1",
+            "severity": "Severity",
+            "description": "Detailed Diagnosis",
+            "treatmentRecommendation": "Treatment Recommendation",
+            "estimatedCost": "Estimated Cost Range",
+            "treatmentDuration": "Estimated Treatment Duration",
+            "attachments": "Attachment Document (Optional)",
+            "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
+            "save": "Save Diagnosis"
+          }
+        },
+        "marketing": {
+          "defaultSubject": "Su plan de tratamiento personalizado",
+          "emailOutreach": "Contacto por correo",
+          "phoneOutreach": "Seguimiento telefónico",
+          "composeTitle": "Compose Email",
+          "subject": "Email Subject",
+          "emailContent": "Email Content",
+          "emailContentPlaceholder": "El contenido generado aparecerá aquí...",
+          "generateEmail": "Auto-generate Email Content",
+          "loadTemplate": "Cargar plantilla",
+          "noActiveTemplates": "No hay plantillas activas. Cree una en la página de plantillas de correo.",
+          "privacyNotice": "Marketing emails will be sent through CRM system. To protect patient privacy, you cannot directly view patients' email addresses.",
+          "saveDraft": "Save Draft",
+          "selectTemplate": "-- Seleccionar una plantilla --",
+          "sendEmail": "Send Email",
+          "templatesActiveHint": "Las plantillas deben estar en estado “Activa” para aparecer aquí.",
+          "variables": {
+            "hospitalName": "Nuestro hospital"
+          },
+          "modules": {
+            "title": "Email Content Modules",
+            "coreIncluded": "Core Modules",
+            "optional": "Optional Modules (Click to Add)",
+            "logoSlogan": "Logo / Slogan",
+            "successCases": "Success Stories",
+            "patientReviews": "Patient Reviews",
+            "hospitalIntroduction": "Hospital Introduction",
+            "expertTeam": "Expert Team",
+            "serviceFeatures": "Service Features",
+            "pricingPlans": "Pricing Plans",
+            "travelServices": "Travel Services",
+            "contactInformation": "Contact Information"
+          },
+          "call": {
+            "makeCall": "Make Call",
+            "recording": "Auto recording",
+            "saveRecords": "Call records auto-saved",
+            "aiSummaryActive": "AI call summary",
+            "logTitle": "Log Call",
+            "type": "Call Type",
+            "typeOutbound": "Outbound - Initiated contact",
+            "typeInbound": "Inbound - Patient callback",
+            "typeMissed": "Not connected",
+            "result": "Call Result",
+            "resultInterested": "Interested - Continue follow-up",
+            "resultScheduled": "Scheduled - Confirmed appointment",
+            "resultCallback": "Callback - Patient considering",
+            "resultNotInterested": "Not interested - Not needed now",
+            "resultNoAnswer": "No answer",
+            "summary": "Call Summary",
+            "summaryPlaceholder": "Record key points of call...\n\nExample: Patient interested in treatment plan, asked about costs and hospitalization time, needs to discuss with family before replying.",
+            "nextFollowUpDate": "Next Follow-up Date",
+            "saveRecord": "Save Record",
+            "historyTitle": "Call Records",
+            "empty": "No call records"
+          }
+        },
+        "invitation": {
+          "title": "Medical Invitation Letter Upload",
+          "description": "Please upload the official invitation letter issued by the hospital. The system will automatically process and verify the file content.",
+          "uploadPrompt": "Haz clic para subir o arrastra aquí",
+          "uploadHint": "Supported formats: PDF, DOC, DOCX, JPG, PNG | Max file size: 10MB",
+          "submit": "Enviar carta"
+        },
+        "consultation": {
+          "scheduleButton": "Programar consulta",
+          "empty": "Aún no hay consultas. Programa una para comenzar.",
+          "enter": "Entrar",
+          "viewDetails": "Ver detalles",
+          "aiSummary": "Resumen de IA",
+          "aiGenerated": "Generado por IA",
+          "aiSummaryPending": "AI summary will be auto-generated after consultation completes",
+          "transcript": "Transcripción",
+          "video": "Video",
+          "fullTranscript": "Registro completo de la conversación",
+          "transcriptLoading": "Cargando registro...",
+          "transcriptEmpty": "Transcript Not Yet Generated",
+          "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        }
+      }
+    },
+    "consultations": {
+      "title": "Consultas en línea",
+      "description": "Gestiona consultas por video, traducción IA y registros",
+      "tabs": {
+        "all": "Todas",
+        "scheduled": "Programadas",
+        "completed": "Completadas"
+      },
+      "stats": {
+        "scheduled": "Consultas programadas",
+        "today": "Consultas de hoy",
+        "needTranslation": "Necesita traducción",
+        "completed": "Completadas"
+      },
+      "empty": "No hay consultas",
+      "createModal": {
+        "title": "Crear enlace de consulta",
+        "description": "Crear una cita de video para el paciente",
+        "selectCase": "Seleccionar caso *",
+        "loading": "Cargando...",
+        "chooseCase": "Elegir un caso",
+        "doctor": "Médico consultor (opcional)",
+        "doctorPlaceholder": "Ingresa el nombre del médico...",
+        "scheduledTime": "Hora de la consulta *",
+        "duration": "Duración de la consulta (minutos)",
+        "duration15": "15 minutos",
+        "duration30": "30 minutos",
+        "duration45": "45 minutos",
+        "duration60": "60 minutos",
+        "enableAiTranslation": "Habilitar traducción IA en tiempo real",
+        "notes": "Notas (opcional)",
+        "notesPlaceholder": "Ingresa notas sobre la consulta...",
+        "crmNotification": "Después de crearla, el sistema enviará un recordatorio al paciente por CRM.",
+        "cancel": "Cancelar",
+        "create": "Crear consulta",
+        "creating": "Creando..."
+      },
+      "transcriptModal": {
+        "title": "Registro completo de la conversación",
+        "showTranslation": "Mostrar traducción",
+        "loading": "Cargando registro...",
+        "willGenerateAfter": "El registro se generará después de procesar la grabación.",
+        "exportPDF": "Exportar PDF"
+      },
+      "card": {
+        "aiGenerated": "Generado por IA",
+        "aiSummary": "Resumen de IA",
+        "collapse": "Ocultar detalles",
+        "enterConsultation": "Entrar",
+        "viewDetails": "Ver detalles"
+      }
+    },
+    "portal": {
+      "consultations": {
+        "page": {
+          "title": "Consultas",
+          "description": "Gestiona y revisa las consultas por video de los pacientes"
+        },
+        "list": {
+          "createButton": "Crear consulta",
+          "loading": "Cargando...",
+          "emptyDescription": "Crea una nueva consulta para comenzar.",
+          "loadingMore": "Cargando...",
+          "loadMore": "Cargar más"
+        },
+        "card": {
+          "transcript": "Transcripción",
+          "video": "Video",
+          "summaryPending": "El resumen IA estará disponible después de procesar la grabación."
+        },
+        "transcriptModal": {
+          "emptyTitle": "Todavía no hay entradas de transcripción."
+        },
+        "createModal": {
+          "doctorPrefix": "Doctor",
+          "currentCase": "Caso actual",
+          "doctorPlaceholder": "Ingresa el nombre del médico (opcional)",
+          "enableAiTranslation": "Activar traducción IA",
+          "notesPlaceholder": "Notas opcionales...",
+          "crmNotification": "Se enviará una notificación CRM al paciente cuando se programe la consulta."
+        }
+      },
+      "videoRoom": {
+        "preJoin": {
+          "title": "¿Listo para unirte?",
+          "description": "Revisa tu cámara y micrófono antes de unirte a la llamada.",
+          "joinCall": "Unirse a la llamada"
+        },
+        "controls": {
+          "muteMicrophone": "Silenciar micrófono",
+          "unmuteMicrophone": "Activar micrófono",
+          "turnOffCamera": "Apagar cámara",
+          "turnOnCamera": "Encender cámara",
+          "mute": "Silenciar",
+          "unmute": "Activar sonido",
+          "stopVideo": "Detener video",
+          "startVideo": "Iniciar video",
+          "stopRecording": "Detener grabación",
+          "startRecording": "Iniciar grabación",
+          "hideSubtitles": "Ocultar subtítulos",
+          "showSubtitles": "Mostrar subtítulos",
+          "endCall": "Finalizar llamada"
+        },
+        "inCall": {
+          "recordingIndicator": "REC",
+          "subtitlesPlaceholder": "Los subtítulos aparecerán aquí..."
+        }
+      }
+    },
+    "messages": {
+      "chat": {
+        "unknown": "Desconocido",
+        "admin": "Rol",
+        "hospital": "Hospital",
+        "language": "Idioma",
+        "patientCodeLabel": "Código del paciente",
+        "primaryDiagnosis": "Diagnóstico principal"
+      }
+    },
+    "caseDetail": {
+      "diagnosisDialog": {
+        "costOptions": {
+          "5k": "Menos de 5 mil USD",
+          "5-10k": "5 a 10 mil USD",
+          "10-20k": "10 a 20 mil USD",
+          "20-50k": "20 a 50 mil USD",
+          "50k+": "Más de 50 mil USD"
+        },
+        "durationOptions": {
+          "1week": "Dentro de 1 semana",
+          "2weeks": "1 a 2 semanas",
+          "1month": "2 semanas a 1 mes",
+          "3months": "1 a 3 meses",
+          "6months": "Más de 3 meses"
+        }
       }
     }
   },

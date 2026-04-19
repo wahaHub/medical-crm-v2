@@ -1392,6 +1392,23 @@
       },
       "search": {
         "placeholder": "Search patients, cases..."
+      },
+      "language": {
+        "label": "Language",
+        "current": "Current language",
+        "switchTo": "Switch language",
+        "options": {
+          "en": "English",
+          "zh": "Chinese",
+          "fr": "French",
+          "de": "German",
+          "es": "Spanish",
+          "bn": "Bengali"
+        }
+      },
+      "languageSwitcher": {
+        "label": "Language",
+        "saving": "Saving language..."
       }
     },
     "error": {
@@ -1484,6 +1501,23 @@
       },
       "errors": {
         "loadFailed": "Failed to load. Please refresh the page and try again."
+      },
+      "title": "Dashboard",
+      "sections": {
+        "consultations": {
+          "title": "Today's Consultations",
+          "empty": "No consultations scheduled",
+          "aiTranslation": "AI Translation",
+          "enter": "Enter Consultation"
+        },
+        "newCases": {
+          "title": "New Cases",
+          "empty": "No cases yet"
+        },
+        "pendingMessages": {
+          "title": "Pending Messages",
+          "empty": "No pending messages"
+        }
       }
     },
     "materials": {
@@ -1676,7 +1710,7 @@
       }
     },
     "cases": {
-      "title": "Case Management",
+      "title": "Cases Management",
       "subtitle": "View and manage all cases assigned to the hospital",
       "searchPlaceholder": "Search case ID, patient name...",
       "filter": "Filter",
@@ -1716,6 +1750,166 @@
       "empty": "No cases found",
       "errors": {
         "loadFailed": "Failed to load: {message}"
+      },
+      "list": {
+        "searchPlaceholder": "Search case number, patient name, or patient code...",
+        "filterButton": "Filter",
+        "stats": {
+          "allCases": "All Cases",
+          "new": "New",
+          "inProgress": "In Progress",
+          "completed": "Completed"
+        },
+        "tabs": {
+          "all": "All",
+          "new": "New",
+          "inProgress": "In Progress",
+          "completed": "Completed"
+        },
+        "empty": "No cases found",
+        "diagnosisBadge": "Diagnosis"
+      },
+      "detail": {
+        "backToCases": "Back to Case List",
+        "header": {
+          "documentsCount": "{count} Docs",
+          "messagesCount": "{count} Messages"
+        },
+        "intake": {
+          "errorLoad": "Loading failed:",
+          "emptyTitle": "No medical intake data",
+          "emptyDescription": "The patient has not completed the medical intake questionnaire yet.",
+          "responsesTitle": "Medical intake responses",
+          "summaryTitle": "Summary & Assessment"
+        },
+        "documents": {
+          "empty": "No medical records yet",
+          "groups": {
+            "medicalIntake": "Medical Records",
+            "diagnosis": "Diagnosis Attachments",
+            "invitationLetter": "Medical Invitation Letter",
+            "messageAttachments": "Message Attachments",
+            "otherDocuments": "Other Documents"
+          },
+          "unnamed": "Unnamed"
+        },
+        "messages": {
+          "empty": "No message records",
+          "inputPlaceholder": "Enter message content...",
+          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)"
+        },
+        "diagnosis": {
+          "addButton": "Add Diagnosis",
+          "empty": "No diagnosis yet",
+          "icdCode": "ICD-10 Code",
+          "unknownCondition": "Unknown Condition",
+          "validation": {
+            "nameRequired": "Diagnosis name is required."
+          },
+          "errorSave": "Failed to save diagnosis",
+          "fields": {
+            "details": "Detailed Diagnosis",
+            "estimatedCost": "Estimated Cost",
+            "suggestedTests": "Suggested Further Tests",
+            "treatmentDuration": "Treatment Duration",
+            "treatmentRecommendation": "Treatment Recommendation"
+          },
+          "addModal": {
+            "title": "Add Diagnosis",
+            "type": "Diagnosis Type",
+            "name": "Diagnosis Name *",
+            "namePlaceholder": "e.g., Coronary Atherosclerotic Heart Disease",
+            "icdCode": "ICD-10 Code",
+            "icdCodePlaceholder": "e.g., I25.1",
+            "severity": "Severity",
+            "description": "Detailed Diagnosis",
+            "treatmentRecommendation": "Treatment Recommendation",
+            "estimatedCost": "Estimated Cost Range",
+            "treatmentDuration": "Estimated Treatment Duration",
+            "attachments": "Attachment Document (Optional)",
+            "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
+            "save": "Save Diagnosis"
+          }
+        },
+        "marketing": {
+          "defaultSubject": "Your Personalized Treatment Plan",
+          "emailOutreach": "Email Outreach",
+          "phoneOutreach": "Phone Outreach",
+          "composeTitle": "Compose Email",
+          "subject": "Email Subject",
+          "emailContent": "Email Content",
+          "emailContentPlaceholder": "Generated content will appear here...",
+          "generateEmail": "Auto-generate Email Content",
+          "loadTemplate": "Load Template",
+          "noActiveTemplates": "No active templates - create one in Email Templates page",
+          "privacyNotice": "Marketing emails will be sent through CRM system. To protect patient privacy, you cannot directly view patients' email addresses.",
+          "saveDraft": "Save Draft",
+          "selectTemplate": "-- Select a template --",
+          "sendEmail": "Send Email",
+          "templatesActiveHint": "Templates must be set to \"Active\" status to appear here.",
+          "variables": {
+            "hospitalName": "Our Hospital"
+          },
+          "modules": {
+            "title": "Email Content Modules",
+            "coreIncluded": "Core Modules",
+            "optional": "Optional Modules (Click to Add)",
+            "logoSlogan": "Logo / Slogan",
+            "successCases": "Success Stories",
+            "patientReviews": "Patient Reviews",
+            "hospitalIntroduction": "Hospital Introduction",
+            "expertTeam": "Expert Team",
+            "serviceFeatures": "Service Features",
+            "pricingPlans": "Pricing Plans",
+            "travelServices": "Travel Services",
+            "contactInformation": "Contact Information"
+          },
+          "call": {
+            "makeCall": "Make Call",
+            "recording": "Auto recording",
+            "saveRecords": "Call records auto-saved",
+            "aiSummaryActive": "AI call summary",
+            "logTitle": "Log Call",
+            "type": "Call Type",
+            "typeOutbound": "Outbound - Initiated contact",
+            "typeInbound": "Inbound - Patient callback",
+            "typeMissed": "Not connected",
+            "result": "Call Result",
+            "resultInterested": "Interested - Continue follow-up",
+            "resultScheduled": "Scheduled - Confirmed appointment",
+            "resultCallback": "Callback - Patient considering",
+            "resultNotInterested": "Not interested - Not needed now",
+            "resultNoAnswer": "No answer",
+            "summary": "Call Summary",
+            "summaryPlaceholder": "Record key points of call...\n\nExample: Patient interested in treatment plan, asked about costs and hospitalization time, needs to discuss with family before replying.",
+            "nextFollowUpDate": "Next Follow-up Date",
+            "saveRecord": "Save Record",
+            "historyTitle": "Call Records",
+            "empty": "No call records"
+          }
+        },
+        "invitation": {
+          "title": "Medical Invitation Letter Upload",
+          "description": "Please upload the official invitation letter issued by the hospital. The system will automatically process and verify the file content.",
+          "uploadPrompt": "Click to upload or drag and drop",
+          "uploadHint": "Supported formats: PDF, DOC, DOCX, JPG, PNG | Max file size: 10MB",
+          "submit": "Submit Letter"
+        },
+        "consultation": {
+          "scheduleButton": "Schedule Consultation",
+          "empty": "No consultations yet. Schedule one to get started.",
+          "enter": "Enter",
+          "viewDetails": "View Details",
+          "aiSummary": "AI Summary",
+          "aiGenerated": "AI Generated",
+          "aiSummaryPending": "AI summary will be auto-generated after consultation completes",
+          "transcript": "Transcript",
+          "video": "Video",
+          "fullTranscript": "Full Conversation Record",
+          "transcriptLoading": "Loading conversation record...",
+          "transcriptEmpty": "Transcript Not Yet Generated",
+          "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        }
       }
     },
     "messages": {
@@ -1834,7 +2028,8 @@
           "fr": "French",
           "de": "German",
           "ar": "Arabic"
-        }
+        },
+        "patientCodeLabel": "Patient Code"
       }
     },
     "caseDetail": {
@@ -2361,10 +2556,10 @@
         },
         "copied": "Copied",
         "copyLink": "Copy Link",
-        "enterConsultation": "Enter Consultation",
+        "enterConsultation": "Enter",
         "collapse": "Collapse Details",
         "viewDetails": "View Details",
-        "aiSummary": "AI Consultation Summary",
+        "aiSummary": "AI Summary",
         "aiGenerated": "AI Generated",
         "symptoms": "Main Symptoms",
         "diagnosis": "Preliminary Diagnosis",
@@ -2380,6 +2575,82 @@
         "viewFullVideo": "View Full Video"
       },
       "empty": "No consultations"
+    },
+    "common": {
+      "unknown": "Unknown",
+      "notAvailable": "N/A",
+      "durationMinutes": "{count} min",
+      "viewAll": "View All",
+      "loading": "Loading...",
+      "ageYears": "{age} y/o",
+      "genderMaleShort": "M",
+      "genderFemaleShort": "F",
+      "cancel": "Cancel",
+      "case": "Case",
+      "caseStatus": "Case Status",
+      "documents": "Documents",
+      "messages": "Messages",
+      "patient": "Patient",
+      "profile": "Profile",
+      "role": "Role",
+      "stats": "Stats"
+    },
+    "portal": {
+      "consultations": {
+        "page": {
+          "title": "Consultations",
+          "description": "Manage and review patient video consultations"
+        },
+        "list": {
+          "createButton": "Create Consultation",
+          "loading": "Loading...",
+          "emptyDescription": "Create a new consultation to get started.",
+          "loadingMore": "Loading...",
+          "loadMore": "Load More"
+        },
+        "card": {
+          "transcript": "Transcript",
+          "video": "Video",
+          "summaryPending": "AI summary will be available after the consultation recording is processed."
+        },
+        "transcriptModal": {
+          "emptyTitle": "No transcript entries available yet."
+        },
+        "createModal": {
+          "doctorPrefix": "Doctor",
+          "currentCase": "Current Case",
+          "doctorPlaceholder": "Enter doctor name (optional)",
+          "enableAiTranslation": "Enable AI Translation",
+          "notesPlaceholder": "Optional notes...",
+          "crmNotification": "A CRM notification will be sent to the patient when the consultation is scheduled."
+        }
+      },
+      "videoRoom": {
+        "preJoin": {
+          "title": "Ready to join?",
+          "description": "Check your camera and microphone before joining the call.",
+          "joinCall": "Join Call"
+        },
+        "controls": {
+          "muteMicrophone": "Mute microphone",
+          "unmuteMicrophone": "Unmute microphone",
+          "turnOffCamera": "Turn off camera",
+          "turnOnCamera": "Turn on camera",
+          "mute": "Mute",
+          "unmute": "Unmute",
+          "stopVideo": "Stop video",
+          "startVideo": "Start video",
+          "stopRecording": "Stop recording",
+          "startRecording": "Start recording",
+          "hideSubtitles": "Hide subtitles",
+          "showSubtitles": "Show subtitles",
+          "endCall": "End call"
+        },
+        "inCall": {
+          "recordingIndicator": "REC",
+          "subtitlesPlaceholder": "Subtitles will appear here..."
+        }
+      }
     }
   },
   "caseDetail": {

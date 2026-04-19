@@ -490,7 +490,7 @@
         "addressPlaceholder": "Enter accommodation address",
         "options": {
           "pleaseSelect": "Please Select",
-        "hotelNearHospital": "Hotel near hospital",
+          "hotelNearHospital": "Hotel near hospital",
           "hotel": "Hotel",
           "servicedApartment": "Serviced Apartment",
           "hospitalAccommodation": "Hospital Accommodation",
@@ -1223,6 +1223,23 @@
       },
       "search": {
         "placeholder": "রোগী, কেস খুঁজুন..."
+      },
+      "language": {
+        "label": "ভাষা",
+        "current": "বর্তমান ভাষা",
+        "switchTo": "ভাষা বদলান",
+        "options": {
+          "en": "ইংরেজি",
+          "zh": "চীনা",
+          "fr": "ফরাসি",
+          "de": "জার্মান",
+          "es": "স্প্যানিশ",
+          "bn": "বাংলা"
+        }
+      },
+      "languageSwitcher": {
+        "label": "ভাষা",
+        "saving": "ভাষা সংরক্ষণ করা হচ্ছে..."
       }
     },
     "error": {
@@ -1291,7 +1308,24 @@
           "description": "Check lab and imaging reports"
         }
       },
-      "welcome": "স্বাগতম, আজকের কাজের সংক্ষিপ্ত বিবরণ পর্যালোচনা করুন"
+      "welcome": "স্বাগতম, আজকের কাজের সংক্ষিপ্ত বিবরণ পর্যালোচনা করুন",
+      "title": "ড্যাশবোর্ড",
+      "sections": {
+        "consultations": {
+          "title": "আজকের পরামর্শ",
+          "empty": "কোনো পরামর্শ নির্ধারিত নেই",
+          "aiTranslation": "এআই অনুবাদ",
+          "enter": "পরামর্শে প্রবেশ করুন"
+        },
+        "newCases": {
+          "title": "নতুন কেস",
+          "empty": "এখনও কোনো কেস নেই"
+        },
+        "pendingMessages": {
+          "title": "মুলতুবি বার্তা",
+          "empty": "কোনো মুলতুবি বার্তা নেই"
+        }
+      }
     },
     "profile": {
       "shareProfile": "প্রোফাইল শেয়ার করুন",
@@ -1299,6 +1333,325 @@
       "tabs": {
         "hospitalInfo": "হাসপাতালের তথ্য",
         "doctorProfile": "ডাক্তারের প্রোফাইল"
+      }
+    },
+    "common": {
+      "unknown": "অজানা",
+      "notAvailable": "প্রযোজ্য নয়",
+      "durationMinutes": "{count} মিনিট",
+      "viewAll": "সব দেখুন",
+      "loading": "লোড হচ্ছে...",
+      "ageYears": "{age} বছর",
+      "genderMaleShort": "পু",
+      "genderFemaleShort": "ম",
+      "cancel": "বাতিল",
+      "case": "কেস",
+      "caseStatus": "কেসের অবস্থা",
+      "documents": "নথি",
+      "messages": "বার্তা",
+      "patient": "রোগী",
+      "profile": "প্রোফাইল",
+      "role": "ভূমিকা",
+      "stats": "পরিসংখ্যান"
+    },
+    "cases": {
+      "list": {
+        "searchPlaceholder": "কেস নম্বর, রোগীর নাম বা রোগীর কোড খুঁজুন...",
+        "filterButton": "ফিল্টার",
+        "stats": {
+          "allCases": "সব কেস",
+          "new": "নতুন",
+          "inProgress": "চলমান",
+          "completed": "সম্পন্ন"
+        },
+        "tabs": {
+          "all": "সব",
+          "new": "নতুন",
+          "inProgress": "চলমান",
+          "completed": "সম্পন্ন"
+        },
+        "empty": "কোনো কেস পাওয়া যায়নি",
+        "diagnosisBadge": "রোগনির্ণয়"
+      },
+      "title": "কেস ম্যানেজমেন্ট",
+      "detail": {
+        "backToCases": "Back to Case List",
+        "header": {
+          "documentsCount": "{count} নথি",
+          "messagesCount": "{count} বার্তা"
+        },
+        "intake": {
+          "errorLoad": "Loading failed:",
+          "emptyTitle": "কোনও মেডিকেল ইনটেক তথ্য নেই",
+          "emptyDescription": "রোগী এখনও মেডিকেল ইনটেক প্রশ্নাবলি পূরণ করেননি।",
+          "responsesTitle": "মেডিকেল ইনটেক উত্তরসমূহ",
+          "summaryTitle": "সারাংশ ও মূল্যায়ন"
+        },
+        "documents": {
+          "empty": "No medical records yet",
+          "groups": {
+            "medicalIntake": "Medical Records",
+            "diagnosis": "Diagnosis Attachments",
+            "invitationLetter": "Medical Invitation Letter",
+            "messageAttachments": "Message Attachments",
+            "otherDocuments": "অন্যান্য নথি"
+          },
+          "unnamed": "নামহীন"
+        },
+        "messages": {
+          "empty": "No message records",
+          "inputPlaceholder": "Enter message content...",
+          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)"
+        },
+        "diagnosis": {
+          "addButton": "Add Diagnosis",
+          "empty": "No diagnosis yet",
+          "icdCode": "ICD-10 Code",
+          "unknownCondition": "অজানা অবস্থা",
+          "validation": {
+            "nameRequired": "রোগ নির্ণয়ের নাম আবশ্যক।"
+          },
+          "errorSave": "রোগ নির্ণয় সংরক্ষণ করা যায়নি",
+          "fields": {
+            "details": "Detailed Diagnosis",
+            "estimatedCost": "Estimated Cost",
+            "suggestedTests": "Suggested Further Tests",
+            "treatmentDuration": "Treatment Duration",
+            "treatmentRecommendation": "Treatment Recommendation"
+          },
+          "addModal": {
+            "title": "Add Diagnosis",
+            "type": "Diagnosis Type",
+            "name": "Diagnosis Name *",
+            "namePlaceholder": "e.g., Coronary Atherosclerotic Heart Disease",
+            "icdCode": "ICD-10 Code",
+            "icdCodePlaceholder": "e.g., I25.1",
+            "severity": "Severity",
+            "description": "Detailed Diagnosis",
+            "treatmentRecommendation": "Treatment Recommendation",
+            "estimatedCost": "Estimated Cost Range",
+            "treatmentDuration": "Estimated Treatment Duration",
+            "attachments": "Attachment Document (Optional)",
+            "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
+            "save": "Save Diagnosis"
+          }
+        },
+        "marketing": {
+          "defaultSubject": "আপনার ব্যক্তিগত চিকিৎসা পরিকল্পনা",
+          "emailOutreach": "ইমেইল যোগাযোগ",
+          "phoneOutreach": "ফোন ফলো-আপ",
+          "composeTitle": "Compose Email",
+          "subject": "Email Subject",
+          "emailContent": "Email Content",
+          "emailContentPlaceholder": "তৈরি হওয়া বিষয়বস্তু এখানে দেখাবে...",
+          "generateEmail": "Auto-generate Email Content",
+          "loadTemplate": "টেমপ্লেট লোড করুন",
+          "noActiveTemplates": "কোনও সক্রিয় টেমপ্লেট নেই। ইমেইল টেমপ্লেট পেজে একটি তৈরি করুন।",
+          "privacyNotice": "Marketing emails will be sent through CRM system. To protect patient privacy, you cannot directly view patients' email addresses.",
+          "saveDraft": "Save Draft",
+          "selectTemplate": "-- একটি টেমপ্লেট নির্বাচন করুন --",
+          "sendEmail": "Send Email",
+          "templatesActiveHint": "এখানে দেখাতে হলে টেমপ্লেটের অবস্থা “সক্রিয়” হতে হবে।",
+          "variables": {
+            "hospitalName": "আমাদের হাসপাতাল"
+          },
+          "modules": {
+            "title": "Email Content Modules",
+            "coreIncluded": "Core Modules",
+            "optional": "Optional Modules (Click to Add)",
+            "logoSlogan": "Logo / Slogan",
+            "successCases": "Success Stories",
+            "patientReviews": "Patient Reviews",
+            "hospitalIntroduction": "Hospital Introduction",
+            "expertTeam": "Expert Team",
+            "serviceFeatures": "Service Features",
+            "pricingPlans": "Pricing Plans",
+            "travelServices": "Travel Services",
+            "contactInformation": "Contact Information"
+          },
+          "call": {
+            "makeCall": "Make Call",
+            "recording": "Auto recording",
+            "saveRecords": "Call records auto-saved",
+            "aiSummaryActive": "AI call summary",
+            "logTitle": "Log Call",
+            "type": "Call Type",
+            "typeOutbound": "Outbound - Initiated contact",
+            "typeInbound": "Inbound - Patient callback",
+            "typeMissed": "Not connected",
+            "result": "Call Result",
+            "resultInterested": "Interested - Continue follow-up",
+            "resultScheduled": "Scheduled - Confirmed appointment",
+            "resultCallback": "Callback - Patient considering",
+            "resultNotInterested": "Not interested - Not needed now",
+            "resultNoAnswer": "No answer",
+            "summary": "Call Summary",
+            "summaryPlaceholder": "Record key points of call...\n\nExample: Patient interested in treatment plan, asked about costs and hospitalization time, needs to discuss with family before replying.",
+            "nextFollowUpDate": "Next Follow-up Date",
+            "saveRecord": "Save Record",
+            "historyTitle": "Call Records",
+            "empty": "No call records"
+          }
+        },
+        "invitation": {
+          "title": "Medical Invitation Letter Upload",
+          "description": "Please upload the official invitation letter issued by the hospital. The system will automatically process and verify the file content.",
+          "uploadPrompt": "আপলোড করতে ক্লিক করুন বা এখানে টেনে আনুন",
+          "uploadHint": "Supported formats: PDF, DOC, DOCX, JPG, PNG | Max file size: 10MB",
+          "submit": "চিঠি জমা দিন"
+        },
+        "consultation": {
+          "scheduleButton": "পরামর্শ নির্ধারণ করুন",
+          "empty": "এখনও কোনও পরামর্শ নেই। শুরু করতে একটি নির্ধারণ করুন।",
+          "enter": "প্রবেশ",
+          "viewDetails": "বিস্তারিত দেখুন",
+          "aiSummary": "AI সারাংশ",
+          "aiGenerated": "AI-তৈরি",
+          "aiSummaryPending": "AI summary will be auto-generated after consultation completes",
+          "transcript": "ট্রান্সক্রিপ্ট",
+          "video": "ভিডিও",
+          "fullTranscript": "সম্পূর্ণ কথোপকথনের রেকর্ড",
+          "transcriptLoading": "রেকর্ড লোড হচ্ছে...",
+          "transcriptEmpty": "Transcript Not Yet Generated",
+          "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        }
+      }
+    },
+    "consultations": {
+      "title": "অনলাইন পরামর্শ",
+      "description": "ভিডিও পরামর্শ, এআই অনুবাদ এবং পরামর্শ রেকর্ড পরিচালনা করুন",
+      "tabs": {
+        "all": "সব",
+        "scheduled": "নির্ধারিত",
+        "completed": "সম্পন্ন"
+      },
+      "stats": {
+        "scheduled": "নির্ধারিত পরামর্শ",
+        "today": "আজকের পরামর্শ",
+        "needTranslation": "অনুবাদ দরকার",
+        "completed": "সম্পন্ন"
+      },
+      "empty": "কোনো পরামর্শ নেই",
+      "createModal": {
+        "title": "পরামর্শ লিঙ্ক তৈরি করুন",
+        "description": "রোগীর জন্য ভিডিও পরামর্শের সময় নির্ধারণ করুন",
+        "selectCase": "কেস নির্বাচন করুন *",
+        "loading": "লোড হচ্ছে...",
+        "chooseCase": "একটি কেস বেছে নিন",
+        "doctor": "পরামর্শকারী ডাক্তার (ঐচ্ছিক)",
+        "doctorPlaceholder": "ডাক্তারের নাম লিখুন...",
+        "scheduledTime": "পরামর্শের সময় *",
+        "duration": "পরামর্শের সময়কাল (মিনিট)",
+        "duration15": "১৫ মিনিট",
+        "duration30": "৩০ মিনিট",
+        "duration45": "৪৫ মিনিট",
+        "duration60": "৬০ মিনিট",
+        "enableAiTranslation": "রিয়েল-টাইম এআই অনুবাদ চালু করুন",
+        "notes": "নোট (ঐচ্ছিক)",
+        "notesPlaceholder": "পরামর্শ সম্পর্কিত নোট লিখুন...",
+        "crmNotification": "তৈরি করার পর সিস্টেম CRM-এর মাধ্যমে রোগীকে একটি রিমাইন্ডার পাঠাবে।",
+        "cancel": "বাতিল",
+        "create": "পরামর্শ তৈরি করুন",
+        "creating": "তৈরি হচ্ছে..."
+      },
+      "transcriptModal": {
+        "title": "সম্পূর্ণ কথোপকথনের রেকর্ড",
+        "showTranslation": "অনুবাদ দেখান",
+        "loading": "রেকর্ড লোড হচ্ছে...",
+        "willGenerateAfter": "রেকর্ডিং প্রক্রিয়াকরণ শেষ হলে রেকর্ড তৈরি হবে।",
+        "exportPDF": "PDF রপ্তানি করুন"
+      },
+      "card": {
+        "aiGenerated": "AI-তৈরি",
+        "aiSummary": "AI সারাংশ",
+        "collapse": "বিস্তারিত গুটান",
+        "enterConsultation": "প্রবেশ করুন",
+        "viewDetails": "বিস্তারিত দেখুন"
+      }
+    },
+    "portal": {
+      "consultations": {
+        "page": {
+          "title": "পরামর্শ",
+          "description": "রোগীর ভিডিও পরামর্শ পরিচালনা ও পর্যালোচনা করুন"
+        },
+        "list": {
+          "createButton": "পরামর্শ তৈরি করুন",
+          "loading": "লোড হচ্ছে...",
+          "emptyDescription": "শুরু করতে একটি নতুন পরামর্শ তৈরি করুন।",
+          "loadingMore": "লোড হচ্ছে...",
+          "loadMore": "আরও লোড করুন"
+        },
+        "card": {
+          "transcript": "ট্রান্সক্রিপ্ট",
+          "video": "ভিডিও",
+          "summaryPending": "রেকর্ডিং প্রক্রিয়াকরণের পর এআই সারাংশ পাওয়া যাবে।"
+        },
+        "transcriptModal": {
+          "emptyTitle": "এখনও কোনো ট্রান্সক্রিপ্ট এন্ট্রি নেই।"
+        },
+        "createModal": {
+          "doctorPrefix": "ডাক্তার",
+          "currentCase": "বর্তমান কেস",
+          "doctorPlaceholder": "ডাক্তারের নাম লিখুন (ঐচ্ছিক)",
+          "enableAiTranslation": "এআই অনুবাদ চালু করুন",
+          "notesPlaceholder": "ঐচ্ছিক নোট...",
+          "crmNotification": "পরামর্শ নির্ধারিত হলে রোগীর কাছে একটি CRM নোটিফিকেশন পাঠানো হবে।"
+        }
+      },
+      "videoRoom": {
+        "preJoin": {
+          "title": "যোগ দিতে প্রস্তুত?",
+          "description": "কল শুরু করার আগে আপনার ক্যামেরা ও মাইক্রোফোন পরীক্ষা করুন।",
+          "joinCall": "কল যোগ দিন"
+        },
+        "controls": {
+          "muteMicrophone": "মাইক্রোফোন বন্ধ করুন",
+          "unmuteMicrophone": "মাইক্রোফোন চালু করুন",
+          "turnOffCamera": "ক্যামেরা বন্ধ করুন",
+          "turnOnCamera": "ক্যামেরা চালু করুন",
+          "mute": "নিঃশব্দ",
+          "unmute": "শব্দ চালু",
+          "stopVideo": "ভিডিও বন্ধ করুন",
+          "startVideo": "ভিডিও শুরু করুন",
+          "stopRecording": "রেকর্ডিং বন্ধ করুন",
+          "startRecording": "রেকর্ডিং শুরু করুন",
+          "hideSubtitles": "সাবটাইটেল লুকান",
+          "showSubtitles": "সাবটাইটেল দেখান",
+          "endCall": "কল শেষ করুন"
+        },
+        "inCall": {
+          "recordingIndicator": "REC",
+          "subtitlesPlaceholder": "সাবটাইটেল এখানে দেখাবে..."
+        }
+      }
+    },
+    "messages": {
+      "chat": {
+        "unknown": "অজানা",
+        "admin": "ভূমিকা",
+        "hospital": "হাসপাতাল",
+        "language": "ভাষা",
+        "patientCodeLabel": "রোগীর কোড",
+        "primaryDiagnosis": "প্রাথমিক রোগ নির্ণয়"
+      }
+    },
+    "caseDetail": {
+      "diagnosisDialog": {
+        "costOptions": {
+          "5k": "৫ হাজার ডলারের নিচে",
+          "5-10k": "৫ থেকে ১০ হাজার ডলার",
+          "10-20k": "১০ থেকে ২০ হাজার ডলার",
+          "20-50k": "২০ থেকে ৫০ হাজার ডলার",
+          "50k+": "৫০ হাজার ডলারের বেশি"
+        },
+        "durationOptions": {
+          "1week": "১ সপ্তাহের মধ্যে",
+          "2weeks": "১ থেকে ২ সপ্তাহ",
+          "1month": "২ সপ্তাহ থেকে ১ মাস",
+          "3months": "১ থেকে ৩ মাস",
+          "6months": "৩ মাসের বেশি"
+        }
       }
     }
   },

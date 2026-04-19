@@ -2,19 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { changePassword, updatePreferences } from '@/actions/settings-actions';
+import { useAuth } from '@/lib/auth-context';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
+import { HOSPITAL_LANGUAGE_OPTIONS } from '@/lib/hospital-language-options';
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
 type NotificationKey = 'newCase' | 'newMessage' | 'quoteStatusChange' | 'consultationReminder';
-
-const LANGUAGE_OPTIONS = [
-  { value: 'en', key: 'hospital.settings.language.options.en', fallback: 'English' },
-  { value: 'zh', key: 'hospital.settings.language.options.zh', fallback: 'Chinese' },
-  { value: 'fr', key: 'hospital.settings.language.options.fr', fallback: 'French' },
-  { value: 'de', key: 'hospital.settings.language.options.de', fallback: 'German' },
-  { value: 'es', key: 'hospital.settings.language.options.es', fallback: 'Spanish' },
-  { value: 'bn', key: 'hospital.settings.language.options.bn', fallback: 'Bengali' },
-] as const;
 
 function FeedbackBanner({ feedback }: { feedback: FeedbackState }) {
   if (!feedback) return null;
@@ -193,6 +186,7 @@ function PasswordSection() {
 
 function LanguageSection() {
   const { locale, isSwitchingLocale, setLocale, t } = useHospitalI18n();
+  const { updatePreferredLanguage } = useAuth();
   const [language, setLanguage] = useState<string>(locale);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
@@ -208,6 +202,7 @@ function LanguageSection() {
     try {
       await updatePreferences({ preferredLanguage: language });
       await setLocale(language);
+      updatePreferredLanguage(language);
       setFeedback({
         type: 'success',
         message: t(
@@ -258,9 +253,9 @@ function LanguageSection() {
             onChange={(e) => setLanguage(e.target.value)}
             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           >
-            {LANGUAGE_OPTIONS.map((option) => (
+            {HOSPITAL_LANGUAGE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
-                {t(option.key, undefined, option.fallback)}
+                {option.flag} {t(option.key, undefined, option.fallback)}
               </option>
             ))}
           </select>

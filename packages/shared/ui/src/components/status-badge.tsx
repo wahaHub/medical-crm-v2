@@ -35,27 +35,28 @@ const DEFAULT_COLORS: Record<string, string> = {
 
 export interface StatusBadgeProps extends VariantProps<typeof badgeVariants> {
   status: string;
+  label?: string;
   colorMap?: Record<string, string>;
   className?: string;
 }
 
-export function StatusBadge({ status, variant, size, colorMap, className }: StatusBadgeProps) {
+export function StatusBadge({ status, label, variant, size, colorMap, className }: StatusBadgeProps) {
   const colors = { ...DEFAULT_COLORS, ...colorMap };
   const colorClass = colors[status] ?? 'bg-slate-100 text-slate-600';
-  const label = status.replace(/_/g, ' ');
+  const displayLabel = label ?? status.replace(/_/g, ' ');
 
   if (variant === 'dot') {
     return (
       <span className={cn(badgeVariants({ variant, size }), className)}>
         <span className={cn('h-2 w-2 rounded-full', colorClass.replace(/bg-(\w+)-50/, 'bg-$1-500'))} />
-        {label}
+        {displayLabel}
       </span>
     );
   }
 
   return (
     <span className={cn(badgeVariants({ variant, size }), colorClass, className)}>
-      {label}
+      {displayLabel}
     </span>
   );
 }

@@ -295,6 +295,87 @@ export interface MessageCaseDetailPanelProps {
   conversationTitle?: string | null;
   caseLinkHref?: string | null;
   caseLinkLabel?: string;
+  labels?: Partial<MessageCaseDetailPanelLabels>;
+  formatCategoryLabel?: (category: string) => string;
+  formatLanguageLabel?: (language: string) => string;
+  formatStatusLabel?: (status: string) => string;
+  formatGenderLabel?: (gender: string) => string;
+  formatAgeLabel?: (age: number) => string;
+  formatParticipantRoleLabel?: (role: string) => string;
+}
+
+export interface MessageCaseDetailPanelLabels {
+  unknownParticipant: string;
+  conversation: string;
+  patientCode: string;
+  primaryDiagnosis: string;
+  language: string;
+  profile: string;
+  caseStatus: string;
+  stats: string;
+  documents: string;
+  messages: string;
+  role: string;
+  case: string;
+  hospital: string;
+}
+
+const DEFAULT_MESSAGE_CASE_DETAIL_LABELS: MessageCaseDetailPanelLabels = {
+  unknownParticipant: 'Unknown Participant',
+  conversation: 'Conversation',
+  patientCode: 'Patient Code',
+  primaryDiagnosis: 'Primary Diagnosis',
+  language: 'Language',
+  profile: 'Profile',
+  caseStatus: 'Case Status',
+  stats: 'Stats',
+  documents: 'Documents',
+  messages: 'Messages',
+  role: 'Role',
+  case: 'Case',
+  hospital: 'Hospital',
+};
+
+function humanizeEnumValue(value: string): string {
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function defaultFormatCategoryLabel(category: string): string {
+  const normalizedCategory = category.trim().toUpperCase();
+  if (normalizedCategory === 'ADMIN_HOSPITAL') return 'Admin';
+  if (normalizedCategory === 'ADMIN_PATIENT') return 'Patient';
+  return humanizeEnumValue(category).replace(/\s+/g, ' / ');
+}
+
+function defaultFormatLanguageValue(language: string): string {
+  const value = language.trim().toLowerCase();
+  if (value === 'zh') return 'Chinese';
+  if (value === 'en') return 'English';
+  if (value === 'es') return 'Spanish';
+  if (value === 'ja') return 'Japanese';
+  if (value === 'ko') return 'Korean';
+  if (value === 'fr') return 'French';
+  if (value === 'de') return 'German';
+  return language;
+}
+
+function defaultFormatStatusLabel(status: string): string {
+  return humanizeEnumValue(status);
+}
+
+function defaultFormatGenderLabel(gender: string): string {
+  const value = gender.trim().toLowerCase();
+  if (value === 'm') return 'Male';
+  if (value === 'f') return 'Female';
+  return humanizeEnumValue(gender);
+}
+
+function defaultFormatAgeLabel(age: number): string {
+  return `${age}y`;
 }
 
 function getInitials(value: string): string {
@@ -324,11 +405,23 @@ export function MessageCaseDetailPanel({
   conversationTitle,
   caseLinkHref,
   caseLinkLabel = 'View Full Case Details',
+  labels,
+  formatCategoryLabel = defaultFormatCategoryLabel,
+  formatLanguageLabel = defaultFormatLanguageValue,
+  formatStatusLabel = defaultFormatStatusLabel,
+  formatGenderLabel = defaultFormatGenderLabel,
+  formatAgeLabel = defaultFormatAgeLabel,
+  formatParticipantRoleLabel = humanizeEnumValue,
 }: MessageCaseDetailPanelProps) {
   const hasPatientAge = patientAge !== null && patientAge !== undefined;
   const hasDocumentCount = documentCount !== null && documentCount !== undefined;
   const hasMessageCount = messageCount !== null && messageCount !== undefined;
-  const displayName = participantName?.trim() || 'Unknown Participant';
+  const resolvedLabels = { ...DEFAULT_MESSAGE_CASE_DETAIL_LABELS, ...labels };
+  const displayName = participantName?.trim() || resolvedLabels.unknownParticipant;
+  const formattedProfile = [
+    patientGender ? formatGenderLabel(patientGender) : null,
+    hasPatientAge ? formatAgeLabel(patientAge) : null,
+  ].filter(Boolean).join(' / ');
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-6 py-6 text-center">
@@ -344,7 +437,7 @@ export function MessageCaseDetailPanel({
           )}
           {category && (
             <span className="rounded border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
-              {category === 'ADMIN_HOSPITAL' ? 'Admin' : category === 'ADMIN_PATIENT' ? 'Patient' : category.replace(/_/g, ' / ')}
+              {formatCategoryLabel(category)}
             </span>
           )}
         </div>
@@ -352,57 +445,55 @@ export function MessageCaseDetailPanel({
 
       <div className="space-y-5 px-6 py-5">
         {conversationTitle && (
-          <DetailBlock label="Conversation">
+          <DetailBlock label={resolvedLabels.conversation}>
             <p className="text-sm text-slate-700">{conversationTitle}</p>
           </DetailBlock>
         )}
 
         {patientCode && (
-          <DetailBlock label="Patient Code">
+          <DetailBlock label={resolvedLabels.patientCode}>
             <ValueCard value={patientCode} />
           </DetailBlock>
         )}
 
         {diagnosis && (
-          <DetailBlock label="Primary Diagnosis">
+          <DetailBlock label={resolvedLabels.primaryDiagnosis}>
             <ValueCard value={diagnosis} />
           </DetailBlock>
         )}
 
         {patientLanguage && (
-          <DetailBlock label="Language">
+          <DetailBlock label={resolvedLabels.language}>
             <p className="text-sm font-medium text-slate-700">{formatLanguageLabel(patientLanguage)}</p>
           </DetailBlock>
         )}
 
-        {(patientGender || hasPatientAge) && (
-          <DetailBlock label="Profile">
-            <p className="text-sm font-medium text-slate-700">
-              {[patientGender, hasPatientAge ? `${patientAge}y` : null].filter(Boolean).join(' / ')}
-            </p>
+        {formattedProfile && (
+          <DetailBlock label={resolvedLabels.profile}>
+            <p className="text-sm font-medium text-slate-700">{formattedProfile}</p>
           </DetailBlock>
         )}
 
         {caseStatus && (
-          <DetailBlock label="Case Status">
+          <DetailBlock label={resolvedLabels.caseStatus}>
             <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-              {caseStatus.replace(/_/g, ' ')}
+              {formatStatusLabel(caseStatus)}
             </span>
           </DetailBlock>
         )}
 
         {(hasDocumentCount || hasMessageCount) && (
-          <DetailBlock label="Stats">
+          <DetailBlock label={resolvedLabels.stats}>
             <div className="space-y-1.5">
               {hasDocumentCount && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Documents</span>
+                  <span className="text-slate-500">{resolvedLabels.documents}</span>
                   <span className="font-semibold text-blue-600">{documentCount}</span>
                 </div>
               )}
               {hasMessageCount && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Messages</span>
+                  <span className="text-slate-500">{resolvedLabels.messages}</span>
                   <span className="font-semibold text-blue-600">{messageCount}</span>
                 </div>
               )}
@@ -412,9 +503,9 @@ export function MessageCaseDetailPanel({
 
         {(caseId || participantRole || hospitalId) && (
           <div className="space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
-            {participantRole && <p>Role: {participantRole}</p>}
-            {caseId && <p className="font-mono">Case: {caseId}</p>}
-            {hospitalId && <p className="font-mono">Hospital: {hospitalId}</p>}
+            {participantRole && <p>{resolvedLabels.role}: {formatParticipantRoleLabel(participantRole)}</p>}
+            {caseId && <p className="font-mono">{resolvedLabels.case}: {caseId}</p>}
+            {hospitalId && <p className="font-mono">{resolvedLabels.hospital}: {hospitalId}</p>}
           </div>
         )}
 
@@ -448,16 +539,4 @@ function ValueCard({ value }: { value: string }) {
       <p className="text-sm font-medium text-slate-700">{value}</p>
     </div>
   );
-}
-
-function formatLanguageLabel(language: string): string {
-  const value = language.trim().toLowerCase();
-  if (value === 'zh') return 'Chinese';
-  if (value === 'en') return 'English';
-  if (value === 'es') return 'Spanish';
-  if (value === 'ja') return 'Japanese';
-  if (value === 'ko') return 'Korean';
-  if (value === 'fr') return 'French';
-  if (value === 'de') return 'German';
-  return language;
 }

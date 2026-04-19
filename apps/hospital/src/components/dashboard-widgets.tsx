@@ -3,6 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { FolderOpen, Clock, Sparkles, ChevronRight } from 'lucide-react';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
+import {
+  formatDurationMinutesLabel,
+  getLocalizedCountryLabel,
+} from '@/lib/hospital-display';
 
 // ── Types ──────────────────────────────────────────────────────────
 interface ScheduledConsultation {
@@ -102,34 +106,6 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-const CONDITION_COLORS: Record<string, string> = {
-  Rhinoplasty: 'bg-rose-50 text-rose-600',
-  Facelift: 'bg-purple-50 text-purple-600',
-  'Breast augmentation': 'bg-pink-50 text-pink-600',
-  Liposuction: 'bg-orange-50 text-orange-600',
-  Blepharoplasty: 'bg-sky-50 text-sky-600',
-  Cardiac: 'bg-red-50 text-red-600',
-  Orthopedic: 'bg-blue-50 text-blue-600',
-  Dental: 'bg-teal-50 text-teal-600',
-  Screening: 'bg-emerald-50 text-emerald-600',
-  default: 'bg-slate-50 text-slate-600',
-};
-
-function conditionBadgeColor(condition: string | null) {
-  if (!condition) return CONDITION_COLORS.default;
-  for (const [key, color] of Object.entries(CONDITION_COLORS)) {
-    if (condition.toLowerCase().includes(key.toLowerCase())) return color;
-  }
-  return CONDITION_COLORS.default;
-}
-
-function conditionLabel(condition: string | null) {
-  if (!condition) return 'General';
-  // Take first meaningful word (skip articles)
-  const words = condition.split(/[\s-]+/).filter((w) => w.length > 3);
-  return words[0] ?? condition.split(' ')[0] ?? 'General';
-}
-
 // ── Component ──────────────────────────────────────────────────────
 export function DashboardWidgets({ data }: { data: DashboardData }) {
   const router = useRouter();
@@ -191,7 +167,7 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
                         <span>·</span>
                         <span className="flex items-center gap-1">
                           <Clock size={14} />
-                          {t('hospital.common.durationMinutes', { count: c.durationMinutes }, '{count} min')}
+                          {formatDurationMinutesLabel(c.durationMinutes, t)}
                         </span>
                       </div>
                       {c.aiTranslation && (
@@ -246,6 +222,7 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
             <div className="space-y-4">
               {data.recentCases.map((c) => {
                 const patientName = c.patientName || unknownLabel;
+                const countryLabel = getLocalizedCountryLabel(c.patientCountry, locale);
                 return (
                   <div
                     key={c.id}
@@ -258,14 +235,11 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
                     </div>
                     {/* Info */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-slate-900">{patientName}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${conditionBadgeColor(c.medicalCondition)}`}>
-                          {conditionLabel(c.medicalCondition)}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-500">
-                        {c.caseNumber || notAvailableLabel}
+                      <div className="font-medium text-slate-900">{patientName}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>{c.caseNumber || notAvailableLabel}</span>
+                        {countryLabel ? <span>· {countryLabel}</span> : null}
+                        {c.medicalCondition ? <span>· {c.medicalCondition}</span> : null}
                       </div>
                     </div>
                     {/* Time */}

@@ -1,16 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { LayoutDashboard, FolderOpen, Video, MessageSquare, Megaphone, LogOut, Search, Bell, Mail, HelpCircle, Settings as SettingsIcon } from 'lucide-react';
 import { SidebarNav, type NavItem } from '@medical-crm/ui';
+import { updatePreferences } from '@/actions/settings-actions';
 import { useAuth } from '@/lib/auth-context';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
+import { HOSPITAL_LANGUAGE_OPTIONS } from '@/lib/hospital-language-options';
 
 export function PortalShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();
-  const { t } = useHospitalI18n();
+  const { logout, updatePreferredLanguage } = useAuth();
+  const { locale, isSwitchingLocale, setLocale, t } = useHospitalI18n();
+  const [isSavingLocale, setIsSavingLocale] = useState(false);
 
   const navItems: NavItem[] = [
     {
@@ -74,6 +78,31 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
     undefined,
     'Notifications'
   );
+  const languageSwitcherLabel = t(
+    'hospital.portalShell.languageSwitcher.label',
+    undefined,
+    'Language'
+  );
+  const languageSwitcherSavingLabel = t(
+    'hospital.portalShell.languageSwitcher.saving',
+    undefined,
+    'Saving language...'
+  );
+
+  const handleLocaleSelect = async (nextLocale: string) => {
+    if (nextLocale === locale || isSavingLocale || isSwitchingLocale) return;
+
+    setIsSavingLocale(true);
+    try {
+      await updatePreferences({ preferredLanguage: nextLocale });
+      await setLocale(nextLocale);
+      updatePreferredLanguage(nextLocale);
+    } catch (error) {
+      console.error('[PortalShell] Failed to switch locale:', error);
+    } finally {
+      setIsSavingLocale(false);
+    }
+  };
 
   const isFullscreen = pathname.includes('/room');
   const activeKey = navItems.find((item) => pathname.startsWith(item.href))?.key ?? 'dashboard';
@@ -119,6 +148,34 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
             <h1 className="text-lg font-semibold tracking-tight text-slate-700">{portalTitle}</h1>
           </div>
           <div className="flex items-center gap-6">
+            <div
+              className="flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/90 px-2 py-1 shadow-sm"
+              aria-label={languageSwitcherLabel}
+              title={isSavingLocale || isSwitchingLocale ? languageSwitcherSavingLabel : languageSwitcherLabel}
+            >
+              {HOSPITAL_LANGUAGE_OPTIONS.map((option) => {
+                const optionLabel = t(option.key, undefined, option.fallback);
+                const isActive = option.value === locale;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => void handleLocaleSelect(option.value)}
+                    disabled={isSavingLocale || isSwitchingLocale}
+                    aria-label={`${languageSwitcherLabel}: ${optionLabel}`}
+                    title={optionLabel}
+                    className={`flex h-9 w-9 items-center justify-center rounded-full text-lg transition-all ${
+                      isActive
+                        ? 'bg-indigo-600 shadow-sm shadow-indigo-200 ring-2 ring-indigo-100'
+                        : 'hover:bg-slate-100'
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    <span aria-hidden="true">{option.flag}</span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input

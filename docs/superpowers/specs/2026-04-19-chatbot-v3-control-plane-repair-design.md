@@ -265,6 +265,7 @@ Recommendation stage remains re-enterable for:
 - compare
 - explain why
 - revisit recommendation list
+- re-open hospital choice in order to select a different hospital
 
 But once the user explicitly chooses one of these actions:
 
@@ -272,6 +273,32 @@ But once the user explicitly chooses one of these actions:
 - `RECOMMENDATION_SKIPPED`
 
 that selection state must become the canonical next-step driver.
+
+### Revisit semantics for recommendation
+
+Recommendation revisit is a temporary detour, not a primary-journey rewrite.
+
+If the user:
+
+- compares hospitals
+- asks why a hospital was recommended
+- re-opens the recommendation list
+- wants to change a previously chosen hospital
+
+then the system may temporarily dispatch recommendation-specific behavior again, but this alone must not silently overwrite the persisted primary journey stage.
+
+Only an explicit structured action that changes progression, such as:
+
+- `RECOMMENDATION_SELECTED`
+- `RECOMMENDATION_SKIPPED`
+
+may change the persisted primary stage.
+
+So recommendation revisit means:
+
+- recommendation-specific handling is allowed for that turn
+- the already persisted primary stage remains authoritative
+- after the revisit completes, the session should continue from the persisted primary stage unless an explicit progression-changing action was taken
 
 ### 3. `EXPLAIN_PROCESS`
 
@@ -302,6 +329,22 @@ Therefore:
 - entering this stage does not imply documents were absent before
 - leaving this stage does not forbid future uploads
 - future uploads must still be accepted and appended to `supportingDocuments`
+
+### Revisit semantics for other stages
+
+The same temporary-detour rule applies outside recommendation too.
+
+Examples:
+
+- a user in a later stage may revisit recommendation for comparison or re-selection
+- a user may ask to hear the process explanation again
+- a user may upload more supporting documents after this stage was already entered once
+
+In all of these cases:
+
+- a specialized worker/agent may take over that turn
+- but revisit alone must not replace the persisted primary journey stage
+- only explicit authority-approved progression should update `journeyCurrentStage/journeyCurrentPhase`
 
 ### 5. `ONLINE_CONSULT`
 
@@ -335,6 +378,21 @@ The system must remove the canonical behavior where attachment presence alone im
 
 This heuristic was historically useful for early upload-first triage flows, but it is now harmful because it ignores persisted journey state.
 
+### Why remove the override instead of merely narrowing it
+
+The older shortcut came from an earlier design assumption:
+
+- if a turn contains attachments, that probably means the user is still in early records / triage onboarding
+
+That assumption is no longer valid because users may upload documents:
+
+- before `COLLECT_MEDICAL_INPUTS`
+- during `COLLECT_MEDICAL_INPUTS`
+- after `COLLECT_MEDICAL_INPUTS`
+- while revisiting later stages
+
+So the repair is not to keep a weaker global attachment override. The repair is to stop treating attachment presence as global routing truth at all.
+
 ### Correct behavior
 
 For any turn with attachments:
@@ -343,6 +401,11 @@ For any turn with attachments:
 2. evaluate any explicit structured user action
 3. let authority decide whether the stage should stay, advance, or repeat
 4. dispatch the records tool/agent mode appropriate to that current stage
+
+Put plainly:
+
+- if the session is still in the early post-intake / triage portion of the flow, an attachment may naturally be handled in that context
+- if the session is already in `RECOMMENDATION`, `EXPLAIN_PROCESS`, `COLLECT_MEDICAL_INPUTS`, or later, the same attachment must be handled in that later-stage context instead of resetting the journey back to the beginning
 
 ### Explicitly forbidden behavior
 

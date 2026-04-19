@@ -8,7 +8,9 @@ import type {
 import {
   composeResponse,
   didShowExplicitProcessExplanation,
+  buildAssistantText,
 } from './response-composer.js';
+import { buildConversationSummaryPatch } from './runtime.service.js';
 import {
   DEGRADED_PATH_FIXTURES,
 } from './__fixtures__/degraded-path.fixtures.js';
@@ -248,7 +250,7 @@ describe('ResponseComposer', () => {
               'When did it start, how long has it been going on, and how severe is it?',
               'What tests, treatments, medicines, or diagnoses already exist?',
             ],
-            followUp: 'Please answer these 3 questions so I can capture the essential medical details.',
+            followUp: 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.',
             missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
           },
         },
@@ -256,10 +258,165 @@ describe('ResponseComposer', () => {
       sessionStatusSnapshot: null,
     });
 
-    expect(response.messages[0]?.text).toContain('Please answer these 3 questions');
+    expect(response.messages[0]?.text).toContain('We already received your basic intake');
+    expect(response.messages[0]?.text).toContain('or you can skip them if you prefer');
     expect(response.messages[0]?.text).toContain('1. What is the main symptom');
     expect(response.messages[0]?.text).toContain('2. When did it start');
     expect(response.messages[0]?.text).toContain('3. What tests, treatments');
+  });
+
+  it('uses post-intake opening wording when the current turn has a triage status patch before persistence', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'What do you need from me first?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          reason: 'collect post-intake follow-up details',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+        writeIntents: {
+          statusPatch: {
+            minimalTriageStatus: 'pending',
+            minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+            minimalTriageComplete: true,
+          },
+        } as any,
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('already received your basic intake');
+    expect(response.messages[0]?.text).toContain('3 follow-up questions');
+    expect(response.messages[0]?.text).not.toContain('share the key medical facts and any records you already have');
+  });
+
+  it('explains recommendations as based on intake plus the submitted follow-up summary when triage answers exist', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Please recommend hospitals for me.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'RECOMMENDATION',
+          reason: 'show recommendation list',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'RecommendationAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            recommendations: [
+              { hospitalId: 'hospital-1', name: 'Hospital 1', reason: 'Good fit' },
+            ],
+            recommendationTask: 'generate',
+          },
+        },
+      }),
+      sessionStatusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+      } as any,
+    });
+
+    expect(response.messages[0]?.text).toContain('based on your submitted intake and the follow-up medical details you just shared');
+    expect(response.messages[0]?.text).not.toContain('intake alone');
+  });
+
+  it('explains recommendations as intake-only when follow-up triage was explicitly skipped', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Please recommend hospitals for me.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'RECOMMENDATION',
+          reason: 'show recommendation list',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'RecommendationAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            recommendations: [
+              { hospitalId: 'hospital-1', name: 'Hospital 1', reason: 'Good fit' },
+            ],
+            recommendationTask: 'generate',
+          },
+        },
+      }),
+      sessionStatusSnapshot: {
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+      } as any,
+    });
+
+    expect(response.messages[0]?.text).toContain('initial recommendation based on your submitted intake alone');
+    expect(response.messages[0]?.text).toContain('refined later if you share more medical detail');
+  });
+
+  it('keeps the conversation summary on the same current-turn wording basis as the visible response', () => {
+    const effectiveStatusSnapshot = {
+      minimalTriageStatus: 'pending',
+      minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+    } as any;
+    const result = createResult({
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        reason: 'show recommendation list',
+      },
+      decision: {
+        action: 'ADVANCE',
+        from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+        to: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchAgent: 'RecommendationAgent',
+        dispatchSource: 'journey-runtime-authority',
+      },
+      journey: { stage: 'RECOMMENDATION', phase: 'active' },
+      dispatchResult: {
+        status: 'ok',
+        data: {
+          recommendations: [
+            { hospitalId: 'hospital-1', name: 'Hospital 1', reason: 'Good fit' },
+          ],
+          recommendationTask: 'generate',
+        },
+      },
+    });
+
+    const visibleAssistantText = buildAssistantText(result, effectiveStatusSnapshot);
+    const summaryPatch = buildConversationSummaryPatch({
+      result,
+      latestUserMessage: 'Please recommend hospitals for me.',
+      summaryUpdatedAt: new Date('2026-04-18T00:00:00.000Z'),
+      statusSnapshot: effectiveStatusSnapshot,
+    });
+
+    expect(visibleAssistantText).toContain('based on your submitted intake and the follow-up medical details you just shared');
+    expect(summaryPatch.statusPatch.conversationSummary).toContain(`assistant=${visibleAssistantText}`);
   });
 
   it('includes compact replay lineage in runtimeDebug when debug output is enabled', () => {

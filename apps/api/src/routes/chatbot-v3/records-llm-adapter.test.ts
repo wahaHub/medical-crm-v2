@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RecordsLlmAdapter } from './records-llm-adapter.js';
+import { buildRecordsWorkerPrompt } from './records-prompts.js';
 import type { RecordsWorkerTask } from './worker-task.js';
 
 function createRecordsTask(
@@ -18,6 +19,12 @@ function createRecordsTask(
 }
 
 describe('RecordsLlmAdapter', () => {
+  it('frames minimal triage as a post-intake follow-up instead of a cold-start intake', () => {
+    expect(buildRecordsWorkerPrompt(createRecordsTask('What do you need from me first?'))).toContain(
+      'We already have the submitted intake, so this step is only the 3-question follow-up needed to refine recommendation.',
+    );
+  });
+
   it('uses structured task metadata to choose collection mode without parsing string envelopes', async () => {
     const adapter = new RecordsLlmAdapter();
 
@@ -86,7 +93,7 @@ describe('RecordsLlmAdapter', () => {
         'When did it start, how long has it been going on, and how severe is it?',
         'What tests, treatments, medicines, or diagnoses already exist?',
       ],
-      followUp: 'Please answer these 3 questions so I can capture the essential medical details.',
+      followUp: 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.',
       missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
     });
 

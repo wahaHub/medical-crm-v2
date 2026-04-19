@@ -35,18 +35,23 @@ export function didShowExplicitProcessExplanation(
 }
 
 export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResponse {
+  const effectiveStatusSnapshot = buildEffectiveStatusSnapshot(
+    input.sessionStatusSnapshot,
+    input.result.writeIntents?.statusPatch,
+  );
+
   const response: ChatbotV3ChatResponse = {
     messages: [{
       role: 'assistant',
-      text: buildAssistantText(input.result),
+      text: buildAssistantText(input.result, effectiveStatusSnapshot),
     }],
     turnOutcome: input.result.turnOutcome,
-    cards: buildCards(input.body, input.result, input.sessionStatusSnapshot),
+    cards: buildCards(input.body, input.result, effectiveStatusSnapshot),
     journey: input.result.journey,
     handoff: {
       required: input.result.journey.stage === 'HUMAN_HANDOFF'
-        || hasActiveHandoffStatus(input.sessionStatusSnapshot)
-        || hasCrisisSafetySignal(input.sessionStatusSnapshot),
+        || hasActiveHandoffStatus(effectiveStatusSnapshot)
+        || hasCrisisSafetySignal(effectiveStatusSnapshot),
       ticketId: readHandoffId(input.result.dispatchResult),
     },
   };
@@ -67,7 +72,10 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
   return response;
 }
 
-export function buildAssistantText(result: ConversationOrchestratorV3TurnResult): string {
+export function buildAssistantText(
+  result: ConversationOrchestratorV3TurnResult,
+  statusSnapshot?: Partial<AiChatStatusSnapshot> | null | undefined,
+): string {
   const guidanceFamily = classifyGuidanceFamily(result);
   if (guidanceFamily) {
     return renderGuidanceFamilyText(guidanceFamily);
@@ -86,7 +94,7 @@ export function buildAssistantText(result: ConversationOrchestratorV3TurnResult)
     return recordsAssistantText;
   }
 
-  const recommendationAssistantText = readRecommendationAssistantText(result);
+  const recommendationAssistantText = readRecommendationAssistantText(result, statusSnapshot);
   if (recommendationAssistantText) {
     return recommendationAssistantText;
   }
@@ -95,7 +103,7 @@ export function buildAssistantText(result: ConversationOrchestratorV3TurnResult)
     case 'EXPLAIN_PROCESS':
       return 'I checked the explain process stage for this session.';
     case 'COLLECT_MINIMAL_MEDICAL_FACTS':
-      return 'Please share the key medical facts and any records you already have so I can guide the next step.';
+      return buildMinimalTriageOpeningText(statusSnapshot);
     case 'COLLECT_MEDICAL_INPUTS':
       return 'I checked the medical input stage for this session.';
     case 'RECOMMENDATION':
@@ -275,6 +283,7 @@ function readRecordsAssistantText(
 
 function readRecommendationAssistantText(
   result: ConversationOrchestratorV3TurnResult,
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): string | null {
   if (result.decision.dispatchAgent !== 'RecommendationAgent') {
     return null;
@@ -286,11 +295,39 @@ function readRecommendationAssistantText(
 
   const data = asRecord(result.dispatchResult.data);
   const recommendationTask = asString(data['recommendationTask']);
+  if (recommendationTask === 'generate') {
+    return buildRecommendationGenerateText(statusSnapshot);
+  }
+
   if (recommendationTask !== 'compare' && recommendationTask !== 'explain') {
     return null;
   }
 
   return asString(data['explanation']);
+}
+
+function buildMinimalTriageOpeningText(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): string {
+  if (statusSnapshot?.minimalTriageStatus === 'pending') {
+    return 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.';
+  }
+
+  return 'Please share the key medical facts and any records you already have so I can guide the next step.';
+}
+
+function buildRecommendationGenerateText(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): string | null {
+  if (asString(statusSnapshot?.minimalTriageAnswersSummary)) {
+    return 'This recommendation is based on your submitted intake and the follow-up medical details you just shared.';
+  }
+
+  if (statusSnapshot?.minimalTriageStatus === 'skipped') {
+    return 'This is an initial recommendation based on your submitted intake alone, and it can be refined later if you share more medical detail.';
+  }
+
+  return null;
 }
 
 function buildCards(
@@ -355,6 +392,20 @@ function buildCards(
         actions: [],
       }];
   }
+}
+
+export function buildEffectiveStatusSnapshot(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  statusPatch: Partial<AiChatStatusSnapshot> | null | undefined,
+): Partial<AiChatStatusSnapshot> | null {
+  if (!statusSnapshot && !statusPatch) {
+    return null;
+  }
+
+  return {
+    ...(statusSnapshot ?? {}),
+    ...(statusPatch ?? {}),
+  };
 }
 
 function readUploadedCount(

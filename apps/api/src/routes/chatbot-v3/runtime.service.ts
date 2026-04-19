@@ -15,7 +15,7 @@ import {
   type SupervisorReadDomain,
 } from '@medical-crm/application';
 import type { AgentAction, AgentName } from './agents.js';
-import { buildAssistantText } from './response-composer.js';
+import { buildAssistantText, buildEffectiveStatusSnapshot } from './response-composer.js';
 import {
   AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP,
   deriveCanonicalTruthFlagsFromStatusSnapshot,
@@ -605,6 +605,7 @@ export class ConversationOrchestratorV3RuntimeService {
           result: renderedResult,
           latestUserMessage: input.message,
           summaryUpdatedAt: new Date(this.now()),
+          statusSnapshot: buildEffectiveStatusSnapshot(statusSnapshot, input.normalizedActionStatusPatch),
         }),
       },
     };
@@ -877,19 +878,21 @@ const SUMMARY_USER_SNIPPET_MAX_LENGTH = 96;
 const SUMMARY_ASSISTANT_SNIPPET_MAX_LENGTH = 120;
 const SUMMARY_TOTAL_MAX_LENGTH = 280;
 
-function buildConversationSummaryPatch({
+export function buildConversationSummaryPatch({
   result,
   latestUserMessage,
   summaryUpdatedAt,
+  statusSnapshot,
 }: {
   result: ConversationOrchestratorV3TurnResult;
   latestUserMessage: string;
   summaryUpdatedAt: Date;
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined;
 }): ConversationOrchestratorV3ConversationSummaryPatch {
   const conversationSummary = clampConversationSummary([
     `stage=${clampSummaryText(result.journey.stage, SUMMARY_STAGE_SNIPPET_MAX_LENGTH)}`,
     `user=${clampSummaryText(latestUserMessage, SUMMARY_USER_SNIPPET_MAX_LENGTH)}`,
-    `assistant=${clampSummaryText(buildAssistantText(result), SUMMARY_ASSISTANT_SNIPPET_MAX_LENGTH)}`,
+    `assistant=${clampSummaryText(buildAssistantText(result, statusSnapshot), SUMMARY_ASSISTANT_SNIPPET_MAX_LENGTH)}`,
   ].join(' | '));
 
   return {

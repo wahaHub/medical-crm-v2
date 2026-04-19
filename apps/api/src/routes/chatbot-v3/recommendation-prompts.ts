@@ -33,6 +33,7 @@ export function buildRecommendationWorkerPrompt(input: RecommendationPromptInput
     'Do not invent hospitals, scores, rankings, or medical facts.',
     'Do not mutate or mention records, consult, or handoff state.',
     'If explanation is needed, keep it to one short sentence.',
+    ...buildRecommendationBasisPromptLines(input.task),
     'Output schema:',
     '{"recommendations":[{"hospitalId":"string","name":"string","reason":"string"}],"explanation":"optional short string"}',
     'Worker task:',
@@ -61,6 +62,27 @@ export function compactRecommendations(
     .map((candidate) => sanitizeCompactRecommendation(candidate))
     .filter((candidate): candidate is CompactRecommendation => candidate !== null)
     .slice(0, RECOMMENDATION_MAX_RESULTS);
+}
+
+function buildRecommendationBasisPromptLines(
+  task: RecommendationWorkerTask,
+): string[] {
+  if (task.recommendationBasis === 'INTAKE_AND_FOLLOW_UP_SUMMARY') {
+    return [
+      'Recommendation basis: intake + follow-up summary',
+      ...(task.minimalTriageAnswersSummary
+        ? [`Follow-up summary: ${task.minimalTriageAnswersSummary}`]
+        : []),
+    ];
+  }
+
+  if (task.recommendationBasis === 'INTAKE_ONLY_AFTER_TRIAGE_SKIP') {
+    return [
+      'Recommendation basis: intake only after follow-up skip',
+    ];
+  }
+
+  return [];
 }
 
 function sanitizeCompactRecommendation(value: Record<string, unknown>): CompactRecommendation | null {

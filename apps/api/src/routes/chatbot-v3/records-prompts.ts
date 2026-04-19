@@ -47,6 +47,7 @@ export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string
     `version=${RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION}`,
     'role=records minimal triage worker',
     'instructions=Ask the 3 key medical questions below, ask again when answers are incomplete, unclear, or insufficient, return questions/followUp/missing for the records stage when triage is still incomplete, and only expose records.minimal_triage.complete to the supervisor.',
+    'We already have the submitted intake, so this step is only the 3-question follow-up needed to refine recommendation.',
     `from_stage=${task.fromStage}`,
     `to_stage=${task.toStage}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
@@ -71,7 +72,7 @@ export function buildRecordsCollectionPrompt(task: RecordsWorkerTask): string {
 }
 
 export function buildRecordsMinimalTriageInitialFollowUp(): string {
-  return 'Please answer these 3 questions so I can capture the essential medical details.';
+  return 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.';
 }
 
 export function buildRecordsMinimalTriageInsufficientFollowUp(): string {

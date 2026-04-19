@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RecommendationLlmAdapter } from './recommendation-llm-adapter.js';
+import { buildRecommendationWorkerPrompt } from './recommendation-prompts.js';
 import type { RecommendationWorkerTask } from './worker-task.js';
 
 function createRecommendationTask(
@@ -17,6 +18,30 @@ function createRecommendationTask(
 }
 
 describe('RecommendationLlmAdapter', () => {
+  it('distinguishes summary-backed recommendations from intake-only recommendations after triage skip', () => {
+    const summaryBackedPrompt = buildRecommendationWorkerPrompt({
+      task: createRecommendationTask('Please recommend hospitals for me.', {
+        recommendationBasis: 'INTAKE_AND_FOLLOW_UP_SUMMARY',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+      }),
+      recommendations: [],
+    });
+
+    expect(summaryBackedPrompt).toContain('Recommendation basis: intake + follow-up summary');
+    expect(summaryBackedPrompt).toContain('Follow-up summary: Chest pain for three days; moderate severity; blood test already completed.');
+
+    const intakeOnlyPrompt = buildRecommendationWorkerPrompt({
+      task: createRecommendationTask('Please recommend hospitals for me.', {
+        recommendationBasis: 'INTAKE_ONLY_AFTER_TRIAGE_SKIP',
+        minimalTriageAnswersSummary: null,
+      }),
+      recommendations: [],
+    });
+
+    expect(intakeOnlyPrompt).toContain('Recommendation basis: intake only after follow-up skip');
+    expect(intakeOnlyPrompt).not.toContain('Follow-up summary:');
+  });
+
   it('uses structured recommendation task metadata instead of parsing taskPrompt lines', async () => {
     const adapter = new RecommendationLlmAdapter({
       worker: {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT =
-  '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/.worktrees/hospital-i18n-round2';
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 
 const LOCALES = ['en', 'zh', 'fr', 'de', 'es', 'bn'] as const;
 
@@ -16,6 +16,7 @@ const TARGET_FILES = [
   'apps/hospital/src/components/consultations-list.tsx',
   'apps/hospital/src/components/create-consultation-modal.tsx',
   'apps/hospital/src/components/video-room.tsx',
+  'apps/hospital/src/components/messages-view.tsx',
 ] as const;
 
 function getValue(source: Record<string, unknown>, key: string): unknown {

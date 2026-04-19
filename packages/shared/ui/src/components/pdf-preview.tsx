@@ -16,9 +16,19 @@ export interface PdfPreviewProps {
   url: string;
   title: string;
   className?: string;
+  labels?: {
+    unavailableTitle?: string;
+    loadingTitle?: string;
+    loadingDescription?: string;
+    progressLabel?: string;
+    loadErrorFallback?: string;
+    renderErrorFallback?: string;
+    canvasUnavailable?: string;
+    pageAriaLabel?: (pageNumber: number, documentTitle: string) => string;
+  };
 }
 
-export function PdfPreview({ url, title, className }: PdfPreviewProps) {
+export function PdfPreview({ url, title, className, labels }: PdfPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -44,7 +54,9 @@ export function PdfPreview({ url, title, className }: PdfPreviewProps) {
       })
       .catch((reason: unknown) => {
         if (cancelled) return;
-        const message = reason instanceof Error ? reason.message : 'Failed to load PDF preview';
+        const message = reason instanceof Error
+          ? reason.message
+          : (labels?.loadErrorFallback ?? 'Failed to load PDF preview');
         setError(message);
       });
 
@@ -52,7 +64,7 @@ export function PdfPreview({ url, title, className }: PdfPreviewProps) {
       cancelled = true;
       task.destroy();
     };
-  }, [url]);
+  }, [labels?.loadErrorFallback, url]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -80,16 +92,18 @@ export function PdfPreview({ url, title, className }: PdfPreviewProps) {
       {error ? (
         <div className="flex h-full items-center justify-center">
           <AsyncStatusCard
-            title="PDF preview is unavailable"
+            title={labels?.unavailableTitle ?? 'PDF preview is unavailable'}
             description={error}
             icon={<AlertCircle className="h-7 w-7" />}
+            progressLabel={labels?.progressLabel}
           />
         </div>
       ) : !doc || numPages === 0 || containerWidth === 0 ? (
         <div className="flex h-full items-center justify-center">
           <AsyncStatusCard
-            title="Loading PDF preview"
-            description="Rendering document pages for a cleaner side-by-side reading view."
+            title={labels?.loadingTitle ?? 'Loading PDF preview'}
+            description={labels?.loadingDescription ?? 'Rendering document pages for a cleaner side-by-side reading view.'}
+            progressLabel={labels?.progressLabel}
           />
         </div>
       ) : (
@@ -100,7 +114,8 @@ export function PdfPreview({ url, title, className }: PdfPreviewProps) {
               doc={doc}
               pageNumber={pageNumber}
               width={containerWidth}
-              title={`${title} page ${pageNumber}`}
+              title={labels?.pageAriaLabel?.(pageNumber, title) ?? `${title} page ${pageNumber}`}
+              labels={labels}
             />
           ))}
         </div>
@@ -114,11 +129,13 @@ function PdfPageCanvas({
   pageNumber,
   width,
   title,
+  labels,
 }: {
   doc: PDFDocumentProxy;
   pageNumber: number;
   width: number;
   title: string;
+  labels?: PdfPreviewProps['labels'];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +156,7 @@ function PdfPageCanvas({
         const context = canvas?.getContext('2d');
 
         if (!canvas || !context) {
-          throw new Error('Canvas context is unavailable');
+          throw new Error(labels?.canvasUnavailable ?? 'Canvas context is unavailable');
         }
 
         const devicePixelRatio = window.devicePixelRatio || 1;
@@ -159,7 +176,9 @@ function PdfPageCanvas({
         setError(null);
       } catch (reason: unknown) {
         if (cancelled) return;
-        const message = reason instanceof Error ? reason.message : 'Failed to render PDF page';
+        const message = reason instanceof Error
+          ? reason.message
+          : (labels?.renderErrorFallback ?? 'Failed to render PDF page');
         setError(message);
       }
     }
@@ -170,7 +189,7 @@ function PdfPageCanvas({
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [doc, pageNumber, width]);
+  }, [doc, labels, pageNumber, width]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

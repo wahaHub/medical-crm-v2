@@ -9,6 +9,7 @@ export interface AsyncStatusCardProps {
   description: string;
   className?: string;
   icon?: ReactNode;
+  progressLabel?: string;
 }
 
 export function AsyncStatusCard({
@@ -16,6 +17,7 @@ export function AsyncStatusCard({
   description,
   className,
   icon,
+  progressLabel = 'Live processing in progress',
 }: AsyncStatusCardProps) {
   return (
     <div
@@ -40,7 +42,7 @@ export function AsyncStatusCard({
             <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75 animate-ping" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
           </span>
-          Live processing in progress
+          {progressLabel}
         </div>
       </div>
     </div>

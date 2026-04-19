@@ -81,6 +81,45 @@ export interface ChatLayoutProps {
   isUploading?: boolean;
   /** Optional callback to open a larger attachment preview */
   onOpenAttachment?: (attachment: ChatAttachment) => void;
+  labels?: {
+    today?: string;
+    yesterday?: string;
+    online?: string;
+    offline?: string;
+    showTranslation?: string;
+    aiSummaryPrefix?: string;
+    imageAlt?: string;
+    fileFallbackName?: string;
+    fileTypeFallback?: string;
+    aiTranslated?: string;
+    retranslate?: string;
+    attachFiles?: string;
+    typeMessagePlaceholder?: string;
+    readOnlyConversation?: string;
+    removeSelectedFile?: string;
+  };
+  formatMessageTime?: (dateStr: string) => string;
+  formatDateDivider?: (dateStr: string) => string;
+  formatAttachmentImageAlt?: (attachment: ChatAttachment) => string;
+  formatAttachmentTypeLabel?: (attachment: ChatAttachment) => string;
+}
+
+interface ChatLayoutResolvedLabels {
+  today: string;
+  yesterday: string;
+  online: string;
+  offline: string;
+  showTranslation: string;
+  aiSummaryPrefix: string;
+  imageAlt: string;
+  fileFallbackName: string;
+  fileTypeFallback: string;
+  aiTranslated: string;
+  retranslate: string;
+  attachFiles: string;
+  typeMessagePlaceholder: string;
+  readOnlyConversation: string;
+  removeSelectedFile: string;
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -94,18 +133,36 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function formatMessageTime(dateStr: string) {
+const DEFAULT_LABELS: ChatLayoutResolvedLabels = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  online: 'Online',
+  offline: 'Offline',
+  showTranslation: 'Show Translation',
+  aiSummaryPrefix: 'AI Summary',
+  imageAlt: 'Image',
+  fileFallbackName: 'File',
+  fileTypeFallback: 'FILE',
+  aiTranslated: 'AI Translated',
+  retranslate: 'Retranslate',
+  attachFiles: 'Attach files',
+  typeMessagePlaceholder: 'Type a message...',
+  readOnlyConversation: 'Read-only conversation',
+  removeSelectedFile: 'Remove file',
+};
+
+function defaultFormatMessageTime(dateStr: string) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
-function formatDateDivider(dateStr: string) {
+function defaultFormatDateDivider(dateStr: string, labels: ChatLayoutResolvedLabels) {
   const d = new Date(dateStr);
   const now = new Date();
   const diff = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
+  if (diff === 0) return labels.today;
+  if (diff === 1) return labels.yesterday;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -220,11 +277,17 @@ export function ChatLayout({
   onUploadFiles,
   isUploading = false,
   onOpenAttachment,
+  labels,
+  formatMessageTime = defaultFormatMessageTime,
+  formatDateDivider,
+  formatAttachmentImageAlt,
+  formatAttachmentTypeLabel,
 }: ChatLayoutProps) {
   const [input, setInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resolvedLabels = { ...DEFAULT_LABELS, ...labels };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -315,10 +378,10 @@ export function ChatLayout({
                   header.isOnline ? (
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 bg-green-500 rounded-full" />
-                      <span className="text-xs text-slate-500">Online</span>
+                      <span className="text-xs text-slate-500">{resolvedLabels.online}</span>
                     </div>
                   ) : (
-                    <span className="text-xs text-slate-400">Offline</span>
+                    <span className="text-xs text-slate-400">{resolvedLabels.offline}</span>
                   )
                 )}
                 {header.subtitle && (
@@ -342,7 +405,7 @@ export function ChatLayout({
                 />
                 <span className="text-sm text-slate-600 flex items-center gap-1">
                   <LanguagesIcon className="w-4 h-4 text-purple-500" />
-                  Show Translation
+                  {resolvedLabels.showTranslation}
                 </span>
               </label>
             )}
@@ -377,7 +440,7 @@ export function ChatLayout({
                   {showDate && (
                     <div className="flex justify-center mb-6">
                       <span className="px-3 py-1 bg-slate-100 text-slate-400 text-xs font-medium rounded-full">
-                        {formatDateDivider(msg.createdAt)}
+                        {formatDateDivider?.(msg.createdAt) ?? defaultFormatDateDivider(msg.createdAt, resolvedLabels)}
                       </span>
                     </div>
                   )}
@@ -426,7 +489,7 @@ export function ChatLayout({
                           {msg.aiSummary && (
                             <div className={cn('mt-2 pt-2 border-t', own ? 'border-white/30' : 'border-slate-200/40')}>
                               <p className={cn('text-xs flex items-start gap-1', own ? 'text-cyan-100' : 'text-amber-600')}>
-                                <span className="italic">AI Summary: {msg.aiSummary}</span>
+                                <span className="italic">{resolvedLabels.aiSummaryPrefix}: {msg.aiSummary}</span>
                               </p>
                             </div>
                           )}
@@ -479,7 +542,7 @@ export function ChatLayout({
                                     <div className="w-40 h-40 bg-slate-100">
                                       <img
                                         src={att.url}
-                                        alt={att.name || 'Image'}
+                                        alt={formatAttachmentImageAlt?.(att) ?? att.name ?? resolvedLabels.imageAlt}
                                         className="w-full h-full object-cover"
                                       />
                                     </div>
@@ -489,8 +552,10 @@ export function ChatLayout({
                                         <FileTextIcon className="w-5 h-5" />
                                       </div>
                                       <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-medium text-slate-700 truncate">{att.name || 'File'}</p>
-                                        <p className="text-[10px] text-slate-400">{att.type?.split('/')[1]?.toUpperCase() || 'FILE'}</p>
+                                        <p className="text-xs font-medium text-slate-700 truncate">{att.name || resolvedLabels.fileFallbackName}</p>
+                                        <p className="text-[10px] text-slate-400">
+                                          {formatAttachmentTypeLabel?.(att) ?? att.type?.split('/')[1]?.toUpperCase() ?? resolvedLabels.fileTypeFallback}
+                                        </p>
                                       </div>
                                     </div>
                                   )}
@@ -514,14 +579,14 @@ export function ChatLayout({
                         {msg.isAiTranslated && (
                           <span className="text-[10px] text-purple-500 font-medium flex items-center gap-1">
                             <LanguagesIcon className="w-3 h-3" />
-                            AI Translated
+                            {resolvedLabels.aiTranslated}
                           </span>
                         )}
                         {showRetranslate && onRetranslate && !own && (
                           <button
                             onClick={() => onRetranslate(msg.id)}
                             className="p-0.5 text-slate-400 hover:text-cyan-600 transition-colors"
-                            title="Retranslate"
+                            title={resolvedLabels.retranslate}
                           >
                             <RefreshIcon className="w-3 h-3" />
                           </button>
@@ -556,7 +621,7 @@ export function ChatLayout({
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition-colors"
-                      title="Attach files"
+                      title={resolvedLabels.attachFiles}
                     >
                       <PaperclipIcon className="w-5 h-5" />
                     </button>
@@ -580,6 +645,7 @@ export function ChatLayout({
                         <button
                           onClick={() => removeSelectedFile(index)}
                           className="text-slate-400 hover:text-red-500 transition-colors"
+                          aria-label={`${resolvedLabels.removeSelectedFile}: ${file.name}`}
                         >
                           <XIcon className="w-3 h-3" />
                         </button>
@@ -593,7 +659,7 @@ export function ChatLayout({
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Type a message..."
+                    placeholder={resolvedLabels.typeMessagePlaceholder}
                     rows={1}
                     className="w-full resize-none pl-4 pr-12 py-3 bg-slate-50 border border-slate-200/80 rounded-xl text-sm h-12 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
                   />
@@ -612,7 +678,7 @@ export function ChatLayout({
               </>
             ) : (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                {readOnlyNotice ?? 'Read-only conversation'}
+                {readOnlyNotice ?? resolvedLabels.readOnlyConversation}
               </div>
             )}
           </div>

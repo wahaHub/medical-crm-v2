@@ -161,7 +161,12 @@ function mapLocaleToTargetLanguage(locale?: string): string {
   return 'en';
 }
 
-async function translatePdfForPreview(sourceUrl: string, fileName: string, targetLanguage: string): Promise<TranslationResult> {
+async function translatePdfForPreview(
+  sourceUrl: string,
+  fileName: string,
+  targetLanguage: string,
+  loadErrorFallback: string,
+): Promise<TranslationResult> {
   const res = await fetch('/api/documents/translate', {
     method: 'POST',
     credentials: 'same-origin',
@@ -176,7 +181,7 @@ async function translatePdfForPreview(sourceUrl: string, fileName: string, targe
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || 'Failed to translate PDF');
+    throw new Error(text || loadErrorFallback);
   }
 
   return res.json() as Promise<TranslationResult>;
@@ -218,7 +223,6 @@ function formatMessageTime(
     return new Intl.DateTimeFormat(locale, {
       hour: 'numeric',
       minute: '2-digit',
-      hour12: true,
     }).format(d);
   }
   if (diffDays === 1) return translate('hospital.messages.conversationList.time.yesterday', 'Yesterday');
@@ -256,6 +260,9 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const flashTimeoutRef = useRef<number | null>(null);
   const previewRequestRef = useRef(0);
+  const fallbackPreviewFileName = tx('hospital.portal.messages.preview.fallbackFileName', 'document.pdf');
+  const fallbackAttachmentLabel = tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment');
+  const localizedPortalLanguage = getLocalizedLanguageLabel(portalLanguage, locale) || portalLanguage.toUpperCase();
 
   const { data: liveConversations } = useConversations();
   const liveResponse = liveConversations as PaginatedResponse<ConversationSummary> | undefined;
@@ -396,6 +403,79 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
     }
   }, [user.preferredLanguage]);
 
+  const formatChatMessageTime = useCallback((dateStr: string) => {
+    if (!dateStr) return '';
+    const value = new Date(dateStr);
+    if (Number.isNaN(value.getTime())) return '';
+    return new Intl.DateTimeFormat(locale, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(value);
+  }, [locale]);
+
+  const formatChatDateDivider = useCallback((dateStr: string) => {
+    const value = new Date(dateStr);
+    if (Number.isNaN(value.getTime())) return '';
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - value.getTime()) / 86400000);
+    if (diff === 0) {
+      return tx('hospital.common.today', 'Today');
+    }
+    if (diff === 1) {
+      return tx('hospital.messages.conversationList.time.yesterday', 'Yesterday');
+    }
+    return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric' }).format(value);
+  }, [locale, tx]);
+
+  const formatPreviewLanguageLabel = useCallback((language: string) => {
+    return getLocalizedLanguageLabel(language, locale) || language.toUpperCase();
+  }, [locale]);
+
+  const previewPdfLabels = useMemo(() => ({
+    unavailableTitle: tx('hospital.portal.messages.preview.pdfUnavailable', 'PDF preview is unavailable'),
+    loadingTitle: tx('hospital.portal.messages.preview.loadingTitle', 'Loading PDF preview'),
+    loadingDescription: tx(
+      'hospital.portal.messages.preview.loadingDescription',
+      'Rendering document pages for a cleaner side-by-side reading view.',
+    ),
+    progressLabel: tx('hospital.portal.messages.preview.processing', 'Live processing in progress'),
+    loadErrorFallback: tx('hospital.portal.messages.preview.loadErrorFallback', 'Failed to load PDF preview'),
+    renderErrorFallback: tx('hospital.portal.messages.preview.renderErrorFallback', 'Failed to render PDF page'),
+    canvasUnavailable: tx('hospital.portal.messages.preview.canvasUnavailable', 'Canvas context is unavailable'),
+    pageAriaLabel: (pageNumber: number, documentTitle: string) =>
+      tx('hospital.portal.messages.preview.pageAriaLabel', '{title} page {page}', {
+        title: documentTitle,
+        page: pageNumber,
+      }),
+  }), [tx]);
+
+  const chatLayoutLabels = useMemo(() => ({
+    online: tx('hospital.messages.chat.online', 'Online'),
+    offline: tx('hospital.messages.chat.offline', 'Offline'),
+    showTranslation: tx('hospital.messages.chat.showTranslation', 'Show Translation'),
+    aiSummaryPrefix: tx('hospital.messages.chat.aiSummary', 'AI Summary'),
+    imageAlt: tx('hospital.messages.chat.image', 'Image'),
+    fileFallbackName: tx('hospital.messages.chat.file', 'File'),
+    fileTypeFallback: tx('hospital.messages.chat.fileType', 'FILE'),
+    aiTranslated: tx('hospital.messages.chat.aiTranslated', 'AI Translated'),
+    retranslate: tx('hospital.messages.chat.retranslate', 'Retranslate'),
+    attachFiles: tx('hospital.messages.chat.attachFiles', 'Attach files'),
+    typeMessagePlaceholder: tx('hospital.messages.chat.typeMessage', 'Type a message...'),
+    readOnlyConversation: tx('hospital.messages.chat.readOnlyConversation', 'Read-only conversation'),
+    removeSelectedFile: tx('hospital.messages.chat.removeFile', 'Remove file'),
+    today: tx('hospital.common.today', 'Today'),
+    yesterday: tx('hospital.messages.conversationList.time.yesterday', 'Yesterday'),
+  }), [tx]);
+
+  const formatChatAttachmentImageAlt = useCallback((attachment: ChatAttachment) => {
+    return attachment.name ?? fallbackAttachmentLabel;
+  }, [fallbackAttachmentLabel]);
+
+  const formatChatAttachmentTypeLabel = useCallback((attachment: ChatAttachment) => {
+    return attachment.type?.split('/')[1]?.toUpperCase()
+      ?? tx('hospital.messages.chat.fileType', 'FILE');
+  }, [tx]);
+
   const handleOpenAttachment = useCallback(async (attachment: ChatAttachment) => {
     const requestId = previewRequestRef.current + 1;
     previewRequestRef.current = requestId;
@@ -432,7 +512,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
       ...current,
       [translationKey]: {
         status: 'translating',
-        fileName: attachment.name ?? 'document.pdf',
+        fileName: attachment.name ?? fallbackPreviewFileName,
         targetLanguage,
       },
     }));
@@ -444,12 +524,16 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
     try {
       const result = await translatePdfForPreview(
         attachment.url,
-        attachment.name ?? 'document.pdf',
+        attachment.name ?? fallbackPreviewFileName,
         targetLanguage,
+        tx('hospital.portal.messages.preview.translateRequestFailed', 'Failed to translate PDF'),
       );
       const translatedPdf = pickTranslatedPdf(result);
       if (!translatedPdf) {
-        throw new Error('Translated PDF output was not found');
+        throw new Error(tx(
+          'hospital.portal.messages.preview.translatedOutputMissing',
+          'Translated PDF output was not found',
+        ));
       }
       const translatedUrl = `/api/documents/translate/file?path=${encodeURIComponent(translatedPdf.path)}`;
       if (previewRequestRef.current !== requestId) {
@@ -461,7 +545,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         [translationKey]: {
           status: 'ready',
           translatedUrl,
-          fileName: attachment.name ?? 'document.pdf',
+          fileName: attachment.name ?? fallbackPreviewFileName,
           targetLanguage,
         },
       }));
@@ -483,7 +567,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         [translationKey]: {
           status: 'failed',
           error: message,
-          fileName: attachment.name ?? 'document.pdf',
+          fileName: attachment.name ?? fallbackPreviewFileName,
           targetLanguage,
         },
       }));
@@ -497,7 +581,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         setIsTranslatingPreview(false);
       }
     }
-  }, [attachmentTranslations, portalLanguage, user.preferredLanguage]);
+  }, [attachmentTranslations, fallbackPreviewFileName, portalLanguage, tx, user.preferredLanguage]);
 
   const handleCloseAttachmentPreview = useCallback(() => {
     previewRequestRef.current += 1;
@@ -527,14 +611,16 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   const formatConversationCategoryLabel = (category: string) =>
     category === 'ADMIN_HOSPITAL'
       ? tx('hospital.messages.chat.admin', 'Admin')
-      : category === 'ADMIN_PATIENT'
+      : category === 'ADMIN_PATIENT' || category === 'HOSPITAL_PATIENT'
         ? tx('hospital.portal.messages.chat.patient', 'Patient')
         : category.replace(/_/g, ' / ');
   const formatParticipantRoleLabel = (role: string) =>
     role === 'ADMIN_HOSPITAL'
       ? tx('hospital.messages.chat.admin', 'Admin')
-      : role === 'ADMIN_PATIENT'
+      : role === 'ADMIN_PATIENT' || role === 'HOSPITAL_PATIENT' || role === 'PATIENT'
         ? tx('hospital.portal.messages.chat.patient', 'Patient')
+        : role === 'HOSPITAL'
+          ? tx('hospital.messages.chat.hospital', 'Hospital')
         : role;
 
   return (
@@ -731,13 +817,13 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 	                              ? tx(
                                   'hospital.portal.messages.preview.translatingTo',
                                   'Translating to {language}...',
-                                  { language: activeTranslationState.targetLanguage.toUpperCase() },
+                                  { language: formatPreviewLanguageLabel(activeTranslationState.targetLanguage) },
                                 )
 	                              : activeTranslationState.status === 'ready'
 	                                ? tx(
                                     'hospital.portal.messages.preview.translationReady',
                                     'Translation ready in {language}. Reopening this PDF will reuse the cached result.',
-                                    { language: activeTranslationState.targetLanguage.toUpperCase() },
+                                    { language: formatPreviewLanguageLabel(activeTranslationState.targetLanguage) },
                                   )
 	                                : activeTranslationState.status === 'failed'
 	                                  ? tx(
@@ -781,6 +867,11 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
 	                    onUploadFiles={handleUploadFiles}
 	                    isUploading={isUploading}
 	                    onOpenAttachment={handleOpenAttachment}
+                      labels={chatLayoutLabels}
+                      formatMessageTime={formatChatMessageTime}
+                      formatDateDivider={formatChatDateDivider}
+                      formatAttachmentImageAlt={formatChatAttachmentImageAlt}
+                      formatAttachmentTypeLabel={formatChatAttachmentTypeLabel}
 	                    header={{
 	                      name: caseDetail?.patient?.name
                           ?? selectedConvo.patientName
@@ -919,9 +1010,10 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   />
                 ) : isPdfAttachment(previewAttachment) && previewAttachment.url ? (
                   <PdfPreview
-                    title={`${previewAttachment.name ?? tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment')} ${tx('hospital.portal.messages.preview.originalLower', 'original')}`}
-                    url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? 'document.pdf')}
+                    title={`${previewAttachment.name ?? fallbackAttachmentLabel} ${tx('hospital.portal.messages.preview.originalLower', 'original')}`}
+                    url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? fallbackPreviewFileName)}
                     className="bg-slate-50"
+                    labels={previewPdfLabels}
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
@@ -939,7 +1031,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                 <span className="text-xs text-slate-500">
                   {isPdfAttachment(previewAttachment)
                     ? tx('hospital.portal.messages.preview.targetLanguage', 'Target: {language}', {
-                      language: portalLanguage.toUpperCase(),
+                      language: localizedPortalLanguage,
                     })
                     : tx('hospital.portal.messages.preview.previewOnly', 'Preview only')}
                 </span>
@@ -953,18 +1045,20 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                         'hospital.portal.messages.preview.translatingDescription',
                         'BabelDOC is preparing a {language} preview for {fileName}.',
                         {
-                          language: portalLanguage.toUpperCase(),
+                          language: localizedPortalLanguage,
                           fileName: activeTranslationState?.fileName
                             ?? previewAttachment.name
                             ?? tx('hospital.portal.messages.preview.thisDocument', 'this document'),
                         },
                       )}
+                      progressLabel={tx('hospital.portal.messages.preview.processing', 'Live processing in progress')}
                     />
                   ) : translatedPreviewUrl ? (
                     <PdfPreview
-                      title={`${previewAttachment.name ?? tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment')} ${tx('hospital.portal.messages.preview.translatedLower', 'translated')}`}
+                      title={`${previewAttachment.name ?? fallbackAttachmentLabel} ${tx('hospital.portal.messages.preview.translatedLower', 'translated')}`}
                       url={translatedPreviewUrl}
                       className="bg-slate-50"
+                      labels={previewPdfLabels}
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">

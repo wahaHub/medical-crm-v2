@@ -750,9 +750,39 @@ function getLanguageOptions(t: TranslationFn) {
   ];
 }
 
+const SURGEON_LANGUAGE_ALIASES: Record<string, string> = {
+  en: 'en',
+  english: 'en',
+  zh: 'zh',
+  chinese: 'zh',
+  kr: 'kr',
+  ko: 'kr',
+  korean: 'kr',
+  jp: 'jp',
+  ja: 'jp',
+  japanese: 'jp',
+  ar: 'ar',
+  arabic: 'ar',
+  th: 'th',
+  thai: 'th',
+  es: 'es',
+  spanish: 'es',
+  ru: 'ru',
+  russian: 'ru',
+  fr: 'fr',
+  french: 'fr',
+  de: 'de',
+  german: 'de',
+};
+
+function normalizeSurgeonLanguageValue(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return SURGEON_LANGUAGE_ALIASES[normalized] ?? value;
+}
+
 function getSurgeonLanguageOptions(t: TranslationFn) {
   return getLanguageOptions(t).map((option) => ({
-    value: option.label,
+    value: option.value,
     label: option.label,
   }));
 }
@@ -823,13 +853,61 @@ function getPaymentMethodOptions(t: TranslationFn) {
 
 function getCertificationPresets(t: TranslationFn) {
   return [
-    { value: 'jci', label: t('hospital.materials.certifications.jci', undefined, 'JCI Accreditation') },
-    { value: 'iso_9001', label: t('hospital.materials.certifications.iso9001', undefined, 'ISO 9001:2015') },
-    { value: 'iso_15189', label: t('hospital.materials.certifications.iso15189', undefined, 'ISO 15189') },
-    { value: 'nabh', label: t('hospital.materials.certifications.nabh', undefined, 'NABH Accreditation') },
-    { value: 'aahrpp', label: t('hospital.materials.certifications.aahrpp', undefined, 'AAHRPP') },
-    { value: 'cap', label: t('hospital.materials.certifications.cap', undefined, 'CAP Accreditation') },
+    {
+      value: 'jci',
+      label: t('hospital.materials.certifications.jci', undefined, 'JCI Accreditation'),
+      persistedName: 'JCI Accreditation',
+    },
+    {
+      value: 'iso_9001',
+      label: t('hospital.materials.certifications.iso9001', undefined, 'ISO 9001:2015'),
+      persistedName: 'ISO 9001:2015',
+    },
+    {
+      value: 'iso_15189',
+      label: t('hospital.materials.certifications.iso15189', undefined, 'ISO 15189'),
+      persistedName: 'ISO 15189',
+    },
+    {
+      value: 'nabh',
+      label: t('hospital.materials.certifications.nabh', undefined, 'NABH Accreditation'),
+      persistedName: 'NABH Accreditation',
+    },
+    {
+      value: 'aahrpp',
+      label: t('hospital.materials.certifications.aahrpp', undefined, 'AAHRPP'),
+      persistedName: 'AAHRPP',
+    },
+    {
+      value: 'cap',
+      label: t('hospital.materials.certifications.cap', undefined, 'CAP Accreditation'),
+      persistedName: 'CAP Accreditation',
+    },
   ];
+}
+
+function formatLocaleNumber(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale).format(value);
+}
+
+function formatProcedurePriceRange(
+  procedure: MaterialsProcedureDTO,
+  locale: string,
+  t: TranslationFn,
+): string {
+  if (procedure.priceMin != null || procedure.priceMax != null) {
+    return t(
+      'hospital.materials.procedures.priceRangeValue',
+      {
+        currency: t('hospital.materials.procedures.defaultCurrency', undefined, 'USD'),
+        min: formatLocaleNumber(procedure.priceMin ?? 0, locale),
+        max: formatLocaleNumber(procedure.priceMax ?? 0, locale),
+      },
+      'USD {min} - {max}',
+    );
+  }
+
+  return procedure.priceRange ?? '-';
 }
 
 function getFollowupOptions(t: TranslationFn) {
@@ -1332,7 +1410,7 @@ type EditablePhoto = { previewUrl: string; storageKey: string | null };
 type EditableVideo = { previewUrl: string; storageKey: string | null };
 
 function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular_hospital' }) {
-  const { t } = useHospitalI18n();
+  const { locale, t } = useHospitalI18n();
   const { data, isLoading } = useMaterialsInfo();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -2619,7 +2697,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                     />
                   ) : (
                     <div className="text-2xl font-bold text-slate-900">
-                      {form[item.key] && form[item.key] !== '0' && form[item.key] !== '' ? Number(form[item.key]).toLocaleString() : '\u2014'}
+                      {form[item.key] && form[item.key] !== '0' && form[item.key] !== ''
+                        ? formatLocaleNumber(Number(form[item.key]), locale)
+                        : '\u2014'}
                     </div>
                   )}
                   <div className="text-xs text-slate-500 mt-1">{item.label}</div>
@@ -2802,7 +2882,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                                   <Heart size={12} />
                                   {t(
                                     'hospital.materials.departments.annualPatientsCount',
-                                    { count: stats.annualPatients?.toLocaleString() ?? '' },
+                                    {
+                                      count: stats.annualPatients != null
+                                        ? formatLocaleNumber(stats.annualPatients, locale)
+                                        : '',
+                                    },
                                     '{count} Annual Patients',
                                   )}
                                 </span>
@@ -3053,7 +3137,13 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                     {editing ? (
                       <>
                         <div className="flex items-center justify-between">
-                          <label className="text-sm font-medium text-slate-700">Equipment {idx + 1}</label>
+                          <label className="text-sm font-medium text-slate-700">
+                            {t(
+                              'hospital.materials.hospitalInfo.equipmentItem',
+                              { index: idx + 1 },
+                              'Equipment {index}',
+                            )}
+                          </label>
                           <button
                             type="button"
                             onClick={() => setEquipment((prev) => prev.filter((_, i) => i !== idx))}
@@ -3063,7 +3153,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                           </button>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">
+                            {t('hospital.materials.hospitalInfo.nameLabel', undefined, 'Name')}
+                          </label>
                           <input
                             type="text"
                             value={equip.name}
@@ -3073,12 +3165,18 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                               newEquip[idx] = { ...current, name: e.target.value };
                               setEquipment(newEquip);
                             }}
-                            placeholder="e.g. Da Vinci Surgical Robot"
+                            placeholder={t(
+                              'hospital.materials.hospitalInfo.equipmentNamePlaceholder',
+                              undefined,
+                              'e.g. Da Vinci Surgical Robot',
+                            )}
                             className={inputClass}
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">
+                            {t('hospital.materials.fields.description', undefined, 'Description')}
+                          </label>
                           <textarea
                             rows={2}
                             value={equip.description}
@@ -3088,7 +3186,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                               newEquip[idx] = { ...current, description: e.target.value };
                               setEquipment(newEquip);
                             }}
-                            placeholder="Equipment usage and advantages..."
+                            placeholder={t(
+                              'hospital.materials.hospitalInfo.equipmentDescriptionPlaceholder',
+                              undefined,
+                              'Equipment usage and advantages...',
+                            )}
                             className={`${inputClass} resize-none`}
                           />
                         </div>
@@ -3117,7 +3219,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                               itemIndex === idx ? { ...item, imageUrl: previewUrl, imageStorageKey: null } : item
                             )));
                           }}
-                          label="Equipment Image"
+                          label={t(
+                            'hospital.materials.hospitalInfo.equipmentImageLabel',
+                            undefined,
+                            'Equipment Image',
+                          )}
                           previewClassName="h-24 w-32"
                           allowDirectUrl={false}
                         />
@@ -3143,7 +3249,13 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                   <div className="h-24 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400">
                     <div className="text-center">
                       <Sparkles size={20} className="mx-auto mb-1" />
-                      <span className="text-xs">No equipment added</span>
+                      <span className="text-xs">
+                        {t(
+                          'hospital.materials.hospitalInfo.noEquipment',
+                          undefined,
+                          'No equipment added',
+                        )}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -3154,18 +3266,43 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           {/* Hospital Classification — regular_hospital only */}
           {isRegular && (
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <SectionHeader icon={Shield} title="Hospital Classification" />
+              <SectionHeader
+                icon={Shield}
+                title={t(
+                  'hospital.materials.hospitalInfo.classificationTitle',
+                  undefined,
+                  'Hospital Classification',
+                )}
+              />
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
-                  {renderField('Hospital Tier', 'tier', {
-                    placeholder: 'Select tier',
+                  {renderField(t('hospital.materials.hospitalInfo.hospitalTierLabel', undefined, 'Hospital Tier'), 'tier', {
+                    placeholder: t('hospital.materials.hospitalInfo.selectTier', undefined, 'Select tier'),
                     options: hospitalTierOptions,
                   })}
-                  {renderField('Ownership Type', 'ownershipType', {
-                    placeholder: 'Select ownership',
-                    options: ownershipTypeOptions,
-                  })}
-                  {renderField('Hospital Type', 'hospitalType', { placeholder: 'e.g. General' })}
+                  {renderField(
+                    t('hospital.materials.hospitalInfo.ownershipTypeLabel', undefined, 'Ownership Type'),
+                    'ownershipType',
+                    {
+                      placeholder: t(
+                        'hospital.materials.hospitalInfo.selectOwnership',
+                        undefined,
+                        'Select ownership',
+                      ),
+                      options: ownershipTypeOptions,
+                    },
+                  )}
+                  {renderField(
+                    t('hospital.materials.hospitalInfo.hospitalTypeLabel', undefined, 'Hospital Type'),
+                    'hospitalType',
+                    {
+                      placeholder: t(
+                        'hospital.materials.hospitalInfo.hospitalTypePlaceholder',
+                        undefined,
+                        'e.g. General',
+                      ),
+                    },
+                  )}
                 </div>
               </div>
             </div>
@@ -3174,11 +3311,30 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           {/* Geographic Info — regular_hospital only */}
           {isRegular && (
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <SectionHeader icon={MapPin} title="Geographic Location" />
+              <SectionHeader
+                icon={MapPin}
+                title={t(
+                  'hospital.materials.hospitalInfo.geographicTitle',
+                  undefined,
+                  'Geographic Location',
+                )}
+              />
               <div className="grid grid-cols-3 gap-4">
-                {renderField('Province', 'province', { placeholder: '省份' })}
-                {renderField('City', 'city', { placeholder: '城市' })}
-                {renderField('District', 'district', { placeholder: '区/县' })}
+                {renderField(
+                  t('hospital.materials.hospitalInfo.provinceLabel', undefined, 'Province'),
+                  'province',
+                  { placeholder: t('hospital.materials.hospitalInfo.provincePlaceholder', undefined, 'Province') },
+                )}
+                {renderField(
+                  t('hospital.materials.hospitalInfo.cityLabel', undefined, 'City'),
+                  'city',
+                  { placeholder: t('hospital.materials.hospitalInfo.cityPlaceholder', undefined, 'City') },
+                )}
+                {renderField(
+                  t('hospital.materials.hospitalInfo.districtLabel', undefined, 'District'),
+                  'district',
+                  { placeholder: t('hospital.materials.hospitalInfo.districtPlaceholder', undefined, 'District') },
+                )}
               </div>
             </div>
           )}
@@ -3188,7 +3344,14 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         <div className="space-y-6">
           {/* Certifications */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <SectionHeader icon={Shield} title="Certifications & Awards" />
+            <SectionHeader
+              icon={Shield}
+              title={t(
+                'hospital.materials.hospitalInfo.certificationsTitle',
+                undefined,
+                'Certifications & Awards',
+              )}
+            />
             <div className="space-y-3">
               {certifications.map((cert) => (
                 <div key={cert.id} className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-100">
@@ -3199,7 +3362,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                     <div>
                       <p className="font-medium text-sm text-slate-800">{cert.name}</p>
                       {cert.year && (
-                        <p className="text-xs text-slate-500">Since {cert.year}</p>
+                        <p className="text-xs text-slate-500">
+                          {t('hospital.materials.hospitalInfo.sinceYear', { year: cert.year }, 'Since {year}')}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -3215,25 +3380,43 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                 </div>
               ))}
               {certifications.length === 0 && !editing && (
-                <span className="text-sm text-slate-400">No certifications added</span>
+                <span className="text-sm text-slate-400">
+                  {t(
+                    'hospital.materials.hospitalInfo.noCertifications',
+                    undefined,
+                    'No certifications added',
+                  )}
+                </span>
               )}
               {editing && (
                 <div className="p-4 border-2 border-dashed border-slate-200 rounded-lg">
-                  <p className="text-xs text-slate-500 mb-2">Add Certification</p>
+                  <p className="text-xs text-slate-500 mb-2">
+                    {t('hospital.materials.hospitalInfo.addCertificationTitle', undefined, 'Add Certification')}
+                  </p>
                   <div className="space-y-2">
                     <select
                       value={newCertType}
                       onChange={(e) => setNewCertType(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
                     >
-                      <option value="">Select certification type...</option>
+                      <option value="">
+                        {t(
+                          'hospital.materials.hospitalInfo.selectCertificationType',
+                          undefined,
+                          'Select certification type...',
+                        )}
+                      </option>
                       {certificationPresets.map((cert) => (
                         <option key={cert.value} value={cert.value}>{cert.label}</option>
                       ))}
                     </select>
                     <input
                       type="number"
-                      placeholder="Year (e.g. 2012)"
+                      placeholder={t(
+                        'hospital.materials.hospitalInfo.certificationYearPlaceholder',
+                        undefined,
+                        'Year (e.g. 2012)',
+                      )}
                       value={newCertYear}
                       onChange={(e) => setNewCertYear(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
@@ -3248,7 +3431,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                             ...prev,
                             {
                               id: `cert-${Date.now()}`,
-                              name: certPreset.label,
+                              name: certPreset.persistedName,
                               year: newCertYear ? parseInt(newCertYear) : undefined,
                             },
                           ]);
@@ -3258,7 +3441,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                       }}
                       className="w-full px-4 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <Plus size={14} /> Add
+                      <Plus size={14} /> {t('hospital.materials.buttons.add', undefined, 'Add')}
                     </button>
                   </div>
                 </div>
@@ -3269,57 +3452,84 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
           {/* Services & Amenities */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
             <div>
-              <SectionHeader icon={Languages} title="Multilingual Staff" />
+              <SectionHeader
+                icon={Languages}
+                title={t('hospital.materials.hospitalInfo.multilingualStaffTitle', undefined, 'Multilingual Staff')}
+              />
               <ChipSelector
                 options={languageOptions}
                 selected={languages}
                 onChange={setLanguages}
                 editing={editing}
-                label="Select Languages"
+                label={t('hospital.materials.hospitalInfo.selectLanguages', undefined, 'Select Languages')}
               />
             </div>
 
             <div>
-              <SectionHeader icon={Plane} title="Airport Services" />
+              <SectionHeader
+                icon={Plane}
+                title={t('hospital.materials.hospitalInfo.airportServicesTitle', undefined, 'Airport Services')}
+              />
               <ChipSelector
                 options={airportServiceOptions}
                 selected={airportServices}
                 onChange={setAirportServices}
                 editing={editing}
-                label="Select Airport Services"
+                label={t(
+                  'hospital.materials.hospitalInfo.selectAirportServices',
+                  undefined,
+                  'Select Airport Services',
+                )}
               />
             </div>
 
             <div>
-              <SectionHeader icon={Heart} title="Amenities" />
+              <SectionHeader
+                icon={Heart}
+                title={t('hospital.materials.hospitalInfo.amenitiesTitle', undefined, 'Amenities')}
+              />
               <ChipSelector
                 options={amenityOptions}
                 selected={amenities}
                 onChange={setAmenities}
                 editing={editing}
-                label="Select Amenities"
+                label={t('hospital.materials.hospitalInfo.selectAmenities', undefined, 'Select Amenities')}
               />
             </div>
 
             <div>
-              <SectionHeader icon={CreditCard} title="Payment Methods" />
+              <SectionHeader
+                icon={CreditCard}
+                title={t('hospital.materials.hospitalInfo.paymentMethodsTitle', undefined, 'Payment Methods')}
+              />
               <ChipSelector
                 options={paymentMethodOptions}
                 selected={paymentMethods}
                 onChange={setPaymentMethods}
                 editing={editing}
-                label="Select Payment Methods"
+                label={t(
+                  'hospital.materials.hospitalInfo.selectPaymentMethods',
+                  undefined,
+                  'Select Payment Methods',
+                )}
               />
             </div>
 
             <div>
-              <SectionHeader icon={UserCheck} title="Follow-up Care" />
+              <SectionHeader
+                icon={UserCheck}
+                title={t('hospital.materials.hospitalInfo.followUpCareTitle', undefined, 'Follow-up Care')}
+              />
               <ChipSelector
                 options={followupOptions}
                 selected={followupCare}
                 onChange={setFollowupCare}
                 editing={editing}
-                label="Select Follow-up Care"
+                label={t(
+                  'hospital.materials.hospitalInfo.selectFollowUpCare',
+                  undefined,
+                  'Select Follow-up Care',
+                )}
               />
             </div>
           </div>
@@ -3381,7 +3591,10 @@ function ProcedureRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { locale, t } = useHospitalI18n();
   const [expanded, setExpanded] = useState(false);
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
   const hasDetails =
     proc.recoveryTime ||
     proc.duration ||
@@ -3400,7 +3613,7 @@ function ProcedureRow({
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
                 className="text-slate-400 hover:text-slate-700 transition-colors"
-                aria-label="Toggle details"
+                aria-label={tx('hospital.materials.procedures.toggleDetails', 'Toggle details')}
               >
                 {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </button>
@@ -3411,20 +3624,18 @@ function ProcedureRow({
           </div>
         </td>
         <td className="px-6 py-4 text-slate-600">
-          {proc.priceMin != null || proc.priceMax != null
-            ? `USD ${(proc.priceMin ?? 0).toLocaleString()} - ${(proc.priceMax ?? 0).toLocaleString()}`
-            : proc.priceRange ?? '-'}
+          {formatProcedurePriceRange(proc, locale, t)}
         </td>
         <td className="px-6 py-4">
           {proc.isPopular && (
             <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200/50 rounded-md text-xs font-medium">
-              Popular
+              {tx('hospital.materials.procedures.popular', 'Popular')}
             </span>
           )}
         </td>
         <td className="px-6 py-4">
           <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/50 rounded-md text-xs font-medium">
-            Active
+            {tx('hospital.materials.hospitalInfo.activeStatus', 'Active')}
           </span>
         </td>
         <td className="px-6 py-4 text-right">
@@ -3450,37 +3661,49 @@ function ProcedureRow({
             <div className="grid grid-cols-2 gap-4 text-sm text-slate-700">
               {proc.recoveryTime && (
                 <div>
-                  <span className="font-medium text-slate-500">Recovery Time: </span>
+                  <span className="font-medium text-slate-500">
+                    {tx('hospital.materials.procedures.recoveryTimeLabel', 'Recovery Time: ')}
+                  </span>
                   {proc.recoveryTime}
                 </div>
               )}
               {proc.duration && (
                 <div>
-                  <span className="font-medium text-slate-500">Duration: </span>
+                  <span className="font-medium text-slate-500">
+                    {tx('hospital.materials.procedures.durationLabel', 'Duration: ')}
+                  </span>
                   {proc.duration}
                 </div>
               )}
               {proc.hospitalStayDays && (
                 <div>
-                  <span className="font-medium text-slate-500">Hospital Stay: </span>
+                  <span className="font-medium text-slate-500">
+                    {tx('hospital.materials.procedures.hospitalStayLabel', 'Hospital Stay: ')}
+                  </span>
                   {proc.hospitalStayDays}
                 </div>
               )}
               {proc.indications && (
                 <div className="col-span-2">
-                  <span className="font-medium text-slate-500">Indications: </span>
+                  <span className="font-medium text-slate-500">
+                    {tx('hospital.materials.procedures.indicationsLabel', 'Indications: ')}
+                  </span>
                   {proc.indications}
                 </div>
               )}
               {proc.risks && (
                 <div className="col-span-2">
-                  <span className="font-medium text-slate-500">Risks: </span>
+                  <span className="font-medium text-slate-500">
+                    {tx('hospital.materials.procedures.risksLabel', 'Risks: ')}
+                  </span>
                   {proc.risks}
                 </div>
               )}
               {proc.inclusions && proc.inclusions.length > 0 && (
                 <div className="col-span-2">
-                  <span className="font-medium text-slate-500 block mb-1">Inclusions:</span>
+                  <span className="font-medium text-slate-500 block mb-1">
+                    {tx('hospital.materials.procedures.inclusionsLabel', 'Inclusions:')}
+                  </span>
                   <ul className="list-disc list-inside space-y-0.5">
                     {proc.inclusions.map((item, i) => (
                       <li key={i}>{item}</li>
@@ -3497,10 +3720,13 @@ function ProcedureRow({
 }
 
 function ProceduresTab() {
+  const { t } = useHospitalI18n();
   const { data, isLoading } = useProcedures();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<MaterialsProcedureDTO | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
 
   if (isLoading) {
     return (
@@ -3516,7 +3742,7 @@ function ProceduresTab() {
   );
 
   const handleDeleteProcedure = async (id: string) => {
-    if (!confirm('Delete this procedure?')) return;
+    if (!confirm(tx('hospital.materials.procedures.confirmDelete', 'Delete this procedure?'))) return;
     await deleteProcedure(id);
   };
 
@@ -3527,7 +3753,7 @@ function ProceduresTab() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search procedures..."
+            placeholder={tx('hospital.materials.procedures.searchPlaceholder', 'Search procedures...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
@@ -3540,15 +3766,18 @@ function ProceduresTab() {
           }}
           className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm shadow-cyan-500/20 transition-all"
         >
-          <Plus size={16} /> Add Procedure
+          <Plus size={16} /> {tx('hospital.materials.procedures.addProcedure', 'Add Procedure')}
         </button>
       </div>
 
       {procedures.length === 0 ? (
         <EmptyState
           icon={<Stethoscope size={48} />}
-          title="No procedures yet"
-          description="Add your first procedure to get started."
+          title={tx('hospital.materials.procedures.emptyTitle', 'No procedures yet')}
+          description={tx(
+            'hospital.materials.procedures.emptyDescription',
+            'Add your first procedure to get started.',
+          )}
           action={
             <Button
               onClick={() => {
@@ -3557,7 +3786,7 @@ function ProceduresTab() {
               }}
               className="gap-2"
             >
-              <Plus size={16} /> Add Procedure
+              <Plus size={16} /> {tx('hospital.materials.procedures.addProcedure', 'Add Procedure')}
             </Button>
           }
         />
@@ -3566,11 +3795,21 @@ function ProceduresTab() {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
               <tr>
-                <th className="px-6 py-4 font-medium">Procedure Name</th>
-                <th className="px-6 py-4 font-medium">Price Range</th>
-                <th className="px-6 py-4 font-medium">Tags</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
+                <th className="px-6 py-4 font-medium">
+                  {tx('hospital.materials.procedures.procedureNameHeader', 'Procedure Name')}
+                </th>
+                <th className="px-6 py-4 font-medium">
+                  {tx('hospital.materials.procedures.priceRangeHeader', 'Price Range')}
+                </th>
+                <th className="px-6 py-4 font-medium">
+                  {tx('hospital.materials.procedures.tagsHeader', 'Tags')}
+                </th>
+                <th className="px-6 py-4 font-medium">
+                  {tx('hospital.materials.procedures.statusHeader', 'Status')}
+                </th>
+                <th className="px-6 py-4 font-medium text-right">
+                  {tx('hospital.materials.procedures.actionsHeader', 'Actions')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -3613,6 +3852,7 @@ function ProcedureModal({
   onClose: () => void;
   existing: MaterialsProcedureDTO | null;
 }) {
+  const { t } = useHospitalI18n();
   const [procedureName, setProcedureName] = useState('');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
@@ -3633,6 +3873,8 @@ function ProcedureModal({
     canDismiss: false,
   });
   const formRef = useRef<HTMLFormElement | null>(null);
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
 
   useEffect(() => {
     setProcedureName(existing?.procedureName ?? '');
@@ -3654,12 +3896,16 @@ function ProcedureModal({
     setSubmitting(true);
     setSaveProgress({
       open: true,
-      title: existing ? 'Saving procedure changes' : 'Creating procedure',
+      title: existing
+        ? tx('hospital.materials.procedures.savingEditTitle', 'Saving procedure changes')
+        : tx('hospital.materials.procedures.savingCreateTitle', 'Creating procedure'),
       canDismiss: false,
       items: [
         {
           id: 'save-procedure',
-          label: existing ? 'Save procedure changes' : 'Create procedure',
+          label: existing
+            ? tx('hospital.materials.procedures.saveEditAction', 'Save procedure changes')
+            : tx('hospital.materials.procedures.saveCreateAction', 'Create procedure'),
           targetKey: 'procedure-form',
           status: 'saving',
         },
@@ -3704,7 +3950,11 @@ function ProcedureModal({
         failedTargetKey: 'procedure-form',
         items: prev.items.map((item) => (
           item.id === 'save-procedure'
-            ? { ...item, status: 'failed', error: 'Failed to save procedure.' }
+            ? {
+              ...item,
+              status: 'failed',
+              error: tx('hospital.materials.procedures.saveFailed', 'Failed to save procedure.'),
+            }
             : item
         )),
       }));
@@ -3719,7 +3969,13 @@ function ProcedureModal({
     'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 resize-none';
 
   return (
-    <Modal open={open} onClose={onClose} title={existing ? 'Edit Procedure' : 'Add New Procedure'}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={existing
+        ? tx('hospital.materials.procedures.editProcedure', 'Edit Procedure')
+        : tx('hospital.materials.procedures.addProcedureModalTitle', 'Add New Procedure')}
+    >
       <UploadProgressModal
         state={saveProgress}
         onDismiss={() => {
@@ -3740,19 +3996,23 @@ function ProcedureModal({
         className={`space-y-4 ${getFlashClass(flashTargetKey === 'procedure-form')}`}
       >
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Procedure Name</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            {tx('hospital.materials.procedures.procedureNameLabel', 'Procedure Name')}
+          </label>
           <input
             type="text"
             value={procedureName}
             onChange={(e) => setProcedureName(e.target.value)}
             required
             className={inputClass}
-            placeholder="e.g. Rhinoplasty"
+            placeholder={tx('hospital.materials.procedures.procedureNamePlaceholder', 'e.g. Rhinoplasty')}
           />
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Currency</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {tx('hospital.materials.procedures.currencyLabel', 'Currency')}
+            </label>
             <select className={inputClass}>
               <option>USD</option>
               <option>EUR</option>
@@ -3762,80 +4022,99 @@ function ProcedureModal({
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Min Price</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {tx('hospital.materials.procedures.minPriceLabel', 'Min Price')}
+            </label>
             <input
               type="number"
               value={priceMin}
               onChange={(e) => setPriceMin(e.target.value)}
-              placeholder="e.g. 5000"
+              placeholder={tx('hospital.materials.procedures.minPricePlaceholder', 'e.g. 5000')}
               className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Max Price</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {tx('hospital.materials.procedures.maxPriceLabel', 'Max Price')}
+            </label>
             <input
               type="number"
               value={priceMax}
               onChange={(e) => setPriceMax(e.target.value)}
-              placeholder="e.g. 8000"
+              placeholder={tx('hospital.materials.procedures.maxPricePlaceholder', 'e.g. 8000')}
               className={inputClass}
             />
           </div>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Recovery Time</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {tx('hospital.materials.procedures.recoveryTimeField', 'Recovery Time')}
+            </label>
             <input
               type="text"
               value={recoveryTime}
               onChange={(e) => setRecoveryTime(e.target.value)}
-              placeholder="e.g. 2-4 weeks"
+              placeholder={tx('hospital.materials.procedures.recoveryTimePlaceholder', 'e.g. 2-4 weeks')}
               className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Duration</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {tx('hospital.materials.procedures.durationField', 'Duration')}
+            </label>
             <input
               type="text"
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
-              placeholder="e.g. 2-3 hours"
+              placeholder={tx('hospital.materials.procedures.durationPlaceholder', 'e.g. 2-3 hours')}
               className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Hospital Stay Days</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              {tx('hospital.materials.procedures.hospitalStayField', 'Hospital Stay Days')}
+            </label>
             <input
               type="text"
               value={hospitalStayDays}
               onChange={(e) => setHospitalStayDays(e.target.value)}
-              placeholder="e.g. 1-2 days"
+              placeholder={tx('hospital.materials.procedures.hospitalStayPlaceholder', 'e.g. 1-2 days')}
               className={inputClass}
             />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Indications</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            {tx('hospital.materials.procedures.indicationsField', 'Indications')}
+          </label>
           <textarea
             value={indications}
             onChange={(e) => setIndications(e.target.value)}
-            placeholder="Suitable candidates / conditions"
+            placeholder={tx(
+              'hospital.materials.procedures.indicationsPlaceholder',
+              'Suitable candidates / conditions',
+            )}
             rows={3}
             className={textareaClass}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Risks</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            {tx('hospital.materials.procedures.risksField', 'Risks')}
+          </label>
           <textarea
             value={risks}
             onChange={(e) => setRisks(e.target.value)}
-            placeholder="Risks and precautions"
+            placeholder={tx('hospital.materials.procedures.risksPlaceholder', 'Risks and precautions')}
             rows={3}
             className={textareaClass}
           />
         </div>
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-700">Inclusions</label>
+          <label className="block text-sm font-medium text-slate-700">
+            {tx('hospital.materials.procedures.inclusionsField', 'Inclusions')}
+          </label>
           <div className="space-y-2">
             {inclusions.map((item, index) => (
               <div key={`inclusion-${index}`} className="flex items-center gap-2">
@@ -3847,14 +4126,17 @@ function ProcedureModal({
                     next[index] = e.target.value;
                     setInclusions(next);
                   }}
-                  placeholder="e.g. Post-op consultation"
+                  placeholder={tx(
+                    'hospital.materials.procedures.inclusionPlaceholder',
+                    'e.g. Post-op consultation',
+                  )}
                   className={inputClass}
                 />
                 <button
                   type="button"
                   onClick={() => setInclusions(inclusions.filter((_, i) => i !== index))}
                   className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                  aria-label="Remove inclusion"
+                  aria-label={tx('hospital.materials.procedures.removeInclusion', 'Remove inclusion')}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -3866,7 +4148,7 @@ function ProcedureModal({
               className="w-full px-3 py-2 border border-dashed border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:border-cyan-300 hover:text-cyan-600 transition-colors flex items-center justify-center gap-2"
             >
               <Plus size={14} />
-              Add Inclusion
+              {tx('hospital.materials.procedures.addInclusion', 'Add Inclusion')}
             </button>
           </div>
         </div>
@@ -3879,7 +4161,7 @@ function ProcedureModal({
             className="rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
           />
           <label htmlFor="isPopularProc" className="text-sm font-medium text-slate-700">
-            Mark as Popular Procedure
+            {tx('hospital.materials.procedures.markAsPopular', 'Mark as Popular Procedure')}
           </label>
         </div>
         <div className="pt-4 flex justify-end gap-3">
@@ -3888,14 +4170,16 @@ function ProcedureModal({
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
           >
-            Cancel
+            {tx('hospital.materials.buttons.cancel', 'Cancel')}
           </button>
           <button
             type="submit"
             disabled={submitting || !procedureName.trim()}
             className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors disabled:opacity-50"
           >
-            {submitting ? 'Saving...' : 'Save Procedure'}
+            {submitting
+              ? tx('hospital.materials.buttons.saving', 'Saving...')
+              : tx('hospital.materials.procedures.saveProcedure', 'Save Procedure')}
           </button>
         </div>
       </form>
@@ -3963,6 +4247,7 @@ function RepeatableTextList({
 }
 
 function SurgeonsTab() {
+  const { t } = useHospitalI18n();
   const { data, isLoading, isError, error } = useSurgeons();
   const { data: proceduresData } = useProcedures();
   const { data: infoData } = useMaterialsInfo();
@@ -3981,6 +4266,11 @@ function SurgeonsTab() {
     label: department,
   }));
   const specialtyOptions = isRegular ? departmentOptions : procedureOptions;
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
+  const languageLabelByValue = new Map(
+    getLanguageOptions(t).map((option) => [option.value, option.label]),
+  );
 
   if (isLoading) {
     return (
@@ -3994,8 +4284,10 @@ function SurgeonsTab() {
     return (
       <EmptyState
         icon={<Users size={48} />}
-        title="Surgeons failed to load"
-        description={error instanceof Error ? error.message : 'Unable to load surgeons.'}
+        title={tx('hospital.materials.surgeons.loadFailedTitle', 'Surgeons failed to load')}
+        description={error instanceof Error
+          ? error.message
+          : tx('hospital.materials.surgeons.loadFailedDescription', 'Unable to load surgeons.')}
       />
     );
   }
@@ -4006,7 +4298,7 @@ function SurgeonsTab() {
   );
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this surgeon?')) return;
+    if (!confirm(tx('hospital.materials.surgeons.confirmDelete', 'Delete this surgeon?'))) return;
     await deleteSurgeon(id);
     await queryClient.invalidateQueries({ queryKey: ['materials', 'surgeons'] });
   };
@@ -4018,7 +4310,7 @@ function SurgeonsTab() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search surgeons..."
+            placeholder={tx('hospital.materials.surgeons.searchPlaceholder', 'Search surgeons...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
@@ -4031,15 +4323,18 @@ function SurgeonsTab() {
           }}
           className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm shadow-purple-500/20 transition-all"
         >
-          <Plus size={16} /> Add Surgeon
+          <Plus size={16} /> {tx('hospital.materials.surgeons.addSurgeon', 'Add Surgeon')}
         </button>
       </div>
 
       {surgeons.length === 0 ? (
         <EmptyState
           icon={<Users size={48} />}
-          title="No surgeons yet"
-          description="Add your surgeons to showcase your team."
+          title={tx('hospital.materials.surgeons.emptyTitle', 'No surgeons yet')}
+          description={tx(
+            'hospital.materials.surgeons.emptyDescription',
+            'Add your surgeons to showcase your team.',
+          )}
           action={
             <Button
               onClick={() => {
@@ -4048,7 +4343,7 @@ function SurgeonsTab() {
               }}
               className="gap-2"
             >
-              <Plus size={16} /> Add Surgeon
+              <Plus size={16} /> {tx('hospital.materials.surgeons.addSurgeon', 'Add Surgeon')}
             </Button>
           }
         />
@@ -4082,12 +4377,19 @@ function SurgeonsTab() {
                 <div className="mt-3 space-y-2">
                   {surgeon.experienceYears != null && (
                     <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <span className="font-medium text-slate-900">Experience:</span> {surgeon.experienceYears} Years
+                      <span className="font-medium text-slate-900">
+                        {tx('hospital.materials.surgeons.experienceLabel', 'Experience:')}
+                      </span>{' '}
+                      {tx('hospital.materials.surgeons.experienceValue', '{count} Years', {
+                        count: surgeon.experienceYears,
+                      })}
                     </div>
                   )}
                   {surgeon.specialties.length > 0 && (
                     <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <span className="font-medium text-slate-900">Specialties:</span>
+                      <span className="font-medium text-slate-900">
+                        {tx('hospital.materials.surgeons.specialtiesLabel', 'Specialties:')}
+                      </span>
                       <div className="flex gap-1 flex-wrap">
                         {surgeon.specialties.map((s) => (
                           <span key={s} className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">{s}</span>
@@ -4097,12 +4399,22 @@ function SurgeonsTab() {
                   )}
                   {surgeon.languages.length > 0 && (
                     <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <span className="font-medium text-slate-900">Languages:</span> {surgeon.languages.join(', ')}
+                      <span className="font-medium text-slate-900">
+                        {tx('hospital.materials.surgeons.languagesLabel', 'Languages:')}
+                      </span>{' '}
+                      {surgeon.languages
+                        .map((value) => {
+                          const normalized = normalizeSurgeonLanguageValue(value);
+                          return languageLabelByValue.get(normalized) ?? value;
+                        })
+                        .join(', ')}
                     </div>
                   )}
                   {surgeon.education.length > 0 && (
                     <div className="flex items-start gap-2 text-xs text-slate-600">
-                      <span className="font-medium text-slate-900">Education:</span>
+                      <span className="font-medium text-slate-900">
+                        {tx('hospital.materials.surgeons.educationLabel', 'Education:')}
+                      </span>
                       <span className="line-clamp-2">{surgeon.education.join(', ')}</span>
                     </div>
                   )}
@@ -4113,20 +4425,20 @@ function SurgeonsTab() {
 
                 <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
                   <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/50 rounded-md text-xs font-medium">
-                    Published
+                    {tx('hospital.materials.surgeons.publishedStatus', 'Published')}
                   </span>
                   <div className="flex gap-3">
                     <button
                       onClick={() => { setEditingItem(surgeon); setShowModal(true); }}
                       className="text-xs font-medium text-blue-600 hover:text-blue-700"
                     >
-                      Edit Profile
+                      {tx('hospital.materials.surgeons.editProfile', 'Edit Profile')}
                     </button>
                     <button
                       onClick={() => handleDelete(surgeon.id)}
                       className="text-xs font-medium text-rose-600 hover:text-rose-700"
                     >
-                      Delete
+                      {tx('hospital.materials.buttons.delete', 'Delete')}
                     </button>
                   </div>
                 </div>
@@ -4193,6 +4505,8 @@ function SurgeonModal({
     getSurgeonLanguageOptions(t),
     languages.map((value) => ({ value, label: value })),
   );
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
 
   useEffect(() => {
     setName(existing?.name ?? '');
@@ -4219,20 +4533,28 @@ function SurgeonModal({
     const needsImageUpload = Boolean(pendingImageFile);
     setSaveProgress({
       open: true,
-      title: existing ? 'Saving surgeon profile' : 'Creating surgeon profile',
+      title: existing
+        ? tx('hospital.materials.surgeons.savingEditTitle', 'Saving surgeon profile')
+        : tx('hospital.materials.surgeons.savingCreateTitle', 'Creating surgeon profile'),
       canDismiss: false,
       items: [
         ...(needsImageUpload
           ? [{
             id: 'upload-surgeon-image',
-            label: `Upload surgeon image: ${pendingImageFile!.name}`,
+            label: tx(
+              'hospital.materials.surgeons.uploadImageTask',
+              'Upload surgeon image: {fileName}',
+              { fileName: pendingImageFile!.name },
+            ),
             targetKey: 'surgeon-image',
             status: 'pending' as const,
           }]
           : []),
         {
           id: 'save-surgeon',
-          label: existing ? 'Save surgeon profile' : 'Create surgeon profile',
+          label: existing
+            ? tx('hospital.materials.surgeons.saveEditAction', 'Save surgeon profile')
+            : tx('hospital.materials.surgeons.saveCreateAction', 'Create surgeon profile'),
           targetKey: 'surgeon-form',
           status: 'pending' as const,
         },
@@ -4252,7 +4574,9 @@ function SurgeonModal({
             items: prev.items.map((item) => (item.id === 'upload-surgeon-image' ? { ...item, status: 'done' } : item)),
           }));
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'Upload failed';
+          const message = error instanceof Error
+            ? error.message
+            : tx('hospital.materials.uploadProgress.uploadFailed', 'Upload failed');
           setSaveProgress((prev) => ({
             ...prev,
             canDismiss: true,
@@ -4275,7 +4599,7 @@ function SurgeonModal({
         title: title.trim() || null,
         experienceYears: experienceYears ? Number(experienceYears) : null,
         specialties,
-        languages,
+        languages: languages.map(normalizeSurgeonLanguageValue),
         education: education.map((item) => item.trim()).filter(Boolean),
         certifications: certifications.map((item) => item.trim()).filter(Boolean),
         intro: intro.trim() || null,
@@ -4312,7 +4636,9 @@ function SurgeonModal({
         canDismiss: true,
         failedTargetKey: 'surgeon-form',
         items: prev.items.map((item) => (
-          item.id === 'save-surgeon' ? { ...item, status: 'failed', error: 'Failed to save surgeon.' } : item
+          item.id === 'save-surgeon'
+            ? { ...item, status: 'failed', error: tx('hospital.materials.surgeons.saveFailed', 'Failed to save surgeon.') }
+            : item
         )),
       }));
     } finally {
@@ -4324,7 +4650,14 @@ function SurgeonModal({
     'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500';
 
   return (
-    <Modal open={open} onClose={onClose} title={existing ? 'Edit Surgeon' : 'Add New Surgeon'} maxWidth="max-w-4xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={existing
+        ? tx('hospital.materials.surgeons.editSurgeon', 'Edit Surgeon')
+        : tx('hospital.materials.surgeons.addSurgeonModalTitle', 'Add New Surgeon')}
+      maxWidth="max-w-4xl"
+    >
       <UploadProgressModal
         state={saveProgress}
         onDismiss={() => {
@@ -4363,84 +4696,84 @@ function SurgeonModal({
                 setImageDirty(true);
                 setImageUrl(previewUrl);
               }}
-              label="Profile Photo"
+              label={tx('hospital.materials.surgeons.profilePhotoLabel', 'Profile Photo')}
               compact
               allowDirectUrl={false}
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Dr. First Last" className={inputClass} />
+            <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.fullNameLabel', 'Full Name')}</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder={tx('hospital.materials.surgeons.fullNamePlaceholder', 'Dr. First Last')} className={inputClass} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Title / Position</label>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Chief of Surgery" className={inputClass} />
+            <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.titleLabel', 'Title / Position')}</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={tx('hospital.materials.surgeons.titlePlaceholder', 'e.g. Chief of Surgery')} className={inputClass} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Years of Experience</label>
-            <input type="number" value={experienceYears} onChange={(e) => setExperienceYears(e.target.value)} placeholder="e.g. 15" className={inputClass} />
+            <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.yearsOfExperienceLabel', 'Years of Experience')}</label>
+            <input type="number" value={experienceYears} onChange={(e) => setExperienceYears(e.target.value)} placeholder={tx('hospital.materials.surgeons.yearsOfExperiencePlaceholder', 'e.g. 15')} className={inputClass} />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Specialties</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.specialtiesField', 'Specialties')}</label>
           <MultiSelectDropdown
             options={specialtyOptions}
             selected={specialties}
             onChange={setSpecialties}
-            placeholder="Select specialties"
+            placeholder={tx('hospital.materials.surgeons.searchPlaceholderSpecialties', 'Select specialties')}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Languages</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.languagesField', 'Languages')}</label>
           <MultiSelectDropdown
             options={languageOptions}
             selected={languages}
             onChange={setLanguages}
-            placeholder="Select languages"
+            placeholder={tx('hospital.materials.surgeons.searchPlaceholderLanguages', 'Select languages')}
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <RepeatableTextList
-            label="Education"
+            label={tx('hospital.materials.surgeons.educationField', 'Education')}
             values={education}
             onChange={setEducation}
-            placeholder="e.g. Seoul National University School of Medicine"
-            addLabel="Add Education"
+            placeholder={tx('hospital.materials.surgeons.educationPlaceholder', 'e.g. Seoul National University School of Medicine')}
+            addLabel={tx('hospital.materials.surgeons.addEducation', 'Add Education')}
           />
           <RepeatableTextList
-            label="Certifications"
+            label={tx('hospital.materials.surgeons.certificationsField', 'Certifications')}
             values={certifications}
             onChange={setCertifications}
-            placeholder="e.g. Board Certified Plastic Surgeon"
-            addLabel="Add Certification"
+            placeholder={tx('hospital.materials.surgeons.certificationsPlaceholder', 'e.g. Board Certified Plastic Surgeon')}
+            addLabel={tx('hospital.materials.surgeons.addCertification', 'Add Certification')}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Introduction</label>
-          <textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={2} placeholder="A brief introduction to the surgeon..." className={`${inputClass} resize-none`} />
+          <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.introductionField', 'Introduction')}</label>
+          <textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={2} placeholder={tx('hospital.materials.surgeons.introductionPlaceholder', 'A brief introduction to the surgeon...')} className={`${inputClass} resize-none`} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Expertise & Specialization</label>
-          <textarea value={expertise} onChange={(e) => setExpertise(e.target.value)} rows={3} placeholder="Describe core areas of expertise..." className={`${inputClass} resize-none`} />
+          <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.expertiseField', 'Expertise & Specialization')}</label>
+          <textarea value={expertise} onChange={(e) => setExpertise(e.target.value)} rows={3} placeholder={tx('hospital.materials.surgeons.expertisePlaceholder', 'Describe core areas of expertise...')} className={`${inputClass} resize-none`} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Treatment Philosophy</label>
-          <textarea value={philosophy} onChange={(e) => setPhilosophy(e.target.value)} rows={2} placeholder="Describe the surgeon's treatment philosophy..." className={`${inputClass} resize-none`} />
+          <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.surgeons.philosophyField', 'Treatment Philosophy')}</label>
+          <textarea value={philosophy} onChange={(e) => setPhilosophy(e.target.value)} rows={2} placeholder={tx('hospital.materials.surgeons.philosophyPlaceholder', "Describe the surgeon's treatment philosophy...")} className={`${inputClass} resize-none`} />
         </div>
         <RepeatableTextList
-          label="Achievements"
+          label={tx('hospital.materials.surgeons.achievementsField', 'Achievements')}
           values={achievements}
           onChange={setAchievements}
-          placeholder="e.g. Published 50 research papers"
-          addLabel="Add Achievement"
+          placeholder={tx('hospital.materials.surgeons.achievementsPlaceholder', 'e.g. Published 50 research papers')}
+          addLabel={tx('hospital.materials.surgeons.addAchievement', 'Add Achievement')}
         />
         <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">{tx('hospital.materials.buttons.cancel', 'Cancel')}</button>
           <button type="submit" disabled={submitting || !name.trim()} className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors disabled:opacity-50">
-            {submitting ? 'Saving...' : 'Save Surgeon'}
+            {submitting ? tx('hospital.materials.buttons.saving', 'Saving...') : tx('hospital.materials.surgeons.saveSurgeon', 'Save Surgeon')}
           </button>
         </div>
         </form>
@@ -4454,11 +4787,14 @@ function SurgeonModal({
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 function BeforeAfterTab() {
+  const { t } = useHospitalI18n();
   const { data, isLoading, isError, error } = useBeforeAfterCases();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<MaterialsBeforeAfterCaseDTO | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
 
   if (isLoading) {
     return (
@@ -4472,8 +4808,10 @@ function BeforeAfterTab() {
     return (
       <EmptyState
         icon={<Camera size={48} />}
-        title="Cases failed to load"
-        description={error instanceof Error ? error.message : 'Unable to load case gallery.'}
+        title={tx('hospital.materials.cases.loadFailedTitle', 'Cases failed to load')}
+        description={error instanceof Error
+          ? error.message
+          : tx('hospital.materials.cases.loadFailedDescription', 'Unable to load case gallery.')}
       />
     );
   }
@@ -4484,7 +4822,7 @@ function BeforeAfterTab() {
   );
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this case?')) return;
+    if (!confirm(tx('hospital.materials.cases.confirmDelete', 'Delete this case?'))) return;
     await deleteBeforeAfterCase(id);
     await queryClient.invalidateQueries({ queryKey: ['materials', 'cases'] });
   };
@@ -4496,7 +4834,7 @@ function BeforeAfterTab() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search cases..."
+            placeholder={tx('hospital.materials.cases.searchPlaceholder', 'Search cases...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
@@ -4506,18 +4844,18 @@ function BeforeAfterTab() {
           onClick={() => { setEditingItem(null); setShowModal(true); }}
           className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm shadow-amber-500/20 transition-all"
         >
-          <Plus size={16} /> Add Case
+          <Plus size={16} /> {tx('hospital.materials.cases.addCase', 'Add Case')}
         </button>
       </div>
 
       {cases.length === 0 ? (
         <EmptyState
           icon={<Camera size={48} />}
-          title="No case photos"
-          description="Add cases to showcase your results."
+          title={tx('hospital.materials.cases.emptyTitle', 'No case photos')}
+          description={tx('hospital.materials.cases.emptyDescription', 'Add cases to showcase your results.')}
           action={
             <Button onClick={() => { setEditingItem(null); setShowModal(true); }} className="gap-2">
-              <Plus size={16} /> Add Case
+              <Plus size={16} /> {tx('hospital.materials.cases.addCase', 'Add Case')}
             </Button>
           }
         />
@@ -4530,7 +4868,11 @@ function BeforeAfterTab() {
               <div key={c.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 <div className="h-40 bg-slate-100 relative">
                   {coverImage ? (
-                    <img src={coverImage} alt={c.procedureName || 'Case cover'} className="w-full h-full object-cover" />
+                    <img
+                      src={coverImage}
+                      alt={c.procedureName || tx('hospital.materials.cases.caseCoverAlt', 'Case cover')}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-300">
                       <ImageIcon size={32} />
@@ -4540,38 +4882,46 @@ function BeforeAfterTab() {
                 {/* Details */}
                 <div className="p-5 flex-1 flex flex-col">
                   <div className="flex items-start justify-between mb-3">
-                    <h3 className="font-semibold text-slate-900">{c.procedureName || 'Procedure'}</h3>
+                    <h3 className="font-semibold text-slate-900">
+                      {c.procedureName || tx('hospital.materials.cases.procedureFallback', 'Procedure')}
+                    </h3>
                     <button className="text-slate-400 hover:text-slate-600">
                       <MoreVertical size={16} />
                     </button>
                   </div>
                   <div className="space-y-1.5 text-sm text-slate-600 mb-4 flex-1">
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Surgeon:</span>
-                      <span className="font-medium text-slate-900">{c.surgeonName ?? 'Not specified'}</span>
+                      <span className="text-slate-400">
+                        {tx('hospital.materials.cases.surgeonLabel', 'Surgeon:')}
+                      </span>
+                      <span className="font-medium text-slate-900">
+                        {c.surgeonName ?? tx('hospital.materials.cases.notSpecified', 'Not specified')}
+                      </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Photos:</span>
+                      <span className="text-slate-400">
+                        {tx('hospital.materials.cases.photosLabel', 'Photos:')}
+                      </span>
                       <span className="font-medium text-slate-900">{c.images.length}</span>
                     </div>
                     {c.description && <p className="text-xs text-slate-500 mt-1">{c.description}</p>}
                   </div>
                   <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                     <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200/50 rounded-md text-xs font-medium">
-                      Published
+                      {tx('hospital.materials.cases.publishedStatus', 'Published')}
                     </span>
                     <div className="flex gap-3">
                       <button
                         onClick={() => { setEditingItem(c); setShowModal(true); }}
                         className="text-xs font-medium text-blue-600 hover:text-blue-700"
                       >
-                        Edit Case
+                        {tx('hospital.materials.cases.editCase', 'Edit Case')}
                       </button>
                       <button
                         onClick={() => handleDelete(c.id)}
                         className="text-xs font-medium text-rose-600 hover:text-rose-700"
                       >
-                        Delete
+                        {tx('hospital.materials.buttons.delete', 'Delete')}
                       </button>
                     </div>
                   </div>
@@ -4602,6 +4952,7 @@ function BeforeAfterModal({
   onClose: () => void;
   existing: MaterialsBeforeAfterCaseDTO | null;
 }) {
+  const { t } = useHospitalI18n();
   const queryClient = useQueryClient();
   const [procedureName, setProcedureName] = useState('');
   const [surgeonName, setSurgeonName] = useState('');
@@ -4619,6 +4970,8 @@ function BeforeAfterModal({
   const imagesInputRef = useRef<HTMLInputElement>(null);
   const imageSectionRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
+    t(key, values, fallback);
 
   useEffect(() => {
     setProcedureName(existing?.procedureName ?? '');
@@ -4665,18 +5018,24 @@ function BeforeAfterModal({
 
     setSaveProgress({
       open: true,
-      title: existing ? 'Saving case study' : 'Creating case study',
+      title: existing
+        ? tx('hospital.materials.cases.savingEditTitle', 'Saving case study')
+        : tx('hospital.materials.cases.savingCreateTitle', 'Creating case study'),
       canDismiss: false,
       items: [
         ...pendingEntries.map((entry, index) => ({
           id: `upload-case-image-${index}`,
-          label: `Upload case image: ${entry.file.name}`,
+          label: tx('hospital.materials.cases.uploadImageTask', 'Upload case image: {fileName}', {
+            fileName: entry.file.name,
+          }),
           targetKey: 'case-images',
           status: 'pending' as const,
         })),
         {
           id: 'save-case',
-          label: existing ? 'Save case study' : 'Create case study',
+          label: existing
+            ? tx('hospital.materials.cases.saveEditAction', 'Save case study')
+            : tx('hospital.materials.cases.saveCreateAction', 'Create case study'),
           targetKey: 'case-form',
           status: 'pending' as const,
         },
@@ -4699,7 +5058,9 @@ function BeforeAfterModal({
               items: prev.items.map((item) => (item.id === taskId ? { ...item, status: 'done' } : item)),
             }));
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Upload failed';
+            const message = error instanceof Error
+              ? error.message
+              : tx('hospital.materials.uploadProgress.uploadFailed', 'Upload failed');
             setSaveProgress((prev) => ({
               ...prev,
               canDismiss: true,
@@ -4753,7 +5114,9 @@ function BeforeAfterModal({
       }, 400);
       onClose();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save case study.';
+      const message = error instanceof Error
+        ? error.message
+        : tx('hospital.materials.cases.saveFailed', 'Failed to save case study.');
       setSaveProgress((prev) => ({
         ...prev,
         canDismiss: true,
@@ -4771,7 +5134,13 @@ function BeforeAfterModal({
     'w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500';
 
   return (
-    <Modal open={open} onClose={onClose} title={existing ? 'Edit Case' : 'Add New Case Study'}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={existing
+        ? tx('hospital.materials.cases.editCase', 'Edit Case')
+        : tx('hospital.materials.cases.addCaseModalTitle', 'Add New Case Study')}
+    >
       <UploadProgressModal
         state={saveProgress}
         onDismiss={() => {
@@ -4798,22 +5167,22 @@ function BeforeAfterModal({
       >
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Procedure</label>
-            <input type="text" value={procedureName} onChange={(e) => setProcedureName(e.target.value)} placeholder="e.g. Rhinoplasty" className={inputClass} />
+            <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.cases.procedureLabel', 'Procedure')}</label>
+            <input type="text" value={procedureName} onChange={(e) => setProcedureName(e.target.value)} placeholder={tx('hospital.materials.cases.procedurePlaceholder', 'e.g. Rhinoplasty')} className={inputClass} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Lead Surgeon</label>
-            <input type="text" value={surgeonName} onChange={(e) => setSurgeonName(e.target.value)} placeholder="e.g. Dr. Sarah Jenkins" className={inputClass} />
+            <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.cases.leadSurgeonLabel', 'Lead Surgeon')}</label>
+            <input type="text" value={surgeonName} onChange={(e) => setSurgeonName(e.target.value)} placeholder={tx('hospital.materials.cases.leadSurgeonPlaceholder', 'e.g. Dr. Sarah Jenkins')} className={inputClass} />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Case Description</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Describe the procedure and outcome..." className={`${inputClass} resize-none`} />
+          <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.cases.caseDescriptionLabel', 'Case Description')}</label>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder={tx('hospital.materials.cases.caseDescriptionPlaceholder', 'Describe the procedure and outcome...')} className={`${inputClass} resize-none`} />
         </div>
         <div ref={imageSectionRef} className={`space-y-3 ${getFlashClass(flashTargetKey === 'case-images')}`}>
           <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-slate-700">Case Photos</label>
-            <span className="text-xs text-slate-500">First image is cover</span>
+            <label className="block text-sm font-medium text-slate-700">{tx('hospital.materials.cases.casePhotosLabel', 'Case Photos')}</label>
+            <span className="text-xs text-slate-500">{tx('hospital.materials.cases.firstImageIsCover', 'First image is cover')}</span>
           </div>
 
           <input
@@ -4834,26 +5203,28 @@ function BeforeAfterModal({
               onClick={() => imagesInputRef.current?.click()}
               className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
             >
-              <Upload size={12} /> Upload Photos
+              <Upload size={12} /> {tx('hospital.materials.cases.uploadPhotos', 'Upload Photos')}
             </button>
           </div>
 
           {imageUrls.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-              Upload multiple photos to build the case gallery.
+              {tx('hospital.materials.cases.uploadHint', 'Upload multiple photos to build the case gallery.')}
             </div>
           ) : (
             <div className="space-y-2">
               {imageUrls.map((url, idx) => (
                 <div key={`${idx}-${url}`} className="flex items-start gap-2">
                   <div className="w-16 h-16 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center text-slate-300">
-                    {url ? <img src={url} alt={`Case photo ${idx + 1}`} className="w-full h-full object-cover" /> : <ImageIcon size={18} />}
+                    {url ? <img src={url} alt={tx('hospital.materials.cases.casePhotoAlt', 'Case photo {index}', { index: idx + 1 })} className="w-full h-full object-cover" /> : <ImageIcon size={18} />}
                   </div>
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500">{idx === 0 ? 'Cover photo' : `Photo ${idx + 1}`}</span>
+                      <span className="text-xs text-slate-500">{idx === 0 ? tx('hospital.materials.cases.coverPhoto', 'Cover photo') : tx('hospital.materials.cases.photoIndex', 'Photo {index}', { index: idx + 1 })}</span>
                       <span className="text-xs text-slate-400">
-                        {pendingImageFiles.has(url) ? 'Ready to upload on save' : 'Saved image'}
+                        {pendingImageFiles.has(url)
+                          ? tx('hospital.materials.cases.readyToUploadOnSave', 'Ready to upload on save')
+                          : tx('hospital.materials.cases.savedImage', 'Saved image')}
                       </span>
                     </div>
                   </div>
@@ -4861,7 +5232,7 @@ function BeforeAfterModal({
                     type="button"
                     onClick={() => removeImageAt(idx)}
                     className="p-2 text-slate-400 hover:text-rose-500"
-                    aria-label={`Remove photo ${idx + 1}`}
+                    aria-label={tx('hospital.materials.cases.removePhoto', 'Remove photo {index}', { index: idx + 1 })}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -4871,9 +5242,9 @@ function BeforeAfterModal({
           )}
         </div>
         <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">Cancel</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">{tx('hospital.materials.buttons.cancel', 'Cancel')}</button>
           <button type="submit" disabled={submitting} className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-xl transition-colors disabled:opacity-50">
-            {submitting ? 'Saving...' : 'Save Case'}
+            {submitting ? tx('hospital.materials.buttons.saving', 'Saving...') : tx('hospital.materials.cases.saveCase', 'Save Case')}
           </button>
         </div>
       </form>

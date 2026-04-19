@@ -3057,6 +3057,9 @@
       "role": "角色",
       "stats": "统计",
       "today": "今天",
+      "errors": {
+        "withDetail": "{summary} 详情：{detail}"
+      },
       "actions": {
         "cancel": "取消",
         "close": "关闭",

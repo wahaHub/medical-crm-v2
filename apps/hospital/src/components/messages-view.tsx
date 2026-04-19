@@ -93,6 +93,98 @@ interface AttachmentTranslationState {
   targetLanguage: string;
 }
 
+type TranslationFn = (key: string, values?: Record<string, string | number>, fallback?: string) => string;
+
+const SAFE_MESSAGE_ERROR_PATTERNS = [
+  /\brequired\b/i,
+  /\binvalid\b/i,
+  /\bunsupported\b/i,
+  /\btoo large\b/i,
+  /\bpassword protected\b/i,
+  /\bencrypted\b/i,
+  /\bempty\b/i,
+  /\bcorrupt(?:ed)?\b/i,
+  /\bselect\b/i,
+  /\bchoose\b/i,
+  /\bprovide\b/i,
+];
+
+const UNSAFE_MESSAGE_ERROR_PATTERNS = [
+  /\b(database|db|sql|prisma|orm|postgres|mysql|redis|mongo|server|service|gateway|proxy|network|fetch|request|response|timeout|exception|stack|trace|traceback|econn|enotfound|econnreset|unauthorized|forbidden|internal|bucket|storage|cdn|cloudflare|token)\b/i,
+  /^failed\b/i,
+  /^unable\b/i,
+  /\bstatus\s*\d{3}\b/i,
+  /\bcode\s*\d{3}\b/i,
+];
+
+export function extractSafeMessageErrorDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  const rawDetail = error.message.trim();
+  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    !detail
+    || /[\r\n]/.test(rawDetail)
+    || detail.length > 160
+    || UNSAFE_MESSAGE_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+    || !SAFE_MESSAGE_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+  ) {
+    return undefined;
+  }
+
+  return detail;
+}
+
+export function formatUserFacingMessageError(
+  error: unknown,
+  t: TranslationFn,
+  summaryKey: string,
+  summaryFallback: string,
+): string {
+  const summary = t(summaryKey, undefined, summaryFallback);
+  const detail = extractSafeMessageErrorDetail(error);
+
+  if (!detail) {
+    return summary;
+  }
+
+  return t(
+    'hospital.common.errors.withDetail',
+    { summary, detail },
+    '{summary} Details: {detail}',
+  );
+}
+
+export function formatConversationCategoryForDisplay(category: string, t: TranslationFn): string {
+  if (category === 'ADMIN_HOSPITAL') {
+    return t('hospital.messages.chat.admin', undefined, 'Admin');
+  }
+
+  if (category === 'ADMIN_PATIENT' || category === 'HOSPITAL_PATIENT') {
+    return t('hospital.portal.messages.chat.patient', undefined, 'Patient');
+  }
+
+  return t('common.labels.other', undefined, 'Other');
+}
+
+export function formatParticipantRoleForDisplay(role: string, t: TranslationFn): string {
+  if (role === 'ADMIN_HOSPITAL') {
+    return t('hospital.messages.chat.admin', undefined, 'Admin');
+  }
+
+  if (role === 'ADMIN_PATIENT' || role === 'HOSPITAL_PATIENT' || role === 'PATIENT') {
+    return t('hospital.portal.messages.chat.patient', undefined, 'Patient');
+  }
+
+  if (role === 'HOSPITAL') {
+    return t('hospital.messages.chat.hospital', undefined, 'Hospital');
+  }
+
+  return t('common.labels.other', undefined, 'Other');
+}
+
 /** Map raw API messages to the ChatMessage shape expected by the UI */
 function mapApiMessages(
   raw: ApiMessage[],
@@ -555,9 +647,12 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         translatedPath: translatedPdf.path,
       });
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : tx('hospital.portal.messages.preview.translationFailed', 'Failed to translate PDF preview');
+      const message = formatUserFacingMessageError(
+        error,
+        t,
+        'hospital.portal.messages.preview.translationFailed',
+        'Failed to translate PDF preview',
+      );
       if (previewRequestRef.current !== requestId) {
         return;
       }
@@ -608,20 +703,8 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
     case: tx('hospital.common.case', 'Case'),
     hospital: tx('hospital.messages.chat.hospital', 'Hospital'),
   };
-  const formatConversationCategoryLabel = (category: string) =>
-    category === 'ADMIN_HOSPITAL'
-      ? tx('hospital.messages.chat.admin', 'Admin')
-      : category === 'ADMIN_PATIENT' || category === 'HOSPITAL_PATIENT'
-        ? tx('hospital.portal.messages.chat.patient', 'Patient')
-        : category.replace(/_/g, ' / ');
-  const formatParticipantRoleLabel = (role: string) =>
-    role === 'ADMIN_HOSPITAL'
-      ? tx('hospital.messages.chat.admin', 'Admin')
-      : role === 'ADMIN_PATIENT' || role === 'HOSPITAL_PATIENT' || role === 'PATIENT'
-        ? tx('hospital.portal.messages.chat.patient', 'Patient')
-        : role === 'HOSPITAL'
-          ? tx('hospital.messages.chat.hospital', 'Hospital')
-        : role;
+  const formatConversationCategoryLabel = (category: string) => formatConversationCategoryForDisplay(category, t);
+  const formatParticipantRoleLabel = (role: string) => formatParticipantRoleForDisplay(role, t);
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)]">
@@ -795,12 +878,12 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   <EmptyState
                     icon={<MessageSquare size={48} />}
                     title={tx('hospital.portal.messages.chat.loadFailed', 'Conversation failed to load')}
-                    description={messagesError instanceof Error
-                      ? messagesError.message
-                      : tx(
-                        'hospital.portal.messages.chat.loadFailedDescription',
-                        'Unable to load conversation messages.',
-                      )}
+                    description={formatUserFacingMessageError(
+                      messagesError,
+                      t,
+                      'hospital.portal.messages.chat.loadFailedDescription',
+                      'Unable to load conversation messages.',
+                    )}
                   />
                 </div>
 	              ) : (

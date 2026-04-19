@@ -1358,6 +1358,9 @@
       "role": "ভূমিকা",
       "stats": "পরিসংখ্যান",
       "today": "Today",
+      "errors": {
+        "withDetail": "{summary} Details: {detail}"
+      },
       "actions": {
         "cancel": "Cancel",
         "close": "Close",

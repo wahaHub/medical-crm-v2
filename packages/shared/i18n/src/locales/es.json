@@ -2005,6 +2005,9 @@
       "role": "Rol",
       "stats": "Estadísticas",
       "today": "Today",
+      "errors": {
+        "withDetail": "{summary} Details: {detail}"
+      },
       "actions": {
         "cancel": "Cancel",
         "close": "Close",

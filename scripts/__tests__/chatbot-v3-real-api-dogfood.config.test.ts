@@ -79,7 +79,6 @@ test('run metadata schema version defaults to 1', () => {
 
 test('pins the v1 scenario matrix and matrix doc', async () => {
   const scenarios = await import('../chatbot-v3-real-api-dogfood/scenarios.ts');
-  const scenarioById = new Map(scenarios.DOGFOOD_SCENARIOS.map((scenario) => [scenario.id, scenario]));
 
   assert.deepEqual(
     scenarios.DOGFOOD_SCENARIO_IDS,
@@ -151,51 +150,5 @@ test('pins the v1 scenario matrix and matrix doc', async () => {
       };
     });
 
-  assert.equal(tableRows.length, scenarios.DOGFOOD_SCENARIOS.length);
-
-  for (const row of tableRows) {
-    const scenario = scenarioById.get(row.scenarioId);
-
-    assert.ok(scenario, `missing scenario metadata for ${row.scenarioId}`);
-    assert.equal(row.bootstrapMode, scenario.bootstrapMode);
-    assert.equal(row.v1Status.toLowerCase(), scenario.v1Status);
-    assert.equal(row.healthyOutcomeLevel, scenario.healthyOutcomeLevel);
-    assert.equal(row.turnShape, scenario.expected.continuity);
-    assert.match(row.why, new RegExp(escapeRegExpPhrase(expectedDocWhyForScenario(row.scenarioId))));
-  }
+  assert.deepEqual(tableRows, scenarios.DOGFOOD_SCENARIO_MATRIX_ROWS);
 });
-
-function expectedDocWhyForScenario(scenarioId: string) {
-  switch (scenarioId) {
-    case 'blocked_without_prereq':
-      return 'Canonical negative control proving chat is rejected before the patient prerequisite exists.';
-    case 'allowed_after_patient_session':
-      return 'Canonical allowed onboarding bootstrap proving we can establish a chat-capable patient session.';
-    case 'intake_to_triage_opening':
-      return 'Verifies the first allowed chat response opens the intake-to-triage path.';
-    case 'triage_to_recommendation':
-      return 'Verifies the core progression from triage into recommendation on the real API.';
-    case 'recommendation_selected_to_consult':
-      return 'Verifies the recommended-next-step flow reaches consult.';
-    case 'faq_detour_no_progression':
-      return 'Verifies a FAQ/resource detour does not silently advance the journey.';
-    case 'handoff_denied_returns_to_current_step':
-      return 'Verifies denied escalation recovers by returning to the current step.';
-    case 'recommendation_to_explain':
-      return 'Useful follow-up coverage after the required recommendation flow is stable.';
-    case 'direct_human_request_to_handoff':
-      return 'Useful follow-up coverage once basic consult continuity is proven.';
-    case 'recommendation_revisit_compare':
-      return 'Useful second-wave semantic coverage for comparing or revisiting recommendations.';
-    case 'repeat_explain':
-      return 'Useful second-wave continuity coverage for repeated explanations.';
-    case 'degraded_then_retry':
-      return 'Useful once baseline failure evidence exists and retry behavior needs checking.';
-    default:
-      throw new Error(`Unhandled scenario ${scenarioId}`);
-  }
-}
-
-function escapeRegExpPhrase(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}

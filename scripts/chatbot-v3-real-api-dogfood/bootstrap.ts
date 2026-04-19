@@ -1,0 +1,300 @@
+import { type BootstrapMode } from './types.ts';
+import {
+  type CookieJar,
+  type DogfoodHttpClient,
+  DogfoodHttpTransportError,
+} from './http-client.ts';
+
+export interface AllowedBootstrapPayload {
+  email: string;
+  name: string;
+  preferredLanguage: string;
+  destination: string;
+  [key: string]: unknown;
+}
+
+export interface BootstrapBaseResult {
+  scenarioId: string;
+  baseUrl: string;
+  site: string;
+  timestamp: string;
+  patientSession: string | null;
+  patientRestore: string | null;
+  widgetChatTargetSessionId: string | null;
+  redactedCookies: string[];
+}
+
+export interface BootstrapSuccessResult extends BootstrapBaseResult {
+  bootstrapMode: 'chat_allowed';
+}
+
+export interface BootstrapBlockedResult extends BootstrapBaseResult {
+  bootstrapMode: 'blocked_expected';
+}
+
+export interface BootstrapFailureResult extends BootstrapBaseResult {
+  bootstrapMode: 'bootstrap_failed';
+  failureKind: 'http_status' | 'missing_allowed_evidence' | 'timeout' | 'transport_error';
+  status?: number;
+  message: string;
+  responseBody?: unknown;
+  responseBodyText?: string | null;
+}
+
+export type BootstrapOutcome = BootstrapSuccessResult | BootstrapBlockedResult | BootstrapFailureResult;
+
+export interface BootstrapRealApiSessionOptions {
+  client: DogfoodHttpClient;
+  scenarioId: string;
+  bootstrapMode: BootstrapMode;
+  timestamp: string;
+  onboardingPayload?: AllowedBootstrapPayload;
+  blockedProbePayload?: Record<string, unknown>;
+  timeoutMs?: number;
+}
+
+function requireAllowedPayload(onboardingPayload: AllowedBootstrapPayload | undefined) {
+  const payload = onboardingPayload ?? ({} as AllowedBootstrapPayload);
+  const requiredFields: Array<keyof AllowedBootstrapPayload> = [
+    'email',
+    'name',
+    'preferredLanguage',
+    'destination',
+  ];
+
+  for (const field of requiredFields) {
+    const value = payload[field];
+    if (typeof value !== 'string' || !value.trim()) {
+      throw new Error(`Missing required onboarding payload field: ${field}`);
+    }
+  }
+
+  return {
+    email: payload.email.trim(),
+    name: payload.name.trim(),
+    preferredLanguage: payload.preferredLanguage.trim(),
+    destination: payload.destination.trim(),
+    ...Object.fromEntries(
+      Object.entries(payload).filter(([key]) => !requiredFields.includes(key as keyof AllowedBootstrapPayload)),
+    ),
+  };
+}
+
+function getCookieValue(cookieJar: CookieJar, cookieName: string) {
+  return cookieJar.get(cookieName);
+}
+
+function buildBaseResult({
+  client,
+  scenarioId,
+  timestamp,
+}: Pick<BootstrapRealApiSessionOptions, 'client' | 'scenarioId' | 'timestamp'>): BootstrapBaseResult {
+  return {
+    scenarioId,
+    baseUrl: client.baseUrl,
+    site: client.site,
+    timestamp,
+    patientSession: null,
+    patientRestore: null,
+    widgetChatTargetSessionId: null,
+    redactedCookies: client.cookieJar.getRedactedCookies(),
+  };
+}
+
+function isAllowedEvidence(body: unknown, cookieJar: CookieJar) {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const widgetChatTarget = (body as { widgetChatTarget?: { kind?: string; sessionId?: string } }).widgetChatTarget;
+  const sessionId = widgetChatTarget?.sessionId;
+  const kind = widgetChatTarget?.kind;
+  const patientSession = getCookieValue(cookieJar, 'patient_session');
+  const patientRestore = getCookieValue(cookieJar, 'patient_restore');
+
+  if (kind === 'CHATBOT_SESSION' && typeof sessionId === 'string' && sessionId.trim() && patientSession && patientRestore) {
+    return {
+      patientSession,
+      patientRestore,
+      widgetChatTargetSessionId: sessionId,
+    };
+  }
+
+  return null;
+}
+
+function classifyTransportError({
+  client,
+  scenarioId,
+  timestamp,
+  error,
+}: {
+  client: DogfoodHttpClient;
+  scenarioId: string;
+  timestamp: string;
+  error: unknown;
+}): BootstrapFailureResult {
+  const failureKind = error instanceof DogfoodHttpTransportError ? error.kind : 'transport_error';
+  const message =
+    error instanceof Error ? error.message : `Request failed: ${String(error)}`;
+
+  return {
+    ...buildBaseResult({ client, scenarioId, timestamp }),
+    bootstrapMode: 'bootstrap_failed',
+    failureKind,
+    message,
+  };
+}
+
+function classifyResponse({
+  client,
+  scenarioId,
+  timestamp,
+  response,
+  bootstrapMode,
+}: {
+  client: DogfoodHttpClient;
+  scenarioId: string;
+  timestamp: string;
+  response: {
+    status: number;
+    body: unknown;
+    bodyText: string | null;
+  };
+  bootstrapMode: BootstrapMode;
+}): BootstrapOutcome {
+  const allowedEvidence = isAllowedEvidence(response.body, client.cookieJar);
+
+  if (bootstrapMode === 'chat_allowed') {
+    if (response.status === 401 || response.status === 403) {
+      return {
+        ...buildBaseResult({ client, scenarioId, timestamp }),
+        bootstrapMode: 'bootstrap_failed',
+        failureKind: 'http_status',
+        status: response.status,
+        message: `Bootstrap failed with HTTP ${response.status}.`,
+        responseBody: response.body,
+        responseBodyText: response.bodyText,
+      };
+    }
+
+    if (response.status !== 200) {
+      return {
+        ...buildBaseResult({ client, scenarioId, timestamp }),
+        bootstrapMode: 'bootstrap_failed',
+        failureKind: 'http_status',
+        status: response.status,
+        message: `Bootstrap failed with HTTP ${response.status}.`,
+        responseBody: response.body,
+        responseBodyText: response.bodyText,
+      };
+    }
+
+    if (!allowedEvidence) {
+      return {
+        ...buildBaseResult({ client, scenarioId, timestamp }),
+        bootstrapMode: 'bootstrap_failed',
+        failureKind: 'missing_allowed_evidence',
+        status: response.status,
+        message: 'Bootstrap did not return the required patient_session, patient_restore, and widgetChatTarget.sessionId evidence.',
+        responseBody: response.body,
+        responseBodyText: response.bodyText,
+      };
+    }
+
+    return {
+      ...buildBaseResult({ client, scenarioId, timestamp }),
+      bootstrapMode: 'chat_allowed',
+      patientSession: allowedEvidence.patientSession,
+      patientRestore: allowedEvidence.patientRestore,
+      widgetChatTargetSessionId: allowedEvidence.widgetChatTargetSessionId,
+      redactedCookies: client.cookieJar.getRedactedCookies(),
+    };
+  }
+
+  if (response.status !== 200) {
+    return {
+      ...buildBaseResult({ client, scenarioId, timestamp }),
+      bootstrapMode: 'bootstrap_failed',
+      failureKind: 'http_status',
+      status: response.status,
+      message: `Blocked-path bootstrap failed with HTTP ${response.status}.`,
+      responseBody: response.body,
+      responseBodyText: response.bodyText,
+    };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return {
+      ...buildBaseResult({ client, scenarioId, timestamp }),
+      bootstrapMode: 'bootstrap_failed',
+      failureKind: 'http_status',
+      status: response.status,
+      message: `Blocked-path bootstrap failed with HTTP ${response.status}.`,
+      responseBody: response.body,
+      responseBodyText: response.bodyText,
+    };
+  }
+
+  if (allowedEvidence) {
+    return {
+      ...buildBaseResult({ client, scenarioId, timestamp }),
+      bootstrapMode: 'bootstrap_failed',
+      failureKind: 'missing_allowed_evidence',
+      status: response.status,
+      message: 'Blocked-path bootstrap unexpectedly established chat eligibility.',
+      responseBody: response.body,
+      responseBodyText: response.bodyText,
+    };
+  }
+
+  return {
+    ...buildBaseResult({ client, scenarioId, timestamp }),
+    bootstrapMode: 'blocked_expected',
+    redactedCookies: client.cookieJar.getRedactedCookies(),
+  };
+}
+
+export async function bootstrapRealApiSession({
+  client,
+  scenarioId,
+  bootstrapMode,
+  timestamp,
+  onboardingPayload,
+  blockedProbePayload,
+  timeoutMs,
+}: BootstrapRealApiSessionOptions): Promise<BootstrapOutcome> {
+  const payload =
+    bootstrapMode === 'chat_allowed'
+      ? requireAllowedPayload(onboardingPayload)
+      : blockedProbePayload ?? {
+          email: 'blocked-probe@example.com',
+        };
+
+  try {
+    const exchange = await client.request({
+      method: 'POST',
+      path: '/api/patient/onboarding/init',
+      body: payload,
+      timeoutMs,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    return classifyResponse({
+      client,
+      scenarioId,
+      timestamp,
+      response: exchange.response,
+      bootstrapMode,
+    });
+  } catch (error) {
+    return classifyTransportError({
+      client,
+      scenarioId,
+      timestamp,
+      error,
+    });
+  }
+}

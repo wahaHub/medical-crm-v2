@@ -47,6 +47,15 @@ export interface DogfoodScenario {
   healthyOutcomeLevel: ScenarioHealthyOutcomeLevel;
 }
 
+export interface DogfoodScenarioMatrixRow {
+  scenarioId: DogfoodScenarioId;
+  bootstrapMode: BootstrapMode;
+  v1Status: ScenarioV1Status;
+  why: string;
+  healthyOutcomeLevel: ScenarioHealthyOutcomeLevel;
+  turnShape: ScenarioContinuityExpectation;
+}
+
 export const BLOCKED_PATH_NEGATIVE_CONTROL_SCENARIO_ID = 'blocked_without_prereq' as const;
 export const ALLOWED_BOOTSTRAP_SCENARIO_ID = 'allowed_after_patient_session' as const;
 
@@ -198,6 +207,121 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
 ];
 
 export const DOGFOOD_SCENARIO_IDS = DOGFOOD_SCENARIOS.map((scenario) => scenario.id);
+
+export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_SCENARIOS.map(
+  (scenario) => {
+    switch (scenario.id) {
+      case BLOCKED_PATH_NEGATIVE_CONTROL_SCENARIO_ID:
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Canonical negative control proving chat is rejected before the patient prerequisite exists.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case ALLOWED_BOOTSTRAP_SCENARIO_ID:
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Canonical allowed onboarding bootstrap proving we can establish a chat-capable patient session.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'intake_to_triage_opening':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Verifies the first allowed chat response opens the intake-to-triage path.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'triage_to_recommendation':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Verifies the core progression from triage into recommendation on the real API.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'recommendation_selected_to_consult':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Verifies the recommended-next-step flow reaches consult.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'faq_detour_no_progression':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Verifies a FAQ/resource detour does not silently advance the journey.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'handoff_denied_returns_to_current_step':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Verifies denied escalation recovers by returning to the current step.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'recommendation_to_explain':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Useful follow-up coverage after the required recommendation flow is stable.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'direct_human_request_to_handoff':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Useful follow-up coverage once basic consult continuity is proven.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'recommendation_revisit_compare':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Useful second-wave semantic coverage for comparing or revisiting recommendations.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'repeat_explain':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Useful second-wave continuity coverage for repeated explanations.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+      case 'degraded_then_retry':
+        return {
+          scenarioId: scenario.id,
+          bootstrapMode: scenario.bootstrapMode,
+          v1Status: scenario.v1Status,
+          why: 'Useful once baseline failure evidence exists and retry behavior needs checking.',
+          healthyOutcomeLevel: scenario.healthyOutcomeLevel,
+          turnShape: scenario.expected.continuity,
+        };
+    }
+  },
+);
 
 export const V1_REQUIRED_SCENARIO_IDS = DOGFOOD_SCENARIOS.filter(
   (scenario) => scenario.v1Status === 'required',

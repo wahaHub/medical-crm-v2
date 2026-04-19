@@ -41,6 +41,23 @@ describe('chatbot-v3 chat schemas', () => {
     }).success).toBe(true);
   });
 
+  it('requires non-empty follow-up text for TRIAGE_SUBMITTED', () => {
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-triage-submitted-missing-message-1',
+      action: {
+        type: 'TRIAGE_SUBMITTED',
+      },
+    }).success).toBe(false);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-triage-submitted-blank-message-1',
+      message: '   ',
+      action: {
+        type: 'TRIAGE_SUBMITTED',
+      },
+    }).success).toBe(false);
+  });
+
   it('allows message to be omitted only when a structured action is present', () => {
     expect(chatbotV3ChatRequestSchema.safeParse({
       sessionId: 'session-no-message-no-action-1',
@@ -60,6 +77,13 @@ describe('chatbot-v3 chat schemas', () => {
       sessionId: 'session-recommendation-skipped-1',
       action: {
         type: 'RECOMMENDATION_SKIPPED',
+      },
+    }).success).toBe(true);
+
+    expect(chatbotV3ChatRequestSchema.safeParse({
+      sessionId: 'session-triage-skipped-1',
+      action: {
+        type: 'TRIAGE_SKIPPED',
       },
     }).success).toBe(true);
   });

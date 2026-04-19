@@ -12,6 +12,9 @@ import type {
 import type {
   ToolResult,
 } from './tool-gateway.js';
+import {
+  RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
+} from './records-prompts.js';
 
 export interface ResponseComposerInput {
   body: ChatbotV3ChatRequest;
@@ -105,7 +108,7 @@ export function buildAssistantText(
     case 'COLLECT_MINIMAL_MEDICAL_FACTS':
       return buildMinimalTriageOpeningText(statusSnapshot);
     case 'COLLECT_MEDICAL_INPUTS':
-      return 'I checked the medical input stage for this session.';
+      return RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE;
     case 'RECOMMENDATION':
       return 'I checked the recommendation stage for this session.';
     case 'ONLINE_CONSULT':
@@ -359,7 +362,7 @@ function buildCards(
         cardType: 'UPLOAD_RECORDS',
         payload: {
           required: true,
-          uploadedCount: readUploadedCount(body, statusSnapshot),
+          uploadedCount: readUploadedCount(body, statusSnapshot, result.journey.stage),
         },
         actions: [],
       }];
@@ -411,15 +414,21 @@ export function buildEffectiveStatusSnapshot(
 function readUploadedCount(
   body: ChatbotV3ChatRequest,
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  stage: ConversationOrchestratorV3TurnResult['journey']['stage'],
 ): number {
   if ((body.attachments?.length ?? 0) > 0) {
     return body.attachments?.length ?? 0;
   }
 
-  return hasAnyStatus(statusSnapshot?.docUploadStatus, ['COMPLETED', 'SUBMITTED', 'READY'])
-    || hasAnyStatus(statusSnapshot?.formStatus, ['COMPLETED', 'SUBMITTED', 'READY'])
-    ? 1
-    : 0;
+  if (hasAnyStatus(statusSnapshot?.docUploadStatus, ['COMPLETED', 'SUBMITTED', 'READY'])) {
+    return 1;
+  }
+
+  if (stage === 'COLLECT_MEDICAL_INPUTS') {
+    return 0;
+  }
+
+  return hasAnyStatus(statusSnapshot?.formStatus, ['COMPLETED', 'SUBMITTED', 'READY']) ? 1 : 0;
 }
 
 function readRecommendations(dispatchResult: ToolResult<unknown> | null) {

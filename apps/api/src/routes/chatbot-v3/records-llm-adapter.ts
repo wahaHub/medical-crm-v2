@@ -3,6 +3,7 @@ import {
   buildRecordsMinimalTriageClarifyingFollowUp,
   buildRecordsMinimalTriageInitialFollowUp,
   buildRecordsMinimalTriageMissingFollowUp,
+  RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
   RECORDS_COLLECTION_PROMPT_VERSION,
   RECORDS_MINIMAL_TRIAGE_MISSING_FIELDS,
   RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION,
@@ -112,10 +113,16 @@ function sanitizeRecordsWorkerResult(
   const followUp = normalizeString(record.followUp);
   const missing = sanitizeMissing(record.missing);
   const collectionPrompt = normalizeString(record.collectionPrompt);
+  const sanitizedCollectionPrompt = mode === 'medical_collection'
+    ? sanitizeDiagnosisProofCollectionPrompt(collectionPrompt)
+    : collectionPrompt;
   const hasInvalidQuestions = record.questions !== undefined && questions === null;
   const hasInvalidMissing = record.missing !== undefined && missing === null;
   const hasInvalidFollowUp = record.followUp !== undefined && followUp === null;
   const hasInvalidCollectionPrompt = record.collectionPrompt !== undefined && collectionPrompt === null;
+  const hasInvalidDiagnosisProofCollectionPrompt = mode === 'medical_collection'
+    && collectionPrompt !== null
+    && sanitizedCollectionPrompt === null;
   const lacksRequiredMinimalTriageFields = mode === 'minimal_triage'
     && complete === false
     && (questions === null || questions.length === 0 || followUp === null || missing === null || missing.length === 0);
@@ -127,6 +134,7 @@ function sanitizeRecordsWorkerResult(
     || hasInvalidMissing
     || hasInvalidFollowUp
     || hasInvalidCollectionPrompt
+    || hasInvalidDiagnosisProofCollectionPrompt
     || lacksRequiredMinimalTriageFields
     || lacksRequiredCollectionPrompt
   ) {
@@ -143,7 +151,7 @@ function sanitizeRecordsWorkerResult(
       ...(questions ? { questions } : {}),
       ...(followUp ? { followUp } : {}),
       ...(missing ? { missing } : {}),
-      ...(collectionPrompt ? { collectionPrompt } : {}),
+      ...(sanitizedCollectionPrompt ? { collectionPrompt: sanitizedCollectionPrompt } : {}),
     },
     fallbackUsed: false,
     schemaValidationFailed: false,
@@ -162,7 +170,7 @@ function buildFallbackRecordsWorkerResult(task: RecordsWorkerTask): RecordsWorke
 function buildFallbackRecordsCollectionResult(task: RecordsWorkerTask): RecordsWorkerResult {
   return {
     'records.minimal_triage.complete': task.minimalTriageComplete,
-    collectionPrompt: 'Please upload or share any pathology reports, imaging, blood tests, discharge summaries, medication lists, or treatment history you already have.',
+    collectionPrompt: RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
   };
 }
 
@@ -367,6 +375,25 @@ function isMissingField(value: unknown): value is RecordsMinimalTriageMissingFie
 
 function normalizeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function sanitizeDiagnosisProofCollectionPrompt(
+  value: string | null,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (isAllowedDiagnosisProofCollectionPrompt(value)) {
+    return value;
+  }
+
+  return null;
+}
+
+function isAllowedDiagnosisProofCollectionPrompt(value: string): boolean {
+  return value === RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE
+    || value === 'Please upload your diagnosis proof or diagnosis certificate.';
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

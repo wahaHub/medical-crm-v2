@@ -482,15 +482,83 @@ describe('ResponseComposer', () => {
           status: 'ok',
           data: {
             'records.minimal_triage.complete': true,
-            collectionPrompt: 'Please upload or share any pathology reports, imaging, blood tests, discharge summaries, medication lists, or treatment history you already have.',
+            collectionPrompt: 'Please upload your diagnosis proof, diagnosis certificate, or another supporting diagnosis document so our medical team can prepare the next step.',
           },
         },
       }),
       sessionStatusSnapshot: null,
     });
 
-    expect(response.messages[0]?.text).toContain('Please upload or share any pathology reports');
+    expect(response.messages[0]?.text).toContain('diagnosis proof');
+    expect(response.messages[0]?.text).not.toContain('treatment history');
     expect(response.messages[0]?.text).not.toContain('I checked');
+  });
+
+  it('uses diagnosis-proof guidance for the medical inputs stage even without a RecordsAgent collection prompt', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'What should I upload next?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+          reason: 'collect diagnosis proof',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('diagnosis proof');
+    expect(response.messages[0]?.text).toContain('diagnosis certificate');
+  });
+
+  it('does not let stale pre-stage upload residue count as diagnosis-proof completion on stage entry', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'What should I do next?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+          reason: 'collect diagnosis proof',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'RECOMMENDATION', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        writeIntents: {
+          statusPatch: {
+            docUploadStatus: 'none',
+          },
+        } as any,
+      }),
+      sessionStatusSnapshot: {
+        docUploadStatus: 'submitted',
+        formStatus: 'completed',
+      } as any,
+    });
+
+    expect(response.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          uploadedCount: 0,
+          required: true,
+        }),
+      }),
+    ]));
   });
 
   it('surfaces recommendation explanation text on recommendation turns', () => {

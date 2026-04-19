@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RecordsLlmAdapter } from './records-llm-adapter.js';
-import { buildRecordsWorkerPrompt } from './records-prompts.js';
+import {
+  buildRecordsWorkerPrompt,
+  RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
+} from './records-prompts.js';
 import type { RecordsWorkerTask } from './worker-task.js';
 
 function createRecordsTask(
@@ -25,6 +28,23 @@ describe('RecordsLlmAdapter', () => {
     );
   });
 
+  it('frames medical collection mode as diagnosis-proof upload guidance instead of a generic records interview', () => {
+    expect(buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'COLLECT_MEDICAL_INPUTS',
+      mode: 'medical_collection',
+      minimalTriageComplete: true,
+    }))).toContain(
+      'Ask only for diagnosis proof, a diagnosis certificate, or another supporting diagnosis document for this stage.',
+    );
+    expect(buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'COLLECT_MEDICAL_INPUTS',
+      mode: 'medical_collection',
+      minimalTriageComplete: true,
+    }))).not.toContain('treatment history');
+  });
+
   it('uses structured task metadata to choose collection mode without parsing string envelopes', async () => {
     const adapter = new RecordsLlmAdapter();
 
@@ -39,7 +59,7 @@ describe('RecordsLlmAdapter', () => {
       },
     } as any)).resolves.toEqual({
       'records.minimal_triage.complete': true,
-      collectionPrompt: 'Please upload or share any pathology reports, imaging, blood tests, discharge summaries, medication lists, or treatment history you already have.',
+      collectionPrompt: 'Please upload your diagnosis proof, diagnosis certificate, or another supporting diagnosis document so our medical team can prepare the next step.',
     });
   });
 
@@ -122,7 +142,7 @@ describe('RecordsLlmAdapter', () => {
       }),
     })).resolves.toEqual({
       'records.minimal_triage.complete': true,
-      collectionPrompt: 'Please upload or share any pathology reports, imaging, blood tests, discharge summaries, medication lists, or treatment history you already have.',
+      collectionPrompt: 'Please upload your diagnosis proof, diagnosis certificate, or another supporting diagnosis document so our medical team can prepare the next step.',
     });
 
     expect(adapter.getLastRunMetadata()).toMatchObject({
@@ -137,7 +157,7 @@ describe('RecordsLlmAdapter', () => {
         promptVersion: 'records-worker-test',
         run: vi.fn(async () => ({
           'records.minimal_triage.complete': true,
-          collectionPrompt: 'Please upload any records you already have.',
+          collectionPrompt: RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
         })),
       },
     });
@@ -151,7 +171,7 @@ describe('RecordsLlmAdapter', () => {
       }),
     })).resolves.toEqual({
       'records.minimal_triage.complete': false,
-      collectionPrompt: 'Please upload any records you already have.',
+      collectionPrompt: RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
     });
 
     expect(adapter.getLastRunMetadata()).toMatchObject({
@@ -166,7 +186,7 @@ describe('RecordsLlmAdapter', () => {
         promptVersion: 'records-worker-test',
         run: vi.fn(async () => ({
           'records.minimal_triage.complete': false,
-          collectionPrompt: 'Please upload any records you already have.',
+          collectionPrompt: RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
         })),
       },
     });
@@ -180,12 +200,41 @@ describe('RecordsLlmAdapter', () => {
       }),
     })).resolves.toEqual({
       'records.minimal_triage.complete': true,
-      collectionPrompt: 'Please upload any records you already have.',
+      collectionPrompt: RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
     });
 
     expect(adapter.getLastRunMetadata()).toMatchObject({
       fallbackUsed: false,
       schemaValidationFailed: false,
+    });
+  });
+
+  it('fails closed when collection mode returns a mixed diagnosis-proof prompt', async () => {
+    const adapter = new RecordsLlmAdapter({
+      worker: {
+        promptVersion: 'records-worker-test',
+        run: vi.fn(async () => ({
+          'records.minimal_triage.complete': true,
+          collectionPrompt: 'Please upload your diagnosis proof and all treatment history, scans, and medications.',
+        })),
+      },
+    });
+
+    await expect(adapter.runStatus({
+      task: createRecordsTask('I can upload more reports.', {
+        fromStage: 'COLLECT_MEDICAL_INPUTS',
+        toStage: 'COLLECT_MEDICAL_INPUTS',
+        mode: 'medical_collection',
+        minimalTriageComplete: true,
+      }),
+    })).resolves.toEqual({
+      'records.minimal_triage.complete': true,
+      collectionPrompt: RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
+    });
+
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      fallbackUsed: true,
+      schemaValidationFailed: true,
     });
   });
 });

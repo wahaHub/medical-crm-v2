@@ -68,7 +68,7 @@ describe('createChatbotV3RecordsRouteAdapter', () => {
         message: {
           content: JSON.stringify({
             'records.minimal_triage.complete': true,
-            collectionPrompt: 'Please upload any records you already have.',
+            collectionPrompt: 'Please upload your diagnosis proof or diagnosis certificate.',
           }),
         },
       }],
@@ -89,14 +89,16 @@ describe('createChatbotV3RecordsRouteAdapter', () => {
       task: createCollectionTask('I can upload more reports.'),
     })).resolves.toEqual({
       'records.minimal_triage.complete': true,
-      collectionPrompt: 'Please upload any records you already have.',
+      collectionPrompt: 'Please upload your diagnosis proof or diagnosis certificate.',
     });
 
     const request = fetchImpl.mock.calls[0]?.[1];
     const payload = request?.body ? JSON.parse(String(request.body)) : null;
     const prompt = payload?.messages?.[1]?.content ?? '';
     expect(prompt).toContain(`version=${RECORDS_COLLECTION_PROMPT_VERSION}`);
-    expect(prompt).toContain('role=records collection worker');
+    expect(prompt).toContain('role=diagnosis proof upload worker');
+    expect(prompt).toContain('diagnosis proof');
+    expect(prompt).not.toContain('treatment history');
     expect(adapter.getLastRunMetadata()).toMatchObject({
       nodePromptVersion: `${RECORDS_COLLECTION_PROMPT_VERSION}:openai`,
       nodeModel: 'gpt-4o-mini',

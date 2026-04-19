@@ -393,6 +393,36 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
   });
 
+  it('rejects malformed TRIAGE_SUBMITTED requests at validation time', async () => {
+    const app = await loadApp();
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        action: {
+          type: 'TRIAGE_SUBMITTED',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: 'Validation failed',
+      code: 'VALIDATION_FAILED',
+      details: [
+        expect.objectContaining({
+          message: 'TRIAGE_SUBMITTED requires non-empty follow-up text',
+          path: ['message'],
+        }),
+      ],
+    });
+  });
+
   it('rejects requests when the persisted chatbot session belongs to a different site', async () => {
     const app = await loadApp();
 
@@ -1413,7 +1443,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(uploadTurn.messages[0]?.text).toContain('Please answer these 3 questions');
+    expect(uploadTurn.messages[0]?.text).toContain('Please answer these 3 follow-up questions');
     expect(uploadTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'UPLOAD_RECORDS',
@@ -1683,7 +1713,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
-    expect(inputsTurn.messages[0]?.text).toContain('Please upload or share any pathology reports');
+    expect(inputsTurn.messages[0]?.text).toContain('diagnosis proof');
     expect(inputsTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'UPLOAD_RECORDS',
@@ -2398,7 +2428,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 questions');
+    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
     expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
   });
 
@@ -2492,7 +2522,210 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please upload or share any pathology reports');
+    expect(body.messages[0].text).toContain('diagnosis proof');
+    expect(body.messages[0].text).not.toContain('treatment history');
+  });
+
+  it('resets stale upload residue when entering COLLECT_MEDICAL_INPUTS so earlier uploads do not count as diagnosis proof', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        formStatus: 'completed',
+        docUploadStatus: 'submitted',
+      },
+    }));
+
+    applicationOverrides.suggest = async () => ({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      reason: 'collect diagnosis proof next',
+    });
+    applicationOverrides.decide = () => ({
+      action: 'ADVANCE',
+      from: { stage: 'RECOMMENDATION', phase: 'active' },
+      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      dispatchAgent: 'RecordsAgent',
+      dispatchSource: 'journey-runtime-authority',
+    });
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const turn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'What should I upload next?',
+    })).body);
+
+    expect(turn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(turn.messages[0]?.text).toContain('diagnosis proof');
+    expect(turn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          uploadedCount: 0,
+          required: true,
+        }),
+      }),
+    ]));
+    expect(readSession().statusSnapshot.docUploadStatus).toBe('none');
+    expect(readSession().statusSnapshot.formStatus).toBe('completed');
+  });
+
+  it('preserves fresh diagnosis-proof upload progress when entering COLLECT_MEDICAL_INPUTS on the same turn', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'RECOMMENDATION',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        formStatus: 'completed',
+        docUploadStatus: 'none',
+      },
+    }));
+
+    applicationOverrides.suggest = async () => ({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      reason: 'collect diagnosis proof next',
+    });
+    applicationOverrides.decide = () => ({
+      action: 'ADVANCE',
+      from: { stage: 'RECOMMENDATION', phase: 'active' },
+      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      dispatchAgent: 'RecordsAgent',
+      dispatchSource: 'journey-runtime-authority',
+    });
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const turn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Here is my diagnosis certificate.',
+      attachments: [{
+        fileName: 'diagnosis-certificate.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-v3-1/diagnosis-certificate.pdf',
+      }],
+    })).body);
+
+    expect(turn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(turn.messages[0]?.text).toContain('diagnosis proof');
+    expect(turn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          uploadedCount: 1,
+          required: true,
+        }),
+      }),
+    ]));
+    expect(readSession().statusSnapshot.docUploadStatus).toBe('SUBMITTED');
+    expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
+      'session-v3-1',
+      'beauty',
+      expect.objectContaining({
+        docUploadStatus: 'SUBMITTED',
+      }),
+    );
+  });
+
+  it('keeps diagnosis-proof upload progress driven by upload status once COLLECT_MEDICAL_INPUTS is already active', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MEDICAL_INPUTS',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        docUploadStatus: 'none',
+      },
+    }));
+
+    applicationOverrides.suggest = async () => ({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      reason: 'wait for diagnosis proof upload',
+    });
+    applicationOverrides.decide = () => ({
+      action: 'STAY',
+      from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      dispatchAgent: 'RecordsAgent',
+      dispatchSource: 'journey-runtime-authority',
+    });
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const turn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Here is my diagnosis certificate.',
+      attachments: [{
+        fileName: 'diagnosis-certificate.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-v3-1/diagnosis-certificate.pdf',
+      }],
+    })).body);
+
+    expect(turn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(turn.messages[0]?.text).toContain('diagnosis proof');
+    expect(turn.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          uploadedCount: 1,
+          required: true,
+        }),
+      }),
+    ]));
+    expect(readSession().statusSnapshot.docUploadStatus).toBe('SUBMITTED');
   });
 
   it('hard-locks a stale RECOMMENDATION snapshot back to minimal triage until minimalTriageComplete is true', async () => {
@@ -2552,7 +2785,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 questions');
+    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
     expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
     expect(body.cards).toEqual(expect.not.arrayContaining([
       expect.objectContaining({
@@ -2816,7 +3049,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 questions');
+    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
     expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -2895,7 +3128,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 questions');
+    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
     expect(body.messages[0].text).toContain('What tests, treatments, medicines, or diagnoses already exist?');
     expect(body.cards).toEqual(expect.not.arrayContaining([
       expect.objectContaining({

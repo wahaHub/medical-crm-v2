@@ -1,7 +1,8 @@
 import type { RecordsWorkerTask } from './worker-task.js';
 
 export const RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION = 'records-minimal-triage-v1';
-export const RECORDS_COLLECTION_PROMPT_VERSION = 'records-collection-v1';
+export const RECORDS_COLLECTION_PROMPT_VERSION = 'records-diagnosis-proof-v1';
+export const RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE = 'Please upload your diagnosis proof, diagnosis certificate, or another supporting diagnosis document so our medical team can prepare the next step.';
 
 export const RECORDS_MINIMAL_TRIAGE_QUESTIONS = [
   'What is the main symptom, diagnosis, or medical problem right now?',
@@ -62,8 +63,8 @@ export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string
 export function buildRecordsCollectionPrompt(task: RecordsWorkerTask): string {
   return [
     `version=${RECORDS_COLLECTION_PROMPT_VERSION}`,
-    'role=records collection worker',
-    'instructions=Continue medical records collection by asking for existing reports, scans, pathology, medications, and treatment history while preserving records.minimal_triage.complete.',
+    'role=diagnosis proof upload worker',
+    'instructions=Ask only for diagnosis proof, a diagnosis certificate, or another supporting diagnosis document for this stage. Do not reopen generic symptom, medication, pathology, scan, or treatment-history interviews. Preserve records.minimal_triage.complete.',
     `from_stage=${task.fromStage}`,
     `to_stage=${task.toStage}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,

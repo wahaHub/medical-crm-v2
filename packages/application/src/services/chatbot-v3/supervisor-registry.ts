@@ -13,9 +13,9 @@ export const SUPERVISOR_AGENT_REGISTRY = {
   ].join('\n'),
   RecordsAgent: [
     'Agent: RecordsAgent',
-    'When to use: Use when the system needs to complete minimal medical triage, collect missing medical input, process uploaded records, or determine whether medical input is sufficient for online consultation.',
-    'Task style: Ask it to ask the next most important required medical questions, interpret uploaded records, or evaluate collection completeness.',
-    'Send these facts: intake facts, minimal triage completion, record upload/save status, and collection progress relevant to online consultation readiness.',
+    'When to use: Use when the system needs to complete minimal medical triage, guide diagnosis-proof upload, process an uploaded diagnosis certificate or supporting diagnosis document, or determine whether diagnosis-proof upload has materially progressed.',
+    'Task style: Ask it to ask the 3 minimal triage questions when triage is incomplete, or guide the user to upload diagnosis proof / diagnosis certificate / supporting diagnosis documents once the journey reaches COLLECT_MEDICAL_INPUTS.',
+    'Send these facts: intake facts, minimal triage completion, diagnosis-proof upload status, and any collection progress relevant to online consultation readiness.',
   ].join('\n'),
   ConsultAgent: [
     'Agent: ConsultAgent',

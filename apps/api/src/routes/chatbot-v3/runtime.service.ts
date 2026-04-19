@@ -586,6 +586,11 @@ export class ConversationOrchestratorV3RuntimeService {
     statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   ): ConversationOrchestratorV3TurnResult {
     const render = deriveRenderState(result);
+    const stageEntryStatusPatch = deriveStageEntryStatusPatch(result, input, statusSnapshot);
+    const statusPatch = mergeStatusPatches(
+      input.normalizedActionStatusPatch,
+      stageEntryStatusPatch,
+    );
     const renderedResult = {
       ...result,
       render,
@@ -597,15 +602,15 @@ export class ConversationOrchestratorV3RuntimeService {
     return {
       ...renderedResult,
       writeIntents: {
-        ...(input.normalizedActionStatusPatch
-          ? { statusPatch: input.normalizedActionStatusPatch }
+        ...(statusPatch
+          ? { statusPatch }
           : {}),
         ...(canonicalTruthPatch ? { canonicalTruthPatch } : {}),
         conversationSummaryPatch: buildConversationSummaryPatch({
           result: renderedResult,
           latestUserMessage: input.message,
           summaryUpdatedAt: new Date(this.now()),
-          statusSnapshot: buildEffectiveStatusSnapshot(statusSnapshot, input.normalizedActionStatusPatch),
+          statusSnapshot: buildEffectiveStatusSnapshot(statusSnapshot, statusPatch),
         }),
       },
     };
@@ -1464,6 +1469,36 @@ function resolveRecordsWorkerMode(
     : 'minimal_triage';
 }
 
+function deriveStageEntryStatusPatch(
+  result: ConversationOrchestratorV3TurnResult,
+  input: ConversationOrchestratorV3NormalizedTurnInput,
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): Partial<AiChatStatusSnapshot> | undefined {
+  const isEnteringDiagnosisProofStage = result.decision.to.stage === 'COLLECT_MEDICAL_INPUTS'
+    && result.decision.from.stage !== 'COLLECT_MEDICAL_INPUTS';
+  const hasFreshUploadOnThisTurn = (input.attachments?.length ?? 0) > 0
+    && result.decision.dispatchAgent === 'RecordsAgent';
+
+  if (!isEnteringDiagnosisProofStage || hasFreshUploadOnThisTurn) {
+    return undefined;
+  }
+
+  if (!hasAnyStatus(statusSnapshot?.docUploadStatus, ['COMPLETED', 'SUBMITTED', 'READY', 'IN_PROGRESS'])) {
+    return undefined;
+  }
+
+  return {
+    docUploadStatus: 'none',
+  };
+}
+
+function mergeStatusPatches(
+  ...patches: Array<Partial<AiChatStatusSnapshot> | null | undefined>
+): Partial<AiChatStatusSnapshot> | undefined {
+  const merged = Object.assign({}, ...patches.filter(Boolean));
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function cloneStageRef(
   stageRef: ConversationOrchestratorV3StageRef,
 ): ConversationOrchestratorV3StageRef {
@@ -1631,6 +1666,14 @@ function readStoredJourneySnapshot(
 
 function normalizeStatus(value: string | null | undefined): string {
   return (value ?? '').trim().toUpperCase();
+}
+
+function hasAnyStatus(
+  value: string | null | undefined,
+  statuses: readonly string[],
+): boolean {
+  const normalized = normalizeStatus(value);
+  return statuses.some((status) => normalized === status);
 }
 
 function isStage(value: string | null): value is ChatJourneyStage {

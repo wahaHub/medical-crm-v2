@@ -9,6 +9,7 @@ import {
   composeResponse,
   didShowExplicitProcessExplanation,
   buildAssistantText,
+  PROCESS_OVERVIEW_TEXT,
 } from './response-composer.js';
 import { buildConversationSummaryPatch } from './runtime.service.js';
 import {
@@ -610,6 +611,22 @@ describe('ResponseComposer', () => {
             }),
           ],
         }),
+        actions: [
+          expect.objectContaining({
+            actionType: 'SUBMIT',
+            label: 'Select Shanghai Chest Hospital',
+            params: {
+              hospitalId: 'hospital-1',
+            },
+          }),
+          expect.objectContaining({
+            actionType: 'SUBMIT',
+            label: 'Continue without selecting a hospital',
+            params: {
+              actionKey: 'RECOMMENDATION_SKIPPED',
+            },
+          }),
+        ],
       }),
     ]));
   });
@@ -652,6 +669,48 @@ describe('ResponseComposer', () => {
     });
 
     expect(response.messages[0]?.text).toContain('recommendation stage');
+  });
+
+  it('does not expose recommendation submit actions when no candidates are available', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'What are my options?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'RECOMMENDATION',
+          reason: 'continue to recommendations',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'RECOMMENDATION', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'RecommendationAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            recommendations: [],
+            recommendationTask: 'generate',
+            explanation: 'No recommendation candidates are currently available.',
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+        payload: expect.objectContaining({
+          candidates: [],
+        }),
+        actions: [],
+      }),
+    ]));
   });
 
   it('trusts the structured recommendationTask signal over the raw user message', () => {
@@ -723,7 +782,9 @@ describe('ResponseComposer', () => {
       sessionStatusSnapshot: null,
     });
 
-    expect(response.messages[0]?.text).toContain('Here is the process');
+    expect(response.messages[0]?.text).toBe(PROCESS_OVERVIEW_TEXT);
+    expect(response.messages[0]?.text).toContain('review the hospital recommendation');
+    expect(response.messages[0]?.text).toContain('upload your diagnosis proof');
   });
 
   it('uses the render-path signal for faq answers', () => {

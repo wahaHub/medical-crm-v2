@@ -7,6 +7,7 @@ export interface AiChatPendingState {
 }
 
 export type AiChatMinimalTriageStatus = 'pending' | 'skipped';
+export type AiChatRecommendationSelectionStatus = 'pending' | 'selected' | 'skipped';
 
 export interface AiChatStatusSnapshot {
   conditionStatus: string;
@@ -25,6 +26,8 @@ export interface AiChatStatusSnapshot {
   minimalTriageComplete: boolean | null;
   processExplained: boolean;
   recommendationGenerated: boolean | null;
+  recommendationSelectionStatus: AiChatRecommendationSelectionStatus | null;
+  recommendationSelectedHospitalIds: string[] | null;
   recommendationSelected: boolean | null;
   consultCompleted: boolean | null;
   handoffActive: boolean | null;
@@ -91,6 +94,9 @@ export class AiChatSession {
 
   constructor(props: AiChatSessionProps) {
     const normalizedMinimalTriage = normalizeMinimalTriageSnapshot(props.statusSnapshot);
+    const normalizedRecommendationSelection = normalizeRecommendationSelectionSnapshot(
+      props.statusSnapshot,
+    );
 
     this.id = props.id;
     this.sessionId = props.sessionId;
@@ -116,8 +122,10 @@ export class AiChatSession {
       minimalTriageAnswersSummary: normalizedMinimalTriage.answersSummary,
       minimalTriageComplete: normalizedMinimalTriage.complete,
       processExplained: props.statusSnapshot?.processExplained ?? false,
-      recommendationGenerated: props.statusSnapshot?.recommendationGenerated ?? null,
-      recommendationSelected: props.statusSnapshot?.recommendationSelected ?? null,
+      recommendationGenerated: normalizedRecommendationSelection.generated,
+      recommendationSelectionStatus: normalizedRecommendationSelection.status,
+      recommendationSelectedHospitalIds: normalizedRecommendationSelection.selectedHospitalIds,
+      recommendationSelected: normalizedRecommendationSelection.selected,
       consultCompleted: props.statusSnapshot?.consultCompleted ?? null,
       handoffActive: props.statusSnapshot?.handoffActive ?? null,
       conversationSummary: props.statusSnapshot?.conversationSummary ?? '',
@@ -145,8 +153,14 @@ export function deriveCanonicalTruthFlagsFromStatusSnapshot(
   const legacyHandoffActive = deriveHandoffLifecycleActive(statusSnapshot?.handoffStatus);
 
   const minimalTriageComplete = normalizedMinimalTriage.complete === true;
-  const recommendationSelected = readPersistedBoolean(statusSnapshot?.recommendationSelected) || legacyRecommendationSelected;
-  const recommendationGenerated = readPersistedBoolean(statusSnapshot?.recommendationGenerated) || legacyRecommendationGenerated;
+  const normalizedRecommendationSelection = normalizeRecommendationSelectionSnapshot(statusSnapshot);
+  const hasStructuredRecommendationSelection = normalizedRecommendationSelection.status !== null;
+  const recommendationSelected = hasStructuredRecommendationSelection
+    ? normalizedRecommendationSelection.selected === true
+    : normalizedRecommendationSelection.selected === true || legacyRecommendationSelected;
+  const recommendationGenerated = hasStructuredRecommendationSelection
+    ? normalizedRecommendationSelection.generated === true
+    : normalizedRecommendationSelection.generated === true || legacyRecommendationGenerated;
   const consultCompleted = readPersistedBoolean(statusSnapshot?.consultCompleted) || legacyConsultCompleted;
   const persistedHandoffActive = readPersistedBoolean(statusSnapshot?.handoffActive);
   const handoffActive = legacyHandoffActive ?? persistedHandoffActive ?? false;
@@ -185,6 +199,13 @@ interface MinimalTriageNormalization {
   status: AiChatMinimalTriageStatus;
   answersSummary: string | null;
   complete: boolean | null;
+}
+
+interface RecommendationSelectionNormalization {
+  status: AiChatRecommendationSelectionStatus | null;
+  selectedHospitalIds: string[] | null;
+  generated: boolean | null;
+  selected: boolean | null;
 }
 
 function normalizeMinimalTriageSnapshot(
@@ -237,6 +258,82 @@ function normalizeMinimalTriageSnapshot(
   };
 }
 
+function normalizeRecommendationSelectionSnapshot(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): RecommendationSelectionNormalization {
+  const rawStatus = readRecommendationSelectionStatus(statusSnapshot);
+  const selectedHospitalIds = normalizeSelectedHospitalIds(
+    (statusSnapshot as { recommendationSelectedHospitalIds?: unknown } | null | undefined)
+      ?.recommendationSelectedHospitalIds,
+  );
+  const persistedGenerated = readPersistedBoolean(statusSnapshot?.recommendationGenerated);
+  const persistedSelected = readPersistedBoolean(statusSnapshot?.recommendationSelected);
+  const recommendationStatus = normalizeStatus(statusSnapshot?.recommendationStatus);
+  const packageStatus = normalizeStatus(statusSnapshot?.packageStatus);
+  const legacyFailed = recommendationStatus === 'FAILED' || packageStatus === 'FAILED';
+
+  if (rawStatus === 'selected') {
+    return {
+      status: 'selected',
+      selectedHospitalIds,
+      generated: true,
+      selected: true,
+    };
+  }
+
+  if (rawStatus === 'skipped') {
+    return {
+      status: 'skipped',
+      selectedHospitalIds: [],
+      generated: true,
+      selected: false,
+    };
+  }
+
+  if (rawStatus === 'pending') {
+    return {
+      status: 'pending',
+      selectedHospitalIds: [],
+      generated: true,
+      selected: false,
+    };
+  }
+
+  if (persistedSelected === true) {
+    return {
+      status: 'selected',
+      selectedHospitalIds,
+      generated: true,
+      selected: true,
+    };
+  }
+
+  if (legacyFailed) {
+    return {
+      status: null,
+      selectedHospitalIds: selectedHospitalIds.length > 0 ? selectedHospitalIds : null,
+      generated: persistedGenerated ?? true,
+      selected: persistedSelected ?? false,
+    };
+  }
+
+  if (persistedGenerated === true) {
+    return {
+      status: 'pending',
+      selectedHospitalIds: [],
+      generated: true,
+      selected: false,
+    };
+  }
+
+  return {
+    status: null,
+    selectedHospitalIds: selectedHospitalIds.length > 0 ? selectedHospitalIds : null,
+    generated: persistedGenerated ?? null,
+    selected: persistedSelected ?? null,
+  };
+}
+
 function readMinimalTriageStatus(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): AiChatMinimalTriageStatus | 'answered' | null {
@@ -249,6 +346,35 @@ function readMinimalTriageStatus(
   }
 
   return null;
+}
+
+function readRecommendationSelectionStatus(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): AiChatRecommendationSelectionStatus | null {
+  const rawValue = (statusSnapshot as { recommendationSelectionStatus?: string | null } | null | undefined)
+    ?.recommendationSelectionStatus;
+  const normalized = (rawValue ?? '').trim().toLowerCase();
+
+  if (normalized === 'pending' || normalized === 'selected' || normalized === 'skipped') {
+    return normalized;
+  }
+
+  return null;
+}
+
+function normalizeSelectedHospitalIds(
+  value: unknown,
+): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const normalized = value
+    .filter((candidate): candidate is string => typeof candidate === 'string')
+    .map((candidate) => candidate.trim())
+    .filter((candidate) => candidate.length > 0);
+
+  return normalized.length > 0 ? [normalized[0]!] : [];
 }
 
 function normalizeCompactSummary(value: string | null | undefined): string | null {

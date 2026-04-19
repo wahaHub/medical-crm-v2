@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Hono } from 'hono';
 import {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
   JourneyRuntimeAuthorityService,
@@ -10,6 +12,12 @@ import { FaqAgent, RecommendationAgent, RecordsAgent } from '../routes/chatbot-v
 import { buildRecordsMinimalTriagePrompt } from '../routes/chatbot-v3/records-prompts.js';
 import { createChatbotV3RuntimeNodeEventEmitter } from '../routes/chatbot-v3/observability.js';
 import {
+  chatbotV3PublicRoutes,
+  deriveRecommendationState,
+  filterUnchangedStatusPatch,
+  serializeStatusSnapshot,
+} from '../routes/chatbot-v3.routes.js';
+import {
   ConversationOrchestratorV3RuntimeService,
   InvalidChatbotV3ActionError,
   deriveCurrentStageFromStatusSnapshot,
@@ -20,6 +28,24 @@ import type {
   RecommendationWorkerTask,
   RecordsWorkerTask,
 } from '../routes/chatbot-v3/worker-task.js';
+
+const routeMockServices = vi.hoisted(() => ({
+  idempotencyExecutor: {
+    execute: vi.fn(async (_key: string, _operation: string, fn: () => Promise<unknown>) => fn()),
+  },
+  aiChatSessionRepo: {
+    findBySessionId: vi.fn(),
+    save: vi.fn(),
+    patchStatus: vi.fn(),
+  },
+  patientAuthService: {
+    verifySessionToken: vi.fn(),
+  },
+}));
+
+vi.mock('../composition-root.js', () => ({
+  getServices: () => routeMockServices,
+}));
 
 function createRecordsTask(
   latestUserMessage: string,
@@ -179,7 +205,7 @@ describe('chatbot-v3 agents', () => {
           'When did it start, how long has it been going on, and how severe is it?',
           'What tests, treatments, medicines, or diagnoses already exist?',
         ],
-        followUp: 'Please answer these 3 questions so I can capture the essential medical details.',
+        followUp: 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.',
         missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
       },
     });
@@ -601,6 +627,60 @@ describe('chatbot-v3 structured action runtime normalization', () => {
     })).rejects.toBeInstanceOf(InvalidChatbotV3ActionError);
   });
 
+  it('fails RECOMMENDATION_SKIPPED before recommendation has been presented', async () => {
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'user skipped hospital selection',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    await expect(runtime.handleTurn({
+      traceId: 'trace-invalid-skip-1',
+      sessionId: 'session-invalid-skip-1',
+      turnId: 'turn-invalid-skip-1',
+      message: '',
+      userAction: {
+        type: 'RECOMMENDATION_SKIPPED',
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        recommendationGenerated: false,
+        recommendationSelectionStatus: null,
+        recommendationSelectedHospitalIds: null,
+        recommendationSelected: false,
+      } as any,
+      facts: {
+        'recommendation.generated': false,
+        'recommendation.selected': false,
+      },
+    })).rejects.toBeInstanceOf(InvalidChatbotV3ActionError);
+  });
+
   it('persists RECOMMENDATION_SELECTED through the structured action path once recommendation is presented', async () => {
     const runtime = new ConversationOrchestratorV3RuntimeService({
       idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
@@ -615,6 +695,8 @@ describe('chatbot-v3 structured action runtime normalization', () => {
         decide: vi.fn((input) => {
           expect(input.statusSnapshot).toMatchObject({
             recommendationGenerated: true,
+            recommendationSelectionStatus: 'selected',
+            recommendationSelectedHospitalIds: ['hospital-1'],
             recommendationSelected: true,
           });
           expect(input.facts).toMatchObject({
@@ -656,6 +738,8 @@ describe('chatbot-v3 structured action runtime normalization', () => {
       },
       statusSnapshot: {
         recommendationGenerated: true,
+        recommendationSelectionStatus: 'pending',
+        recommendationSelectedHospitalIds: [],
         recommendationSelected: null,
       } as any,
       facts: {
@@ -666,9 +750,141 @@ describe('chatbot-v3 structured action runtime normalization', () => {
 
     expect(result.writeIntents).toEqual(expect.objectContaining({
       statusPatch: {
+        recommendationGenerated: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
         recommendationSelected: true,
       },
     }));
+  });
+
+  it('accepts RECOMMENDATION_SELECTED when only legacy recommendationGenerated truth is present', async () => {
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'user selected a hospital from a legacy recommendation session',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn((input) => {
+          expect(input.statusSnapshot).toMatchObject({
+            recommendationGenerated: true,
+            recommendationSelectionStatus: 'selected',
+            recommendationSelectedHospitalIds: ['hospital-legacy-1'],
+            recommendationSelected: true,
+          });
+
+          return {
+            action: 'STAY' as const,
+            from: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+            to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+            dispatchSource: 'journey-runtime-authority' as const,
+          };
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-selection-legacy-generated-1',
+      sessionId: 'session-selection-legacy-generated-1',
+      turnId: 'turn-selection-legacy-generated-1',
+      message: '',
+      userAction: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: 'hospital-legacy-1',
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationSelectionStatus: null,
+        recommendationSelectedHospitalIds: null,
+        recommendationSelected: false,
+      } as any,
+      facts: {
+        'recommendation.generated': true,
+        'recommendation.selected': false,
+      },
+    });
+
+    expect(result.writeIntents).toEqual(expect.objectContaining({
+      statusPatch: {
+        recommendationGenerated: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-legacy-1'],
+        recommendationSelected: true,
+      },
+    }));
+  });
+
+  it('still rejects recommendation selection when legacy recommendation state has already failed', async () => {
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'user selected a hospital after a failed legacy recommendation state',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    await expect(runtime.handleTurn({
+      traceId: 'trace-selection-legacy-failed-1',
+      sessionId: 'session-selection-legacy-failed-1',
+      turnId: 'turn-selection-legacy-failed-1',
+      message: '',
+      userAction: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: 'hospital-legacy-failed-1',
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationStatus: 'FAILED',
+        recommendationSelectionStatus: null,
+        recommendationSelectedHospitalIds: null,
+        recommendationSelected: false,
+      } as any,
+      facts: {
+        'recommendation.generated': true,
+        'recommendation.selected': false,
+      },
+    })).rejects.toBeInstanceOf(InvalidChatbotV3ActionError);
   });
 
   it('persists RECOMMENDATION_SKIPPED through the same structured action path', async () => {
@@ -685,6 +901,8 @@ describe('chatbot-v3 structured action runtime normalization', () => {
         decide: vi.fn((input) => {
           expect(input.statusSnapshot).toMatchObject({
             recommendationGenerated: true,
+            recommendationSelectionStatus: 'skipped',
+            recommendationSelectedHospitalIds: [],
             recommendationSelected: false,
           });
           expect(input.facts).toMatchObject({
@@ -725,6 +943,8 @@ describe('chatbot-v3 structured action runtime normalization', () => {
       },
       statusSnapshot: {
         recommendationGenerated: true,
+        recommendationSelectionStatus: 'pending',
+        recommendationSelectedHospitalIds: [],
         recommendationSelected: null,
       } as any,
       facts: {
@@ -735,9 +955,158 @@ describe('chatbot-v3 structured action runtime normalization', () => {
 
     expect(result.writeIntents).toEqual(expect.objectContaining({
       statusPatch: {
+        recommendationGenerated: true,
+        recommendationSelectionStatus: 'skipped',
+        recommendationSelectedHospitalIds: [],
         recommendationSelected: false,
       },
     }));
+  });
+
+  it('persists recommendation presentation as a pending structured selection state once results are shown', async () => {
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [
+            { hospitalId: 'hospital-1', name: 'Hospital 1', reason: 'Good fit' },
+          ],
+          recommendationTask: 'generate',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'show hospital recommendation',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchAgent: 'RecommendationAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: recommendationAgent as any,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-recommendation-presented-1',
+      sessionId: 'session-recommendation-presented-1',
+      turnId: 'turn-recommendation-presented-1',
+      message: 'Please recommend hospitals for me.',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        minimalTriageComplete: true,
+        recommendationGenerated: false,
+        recommendationSelectionStatus: null,
+        recommendationSelectedHospitalIds: null,
+        recommendationSelected: false,
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.generated': false,
+        'recommendation.selected': false,
+      },
+    });
+
+    expect(result.writeIntents).toEqual(expect.objectContaining({
+      statusPatch: expect.objectContaining({
+        recommendationGenerated: true,
+        recommendationSelectionStatus: 'pending',
+        recommendationSelectedHospitalIds: [],
+        recommendationSelected: false,
+      }),
+    }));
+  });
+
+  it('does not mark recommendation as presented when every raw candidate is filtered out before rendering', async () => {
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [
+            { hospitalId: '', name: 'Broken candidate' },
+            { hospitalId: 'hospital-2', name: '' },
+          ],
+          recommendationTask: 'generate',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'RECOMMENDATION' as const,
+          reason: 'show hospital recommendation',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: { stage: 'RECOMMENDATION' as const, phase: 'active' as const },
+          dispatchAgent: 'RecommendationAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: recommendationAgent as any,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-recommendation-presented-malformed-1',
+      sessionId: 'session-recommendation-presented-malformed-1',
+      turnId: 'turn-recommendation-presented-malformed-1',
+      message: 'Please recommend hospitals for me.',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        minimalTriageComplete: true,
+        recommendationGenerated: false,
+        recommendationSelectionStatus: null,
+        recommendationSelectedHospitalIds: null,
+        recommendationSelected: false,
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.generated': false,
+        'recommendation.selected': false,
+      },
+    });
+
+    expect(result.writeIntents?.statusPatch).toBeUndefined();
   });
 });
 
@@ -1825,11 +2194,11 @@ describe('chatbot-v3 runtime', () => {
       },
       conversationSummaryPatch: {
         contract: CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
-        statusPatch: {
-          conversationSummary: 'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an...',
+        statusPatch: expect.objectContaining({
+          conversationSummary: 'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process...',
           lastUserMessageAt: expect.any(Date),
           lastAssistantMessageAt: expect.any(Date),
-        },
+        }),
       },
     }));
     expect(result.render).toEqual({
@@ -3023,7 +3392,7 @@ describe('chatbot-v3 runtime', () => {
       status: 'ok',
       data: {
         'records.minimal_triage.complete': false,
-        collectionPrompt: 'Please upload any records you already have.',
+        collectionPrompt: 'Please upload your diagnosis proof, diagnosis certificate, or another supporting diagnosis document so our medical team can prepare the next step.',
       },
     });
     expect(result.writeIntents.canonicalTruthPatch).toEqual({});
@@ -3233,6 +3602,197 @@ describe('chatbot-v3 runtime', () => {
         schemaValidationFailed: true,
       }),
     ]));
+  });
+});
+
+describe('chatbot-v3 public route validation', () => {
+  it('rejects malformed TRIAGE_SUBMITTED requests at validation time', async () => {
+    const app = new Hono();
+    app.route('/', chatbotV3PublicRoutes);
+    app.onError((err, c) => {
+      if (err.name === 'ZodError' && 'errors' in err) {
+        return c.json({
+          error: 'Validation failed',
+          code: 'VALIDATION_FAILED',
+          details: (err as Error & { errors: unknown[] }).errors,
+        }, 400);
+      }
+
+      throw err;
+    });
+
+    routeMockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-route-1',
+      sessionId: 'session-v3-route-1',
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update('secret-v3-route-1').digest('hex'),
+      patientId: null,
+      difyConversationId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      },
+    });
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        Cookie: 'chatbot_session_secret=secret-v3-route-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-route-1',
+        action: {
+          type: 'TRIAGE_SUBMITTED',
+        },
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(expect.objectContaining({
+      error: 'Validation failed',
+      code: 'VALIDATION_FAILED',
+      details: expect.arrayContaining([
+        expect.objectContaining({
+          message: expect.stringContaining('TRIAGE_SUBMITTED'),
+          path: ['message'],
+        }),
+      ]),
+    }));
+    expect(routeMockServices.idempotencyExecutor.execute).not.toHaveBeenCalled();
+  });
+
+  it('accepts attachment-only diagnosis-proof uploads during COLLECT_MEDICAL_INPUTS', async () => {
+    const app = new Hono();
+    app.route('/', chatbotV3PublicRoutes);
+    app.onError((err, c) => {
+      if (err.name === 'ZodError' && 'errors' in err) {
+        return c.json({
+          error: 'Validation failed',
+          code: 'VALIDATION_FAILED',
+          details: (err as Error & { errors: unknown[] }).errors,
+        }, 400);
+      }
+
+      throw err;
+    });
+
+    routeMockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-route-attachments-1',
+      sessionId: 'session-v3-route-attachments-1',
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update('secret-v3-route-attachments-1').digest('hex'),
+      patientId: null,
+      difyConversationId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MEDICAL_INPUTS',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        formStatus: 'completed',
+        docUploadStatus: 'none',
+        recommendationStatus: 'not_started',
+        consultationStatus: 'not_introduced',
+        packageStatus: 'not_introduced',
+        handoffStatus: 'not_needed',
+      },
+    });
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        Cookie: 'chatbot_session_secret=secret-v3-route-attachments-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-route-attachments-1',
+        attachments: [{
+          fileName: 'diagnosis-certificate.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot/session-v3-route-attachments-1/diagnosis-certificate.pdf',
+        }],
+      }),
+    });
+
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.turnOutcome).toBeDefined();
+    expect(routeMockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
+  });
+
+  it('filters identical recommendation selection arrays out of status patches', () => {
+    expect(filterUnchangedStatusPatch(
+      {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+      } as any,
+      {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+      } as any,
+    )).toEqual({});
+  });
+});
+
+describe('chatbot-v3 route recommendation read-side helpers', () => {
+  it('derives recommendation state from structured selection status before legacy workflow fields', () => {
+    expect(deriveRecommendationState({
+      recommendationSelectionStatus: 'selected',
+      recommendationStatus: 'NOT_STARTED',
+      packageStatus: 'NOT_INTRODUCED',
+    } as any)).toBe('confirmed');
+
+    expect(deriveRecommendationState({
+      recommendationSelectionStatus: 'pending',
+      recommendationStatus: 'NOT_STARTED',
+      packageStatus: 'NOT_INTRODUCED',
+    } as any)).toBe('processing');
+
+    expect(deriveRecommendationState({
+      recommendationSelectionStatus: 'skipped',
+      recommendationStatus: 'NOT_STARTED',
+      packageStatus: 'NOT_INTRODUCED',
+    } as any)).toBe('processing');
+
+    expect(deriveRecommendationState({
+      recommendationGenerated: true,
+      recommendationStatus: 'NOT_STARTED',
+      packageStatus: 'NOT_INTRODUCED',
+    } as any)).toBe('processing');
+
+    expect(deriveRecommendationState({
+      recommendationGenerated: true,
+      recommendationStatus: 'FAILED',
+      packageStatus: 'NOT_INTRODUCED',
+    } as any)).toBe('failed');
+  });
+
+  it('serializes structured recommendation selection fields in status.query snapshots', () => {
+    expect(serializeStatusSnapshot({
+      recommendationGenerated: true,
+      recommendationSelectionStatus: 'selected',
+      recommendationSelectedHospitalIds: ['hospital-1'],
+      recommendationSelected: true,
+    } as any)).toEqual(expect.objectContaining({
+      recommendationGenerated: true,
+      recommendationSelectionStatus: 'selected',
+      recommendationSelectedHospitalIds: ['hospital-1'],
+      recommendationSelected: true,
+    }));
   });
 });
 

@@ -618,9 +618,18 @@ function dedupeFaqItemsById(items: Array<ReturnType<typeof mapFaqItemRecord>>) {
   });
 }
 
-function deriveRecommendationState(
+export function deriveRecommendationState(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): string {
+  const selectionStatus = statusSnapshot?.recommendationSelectionStatus;
+  if (selectionStatus === 'selected') {
+    return 'confirmed';
+  }
+
+  if (selectionStatus === 'pending' || selectionStatus === 'skipped') {
+    return 'processing';
+  }
+
   const recommendationStatus = normalizeStatus(statusSnapshot?.recommendationStatus);
   const packageStatus = normalizeStatus(statusSnapshot?.packageStatus);
 
@@ -631,6 +640,10 @@ function deriveRecommendationState(
 
   if (recommendationStatus === 'FAILED') {
     return 'failed';
+  }
+
+  if (statusSnapshot?.recommendationGenerated === true) {
+    return 'processing';
   }
 
   if (recommendationStatus.length === 0 || recommendationStatus === 'NOT_STARTED') {
@@ -687,7 +700,7 @@ function buildStatusQuerySnapshot(session: AiChatSession | null): Record<string,
   };
 }
 
-function serializeStatusSnapshot(
+export function serializeStatusSnapshot(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): Record<string, unknown> | null {
   if (!statusSnapshot) {
@@ -711,6 +724,8 @@ function serializeStatusSnapshot(
     minimalTriageComplete: canonicalTruthFlags['records.minimal_triage.complete'],
     processExplained: canonicalTruthFlags['process.explained'],
     recommendationGenerated: canonicalTruthFlags['recommendation.generated'],
+    recommendationSelectionStatus: statusSnapshot.recommendationSelectionStatus ?? null,
+    recommendationSelectedHospitalIds: statusSnapshot.recommendationSelectedHospitalIds ?? null,
     recommendationSelected: canonicalTruthFlags['recommendation.selected'],
     consultCompleted: canonicalTruthFlags['consult.completed'],
     handoffActive: canonicalTruthFlags['handoff.active'],
@@ -1103,7 +1118,7 @@ async function patchSessionStatus(
   }));
 }
 
-function filterUnchangedStatusPatch(
+export function filterUnchangedStatusPatch(
   statusSnapshot: Partial<AiChatSession['statusSnapshot']> | null | undefined,
   patch: Partial<AiChatSession['statusSnapshot']>,
 ): Partial<AiChatSession['statusSnapshot']> {
@@ -1112,6 +1127,11 @@ function filterUnchangedStatusPatch(
 
     if (currentValue instanceof Date && nextValue instanceof Date) {
       return currentValue.toISOString() !== nextValue.toISOString();
+    }
+
+    if (Array.isArray(currentValue) && Array.isArray(nextValue)) {
+      return currentValue.length !== nextValue.length
+        || currentValue.some((value, index) => value !== nextValue[index]);
     }
 
     return currentValue !== nextValue;

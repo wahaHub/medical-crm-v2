@@ -587,9 +587,15 @@ export class ConversationOrchestratorV3RuntimeService {
   ): ConversationOrchestratorV3TurnResult {
     const render = deriveRenderState(result);
     const stageEntryStatusPatch = deriveStageEntryStatusPatch(result, input, statusSnapshot);
+    const recommendationPresentationStatusPatch = deriveRecommendationPresentationStatusPatch(
+      result,
+      input,
+      statusSnapshot,
+    );
     const statusPatch = mergeStatusPatches(
       input.normalizedActionStatusPatch,
       stageEntryStatusPatch,
+      recommendationPresentationStatusPatch,
     );
     const renderedResult = {
       ...result,
@@ -1004,6 +1010,9 @@ function normalizeStructuredUserAction(
         message: normalizedMessage,
         statusSnapshot: {
           ...currentStatusSnapshot,
+          recommendationGenerated: true,
+          recommendationSelectionStatus: 'selected',
+          recommendationSelectedHospitalIds: [input.userAction.hospitalId],
           recommendationSelected: true,
         },
         facts: {
@@ -1012,16 +1021,28 @@ function normalizeStructuredUserAction(
           'recommendation.picked': true,
         },
         normalizedActionStatusPatch: {
+          recommendationGenerated: true,
+          recommendationSelectionStatus: 'selected',
+          recommendationSelectedHospitalIds: [input.userAction.hospitalId],
           recommendationSelected: true,
         },
       };
     }
     case 'RECOMMENDATION_SKIPPED':
+      if (!isRecommendationPresented(currentStatusSnapshot, currentFacts)) {
+        throw new InvalidChatbotV3ActionError(
+          'RECOMMENDATION_SKIPPED is invalid before recommendation is presented.',
+        );
+      }
+
       return {
         ...input,
         message: normalizedMessage,
         statusSnapshot: {
           ...currentStatusSnapshot,
+          recommendationGenerated: true,
+          recommendationSelectionStatus: 'skipped',
+          recommendationSelectedHospitalIds: [],
           recommendationSelected: false,
         },
         facts: {
@@ -1030,6 +1051,9 @@ function normalizeStructuredUserAction(
           'recommendation.picked': false,
         },
         normalizedActionStatusPatch: {
+          recommendationGenerated: true,
+          recommendationSelectionStatus: 'skipped',
+          recommendationSelectedHospitalIds: [],
           recommendationSelected: false,
         },
       };
@@ -1158,11 +1182,15 @@ function isRecommendationPresented(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   facts: ConversationOrchestratorV3Facts | undefined,
 ): boolean {
-  if (statusSnapshot?.recommendationGenerated === true) {
-    return true;
-  }
+  const recommendationStatus = normalizeStatus(statusSnapshot?.recommendationStatus);
+  const packageStatus = normalizeStatus(statusSnapshot?.packageStatus);
+  const legacyFailed = recommendationStatus === 'FAILED' || packageStatus === 'FAILED';
 
-  return facts?.['recommendation.generated'] === true;
+  return statusSnapshot?.recommendationSelectionStatus === 'pending'
+    || statusSnapshot?.recommendationSelectionStatus === 'selected'
+    || statusSnapshot?.recommendationSelectionStatus === 'skipped'
+    || (!legacyFailed && statusSnapshot?.recommendationGenerated === true)
+    || (!legacyFailed && facts?.['recommendation.generated'] === true);
 }
 
 function deriveSupervisorReadDomains(
@@ -1490,6 +1518,61 @@ function deriveStageEntryStatusPatch(
   return {
     docUploadStatus: 'none',
   };
+}
+
+function deriveRecommendationPresentationStatusPatch(
+  result: ConversationOrchestratorV3TurnResult,
+  input: ConversationOrchestratorV3NormalizedTurnInput,
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): Partial<AiChatStatusSnapshot> | undefined {
+  if (result.turnOutcome.status !== 'ok' || result.journey.stage !== 'RECOMMENDATION') {
+    return undefined;
+  }
+
+  if (input.userAction?.type === 'RECOMMENDATION_SELECTED' || input.userAction?.type === 'RECOMMENDATION_SKIPPED') {
+    return undefined;
+  }
+
+  if (statusSnapshot?.recommendationSelectionStatus === 'selected' || statusSnapshot?.recommendationSelectionStatus === 'skipped') {
+    return undefined;
+  }
+
+  if (result.dispatchResult?.status !== 'ok') {
+    return undefined;
+  }
+
+  const recommendations = readRenderableRecommendationCandidates(result.dispatchResult);
+  if (recommendations.length === 0) {
+    return undefined;
+  }
+
+  return {
+    recommendationGenerated: true,
+    recommendationSelectionStatus: 'pending',
+    recommendationSelectedHospitalIds: [],
+    recommendationSelected: false,
+  };
+}
+
+function readRenderableRecommendationCandidates(
+  dispatchResult: ToolResult<unknown> | null,
+): Array<{ hospitalId: string; name: string }> {
+  if (dispatchResult?.status !== 'ok') {
+    return [];
+  }
+
+  const recommendations = asArray(asRecord(dispatchResult.data)['recommendations']);
+  return recommendations.flatMap((candidate) => {
+    const record = asRecord(candidate);
+    const hospitalId = asString(record['hospitalId']);
+    const name = asString(record['name']);
+
+    if (!hospitalId || !name) {
+      return [];
+    }
+
+    return [{ hospitalId, name }];
+  });
 }
 
 function mergeStatusPatches(

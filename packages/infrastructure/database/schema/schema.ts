@@ -578,6 +578,8 @@ export const aiChatSessions = pgTable("ai_chat_sessions", {
 	minimalTriageComplete: boolean("minimal_triage_complete"),
 	processExplained: boolean("process_explained").default(false).notNull(),
 	recommendationGenerated: boolean("recommendation_generated"),
+	recommendationSelectionStatus: varchar("recommendation_selection_status", { length: 20 }),
+	recommendationSelectedHospitalIds: jsonb("recommendation_selected_hospital_ids"),
 	recommendationSelected: boolean("recommendation_selected"),
 	consultCompleted: boolean("consult_completed"),
 	handoffActive: boolean("handoff_active"),

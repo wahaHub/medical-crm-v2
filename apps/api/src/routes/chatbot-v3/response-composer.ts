@@ -23,7 +23,7 @@ export interface ResponseComposerInput {
   includeRuntimeDebug?: boolean;
 }
 
-export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an online consultation if you want one.';
+export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, and after that you can upload your diagnosis proof so our team can prepare the next step.';
 const FAQ_DEGRADED_TEXT = 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.';
 const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
 const CONSULT_DEGRADED_TEXT = 'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.';
@@ -373,7 +373,7 @@ function buildCards(
         payload: {
           candidates: readRecommendations(result.dispatchResult),
         },
-        actions: [],
+        actions: buildRecommendationActions(result.dispatchResult),
       }];
     case 'ONLINE_CONSULT':
       return [{
@@ -395,6 +395,34 @@ function buildCards(
         actions: [],
       }];
   }
+}
+
+function buildRecommendationActions(
+  dispatchResult: ToolResult<unknown> | null,
+): Extract<ChatbotV3Card, { cardType: 'RECOMMENDATION_LIST' }>['actions'] {
+  const candidates = readRecommendations(dispatchResult);
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const selectionActions = candidates.map((candidate) => ({
+    actionType: 'SUBMIT' as const,
+    label: `Select ${candidate.name}`,
+    params: {
+      hospitalId: candidate.hospitalId,
+    },
+  }));
+
+  return [
+    ...selectionActions,
+    {
+      actionType: 'SUBMIT' as const,
+      label: 'Continue without selecting a hospital',
+      params: {
+        actionKey: 'RECOMMENDATION_SKIPPED' as const,
+      },
+    },
+  ];
 }
 
 export function buildEffectiveStatusSnapshot(

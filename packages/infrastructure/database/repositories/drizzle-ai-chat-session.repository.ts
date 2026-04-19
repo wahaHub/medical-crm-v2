@@ -58,6 +58,8 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
         processExplained: entity.statusSnapshot.processExplained,
         recommendationGenerated: entity.statusSnapshot.recommendationGenerated,
+        recommendationSelectionStatus: entity.statusSnapshot.recommendationSelectionStatus,
+        recommendationSelectedHospitalIds: entity.statusSnapshot.recommendationSelectedHospitalIds,
         recommendationSelected: entity.statusSnapshot.recommendationSelected,
         consultCompleted: entity.statusSnapshot.consultCompleted,
         handoffActive: entity.statusSnapshot.handoffActive,
@@ -93,6 +95,8 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           minimalTriageComplete: entity.statusSnapshot.minimalTriageComplete,
           processExplained: entity.statusSnapshot.processExplained,
           recommendationGenerated: entity.statusSnapshot.recommendationGenerated,
+          recommendationSelectionStatus: entity.statusSnapshot.recommendationSelectionStatus,
+          recommendationSelectedHospitalIds: entity.statusSnapshot.recommendationSelectedHospitalIds,
           recommendationSelected: entity.statusSnapshot.recommendationSelected,
           consultCompleted: entity.statusSnapshot.consultCompleted,
           handoffActive: entity.statusSnapshot.handoffActive,
@@ -177,6 +181,12 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     if (patch.minimalTriageComplete !== undefined) updates.minimalTriageComplete = patch.minimalTriageComplete;
     if (patch.processExplained !== undefined) updates.processExplained = patch.processExplained;
     if (patch.recommendationGenerated !== undefined) updates.recommendationGenerated = patch.recommendationGenerated;
+    if (patch.recommendationSelectionStatus !== undefined) {
+      updates.recommendationSelectionStatus = patch.recommendationSelectionStatus;
+    }
+    if (patch.recommendationSelectedHospitalIds !== undefined) {
+      updates.recommendationSelectedHospitalIds = patch.recommendationSelectedHospitalIds;
+    }
     if (patch.recommendationSelected !== undefined) updates.recommendationSelected = patch.recommendationSelected;
     if (patch.consultCompleted !== undefined) updates.consultCompleted = patch.consultCompleted;
     if (patch.handoffActive !== undefined) updates.handoffActive = patch.handoffActive;
@@ -227,6 +237,10 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         minimalTriageComplete: row.minimalTriageComplete,
         processExplained: row.processExplained,
         recommendationGenerated: row.recommendationGenerated,
+        recommendationSelectionStatus: row.recommendationSelectionStatus as import('@medical-crm/domain').AiChatStatusSnapshot['recommendationSelectionStatus'],
+        recommendationSelectedHospitalIds: Array.isArray(row.recommendationSelectedHospitalIds)
+          ? row.recommendationSelectedHospitalIds.filter((candidate): candidate is string => typeof candidate === 'string')
+          : null,
         recommendationSelected: row.recommendationSelected,
         consultCompleted: row.consultCompleted,
         handoffActive: row.handoffActive,

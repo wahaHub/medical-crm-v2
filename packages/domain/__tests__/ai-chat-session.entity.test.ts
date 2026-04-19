@@ -201,6 +201,102 @@ describe('AiChatSession canonical truth flags', () => {
     });
   });
 
+  it('hydrates structured recommendation selection fields and keeps compatibility aliases aligned', () => {
+    const session = new AiChatSession({
+      id: 'session-recommendation-selection-1',
+      sessionId: 'session-recommendation-selection-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationSelectionStatus: 'selected' as never,
+        recommendationSelectedHospitalIds: ['hospital-1', 'hospital-2'] as never,
+        recommendationSelected: false,
+      },
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.recommendationGenerated).toBe(true);
+    expect(session.statusSnapshot.recommendationSelectionStatus).toBe('selected');
+    expect(session.statusSnapshot.recommendationSelectedHospitalIds).toEqual(['hospital-1']);
+    expect(session.statusSnapshot.recommendationSelected).toBe(true);
+    expect(deriveCanonicalTruthFlagsFromStatusSnapshot(session.statusSnapshot)).toMatchObject({
+      'recommendation.generated': true,
+      'recommendation.selected': true,
+    });
+  });
+
+  it('hydrates legacy generated recommendations without structured selection as pending + empty ids', () => {
+    const session = new AiChatSession({
+      id: 'session-recommendation-selection-2',
+      sessionId: 'session-recommendation-selection-2',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationSelected: false,
+      },
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.recommendationSelectionStatus).toBe('pending');
+    expect(session.statusSnapshot.recommendationSelectedHospitalIds).toEqual([]);
+    expect(session.statusSnapshot.recommendationSelected).toBe(false);
+  });
+
+  it('does not normalize failed legacy recommendation sessions into pending structured selection', () => {
+    const session = new AiChatSession({
+      id: 'session-recommendation-selection-failed-1',
+      sessionId: 'session-recommendation-selection-failed-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationSelected: false,
+        recommendationStatus: 'FAILED',
+      },
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.recommendationSelectionStatus).toBeNull();
+    expect(session.statusSnapshot.recommendationGenerated).toBe(true);
+    expect(session.statusSnapshot.recommendationSelected).toBe(false);
+  });
+
+  it('keeps legacy selected recommendations aligned with structured selection during hydration', () => {
+    const session = new AiChatSession({
+      id: 'session-recommendation-selection-3',
+      sessionId: 'session-recommendation-selection-3',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        recommendationGenerated: true,
+        recommendationSelected: true,
+      },
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.recommendationSelectionStatus).toBe('selected');
+    expect(session.statusSnapshot.recommendationSelectedHospitalIds).toEqual([]);
+    expect(session.statusSnapshot.recommendationSelected).toBe(true);
+  });
+
   it('keeps records.minimal_triage.complete false when migrated canonical fields are null and only legacy upload/form evidence exists', () => {
     const session = new AiChatSession({
       id: 'session-migrated-1',

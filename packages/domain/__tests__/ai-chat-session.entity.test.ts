@@ -237,6 +237,32 @@ describe('AiChatSession canonical truth flags', () => {
     });
   });
 
+  it('preserves migrated legacy minimal triage completion when status defaulted to pending and no summary was backfilled', () => {
+    const session = new AiChatSession({
+      id: 'session-migrated-legacy-complete-1',
+      sessionId: 'session-migrated-legacy-complete-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+      },
+      createdAt: new Date('2026-04-18T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-18T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.minimalTriageStatus).toBe('pending');
+    expect(session.statusSnapshot.minimalTriageAnswersSummary).toBeNull();
+    expect(session.statusSnapshot.minimalTriageComplete).toBe(true);
+    expect(deriveCanonicalTruthFlagsFromStatusSnapshot(session.statusSnapshot)).toMatchObject({
+      'records.minimal_triage.complete': true,
+    });
+  });
+
   it('still repairs other canonical truth from legacy evidence without treating minimal triage as complete', () => {
     const session = new AiChatSession({
       id: 'session-migrated-false-1',

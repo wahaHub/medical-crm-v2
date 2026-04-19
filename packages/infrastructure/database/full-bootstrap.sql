@@ -1979,6 +1979,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS conversations_admin_patient_case_unique
 ON conversations (case_id)
 WHERE category = 'ADMIN_PATIENT' AND case_id IS NOT NULL;
 
+-- Migration: 036_ai_chat_minimal_triage_summary.sql
+ALTER TABLE ai_chat_sessions
+ADD COLUMN IF NOT EXISTS minimal_triage_status VARCHAR(20) NOT NULL DEFAULT 'pending';
+
+ALTER TABLE ai_chat_sessions
+ADD COLUMN IF NOT EXISTS minimal_triage_answers_summary TEXT;
+
 -- Track the current schema head so future pnpm db:migrate runs stay incremental.
 CREATE TABLE IF NOT EXISTS _migrations (
   id SERIAL PRIMARY KEY,
@@ -2028,5 +2035,6 @@ VALUES
   ('032_ai_chat_session_site_scope.sql'),
   ('033_ai_chat_canonical_truth_flags_repair.sql'),
   ('034_message_sender_overrides.sql'),
-  ('035_admin_patient_conversation_uniqueness.sql')
+  ('035_admin_patient_conversation_uniqueness.sql'),
+  ('036_ai_chat_minimal_triage_summary.sql')
 ON CONFLICT (name) DO NOTHING;

@@ -1,4 +1,9 @@
-import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
+import type {
+  AiChatStatusSnapshot,
+  ChatJourneyPhase,
+  ChatJourneyStage,
+} from '@medical-crm/domain';
+import { deriveCanonicalTruthFlagsFromStatusSnapshot } from '@medical-crm/domain';
 import type { ChatbotV3ReplayLineage } from '@medical-crm/validation';
 import type { MinimalIntakeSeed } from './minimal-intake.types.js';
 
@@ -64,6 +69,10 @@ export interface ChatbotV3StageRef {
 }
 
 export type ChatbotV3Facts = Record<string, boolean | number | string | null | undefined>;
+export type ChatbotV3StatusSnapshot = Partial<Pick<
+  AiChatStatusSnapshot,
+  'minimalTriageStatus' | 'minimalTriageAnswersSummary' | 'minimalTriageComplete'
+>>;
 
 export interface SupervisorTask {
   goal: string;
@@ -123,6 +132,7 @@ export interface OrchestratorV3DecisionInput {
   domainReadResults?: SupervisorDomainReadResults;
   suggestion: SupervisorSuggestionSeed;
   facts?: ChatbotV3Facts;
+  statusSnapshot?: ChatbotV3StatusSnapshot | null;
   handoff?: ChatbotV3HandoffSignals;
   bootstrap?: ChatbotV3BootstrapSignals;
 }
@@ -143,6 +153,7 @@ export interface JourneyRuntimeAuthorityInput {
   current: ChatbotV3StageRef;
   proposal: JourneyRuntimeAuthorityProposal;
   facts?: ChatbotV3Facts;
+  statusSnapshot?: ChatbotV3StatusSnapshot | null;
   handoff?: ChatbotV3HandoffSignals;
   bootstrap?: ChatbotV3BootstrapSignals;
   intake?: MinimalIntakeSeed;
@@ -250,3 +261,16 @@ export const DEFAULT_POLICY: ChatbotV3PolicyConfig = {
   },
   jumpRules: [],
 };
+
+export function hasChatbotV3MinimalTriageComplete(input: {
+  facts?: ChatbotV3Facts;
+  statusSnapshot?: ChatbotV3StatusSnapshot | null;
+}): boolean {
+  if (input.statusSnapshot != null) {
+    return deriveCanonicalTruthFlagsFromStatusSnapshot(input.statusSnapshot)[
+      'records.minimal_triage.complete'
+    ];
+  }
+
+  return input.facts?.['records.minimal_triage.complete'] === true;
+}

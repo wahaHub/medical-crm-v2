@@ -60,6 +60,58 @@ describe('JourneyRuntimeAuthorityService', () => {
     });
   });
 
+  it('treats pending minimal triage with an answers summary as complete for recommendation eligibility', () => {
+    const decision = service.decide(createInput({
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'summary-backed triage is complete',
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ADVANCE');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'RecommendationAgent',
+    });
+  });
+
+  it('treats skipped minimal triage as complete for recommendation eligibility', () => {
+    const decision = service.decide(createInput({
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'skipped triage should still allow recommendation',
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ADVANCE');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'RecommendationAgent',
+    });
+  });
+
   it('normalizes mismatched proposal workers back to the canonical stage dispatch agent', () => {
     const decision = service.decide(createInput({
       proposal: {
@@ -80,7 +132,7 @@ describe('JourneyRuntimeAuthorityService', () => {
     });
   });
 
-  it('denies recommendation before minimal triage is complete', () => {
+  it('denies recommendation when a pending status snapshot has no summary, even if stale facts say complete', () => {
     const decision = service.decide(createInput({
       current: {
         stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
@@ -92,8 +144,13 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'RecommendationAgent',
         reason: 'jump ahead to recommendation',
       },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      },
       facts: {
-        'records.minimal_triage.complete': false,
+        'records.minimal_triage.complete': true,
       },
     }));
 
@@ -104,6 +161,31 @@ describe('JourneyRuntimeAuthorityService', () => {
     expect(decision.write.stage).toEqual({
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
+    });
+    expect(decision.reason).toContain('records.minimal_triage.complete');
+  });
+
+  it('keeps pending minimal triage with no answers summary blocked from recommendation', () => {
+    const decision = service.decide(createInput({
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'pending triage without summary is still incomplete',
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    }));
+
+    expect(decision.outcome).toBe('DENY');
+    expect(decision.dispatch).toEqual({
+      outcome: 'DENY',
     });
     expect(decision.reason).toContain('records.minimal_triage.complete');
   });

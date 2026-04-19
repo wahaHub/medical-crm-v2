@@ -62,6 +62,103 @@ describe('SupervisorService', () => {
     });
   });
 
+  it('treats pending minimal triage with an answers summary as recommendation-ready even when the proposal starts on minimal facts', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: 'summary-backed triage is complete',
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      dispatchAgent: 'RecommendationAgent',
+      reason: 'minimal triage is complete and recommendation should begin',
+      task: {
+        goal: 'Generate hospital recommendations for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'intake.language': 'en',
+          'intake.gender': 'female',
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
+  it('treats skipped minimal triage as recommendation-ready even when the proposal starts on minimal facts', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: 'skipped triage should still allow recommendation',
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+      dispatchAgent: 'RecommendationAgent',
+      reason: 'minimal triage is complete and recommendation should begin',
+      task: {
+        goal: 'Generate hospital recommendations for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'intake.language': 'en',
+          'intake.gender': 'female',
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
+  it('keeps pending minimal triage without an answers summary blocked from recommendation even when stale facts say complete', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: 'triage is still incomplete',
+      },
+    });
+
+    expect(result.suggestedStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+    expect(result.dispatchAgent).toBe('RecordsAgent');
+    expect(result.reason).toBe('triage is still incomplete');
+  });
+
   it('prefers process explanation after recommendation selection when the process has not been explained', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,

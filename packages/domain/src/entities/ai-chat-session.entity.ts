@@ -233,7 +233,7 @@ function normalizeMinimalTriageSnapshot(
   return {
     status: rawStatus,
     answersSummary: null,
-    complete: persistedComplete === false ? false : null,
+    complete: persistedComplete ?? null,
   };
 }
 

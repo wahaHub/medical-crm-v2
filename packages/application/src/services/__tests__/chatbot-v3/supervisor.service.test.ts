@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
+  type OrchestratorV3DecisionInput,
   type SupervisorGatewayInput,
 } from '../../chatbot-v3/types.js';
 import {
@@ -15,7 +16,7 @@ import {
 describe('SupervisorService', () => {
   const supervisor = new SupervisorService();
 
-  const minimalInput = {
+  const minimalInput: OrchestratorV3DecisionInput = {
     currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
     conversationSummary: 'The session just started and no recommendation has been shown yet.',
     latestUserMessage: 'Please recommend hospitals for me.',
@@ -37,6 +38,16 @@ describe('SupervisorService', () => {
     facts: {
       'records.minimal_triage.complete': true,
     },
+    statusSnapshot: {
+      journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      journeyCurrentPhase: 'active',
+      minimalTriageStatus: 'skipped',
+      minimalTriageAnswersSummary: null,
+      minimalTriageComplete: true,
+      recommendationSelectionStatus: 'pending',
+      recommendationSelectedHospitalIds: [],
+      supportingDocuments: [],
+    },
     availableReadDomains: ['records.status', 'recommendation.status'] as const,
   };
 
@@ -56,6 +67,8 @@ describe('SupervisorService', () => {
           'intake.target_destination': 'Shanghai',
           'intake.language': 'en',
           'intake.gender': 'female',
+          'recommendation.generated': true,
+          'recommendation.selected': false,
           'records.minimal_triage.complete': true,
         },
       },
@@ -93,6 +106,8 @@ describe('SupervisorService', () => {
           'intake.target_destination': 'Shanghai',
           'intake.language': 'en',
           'intake.gender': 'female',
+          'recommendation.generated': true,
+          'recommendation.selected': false,
           'records.minimal_triage.complete': true,
         },
       },
@@ -130,6 +145,8 @@ describe('SupervisorService', () => {
           'intake.target_destination': 'Shanghai',
           'intake.language': 'en',
           'intake.gender': 'female',
+          'recommendation.generated': true,
+          'recommendation.selected': false,
           'records.minimal_triage.complete': true,
         },
       },
@@ -159,13 +176,13 @@ describe('SupervisorService', () => {
     expect(result.reason).toBe('triage is still incomplete');
   });
 
-  it('falls back to facts when the status snapshot has no minimal triage fields', async () => {
+  it('keeps empty structured snapshots blocked from recommendation even when legacy facts claim completion', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
       suggestion: {
         intent: 'progression',
         suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-        reason: 'empty snapshots should not override facts',
+        reason: 'empty structured snapshots should stay on minimal triage',
       },
       facts: {
         'records.minimal_triage.complete': true,
@@ -173,23 +190,30 @@ describe('SupervisorService', () => {
       statusSnapshot: {},
     });
 
-    expect(result).toEqual({
-      intent: 'progression',
-      suggestedStage: 'RECOMMENDATION',
-      dispatchAgent: 'RecommendationAgent',
-      reason: 'minimal triage is complete and recommendation should begin',
-      task: {
-        goal: 'Generate hospital recommendations for this user.',
-        latestUserMessage: 'Please recommend hospitals for me.',
-        necessaryFacts: {
-          'intake.condition': 'lung cancer',
-          'intake.target_destination': 'Shanghai',
-          'intake.language': 'en',
-          'intake.gender': 'female',
-          'records.minimal_triage.complete': true,
-        },
+    expect(result.suggestedStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+    expect(result.dispatchAgent).toBe('RecordsAgent');
+    expect(result.reason).toBe('empty structured snapshots should stay on minimal triage');
+  });
+
+  it('does not advance recommendation progression from minimalTriageComplete alone when structured triage status is absent', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: 'minimal triage still needs structured state',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+      statusSnapshot: {
+        minimalTriageComplete: true,
       },
     });
+
+    expect(result.suggestedStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+    expect(result.dispatchAgent).toBe('RecordsAgent');
+    expect(result.reason).toBe('minimal triage still needs structured state');
   });
 
   it('prefers process explanation after recommendation selection when the process has not been explained', async () => {
@@ -200,13 +224,22 @@ describe('SupervisorService', () => {
         stage: 'RECOMMENDATION',
         phase: 'active',
       },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+      },
       suggestion: {
         intent: 'progression',
         suggestedStage: 'ONLINE_CONSULT',
         reason: 'recommendation was selected',
       },
       facts: {
-        'records.minimal_triage.complete': true,
         'recommendation.selected': true,
         'process.explained': false,
       },
@@ -236,13 +269,22 @@ describe('SupervisorService', () => {
         stage: 'EXPLAIN_PROCESS',
         phase: 'active',
       },
+      statusSnapshot: {
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+      },
       suggestion: {
         intent: 'progression',
         suggestedStage: 'ONLINE_CONSULT',
         reason: 'recommendation was selected and process was explained',
       },
       facts: {
-        'records.minimal_triage.complete': true,
         'recommendation.selected': true,
         'process.explained': true,
       },
@@ -290,6 +332,23 @@ describe('SupervisorService', () => {
 
     expect(capturedInput).toEqual({
       currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      journeyCurrentPhase: 'active',
+      minimalTriageStatus: 'skipped',
+      minimalTriageAnswersSummary: null,
+      recommendationSelectionStatus: 'pending',
+      recommendationSelectedHospitalIds: [],
+      supportingDocuments: [],
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'pending',
+        recommendationSelectedHospitalIds: [],
+        supportingDocuments: [],
+      },
       conversationSummary: 'The session just started and no recommendation has been shown yet.',
       latestUserMessage: 'Please recommend hospitals for me.',
       intake: {
@@ -372,6 +431,8 @@ describe('SupervisorService', () => {
           'intake.target_destination': 'Shanghai',
           'intake.language': 'en',
           'intake.gender': 'female',
+          'recommendation.generated': true,
+          'recommendation.selected': false,
           'records.minimal_triage.complete': true,
         },
       },
@@ -452,47 +513,98 @@ describe('SupervisorService', () => {
     });
   });
 
-  it('uses bootstrap attachments to produce the minimal-triage records task', async () => {
+  it('treats recommendation skip as a real branch that should continue into process explanation', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
-      latestUserMessage: 'Here are my documents',
-      bootstrap: {
-        message: 'Here are my documents',
-        attachments: [{ fileName: 'report.pdf' }],
+      currentStage: 'RECOMMENDATION',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'skipped',
+        recommendationSelectedHospitalIds: [],
+        supportingDocuments: [],
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        reason: 'recommendation skip should continue into process explanation',
       },
       facts: {
-        'records.minimal_triage.complete': false,
+        'process.explained': false,
       },
     });
 
     expect(result).toEqual({
       intent: 'progression',
-      suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-      dispatchAgent: 'RecordsAgent',
-      reason: 'attachments provided by user',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'recommendation skip should continue into process explanation',
       task: {
-        goal: 'Collect the minimal medical triage needed for this user.',
-        latestUserMessage: 'Here are my documents',
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'Please recommend hospitals for me.',
         necessaryFacts: {
-          'intake.condition': 'lung cancer',
+          'current.stage': 'RECOMMENDATION',
           'intake.target_destination': 'Shanghai',
-          'records.minimal_triage.complete': false,
         },
       },
     });
+  });
 
-    expect(supervisor.deriveDecisionLineage({
+  it('keeps later-stage attachments on COLLECT_MEDICAL_INPUTS instead of advancing to consult', async () => {
+    const result = await supervisor.suggest({
       ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'pending',
+        recommendationSelectedHospitalIds: [],
+        supportingDocuments: [],
+      },
       latestUserMessage: 'Here are my documents',
       bootstrap: {
         message: 'Here are my documents',
         attachments: [{ fileName: 'report.pdf' }],
       },
-      facts: {
-        'records.minimal_triage.complete': false,
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'consult should not absorb attachment turns',
       },
-    })).toEqual({
-      bootstrapOverride: 'attachments_to_minimal_triage',
+      facts: {
+        'process.explained': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'attachment turn should remain in medical inputs',
+      task: {
+        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        latestUserMessage: 'Here are my documents',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'recommendation.selected': false,
+          'records.minimal_triage.complete': true,
+        },
+      },
     });
   });
 
@@ -577,6 +689,7 @@ describe('SupervisorService', () => {
         necessaryFacts: {
           'intake.condition': 'lung cancer',
           'intake.target_destination': 'Shanghai',
+          'recommendation.selected': false,
           'records.minimal_triage.complete': true,
         },
       },
@@ -643,6 +756,8 @@ describe('SupervisorService', () => {
           'intake.target_destination': 'Shanghai',
           'intake.language': 'en',
           'intake.gender': 'female',
+          'recommendation.generated': true,
+          'recommendation.selected': false,
           'records.minimal_triage.complete': true,
         },
       },

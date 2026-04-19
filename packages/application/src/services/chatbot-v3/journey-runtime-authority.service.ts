@@ -3,6 +3,7 @@ import {
   CHATBOT_V3_JOURNEY_STAGES,
   type ChatbotV3DispatchAgent,
   type ChatbotV3Facts,
+  hasChatbotV3RecommendationSelected,
   hasChatbotV3MinimalTriageComplete,
   type JourneyRuntimeAuthorityDecision,
   type JourneyRuntimeAuthorityInput,
@@ -90,7 +91,7 @@ export class JourneyRuntimeAuthorityService {
           },
         });
       case 'ONLINE_CONSULT':
-        if (!hasRecommendationSelected(input.facts)) {
+        if (!hasChatbotV3RecommendationSelected(input)) {
           return denyDecision(input, 'Online consult requires recommendation.selected');
         }
 
@@ -237,7 +238,7 @@ function canShowExplainProcess(input: JourneyRuntimeAuthorityInput): boolean {
     return true;
   }
 
-  return hasRecommendationSelected(input.facts);
+  return hasChatbotV3RecommendationSelected(input);
 }
 
 function resolveCanonicalDispatchAgent(stage: ChatJourneyStage): ChatbotV3DispatchAgent {
@@ -253,15 +254,11 @@ function canCollectMedicalInputs(input: JourneyRuntimeAuthorityInput): boolean {
     return true;
   }
 
-  return hasRecommendationSelected(input.facts) && hasProcessExplained(input.facts);
+  return hasChatbotV3RecommendationSelected(input) && hasProcessExplained(input.facts);
 }
 
 function isPostRecommendationStage(stage: ChatJourneyStage): boolean {
   return CHATBOT_V3_JOURNEY_STAGES.indexOf(stage) >= CHATBOT_V3_JOURNEY_STAGES.indexOf('RECOMMENDATION');
-}
-
-function hasRecommendationSelected(facts: ChatbotV3Facts | undefined): boolean {
-  return hasAnyTruthyFact(facts, ['recommendation.selected']);
 }
 
 function hasProcessExplained(facts: ChatbotV3Facts | undefined): boolean {

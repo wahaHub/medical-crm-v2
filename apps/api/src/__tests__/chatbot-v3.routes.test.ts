@@ -758,7 +758,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
     }));
   });
 
-  it('accepts RECOMMENDATION_SELECTED when only legacy recommendationGenerated truth is present', async () => {
+  it('rejects RECOMMENDATION_SELECTED when only legacy recommendationGenerated truth is present', async () => {
     const runtime = new ConversationOrchestratorV3RuntimeService({
       idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
       supervisor: {
@@ -796,7 +796,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
       agents: {},
     });
 
-    const result = await runtime.handleTurn({
+    await expect(runtime.handleTurn({
       traceId: 'trace-selection-legacy-generated-1',
       sessionId: 'session-selection-legacy-generated-1',
       turnId: 'turn-selection-legacy-generated-1',
@@ -814,21 +814,17 @@ describe('chatbot-v3 structured action runtime normalization', () => {
         recommendationSelectionStatus: null,
         recommendationSelectedHospitalIds: null,
         recommendationSelected: false,
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        supportingDocuments: [],
       } as any,
       facts: {
         'recommendation.generated': true,
         'recommendation.selected': false,
       },
-    });
-
-    expect(result.writeIntents).toEqual(expect.objectContaining({
-      statusPatch: {
-        recommendationGenerated: true,
-        recommendationSelectionStatus: 'selected',
-        recommendationSelectedHospitalIds: ['hospital-legacy-1'],
-        recommendationSelected: true,
-      },
-    }));
+    })).rejects.toBeInstanceOf(InvalidChatbotV3ActionError);
   });
 
   it('still rejects recommendation selection when legacy recommendation state has already failed', async () => {
@@ -1124,14 +1120,15 @@ describe('chatbot-v3 records triage prompt', () => {
 });
 
 describe('chatbot-v3 runtime', () => {
-  it('hard-locks the derived current stage to minimal triage until the canonical triage fact is true', () => {
+  it('prefers the persisted journey snapshot over a stale caller current', () => {
     expect(deriveCurrentStageFromStatusSnapshot({
-      chatbot_v2: {
-        journey_snapshot: {
-          current_stage: 'RECOMMENDATION',
-          current_phase: 'active',
-        },
-      },
+      journeyCurrentStage: 'RECOMMENDATION',
+      journeyCurrentPhase: 'active',
+      minimalTriageStatus: 'pending',
+      minimalTriageAnswersSummary: null,
+      recommendationSelectionStatus: 'pending',
+      recommendationSelectedHospitalIds: [],
+      supportingDocuments: [],
       conditionStatus: 'unknown',
       formStatus: 'completed',
       docUploadStatus: 'submitted',
@@ -1149,12 +1146,12 @@ describe('chatbot-v3 runtime', () => {
       recommendationSelected: false,
       consultCompleted: false,
       handoffActive: false,
-      conversationSummary: 'Legacy workflow state should not outrun minimal triage.',
+      conversationSummary: 'Persisted journey state should outrun stale callers.',
       lastPolicyDecisionAt: null,
       lastUserMessageAt: null,
       lastAssistantMessageAt: null,
     } as any)).toEqual({
-      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
   });
@@ -1314,12 +1311,12 @@ describe('chatbot-v3 runtime', () => {
     });
     expect(capturedInput).toMatchObject({
       current: {
-        stage: 'EXPLAIN_PROCESS',
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
         phase: 'active',
       },
       suggestion: {
         intent: 'unknown',
-        suggestedStage: 'EXPLAIN_PROCESS',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       },
       bootstrap: {
         message: 'Need a human now',
@@ -1414,9 +1411,7 @@ describe('chatbot-v3 runtime', () => {
           suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
           reason: 'attachments should stay on minimal triage',
         })),
-        deriveDecisionLineage: vi.fn(() => ({
-          bootstrapOverride: 'attachments_to_minimal_triage' as const,
-        })),
+        deriveDecisionLineage: vi.fn(() => null),
         getLastDecisionLineage: staleLineageGetter,
       } as any,
       journeyRuntimeAuthority: {
@@ -1465,11 +1460,7 @@ describe('chatbot-v3 runtime', () => {
       } as any,
     } as any);
 
-    expect(result.runtimeDebug).toMatchObject({
-      replayLineage: {
-        bootstrapOverride: 'attachments_to_minimal_triage',
-      },
-    });
+    expect(result.runtimeDebug.replayLineage).toBeUndefined();
     expect(staleLineageGetter).not.toHaveBeenCalled();
   });
 
@@ -1548,13 +1539,9 @@ describe('chatbot-v3 runtime', () => {
         trustOrObjection: 'none',
         engagementMode: 'LIGHT_DISCOVERY',
         enteredDeepWorkflowAt: null,
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
         minimalTriageComplete: false,
-        chatbot_v2: {
-          journey_snapshot: {
-            current_stage: 'RECOMMENDATION',
-            current_phase: 'active',
-          },
-        },
         conversationSummary: 'The user is still in minimal triage, even though the caller current is stale.',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
@@ -1686,6 +1673,98 @@ describe('chatbot-v3 runtime', () => {
     }));
     expect(recordsAgent.execute).not.toHaveBeenCalledWith(expect.objectContaining({
       type: 'records.upload',
+    }));
+  });
+
+  it('keeps later-stage attachment turns on the persisted medical-input stage', async () => {
+    let capturedInput: Record<string, unknown> | undefined;
+    const recordsAgent = {
+      execute: vi.fn(async (action) => {
+        capturedInput = action as unknown as Record<string, unknown>;
+        return {
+          status: 'ok' as const,
+          data: {
+            'records.minimal_triage.complete': true,
+          },
+        };
+      }),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async (input) => {
+          expect(input.current).toEqual({
+            stage: 'COLLECT_MEDICAL_INPUTS',
+            phase: 'active',
+          });
+          expect(input.currentStage).toBe('COLLECT_MEDICAL_INPUTS');
+
+          return {
+            intent: 'progression' as const,
+            suggestedStage: 'COLLECT_MEDICAL_INPUTS' as const,
+            reason: 'medical collection should continue',
+          };
+        }),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn((input) => ({
+          action: 'STAY' as const,
+          from: input.current ?? { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: input.current ?? { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          dispatchAgent: 'RecordsAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-medical-inputs-attachments-1',
+      sessionId: 'session-medical-inputs-attachments-1',
+      turnId: 'turn-medical-inputs-attachments-1',
+      message: 'Here are my documents.',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-medical-inputs-attachments-1/report.pdf',
+      }],
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{ path: 'chatbot/session-medical-inputs-attachments-1/report.pdf', name: 'report.pdf' }],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(result.journey.stage).not.toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+    expect(capturedInput).toEqual(expect.objectContaining({
+      type: 'records.upload',
+      input: expect.objectContaining({
+        sessionId: 'session-medical-inputs-attachments-1',
+      }),
     }));
   });
 
@@ -2088,6 +2167,8 @@ describe('chatbot-v3 runtime', () => {
         recommendationSelected: false,
         consultCompleted: false,
         handoffActive: false,
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         conversationSummary: 'The user just completed minimal triage and is waiting for recommendations.',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
@@ -3317,13 +3398,119 @@ describe('chatbot-v3 runtime', () => {
     });
     expect(recommendationAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
       type: 'recommendation.generate',
-      meta: {
+      meta: expect.objectContaining({
         task: expect.objectContaining({
           agent: 'RecommendationAgent',
-          fromStage: 'RECOMMENDATION',
           toStage: 'RECOMMENDATION',
+          recommendationBasis: 'INTAKE_AND_FOLLOW_UP_SUMMARY',
+          minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
         }),
+      }),
+    }));
+  });
+
+  it('does not progress to recommendation from minimalTriageComplete alone when structured triage state is absent', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          collectionPrompt: 'Please answer the triage questions first.',
+        },
+      })),
+    };
+    const authority = new JourneyRuntimeAuthorityService();
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide(input) {
+          const decision = authority.decide({
+            current: input.current ?? {
+              stage: input.currentStage ?? 'COLLECT_MINIMAL_MEDICAL_FACTS',
+              phase: 'active',
+            },
+            proposal: input.suggestion,
+            facts: input.facts,
+            handoff: input.handoff,
+            bootstrap: input.bootstrap,
+            intake: input.intake,
+            statusSnapshot: input.statusSnapshot,
+          });
+
+          if (decision.outcome === 'DENY') {
+            return {
+              action: 'STAY' as const,
+              from: decision.from,
+              to: decision.to,
+              dispatchSource: 'journey-runtime-authority' as const,
+              whyNotSkip: decision.reason,
+              write: decision.write,
+            };
+          }
+
+          return {
+            action: decision.action === 'REPEAT' ? 'STAY' : 'ADVANCE' as const,
+            from: decision.from,
+            to: decision.to,
+            dispatchAgent: decision.dispatch.outcome === 'ALLOW'
+              ? decision.dispatch.agent
+              : undefined,
+            dispatchSource: 'journey-runtime-authority' as const,
+            write: decision.write,
+          };
+        },
       },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-minimal-triage-boolean-alias-1',
+      sessionId: 'session-minimal-triage-boolean-alias-1',
+      turnId: 'turn-minimal-triage-boolean-alias-1',
+      message: 'Please recommend hospitals for me.',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        minimalTriageComplete: true,
+        conversationSummary: 'Legacy boolean says triage is complete.',
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+    });
+
+    expect(result.suggestion.suggestedStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+    expect(result.decision.to).toEqual({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    });
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.status',
+      meta: expect.objectContaining({
+        task: expect.objectContaining({
+          agent: 'RecordsAgent',
+          toStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          minimalTriageComplete: true,
+        }),
+      }),
     }));
   });
 
@@ -3691,12 +3878,8 @@ describe('chatbot-v3 public route validation', () => {
       hospitalType: 'COSMETIC',
       status: 'ACTIVE',
       statusSnapshot: {
-        chatbot_v2: {
-          journey_snapshot: {
-            current_stage: 'COLLECT_MEDICAL_INPUTS',
-            current_phase: 'active',
-          },
-        },
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
         minimalTriageStatus: 'pending',
         minimalTriageAnswersSummary: null,
         minimalTriageComplete: true,

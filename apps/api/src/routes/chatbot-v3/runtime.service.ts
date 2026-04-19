@@ -76,8 +76,16 @@ export interface ConversationOrchestratorV3BootstrapSignals {
 }
 
 export interface ConversationOrchestratorV3DecisionInput {
-  current?: ConversationOrchestratorV3StageRef;
+  current: ConversationOrchestratorV3StageRef;
   currentStage?: ChatJourneyStage;
+  journeyCurrentStage?: ChatJourneyStage;
+  journeyCurrentPhase?: AiChatStatusSnapshot['journeyCurrentPhase'];
+  minimalTriageStatus?: AiChatStatusSnapshot['minimalTriageStatus'];
+  minimalTriageAnswersSummary?: string | null;
+  minimalTriageComplete?: boolean | null;
+  recommendationSelectionStatus?: AiChatStatusSnapshot['recommendationSelectionStatus'];
+  recommendationSelectedHospitalIds?: string[] | null;
+  supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];
   conversationSummary?: string;
   latestUserMessage?: string;
   userAction?: ChatbotV3ChatAction;
@@ -548,12 +556,18 @@ export class ConversationOrchestratorV3RuntimeService {
   private buildDecisionInput(
     input: ConversationOrchestratorV3HandleTurnInput,
   ): ConversationOrchestratorV3DecisionInput {
-    const current = input.statusSnapshot
-      ? deriveCurrentStageFromStatusSnapshot(input.statusSnapshot)
-      : input.current ?? deriveCurrentStageFromStatusSnapshot(input.statusSnapshot);
+    const current = deriveCurrentStageFromStatusSnapshot(input.statusSnapshot);
+    const structuredState = resolveStructuredState(input);
     return {
       current,
       currentStage: current.stage,
+      journeyCurrentStage: structuredState.journeyCurrentStage,
+      journeyCurrentPhase: structuredState.journeyCurrentPhase,
+      minimalTriageStatus: structuredState.minimalTriageStatus,
+      minimalTriageAnswersSummary: structuredState.minimalTriageAnswersSummary,
+      recommendationSelectionStatus: structuredState.recommendationSelectionStatus,
+      recommendationSelectedHospitalIds: structuredState.recommendationSelectedHospitalIds,
+      supportingDocuments: structuredState.supportingDocuments,
       conversationSummary: input.statusSnapshot?.conversationSummary ?? '',
       latestUserMessage: input.message,
       userAction: input.userAction,
@@ -677,7 +691,7 @@ export class ConversationOrchestratorV3RuntimeService {
           ...supervisorInput,
           availableReadDomains,
           ...(Object.keys(domainReadResults).length > 0 ? { domainReadResults } : {}),
-        });
+        }) ?? [];
       if (requestedDomainsForPass.length > 0) {
         requestedReadDomains.push([...requestedDomainsForPass]);
       }
@@ -999,7 +1013,7 @@ function normalizeStructuredUserAction(
         },
       };
     case 'RECOMMENDATION_SELECTED': {
-      if (!isRecommendationPresented(currentStatusSnapshot, currentFacts)) {
+      if (!isRecommendationPresented(currentStatusSnapshot)) {
         throw new InvalidChatbotV3ActionError(
           'RECOMMENDATION_SELECTED is invalid before recommendation is presented.',
         );
@@ -1029,7 +1043,7 @@ function normalizeStructuredUserAction(
       };
     }
     case 'RECOMMENDATION_SKIPPED':
-      if (!isRecommendationPresented(currentStatusSnapshot, currentFacts)) {
+      if (!isRecommendationPresented(currentStatusSnapshot)) {
         throw new InvalidChatbotV3ActionError(
           'RECOMMENDATION_SKIPPED is invalid before recommendation is presented.',
         );
@@ -1180,17 +1194,10 @@ function resolveMinimalTriageExistingEvidence(
 
 function isRecommendationPresented(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-  facts: ConversationOrchestratorV3Facts | undefined,
 ): boolean {
-  const recommendationStatus = normalizeStatus(statusSnapshot?.recommendationStatus);
-  const packageStatus = normalizeStatus(statusSnapshot?.packageStatus);
-  const legacyFailed = recommendationStatus === 'FAILED' || packageStatus === 'FAILED';
-
   return statusSnapshot?.recommendationSelectionStatus === 'pending'
     || statusSnapshot?.recommendationSelectionStatus === 'selected'
-    || statusSnapshot?.recommendationSelectionStatus === 'skipped'
-    || (!legacyFailed && statusSnapshot?.recommendationGenerated === true)
-    || (!legacyFailed && facts?.['recommendation.generated'] === true);
+    || statusSnapshot?.recommendationSelectionStatus === 'skipped';
 }
 
 function deriveSupervisorReadDomains(
@@ -1251,22 +1258,42 @@ export function deriveCurrentStageFromStatusSnapshot(
     return { stage: 'HUMAN_HANDOFF', phase: 'active' };
   }
 
-  const canonicalTruthFlags = deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot);
-  if (!canonicalTruthFlags['records.minimal_triage.complete']) {
+  if (isStage(statusSnapshot?.journeyCurrentStage)) {
     return {
-      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-      phase: 'active',
+      stage: statusSnapshot.journeyCurrentStage,
+      phase: isPhase(statusSnapshot?.journeyCurrentPhase)
+        ? statusSnapshot.journeyCurrentPhase
+        : 'active',
     };
   }
 
-  const storedJourney = readStoredJourneySnapshot(statusSnapshot);
-  if (storedJourney) {
-    return storedJourney;
-  }
-
   return {
-    stage: 'RECOMMENDATION',
+    stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
     phase: 'active',
+  };
+}
+
+function resolveStructuredState(
+  input: ConversationOrchestratorV3HandleTurnInput,
+): {
+  journeyCurrentStage?: ChatJourneyStage;
+  journeyCurrentPhase?: AiChatStatusSnapshot['journeyCurrentPhase'];
+  minimalTriageStatus?: AiChatStatusSnapshot['minimalTriageStatus'];
+  minimalTriageAnswersSummary?: string | null;
+  minimalTriageComplete?: boolean;
+  recommendationSelectionStatus?: AiChatStatusSnapshot['recommendationSelectionStatus'];
+  recommendationSelectedHospitalIds?: string[];
+  supportingDocuments: AiChatStatusSnapshot['supportingDocuments'] | undefined;
+} {
+  return {
+    journeyCurrentStage: input.statusSnapshot?.journeyCurrentStage ?? undefined,
+    journeyCurrentPhase: input.statusSnapshot?.journeyCurrentPhase ?? undefined,
+    minimalTriageStatus: input.statusSnapshot?.minimalTriageStatus ?? undefined,
+    minimalTriageAnswersSummary: input.statusSnapshot?.minimalTriageAnswersSummary ?? null,
+    minimalTriageComplete: input.statusSnapshot?.minimalTriageComplete ?? undefined,
+    recommendationSelectionStatus: input.statusSnapshot?.recommendationSelectionStatus ?? undefined,
+    recommendationSelectedHospitalIds: input.statusSnapshot?.recommendationSelectedHospitalIds ?? undefined,
+    supportingDocuments: input.statusSnapshot?.supportingDocuments,
   };
 }
 
@@ -1725,28 +1752,6 @@ function hasCrisisSafetySignal(
   return normalizeStatus(statusSnapshot?.riskLevel) === 'CRISIS';
 }
 
-function readStoredJourneySnapshot(
-  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
-): ConversationOrchestratorV3StageRef | null {
-  const record = asRecord(statusSnapshot);
-  const chatbotV2 = asRecord(record['chatbot_v2'] ?? record['chatbotV2']);
-  const journey = asRecord(
-    chatbotV2['journey_snapshot']
-      ?? chatbotV2['journeySnapshot']
-      ?? record['journey_snapshot']
-      ?? record['journeySnapshot'],
-  );
-
-  const stage = asString(journey['current_stage'] ?? journey['currentStage']);
-  const phase = asString(journey['current_phase'] ?? journey['currentPhase']);
-
-  if (!isStage(stage) || !isPhase(phase)) {
-    return null;
-  }
-
-  return { stage, phase };
-}
-
 function normalizeStatus(value: string | null | undefined): string {
   return (value ?? '').trim().toUpperCase();
 }
@@ -1759,7 +1764,7 @@ function hasAnyStatus(
   return statuses.some((status) => normalized === status);
 }
 
-function isStage(value: string | null): value is ChatJourneyStage {
+function isStage(value: string | null | undefined): value is ChatJourneyStage {
   return value === 'EXPLAIN_PROCESS'
     || value === 'COLLECT_MINIMAL_MEDICAL_FACTS'
     || value === 'COLLECT_MEDICAL_INPUTS'
@@ -1768,7 +1773,7 @@ function isStage(value: string | null): value is ChatJourneyStage {
     || value === 'HUMAN_HANDOFF';
 }
 
-function isPhase(value: string | null): value is ChatJourneyPhase {
+function isPhase(value: string | null | undefined): value is ChatJourneyPhase {
   return value === 'pre' || value === 'active' || value === 'post';
 }
 

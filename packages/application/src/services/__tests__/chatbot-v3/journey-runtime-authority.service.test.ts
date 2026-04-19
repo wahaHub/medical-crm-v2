@@ -39,8 +39,10 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'RecommendationAgent',
         reason: 'minimal triage is complete',
       },
-      facts: {
-        'records.minimal_triage.complete': true,
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
       },
     }));
 
@@ -120,8 +122,10 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'FaqAgent',
         reason: 'minimal triage is complete',
       },
-      facts: {
-        'records.minimal_triage.complete': true,
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
       },
     }));
 
@@ -190,13 +194,13 @@ describe('JourneyRuntimeAuthorityService', () => {
     expect(decision.reason).toContain('records.minimal_triage.complete');
   });
 
-  it('falls back to facts when the status snapshot has no minimal triage fields', () => {
+  it('keeps recommendation blocked when the status snapshot has no structured minimal triage fields', () => {
     const decision = service.decide(createInput({
       proposal: {
         intent: 'progression',
         suggestedStage: 'RECOMMENDATION',
         dispatchAgent: 'RecommendationAgent',
-        reason: 'empty snapshots should not override facts',
+        reason: 'empty snapshots should not advance repaired progression',
       },
       statusSnapshot: {},
       facts: {
@@ -204,11 +208,13 @@ describe('JourneyRuntimeAuthorityService', () => {
       },
     }));
 
-    expect(decision.outcome).toBe('ALLOW');
-    expect(decision.action).toBe('ADVANCE');
+    expect(decision.outcome).toBe('DENY');
     expect(decision.dispatch).toEqual({
-      outcome: 'ALLOW',
-      agent: 'RecommendationAgent',
+      outcome: 'DENY',
+    });
+    expect(decision.write.stage).toEqual({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
     });
   });
 
@@ -258,8 +264,10 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'RecommendationAgent',
         reason: 'refresh the recommendation',
       },
-      facts: {
-        'records.minimal_triage.complete': true,
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
       },
     }));
 
@@ -470,9 +478,12 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'ConsultAgent',
         reason: 'resource-only turn should not advance the primary journey',
       },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+      },
       facts: {
         'records.minimal_triage.complete': true,
-        'recommendation.selected': true,
         'process.explained': true,
       },
     }));
@@ -500,8 +511,10 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'RecommendationAgent',
         reason: 'revisit the recommendation later in the journey',
       },
-      facts: {
-        'records.minimal_triage.complete': true,
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
+        minimalTriageComplete: false,
       },
     }));
 
@@ -553,9 +566,12 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'RecordsAgent',
         reason: 'collect the remaining medical inputs',
       },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+      },
       facts: {
         'records.minimal_triage.complete': true,
-        'recommendation.selected': true,
         'process.explained': true,
       },
     }));
@@ -584,9 +600,12 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'RecordsAgent',
         reason: 'gather a little more context',
       },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+      },
       facts: {
         'records.minimal_triage.complete': true,
-        'recommendation.selected': true,
         'process.explained': true,
       },
     }));
@@ -636,9 +655,12 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'ConsultAgent',
         reason: 'schedule the consult',
       },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+      },
       facts: {
         'records.minimal_triage.complete': true,
-        'recommendation.selected': true,
         'process.explained': false,
       },
     }));
@@ -660,9 +682,12 @@ describe('JourneyRuntimeAuthorityService', () => {
         dispatchAgent: 'ConsultAgent',
         reason: 'schedule the consult',
       },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+      },
       facts: {
         'records.minimal_triage.complete': true,
-        'recommendation.selected': true,
         'process.explained': true,
       },
     }));

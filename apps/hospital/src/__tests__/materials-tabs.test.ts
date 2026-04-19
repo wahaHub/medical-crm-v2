@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+function readMaterialsTabsSource() {
+  return readFileSync(join(ROOT, 'apps/hospital/src/components/materials-tabs.tsx'), 'utf8');
+}
 
 describe('materials tabs hook ordering', () => {
   it('declares the HospitalInfoTab sync effect before the loading early return', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     const hospitalInfoTabStart = source.indexOf('function HospitalInfoTab');
     const syncEffect = source.indexOf('// Sync array/chip state from loaded data when data first loads');
@@ -19,19 +24,13 @@ describe('materials tabs hook ordering', () => {
   });
 
   it('makes the surgeon modal body scroll within the viewport', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain('max-h-[80vh] overflow-y-auto');
   });
 
   it('tracks hospital photos in editable state so deletes persist on save', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain("const [photos, setPhotos] = useState<EditablePhoto[]>([])");
     expect(source).toContain('setPhotos((info.photos ?? []).map((url: string, index: number) => ({');
@@ -40,10 +39,7 @@ describe('materials tabs hook ordering', () => {
   });
 
   it('keeps video upload controls enabled and uploads hospital media on save', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).not.toContain('{!isRegular && (');
     expect(source).toContain('const uploadTasks: Array<{');
@@ -54,10 +50,7 @@ describe('materials tabs hook ordering', () => {
   });
 
   it('shows raw backend validation logs in the save modal before dismissing failed hospital saves', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain('Technical debug logs');
     expect(source).toContain('state.debugDetails');
@@ -66,10 +59,7 @@ describe('materials tabs hook ordering', () => {
   });
 
   it('supports clearing hero, department, and equipment images in edit mode', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain("onClick={() => onChange('')}");
     expect(source).toContain('const hasLocalDeptImage = Object.prototype.hasOwnProperty.call(deptImages, deptValue);');
@@ -77,20 +67,14 @@ describe('materials tabs hook ordering', () => {
   });
 
   it('uses upload-only image widgets for hero and equipment images', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain('allowDirectUrl = true');
     expect(source).toContain('allowDirectUrl={false}');
   });
 
   it('uses fixed dropdown options for regular hospital classification fields', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain('function getHospitalTierOptions');
     expect(source).toContain('function getOwnershipTypeOptions');
@@ -101,25 +85,38 @@ describe('materials tabs hook ordering', () => {
   });
 
   it('uses upload-only and multi-select controls in the surgeon modal', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain('function getSurgeonLanguageOptions');
     expect(source).toContain('const specialtyOptions = isRegular ? departmentOptions : procedureOptions;');
     expect(source).toContain('getSurgeonLanguageOptions(t)');
     expect(source).toContain('allowDirectUrl={false}');
     expect(source).toContain('<MultiSelectDropdown');
-    expect(source).toContain("placeholder=\"Select specialties\"");
-    expect(source).toContain("placeholder=\"Select languages\"");
+    expect(source).toContain("placeholder={tx('hospital.materials.surgeons.searchPlaceholderSpecialties'");
+    expect(source).toContain("placeholder={tx('hospital.materials.surgeons.searchPlaceholderLanguages'");
+  });
+
+  it('routes the remaining hospital info, procedures, surgeons, and cases chrome through translation keys', () => {
+    const source = readMaterialsTabsSource();
+
+    expect(source).toContain("hospital.materials.hospitalInfo.classificationTitle");
+    expect(source).toContain("hospital.materials.procedures.emptyTitle");
+    expect(source).toContain("hospital.materials.procedures.searchPlaceholder");
+    expect(source).toContain("hospital.materials.surgeons.loadFailedTitle");
+    expect(source).toContain("hospital.materials.surgeons.searchPlaceholder");
+    expect(source).toContain("hospital.materials.cases.loadFailedTitle");
+    expect(source).toContain("hospital.materials.cases.searchPlaceholder");
+  });
+
+  it('keeps surgeon language values locale-stable instead of storing translated labels', () => {
+    const source = readMaterialsTabsSource();
+
+    expect(source).toContain('value: option.value');
+    expect(source).not.toContain('value: option.label');
   });
 
   it('uses upload-only case photos in the case study modal', () => {
-    const source = readFileSync(
-      '/Users/haowang/Desktop/medora-health-beauty/medical-crm-v2/apps/hospital/src/components/materials-tabs.tsx',
-      'utf8',
-    );
+    const source = readMaterialsTabsSource();
 
     expect(source).toContain('Upload multiple photos to build the case gallery.');
     expect(source).not.toContain('Upload multiple photos or add image URLs.');

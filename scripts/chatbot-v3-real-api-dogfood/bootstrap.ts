@@ -123,6 +123,20 @@ function isAllowedEvidence(body: unknown, cookieJar: CookieJar) {
   return null;
 }
 
+function hasBlockedPrereqSignal(body: unknown) {
+  if (!body || typeof body !== 'object') {
+    return false;
+  }
+
+  const errorCodeCandidates = [
+    (body as { error?: unknown }).error,
+    (body as { code?: unknown }).code,
+    (body as { errorCode?: unknown }).errorCode,
+  ];
+
+  return errorCodeCandidates.some((value) => value === 'PATIENT_PREREQ_REQUIRED');
+}
+
 function classifyTransportError({
   client,
   scenarioId,
@@ -212,7 +226,7 @@ function classifyResponse({
     };
   }
 
-  if (response.status !== 200) {
+  if (response.status !== 200 && !(response.status === 400 && hasBlockedPrereqSignal(response.body))) {
     return {
       ...buildBaseResult({ client, scenarioId, timestamp }),
       bootstrapMode: 'bootstrap_failed',

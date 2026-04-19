@@ -58,6 +58,41 @@ function redactDeep<T>(value: T): T {
   return value;
 }
 
+function redactStructuredText(value: string) {
+  return redactSensitiveText(value);
+}
+
+function sanitizeBootstrapResult(result: BootstrapSuccessResult) {
+  return {
+    scenarioId: result.scenarioId,
+    baseUrl: result.baseUrl,
+    site: result.site,
+    timestamp: result.timestamp,
+    bootstrapMode: result.bootstrapMode,
+    patientSession: result.patientSession ? 'REDACTED' : null,
+    patientRestore: result.patientRestore ? 'REDACTED' : null,
+    widgetChatTargetSessionId: result.widgetChatTargetSessionId ? 'REDACTED' : null,
+    redactedCookies: [...result.redactedCookies],
+  };
+}
+
+function sanitizeTurnTranscript(turn: TurnTranscript) {
+  return {
+    ...turn,
+    request: {
+      ...turn.request,
+      body: redactDeep(turn.request.body),
+      headers: redactDeep(turn.request.headers),
+    },
+    response: {
+      ...turn.response,
+      body: redactDeep(turn.response.body),
+      bodyText: turn.response.bodyText ? redactStructuredText(turn.response.bodyText) : null,
+      headers: redactDeep(turn.response.headers),
+    },
+  };
+}
+
 function uniqueRedactedCookies(bootstrapResults: BootstrapSuccessResult[]) {
   return Array.from(new Set(bootstrapResults.flatMap((result) => result.redactedCookies))).sort((left, right) =>
     left.localeCompare(right),
@@ -170,13 +205,13 @@ function serializeTranscripts({
     runTimestamp: config.runTimestamp,
     baseUrl: config.baseUrl,
     site: config.site,
-    bootstrapResults: redactDeep(bootstrapResults),
+    bootstrapResults: bootstrapResults.map((result) => sanitizeBootstrapResult(result)),
     rollup: redactDeep(rollup),
     scenarioTranscripts: rollup.scenarioOutcomes.map((scenarioOutcome) => ({
       scenarioId: scenarioOutcome.scenarioId,
       outcome: scenarioOutcome.outcome,
-      summary: scenarioOutcome.summary,
-      turns: redactDeep(scenarioOutcome.turns),
+      summary: redactStructuredText(scenarioOutcome.summary),
+      turns: scenarioOutcome.turns.map((turn) => sanitizeTurnTranscript(turn)),
     })),
   };
 }

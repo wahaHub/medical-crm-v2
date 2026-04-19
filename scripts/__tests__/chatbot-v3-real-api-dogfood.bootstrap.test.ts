@@ -157,6 +157,58 @@ test('blocked-path setup without allowed bootstrap evidence is classified as blo
   assert.equal(result.widgetChatTargetSessionId, null);
 });
 
+test('blocked-path HTTP 400 is classified as expected gating for the canonical negative control', async () => {
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () =>
+      makeResponse({
+        status: 400,
+        jsonBody: {
+          error: 'PATIENT_PREREQ_REQUIRED',
+        },
+      }),
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'blocked_without_prereq',
+    bootstrapMode: 'blocked_expected',
+    timestamp: '2026-04-18T14-05-09Z',
+  });
+
+  assert.equal(result.bootstrapMode, 'blocked_expected');
+  assert.equal(result.patientSession, null);
+  assert.equal(result.patientRestore, null);
+  assert.equal(result.widgetChatTargetSessionId, null);
+});
+
+test('blocked-path generic HTTP 400 remains a bootstrap failure', async () => {
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () =>
+      makeResponse({
+        status: 400,
+        jsonBody: {
+          error: 'VALIDATION_ERROR',
+          message: 'email is required',
+        },
+      }),
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'blocked_without_prereq',
+    bootstrapMode: 'blocked_expected',
+    timestamp: '2026-04-18T14-05-09Z',
+  });
+
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'http_status');
+  assert.equal(result.status, 400);
+});
+
 test('blocked-path unexpected 5xx statuses are bootstrap failures, not blocked success', async () => {
   const client = createDogfoodHttpClient({
     baseUrl: 'https://crm.example.com',

@@ -29,7 +29,8 @@ function makeScenarioOutcome(): ScenarioOutcome {
   return {
     scenarioId: 'allowed_after_patient_session',
     outcome: 'PASS',
-    summary: 'all four axes passed',
+    summary:
+      'all four axes passed; patient_session=session-cookie-123; patient_restore=restore-cookie-123; chatbot_session_secret=chatbot-secret-abc; restore_token=restore-token-xyz',
     turns: [
       {
         scenarioId: 'allowed_after_patient_session',
@@ -89,6 +90,21 @@ test('reporting writes the expected UTC artifact folder and redacts human-readab
 
   const reportMarkdown = readFileSync(join(artifactDir, 'report.md'), 'utf8');
   const bugBacklogMarkdown = readFileSync(join(artifactDir, 'bug-backlog.md'), 'utf8');
+  const transcriptsJson = JSON.parse(readFileSync(join(artifactDir, 'transcripts.json'), 'utf8')) as {
+    bootstrapResults: Array<{
+      patientSession: string | null;
+      patientRestore: string | null;
+      redactedCookies: string[];
+    }>;
+    rollup: {
+      scenarioOutcomes: Array<{
+        summary: string;
+      }>;
+    };
+    scenarioTranscripts: Array<{
+      summary: string;
+    }>;
+  };
   const runMetadata = JSON.parse(readFileSync(join(artifactDir, 'run-metadata.json'), 'utf8')) as {
     artifactSchemaVersion: number;
   };
@@ -98,5 +114,29 @@ test('reporting writes the expected UTC artifact folder and redacts human-readab
   assert.match(reportMarkdown, /widget-chat-session-123/);
   assert.match(bugBacklogMarkdown, /patient_session=REDACTED/);
   assert.match(bugBacklogMarkdown, /patient_restore=REDACTED/);
+  assert.equal(transcriptsJson.bootstrapResults[0]?.scenarioId, 'allowed_after_patient_session');
+  assert.equal(transcriptsJson.bootstrapResults[0]?.baseUrl, 'https://crm.example.com');
+  assert.equal(transcriptsJson.bootstrapResults[0]?.site, 'beauty');
+  assert.equal(transcriptsJson.bootstrapResults[0]?.timestamp, '2026-04-18T14-05-09Z');
+  assert.equal(transcriptsJson.bootstrapResults[0]?.bootstrapMode, 'chat_allowed');
+  assert.equal(transcriptsJson.bootstrapResults[0]?.patientSession, 'REDACTED');
+  assert.equal(transcriptsJson.bootstrapResults[0]?.patientRestore, 'REDACTED');
+  assert.equal(transcriptsJson.bootstrapResults[0]?.widgetChatTargetSessionId, 'REDACTED');
+  assert.deepEqual(transcriptsJson.bootstrapResults[0]?.redactedCookies, [
+    'patient_restore=REDACTED',
+    'patient_session=REDACTED',
+  ]);
+  assert.equal(
+    transcriptsJson.rollup.scenarioOutcomes[0]?.summary,
+    'all four axes passed; patient_session=REDACTED; patient_restore=REDACTED; chatbot_session_secret=REDACTED; restore_token=REDACTED',
+  );
+  assert.equal(
+    transcriptsJson.scenarioTranscripts[0]?.summary,
+    'all four axes passed; patient_session=REDACTED; patient_restore=REDACTED; chatbot_session_secret=REDACTED; restore_token=REDACTED',
+  );
+  assert.ok(!JSON.stringify(transcriptsJson).includes('session-cookie-123'));
+  assert.ok(!JSON.stringify(transcriptsJson).includes('restore-cookie-123'));
+  assert.ok(!JSON.stringify(transcriptsJson).includes('chatbot-secret-abc'));
+  assert.ok(!JSON.stringify(transcriptsJson).includes('restore-token-xyz'));
   assert.equal(runMetadata.artifactSchemaVersion, 1);
 });

@@ -1,7 +1,12 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-import { bootstrapRealApiSession, type BootstrapOutcome, type BootstrapSuccessResult } from './chatbot-v3-real-api-dogfood/bootstrap.ts';
+import {
+  bootstrapRealApiSession,
+  type AllowedBootstrapPayload,
+  type BootstrapOutcome,
+  type BootstrapSuccessResult,
+} from './chatbot-v3-real-api-dogfood/bootstrap.ts';
 import { createDogfoodHttpClient } from './chatbot-v3-real-api-dogfood/http-client.ts';
 import { parseDogfoodConfig } from './chatbot-v3-real-api-dogfood/config.ts';
 import { getScenarioById, V1_REQUIRED_SCENARIO_IDS } from './chatbot-v3-real-api-dogfood/scenarios.ts';
@@ -52,6 +57,36 @@ function toTurnTranscript(scenarioId: string, turnIndex: number, result: ChatRun
 
 function buildAxis(result: 'PASS' | 'SOFT_FAIL' | 'HARD_FAIL', reason?: string): DogfoodAxisEvaluation {
   return result === 'PASS' ? { result } : { result, reason };
+}
+
+function slugifyEmailPart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+}
+
+export function buildAllowedOnboardingPayload({
+  site,
+  scenarioId,
+  runTimestamp,
+}: {
+  site: string;
+  scenarioId: string;
+  runTimestamp: string;
+}): AllowedBootstrapPayload {
+  const siteSlug = slugifyEmailPart(site) || 'site';
+  const scenarioSlug = slugifyEmailPart(scenarioId) || 'scenario';
+  const timestampSlug = slugifyEmailPart(runTimestamp) || 'run';
+
+  return {
+    email: `dogfood+${siteSlug}-${scenarioSlug}-${timestampSlug}@example.com`,
+    name: 'Dogfood Patient',
+    preferredLanguage: 'en',
+    destination: 'Shenzhen',
+  };
 }
 
 function evaluateBlockedScenario(bootstrap: BootstrapOutcome): ScenarioOutcome {
@@ -141,12 +176,11 @@ async function run() {
       timestamp: config.runTimestamp,
       ...(scenario.bootstrapMode === 'chat_allowed'
         ? {
-            onboardingPayload: {
-              email: 'dogfood@example.com',
-              name: 'Dogfood Patient',
-              preferredLanguage: 'en',
-              destination: 'Shenzhen',
-            },
+            onboardingPayload: buildAllowedOnboardingPayload({
+              site: config.site,
+              scenarioId: scenario.id,
+              runTimestamp: config.runTimestamp,
+            }),
           }
         : {}),
     });
@@ -207,4 +241,3 @@ if (isMain) {
     process.exitCode = 1;
   });
 }
-

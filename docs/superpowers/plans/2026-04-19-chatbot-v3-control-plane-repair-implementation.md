@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Repair the deployed `chatbot-v3` control plane so structured post-intake state drives progression, current journey stage persists across turns, later-stage uploads no longer regress to minimal triage, supporting documents remain minimally tracked across re-entry, and consult progression follows the real post-recommendation sequence.
+**Goal:** Repair the deployed `chatbot-v3` control plane so structured post-intake state drives progression, current journey stage persists across turns, revisit turns behave as temporary detours instead of overwriting the primary stage, later-stage uploads no longer regress to minimal triage, supporting documents remain minimally tracked across re-entry, and consult progression follows the real post-recommendation sequence.
 
-**Architecture:** Keep the supervisor-led v3 architecture, but upgrade its decision contract. Persist `journeyCurrentStage/journeyCurrentPhase`, feed structured triage/recommendation/document state into runtime, supervisor, and authority, remove the global attachment bootstrap override, and make route persistence/replay boundaries robust to serialized write intents. Use the smallest v1 supporting-document truth possible: an append-only `{ path, name }[]` list.
+**Architecture:** Keep the supervisor-led v3 architecture, but upgrade its decision contract. Persist `journeyCurrentStage/journeyCurrentPhase`, treat revisit handling as a turn-local detour rather than a persisted stage rewrite, feed structured triage/recommendation/document state into runtime, supervisor, and authority, remove the global attachment bootstrap override, and make route persistence/replay boundaries robust to serialized write intents. Use the smallest v1 supporting-document truth possible: an append-only `{ path, name }[]` list.
 
 **Tech Stack:** TypeScript, Hono, Vitest, Zod, Drizzle ORM, supervisor-led `chatbot-v3` runtime.
 
@@ -52,7 +52,7 @@
 - `apps/api/src/__tests__/chatbot-v3.routes.test.ts`
   - Cover route persistence of journey snapshot, replay-safe timestamps, and upload semantics.
 - `apps/api/src/__tests__/chatbot-v3.mounting.test.ts`
-  - Add full multi-turn regressions for skip->process, selected->process->supporting-documents, repeated uploads, retry continuity, and no collapse to minimal triage.
+  - Add full multi-turn regressions for skip->process, selected->process->supporting-documents, revisit detours that preserve the primary stage, repeated uploads, retry continuity, and no collapse to minimal triage.
 
 ### New files to create
 - `packages/infrastructure/database/migrations/038_ai_chat_journey_snapshot_and_supporting_documents.sql`
@@ -373,6 +373,13 @@ Authority rules must explicitly support:
 
 Treat `COLLECT_MEDICAL_INPUTS` as re-enterable.
 
+- [ ] **Step 5a: Add revisit preservation tests**
+
+Lock these semantics explicitly:
+- recommendation compare / reselect turns may dispatch recommendation handling again
+- repeat explain turns may dispatch process handling again
+- those revisit turns must not overwrite `journeyCurrentStage/journeyCurrentPhase` unless an explicit progression-changing action was submitted
+
 - [ ] **Step 6: Update response composer wording to reflect the repaired sequence**
 
 Expected user-facing order:
@@ -512,6 +519,8 @@ Re-check at minimum:
 - selected branch -> process -> supporting documents
 - later-stage attachment-only upload
 - repeated supporting-document upload
+- recommendation revisit without primary-stage drift
+- repeat explain without primary-stage drift
 - idempotent selection replay
 - full answered happy path
 - full skipped happy path

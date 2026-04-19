@@ -62,6 +62,8 @@ import type {
 
 // ── Shared Helpers ──────────────────────────────────────────────────
 
+type TranslationFn = ReturnType<typeof useHospitalI18n>['t'];
+
 const AVATAR_COLORS = [
   'bg-indigo-100 text-indigo-600',
   'bg-emerald-100 text-emerald-600',
@@ -69,6 +71,62 @@ const AVATAR_COLORS = [
   'bg-rose-100 text-rose-600',
   'bg-sky-100 text-sky-600',
 ];
+
+const DIAGNOSIS_COST_OPTIONS = [
+  {
+    value: '< $5k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.5k',
+    fallback: 'Under 5K USD',
+  },
+  {
+    value: '$5k - $10k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.5-10k',
+    fallback: '5-10K USD',
+  },
+  {
+    value: '$10k - $20k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.10-20k',
+    fallback: '10-20K USD',
+  },
+  {
+    value: '$20k - $50k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.20-50k',
+    fallback: '20-50K USD',
+  },
+  {
+    value: '> $50k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.50k+',
+    fallback: 'Over 50K USD',
+  },
+] as const;
+
+const DIAGNOSIS_DURATION_OPTIONS = [
+  {
+    value: '< 1 Week',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.1week',
+    fallback: 'Within 1 week',
+  },
+  {
+    value: '1 - 2 Weeks',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.2weeks',
+    fallback: '1-2 weeks',
+  },
+  {
+    value: '2 Weeks - 1 Month',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.1month',
+    fallback: '2 weeks - 1 month',
+  },
+  {
+    value: '1 - 3 Months',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.3months',
+    fallback: '1-3 months',
+  },
+  {
+    value: '> 3 Months',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.6months',
+    fallback: 'Over 3 months',
+  },
+] as const;
 
 function avatarColor(name: string) {
   let hash = 0;
@@ -112,6 +170,95 @@ function formatTranscriptTimestamp(timestamp: string | null | undefined, locale:
     hour: 'numeric',
     minute: '2-digit',
   }).format(parsed);
+}
+
+function getDiagnosisOptionLabel(
+  value: string | null | undefined,
+  options: ReadonlyArray<{ value: string; key: string; fallback: string }>,
+  translate: (key: string, values?: Record<string, string | number>, fallback?: string) => string,
+) {
+  if (!value) return '';
+
+  const normalizedValue = value.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const matchedOption = options.find((option) => option.value === normalizedValue);
+  if (!matchedOption) return value;
+
+  return translate(matchedOption.key, undefined, matchedOption.fallback);
+}
+
+function humanizeTemplateType(value: string) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (part) => part.toUpperCase());
+}
+
+function getTemplateTypeLabel(
+  value: string,
+  translate: (key: string, values?: Record<string, string | number>, fallback?: string) => string,
+) {
+  const normalizedValue = value.trim().toLowerCase();
+  const optionMap: Record<string, { key: string; fallback: string }> = {
+    intro: { key: 'hospital.emailTemplates.types.intro', fallback: 'Intro' },
+    quote: { key: 'hospital.emailTemplates.types.quote', fallback: 'Quote' },
+    marketing: { key: 'hospital.emailTemplates.types.marketing', fallback: 'Marketing' },
+    followup: { key: 'hospital.emailTemplates.types.followup', fallback: 'Follow-up' },
+    follow_up: { key: 'hospital.emailTemplates.types.followup', fallback: 'Follow-up' },
+    post_ops: { key: 'hospital.emailTemplates.types.postOps', fallback: 'Post-Ops' },
+    custom: { key: 'hospital.emailTemplates.types.custom', fallback: 'Custom' },
+  };
+
+  const matchedOption = optionMap[normalizedValue];
+  return matchedOption
+    ? translate(matchedOption.key, undefined, matchedOption.fallback)
+    : humanizeTemplateType(value);
+}
+
+function normalizeStableFieldKey(value: string) {
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[\s.-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
+function humanizeStableFieldKey(value: string) {
+  const normalized = normalizeStableFieldKey(value);
+  if (!normalized) return value;
+
+  return normalized
+    .split('_')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+export function getDiagnosisCostEstimateLabel(value: string, t: TranslationFn) {
+  return getDiagnosisOptionLabel(value, DIAGNOSIS_COST_OPTIONS, t);
+}
+
+export function getDiagnosisTreatmentDurationLabel(value: string, t: TranslationFn) {
+  return getDiagnosisOptionLabel(value, DIAGNOSIS_DURATION_OPTIONS, t);
+}
+
+export function getMarketingTemplateTypeLabel(type: string, t: TranslationFn) {
+  return getTemplateTypeLabel(type, t);
+}
+
+export function formatQuestionnaireFallbackFieldLabel(key: string, t: TranslationFn) {
+  const normalizedKey = normalizeStableFieldKey(key);
+  const fallbackLabel = humanizeStableFieldKey(key);
+
+  if (!normalizedKey) {
+    return fallbackLabel;
+  }
+
+  return t(
+    `hospital.cases.detail.intake.fields.${normalizedKey}`,
+    undefined,
+    fallbackLabel,
+  );
 }
 
 // ── Tab Definitions ─────────────────────────────────────────────────
@@ -298,6 +445,7 @@ function IntakeTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     <QuestionnaireReadonlyView
       template={template ?? null}
       response={questionnairePayload ?? null}
+      formatFieldLabel={(key) => formatQuestionnaireFallbackFieldLabel(key, t)}
       copy={{
         emptyStateTitle: t('hospital.cases.detail.intake.emptyTitle', undefined, 'No medical intake data'),
         emptyStateDescription: t(
@@ -649,7 +797,7 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       <p className="text-xs text-slate-500 mb-1">
                         {t('hospital.cases.detail.diagnosis.fields.estimatedCost', undefined, 'Estimated Cost')}
                       </p>
-                      <p className="text-sm font-medium text-slate-700">{d.costEstimate}</p>
+                      <p className="text-sm font-medium text-slate-700">{getDiagnosisCostEstimateLabel(d.costEstimate, t)}</p>
                     </div>
                   )}
                   {d.treatmentDuration && (
@@ -657,7 +805,7 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       <p className="text-xs text-slate-500 mb-1">
                         {t('hospital.cases.detail.diagnosis.fields.treatmentDuration', undefined, 'Treatment Duration')}
                       </p>
-                      <p className="text-sm font-medium text-slate-700">{d.treatmentDuration}</p>
+                      <p className="text-sm font-medium text-slate-700">{getDiagnosisTreatmentDurationLabel(d.treatmentDuration, t)}</p>
                     </div>
                   )}
                 </div>
@@ -855,8 +1003,6 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     return list.filter((t) => t.status === 'active');
   })();
 
-  const formatTemplateType = (type: string) => type.replace(/_/g, ' ');
-
   const replaceVariables = (text: string) => {
     return text
       .replace(/\{\{patient_name\}\}/g, caseDetail.patient.name ?? '')
@@ -994,8 +1140,8 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       ? t('hospital.cases.detail.marketing.noActiveTemplates', undefined, 'No active templates - create one in Email Templates page')
                       : t('hospital.cases.detail.marketing.selectTemplate', undefined, '-- Select a template --')}
                   </option>
-                  {activeTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name} ({formatTemplateType(t.type)})</option>
+                  {activeTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name} ({getMarketingTemplateTypeLabel(template.type, t)})</option>
                   ))}
                 </select>
                 {activeTemplates.length === 0 && templatesData && (

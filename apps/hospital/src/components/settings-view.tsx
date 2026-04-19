@@ -9,6 +9,26 @@ import { HOSPITAL_LANGUAGE_OPTIONS } from '@/lib/hospital-language-options';
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
 type NotificationKey = 'newCase' | 'newMessage' | 'quoteStatusChange' | 'consultationReminder';
 
+function getErrorDetail(err: unknown): string | null {
+  if (!(err instanceof Error)) return null;
+
+  const detail = err.message.replace(/\s+/g, ' ').trim();
+  if (!detail || detail.length > 160) return null;
+
+  return detail;
+}
+
+function formatUserFacingError(err: unknown, fallback: string): string {
+  const detail = getErrorDetail(err);
+
+  if (!detail) return fallback;
+  if (detail === fallback || detail.startsWith(`${fallback}:`) || detail.startsWith(`${fallback} `)) {
+    return detail;
+  }
+
+  return `${fallback}${fallback.endsWith('.') ? ' ' : ': '}${detail}`;
+}
+
 function FeedbackBanner({ feedback }: { feedback: FeedbackState }) {
   if (!feedback) return null;
 
@@ -87,16 +107,14 @@ function PasswordSection() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
+      const fallback = t(
+        'hospital.settings.password.feedback.saveFailed',
+        undefined,
+        'Failed to update password.',
+      );
       setFeedback({
         type: 'error',
-        message:
-          err instanceof Error
-            ? err.message
-            : t(
-                'hospital.settings.password.feedback.saveFailed',
-                undefined,
-                'Failed to update password.',
-              ),
+        message: formatUserFacingError(err, fallback),
       });
     } finally {
       setSaving(false);
@@ -212,16 +230,14 @@ function LanguageSection() {
         ),
       });
     } catch (err) {
+      const fallback = t(
+        'hospital.settings.language.feedback.saveFailed',
+        undefined,
+        'Failed to save language preference.',
+      );
       setFeedback({
         type: 'error',
-        message:
-          err instanceof Error
-            ? err.message
-            : t(
-                'hospital.settings.language.feedback.saveFailed',
-                undefined,
-                'Failed to save language preference.',
-              ),
+        message: formatUserFacingError(err, fallback),
       });
     } finally {
       setSaving(false);
@@ -390,16 +406,14 @@ function NotificationsSection() {
         ),
       });
     } catch (err) {
+      const fallback = t(
+        'hospital.settings.notifications.feedback.saveFailed',
+        undefined,
+        'Failed to save notification preferences.',
+      );
       setFeedback({
         type: 'error',
-        message:
-          err instanceof Error
-            ? err.message
-            : t(
-                'hospital.settings.notifications.feedback.saveFailed',
-                undefined,
-                'Failed to save notification preferences.',
-              ),
+        message: formatUserFacingError(err, fallback),
       });
     } finally {
       setSaving(false);

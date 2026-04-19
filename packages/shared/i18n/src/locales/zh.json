@@ -1414,7 +1414,8 @@
     },
     "error": {
       "title": "出了点问题",
-      "tryAgain": "重试"
+      "tryAgain": "重试",
+      "description": "页面加载失败，请重试。"
     },
     "loading": {
       "label": "正在加载"
@@ -1432,7 +1433,10 @@
       "alternatePortalLabel": "前往管理后台",
       "errors": {
         "loginFailed": "登录失败",
-        "requestFailed": "登录时发生错误"
+        "requestFailed": "登录时发生错误",
+        "missingCredentials": "请输入用户名和密码",
+        "invalidCredentials": "用户名或密码错误",
+        "notAuthorized": "该账号无权访问此门户"
       }
     },
     "hospitalStaff": "医院工作人员",
@@ -1540,7 +1544,8 @@
         "hospital": "医院信息",
         "procedures": "手术项目",
         "surgeons": "医生团队",
-        "cases": "案例展示"
+        "cases": "案例展示",
+        "info": "医院信息"
       },
       "status": {
         "draft": "草稿",
@@ -1666,7 +1671,7 @@
         "addProcedureModalTitle": "新增项目",
         "confirmDelete": "确定删除这个项目吗？",
         "currencyLabel": "币种",
-        "defaultCurrency": "美元",
+        "defaultCurrency": "USD",
         "durationField": "时长",
         "durationLabel": "时长：",
         "durationPlaceholder": "例如：2-3 小时",
@@ -1854,7 +1859,8 @@
       },
       "errors": {
         "uploadFailed": "上传失败: {message}",
-        "unknownError": "未知错误"
+        "unknownError": "未知错误",
+        "withDetail": "{summary} 详情：{detail}"
       },
       "days": {
         "monday": "周一",
@@ -1863,7 +1869,14 @@
         "thursday": "周四",
         "friday": "周五",
         "saturday": "周六",
-        "sunday": "周日"
+        "sunday": "周日",
+        "fri": "周五",
+        "mon": "周一",
+        "sat": "周六",
+        "sun": "周日",
+        "thu": "周四",
+        "tue": "周二",
+        "wed": "周三"
       },
       "ageRanges": {
         "20-30": "20-30岁",
@@ -1872,6 +1885,282 @@
         "50-60": "50-60岁",
         "60-70": "60-70岁",
         "70+": "70岁以上"
+      },
+      "page": {
+        "title": "营销资料",
+        "description": "管理医院简介、项目、医生和案例资料。"
+      },
+      "actions": {
+        "add": "添加",
+        "addDepartments": "添加科室",
+        "addEquipment": "添加设备",
+        "addTestimonial": "添加患者证言",
+        "addVideos": "添加视频",
+        "apply": "应用",
+        "cancel": "取消",
+        "chooseFile": "选择文件",
+        "confirm": "确认",
+        "doneSelected": "完成（已选 {count} 项）",
+        "editProfile": "编辑资料",
+        "remove": "移除",
+        "save": "保存",
+        "saveChanges": "保存更改",
+        "saving": "保存中...",
+        "selectDepartments": "选择科室",
+        "selectOptions": "选择选项",
+        "setHours": "设置时间",
+        "upload": "上传",
+        "uploadPhotos": "上传照片",
+        "uploadVideo": "上传视频"
+      },
+      "airportServices": {
+        "assistance": "机场协助服务",
+        "complimentaryTransfer": "免费机场接送",
+        "paidTransfer": "付费机场接机",
+        "visaOnArrival": "落地签协助"
+      },
+      "amenities": {
+        "concierge": "医疗旅游礼宾服务",
+        "familyAccommodation": "家属住宿安排",
+        "halalFood": "提供清真餐食",
+        "insuranceCoordination": "国际保险协调",
+        "interpreter": "口译服务",
+        "pharmacy": "24/7 药房",
+        "privateSuite": "私人康复套房",
+        "vegetarian": "素食选择",
+        "visaAssistance": "签证协助",
+        "wifi": "免费 Wi-Fi"
+      },
+      "certifications": {
+        "aahrpp": "AAHRPP 认证",
+        "cap": "CAP 认证",
+        "iso15189": "ISO 15189",
+        "iso9001": "ISO 9001:2015",
+        "jci": "JCI 认证",
+        "nabh": "NABH 认证"
+      },
+      "consumerWebsite": {
+        "copied": "已复制！",
+        "copy": "复制",
+        "defaultDescription": "以下信息会被发布成医院信息，发布到 www.medorabeauty.com",
+        "open": "打开",
+        "regularDescription": "以下信息会被发布成医院信息，发布到 www.medicaltourismchina.health",
+        "title": "消费者网站链接"
+      },
+      "departments": {
+        "anesthesiology": "麻醉科",
+        "annualPatientsCount": "{count} 年接诊患者",
+        "cardiology": "心血管内科",
+        "cardiothoracic": "心胸外科",
+        "dermatology": "皮肤科",
+        "emergency": "急诊科",
+        "endocrinology": "内分泌科",
+        "ent": "耳鼻喉科",
+        "gastroenterology": "消化内科",
+        "generalSurgery": "普外科",
+        "hematology": "血液科",
+        "icu": "重症医学科",
+        "infectious": "感染科",
+        "laboratory": "检验科",
+        "neonatology": "新生儿科",
+        "nephrology": "肾内科",
+        "neurology": "神经内科",
+        "neurosurgery": "神经外科",
+        "obgyn": "妇产科",
+        "oncology": "肿瘤科",
+        "ophthalmology": "眼科",
+        "orthopedics": "骨科",
+        "pathology": "病理科",
+        "pediatrics": "儿科",
+        "pharmacy": "药剂科",
+        "psychiatry": "精神科",
+        "radiology": "放射科",
+        "rehabilitation": "康复科",
+        "respiratory": "呼吸内科",
+        "rheumatology": "风湿免疫科",
+        "specialistsCount": "{count} 位专家",
+        "stomatology": "口腔科",
+        "tcm": "中医科",
+        "urology": "泌尿外科",
+        "vascular": "血管外科"
+      },
+      "empty": {
+        "clickToUploadPhotos": "点击上传照片",
+        "noDepartmentsConfigured": "尚未配置科室。",
+        "noHeroImage": "暂无主图",
+        "noKeyServices": "尚未设置重点服务",
+        "noNearbyAttractions": "暂无周边景点",
+        "noPhotosUploaded": "暂无上传照片",
+        "noVideoTestimonials": "暂无视频证言",
+        "noneSelected": "未选择"
+      },
+      "fields": {
+        "address": "地址",
+        "annualPatients": "年接诊患者",
+        "beds": "床位数",
+        "country": "国家",
+        "departmentImage": "科室图片",
+        "description": "描述",
+        "email": "邮箱",
+        "heroImage": "主图",
+        "hospitalName": "医院名称",
+        "keyServices": "重点服务",
+        "notSet": "未设置",
+        "operatingHours": "营业时间",
+        "patientCapacity": "患者容量",
+        "patientNameRequired": "患者姓名 *",
+        "phone": "电话",
+        "photos": "照片",
+        "procedure": "手术项目",
+        "promotionalVideos": "宣传视频",
+        "selectField": "选择{field}",
+        "specialists": "专家人数",
+        "tagline": "标语",
+        "totalPatientsServed": "累计服务患者",
+        "website": "网站",
+        "yearEstablished": "成立年份"
+      },
+      "followup": {
+        "lifetime": "终身随访",
+        "localPartner": "转介至本地合作诊所",
+        "oneYear": "1 年随访",
+        "sixMonths": "6 个月随访",
+        "telemedicine": "远程问诊"
+      },
+      "header": {
+        "editing": "正在编辑医院信息...",
+        "viewing": "正在查看医院信息"
+      },
+      "hints": {
+        "departmentImage": "上传一张代表该科室的图片"
+      },
+      "hospitalTier": {
+        "class1": "一级医院",
+        "class2a": "二甲医院",
+        "class2b": "二乙医院",
+        "class3a": "三甲医院",
+        "class3b": "三乙医院",
+        "international": "国际医院",
+        "unrated": "未评级"
+      },
+      "languages": {
+        "arabic": "阿拉伯语",
+        "chinese": "中文",
+        "english": "英语",
+        "french": "法语",
+        "german": "德语",
+        "japanese": "日语",
+        "korean": "韩语",
+        "russian": "俄语",
+        "spanish": "西班牙语",
+        "thai": "泰语"
+      },
+      "media": {
+        "heroAlt": "主图",
+        "image": "图片",
+        "imagePlaceholder": "https://... 或点击上传",
+        "noVideosUploaded": "暂无上传视频",
+        "photoNumber": "照片 {count}",
+        "videos": "视频"
+      },
+      "operatingHours": {
+        "closed": "休息",
+        "none": "未设置时间",
+        "title": "营业时间",
+        "weekdays": "工作日"
+      },
+      "ownership": {
+        "jointVenture": "合资",
+        "military": "军队",
+        "nonProfit": "非营利",
+        "private": "私立",
+        "public": "公立",
+        "universityAffiliated": "大学附属"
+      },
+      "paymentMethods": {
+        "alipay": "支付宝",
+        "applePay": "Apple Pay",
+        "bankTransfer": "银行转账",
+        "cash": "现金",
+        "creditCard": "信用卡",
+        "debitCard": "借记卡",
+        "googlePay": "Google Pay",
+        "insuranceDirect": "保险直付",
+        "internationalTransfer": "国际汇款",
+        "paypal": "PayPal",
+        "unionPay": "银联",
+        "wechatPay": "微信支付"
+      },
+      "placeholders": {
+        "address": "完整地址",
+        "attractionDistance": "距离（例如 2 公里）",
+        "attractionName": "景点名称",
+        "bedCount": "例如：200",
+        "country": "例如：美国",
+        "departmentDescription": "介绍该科室及其能力...",
+        "email": "hospital@example.com",
+        "hospitalDescription": "医院简介...",
+        "hospitalName": "医院名称",
+        "keyServices": "按 Enter/Tab/逗号添加标签",
+        "operatingHours": "例如：周一至周五 09:00-18:00",
+        "patientCapacity": "例如：500",
+        "patientName": "例如：张女士",
+        "phone": "+1 234 567 890",
+        "procedure": "例如：鼻整形",
+        "tagline": "一句简短标语",
+        "totalPatientsServed": "例如：10000",
+        "website": "https://...",
+        "yearEstablished": "例如：2005"
+      },
+      "reviewBanner": {
+        "aiReview": "AI 预审 + 人工复核，0.5 个工作日内完成",
+        "description": "您提交的素材会先由 AI 预审，再由我们的团队复核后发布。请确保信息准确、专业。",
+        "title": "审核说明",
+        "translation": "内容将由 AI 翻译成多种语言"
+      },
+      "save": {
+        "departmentImageIncomplete": "某个科室图片仍是本地预览，尚未完成上传。",
+        "equipmentImageIncomplete": "某个设备图片仍是本地预览，尚未完成上传。",
+        "failure": "医院信息保存失败。",
+        "failureWithDebug": "医院信息保存失败。请展开调试日志查看详情。",
+        "heroImageIncomplete": "主图上传尚未完成。",
+        "hospitalInfoAction": "保存医院信息",
+        "hospitalInfoTitle": "正在保存医院信息",
+        "hospitalPhotoIncomplete": "至少有一张医院照片仍是本地预览。",
+        "promotionalVideoIncomplete": "至少有一段宣传视频仍是本地预览。",
+        "testimonialVideoIncomplete": "至少有一段患者证言视频仍是本地预览。",
+        "uploadDepartmentImage": "上传科室图片：{fileName}",
+        "uploadEquipmentImage": "上传设备图片：{fileName}",
+        "uploadHeroImage": "上传主图：{fileName}",
+        "uploadHospitalPhoto": "上传医院照片：{fileName}",
+        "uploadPromotionalVideo": "上传宣传视频：{fileName}",
+        "uploadTestimonialVideo": "上传证言视频：{fileName}"
+      },
+      "sections": {
+        "basicInformation": "基本信息",
+        "contactLocation": "联系方式与地址",
+        "departments": "科室",
+        "hospitalCapacity": "医院容量",
+        "medicalEquipment": "医疗设备",
+        "nearbyAttractions": "周边景点",
+        "photosVideos": "医院照片与视频",
+        "videoTestimonials": "视频评价"
+      },
+      "testimonials": {
+        "unknownPatient": "未知患者"
+      },
+      "uploadProgress": {
+        "close": "关闭",
+        "debugDescription": "原始后端错误 / 校验 JSON",
+        "debugTitle": "技术调试日志",
+        "dismissAndLocate": "关闭并定位问题",
+        "done": "已完成",
+        "errorSummary": "上传已完成，但存在错误",
+        "inProgressSummary": "正在上传并保存您的更改",
+        "pending": "等待中",
+        "saving": "保存中...",
+        "uploadFailed": "上传失败",
+        "uploading": "上传中..."
       }
     },
     "cases": {
@@ -2767,7 +3056,33 @@
       "profile": "档案",
       "role": "角色",
       "stats": "统计",
-      "today": "今天"
+      "today": "今天",
+      "actions": {
+        "cancel": "取消",
+        "close": "关闭",
+        "creating": "创建中...",
+        "delete": "删除",
+        "deleting": "删除中...",
+        "edit": "编辑",
+        "saving": "保存中..."
+      },
+      "labels": {
+        "attachments": "附件"
+      },
+      "progress": {
+        "done": "完成",
+        "failed": "失败",
+        "finishedWithErrors": "已完成，但有错误",
+        "uploading": "上传中...",
+        "uploadingAndSaving": "正在上传并保存",
+        "waiting": "等待中"
+      },
+      "status": {
+        "active": "启用",
+        "draft": "草稿",
+        "inactive": "停用",
+        "loading": "加载中..."
+      }
     },
     "portal": {
       "consultations": {
@@ -2797,6 +3112,11 @@
           "enableAiTranslation": "启用 AI 翻译",
           "notesPlaceholder": "可选备注...",
           "crmNotification": "问诊安排后，系统将通过 CRM 向患者发送提醒。"
+        },
+        "error": {
+          "unexpected": "加载会诊页面时发生意外错误。",
+          "loadFailed": "加载会诊失败",
+          "retry": "重试"
         }
       },
       "videoRoom": {
@@ -2896,6 +3216,274 @@
           "translationIdle": "翻译空闲",
           "translationReady": "{language} 译文已就绪。再次打开此 PDF 时会复用缓存结果。",
           "unavailableForType": "该文件类型暂不支持预览。"
+        }
+      }
+    },
+    "settings": {
+      "page": {
+        "title": "设置",
+        "description": "管理您的账户和通知偏好"
+      },
+      "password": {
+        "title": "密码",
+        "description": "更新您的账户密码",
+        "currentLabel": "当前密码",
+        "currentPlaceholder": "请输入当前密码",
+        "newLabel": "新密码",
+        "newPlaceholder": "请输入新密码",
+        "confirmLabel": "确认新密码",
+        "confirmPlaceholder": "请再次输入新密码",
+        "submit": "更新密码",
+        "feedback": {
+          "allFieldsRequired": "所有字段均为必填项。",
+          "mismatch": "新密码与确认密码不一致。",
+          "minimumLength": "新密码至少需要 8 个字符。",
+          "saved": "密码更新成功。",
+          "saveFailed": "更新密码失败。"
+        }
+      },
+      "language": {
+        "title": "首选语言",
+        "description": "选择门户界面的显示语言",
+        "label": "语言",
+        "submit": "保存语言",
+        "options": {
+          "en": "英语",
+          "zh": "中文",
+          "fr": "法语",
+          "de": "德语",
+          "es": "西班牙语",
+          "bn": "孟加拉语"
+        },
+        "feedback": {
+          "saved": "语言偏好已保存。",
+          "saveFailed": "保存语言偏好失败。"
+        }
+      },
+      "notifications": {
+        "title": "邮件通知",
+        "description": "选择您希望接收的邮件通知",
+        "submit": "保存通知设置",
+        "feedback": {
+          "saved": "通知偏好已保存。",
+          "saveFailed": "保存通知偏好失败。"
+        },
+        "options": {
+          "newCase": {
+            "label": "新病例",
+            "description": "当有新的患者病例分配给您的医院时通知您"
+          },
+          "newMessage": {
+            "label": "新消息",
+            "description": "当您收到来自患者或协调员的新消息时通知您"
+          },
+          "quoteStatusChange": {
+            "label": "报价状态变更",
+            "description": "当报价状态更新时通知您"
+          },
+          "consultationReminder": {
+            "label": "咨询提醒",
+            "description": "接收即将开始的咨询提醒"
+          }
+        }
+      }
+    },
+    "faq": {
+      "page": {
+        "title": "聊天机器人与常见问题",
+        "description": "管理 AI 聊天机器人的常见问题"
+      },
+      "filters": {
+        "all": "全部"
+      },
+      "actions": {
+        "deleteCategory": "删除分类",
+        "newCategory": "新建分类",
+        "newFaq": "新建 FAQ"
+      },
+      "loading": "正在加载 FAQ...",
+      "empty": {
+        "noFaqs": "还没有 FAQ。创建第一个 FAQ 开始使用。",
+        "noResults": "没有符合搜索条件的 FAQ。"
+      },
+      "deleteFaq": {
+        "title": "删除 FAQ",
+        "message": "确定要删除此 FAQ 吗？此操作无法撤销。"
+      },
+      "deleteCategory": {
+        "title": "删除分类",
+        "message": "确定要删除此分类吗？此操作无法撤销。",
+        "blockedMessage": "此分类下有 {count} 个 FAQ。删除分类前，请先删除或移动所有 FAQ。"
+      },
+      "table": {
+        "question": "问题",
+        "status": "状态",
+        "updated": "更新时间",
+        "actions": "操作",
+        "attachmentsCount": "{count} 个附件"
+      },
+      "progress": {
+        "updatingTitle": "更新 FAQ",
+        "creatingTitle": "创建 FAQ",
+        "saveDetails": "保存 FAQ 详情",
+        "createFaq": "创建 FAQ",
+        "saveAttachments": "保存附件",
+        "attachUploads": "将上传内容附加到 FAQ",
+        "uploadAttachment": "上传附件：{fileName}"
+      },
+      "errors": {
+        "faqIdMissing": "保存后缺少 FAQ ID",
+        "uploadRequestFailed": "上传请求未到达存储服务。请检查浏览器中的 CORS 或网络错误。",
+        "uploadFailed": "文件“{fileName}”上传失败（状态 {status}）",
+        "uploadAttachmentFailed": "上传附件失败",
+        "saveFailed": "保存 FAQ 失败"
+      },
+      "modal": {
+        "title": {
+          "create": "创建 FAQ",
+          "edit": "编辑 FAQ"
+        },
+        "fields": {
+          "category": "分类",
+          "status": "状态",
+          "question": "问题",
+          "questionPlaceholder": "例如：你们提供哪些项目？",
+          "answer": "答案",
+          "answerPlaceholder": "请提供清晰的回答...",
+          "keywords": "关键词",
+          "keywordsHint": "（用逗号分隔）",
+          "keywordsPlaceholder": "例如：隆鼻、鼻子、手术",
+          "noCategoriesOption": "-- 请先创建分类 --"
+        },
+        "actions": {
+          "addAttachment": "添加附件",
+          "create": "创建 FAQ",
+          "update": "更新 FAQ"
+        },
+        "attachments": {
+          "pendingNote": "待处理的附件将在保存时上传。"
+        },
+        "validation": {
+          "questionAndAnswerRequired": "问题和答案均为必填项。",
+          "categoryRequired": "分类为必填项。请先创建分类。"
+        }
+      },
+      "categoryModal": {
+        "title": "新建分类",
+        "fields": {
+          "name": "分类名称",
+          "namePlaceholder": "例如：术前、术后、价格"
+        },
+        "actions": {
+          "create": "创建分类"
+        },
+        "validation": {
+          "nameRequired": "分类名称为必填项。"
+        },
+        "errors": {
+          "createFailed": "创建分类失败"
+        }
+      },
+      "search": {
+        "placeholder": "按问题、答案或关键词搜索..."
+      }
+    },
+    "emailTemplates": {
+      "page": {
+        "title": "邮件模板",
+        "description": "管理面向患者沟通的邮件模板"
+      },
+      "types": {
+        "all": "全部",
+        "intro": "介绍",
+        "quote": "报价",
+        "marketing": "营销",
+        "followup": "跟进",
+        "postOps": "术后",
+        "custom": "自定义"
+      },
+      "actions": {
+        "newTemplate": "新建模板"
+      },
+      "search": {
+        "placeholder": "按名称搜索..."
+      },
+      "loading": "正在加载模板...",
+      "empty": {
+        "noTemplates": "还没有邮件模板。创建第一个模板开始使用。",
+        "noResults": "没有符合搜索条件的模板。"
+      },
+      "table": {
+        "name": "名称",
+        "type": "类型",
+        "subject": "主题",
+        "status": "状态",
+        "lastUpdated": "最后更新",
+        "actions": "操作"
+      },
+      "delete": {
+        "title": "删除模板",
+        "message": "确定要删除此模板吗？此操作无法撤销。"
+      },
+      "progress": {
+        "saveDetails": "保存模板详情",
+        "createTemplate": "创建模板",
+        "uploadAttachment": "上传附件：{fileName}",
+        "saveAttachments": "保存附件",
+        "attachUploads": "将上传内容附加到模板",
+        "updatingTitle": "更新模板",
+        "creatingTitle": "创建模板"
+      },
+      "errors": {
+        "templateIdMissing": "保存后缺少模板 ID",
+        "uploadRequestFailed": "上传请求未到达存储服务。请检查浏览器中的 CORS 或网络错误。",
+        "uploadFailed": "文件“{fileName}”上传失败（状态 {status}）",
+        "uploadAttachmentFailed": "上传附件失败",
+        "saveFailed": "保存模板失败"
+      },
+      "modal": {
+        "title": {
+          "create": "创建模板",
+          "edit": "编辑模板"
+        },
+        "fields": {
+          "name": "模板名称",
+          "namePlaceholder": "例如：欢迎患者",
+          "type": "类型",
+          "status": "状态",
+          "subject": "主题",
+          "subjectPlaceholder": "邮件主题...",
+          "body": "正文",
+          "bodyPlaceholder": "邮件正文内容..."
+        },
+        "actions": {
+          "addFiles": "添加图片或文件",
+          "create": "创建模板",
+          "update": "更新模板"
+        },
+        "attachments": {
+          "supportedFormats": "支持：JPEG、PNG、WebP、GIF、PDF、DOCX（最大 10MB）"
+        },
+        "validation": {
+          "nameAndSubjectRequired": "名称和主题均为必填项。"
+        }
+      }
+    },
+    "app": {
+      "title": "医疗 CRM - 医院门户"
+    },
+    "attachments": {
+      "preview": {
+        "frameTitle": "{fileName} 预览",
+        "remove": "移除附件",
+        "status": {
+          "pending": "待上传",
+          "attached": "已附加"
+        },
+        "kind": {
+          "pdf": "PDF 预览",
+          "image": "图片预览",
+          "file": "文件附件"
         }
       }
     }

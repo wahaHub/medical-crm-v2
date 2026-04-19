@@ -11,6 +11,9 @@ export default function ConsultationsError({
 }) {
   const { t } = useHospitalI18n();
   const tx = (key: string, fallback: string) => t(key, undefined, fallback);
+  const detail = error.message && error.message !== 'An unexpected error occurred while loading the consultations page.'
+    ? error.message.slice(0, 160)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -30,11 +33,12 @@ export default function ConsultationsError({
           {tx('hospital.portal.consultations.error.loadFailed', 'Failed to load consultations')}
         </h2>
         <p className="mt-2 text-sm text-red-600">
-          {error.message || tx(
+          {tx(
             'hospital.portal.consultations.error.unexpected',
             'An unexpected error occurred while loading the consultations page.',
           )}
         </p>
+        {detail && <p className="mt-1 text-xs text-red-500">{detail}</p>}
         <button
           onClick={reset}
           className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"

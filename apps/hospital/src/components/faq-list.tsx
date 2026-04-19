@@ -46,6 +46,26 @@ function createLocalAttachmentId() {
   return globalThis.crypto?.randomUUID?.() ?? `faq-att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function getErrorDetail(err: unknown): string | null {
+  if (!(err instanceof Error)) return null;
+
+  const detail = err.message.replace(/\s+/g, ' ').trim();
+  if (!detail || detail.length > 160) return null;
+
+  return detail;
+}
+
+function formatUserFacingError(err: unknown, fallback: string): string {
+  const detail = getErrorDetail(err);
+
+  if (!detail) return fallback;
+  if (detail === fallback || detail.startsWith(`${fallback}:`) || detail.startsWith(`${fallback} `)) {
+    return detail;
+  }
+
+  return `${fallback}${fallback.endsWith('.') ? ' ' : ': '}${detail}`;
+}
+
 function UploadProgressModal({
   state,
   onDismiss,
@@ -720,14 +740,13 @@ function FaqModal({
               headers: { 'Content-Type': file.type || 'application/octet-stream' },
             });
           } catch (uploadError) {
+            const fallback = t(
+              'hospital.faq.errors.uploadRequestFailed',
+              undefined,
+              'Upload request did not reach storage. Check browser CORS/network errors.',
+            );
             throw new Error(
-              uploadError instanceof Error
-                ? `${uploadError.message}. Upload request did not reach storage. Check browser CORS/network errors.`
-                : t(
-                    'hospital.faq.errors.uploadRequestFailed',
-                    undefined,
-                    'Upload request did not reach storage. Check browser CORS/network errors.',
-                  ),
+              formatUserFacingError(uploadError, fallback),
             );
           }
           if (!uploadResponse.ok) {
@@ -752,14 +771,14 @@ function FaqModal({
             )),
           }));
         } catch (err) {
-          const message =
-            err instanceof Error
-              ? err.message
-              : t(
-                  'hospital.faq.errors.uploadAttachmentFailed',
-                  undefined,
-                  'Failed to upload attachment',
-                );
+          const message = formatUserFacingError(
+            err,
+            t(
+              'hospital.faq.errors.uploadAttachmentFailed',
+              undefined,
+              'Failed to upload attachment',
+            ),
+          );
           setError(message);
           setSaveProgress((prev) => ({
             ...prev,
@@ -791,10 +810,10 @@ function FaqModal({
       setSaveProgress((prev) => ({ ...prev, canDismiss: true }));
       onSaved();
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : t('hospital.faq.errors.saveFailed', undefined, 'Failed to save FAQ');
+      const message = formatUserFacingError(
+        err,
+        t('hospital.faq.errors.saveFailed', undefined, 'Failed to save FAQ'),
+      );
       setError(message);
       setSaveProgress((prev) => ({
         ...prev,
@@ -1028,13 +1047,14 @@ function CategoryModal({
       onSaved();
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : t(
-              'hospital.faq.categoryModal.errors.createFailed',
-              undefined,
-              'Failed to create category',
-            ),
+        formatUserFacingError(
+          err,
+          t(
+            'hospital.faq.categoryModal.errors.createFailed',
+            undefined,
+            'Failed to create category',
+          ),
+        ),
       );
     } finally {
       setSaving(false);

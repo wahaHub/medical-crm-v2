@@ -224,18 +224,6 @@ function classifyResponse({
     };
   }
 
-  if (response.status === 401 || response.status === 403) {
-    return {
-      ...buildBaseResult({ client, scenarioId, timestamp }),
-      bootstrapMode: 'bootstrap_failed',
-      failureKind: 'http_status',
-      status: response.status,
-      message: `Blocked-path bootstrap failed with HTTP ${response.status}.`,
-      responseBody: response.body,
-      responseBodyText: response.bodyText,
-    };
-  }
-
   if (allowedEvidence) {
     return {
       ...buildBaseResult({ client, scenarioId, timestamp }),

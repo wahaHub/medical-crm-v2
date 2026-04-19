@@ -128,13 +128,27 @@ function hasBlockedPrereqSignal(body: unknown) {
     return false;
   }
 
-  const errorCodeCandidates = [
-    (body as { error?: unknown }).error,
-    (body as { code?: unknown }).code,
-    (body as { errorCode?: unknown }).errorCode,
-  ];
+  const candidate = body as {
+    code?: unknown;
+    details?: Array<{
+      path?: unknown;
+      code?: unknown;
+      received?: unknown;
+    }>;
+  };
 
-  return errorCodeCandidates.some((value) => value === 'PATIENT_PREREQ_REQUIRED');
+  if (candidate.code !== 'VALIDATION_FAILED' || !Array.isArray(candidate.details)) {
+    return false;
+  }
+
+  return candidate.details.some((detail) => {
+    if (!detail || typeof detail !== 'object') {
+      return false;
+    }
+
+    const path = Array.isArray(detail.path) ? detail.path : [];
+    return path.length === 1 && path[0] === 'name' && detail.received === 'undefined';
+  });
 }
 
 function classifyTransportError({

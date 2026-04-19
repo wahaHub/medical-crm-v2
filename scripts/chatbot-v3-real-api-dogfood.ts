@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -72,17 +73,20 @@ export function buildAllowedOnboardingPayload({
   site,
   scenarioId,
   runTimestamp,
+  runNonce,
 }: {
   site: string;
   scenarioId: string;
   runTimestamp: string;
+  runNonce: string;
 }): AllowedBootstrapPayload {
   const siteSlug = slugifyEmailPart(site) || 'site';
   const scenarioSlug = slugifyEmailPart(scenarioId) || 'scenario';
   const timestampSlug = slugifyEmailPart(runTimestamp) || 'run';
+  const nonceSlug = slugifyEmailPart(runNonce) || 'nonce';
 
   return {
-    email: `dogfood+${siteSlug}-${scenarioSlug}-${timestampSlug}@example.com`,
+    email: `dogfood+${siteSlug}-${scenarioSlug}-${timestampSlug}-${nonceSlug}@example.com`,
     name: 'Dogfood Patient',
     preferredLanguage: 'en',
     destination: 'Shenzhen',
@@ -163,6 +167,7 @@ async function run() {
     baseUrl: config.baseUrl,
     site: config.site,
   });
+  const runNonce = randomUUID();
 
   const bootstrapResults: BootstrapSuccessResult[] = [];
   const scenarioOutcomes: ScenarioOutcome[] = [];
@@ -180,6 +185,7 @@ async function run() {
               site: config.site,
               scenarioId: scenario.id,
               runTimestamp: config.runTimestamp,
+              runNonce,
             }),
           }
         : {}),

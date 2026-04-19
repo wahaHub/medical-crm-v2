@@ -165,7 +165,17 @@ test('blocked-path HTTP 400 is classified as expected gating for the canonical n
       makeResponse({
         status: 400,
         jsonBody: {
-          error: 'PATIENT_PREREQ_REQUIRED',
+          error: 'Validation failed',
+          code: 'VALIDATION_FAILED',
+          details: [
+            {
+              code: 'invalid_type',
+              expected: 'string',
+              received: 'undefined',
+              path: ['name'],
+              message: 'Required',
+            },
+          ],
         },
       }),
   });
@@ -191,8 +201,17 @@ test('blocked-path generic HTTP 400 remains a bootstrap failure', async () => {
       makeResponse({
         status: 400,
         jsonBody: {
-          error: 'VALIDATION_ERROR',
-          message: 'email is required',
+          error: 'Validation failed',
+          code: 'VALIDATION_FAILED',
+          details: [
+            {
+              code: 'invalid_type',
+              expected: 'string',
+              received: 'undefined',
+              path: ['destination'],
+              message: 'Required',
+            },
+          ],
         },
       }),
   });

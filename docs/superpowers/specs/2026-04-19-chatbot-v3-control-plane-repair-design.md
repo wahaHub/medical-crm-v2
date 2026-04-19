@@ -188,9 +188,25 @@ Semantics:
 - this is the canonical v1 truth for documents that have been attached and accepted for the session
 - documents may be added before, during, or after `COLLECT_MEDICAL_INPUTS`
 - the list is append-oriented, not single-shot
+- the list is deduplicated by `path` in v1
 - no document-type interpretation is required in v1
 
 `docUploadStatus` may continue to exist as transport / upload plumbing if the system still needs it, but it is not the primary product truth for progression semantics.
+
+### Supporting-document compatibility rule for existing sessions
+
+This repair must not strand in-flight sessions that already have valid earlier uploads.
+
+For sessions created before `supportingDocuments` exists:
+
+- new uploads must append into `supportingDocuments`
+- if prior accepted uploads can be reconstructed from existing session-linked upload records or assets, they must be hydrated into the minimal `{ path, name }[]` list
+- if a session has older accepted-upload evidence that cannot be losslessly reconstructed into concrete `{ path, name }` entries, consult gating for that legacy session may continue to honor that earlier accepted-upload evidence as migration fallback only
+
+That fallback is compatibility-only:
+
+- it exists to preserve continuity for older in-flight sessions
+- it must not become the primary v1 progression truth for newly written sessions
 
 ## Control-Plane Input Contract
 
@@ -299,6 +315,7 @@ So recommendation revisit means:
 - recommendation-specific handling is allowed for that turn
 - the already persisted primary stage remains authoritative
 - after the revisit completes, the session should continue from the persisted primary stage unless an explicit progression-changing action was taken
+- the client-facing `journey.stage` / `journey.phase` should continue to report the persisted primary stage, not the temporary revisit detour stage
 
 ### 3. `EXPLAIN_PROCESS`
 
@@ -345,6 +362,7 @@ In all of these cases:
 - a specialized worker/agent may take over that turn
 - but revisit alone must not replace the persisted primary journey stage
 - only explicit authority-approved progression should update `journeyCurrentStage/journeyCurrentPhase`
+- the client-facing `journey` payload should continue to represent the persisted primary stage, while revisit-specific behavior is expressed through cards/messages/rendering instead of a silent primary-stage rewrite
 
 ### 5. `ONLINE_CONSULT`
 
@@ -355,18 +373,21 @@ Consult may no longer be unlocked solely by:
 
 The repaired gate must reflect the newer sequence.
 
-At minimum, consult progression must require:
+In v1, consult progression is intentionally conservative and deterministic.
 
-- recommendation choice is resolved in a way the product accepts
-- process explanation is complete
-- supporting-document expectations for the current workflow are satisfied
+Consult progression requires all of the following:
 
-This last point must not be modeled as "the user uploaded one special diagnosis-proof file in exactly one stage." Instead it must be modeled against the actual supporting-document truth available to the session.
+- `recommendationSelectionStatus === 'selected'`
+- `process.explained === true`
+- `supportingDocuments.length >= 1`
 
-The exact consult gate should be conservative in v1:
+This means:
 
-- selected branch should not bypass supporting-documents stage by default
-- skipped branch should not bypass process explanation by default
+- skipped hospital choice may continue into process explanation, but it does not unlock consult
+- selected branch may continue into process explanation, but it still must pass through supporting-documents readiness before consult
+- supporting-document readiness is satisfied by the minimal v1 truth of “at least one accepted supporting document exists for the session”
+
+This must not be modeled as “the user uploaded one special diagnosis-proof file in exactly one stage.” It must be modeled against the actual supporting-document truth available to the session.
 
 ## Attachment Handling Repair
 

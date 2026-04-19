@@ -16,11 +16,11 @@
 - `packages/domain/src/entities/ai-chat-session.entity.ts`
   - Add persisted journey snapshot fields and minimal supporting-document list semantics; stop treating richer post-intake fields as boolean-first control truth.
 - `packages/domain/__tests__/ai-chat-session.entity.test.ts`
-  - Cover journey snapshot hydration, supporting-document list normalization, and structured recommendation/triage derivations.
+  - Cover journey snapshot hydration, supporting-document list normalization/dedupe, structured recommendation/triage derivations, and migration fallback behavior.
 - `packages/infrastructure/database/schema/schema.ts`
   - Add columns for journey stage/phase and supporting documents.
 - `packages/infrastructure/database/repositories/drizzle-ai-chat-session.repository.ts`
-  - Read/write the new journey snapshot and supporting-documents fields; normalize replayed timestamp writes safely.
+  - Read/write the new journey snapshot and supporting-documents fields; normalize replayed timestamp writes safely; hydrate legacy supporting-document evidence when reconstructable.
 - `packages/application/src/services/chatbot-v3/types.ts`
   - Extend decision/runtime types so structured state is available to supervisor and authority without collapsing to old aliases.
 - `packages/application/src/services/chatbot-v3/supervisor.service.ts`
@@ -40,7 +40,7 @@
 - `apps/api/src/routes/chatbot-v3.routes.ts`
   - Persist authority-approved journey snapshot and supporting-document updates atomically; keep replay-safe writeback.
 - `apps/api/src/routes/chatbot-v3/response-composer.ts`
-  - Render recommendation/process/supporting-documents copy from repaired stage truth.
+  - Render recommendation/process/supporting-documents copy from repaired stage truth and keep client-facing journey payload aligned with the persisted primary stage during revisits.
 - `apps/api/src/routes/chatbot-v3/records-route-adapter.ts`
   - Normalize supporting-document additions into the minimal `{ path, name }[]` contract without classification.
 - `apps/api/src/routes/chatbot-v3/records-llm-adapter.test.ts`
@@ -111,6 +111,22 @@ it('hydrates persisted journey snapshot without reconstructing a different curre
   expect(session.statusSnapshot.journeyCurrentStage).toBe('EXPLAIN_PROCESS');
   expect(session.statusSnapshot.journeyCurrentPhase).toBe('active');
 });
+
+it('deduplicates supporting documents by path', () => {
+  const session = new AiChatSession({
+    // existing fixture props
+    statusSnapshot: {
+      supportingDocuments: [
+        { path: 'uploads/doc-a.pdf', name: 'doc-a.pdf' },
+        { path: 'uploads/doc-a.pdf', name: 'renamed.pdf' },
+      ] as never,
+    },
+  });
+
+  expect(session.statusSnapshot.supportingDocuments).toEqual([
+    { path: 'uploads/doc-a.pdf', name: 'doc-a.pdf' },
+  ]);
+});
 ```
 
 - [ ] **Step 2: Run the domain test file to confirm failure**
@@ -140,6 +156,12 @@ supportingDocuments: Array<{ path: string; name: string }>
 ```
 
 Do not add classification or extra metadata.
+
+- [ ] **Step 4a: Define and implement supporting-document compatibility hydration**
+
+When `supportingDocuments` is absent for older sessions:
+- hydrate it from existing reconstructable session-linked upload records/assets when possible
+- if full `{ path, name }[]` reconstruction is impossible, preserve legacy accepted-upload continuity through an explicit compatibility read path used only for migration-safe gating
 
 - [ ] **Step 5: Wire repository row mapping and patch/save support**
 
@@ -238,6 +260,14 @@ Add explicit control-plane input fields for:
 - `supportingDocuments`
 
 Do not reintroduce boolean aliases as primary decision inputs.
+
+- [ ] **Step 3a: Audit remaining boolean-first progression helpers**
+
+Search runtime/read-side/application helpers for boolean-first chatbot progression logic and either:
+- remove it
+- or mark it as migration-fallback only
+
+Do not leave hidden boolean-first progression shortcuts outside supervisor/authority.
 
 - [ ] **Step 4: Remove the attachment bootstrap override from supervisor fallback**
 
@@ -373,6 +403,11 @@ Authority rules must explicitly support:
 
 Treat `COLLECT_MEDICAL_INPUTS` as re-enterable.
 
+Define the v1 consult gate explicitly as:
+- `recommendationSelectionStatus === 'selected'`
+- `process.explained === true`
+- at least one supporting document is available for the session, including migration compatibility fallback for older sessions
+
 - [ ] **Step 5a: Add revisit preservation tests**
 
 Lock these semantics explicitly:
@@ -389,6 +424,12 @@ Expected user-facing order:
 - consult
 
 Do not regress to generic or old-order copy.
+
+- [ ] **Step 6a: Lock revisit response semantics**
+
+Add tests to prove that during recommendation/process revisits:
+- client-facing `journey.stage` / `journey.phase` remain the persisted primary stage
+- revisit-specific handling appears through cards/messages/rendering, not a silent primary-stage rewrite
 
 - [ ] **Step 7: Run the repaired authority/mounting/response tests to green**
 
@@ -480,6 +521,7 @@ Expected: FAIL on upload regression, re-entry, or replay safety.
 Records handling should:
 - accept later-stage attachment uploads
 - append `{ path, name }` entries to `supportingDocuments`
+- dedupe by `path`
 - avoid document classification
 - avoid regressing the journey stage to minimal triage
 
@@ -520,6 +562,7 @@ Re-check at minimum:
 - later-stage attachment-only upload
 - repeated supporting-document upload
 - recommendation revisit without primary-stage drift
+- recommendation revisit response still reports the persisted primary stage
 - repeat explain without primary-stage drift
 - idempotent selection replay
 - full answered happy path

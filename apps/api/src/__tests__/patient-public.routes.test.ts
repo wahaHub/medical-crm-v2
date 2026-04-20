@@ -224,42 +224,25 @@ describe('patientPublicRoutes', () => {
     expect(res.headers.get('set-cookie')).toContain('patient_session=session-token-123');
     expect(res.headers.get('set-cookie')).toContain('patient_restore=restore-cookie-123');
     await vi.waitFor(() => {
-      expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledOnce();
+      expect(services.aiChatMessageRepo.create).toHaveBeenCalledOnce();
     });
-    expect(services.difyApi.createChatMessage).toHaveBeenCalledOnce();
-    expect(services.difyFaqGroundingApi.createChatMessage).toHaveBeenCalledOnce();
+    expect(services.difyApi.createChatMessage).not.toHaveBeenCalled();
+    expect(services.difyFaqGroundingApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.difyClassifierApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.matchHospitals.execute).not.toHaveBeenCalled();
-    const starterUpdate = services.aiChatMessageRepo.updateMessage.mock.calls[0]?.[1];
-    expect(starterUpdate).toMatchObject({
-      nextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
+    const starterCreate = services.aiChatMessageRepo.create.mock.calls[0]?.[0];
+    expect(starterCreate).toMatchObject({
+      content: 'Hello, welcome to Medora Health. We have received your basic intake information. The next step will appear here shortly.',
+      nextAction: null,
       metadata: {
         widgetStarterSeed: true,
-        widgetStarterVersion: 'ai-v1',
-        internalNextAction: 'SHOW_HOSPITAL_RECOMMENDATIONS',
-        classifierResult: {
-          requestClass: 'process_explanation',
-          targetResourceTypes: ['PROCESS_GUIDE'],
-          includeProgressionFollowUp: false,
-        },
-        chatbotV2: expect.objectContaining({
-          journeySnapshot: {
-            currentStage: 'EXPLAIN_PROCESS',
-            currentPhase: 'active',
-          },
-          requestClass: 'process_explanation',
-          responseIntent: 'process_explanation',
-        }),
+        widgetStarterVersion: 'static-v1',
+        draftState: 'succeeded',
+        starterMode: 'static',
+        blocks: [],
       },
     });
-    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).toContain('PROCESS_GUIDE');
-    expect(starterUpdate?.metadata?.chatbotV2?.resources.map((resource: { resourceType: string }) => resource.resourceType)).not.toContain('HOSPITAL_RECOMMENDATION');
-    expect(starterUpdate?.metadata?.blocks).toBeUndefined();
-    expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
-      'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-      'beauty',
-      'dify-conversation-1',
-    );
+    expect(services.aiChatSessionRepo.setDifyConversationId).not.toHaveBeenCalled();
     expect(services.sendPatientOnboardingEmail.execute).toHaveBeenCalledWith({
       email: 'new@example.com',
       site: 'beauty',
@@ -279,46 +262,6 @@ describe('patientPublicRoutes', () => {
       patientEmail: 'new@example.com',
       site: 'beauty',
     });
-    expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
-      inputs: expect.objectContaining({
-        site: 'beauty',
-        faqGrounding: JSON.stringify({
-          faqScope: 'GENERAL_ONLY',
-          categories: ['Consultation Process'],
-          groundedContext: 'Grounded process context',
-        }),
-        chatbotV2: expect.any(String),
-      }),
-    }));
-    const starterDifyPayload = services.difyApi.createChatMessage.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(JSON.parse(((starterDifyPayload.inputs as Record<string, unknown>).chatbotV2 as string))).toEqual(
-      expect.objectContaining({
-        journeySnapshot: {
-          currentStage: 'EXPLAIN_PROCESS',
-          currentPhase: 'active',
-        },
-        requestClass: 'process_explanation',
-        responseIntent: 'process_explanation',
-        resources: [
-          expect.objectContaining({
-            resourceType: 'PROCESS_GUIDE',
-            resourceId: 'process-guide:widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            status: 'available',
-            stageBinding: {
-              stage: 'EXPLAIN_PROCESS',
-              phase: 'active',
-            },
-            visibility: {
-              mode: 'global',
-            },
-            payload: {
-              title: 'Understand our consultation process',
-            },
-            actions: ['open'],
-          }),
-        ],
-      }),
-    );
   });
 
   it('returns onboarding success without blocking on widget starter generation', async () => {
@@ -459,7 +402,7 @@ describe('patientPublicRoutes', () => {
     expect(services.sendPatientOnboardingEmail.execute).not.toHaveBeenCalled();
   });
 
-  it('does not overwrite an existing ai-v1 widget starter when the session has already been seeded', async () => {
+  it('refreshes an existing legacy widget starter into the current static version', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -507,10 +450,21 @@ describe('patientPublicRoutes', () => {
     expect(res.status).toBe(200);
     expect(services.difyApi.createChatMessage).not.toHaveBeenCalled();
     expect(services.aiChatMessageRepo.create).not.toHaveBeenCalled();
-    expect(services.aiChatMessageRepo.updateMessage).not.toHaveBeenCalled();
+    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
+      'assistant-1',
+      expect.objectContaining({
+        content: 'Hello, welcome to Medora Health. We have received your basic intake information. The next step will appear here shortly.',
+        nextAction: null,
+        metadata: expect.objectContaining({
+          widgetStarterVersion: 'static-v1',
+          draftState: 'succeeded',
+          starterMode: 'static',
+        }),
+      }),
+    );
   });
 
-  it('clears stale starter metadata when async widget seeding fails on a reused starter row', async () => {
+  it('replaces stale starter metadata on a reused starter row with the static starter', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -564,9 +518,6 @@ describe('patientPublicRoutes', () => {
         create: vi.fn(),
         updateMessage: vi.fn(),
       },
-      difyApi: {
-        createChatMessage: vi.fn().mockRejectedValue(new Error('starter provider down')),
-      },
     });
     mockGetServices.mockReturnValue(services);
 
@@ -589,23 +540,21 @@ describe('patientPublicRoutes', () => {
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       'assistant-1',
       expect.objectContaining({
-        content: 'Thanks for sharing your details. We have opened your patient case and the next step will appear here shortly.',
+        content: 'Hello, welcome to Medora Health. We have received your basic intake information. The next step will appear here shortly.',
         nextAction: null,
         shortlist: [],
-        writebackStatus: 'failed',
+        writebackStatus: 'succeeded',
         metadata: expect.objectContaining({
-          draftState: 'provider_error',
-          internalNextAction: null,
-          chatbotV2: null,
-          classifierResult: null,
+          draftState: 'succeeded',
+          starterMode: 'static',
+          widgetStarterVersion: 'static-v1',
           blocks: [],
         }),
       }),
     );
   });
 
-  it('preserves refreshed writeback status before saving a widget starter difyConversationId', async () => {
-    const questionnaireTemplateId = '55555555-5555-4555-8555-555555555555';
+  it('does not save a dify conversation id when seeding a static starter', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -621,59 +570,6 @@ describe('patientPublicRoutes', () => {
     });
     const services = createBaseServices({
       initOnboarding: { execute },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn()
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          })
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          }),
-        save: vi.fn().mockImplementation(async (entity) => entity),
-        setDifyConversationId: vi.fn().mockResolvedValue(null),
-      },
-      difyApi: {
-        createChatMessage: vi.fn().mockResolvedValue({
-          conversation_id: 'dify-conversation-docs-1',
-          answer: JSON.stringify({
-            answer: 'Please upload your reports so I can guide the next step.',
-            nextAction: 'REQUEST_DOC_UPLOAD',
-            internalNextAction: 'REQUEST_DOC_UPLOAD',
-          }),
-          metadata: { retriever_resources: [] },
-        }),
-      },
-      caseRepo: {
-        findById: vi.fn().mockResolvedValue({
-          id: '11111111-1111-4111-8111-111111111111',
-          structuredData: {
-            patientHospitalSelection: {
-              medicalFormStatus: 'NOT_STARTED',
-            },
-          },
-        }),
-      },
-      getTemplateByDisease: {
-        execute: vi.fn().mockResolvedValue({
-          template: {
-            id: questionnaireTemplateId,
-          },
-        }),
-      },
     });
     mockGetServices.mockReturnValue(services);
 
@@ -690,34 +586,12 @@ describe('patientPublicRoutes', () => {
 
     expect(res.status).toBe(200);
     await vi.waitFor(() => {
-      expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalled();
+      expect(services.aiChatMessageRepo.create).toHaveBeenCalled();
     });
-    expect(services.aiChatSessionRepo.setDifyConversationId).toHaveBeenCalledWith(
-      'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-      'beauty',
-      'dify-conversation-docs-1',
-    );
-    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        nextAction: 'REQUEST_DOC_UPLOAD',
-        metadata: expect.objectContaining({
-          internalNextAction: 'REQUEST_DOC_UPLOAD',
-          chatbotV2: expect.objectContaining({
-            journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
-            },
-            requestClass: 'process_explanation',
-            responseIntent: 'process_explanation',
-          }),
-        }),
-      }),
-    );
+    expect(services.aiChatSessionRepo.setDifyConversationId).not.toHaveBeenCalled();
   });
 
-  it('builds REQUEST_DOC_UPLOAD starter blocks from the default questionnaire when questionnaire truth is still not submitted', async () => {
-    const questionnaireTemplateId = '66666666-6666-4666-8666-666666666666';
+  it('does not build questionnaire starter blocks while seeding a static starter', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -733,59 +607,6 @@ describe('patientPublicRoutes', () => {
     });
     const services = createBaseServices({
       initOnboarding: { execute },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn()
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          })
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          }),
-        save: vi.fn().mockImplementation(async (entity) => entity),
-        setDifyConversationId: vi.fn().mockResolvedValue(null),
-      },
-      difyApi: {
-        createChatMessage: vi.fn().mockResolvedValue({
-          conversation_id: 'dify-conversation-docs-2',
-          answer: JSON.stringify({
-            answer: 'Please upload your reports so I can guide the next step.',
-            nextAction: 'REQUEST_DOC_UPLOAD',
-            internalNextAction: 'REQUEST_DOC_UPLOAD',
-          }),
-          metadata: { retriever_resources: [] },
-        }),
-      },
-      getTemplateByDisease: {
-        execute: vi.fn().mockResolvedValue({
-          template: {
-            id: questionnaireTemplateId,
-          },
-        }),
-      },
-      caseRepo: {
-        findById: vi.fn().mockResolvedValue({
-          id: '11111111-1111-4111-8111-111111111111',
-          structuredData: {
-            patientHospitalSelection: {
-              medicalFormStatus: 'NOT_STARTED',
-            },
-          },
-        }),
-      },
     });
     mockGetServices.mockReturnValue(services);
 
@@ -802,28 +623,12 @@ describe('patientPublicRoutes', () => {
 
     expect(res.status).toBe(200);
     await vi.waitFor(() => {
-      expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalled();
+      expect(services.aiChatMessageRepo.create).toHaveBeenCalled();
     });
-    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        nextAction: 'REQUEST_DOC_UPLOAD',
-        metadata: expect.objectContaining({
-          internalNextAction: 'REQUEST_DOC_UPLOAD',
-          chatbotV2: expect.objectContaining({
-            journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
-            },
-          }),
-        }),
-      }),
-    );
-    expect(services.getTemplateByDisease.execute).toHaveBeenCalledWith('DEFAULT');
+    expect(services.getTemplateByDisease.execute).not.toHaveBeenCalled();
   });
 
-  it('prefers a case-specific questionnaire template when seeding REQUEST_DOC_UPLOAD starter blocks', async () => {
-    const questionnaireTemplateId = '77777777-7777-4777-8777-777777777777';
+  it('does not consult case-specific questionnaire templates while seeding a static starter', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',
       caseId: '11111111-1111-4111-8111-111111111111',
@@ -839,46 +644,10 @@ describe('patientPublicRoutes', () => {
     });
     const services = createBaseServices({
       initOnboarding: { execute },
-      aiChatSessionRepo: {
-        findBySessionId: vi.fn()
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          })
-          .mockResolvedValueOnce({
-            id: 'ai-session-1',
-            sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
-            site: 'beauty',
-            difyConversationId: null,
-            hospitalType: 'REGULAR',
-            statusSnapshot: {
-              consultationStatus: 'not_introduced',
-            },
-          }),
-        save: vi.fn().mockImplementation(async (entity) => entity),
-        setDifyConversationId: vi.fn().mockResolvedValue(null),
-      },
-      difyApi: {
-        createChatMessage: vi.fn().mockResolvedValue({
-          conversation_id: 'dify-conversation-docs-case-template',
-          answer: JSON.stringify({
-            answer: 'Please upload your reports so I can guide the next step.',
-            nextAction: 'REQUEST_DOC_UPLOAD',
-            internalNextAction: 'REQUEST_DOC_UPLOAD',
-          }),
-          metadata: { retriever_resources: [] },
-        }),
-      },
       caseRepo: {
         findById: vi.fn().mockResolvedValue({
           id: '11111111-1111-4111-8111-111111111111',
-          questionCollectorTemplateId: questionnaireTemplateId,
+          questionCollectorTemplateId: '77777777-7777-4777-8777-777777777777',
           structuredData: {
             patientHospitalSelection: {
               medicalFormStatus: 'NOT_STARTED',
@@ -902,23 +671,8 @@ describe('patientPublicRoutes', () => {
 
     expect(res.status).toBe(200);
     await vi.waitFor(() => {
-      expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalled();
+      expect(services.aiChatMessageRepo.create).toHaveBeenCalled();
     });
-    expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        nextAction: 'REQUEST_DOC_UPLOAD',
-        metadata: expect.objectContaining({
-          internalNextAction: 'REQUEST_DOC_UPLOAD',
-          chatbotV2: expect.objectContaining({
-            journeySnapshot: {
-              currentStage: 'RECOMMENDATION',
-              currentPhase: 'active',
-            },
-          }),
-        }),
-      }),
-    );
     expect(services.getTemplateByDisease.execute).not.toHaveBeenCalled();
   });
 

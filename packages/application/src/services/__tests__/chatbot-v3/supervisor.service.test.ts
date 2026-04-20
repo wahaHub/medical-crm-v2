@@ -604,7 +604,7 @@ describe('SupervisorService', () => {
     });
   });
 
-  it('keeps later-stage attachments on COLLECT_MEDICAL_INPUTS instead of advancing to consult', async () => {
+  it('preserves faq detours from COLLECT_MEDICAL_INPUTS even when the turn includes attachments', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
       currentStage: 'COLLECT_MEDICAL_INPUTS',
@@ -628,9 +628,9 @@ describe('SupervisorService', () => {
         attachments: [{ fileName: 'report.pdf' }],
       },
       suggestion: {
-        intent: 'progression',
-        suggestedStage: 'ONLINE_CONSULT',
-        reason: 'consult should not absorb attachment turns',
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: 'user asked a faq-style follow-up while sharing a document',
       },
       facts: {
         'process.explained': true,
@@ -638,18 +638,16 @@ describe('SupervisorService', () => {
     });
 
     expect(result).toEqual({
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-      dispatchAgent: 'RecordsAgent',
-      reason: 'attachment turn should remain in medical inputs',
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'user asked a faq-style follow-up while sharing a document',
       task: {
-        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
         latestUserMessage: 'Here are my documents',
         necessaryFacts: {
-          'intake.condition': 'lung cancer',
           'intake.target_destination': 'Shanghai',
-          'recommendation.selected': false,
-          'records.minimal_triage.complete': true,
+          'current.stage': 'COLLECT_MEDICAL_INPUTS',
         },
       },
     });

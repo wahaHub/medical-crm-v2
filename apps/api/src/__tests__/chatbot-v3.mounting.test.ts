@@ -1065,7 +1065,7 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.messages[0].text).toContain('online consultation stage');
+    expect(body.messages[0].text).toContain('recommendation stage');
     expect(mockServices.aiChatSessionRepo.patchStatus).not.toHaveBeenCalledWith(
       'session-v3-1',
       expect.objectContaining({
@@ -1831,7 +1831,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(firstConsultTurn.messages[0]?.text).toContain('online consultation stage');
+    expect(firstConsultTurn.messages[0]?.text).toContain('recommendation stage');
     expect(firstConsultTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
@@ -2126,7 +2126,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(repeatExplainTurn.messages[0]?.text).toContain('online consultation stage');
+    expect(repeatExplainTurn.messages[0]?.text).toContain('recommendation stage');
     expect(readSession().statusSnapshot.processExplained).toBe(true);
 
     const nextTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({

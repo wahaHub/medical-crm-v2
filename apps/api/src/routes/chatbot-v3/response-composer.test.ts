@@ -672,6 +672,42 @@ describe('ResponseComposer', () => {
     ]));
   });
 
+  it('does not leak consult copy when supporting documents exist but the authoritative journey stays on COLLECT_MEDICAL_INPUTS', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Can I already book the consultation?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'consult',
+          suggestedStage: 'ONLINE_CONSULT',
+          reason: 'user asked whether the consult can start now',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [{
+          path: 'chatbot/session-1/report.pdf',
+          name: 'report.pdf',
+        }],
+      } as any,
+    });
+
+    expect(response.messages[0]?.text).not.toContain('online consultation stage');
+    expect(response.messages[0]?.text).toContain('diagnosis proof');
+  });
+
   it('does not let stale pre-stage upload residue count as diagnosis-proof completion on stage entry', () => {
     const response = composeResponse({
       body: createRequest({

@@ -107,16 +107,6 @@ export function buildAssistantText(
     return recommendationAssistantText;
   }
 
-  if (
-    result.suggestion.suggestedStage === 'ONLINE_CONSULT'
-    && (
-      result.journey.stage === 'ONLINE_CONSULT'
-      || (statusSnapshot?.supportingDocuments?.length ?? 0) > 0
-    )
-  ) {
-    return 'I checked the online consultation stage for this session.';
-  }
-
   switch (result.journey.stage) {
     case 'EXPLAIN_PROCESS':
       return 'I checked the explain process stage for this session.';

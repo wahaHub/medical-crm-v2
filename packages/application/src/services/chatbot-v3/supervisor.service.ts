@@ -168,7 +168,6 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
   const minimalTriageComplete = hasStructuredMinimalTriageComplete(input);
   const processExplained = resolveProcessExplained(input);
   const supportingDocuments = input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments ?? [];
-  const hasBootstrapAttachments = hasAttachmentBootstrap(input.bootstrap);
 
   if (input.suggestion.intent === 'handoff' || currentStage === 'HUMAN_HANDOFF') {
     return {
@@ -178,11 +177,14 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     };
   }
 
-  if (currentStage === 'COLLECT_MEDICAL_INPUTS' && hasBootstrapAttachments) {
+  if (
+    isSidePathIntent(input.suggestion.intent)
+    && isChatJourneyStage(input.suggestion.suggestedStage)
+  ) {
     return {
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-      reason: clampReason('attachment turn should remain in medical inputs'),
+      intent: input.suggestion.intent,
+      suggestedStage: input.suggestion.suggestedStage,
+      reason: clampReason(input.suggestion.reason || 'side-path detour should not rewrite the primary stage'),
     };
   }
 
@@ -282,6 +284,12 @@ function isDispatchAgent(value: unknown): value is ChatbotV3DispatchAgent {
     || value === 'RecommendationAgent'
     || value === 'ConsultAgent'
     || value === 'HandoffAgent';
+}
+
+function isSidePathIntent(
+  intent: OrchestratorV3DecisionInput['suggestion']['intent'],
+): boolean {
+  return intent === 'faq' || intent === 'resource';
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -609,12 +617,6 @@ function hasStructuredMinimalTriageComplete(
   }
 
   return false;
-}
-
-function hasAttachmentBootstrap(
-  bootstrap: OrchestratorV3BootstrapSignals | undefined,
-): boolean {
-  return (bootstrap?.attachments?.length ?? 0) > 0;
 }
 
 function isChatJourneyPhase(value: unknown): value is ChatJourneyPhase {

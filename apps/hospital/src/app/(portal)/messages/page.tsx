@@ -8,6 +8,8 @@ interface UserProfileResponse {
   preferredLanguage?: string;
 }
 
+const EMPTY_CONVERSATIONS: PaginatedResponse<ConversationSummary> = { data: [] };
+
 export default async function MessagesPage({
   searchParams,
 }: {
@@ -15,13 +17,29 @@ export default async function MessagesPage({
 }) {
   const params = await searchParams;
   const conversationId = typeof params.conversation === 'string' ? params.conversation : null;
-  const profileRes = await apiFetch('/api/v2/users/me');
-  const profile = profileRes.ok
-    ? await profileRes.json() as UserProfileResponse
-    : null;
+  const profile = await apiFetch('/api/v2/users/me')
+    .then(async (profileRes) => (
+      profileRes.ok
+        ? await profileRes.json() as UserProfileResponse
+        : null
+    ))
+    .catch((error) => {
+      console.error('[MessagesPage] Failed to load user profile:', error);
+      return null;
+    });
   const locale = normalizeLocale(profile?.preferredLanguage);
   const messagesBundle = await loadMessages(locale);
-  const conversations = await apiClient<PaginatedResponse<ConversationSummary>>('/api/v2/conversations');
+  const conversationsResult = await Promise.allSettled([
+    apiClient<PaginatedResponse<ConversationSummary>>('/api/v2/conversations'),
+  ]);
+  const conversations = conversationsResult[0]?.status === 'fulfilled'
+    ? conversationsResult[0].value
+    : EMPTY_CONVERSATIONS;
+
+  if (conversationsResult[0]?.status === 'rejected') {
+    console.error('[MessagesPage] Failed to load conversations:', conversationsResult[0].reason);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">

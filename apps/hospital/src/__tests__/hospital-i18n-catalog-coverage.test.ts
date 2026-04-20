@@ -20,6 +20,8 @@ const REQUIRED_DYNAMIC_KEYS = [
 const OWNED_ERROR_FILES = [
   'apps/hospital/src/app/error.tsx',
   'apps/hospital/src/app/(portal)/consultations/error.tsx',
+  'apps/hospital/src/app/(portal)/messages/error.tsx',
+  'apps/hospital/src/app/(portal)/cases/[id]/error.tsx',
 ] as const;
 
 const OWNED_SANITIZED_COMPONENTS = [

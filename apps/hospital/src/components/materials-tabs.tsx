@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
@@ -1240,13 +1240,20 @@ function getDayNames(t: TranslationFn) {
   ];
 }
 
-function parseHoursString(
-  hours: string | undefined,
-  dayNames: Array<{ key: string; label: string; labelFull: string }>,
-): Record<string, { open: string; close: string; closed: boolean }> {
+const OPERATING_HOURS_DAY_KEYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const;
+
+function parseHoursString(hours: string | undefined): Record<string, { open: string; close: string; closed: boolean }> {
   const result: Record<string, { open: string; close: string; closed: boolean }> = {};
-  dayNames.forEach((day) => {
-    result[day.key] = { open: '09:00', close: '18:00', closed: false };
+  OPERATING_HOURS_DAY_KEYS.forEach((dayKey) => {
+    result[dayKey] = { open: '09:00', close: '18:00', closed: false };
   });
   if (!hours) return result;
   const parts = hours.split(',').map((s) => s.trim());
@@ -1322,7 +1329,7 @@ function formatHoursToString(hours: Record<string, { open: string; close: string
     .join(', ');
 }
 
-function OperatingHoursModal({
+export function OperatingHoursModal({
   hours,
   onChange,
   isOpen,
@@ -1334,14 +1341,14 @@ function OperatingHoursModal({
   onClose: () => void;
 }) {
   const { t } = useHospitalI18n();
-  const dayNames = getDayNames(t);
-  const [structuredHours, setStructuredHours] = useState(() => parseHoursString(hours, dayNames));
+  const dayNames = useMemo(() => getDayNames(t), [t]);
+  const [structuredHours, setStructuredHours] = useState(() => parseHoursString(hours));
   const [quickOpen, setQuickOpen] = useState('09:00');
   const [quickClose, setQuickClose] = useState('18:00');
 
   useEffect(() => {
-    setStructuredHours(parseHoursString(hours, dayNames));
-  }, [dayNames, hours]);
+    setStructuredHours(parseHoursString(hours));
+  }, [hours]);
 
   const updateDay = (dayKey: string, field: 'open' | 'close' | 'closed', value: string | boolean) => {
     setStructuredHours((prev) => ({

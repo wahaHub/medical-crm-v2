@@ -1,7 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "jsx": "preserve",
     "paths": {
       "@/*": [
@@ -21,8 +25,9 @@
     "declarationMap": false
   },
   "include": [
-    "src/**/*",
+    ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next/types/**/*.ts"
+    "src/**/*",
+    ".next-dev/types/**/*.ts"
   ]
 }

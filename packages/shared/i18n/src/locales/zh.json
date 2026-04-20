@@ -3217,6 +3217,10 @@
         }
       },
       "messages": {
+        "page": {
+          "title": "消息",
+          "forwardingMode": "CRM 转发模式"
+        },
         "banner": {
           "description": "所有患者沟通都会自动转发并同步到这个 CRM。"
         },

@@ -3216,6 +3216,10 @@
         }
       },
       "messages": {
+        "page": {
+          "title": "Messages",
+          "forwardingMode": "CRM Forwarding Mode"
+        },
         "banner": {
           "description": "All patient communications are automatically forwarded and synced to this CRM."
         },

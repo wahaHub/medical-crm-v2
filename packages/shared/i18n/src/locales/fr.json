@@ -2379,6 +2379,10 @@
         }
       },
       "messages": {
+        "page": {
+          "title": "Messages",
+          "forwardingMode": "Mode de transfert CRM"
+        },
         "banner": {
           "description": "All patient communications are automatically forwarded and synced to this CRM."
         },

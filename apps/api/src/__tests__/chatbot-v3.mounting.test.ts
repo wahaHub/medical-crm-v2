@@ -726,7 +726,7 @@ describe('Chatbot v3 public route mounting', () => {
       'session-v3-1',
       'beauty',
       expect.objectContaining({
-        conversationSummary: 'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process...',
+        conversationSummary: `stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=${firstTurn.body.messages[0]?.text}`,
         journeyCurrentStage: 'EXPLAIN_PROCESS',
         journeyCurrentPhase: 'active',
       }),
@@ -740,7 +740,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(chatbotV3ChatResponseSchema.parse(secondTurn.body)).toBeDefined();
     expect(capturedSummaries[0]).toBe('');
     expect(capturedSummaries[1]).toBe(
-      'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process...',
+      `stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=${firstTurn.body.messages[0]?.text}`,
     );
   });
 
@@ -792,7 +792,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(secondRes.status).toBe(200);
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledTimes(1);
     expect(firstPatch).toEqual(expect.objectContaining({
-      conversationSummary: 'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process...',
+      conversationSummary: expect.stringContaining('stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant='),
       journeyCurrentStage: 'EXPLAIN_PROCESS',
       journeyCurrentPhase: 'active',
       lastUserMessageAt: expect.any(Date),
@@ -1033,6 +1033,12 @@ describe('Chatbot v3 public route mounting', () => {
         journeyCurrentPhase: 'active',
         minimalTriageComplete: true,
         processExplained: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{
+          path: 'chatbot/session-v3-1/report.pdf',
+          name: 'report.pdf',
+        }],
         conversationSummary: 'The process was already explained earlier in the session.',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
@@ -1518,7 +1524,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'EXPLAIN_PROCESS',
       phase: 'active',
     });
-    expect(triageTurn.messages[0]?.text).not.toContain('I checked');
+    expect(triageTurn.messages[0]?.text).toContain('explain process stage');
     expect(triageTurn.cards).toEqual(expect.not.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
@@ -1799,10 +1805,12 @@ describe('Chatbot v3 public route mounting', () => {
         minimalTriageComplete: true,
         processExplained: true,
         recommendationGenerated: true,
-        recommendationSelected: true,
-        recommendationStatus: 'accepted',
-        selectedHospitalId: 'hospital-1',
-        docUploadStatus: 'submitted',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{
+          path: 'chatbot/session-v3-1/report.pdf',
+          name: 'report.pdf',
+        }],
       },
     }));
 
@@ -2092,6 +2100,12 @@ describe('Chatbot v3 public route mounting', () => {
         minimalTriageComplete: true,
         processExplained: true,
         recommendationGenerated: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{
+          path: 'chatbot/session-v3-1/report.pdf',
+          name: 'report.pdf',
+        }],
       },
     }));
 

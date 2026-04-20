@@ -925,8 +925,9 @@ export function buildConversationSummaryPatch({
   summaryUpdatedAt: Date;
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined;
 }): ConversationOrchestratorV3ConversationSummaryPatch {
+  const summaryStage = deriveCurrentStageFromStatusSnapshot(statusSnapshot).stage;
   const conversationSummary = clampConversationSummary([
-    `stage=${clampSummaryText(result.journey.stage, SUMMARY_STAGE_SNIPPET_MAX_LENGTH)}`,
+    `stage=${clampSummaryText(summaryStage, SUMMARY_STAGE_SNIPPET_MAX_LENGTH)}`,
     `user=${clampSummaryText(latestUserMessage, SUMMARY_USER_SNIPPET_MAX_LENGTH)}`,
     `assistant=${clampSummaryText(buildAssistantText(result, statusSnapshot), SUMMARY_ASSISTANT_SNIPPET_MAX_LENGTH)}`,
   ].join(' | '));
@@ -1749,6 +1750,7 @@ function deriveRenderState(
   if (
     result.journey.stage === 'EXPLAIN_PROCESS'
     && !isDeniedSemanticHandoff(result)
+    && result.decision.write?.factsPatch?.['process.explained'] === true
   ) {
     return {
       path: 'PROCESS_OVERVIEW',

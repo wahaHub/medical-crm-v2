@@ -34,7 +34,7 @@ But live session testing still exposed these failures:
 
 Those are not separate bugs to patch one by one. They are symptoms of a control plane that still mixes:
 
-- old boolean compatibility shortcuts
+- old boolean progression shortcuts
 - inferred stage reconstruction
 - global attachment heuristics
 - incomplete post-recommendation gate semantics
@@ -86,7 +86,7 @@ The following older booleans must no longer be treated as primary control-plane 
 - `recommendation.generated`
 - `recommendation.selected`
 
-They may remain readable for migration / hydration compatibility, but not as the main progression input.
+They are no longer allowed to drive the repaired control plane.
 
 ### 2. Persisted journey snapshot becomes the source of truth
 
@@ -99,7 +99,7 @@ A persisted journey snapshot must become the first-class source of truth for:
 - re-entry into stage-specific behavior
 - repeat / retry / resume semantics
 
-Only legacy sessions that do not yet have persisted journey snapshot fields may use fallback reconstruction.
+Old sessions are not part of the repaired v3 continuity contract. New logic may assume the persisted journey snapshot is the only supported cross-turn current-state source for repaired sessions.
 
 ### 3. Attachment presence is input, not global routing truth
 
@@ -137,7 +137,7 @@ Semantics:
 
 - these fields are written from the final authority-approved decision
 - they are the default source of truth for next-turn current state
-- fallback stage derivation from legacy fields is only for sessions that lack these fields
+- sessions that lack these fields are outside the repaired continuity contract and may be restarted under the cutover policy
 
 ## Minimal Triage State
 
@@ -193,20 +193,15 @@ Semantics:
 
 `docUploadStatus` may continue to exist as transport / upload plumbing if the system still needs it, but it is not the primary product truth for progression semantics.
 
-### Supporting-document compatibility rule for existing sessions
+### Supporting-document cutover rule
 
-This repair must not strand in-flight sessions that already have valid earlier uploads.
-
-For sessions created before `supportingDocuments` exists:
+This repair uses a hard cutover for repaired chatbot-v3 sessions.
 
 - new uploads must append into `supportingDocuments`
-- if prior accepted uploads can be reconstructed from existing session-linked upload records or assets, they must be hydrated into the minimal `{ path, name }[]` list
-- if a session has older accepted-upload evidence that cannot be losslessly reconstructed into concrete `{ path, name }` entries, consult gating for that legacy session may continue to honor that earlier accepted-upload evidence as migration fallback only
+- older sessions that do not yet carry `supportingDocuments` are outside the repaired continuity contract
+- repaired progression logic must not hydrate or infer `supportingDocuments` from older session evidence
 
-That fallback is compatibility-only:
-
-- it exists to preserve continuity for older in-flight sessions
-- it must not become the primary v1 progression truth for newly written sessions
+Operationally, older sessions may be restarted rather than migrated into the repaired control plane.
 
 ## Control-Plane Input Contract
 
@@ -513,9 +508,9 @@ The repair is successful when all of the following are true:
 Because this repair changes control-plane inputs, migration should follow these principles:
 
 1. persisted journey snapshot fields must be added before relying on them in runtime
-2. existing sessions without persisted journey snapshot must still be readable via fallback reconstruction
-3. structured post-intake fields should continue to hydrate legacy sessions safely
-4. any remaining boolean compatibility reads for older sessions should be treated as fallback-only, not as the main v3 progression contract
+2. sessions without persisted journey snapshot are outside the repaired continuity contract and may be restarted
+3. structured post-intake fields are written and consumed as the only repaired v3 progression contract
+4. any remaining boolean-first progression helpers must be removed rather than retained as compatibility reads
 
 ## Summary
 

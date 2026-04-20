@@ -16,7 +16,7 @@
 - `packages/domain/src/entities/ai-chat-session.entity.ts`
   - Add persisted journey snapshot fields and minimal supporting-document list semantics; stop treating richer post-intake fields as boolean-first control truth.
 - `packages/domain/__tests__/ai-chat-session.entity.test.ts`
-  - Cover journey snapshot hydration, supporting-document list normalization/dedupe, structured recommendation/triage derivations, and migration fallback behavior.
+  - Cover journey snapshot persistence, supporting-document list normalization/dedupe, structured recommendation/triage derivations, and hard-cutover read behavior.
 - `packages/infrastructure/database/schema/schema.ts`
   - Add columns for journey stage/phase and supporting documents.
 - `packages/infrastructure/database/repositories/drizzle-ai-chat-session.repository.ts`
@@ -157,11 +157,12 @@ supportingDocuments: Array<{ path: string; name: string }>
 
 Do not add classification or extra metadata.
 
-- [ ] **Step 4a: Define and implement supporting-document compatibility hydration**
+- [ ] **Step 4a: Enforce hard-cutover semantics for missing supporting documents**
 
-When `supportingDocuments` is absent for older sessions:
-- hydrate it from existing reconstructable session-linked upload records/assets when possible
-- if full `{ path, name }[]` reconstruction is impossible, preserve legacy accepted-upload continuity through an explicit compatibility read path used only for migration-safe gating
+When `supportingDocuments` is absent:
+- do not hydrate or reconstruct it from older upload evidence
+- treat the session as outside the repaired continuity contract
+- keep reads null-safe, but do not add migration-only gating fallbacks
 
 - [ ] **Step 5: Wire repository row mapping and patch/save support**
 
@@ -265,7 +266,7 @@ Do not reintroduce boolean aliases as primary decision inputs.
 
 Search runtime/read-side/application helpers for boolean-first chatbot progression logic and either:
 - remove it
-- or mark it as migration-fallback only
+- or delete it if it only exists to preserve older boolean-first behavior
 
 Do not leave hidden boolean-first progression shortcuts outside supervisor/authority.
 
@@ -389,7 +390,7 @@ Those values must be written on every successful stage decision, not only inferr
 Runtime derivation order should become:
 1. persisted journey snapshot
 2. legacy crisis/handoff overrides if stronger
-3. legacy fallback reconstruction only when journey snapshot is absent
+3. no legacy fallback reconstruction for sessions that lack journey snapshot
 
 Do not keep the current blanket `default -> RECOMMENDATION` behavior for repaired sessions.
 
@@ -406,7 +407,7 @@ Treat `COLLECT_MEDICAL_INPUTS` as re-enterable.
 Define the v1 consult gate explicitly as:
 - `recommendationSelectionStatus === 'selected'`
 - `process.explained === true`
-- at least one supporting document is available for the session, including migration compatibility fallback for older sessions
+- at least one supporting document is available for the session within the repaired session contract
 
 - [ ] **Step 5a: Add revisit preservation tests**
 

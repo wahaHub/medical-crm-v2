@@ -167,6 +167,7 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
   const recommendationSelectionStatus = resolveRecommendationSelectionStatus(input);
   const minimalTriageComplete = hasStructuredMinimalTriageComplete(input);
   const processExplained = resolveProcessExplained(input);
+  const supportingDocuments = input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments ?? [];
   const hasBootstrapAttachments = hasAttachmentBootstrap(input.bootstrap);
 
   if (input.suggestion.intent === 'handoff' || currentStage === 'HUMAN_HANDOFF') {
@@ -202,7 +203,23 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
       };
     }
 
-    if (recommendationSelectionStatus === 'selected' || processExplained === true) {
+    if (
+      recommendationSelectionStatus === 'selected'
+      && processExplained === true
+      && supportingDocuments.length === 0
+    ) {
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: clampReason('supporting documents should be collected before online consult'),
+      };
+    }
+
+    if (
+      recommendationSelectionStatus === 'selected'
+      && processExplained === true
+      && supportingDocuments.length > 0
+    ) {
       return {
         intent: 'progression',
         suggestedStage: 'ONLINE_CONSULT',

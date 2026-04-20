@@ -143,9 +143,13 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     throw error;
   }
 
-  if (session && shouldPersistAttachmentUpload(body.attachments, result)) {
+  if (session && (body.attachments?.length ?? 0) > 0) {
     session = await patchSessionStatus(services, session, {
-      docUploadStatus: (body.attachments?.length ?? 0) > 0 ? 'SUBMITTED' : 'IN_PROGRESS',
+      ...(shouldPersistAttachmentUpload(body.attachments, result)
+        ? {
+            docUploadStatus: 'SUBMITTED' as const,
+          }
+        : {}),
       supportingDocuments: mergeSupportingDocuments(
         session.statusSnapshot.supportingDocuments,
         readSupportingDocumentsFromAttachments(body.attachments),

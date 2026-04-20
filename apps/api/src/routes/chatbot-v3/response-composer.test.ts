@@ -604,6 +604,74 @@ describe('ResponseComposer', () => {
     expect(response.messages[0]?.text).toContain('recommendation stage');
   });
 
+  it('does not leak process overview copy when an explain-process denial stays on EXPLAIN_PROCESS', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Please explain the process again.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'show the process again without a fresh request',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        journeyCurrentPhase: 'active',
+        processExplained: true,
+      } as any,
+    });
+
+    expect(response.messages[0]?.text).not.toBe(PROCESS_OVERVIEW_TEXT);
+    expect(response.messages[0]?.text).toContain('explain process stage');
+  });
+
+  it('keeps supporting-document guidance ahead of consult copy when consult is denied for missing documents', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Please book the consultation now.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'consult',
+          suggestedStage: 'ONLINE_CONSULT',
+          reason: 'user wants to proceed with consultation booking',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+    });
+
+    expect(response.messages[0]?.text).not.toContain('online consultation stage');
+    expect(response.messages[0]?.text).toContain('diagnosis proof');
+    expect(response.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+      }),
+    ]));
+  });
+
   it('does not let stale pre-stage upload residue count as diagnosis-proof completion on stage entry', () => {
     const response = composeResponse({
       body: createRequest({

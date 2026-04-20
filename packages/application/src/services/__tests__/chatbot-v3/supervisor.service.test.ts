@@ -261,7 +261,7 @@ describe('SupervisorService', () => {
     });
   });
 
-  it('prefers online consult only after the process has already been explained', async () => {
+  it('prefers supporting-document collection after process explanation when no documents exist yet', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
       currentStage: 'EXPLAIN_PROCESS',
@@ -278,6 +278,53 @@ describe('SupervisorService', () => {
         recommendationSelectionStatus: 'selected',
         recommendationSelectedHospitalIds: ['hospital-1'],
         supportingDocuments: [],
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'recommendation was selected and process was explained',
+      },
+      facts: {
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'supporting documents should be collected before online consult',
+      task: {
+        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'recommendation.selected': true,
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
+  it('prefers online consult only after process explanation and supporting documents are both present', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{ path: '/docs/report.pdf', name: 'report.pdf' }],
       },
       suggestion: {
         intent: 'progression',

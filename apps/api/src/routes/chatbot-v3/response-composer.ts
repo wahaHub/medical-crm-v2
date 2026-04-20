@@ -97,10 +97,6 @@ export function buildAssistantText(
     return PROCESS_OVERVIEW_TEXT;
   }
 
-  if (result.suggestion.suggestedStage === 'ONLINE_CONSULT') {
-    return 'I checked the online consultation stage for this session.';
-  }
-
   const recordsAssistantText = readRecordsAssistantText(result);
   if (recordsAssistantText) {
     return recordsAssistantText;
@@ -109,6 +105,16 @@ export function buildAssistantText(
   const recommendationAssistantText = readRecommendationAssistantText(result, statusSnapshot);
   if (recommendationAssistantText) {
     return recommendationAssistantText;
+  }
+
+  if (
+    result.suggestion.suggestedStage === 'ONLINE_CONSULT'
+    && (
+      result.journey.stage === 'ONLINE_CONSULT'
+      || (statusSnapshot?.supportingDocuments?.length ?? 0) > 0
+    )
+  ) {
+    return 'I checked the online consultation stage for this session.';
   }
 
   switch (result.journey.stage) {

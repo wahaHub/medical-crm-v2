@@ -18,6 +18,7 @@ import {
   serializeStatusSnapshot,
 } from '../routes/chatbot-v3.routes.js';
 import {
+  buildConversationSummaryPatch,
   ConversationOrchestratorV3RuntimeService,
   InvalidChatbotV3ActionError,
   deriveCurrentStageFromStatusSnapshot,
@@ -600,7 +601,18 @@ describe('chatbot-v3 structured action runtime normalization', () => {
           })),
         },
       } as any,
-      agents: {},
+      agents: {
+        FaqAgent: {
+          execute: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: {
+              answer: 'Here is the process again.',
+              citedFaqIds: ['faq-process-1'],
+              confidence: 'high',
+            },
+          })),
+        },
+      },
     });
 
     await expect(runtime.handleTurn({
@@ -2364,6 +2376,62 @@ describe('chatbot-v3 runtime', () => {
     expect(result.render).toEqual({
       path: 'FAQ_ANSWER',
     });
+  });
+
+  it('summarizes the persisted journey stage instead of the raw result journey on preserved revisits', () => {
+    const summaryPatch = buildConversationSummaryPatch({
+      result: {
+        suggestion: {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'revisit the process explanation without changing the primary stage',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+          write: {
+            authority: 'journey-runtime-authority',
+            stage: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+            factsPatch: {},
+          },
+        },
+        journey: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+        render: { path: 'FAQ_ANSWER' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            answer: 'Here is the process again.',
+            citedFaqIds: ['faq-process-1'],
+            confidence: 'high',
+          },
+        },
+        turnOutcome: {
+          status: 'ok',
+          recoverableErrorCode: null,
+        },
+        runtimeDebug: {
+          traceId: 'trace-summary-preserved-stage-1',
+          idempotencyKey: 'idem-summary-preserved-stage-1',
+        },
+      } as any,
+      latestUserMessage: 'Please explain the process again.',
+      summaryUpdatedAt: new Date('2026-04-20T00:00:00.000Z'),
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        processExplained: true,
+      } as any,
+    });
+
+    expect(summaryPatch.statusPatch.conversationSummary).toContain(
+      'stage=COLLECT_MEDICAL_INPUTS',
+    );
+    expect(summaryPatch.statusPatch.conversationSummary).not.toContain(
+      'stage=EXPLAIN_PROCESS',
+    );
   });
 
   it('emits a canonical truth patch when the records worker completes minimal triage', async () => {

@@ -1,10 +1,9 @@
 import type {
   AiChatStatusSnapshot,
+  AiChatJourneyPhase,
   ChatJourneyPhase,
   ChatJourneyStage,
 } from '@medical-crm/domain';
-import { deriveCanonicalTruthFlagsFromStatusSnapshot } from '@medical-crm/domain';
-import type { ChatbotV3ReplayLineage } from '@medical-crm/validation';
 import type { MinimalIntakeSeed } from './minimal-intake.types.js';
 
 export const CHATBOT_V3_JOURNEY_STAGES = [
@@ -39,10 +38,11 @@ export type SupervisorReadDomain =
 
 export type ChatbotV3BootstrapOverride =
   | 'direct_human_request_handoff'
-  | 'direct_human_request_faq_fallback'
-  | 'attachments_to_minimal_triage';
+  | 'direct_human_request_faq_fallback';
 
-export type SupervisorDecisionLineage = Pick<ChatbotV3ReplayLineage, 'bootstrapOverride'>;
+export interface SupervisorDecisionLineage {
+  bootstrapOverride: ChatbotV3BootstrapOverride;
+}
 
 export interface SupervisorConversationSummaryContract {
   owner: 'runtime';
@@ -71,8 +71,16 @@ export interface ChatbotV3StageRef {
 export type ChatbotV3Facts = Record<string, boolean | number | string | null | undefined>;
 export type ChatbotV3StatusSnapshot = Partial<Pick<
   AiChatStatusSnapshot,
-  'minimalTriageStatus' | 'minimalTriageAnswersSummary' | 'minimalTriageComplete'
->>;
+  | 'minimalTriageStatus'
+  | 'minimalTriageAnswersSummary'
+  | 'minimalTriageComplete'
+  | 'recommendationSelectionStatus'
+  | 'recommendationSelectedHospitalIds'
+  | 'supportingDocuments'
+>> & {
+  journeyCurrentStage?: ChatJourneyStage | null;
+  journeyCurrentPhase?: AiChatStatusSnapshot['journeyCurrentPhase'];
+};
 
 export interface SupervisorTask {
   goal: string;
@@ -114,6 +122,14 @@ export interface ChatbotV3BootstrapSignals {
 
 export interface SupervisorGatewayInput {
   currentStage: ChatJourneyStage;
+  journeyCurrentStage?: ChatJourneyStage | null;
+  journeyCurrentPhase?: AiChatStatusSnapshot['journeyCurrentPhase'];
+  minimalTriageStatus?: AiChatStatusSnapshot['minimalTriageStatus'] | null;
+  minimalTriageAnswersSummary?: string | null;
+  recommendationSelectionStatus?: AiChatStatusSnapshot['recommendationSelectionStatus'] | null;
+  recommendationSelectedHospitalIds?: string[] | null;
+  supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];
+  statusSnapshot?: ChatbotV3StatusSnapshot | null;
   conversationSummary: string;
   latestUserMessage: string;
   intake: MinimalIntakeSeed;
@@ -125,6 +141,13 @@ export interface SupervisorGatewayInput {
 export interface OrchestratorV3DecisionInput {
   current: ChatbotV3StageRef;
   currentStage?: ChatJourneyStage;
+  journeyCurrentStage?: ChatJourneyStage | null;
+  journeyCurrentPhase?: AiChatStatusSnapshot['journeyCurrentPhase'];
+  minimalTriageStatus?: AiChatStatusSnapshot['minimalTriageStatus'] | null;
+  minimalTriageAnswersSummary?: string | null;
+  recommendationSelectionStatus?: AiChatStatusSnapshot['recommendationSelectionStatus'] | null;
+  recommendationSelectedHospitalIds?: string[] | null;
+  supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];
   conversationSummary?: string;
   latestUserMessage?: string;
   intake?: MinimalIntakeSeed;
@@ -152,6 +175,13 @@ export interface JourneyRuntimeAuthorityProposal extends SupervisorSuggestionSee
 export interface JourneyRuntimeAuthorityInput {
   current: ChatbotV3StageRef;
   proposal: JourneyRuntimeAuthorityProposal;
+  journeyCurrentStage?: ChatJourneyStage | null;
+  journeyCurrentPhase?: AiChatStatusSnapshot['journeyCurrentPhase'];
+  minimalTriageStatus?: AiChatStatusSnapshot['minimalTriageStatus'] | null;
+  minimalTriageAnswersSummary?: string | null;
+  recommendationSelectionStatus?: AiChatStatusSnapshot['recommendationSelectionStatus'] | null;
+  recommendationSelectedHospitalIds?: string[] | null;
+  supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];
   facts?: ChatbotV3Facts;
   statusSnapshot?: ChatbotV3StatusSnapshot | null;
   handoff?: ChatbotV3HandoffSignals;
@@ -167,6 +197,8 @@ export interface JourneyRuntimeAuthorityDispatch {
 export interface JourneyRuntimeAuthorityWrite {
   authority: 'journey-runtime-authority';
   stage: ChatbotV3StageRef;
+  journeyCurrentStage: ChatJourneyStage;
+  journeyCurrentPhase: AiChatJourneyPhase;
   factsPatch: Partial<Record<string, boolean>>;
 }
 
@@ -266,20 +298,22 @@ export function hasChatbotV3MinimalTriageComplete(input: {
   facts?: ChatbotV3Facts;
   statusSnapshot?: ChatbotV3StatusSnapshot | null;
 }): boolean {
-  const statusSnapshot = input.statusSnapshot;
-  const hasMinimalTriageSnapshotFields =
-    statusSnapshot != null &&
-    (
-      Object.prototype.hasOwnProperty.call(statusSnapshot, 'minimalTriageStatus') ||
-      Object.prototype.hasOwnProperty.call(statusSnapshot, 'minimalTriageAnswersSummary') ||
-      Object.prototype.hasOwnProperty.call(statusSnapshot, 'minimalTriageComplete')
-    );
+  const status = input.statusSnapshot?.minimalTriageStatus;
+  const answersSummary = input.statusSnapshot?.minimalTriageAnswersSummary ?? null;
 
-  if (hasMinimalTriageSnapshotFields) {
-    return deriveCanonicalTruthFlagsFromStatusSnapshot(input.statusSnapshot)[
-      'records.minimal_triage.complete'
-    ];
+  if (status === 'skipped') {
+    return true;
   }
 
-  return input.facts?.['records.minimal_triage.complete'] === true;
+  if (status === 'pending') {
+    return answersSummary !== null && answersSummary.trim().length > 0;
+  }
+
+  return false;
+}
+
+export function hasChatbotV3RecommendationSelected(input: {
+  statusSnapshot?: ChatbotV3StatusSnapshot | null;
+}): boolean {
+  return input.statusSnapshot?.recommendationSelectionStatus === 'selected';
 }

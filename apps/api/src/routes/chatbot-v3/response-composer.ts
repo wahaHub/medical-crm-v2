@@ -23,7 +23,7 @@ export interface ResponseComposerInput {
   includeRuntimeDebug?: boolean;
 }
 
-export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, and after that you can upload your diagnosis proof so our team can prepare the next step.';
+export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, then you can upload supporting documents, and after that we can move toward online consult.';
 const FAQ_DEGRADED_TEXT = 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.';
 const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
 const CONSULT_DEGRADED_TEXT = 'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.';
@@ -42,6 +42,11 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
     input.sessionStatusSnapshot,
     input.result.writeIntents?.statusPatch,
   );
+  const visibleJourney = buildVisibleJourney(
+    input.result.journey,
+    input.sessionStatusSnapshot,
+    input.result.writeIntents?.statusPatch,
+  );
 
   const response: ChatbotV3ChatResponse = {
     messages: [{
@@ -50,9 +55,9 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
     }],
     turnOutcome: input.result.turnOutcome,
     cards: buildCards(input.body, input.result, effectiveStatusSnapshot),
-    journey: input.result.journey,
+    journey: visibleJourney,
     handoff: {
-      required: input.result.journey.stage === 'HUMAN_HANDOFF'
+      required: visibleJourney.stage === 'HUMAN_HANDOFF'
         || hasActiveHandoffStatus(effectiveStatusSnapshot)
         || hasCrisisSafetySignal(effectiveStatusSnapshot),
       ticketId: readHandoffId(input.result.dispatchResult),
@@ -292,7 +297,11 @@ function readRecommendationAssistantText(
     return null;
   }
 
-  if (result.dispatchResult?.status !== 'ok' || result.journey.stage !== 'RECOMMENDATION') {
+  if (result.dispatchResult?.status !== 'ok') {
+    return null;
+  }
+
+  if (result.journey.stage !== 'RECOMMENDATION' && result.suggestion.suggestedStage !== 'RECOMMENDATION') {
     return null;
   }
 
@@ -457,6 +466,38 @@ function readUploadedCount(
   }
 
   return hasAnyStatus(statusSnapshot?.formStatus, ['COMPLETED', 'SUBMITTED', 'READY']) ? 1 : 0;
+}
+
+function buildVisibleJourney(
+  resultJourney: ConversationOrchestratorV3TurnResult['journey'],
+  sessionStatusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  statusPatch: Partial<AiChatStatusSnapshot> | null | undefined,
+): ConversationOrchestratorV3TurnResult['journey'] {
+  const persistedJourneyStage = readJourneyStage(statusPatch)
+    ?? readJourneyStage(sessionStatusSnapshot)
+    ?? resultJourney.stage;
+  const persistedJourneyPhase = readJourneyPhase(statusPatch)
+    ?? readJourneyPhase(sessionStatusSnapshot)
+    ?? resultJourney.phase;
+
+  return {
+    stage: persistedJourneyStage,
+    phase: persistedJourneyPhase,
+  };
+}
+
+function readJourneyStage(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): ConversationOrchestratorV3TurnResult['journey']['stage'] | null {
+  const stage = statusSnapshot?.journeyCurrentStage;
+  return typeof stage === 'string' ? stage as ConversationOrchestratorV3TurnResult['journey']['stage'] : null;
+}
+
+function readJourneyPhase(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): ConversationOrchestratorV3TurnResult['journey']['phase'] | null {
+  const phase = statusSnapshot?.journeyCurrentPhase;
+  return phase === 'active' || phase === 'post' ? phase : null;
 }
 
 function readRecommendations(dispatchResult: ToolResult<unknown> | null) {

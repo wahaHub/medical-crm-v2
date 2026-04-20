@@ -8,6 +8,19 @@ export interface AiChatPendingState {
 
 export type AiChatMinimalTriageStatus = 'pending' | 'skipped';
 export type AiChatRecommendationSelectionStatus = 'pending' | 'selected' | 'skipped';
+export type AiChatJourneyStage =
+  | 'COLLECT_MINIMAL_MEDICAL_FACTS'
+  | 'RECOMMENDATION'
+  | 'EXPLAIN_PROCESS'
+  | 'COLLECT_MEDICAL_INPUTS'
+  | 'ONLINE_CONSULT'
+  | 'HUMAN_HANDOFF';
+export type AiChatJourneyPhase = 'active' | 'post';
+
+export interface AiChatSupportingDocument {
+  path: string;
+  name: string;
+}
 
 export interface AiChatStatusSnapshot {
   conditionStatus: string;
@@ -29,6 +42,9 @@ export interface AiChatStatusSnapshot {
   recommendationSelectionStatus: AiChatRecommendationSelectionStatus | null;
   recommendationSelectedHospitalIds: string[] | null;
   recommendationSelected: boolean | null;
+  journeyCurrentStage: AiChatJourneyStage | null;
+  journeyCurrentPhase: AiChatJourneyPhase | null;
+  supportingDocuments: AiChatSupportingDocument[];
   consultCompleted: boolean | null;
   handoffActive: boolean | null;
   conversationSummary: string;
@@ -97,6 +113,11 @@ export class AiChatSession {
     const normalizedRecommendationSelection = normalizeRecommendationSelectionSnapshot(
       props.statusSnapshot,
     );
+    const journeyCurrentStage = readJourneyCurrentStage(props.statusSnapshot);
+    const journeyCurrentPhase = readJourneyCurrentPhase(props.statusSnapshot);
+    const supportingDocuments = normalizeSupportingDocuments(
+      (props.statusSnapshot as { supportingDocuments?: unknown } | null | undefined)?.supportingDocuments,
+    );
 
     this.id = props.id;
     this.sessionId = props.sessionId;
@@ -126,6 +147,9 @@ export class AiChatSession {
       recommendationSelectionStatus: normalizedRecommendationSelection.status,
       recommendationSelectedHospitalIds: normalizedRecommendationSelection.selectedHospitalIds,
       recommendationSelected: normalizedRecommendationSelection.selected,
+      journeyCurrentStage,
+      journeyCurrentPhase,
+      supportingDocuments,
       consultCompleted: props.statusSnapshot?.consultCompleted ?? null,
       handoffActive: props.statusSnapshot?.handoffActive ?? null,
       conversationSummary: props.statusSnapshot?.conversationSummary ?? '',
@@ -362,6 +386,48 @@ function readRecommendationSelectionStatus(
   return null;
 }
 
+function readJourneyCurrentStage(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): AiChatJourneyStage | null {
+  const rawValue = (statusSnapshot as { journeyCurrentStage?: unknown } | null | undefined)
+    ?.journeyCurrentStage;
+  if (typeof rawValue !== 'string') {
+    return null;
+  }
+
+  const normalized = rawValue.trim().toUpperCase();
+
+  switch (normalized) {
+    case 'COLLECT_MINIMAL_MEDICAL_FACTS':
+    case 'RECOMMENDATION':
+    case 'EXPLAIN_PROCESS':
+    case 'COLLECT_MEDICAL_INPUTS':
+    case 'ONLINE_CONSULT':
+    case 'HUMAN_HANDOFF':
+      return normalized;
+    default:
+      return null;
+  }
+}
+
+function readJourneyCurrentPhase(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): AiChatJourneyPhase | null {
+  const rawValue = (statusSnapshot as { journeyCurrentPhase?: unknown } | null | undefined)
+    ?.journeyCurrentPhase;
+  if (typeof rawValue !== 'string') {
+    return null;
+  }
+
+  const normalized = rawValue.trim().toLowerCase();
+
+  if (normalized === 'active' || normalized === 'post') {
+    return normalized;
+  }
+
+  return null;
+}
+
 function normalizeSelectedHospitalIds(
   value: unknown,
 ): string[] {
@@ -375,6 +441,37 @@ function normalizeSelectedHospitalIds(
     .filter((candidate) => candidate.length > 0);
 
   return normalized.length > 0 ? [normalized[0]!] : [];
+}
+
+export function normalizeSupportingDocuments(value: unknown): AiChatSupportingDocument[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const normalizedDocuments: AiChatSupportingDocument[] = [];
+  const seenPaths = new Set<string>();
+
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
+    const path = typeof (candidate as { path?: unknown }).path === 'string'
+      ? (candidate as { path: string }).path.trim()
+      : '';
+    const name = typeof (candidate as { name?: unknown }).name === 'string'
+      ? (candidate as { name: string }).name.trim()
+      : '';
+
+    if (path.length === 0 || name.length === 0 || seenPaths.has(path)) {
+      continue;
+    }
+
+    seenPaths.add(path);
+    normalizedDocuments.push({ path, name });
+  }
+
+  return normalizedDocuments;
 }
 
 function normalizeCompactSummary(value: string | null | undefined): string | null {

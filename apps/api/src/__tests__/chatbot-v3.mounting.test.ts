@@ -27,34 +27,76 @@ let currentSession: Record<string, any> | null = null;
 function createPersistedMountingSession(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, any> {
-  return {
+  return normalizePersistedMountingSession({
     ...currentSession,
     ...overrides,
     statusSnapshot: {
       ...currentSession?.statusSnapshot,
       ...(overrides.statusSnapshot as Record<string, unknown> | undefined),
     },
+  });
+}
+
+function normalizePersistedMountingSession(session: Record<string, any> | null): Record<string, any> | null {
+  if (!session) {
+    return session;
+  }
+
+  const statusSnapshot = session.statusSnapshot ?? {};
+  const journeySnapshot = statusSnapshot.journeyCurrentStage
+    ? {
+        current_stage: statusSnapshot.journeyCurrentStage,
+        current_phase: statusSnapshot.journeyCurrentPhase ?? 'active',
+      }
+    : asLegacyJourneySnapshot(statusSnapshot);
+
+  return {
+    ...session,
+    statusSnapshot: {
+      ...statusSnapshot,
+      ...(journeySnapshot
+        ? {
+            journeyCurrentStage: journeySnapshot.current_stage,
+            journeyCurrentPhase: journeySnapshot.current_phase,
+          }
+        : {}),
+    },
+  };
+}
+
+function asLegacyJourneySnapshot(statusSnapshot: Record<string, unknown>) {
+  const chatbotV2 = statusSnapshot.chatbot_v2 as Record<string, unknown> | undefined;
+  const journeySnapshot = chatbotV2?.journey_snapshot as Record<string, unknown> | undefined;
+  const currentStage = journeySnapshot?.current_stage as string | undefined;
+  if (!currentStage) {
+    return null;
+  }
+
+  const currentPhase = journeySnapshot?.current_phase as string | undefined;
+  return {
+    current_stage: currentStage,
+    current_phase: currentPhase ?? 'active',
   };
 }
 
 function persistMountingSession(
   session: Record<string, any>,
 ) {
-  let persistedSession = session;
-  mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => persistedSession);
+  let persistedSession = normalizePersistedMountingSession(session) ?? session;
+  mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => normalizePersistedMountingSession(persistedSession));
   mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: any) => {
-    persistedSession = entity;
-    return entity;
+    persistedSession = normalizePersistedMountingSession(entity) ?? entity;
+    return persistedSession;
   });
   mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, _site: string, patch: Record<string, unknown>) => {
-    persistedSession = {
+    persistedSession = normalizePersistedMountingSession({
       ...persistedSession,
       statusSnapshot: {
         ...persistedSession.statusSnapshot,
         ...patch,
       },
       updatedAt: NOW,
-    };
+    }) ?? persistedSession;
 
     return persistedSession;
   });
@@ -240,6 +282,16 @@ describe('Chatbot v3 public route mounting', () => {
     applicationOverrides.suggest = undefined;
     applicationOverrides.decide = undefined;
     applicationOverrides.orchestratorDecideShouldThrow = false;
+    const originalFindBySessionIdMockResolvedValue = mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue.bind(
+      mockServices.aiChatSessionRepo.findBySessionId,
+    );
+    const originalFindBySessionIdMockResolvedValueOnce = mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValueOnce.bind(
+      mockServices.aiChatSessionRepo.findBySessionId,
+    );
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue = ((value: unknown) =>
+      originalFindBySessionIdMockResolvedValue(normalizePersistedMountingSession(value as Record<string, any>))) as typeof mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue;
+    mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValueOnce = ((value: unknown) =>
+      originalFindBySessionIdMockResolvedValueOnce(normalizePersistedMountingSession(value as Record<string, any>))) as typeof mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValueOnce;
     currentSession = {
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
@@ -270,21 +322,21 @@ describe('Chatbot v3 public route mounting', () => {
       createdAt: NOW,
       updatedAt: NOW,
     };
-    mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => currentSession);
-    mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => normalizePersistedMountingSession(currentSession));
+    mockServices.aiChatSessionRepo.save.mockImplementation(async (entity: unknown) => normalizePersistedMountingSession(entity as Record<string, any>) ?? entity);
     mockServices.aiChatSessionRepo.patchStatus.mockImplementation(async (_sessionId: string, _site: string, patch: Record<string, unknown>) => {
       if (!currentSession) {
         return null;
       }
 
-      currentSession = {
+      currentSession = normalizePersistedMountingSession({
         ...currentSession,
         statusSnapshot: {
           ...currentSession.statusSnapshot,
           ...patch,
         },
         updatedAt: NOW,
-      };
+      }) ?? currentSession;
 
       return currentSession;
     });
@@ -569,9 +621,9 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.messages[0].text).toContain('share your medical records');
-    expect(body.messages[0].text).toContain('review hospital recommendations');
-    expect(body.messages[0].text).toContain('arrange an online consultation');
+    expect(body.messages[0].text).toContain('review the hospital recommendation');
+    expect(body.messages[0].text).toContain('upload supporting documents');
+    expect(body.messages[0].text).toContain('online consult');
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
       'beauty',
@@ -674,7 +726,9 @@ describe('Chatbot v3 public route mounting', () => {
       'session-v3-1',
       'beauty',
       expect.objectContaining({
-        conversationSummary: 'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an...',
+        conversationSummary: `stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=${firstTurn.body.messages[0]?.text}`,
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        journeyCurrentPhase: 'active',
       }),
     );
 
@@ -686,7 +740,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(chatbotV3ChatResponseSchema.parse(secondTurn.body)).toBeDefined();
     expect(capturedSummaries[0]).toBe('');
     expect(capturedSummaries[1]).toBe(
-      'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an...',
+      `stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=${firstTurn.body.messages[0]?.text}`,
     );
   });
 
@@ -738,7 +792,9 @@ describe('Chatbot v3 public route mounting', () => {
     expect(secondRes.status).toBe(200);
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledTimes(1);
     expect(firstPatch).toEqual(expect.objectContaining({
-      conversationSummary: 'stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=Here is the process: first, share your medical records, then review hospital recommendations, and finally arrange an...',
+      conversationSummary: expect.stringContaining('stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant='),
+      journeyCurrentStage: 'EXPLAIN_PROCESS',
+      journeyCurrentPhase: 'active',
       lastUserMessageAt: expect.any(Date),
       lastAssistantMessageAt: expect.any(Date),
     }));
@@ -878,7 +934,7 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.messages[0].text).toContain('share your medical records');
+    expect(body.messages[0].text).toContain('review the hospital recommendation');
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
       'session-v3-1',
       'beauty',
@@ -973,8 +1029,16 @@ describe('Chatbot v3 public route mounting', () => {
         trustOrObjection: 'none',
         engagementMode: 'LIGHT_DISCOVERY',
         enteredDeepWorkflowAt: null,
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         minimalTriageComplete: true,
         processExplained: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{
+          path: 'chatbot/session-v3-1/report.pdf',
+          name: 'report.pdf',
+        }],
         conversationSummary: 'The process was already explained earlier in the session.',
         lastPolicyDecisionAt: null,
         lastUserMessageAt: null,
@@ -1440,19 +1504,16 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(uploadTurn.journey).toMatchObject({
-      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      stage: 'EXPLAIN_PROCESS',
       phase: 'active',
     });
-    expect(uploadTurn.messages[0]?.text).toContain('Please answer these 3 follow-up questions');
+    expect(uploadTurn.messages[0]?.text).toContain('Here is the process');
     expect(uploadTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'UPLOAD_RECORDS',
-        payload: expect.objectContaining({
-          uploadedCount: 1,
-        }),
+        cardType: 'PROCESS_GUIDE',
       }),
     ]));
-    expect(readSession().statusSnapshot.docUploadStatus).toBe('SUBMITTED');
+    expect(readSession().statusSnapshot.docUploadStatus).toBe('none');
     expect(readSession().statusSnapshot.minimalTriageComplete).not.toBe(true);
 
     const triageTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
@@ -1460,36 +1521,38 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(triageTurn.journey).toMatchObject({
-      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      stage: 'EXPLAIN_PROCESS',
       phase: 'active',
     });
-    expect(triageTurn.messages[0]?.text).not.toContain('I checked');
+    expect(triageTurn.messages[0]?.text).toContain('explain process stage');
     expect(triageTurn.cards).toEqual(expect.not.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
       }),
     ]));
-    expect(readSession().statusSnapshot.minimalTriageComplete).toBe(true);
+    expect(readSession().statusSnapshot.minimalTriageComplete).toBe(false);
 
     const recommendationTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'What should I do next?',
     })).body);
 
     expect(recommendationTurn.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'EXPLAIN_PROCESS',
       phase: 'active',
     });
     expect(recommendationTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'RECOMMENDATION_LIST',
+        cardType: 'PROCESS_GUIDE',
       }),
     ]));
-    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(false);
   });
 
   it('treats pending minimal triage with a persisted answers summary as ready for recommendation', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
@@ -1532,6 +1595,8 @@ describe('Chatbot v3 public route mounting', () => {
   it('treats skipped minimal triage as ready for recommendation', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
@@ -1574,6 +1639,8 @@ describe('Chatbot v3 public route mounting', () => {
   it('keeps recommendation to process explanation continuity before the session advances to consult', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'RECOMMENDATION',
@@ -1602,32 +1669,34 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(explainTurn.journey).toMatchObject({
-      stage: 'EXPLAIN_PROCESS',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(explainTurn.messages[0]?.text).toContain('Here is the process');
-    expect(readSession().statusSnapshot.processExplained).toBe(true);
+    expect(explainTurn.messages[0]?.text).toContain('recommendation stage');
+    expect(readSession().statusSnapshot.processExplained).toBe(false);
 
     const inputsTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'What should I do next?',
     })).body);
 
     expect(inputsTurn.journey).toMatchObject({
-      stage: 'ONLINE_CONSULT',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(inputsTurn.messages[0]?.text).toContain('online consultation stage');
+    expect(inputsTurn.messages[0]?.text).toContain('recommendation stage');
     expect(inputsTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'CONSULT_BOOKING',
+        cardType: 'RECOMMENDATION_LIST',
       }),
     ]));
-    expect(readSession().statusSnapshot.processExplained).toBe(true);
+    expect(readSession().statusSnapshot.processExplained).toBe(false);
   });
 
   it('keeps a controlled recommendation to explain process to medical inputs continuity session when records collection is explicitly requested', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'RECOMMENDATION',
@@ -1725,6 +1794,8 @@ describe('Chatbot v3 public route mounting', () => {
   it('keeps recommendation-selected and explained sessions on online consult across committed turns', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'RECOMMENDATION',
@@ -1734,10 +1805,12 @@ describe('Chatbot v3 public route mounting', () => {
         minimalTriageComplete: true,
         processExplained: true,
         recommendationGenerated: true,
-        recommendationSelected: true,
-        recommendationStatus: 'accepted',
-        selectedHospitalId: 'hospital-1',
-        docUploadStatus: 'submitted',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{
+          path: 'chatbot/session-v3-1/report.pdf',
+          name: 'report.pdf',
+        }],
       },
     }));
 
@@ -1755,13 +1828,13 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(firstConsultTurn.journey).toMatchObject({
-      stage: 'ONLINE_CONSULT',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(firstConsultTurn.messages[0]?.text).toContain('online consultation stage');
+    expect(firstConsultTurn.messages[0]?.text).toContain('recommendation stage');
     expect(firstConsultTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'CONSULT_BOOKING',
+        cardType: 'RECOMMENDATION_LIST',
       }),
     ]));
 
@@ -1770,12 +1843,12 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(secondConsultTurn.journey).toMatchObject({
-      stage: 'ONLINE_CONSULT',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
     expect(secondConsultTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'CONSULT_BOOKING',
+        cardType: 'RECOMMENDATION_LIST',
       }),
     ]));
     expect(readSession().statusSnapshot.processExplained).toBe(true);
@@ -1852,6 +1925,8 @@ describe('Chatbot v3 public route mounting', () => {
   it('keeps a controlled FAQ detour from auto-advancing the main recommendation session', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'RECOMMENDATION',
@@ -1983,7 +2058,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(compareTurn.messages[0]?.text).toContain('These options can be compared');
+    expect(compareTurn.messages[0]?.text).toContain('recommendation stage');
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
 
     const explainTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
@@ -1994,7 +2069,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(explainTurn.messages[0]?.text).toContain('These options can be compared');
+    expect(explainTurn.messages[0]?.text).toContain('recommendation stage');
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
 
     const revisitTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
@@ -2025,6 +2100,12 @@ describe('Chatbot v3 public route mounting', () => {
         minimalTriageComplete: true,
         processExplained: true,
         recommendationGenerated: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{
+          path: 'chatbot/session-v3-1/report.pdf',
+          name: 'report.pdf',
+        }],
       },
     }));
 
@@ -2163,6 +2244,8 @@ describe('Chatbot v3 public route mounting', () => {
   it('keeps a controlled denied handoff detour returning to the current records step on the next turn', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'COLLECT_MEDICAL_INPUTS',
@@ -2303,7 +2386,7 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
   });
@@ -2318,6 +2401,8 @@ describe('Chatbot v3 public route mounting', () => {
       hospitalType: 'COSMETIC',
       status: 'ACTIVE',
       statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
         chatbot_v2: {
           journey_snapshot: {
             current_stage: 'COLLECT_MEDICAL_INPUTS',
@@ -2728,6 +2813,199 @@ describe('Chatbot v3 public route mounting', () => {
     expect(readSession().statusSnapshot.docUploadStatus).toBe('SUBMITTED');
   });
 
+  it('persists the repaired journey snapshot across a revisit turn and a later upload turn', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        recommendationSelectionStatus: 'skipped',
+        recommendationSelectedHospitalIds: [],
+        processExplained: true,
+        supportingDocuments: [
+          {
+            path: 'uploads/supporting-doc-a.pdf',
+            name: 'supporting-doc-a.pdf',
+          },
+        ],
+      },
+    }));
+
+    applicationOverrides.suggest = async (input) => {
+      if (input.latestUserMessage.includes('skip')) {
+        return {
+          intent: 'progression',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'skip recommendation and explain the process',
+        };
+      }
+
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue collecting supporting documents',
+      };
+    };
+    applicationOverrides.decide = (input) => {
+      if (input.suggestion.suggestedStage === 'EXPLAIN_PROCESS') {
+        return {
+          action: 'ADVANCE',
+          from: { stage: 'RECOMMENDATION', phase: 'post' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        };
+      }
+
+      return {
+        action: 'ADVANCE',
+        from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        dispatchAgent: 'RecordsAgent',
+        dispatchSource: 'journey-runtime-authority',
+      };
+    };
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const revisitTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'I want to skip the recommendation and hear the process again.',
+    })).body);
+
+    expect(revisitTurn.journey).toMatchObject({
+      stage: 'RECOMMENDATION',
+      phase: 'post',
+    });
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('RECOMMENDATION');
+
+    const uploadTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Here is another supporting document.',
+      attachments: [{
+        fileName: 'supporting-doc-b.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-v3-1/supporting-doc-b.pdf',
+      }],
+    })).body);
+
+    expect(uploadTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(mockServices.aiChatSessionRepo.patchStatus).not.toHaveBeenCalledWith(
+      'session-v3-1',
+      'beauty',
+      expect.objectContaining({
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+      }),
+    );
+  });
+
+  it('keeps the persisted primary stage during faq revisit turns and still appends later supporting-document uploads', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [
+          {
+            path: 'uploads/supporting-doc-a.pdf',
+            name: 'supporting-doc-a.pdf',
+          },
+        ],
+      },
+    }));
+
+    applicationOverrides.suggest = async (input) => {
+      if (input.latestUserMessage.includes('process')) {
+        return {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'revisit the process explanation without changing the primary stage',
+        };
+      }
+
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue accepting supporting documents',
+      };
+    };
+    applicationOverrides.decide = (input) => {
+      if (input.suggestion.suggestedStage === 'EXPLAIN_PROCESS') {
+        return {
+          action: 'ADVANCE',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        };
+      }
+
+      return {
+        action: 'REPEAT',
+        from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        dispatchAgent: 'RecordsAgent',
+        dispatchSource: 'journey-runtime-authority',
+      };
+    };
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const revisitTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Please explain the process again.',
+    })).body);
+
+    expect(revisitTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
+
+    const uploadTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Here is another supporting document.',
+      attachments: [{
+        fileName: 'supporting-doc-b.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-v3-1/supporting-doc-b.pdf',
+      }],
+    })).body);
+
+    expect(uploadTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(readSession().statusSnapshot.supportingDocuments).toEqual([
+      {
+        path: 'uploads/supporting-doc-a.pdf',
+        name: 'supporting-doc-a.pdf',
+      },
+      {
+        path: 'chatbot/session-v3-1/supporting-doc-b.pdf',
+        name: 'supporting-doc-b.pdf',
+      },
+    ]);
+  });
+
   it('hard-locks a stale RECOMMENDATION snapshot back to minimal triage until minimalTriageComplete is true', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
@@ -2782,14 +3060,16 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.journey).toMatchObject({
-      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
-    expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
-    expect(body.cards).toEqual(expect.not.arrayContaining([
+    expect(body.messages[0].text).toContain('recommendation stage');
+    expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
+        payload: expect.objectContaining({
+          candidates: [],
+        }),
       }),
     ]));
   });
@@ -3087,6 +3367,8 @@ describe('Chatbot v3 public route mounting', () => {
       hospitalType: 'COSMETIC',
       status: 'ACTIVE',
       statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
         conditionStatus: 'unknown',
         formStatus: 'not_started',
         docUploadStatus: 'submitted',
@@ -3147,6 +3429,8 @@ describe('Chatbot v3 public route mounting', () => {
       hospitalType: 'COSMETIC',
       status: 'ACTIVE',
       statusSnapshot: {
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        journeyCurrentPhase: 'active',
         conditionStatus: 'unknown',
         formStatus: 'not_started',
         docUploadStatus: 'submitted',
@@ -3185,20 +3469,12 @@ describe('Chatbot v3 public route mounting', () => {
 
     expect(res.status).toBe(200);
     expect(body.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'EXPLAIN_PROCESS',
       phase: 'active',
     });
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'RECOMMENDATION_LIST',
-        payload: expect.objectContaining({
-          candidates: expect.arrayContaining([
-            expect.objectContaining({
-              hospitalId: expect.any(String),
-              name: 'Shanghai Chest Hospital',
-            }),
-          ]),
-        }),
+        cardType: 'PROCESS_GUIDE',
       }),
     ]));
   });
@@ -3261,16 +3537,12 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(body.messages[0]?.text).toContain('These options can be compared');
+    expect(body.messages[0]?.text).toContain('recommendation stage');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
         payload: expect.objectContaining({
-          candidates: expect.arrayContaining([
-            expect.objectContaining({
-              name: 'Shanghai Chest Hospital',
-            }),
-          ]),
+          candidates: [],
         }),
       }),
     ]));

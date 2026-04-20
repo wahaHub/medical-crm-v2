@@ -7,6 +7,97 @@ import {
 } from '../src/index.js';
 
 describe('AiChatSession canonical truth flags', () => {
+  it('defaults journey snapshot to null and supporting documents to an empty list', () => {
+    const session = new AiChatSession({
+      id: 'session-journey-defaults-1',
+      sessionId: 'session-journey-defaults-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {},
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.journeyCurrentStage).toBeNull();
+    expect(session.statusSnapshot.journeyCurrentPhase).toBeNull();
+    expect(session.statusSnapshot.supportingDocuments).toEqual([]);
+    expect(session.statusSnapshot).not.toHaveProperty('supportingDocumentsCompatibilityAvailable');
+  });
+
+  it('normalizes supporting documents to minimal path/name pairs only', () => {
+    const session = new AiChatSession({
+      id: 'session-supporting-documents-minimal-1',
+      sessionId: 'session-supporting-documents-minimal-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        supportingDocuments: [
+          { path: 'uploads/doc-a.pdf', name: 'doc-a.pdf', ignored: 'x' },
+        ] as never,
+      },
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.supportingDocuments).toEqual([
+      { path: 'uploads/doc-a.pdf', name: 'doc-a.pdf' },
+    ]);
+  });
+
+  it('hydrates persisted journey snapshot without reconstructing a different current stage', () => {
+    const session = new AiChatSession({
+      id: 'session-journey-persisted-1',
+      sessionId: 'session-journey-persisted-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        journeyCurrentStage: 'EXPLAIN_PROCESS' as never,
+        journeyCurrentPhase: 'active' as never,
+        recommendationSelectionStatus: 'selected',
+      },
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.journeyCurrentStage).toBe('EXPLAIN_PROCESS');
+    expect(session.statusSnapshot.journeyCurrentPhase).toBe('active');
+  });
+
+  it('deduplicates supporting documents by path while keeping the first name', () => {
+    const session = new AiChatSession({
+      id: 'session-supporting-documents-dedupe-1',
+      sessionId: 'session-supporting-documents-dedupe-1',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        supportingDocuments: [
+          { path: 'uploads/doc-a.pdf', name: 'doc-a.pdf' },
+          { path: 'uploads/doc-a.pdf', name: 'renamed.pdf' },
+          { path: 'uploads/doc-b.pdf', name: 'doc-b.pdf' },
+        ] as never,
+      },
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    });
+
+    expect(session.statusSnapshot.supportingDocuments).toEqual([
+      { path: 'uploads/doc-a.pdf', name: 'doc-a.pdf' },
+      { path: 'uploads/doc-b.pdf', name: 'doc-b.pdf' },
+    ]);
+  });
+
   it('maps every canonical truth flag to an explicit persisted snapshot field', () => {
     expect(AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP).toEqual({
       'records.minimal_triage.complete': 'minimalTriageComplete',

@@ -1,8 +1,9 @@
-import type { ChatJourneyStage } from '@medical-crm/domain';
+import type { AiChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
   type ChatbotV3DispatchAgent,
   type ChatbotV3Facts,
+  hasChatbotV3RecommendationSelected,
   hasChatbotV3MinimalTriageComplete,
   type JourneyRuntimeAuthorityDecision,
   type JourneyRuntimeAuthorityInput,
@@ -90,12 +91,11 @@ export class JourneyRuntimeAuthorityService {
           },
         });
       case 'ONLINE_CONSULT':
-        if (!hasRecommendationSelected(input.facts)) {
-          return denyDecision(input, 'Online consult requires recommendation.selected');
-        }
-
-        if (!hasProcessExplained(input.facts)) {
-          return denyDecision(input, 'Online consult requires process.explained');
+        if (!canAdvanceToConsult(input)) {
+          return denyDecision(
+            input,
+            'Online consult requires selected recommendation, process explanation, and at least one supporting document',
+          );
         }
 
         return allowDecision({
@@ -153,14 +153,16 @@ function allowDecision({
       : {
           outcome: 'DENY',
         },
-    write: {
-      authority: 'journey-runtime-authority',
-      stage: {
-        stage,
-        phase: 'active',
+      write: {
+        authority: 'journey-runtime-authority',
+        stage: {
+          stage,
+          phase: 'active',
+        },
+        journeyCurrentStage: stage,
+        journeyCurrentPhase: 'active',
+        factsPatch,
       },
-      factsPatch,
-    },
     reason,
   };
 }
@@ -180,6 +182,10 @@ function denyDecision(
     write: {
       authority: 'journey-runtime-authority',
       stage: cloneStage(input.current),
+      journeyCurrentStage: input.current.stage,
+      journeyCurrentPhase: normalizePersistedJourneyPhase(
+        input.journeyCurrentPhase ?? input.current.phase,
+      ),
       factsPatch: {},
     },
     reason,
@@ -198,6 +204,12 @@ function cloneStage(stage: JourneyRuntimeAuthorityInput['current']) {
     stage: stage.stage,
     phase: stage.phase,
   };
+}
+
+function normalizePersistedJourneyPhase(
+  phase: JourneyRuntimeAuthorityInput['journeyCurrentPhase'] | JourneyRuntimeAuthorityInput['current']['phase'],
+): AiChatJourneyPhase {
+  return phase === 'post' ? 'post' : 'active';
 }
 
 function shouldEscalateToHuman(input: JourneyRuntimeAuthorityInput): boolean {
@@ -237,7 +249,7 @@ function canShowExplainProcess(input: JourneyRuntimeAuthorityInput): boolean {
     return true;
   }
 
-  return hasRecommendationSelected(input.facts);
+  return hasChatbotV3RecommendationSelected(input);
 }
 
 function resolveCanonicalDispatchAgent(stage: ChatJourneyStage): ChatbotV3DispatchAgent {
@@ -253,15 +265,17 @@ function canCollectMedicalInputs(input: JourneyRuntimeAuthorityInput): boolean {
     return true;
   }
 
-  return hasRecommendationSelected(input.facts) && hasProcessExplained(input.facts);
+  return hasChatbotV3RecommendationSelected(input) && hasProcessExplained(input.facts);
+}
+
+function canAdvanceToConsult(input: JourneyRuntimeAuthorityInput): boolean {
+  return hasChatbotV3RecommendationSelected(input)
+    && hasProcessExplained(input.facts)
+    && hasSupportingDocuments(input.supportingDocuments);
 }
 
 function isPostRecommendationStage(stage: ChatJourneyStage): boolean {
   return CHATBOT_V3_JOURNEY_STAGES.indexOf(stage) >= CHATBOT_V3_JOURNEY_STAGES.indexOf('RECOMMENDATION');
-}
-
-function hasRecommendationSelected(facts: ChatbotV3Facts | undefined): boolean {
-  return hasAnyTruthyFact(facts, ['recommendation.selected']);
 }
 
 function hasProcessExplained(facts: ChatbotV3Facts | undefined): boolean {
@@ -290,4 +304,10 @@ function hasAnyTruthyFact(facts: ChatbotV3Facts | undefined, keys: string[]): bo
 
 function hasHandoffActive(facts: ChatbotV3Facts | undefined): boolean {
   return hasAnyTruthyFact(facts, ['handoff.active']);
+}
+
+function hasSupportingDocuments(
+  supportingDocuments: JourneyRuntimeAuthorityInput['supportingDocuments'],
+): boolean {
+  return Array.isArray(supportingDocuments) && supportingDocuments.length > 0;
 }

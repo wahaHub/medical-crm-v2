@@ -1,8 +1,10 @@
-import type { ChatJourneyStage } from '@medical-crm/domain';
+import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
 import type {
   ChatbotV3BootstrapOverride,
   ChatbotV3DispatchAgent,
   ChatbotV3Facts,
+  ChatbotV3StageRef,
+  ChatbotV3StatusSnapshot,
   OrchestratorV3BootstrapSignals,
   OrchestratorV3DecisionInput,
   OrchestratorV3Intent,
@@ -17,7 +19,6 @@ import type {
 import type { LlmNodeAdapter } from './llm-adapter.types.js';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
-  hasChatbotV3MinimalTriageComplete,
   resolveChatbotV3DispatchAgent,
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
 } from './types.js';
@@ -162,7 +163,13 @@ function sanitizeSuggestion(
 }
 
 function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggestionSeed {
-  if (input.suggestion.intent === 'handoff' || input.current.stage === 'HUMAN_HANDOFF') {
+  const currentStage = resolveCurrentStage(input);
+  const recommendationSelectionStatus = resolveRecommendationSelectionStatus(input);
+  const minimalTriageComplete = hasStructuredMinimalTriageComplete(input);
+  const processExplained = resolveProcessExplained(input);
+  const supportingDocuments = input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments ?? [];
+
+  if (input.suggestion.intent === 'handoff' || currentStage === 'HUMAN_HANDOFF') {
     return {
       intent: 'handoff',
       suggestedStage: 'HUMAN_HANDOFF',
@@ -170,8 +177,27 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     };
   }
 
-  if (input.facts?.['recommendation.selected']) {
-    if (input.facts['process.explained'] !== true) {
+  if (
+    isSidePathIntent(input.suggestion.intent)
+    && isChatJourneyStage(input.suggestion.suggestedStage)
+  ) {
+    return {
+      intent: input.suggestion.intent,
+      suggestedStage: input.suggestion.suggestedStage,
+      reason: clampReason(input.suggestion.reason || 'side-path detour should not rewrite the primary stage'),
+    };
+  }
+
+  if (currentStage === 'RECOMMENDATION' || recommendationSelectionStatus !== null) {
+    if (recommendationSelectionStatus === 'skipped') {
+      return {
+        intent: 'progression',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: clampReason('recommendation skip should continue into process explanation'),
+      };
+    }
+
+    if (recommendationSelectionStatus === 'selected' && processExplained !== true) {
       return {
         intent: 'progression',
         suggestedStage: 'EXPLAIN_PROCESS',
@@ -179,14 +205,32 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
       };
     }
 
-    return {
-      intent: 'progression',
-      suggestedStage: 'ONLINE_CONSULT',
-      reason: clampReason('recommendation has been selected'),
-    };
+    if (
+      recommendationSelectionStatus === 'selected'
+      && processExplained === true
+      && supportingDocuments.length === 0
+    ) {
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: clampReason('supporting documents should be collected before online consult'),
+      };
+    }
+
+    if (
+      recommendationSelectionStatus === 'selected'
+      && processExplained === true
+      && supportingDocuments.length > 0
+    ) {
+      return {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: clampReason('recommendation has been selected'),
+      };
+    }
   }
 
-  if (hasChatbotV3MinimalTriageComplete(input)) {
+  if (minimalTriageComplete) {
     return {
       intent: 'progression',
       suggestedStage: 'RECOMMENDATION',
@@ -242,6 +286,12 @@ function isDispatchAgent(value: unknown): value is ChatbotV3DispatchAgent {
     || value === 'HandoffAgent';
 }
 
+function isSidePathIntent(
+  intent: OrchestratorV3DecisionInput['suggestion']['intent'],
+): boolean {
+  return intent === 'faq' || intent === 'resource';
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
@@ -264,9 +314,7 @@ function resolveBootstrapOverride(
       : 'direct_human_request_faq_fallback';
   }
 
-  return (bootstrap?.attachments?.length ?? 0) > 0
-    ? 'attachments_to_minimal_triage'
-    : null;
+  return null;
 }
 
 function buildBootstrapOverrideSuggestion(
@@ -285,12 +333,6 @@ function buildBootstrapOverrideSuggestion(
         suggestedStage: 'EXPLAIN_PROCESS',
         dispatchAgent: 'FaqAgent',
         reason: clampReason('direct human request cannot create handoff ticket for this session'),
-      };
-    case 'attachments_to_minimal_triage':
-      return {
-        intent: 'progression',
-        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-        reason: clampReason('attachments provided by user'),
       };
   }
 }
@@ -355,7 +397,7 @@ function buildNecessaryFacts(
   input: OrchestratorV3DecisionInput,
 ): ChatbotV3Facts {
   const necessaryFacts: ChatbotV3Facts = {};
-  const minimalTriageComplete = hasChatbotV3MinimalTriageComplete(input);
+  const minimalTriageComplete = hasStructuredMinimalTriageComplete(input);
 
   switch (dispatchAgent) {
     case 'FaqAgent':
@@ -375,17 +417,21 @@ function buildNecessaryFacts(
         minimalTriageComplete,
       );
       if (suggestedStage === 'COLLECT_MEDICAL_INPUTS') {
-        copyFact(necessaryFacts, input.facts, 'recommendation.selected');
+        addFact(
+          necessaryFacts,
+          'recommendation.selected',
+          hasStructuredRecommendationSelected(input),
+        );
       }
       return necessaryFacts;
     case 'RecommendationAgent':
       appendIntakeFacts(necessaryFacts, input);
       addFact(necessaryFacts, 'records.minimal_triage.complete', minimalTriageComplete);
-      copyFact(necessaryFacts, input.facts, 'recommendation.generated');
-      copyFact(necessaryFacts, input.facts, 'recommendation.selected');
+      addFact(necessaryFacts, 'recommendation.generated', minimalTriageComplete);
+      addFact(necessaryFacts, 'recommendation.selected', hasStructuredRecommendationSelected(input));
       return necessaryFacts;
     case 'ConsultAgent':
-      copyFact(necessaryFacts, input.facts, 'recommendation.selected');
+      addFact(necessaryFacts, 'recommendation.selected', hasStructuredRecommendationSelected(input));
       copyFact(necessaryFacts, input.facts, 'consult.completed');
       copyFact(necessaryFacts, input.facts, 'consult.scheduled');
       copyFact(necessaryFacts, input.facts, 'selected_hospital.id');
@@ -403,8 +449,39 @@ function buildNecessaryFacts(
 }
 
 function buildGatewayInput(input: OrchestratorV3DecisionInput): SupervisorGatewayInput {
+  const structuredState = {
+    journeyCurrentStage: input.journeyCurrentStage ?? input.statusSnapshot?.journeyCurrentStage,
+    journeyCurrentPhase: input.journeyCurrentPhase ?? input.statusSnapshot?.journeyCurrentPhase,
+    minimalTriageStatus: input.minimalTriageStatus ?? input.statusSnapshot?.minimalTriageStatus,
+    minimalTriageAnswersSummary: input.minimalTriageAnswersSummary
+      ?? input.statusSnapshot?.minimalTriageAnswersSummary
+      ?? null,
+    recommendationSelectionStatus: input.recommendationSelectionStatus
+      ?? input.statusSnapshot?.recommendationSelectionStatus
+      ?? undefined,
+    recommendationSelectedHospitalIds: input.recommendationSelectedHospitalIds
+      ?? input.statusSnapshot?.recommendationSelectedHospitalIds
+      ?? undefined,
+    supportingDocuments: input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments,
+  } as const;
+
   return {
     currentStage: resolveCurrentStage(input),
+    ...structuredState,
+      statusSnapshot: input.statusSnapshot
+      ? {
+          journeyCurrentStage: structuredState.journeyCurrentStage,
+          ...(structuredState.journeyCurrentPhase
+            ? { journeyCurrentPhase: structuredState.journeyCurrentPhase }
+            : {}),
+          minimalTriageStatus: structuredState.minimalTriageStatus,
+          minimalTriageAnswersSummary: structuredState.minimalTriageAnswersSummary,
+          recommendationSelectionStatus: structuredState.recommendationSelectionStatus,
+          recommendationSelectedHospitalIds: structuredState.recommendationSelectedHospitalIds,
+          minimalTriageComplete: input.statusSnapshot?.minimalTriageComplete,
+          supportingDocuments: structuredState.supportingDocuments ?? [],
+        }
+      : undefined,
     conversationSummary: input.conversationSummary ?? '',
     latestUserMessage: resolveLatestUserMessage(input),
     intake: resolveIntake(input),
@@ -482,7 +559,68 @@ function resolveLatestUserMessage(input: OrchestratorV3DecisionInput): string {
 }
 
 function resolveCurrentStage(input: OrchestratorV3DecisionInput): ChatJourneyStage {
-  return input.currentStage ?? input.current.stage;
+  return resolveCurrentStageRef(input).stage;
+}
+
+function resolveCurrentStageRef(
+  input: OrchestratorV3DecisionInput,
+): ChatbotV3StageRef {
+  const journeyCurrentStage = input.statusSnapshot?.journeyCurrentStage;
+  const journeyCurrentPhase = input.statusSnapshot?.journeyCurrentPhase;
+
+  if (isChatJourneyStage(journeyCurrentStage)) {
+    return {
+      stage: journeyCurrentStage,
+      phase: isChatJourneyPhase(journeyCurrentPhase) ? journeyCurrentPhase : input.current.phase,
+    };
+  }
+
+  return {
+    stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    phase: 'active',
+  };
+}
+
+function resolveRecommendationSelectionStatus(
+  input: OrchestratorV3DecisionInput,
+): ChatbotV3StatusSnapshot['recommendationSelectionStatus'] {
+  return input.recommendationSelectionStatus
+    ?? input.statusSnapshot?.recommendationSelectionStatus
+    ?? null;
+}
+
+function hasStructuredRecommendationSelected(
+  input: OrchestratorV3DecisionInput,
+): boolean {
+  return resolveRecommendationSelectionStatus(input) === 'selected';
+}
+
+function resolveProcessExplained(
+  input: OrchestratorV3DecisionInput,
+): boolean {
+  return input.facts?.['process.explained'] === true;
+}
+
+function hasStructuredMinimalTriageComplete(
+  input: OrchestratorV3DecisionInput,
+): boolean {
+  const status = input.minimalTriageStatus ?? input.statusSnapshot?.minimalTriageStatus;
+  const answersSummary = input.minimalTriageAnswersSummary
+    ?? input.statusSnapshot?.minimalTriageAnswersSummary
+    ?? null;
+  if (status === 'skipped') {
+    return true;
+  }
+
+  if (status === 'pending') {
+    return answersSummary !== null && answersSummary.trim().length > 0;
+  }
+
+  return false;
+}
+
+function isChatJourneyPhase(value: unknown): value is ChatJourneyPhase {
+  return value === 'active' || value === 'post';
 }
 
 function readStringFact(

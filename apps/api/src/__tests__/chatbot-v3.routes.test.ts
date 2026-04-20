@@ -749,12 +749,12 @@ describe('chatbot-v3 structured action runtime normalization', () => {
     });
 
     expect(result.writeIntents).toEqual(expect.objectContaining({
-      statusPatch: {
+      statusPatch: expect.objectContaining({
         recommendationGenerated: true,
         recommendationSelectionStatus: 'selected',
         recommendationSelectedHospitalIds: ['hospital-1'],
         recommendationSelected: true,
-      },
+      }),
     }));
   });
 
@@ -950,12 +950,12 @@ describe('chatbot-v3 structured action runtime normalization', () => {
     });
 
     expect(result.writeIntents).toEqual(expect.objectContaining({
-      statusPatch: {
+      statusPatch: expect.objectContaining({
         recommendationGenerated: true,
         recommendationSelectionStatus: 'skipped',
         recommendationSelectedHospitalIds: [],
         recommendationSelected: false,
-      },
+      }),
     }));
   });
 
@@ -1102,7 +1102,10 @@ describe('chatbot-v3 structured action runtime normalization', () => {
       },
     });
 
-    expect(result.writeIntents?.statusPatch).toBeUndefined();
+    expect(result.writeIntents?.statusPatch).toEqual({
+      journeyCurrentStage: 'RECOMMENDATION',
+      journeyCurrentPhase: 'active',
+    });
   });
 });
 
@@ -3915,6 +3918,18 @@ describe('chatbot-v3 public route validation', () => {
     expect(res.status).toBe(200);
     expect(body.turnOutcome).toBeDefined();
     expect(routeMockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
+    expect(routeMockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
+      'session-v3-route-attachments-1',
+      'china',
+      expect.objectContaining({
+        supportingDocuments: [
+          {
+            path: 'chatbot/session-v3-route-attachments-1/diagnosis-certificate.pdf',
+            name: 'diagnosis-certificate.pdf',
+          },
+        ],
+      }),
+    );
   });
 
   it('filters identical recommendation selection arrays out of status patches', () => {
@@ -3926,6 +3941,27 @@ describe('chatbot-v3 public route validation', () => {
       {
         recommendationSelectionStatus: 'selected',
         recommendationSelectedHospitalIds: ['hospital-1'],
+      } as any,
+    )).toEqual({});
+  });
+
+  it('filters identical supporting document arrays out of status patches', () => {
+    expect(filterUnchangedStatusPatch(
+      {
+        supportingDocuments: [
+          {
+            path: 'chatbot/session-1/report.pdf',
+            name: 'report.pdf',
+          },
+        ],
+      } as any,
+      {
+        supportingDocuments: [
+          {
+            path: 'chatbot/session-1/report.pdf',
+            name: 'report.pdf',
+          },
+        ],
       } as any,
     )).toEqual({});
   });

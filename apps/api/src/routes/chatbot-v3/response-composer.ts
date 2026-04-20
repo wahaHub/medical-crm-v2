@@ -97,13 +97,6 @@ export function buildAssistantText(
     return PROCESS_OVERVIEW_TEXT;
   }
 
-  if (
-    result.suggestion.suggestedStage === 'EXPLAIN_PROCESS'
-    && result.decision.dispatchAgent !== 'ConsultAgent'
-  ) {
-    return PROCESS_OVERVIEW_TEXT;
-  }
-
   if (result.suggestion.suggestedStage === 'ONLINE_CONSULT') {
     return 'I checked the online consultation stage for this session.';
   }

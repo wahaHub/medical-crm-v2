@@ -41,6 +41,15 @@ import type {
 } from './tool-gateway.js';
 import type { ChatbotV3ChatAction } from '@medical-crm/validation';
 
+const CANONICAL_JOURNEY_ORDER: ChatJourneyStage[] = [
+  'COLLECT_MINIMAL_MEDICAL_FACTS',
+  'RECOMMENDATION',
+  'EXPLAIN_PROCESS',
+  'COLLECT_MEDICAL_INPUTS',
+  'ONLINE_CONSULT',
+  'HUMAN_HANDOFF',
+];
+
 export interface ConversationOrchestratorV3StageRef {
   stage: ChatJourneyStage;
   phase: ChatJourneyPhase;
@@ -606,7 +615,7 @@ export class ConversationOrchestratorV3RuntimeService {
       input,
       statusSnapshot,
     );
-    const journeyStatusPatch = deriveJourneyStatusPatch(result);
+    const journeyStatusPatch = deriveJourneyStatusPatch(input, result);
     const statusPatch = mergeStatusPatches(
       input.normalizedActionStatusPatch,
       stageEntryStatusPatch,
@@ -1584,9 +1593,14 @@ function deriveRecommendationPresentationStatusPatch(
 }
 
 function deriveJourneyStatusPatch(
+  input: ConversationOrchestratorV3NormalizedTurnInput,
   result: ConversationOrchestratorV3TurnResult,
 ): Partial<AiChatStatusSnapshot> | undefined {
   if (result.turnOutcome.status !== 'ok') {
+    return undefined;
+  }
+
+  if (shouldPreservePersistedJourneyStage(input, result)) {
     return undefined;
   }
 
@@ -1597,6 +1611,35 @@ function deriveJourneyStatusPatch(
     journeyCurrentStage: targetStage,
     journeyCurrentPhase: targetPhase,
   };
+}
+
+function shouldPreservePersistedJourneyStage(
+  input: ConversationOrchestratorV3NormalizedTurnInput,
+  result: ConversationOrchestratorV3TurnResult,
+): boolean {
+  const persistedStage = input.statusSnapshot?.journeyCurrentStage;
+  if (!isStage(persistedStage)) {
+    return false;
+  }
+
+  if (input.userAction) {
+    return false;
+  }
+
+  if (
+    result.decision.to.stage === 'EXPLAIN_PROCESS'
+    && input.statusSnapshot?.processExplained === true
+  ) {
+    return true;
+  }
+
+  const persistedIndex = CANONICAL_JOURNEY_ORDER.indexOf(persistedStage);
+  const targetIndex = CANONICAL_JOURNEY_ORDER.indexOf(result.decision.to.stage);
+  if (persistedIndex === -1 || targetIndex === -1) {
+    return false;
+  }
+
+  return targetIndex < persistedIndex;
 }
 
 function normalizePersistedJourneyPhase(

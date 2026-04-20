@@ -571,6 +571,39 @@ describe('ResponseComposer', () => {
     });
   });
 
+  it('does not leak process overview copy when authority denies explain-process progression', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Please explain the process.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'show the process again without a fresh request',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'RECOMMENDATION', phase: 'post' },
+          to: { stage: 'RECOMMENDATION', phase: 'post' },
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'post' },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+    });
+
+    expect(response.messages[0]?.text).not.toBe(PROCESS_OVERVIEW_TEXT);
+    expect(response.messages[0]?.text).toContain('recommendation stage');
+  });
+
   it('does not let stale pre-stage upload residue count as diagnosis-proof completion on stage entry', () => {
     const response = composeResponse({
       body: createRequest({

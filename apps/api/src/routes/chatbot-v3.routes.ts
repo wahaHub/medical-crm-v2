@@ -10,6 +10,7 @@ import {
 import {
   AiChatSession as AiChatSessionEntity,
   deriveCanonicalTruthFlagsFromStatusSnapshot,
+  normalizeSupportingDocuments,
 } from '@medical-crm/domain';
 import type {
   AiChatSession,
@@ -145,6 +146,10 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   if (session && shouldPersistAttachmentUpload(body.attachments, result)) {
     session = await patchSessionStatus(services, session, {
       docUploadStatus: (body.attachments?.length ?? 0) > 0 ? 'SUBMITTED' : 'IN_PROGRESS',
+      supportingDocuments: mergeSupportingDocuments(
+        session.statusSnapshot.supportingDocuments,
+        readSupportingDocumentsFromAttachments(body.attachments),
+      ),
     });
   }
 
@@ -1054,6 +1059,10 @@ async function handleRecordsUpload(
 
   await patchSessionStatus(services, session, {
     docUploadStatus: (attachments?.length ?? 0) > 0 ? 'SUBMITTED' : 'IN_PROGRESS',
+    supportingDocuments: mergeSupportingDocuments(
+      session.statusSnapshot.supportingDocuments,
+      readSupportingDocumentsFromAttachments(attachments),
+    ),
   });
 
   return {
@@ -1081,6 +1090,10 @@ async function handleRecordsSave(
   await patchSessionStatus(services, session, {
     docUploadStatus: 'COMPLETED',
     formStatus: (records?.length ?? 0) > 0 ? 'COMPLETED' : session.statusSnapshot.formStatus,
+    supportingDocuments: mergeSupportingDocuments(
+      session.statusSnapshot.supportingDocuments,
+      readSupportingDocumentsFromRecords(records),
+    ),
   });
 
   return {
@@ -1096,6 +1109,60 @@ function shouldPersistAttachmentUpload(
   return (attachments?.length ?? 0) > 0
     && result.decision.dispatchAgent === 'RecordsAgent'
     && result.journey.stage === 'COLLECT_MINIMAL_MEDICAL_FACTS';
+}
+
+function readSupportingDocumentsFromAttachments(
+  attachments: Array<Record<string, unknown>> | undefined,
+): Array<{ path: string; name: string }> {
+  return (attachments ?? []).flatMap((attachment) => {
+    const storageKey = typeof attachment['storageKey'] === 'string'
+      ? attachment['storageKey'].trim()
+      : '';
+    const fileName = typeof attachment['fileName'] === 'string'
+      ? attachment['fileName'].trim()
+      : '';
+
+    if (!storageKey || !fileName) {
+      return [];
+    }
+
+    return [{
+      path: storageKey,
+      name: fileName,
+    }];
+  });
+}
+
+function readSupportingDocumentsFromRecords(
+  records: Array<Record<string, unknown>> | undefined,
+): Array<{ path: string; name: string }> {
+  return (records ?? []).flatMap((record) => {
+    const storageKey = typeof record['storageKey'] === 'string'
+      ? record['storageKey'].trim()
+      : '';
+    const fileName = typeof record['fileName'] === 'string'
+      ? record['fileName'].trim()
+      : '';
+
+    if (!storageKey || !fileName) {
+      return [];
+    }
+
+    return [{
+      path: storageKey,
+      name: fileName,
+    }];
+  });
+}
+
+function mergeSupportingDocuments(
+  current: AiChatStatusSnapshot['supportingDocuments'] | undefined,
+  incoming: Array<{ path: string; name: string }>,
+): AiChatStatusSnapshot['supportingDocuments'] {
+  return normalizeSupportingDocuments([
+    ...(current ?? []),
+    ...incoming,
+  ]);
 }
 
 async function patchSessionStatus(
@@ -1130,8 +1197,7 @@ export function filterUnchangedStatusPatch(
     }
 
     if (Array.isArray(currentValue) && Array.isArray(nextValue)) {
-      return currentValue.length !== nextValue.length
-        || currentValue.some((value, index) => value !== nextValue[index]);
+      return JSON.stringify(currentValue) !== JSON.stringify(nextValue);
     }
 
     return currentValue !== nextValue;

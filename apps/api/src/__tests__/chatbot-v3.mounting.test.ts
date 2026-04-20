@@ -2865,10 +2865,10 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(revisitTurn.journey).toMatchObject({
-      stage: 'EXPLAIN_PROCESS',
-      phase: 'active',
+      stage: 'RECOMMENDATION',
+      phase: 'post',
     });
-    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('EXPLAIN_PROCESS');
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('RECOMMENDATION');
 
     const uploadTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'Here is another supporting document.',
@@ -2885,14 +2885,111 @@ describe('Chatbot v3 public route mounting', () => {
       phase: 'active',
     });
     expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
-    expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
+    expect(mockServices.aiChatSessionRepo.patchStatus).not.toHaveBeenCalledWith(
       'session-v3-1',
       'beauty',
       expect.objectContaining({
         journeyCurrentStage: 'EXPLAIN_PROCESS',
-        journeyCurrentPhase: 'active',
       }),
     );
+  });
+
+  it('keeps the persisted primary stage during faq revisit turns and still appends later supporting-document uploads', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [
+          {
+            path: 'uploads/supporting-doc-a.pdf',
+            name: 'supporting-doc-a.pdf',
+          },
+        ],
+      },
+    }));
+
+    applicationOverrides.suggest = async (input) => {
+      if (input.latestUserMessage.includes('process')) {
+        return {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'revisit the process explanation without changing the primary stage',
+        };
+      }
+
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue accepting supporting documents',
+      };
+    };
+    applicationOverrides.decide = (input) => {
+      if (input.suggestion.suggestedStage === 'EXPLAIN_PROCESS') {
+        return {
+          action: 'ADVANCE',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        };
+      }
+
+      return {
+        action: 'REPEAT',
+        from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        dispatchAgent: 'RecordsAgent',
+        dispatchSource: 'journey-runtime-authority',
+      };
+    };
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const revisitTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Please explain the process again.',
+    })).body);
+
+    expect(revisitTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
+
+    const uploadTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'Here is another supporting document.',
+      attachments: [{
+        fileName: 'supporting-doc-b.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-v3-1/supporting-doc-b.pdf',
+      }],
+    })).body);
+
+    expect(uploadTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(readSession().statusSnapshot.supportingDocuments).toEqual([
+      {
+        path: 'uploads/supporting-doc-a.pdf',
+        name: 'supporting-doc-a.pdf',
+      },
+      {
+        path: 'chatbot/session-v3-1/supporting-doc-b.pdf',
+        name: 'supporting-doc-b.pdf',
+      },
+    ]);
   });
 
   it('hard-locks a stale RECOMMENDATION snapshot back to minimal triage until minimalTriageComplete is true', async () => {

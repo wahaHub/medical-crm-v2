@@ -256,6 +256,43 @@ describe('JourneyRuntimeAuthorityService', () => {
     });
   });
 
+  it('allows later-stage faq detours to reuse EXPLAIN_PROCESS as a dispatch anchor without rewriting the primary stage contract', () => {
+    const decision = service.decide(createInput({
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      proposal: {
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: 'FaqAgent',
+        reason: 'clear faq-style question should detour without changing the primary stage',
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      facts: {
+        'process.explained': true,
+      },
+      bootstrap: {
+        message: 'What are your office hours?',
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'FaqAgent',
+    });
+    expect(decision.write.stage).toEqual({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+    });
+  });
+
   it('allows recommendation to repeat in place', () => {
     const decision = service.decide(createInput({
       current: {

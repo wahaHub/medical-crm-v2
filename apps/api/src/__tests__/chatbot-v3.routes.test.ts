@@ -3585,6 +3585,132 @@ describe('chatbot-v3 runtime', () => {
     }));
   });
 
+  it('dispatches a recovered later-stage FAQ question to FaqAgent without overwriting the persisted primary stage', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+          citedFaqIds: ['faq-hours-1'],
+          confidence: 'high' as const,
+        },
+      })),
+    };
+    const authority = new JourneyRuntimeAuthorityService();
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide(input) {
+          const decision = authority.decide({
+            current: input.current ?? {
+              stage: input.currentStage ?? 'COLLECT_MINIMAL_MEDICAL_FACTS',
+              phase: 'active',
+            },
+            proposal: input.suggestion,
+            facts: input.facts,
+            handoff: input.handoff,
+            bootstrap: input.bootstrap,
+            intake: input.intake,
+            statusSnapshot: input.statusSnapshot,
+          });
+
+          if (decision.outcome === 'DENY') {
+            return {
+              action: 'STAY' as const,
+              from: decision.from,
+              to: decision.to,
+              dispatchSource: 'journey-runtime-authority' as const,
+              whyNotSkip: decision.reason,
+              write: decision.write,
+            };
+          }
+
+          return {
+            action: decision.action === 'REPEAT' ? 'STAY' : 'ADVANCE' as const,
+            from: decision.from,
+            to: decision.to,
+            dispatchAgent: decision.dispatch.outcome === 'ALLOW'
+              ? decision.dispatch.agent
+              : undefined,
+            dispatchSource: 'journey-runtime-authority' as const,
+            write: decision.write,
+          };
+        },
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-later-stage-faq-recovery-1',
+      sessionId: 'session-later-stage-faq-recovery-1',
+      turnId: 'turn-later-stage-faq-recovery-1',
+      message: 'What are your office hours?',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-later-stage-faq-recovery-1/report.pdf',
+      }],
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'process.explained': true,
+      },
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+    });
+
+    expect(result.suggestion).toEqual(expect.objectContaining({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+    }));
+    expect(result.dispatchResult).toEqual({
+      status: 'ok',
+      data: {
+        answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+        citedFaqIds: ['faq-hours-1'],
+        confidence: 'high',
+      },
+    });
+    expect(result.render).toEqual({
+      path: 'FAQ_ANSWER',
+    });
+    expect(result.writeIntents?.statusPatch).not.toEqual(expect.objectContaining({
+      journeyCurrentStage: 'EXPLAIN_PROCESS',
+    }));
+    expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).toContain(
+      'stage=COLLECT_MEDICAL_INPUTS',
+    );
+  });
+
   it('does not escalate canonical minimal triage truth from a collection-mode worker hallucination', async () => {
     const recordsAgent = new RecordsAgent(
       createToolGateway({ handlers: {} }),

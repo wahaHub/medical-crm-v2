@@ -100,6 +100,7 @@ describe('Dify workflow v2 contract', () => {
       'chatbotV2',
       'faqGrounding',
       'sessionId',
+      'site',
       'assistantMessageId',
       'hospitalType',
       'currentStatus',
@@ -262,6 +263,7 @@ describe('Dify workflow v2 contract', () => {
     expect(writebackNode.data?.url).toBe('{{#env.crm_base_url#}}/api/v2/internal/ai-policy/writeback');
     expect(writebackBody).toContain('"version": "v1"');
     expect(writebackBody).toContain('"session_id": "{{#start.sessionId#}}"');
+    expect(writebackBody).toContain('"site": "{{#start.site#}}"');
     expect(writebackBody).toContain('"payload": {');
     expect(writebackBody).toContain('"assistant_message_id": "{{#start.assistantMessageId#}}"');
     expect(writebackBody).toContain('"idempotency_key": "{{#start.sessionId#}}:{{#start.assistantMessageId#}}:chatbot-v2"');

@@ -285,6 +285,7 @@ chatbotPublicRoutes.openapi(sendChatRoute, async (c) => {
       inputs: {
         hospitalType: effectiveHospitalType,
         sessionId: body.sessionId,
+        site: session.site,
         assistantMessageId,
         attachmentsJson: JSON.stringify(userAttachments),
         pageContextJson: body.pageContext ? JSON.stringify(body.pageContext) : 'null',

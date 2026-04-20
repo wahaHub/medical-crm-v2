@@ -177,6 +177,7 @@ describe('Internal routes', () => {
       expect(res.status).toBe(200);
       expect(mockServices.decideAiPolicy.execute).toHaveBeenCalledWith({
         sessionId: 'session-2',
+        site: 'china',
         userMessage: 'Can you recommend a hospital for me?',
         extraction: {
           resolvedIntent: 'ASK_FOR_HOSPITAL_RECOMMENDATION',
@@ -229,6 +230,7 @@ describe('Internal routes', () => {
       expect(res.status).toBe(200);
       expect(mockServices.decideAiPolicy.execute).toHaveBeenCalledWith({
         sessionId: 'session-3',
+        site: 'china',
         userMessage: 'hello',
         extraction: {},
         pageContext: null,
@@ -271,6 +273,7 @@ describe('Internal routes', () => {
       expect(res.status).toBe(200);
       expect(mockServices.decideAiPolicy.execute).toHaveBeenCalledWith({
         sessionId: 'session-4',
+        site: 'china',
         userMessage: 'Can you recommend a hospital for me?',
         extraction: {},
         pageContext: null,
@@ -375,11 +378,49 @@ describe('Internal routes', () => {
       expect(second.status).toBe(200);
       expect(await first.json()).toEqual(await second.json());
       expect(mockServices.applyAiPolicyWriteback.execute).toHaveBeenCalledWith(expect.objectContaining({
+        site: 'china',
         policyDecision: expect.objectContaining({
           engagementMode: 'DEEP_WORKFLOW',
           writebackDepth: 'complete',
           nextAction: 'REQUEST_DOC_UPLOAD',
         }),
+      }));
+    });
+
+    it('passes an explicit site through to writeback instead of falling back to china', async () => {
+      mockServices.applyAiPolicyWriteback.execute.mockResolvedValue({
+        statusUpdated: {},
+        timelineEventsWritten: [],
+        messageMetadata: {},
+        followupCreated: null,
+        handoffCreated: null,
+      });
+
+      const res = await app.request('/api/v2/internal/ai-policy/writeback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': 'test-secret-must-be-at-least-32-characters-long',
+        },
+        body: JSON.stringify({
+          version: 'v1',
+          session_id: 'session-explicit-site',
+          site: 'beauty',
+          payload: {
+            assistant_message_id: 'assistant-explicit-site',
+            idempotency_key: 'session-explicit-site:assistant-explicit-site:v1',
+            policy_decision: {
+              next_action: 'ANSWER_FAQ',
+            },
+          },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.applyAiPolicyWriteback.execute).toHaveBeenCalledWith(expect.objectContaining({
+        sessionId: 'session-explicit-site',
+        site: 'beauty',
+        assistantMessageId: 'assistant-explicit-site',
       }));
     });
 
@@ -427,6 +468,7 @@ describe('Internal routes', () => {
       expect(res.status).toBe(200);
       expect(mockServices.applyAiPolicyWriteback.execute).toHaveBeenCalledWith({
         sessionId: 'session-2',
+        site: 'china',
         assistantMessageId: 'assistant-2',
         idempotencyKey: 'session-2:assistant-2:v1',
         policyDecision: {
@@ -487,6 +529,7 @@ describe('Internal routes', () => {
       expect(res.status).toBe(200);
       expect(mockServices.applyAiPolicyWriteback.execute).toHaveBeenCalledWith({
         sessionId: 'session-3',
+        site: 'china',
         assistantMessageId: 'assistant-3',
         idempotencyKey: 'session-3:assistant-3:v1',
         policyDecision: {

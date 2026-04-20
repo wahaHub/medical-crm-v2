@@ -235,6 +235,7 @@ export async function seedWidgetStarterMessage(input: {
       inputs: {
         hospitalType: session.hospitalType,
         sessionId: session.sessionId,
+        site: session.site,
         assistantMessageId,
         currentStatus: JSON.stringify(statusSnapshot),
         conversationSummary: statusSnapshot.conversationSummary,

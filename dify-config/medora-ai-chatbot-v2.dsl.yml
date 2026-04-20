@@ -128,6 +128,12 @@ workflow:
           required: true
           max_length: 255
           placeholder: CRM chatbot session id
+        - variable: site
+          label: site
+          type: text-input
+          required: true
+          max_length: 32
+          placeholder: CRM patient site
         - variable: assistantMessageId
           label: assistantMessageId
           type: text-input
@@ -596,6 +602,7 @@ workflow:
               {
                 "version": "v1",
                 "session_id": "{{#start.sessionId#}}",
+                "site": "{{#start.site#}}",
                 "payload": {
                   "assistant_message_id": "{{#start.assistantMessageId#}}",
                   "idempotency_key": "{{#start.sessionId#}}:{{#start.assistantMessageId#}}:chatbot-v2",

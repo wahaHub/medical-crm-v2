@@ -281,6 +281,7 @@ describe('patientPublicRoutes', () => {
     });
     expect(services.difyApi.createChatMessage).toHaveBeenCalledWith(expect.objectContaining({
       inputs: expect.objectContaining({
+        site: 'beauty',
         faqGrounding: JSON.stringify({
           faqScope: 'GENERAL_ONLY',
           categories: ['Consultation Process'],

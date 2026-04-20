@@ -410,6 +410,7 @@ describe('Chatbot routes', () => {
         inputs: expect.objectContaining({
           hospitalType: 'COSMETIC',
           sessionId: 'session-1',
+          site: 'beauty',
           assistantMessageId: expect.any(String),
           currentStatus: expect.any(String),
           chatbotV2: expect.any(String),

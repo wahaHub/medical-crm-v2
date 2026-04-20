@@ -50,6 +50,43 @@ const DIRECT_HUMAN_REQUEST_PATTERNS = [
   /\b(?:live|real) (?:agent|person|human)\b/i,
 ] as const;
 
+const LATER_STAGE_FAQ_QUESTION_PATTERNS = [
+  /(?:^|\b)(?:what|when|where|which|who|why|how|can|could|do|does|is|are)\b/i,
+  /\?/,
+] as const;
+
+const LATER_STAGE_FAQ_TOPIC_PATTERNS = [
+  /\b(?:office|opening|business)\s+hours\b/i,
+  /\bhours?\b/i,
+  /\bpricing?\b/i,
+  /\bcosts?\b/i,
+  /\bfees?\b/i,
+  /\bcontact\b/i,
+  /\bphone\b/i,
+  /\bemail\b/i,
+  /\baddress\b/i,
+  /\blocation\b/i,
+  /\btimeline\b/i,
+  /\bschedul(?:e|ing)\b/i,
+  /\bconsult(?:ation)?\b/i,
+  /\bprocess\b/i,
+  /\bpolicy\b/i,
+] as const;
+
+const EXPLICIT_PROGRESSION_PATTERNS = [
+  /\bupload\b/i,
+  /\battach(?:ed|ment)?\b/i,
+  /\bshare\b/i,
+  /\bsend\b/i,
+  /\bsubmit\b/i,
+  /\bselect\b/i,
+  /\bchoose\b/i,
+  /\bskip\b/i,
+  /\bcontinue\b/i,
+  /\bproceed\b/i,
+  /\bnext step\b/i,
+] as const;
+
 export class SupervisorService {
   private lastRunMetadata: SupervisorLlmRunMetadata | null = null;
 
@@ -188,6 +225,11 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     };
   }
 
+  const recoveredLaterStageFaqDetour = recoverLaterStageFaqDetour(input, currentStage);
+  if (recoveredLaterStageFaqDetour) {
+    return recoveredLaterStageFaqDetour;
+  }
+
   if (currentStage === 'RECOMMENDATION' || recommendationSelectionStatus !== null) {
     if (recommendationSelectionStatus === 'skipped') {
       return {
@@ -245,6 +287,32 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
   };
 }
 
+function recoverLaterStageFaqDetour(
+  input: OrchestratorV3DecisionInput,
+  currentStage: ChatJourneyStage,
+): SupervisorSuggestionSeed | null {
+  if (!isLaterStage(currentStage)) {
+    return null;
+  }
+
+  if (input.suggestion.intent === 'handoff' || input.suggestion.intent === 'consult') {
+    return null;
+  }
+
+  const latestUserMessage = resolveLatestUserMessage(input);
+  if (!looksLikeClearLaterStageFaqQuestion(latestUserMessage)) {
+    return null;
+  }
+
+  return {
+    intent: 'faq',
+    suggestedStage: 'EXPLAIN_PROCESS',
+    reason: clampReason(
+      'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
+    ),
+  };
+}
+
 function inferStageFromInput(input: OrchestratorV3DecisionInput): ChatJourneyStage {
   if (isChatJourneyStage(input.suggestion.suggestedStage)) {
     return input.suggestion.suggestedStage;
@@ -290,6 +358,31 @@ function isSidePathIntent(
   intent: OrchestratorV3DecisionInput['suggestion']['intent'],
 ): boolean {
   return intent === 'faq' || intent === 'resource';
+}
+
+function isLaterStage(stage: ChatJourneyStage): boolean {
+  return stage === 'RECOMMENDATION'
+    || stage === 'EXPLAIN_PROCESS'
+    || stage === 'COLLECT_MEDICAL_INPUTS'
+    || stage === 'ONLINE_CONSULT';
+}
+
+function looksLikeClearLaterStageFaqQuestion(message: string): boolean {
+  const normalized = message.trim();
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  if (EXPLICIT_PROGRESSION_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return false;
+  }
+
+  const looksLikeQuestion = LATER_STAGE_FAQ_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized));
+  if (!looksLikeQuestion) {
+    return false;
+  }
+
+  return LATER_STAGE_FAQ_TOPIC_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

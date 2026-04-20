@@ -653,6 +653,56 @@ describe('SupervisorService', () => {
     });
   });
 
+  it('recovers a clear later-stage FAQ question even when upstream suggestion weakens to progression', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      latestUserMessage: 'What are your office hours?',
+      bootstrap: {
+        message: 'What are your office hours?',
+        attachments: [{ fileName: 'report.pdf' }],
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue collecting supporting documents',
+      },
+      facts: {
+        'process.explained': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'What are your office hours?',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MEDICAL_INPUTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
   it('preserves bootstrap override semantics when the supervisor gateway throws', async () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v2',

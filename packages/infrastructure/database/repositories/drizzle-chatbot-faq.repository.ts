@@ -8,6 +8,7 @@ import type {
 import { ChatbotFaqItem } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { chatbotFaqItems, chatbotFaqCategories } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
   constructor(private readonly db: CrmDb) {}
@@ -59,22 +60,28 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     const { page, limit } = query;
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [rows, countResult] = await Promise.all([
-      this.db
-        .select()
-        .from(chatbotFaqItems)
-        .where(where)
-        .orderBy(
-          sql`${chatbotFaqItems.sortOrder} ASC`,
-          sql`${chatbotFaqItems.createdAt} DESC`,
-        )
-        .limit(limit)
-        .offset((page - 1) * limit),
-      this.db
-        .select({ total: count() })
-        .from(chatbotFaqItems)
-        .where(where),
-    ]);
+    const { rows, countResult } = await withTransientDatabaseRetry(
+      'chatbot faq list',
+      async () => {
+        const rows = await this.db
+          .select()
+          .from(chatbotFaqItems)
+          .where(where)
+          .orderBy(
+            sql`${chatbotFaqItems.sortOrder} ASC`,
+            sql`${chatbotFaqItems.createdAt} DESC`,
+          )
+          .limit(limit)
+          .offset((page - 1) * limit);
+
+        const countResult = await this.db
+          .select({ total: count() })
+          .from(chatbotFaqItems)
+          .where(where);
+
+        return { rows, countResult };
+      },
+    );
 
     return {
       data: rows.map((r) => this.rowToEntity(r)),
@@ -142,17 +149,6 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const rows = await this.db
-      .select()
-      .from(chatbotFaqCategories)
-      .where(where)
-      .orderBy(
-        sql`${chatbotFaqCategories.hospitalType} ASC`,
-        sql`${chatbotFaqCategories.sortOrder} ASC`,
-        sql`${chatbotFaqCategories.name} ASC`,
-      );
-
-    // Count questions per category, scoped by hospitalId if present in query
     const countConditions: ReturnType<typeof eq>[] = [];
     if (query.hospitalId !== undefined) {
       if (query.hospitalId === null) {
@@ -165,15 +161,32 @@ export class DrizzleChatbotFaqRepository implements IChatbotFaqRepository {
     }
 
     const countWhere = countConditions.length > 0 ? and(...countConditions) : undefined;
-    const countRows = await this.db
-      .select({
-        category: chatbotFaqItems.category,
-        hospitalType: chatbotFaqItems.hospitalType,
-        total: count(),
-      })
-      .from(chatbotFaqItems)
-      .where(countWhere)
-      .groupBy(chatbotFaqItems.category, chatbotFaqItems.hospitalType);
+    const { rows, countRows } = await withTransientDatabaseRetry(
+      'chatbot faq categories',
+      async () => {
+        const rows = await this.db
+          .select()
+          .from(chatbotFaqCategories)
+          .where(where)
+          .orderBy(
+            sql`${chatbotFaqCategories.hospitalType} ASC`,
+            sql`${chatbotFaqCategories.sortOrder} ASC`,
+            sql`${chatbotFaqCategories.name} ASC`,
+          );
+
+        const countRows = await this.db
+          .select({
+            category: chatbotFaqItems.category,
+            hospitalType: chatbotFaqItems.hospitalType,
+            total: count(),
+          })
+          .from(chatbotFaqItems)
+          .where(countWhere)
+          .groupBy(chatbotFaqItems.category, chatbotFaqItems.hospitalType);
+
+        return { rows, countRows };
+      },
+    );
 
     const countMap = new Map(
       countRows.map((row) => [`${row.category}::${row.hospitalType}`, Number(row.total ?? 0)]),

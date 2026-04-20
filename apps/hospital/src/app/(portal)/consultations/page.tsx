@@ -1,4 +1,5 @@
-import { apiClient } from '@/lib/api-client';
+import { redirect } from 'next/navigation';
+import { apiClient, isUnauthorizedApiError } from '@/lib/api-client';
 import { apiFetch } from '@/lib/api-fetch';
 import type { PaginatedResponse, ConsultationSummary, ConsultationStats, CaseSummary } from '@/lib/api-types';
 import { ConsultationsList } from '@/components/consultations-list';
@@ -7,29 +8,70 @@ import { loadMessages, normalizeLocale, translateMessage } from '@medical-crm/i1
 const EMPTY_CONSULTATIONS: PaginatedResponse<ConsultationSummary> = { data: [] };
 const EMPTY_STATS: ConsultationStats = {};
 const EMPTY_CASES: PaginatedResponse<CaseSummary> = { data: [] };
+const SERVER_PAGE_API_OPTIONS = { onUnauthorized: 'throw' as const };
 
 interface UserProfileResponse {
   preferredLanguage?: string;
 }
 
+function isRedirectFailure(error: unknown): boolean {
+  return (
+    error instanceof Error
+    && (
+      error.message.startsWith('REDIRECT:')
+      || ('digest' in error
+        && typeof (error as { digest?: unknown }).digest === 'string'
+        && (error as { digest: string }).digest.startsWith('NEXT_REDIRECT'))
+    )
+  );
+}
+
 export default async function ConsultationsPage() {
-  const profileRes = await apiFetch('/api/v2/users/me');
-  const profile = profileRes.ok
-    ? await profileRes.json() as UserProfileResponse
-    : null;
+  const profile = await apiFetch('/api/v2/users/me')
+    .then(async (profileRes) => {
+      if (profileRes.status === 401) {
+        redirect('/auth/login');
+      }
+
+      return profileRes.ok
+        ? await profileRes.json() as UserProfileResponse
+        : null;
+    })
+    .catch((error) => {
+      if (isRedirectFailure(error)) {
+        throw error;
+      }
+      console.error('[ConsultationsPage] Failed to load user profile:', error);
+        return null;
+    });
   const locale = normalizeLocale(profile?.preferredLanguage);
   const messages = await loadMessages(locale);
 
   // Use Promise.allSettled so one API failure does not crash the entire page.
   const [consultationsResult, statsResult, casesResult] = await Promise.allSettled([
-    apiClient<PaginatedResponse<ConsultationSummary>>('/api/v2/consultations?status=SCHEDULED&limit=20'),
-    apiClient<ConsultationStats>('/api/v2/consultations/stats'),
-    apiClient<PaginatedResponse<CaseSummary>>('/api/v2/cases?limit=100'),
+    apiClient<PaginatedResponse<ConsultationSummary>>('/api/v2/consultations?status=SCHEDULED&limit=20', undefined, {
+      ...SERVER_PAGE_API_OPTIONS,
+      debugLabel: 'ConsultationsPage.list',
+    }),
+    apiClient<ConsultationStats>('/api/v2/consultations/stats', undefined, {
+      ...SERVER_PAGE_API_OPTIONS,
+      debugLabel: 'ConsultationsPage.stats',
+    }),
+    apiClient<PaginatedResponse<CaseSummary>>('/api/v2/cases?limit=100', undefined, {
+      ...SERVER_PAGE_API_OPTIONS,
+      debugLabel: 'ConsultationsPage.caseLookup',
+    }),
   ]);
 
   const consultations = consultationsResult.status === 'fulfilled' ? consultationsResult.value : EMPTY_CONSULTATIONS;
   const stats = statsResult.status === 'fulfilled' ? statsResult.value : EMPTY_STATS;
   const cases = casesResult.status === 'fulfilled' ? casesResult.value : EMPTY_CASES;
+
+  const rejectedResults = [consultationsResult, statsResult, casesResult]
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (rejectedResults.some((result) => isUnauthorizedApiError(result.reason))) {
+    redirect('/auth/login');
+  }
 
   // Log failures for debugging without crashing the page
   if (consultationsResult.status === 'rejected') {

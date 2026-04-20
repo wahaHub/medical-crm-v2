@@ -1,4 +1,5 @@
-import { apiClient } from '@/lib/api-client';
+import { redirect } from 'next/navigation';
+import { apiClient, isUnauthorizedApiError } from '@/lib/api-client';
 import type {
   PaginatedResponse,
   CaseSummary,
@@ -22,18 +23,34 @@ interface RawConsultation {
 const EMPTY_CASES: PaginatedResponse<CaseSummary> = { data: [] };
 const EMPTY_CONSULTATIONS: PaginatedResponse<RawConsultation> = { data: [] };
 const EMPTY_CONVERSATIONS: PaginatedResponse<ConversationSummary> = { data: [] };
+const SERVER_PAGE_API_OPTIONS = { onUnauthorized: 'throw' as const };
 
 export default async function DashboardPage() {
   // Use Promise.allSettled so one API failure does not crash the entire dashboard.
   const [casesResult, consultationsResult, conversationsResult] = await Promise.allSettled([
-    apiClient<PaginatedResponse<CaseSummary>>('/api/v2/cases?limit=20'),
-    apiClient<PaginatedResponse<RawConsultation>>('/api/v2/consultations?status=SCHEDULED&limit=5'),
-    apiClient<PaginatedResponse<ConversationSummary>>('/api/v2/conversations?limit=5'),
+    apiClient<PaginatedResponse<CaseSummary>>('/api/v2/cases?limit=20', undefined, {
+      ...SERVER_PAGE_API_OPTIONS,
+      debugLabel: 'DashboardPage.recentCases',
+    }),
+    apiClient<PaginatedResponse<RawConsultation>>('/api/v2/consultations?status=SCHEDULED&limit=5', undefined, {
+      ...SERVER_PAGE_API_OPTIONS,
+      debugLabel: 'DashboardPage.consultations',
+    }),
+    apiClient<PaginatedResponse<ConversationSummary>>('/api/v2/conversations?limit=5', undefined, {
+      ...SERVER_PAGE_API_OPTIONS,
+      debugLabel: 'DashboardPage.conversations',
+    }),
   ]);
 
   const cases = casesResult.status === 'fulfilled' ? casesResult.value : EMPTY_CASES;
   const consultations = consultationsResult.status === 'fulfilled' ? consultationsResult.value : EMPTY_CONSULTATIONS;
   const conversations = conversationsResult.status === 'fulfilled' ? conversationsResult.value : EMPTY_CONVERSATIONS;
+
+  const rejectedResults = [casesResult, consultationsResult, conversationsResult]
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (rejectedResults.some((result) => isUnauthorizedApiError(result.reason))) {
+    redirect('/auth/login');
+  }
 
   // Log failures for debugging without crashing the page
   if (casesResult.status === 'rejected') {

@@ -27,8 +27,25 @@ export class RoutedStorageService implements IStorageService {
     const results: Record<string, string> = {};
     await Promise.all(
       [...groups.entries()].map(async ([adapter, groupKeys]) => {
-        const urls = await adapter.getSignedUrls(groupKeys);
-        Object.assign(results, urls);
+        try {
+          const urls = await adapter.getSignedUrls(groupKeys);
+          Object.assign(results, urls);
+          return;
+        } catch (error) {
+          console.warn('[RoutedStorageService] Batch signed URL generation failed for adapter group:', error);
+        }
+
+        const fallbackResults = await Promise.allSettled(
+          groupKeys.map(async (key) => [key, await adapter.getSignedUrl(key)] as const),
+        );
+        for (const item of fallbackResults) {
+          if (item.status === 'fulfilled') {
+            const [key, signedUrl] = item.value;
+            results[key] = signedUrl;
+          } else {
+            console.warn('[RoutedStorageService] Failed to sign storage key:', item.reason);
+          }
+        }
       }),
     );
     return results;

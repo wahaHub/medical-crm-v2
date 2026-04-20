@@ -68,6 +68,13 @@ const otherHospitalActor: Actor = {
   hospitalId: 'hosp-2',
 };
 
+const patientActor: Actor = {
+  userId: 'patient-1',
+  email: 'patient@test.com',
+  role: 'PATIENT',
+  hospitalId: null,
+};
+
 const makePaginatedResult = (messages: Message[]) => ({
   data: messages,
   total: messages.length,
@@ -194,6 +201,44 @@ describe('ListMessagesUseCase', () => {
     await expect(
       useCase.execute('conv-1', { page: 1, limit: 20 }, hospitalActor),
     ).rejects.toThrow('Access denied to this conversation');
+  });
+
+  it('uses a focused patient access check when the repository provides one', async () => {
+    const conv = makeConversation({ category: 'HOSPITAL_PATIENT' });
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(conv);
+    mockConversationRepo.findByPatientId = vi.fn().mockResolvedValue([]);
+    const hasPatientAccess = vi.fn().mockResolvedValue(true);
+    (
+      mockConversationRepo as IConversationRepository & {
+        hasPatientAccess: typeof hasPatientAccess;
+      }
+    ).hasPatientAccess = hasPatientAccess;
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
+
+    const result = await useCase.execute('conv-1', { page: 1, limit: 20 }, patientActor);
+
+    expect(result.data).toHaveLength(1);
+    expect(hasPatientAccess).toHaveBeenCalledWith('patient-1', 'conv-1');
+    expect(mockConversationRepo.findByPatientId).not.toHaveBeenCalled();
+  });
+
+  it('degrades gracefully when attachment signing fails during message listing', async () => {
+    const msg = makeMessage({
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 1024,
+        mimeType: 'application/pdf',
+        storageKey: 'attachments/report.pdf',
+      }],
+    });
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation(), msg);
+    const storage = makeStorage();
+    vi.mocked(storage.getSignedUrls).mockRejectedValue(new Error('fetch failed'));
+    const useCase = new ListMessagesUseCase(mockConversationRepo, mockMessageRepo, storage);
+
+    const result = await useCase.execute('conv-1', { page: 1, limit: 20 }, adminActor);
+
+    expect(result.data[0]!.attachments[0]!.url).toBe('');
   });
 });
 

@@ -12,6 +12,10 @@ import type { HospitalCaseDetailDTO } from '../../dtos/case.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toHospitalCaseDetailDTO } from '../../mappers/case.mapper.js';
 
+type BatchedMessageCountRepository = IMessageRepository & {
+  countByConversationIds?: (conversationIds: string[]) => Promise<Record<string, number>>;
+};
+
 export class GetHospitalCaseDetailUseCase {
   constructor(
     private readonly caseRepo: ICaseRepository,
@@ -44,18 +48,32 @@ export class GetHospitalCaseDetailUseCase {
     // Compute total messages across all conversations for this case
     let totalMessages = 0;
     if (conversations.data.length > 0) {
-      const messageCounts = await Promise.all(
-        conversations.data.map((conv) =>
-          this.messageRepo.findByConversationId(conv.id, { page: 1, limit: 1 }),
-        ),
-      );
-      totalMessages = messageCounts.reduce((sum, result) => sum + result.total, 0);
+      const conversationIds = conversations.data.map((conversation) => conversation.id);
+      const batchedMessageRepo = this.messageRepo as BatchedMessageCountRepository;
+
+      if (typeof batchedMessageRepo.countByConversationIds === 'function') {
+        const countsByConversationId = await batchedMessageRepo.countByConversationIds(conversationIds);
+        totalMessages = Object.values(countsByConversationId)
+          .reduce((sum, count) => sum + count, 0);
+      } else {
+        const messageCounts = await Promise.all(
+          conversationIds.map((conversationId) =>
+            this.messageRepo.findByConversationId(conversationId, { page: 1, limit: 1 }),
+          ),
+        );
+        totalMessages = messageCounts.reduce((sum, result) => sum + result.total, 0);
+      }
     }
 
     const storageKeys = documents.map((d) => d.storageKey);
-    const signedUrls = storageKeys.length > 0
-      ? await this.storageService.getSignedUrls(storageKeys)
-      : {};
+    let signedUrls: Record<string, string> = {};
+    if (storageKeys.length > 0) {
+      try {
+        signedUrls = await this.storageService.getSignedUrls(storageKeys);
+      } catch (error) {
+        console.warn('[GetHospitalCaseDetailUseCase] Failed to sign document URLs:', error);
+      }
+    }
 
     return toHospitalCaseDetailDTO(entity, progress, documents, signedUrls, {
       id: entity.patientId,

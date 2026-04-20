@@ -5,6 +5,10 @@ import type { Actor } from '../../types/actor.js';
 import type { MessageDTO } from '../../dtos/conversation.dto.js';
 import { toMessageDTO } from '../../mappers/conversation.mapper.js';
 
+type PatientConversationAccessRepository = IConversationRepository & {
+  hasPatientAccess?: (patientId: string, conversationId: string) => Promise<boolean>;
+};
+
 export class ListMessagesUseCase {
   constructor(
     private readonly conversationRepo: IConversationRepository,
@@ -33,8 +37,11 @@ export class ListMessagesUseCase {
       if (conversation.category === 'ADMIN_HOSPITAL') {
         throw new ForbiddenError('Access denied to this conversation');
       }
-      const conversations = await this.conversationRepo.findByPatientId(actor.userId);
-      const hasAccess = conversations.some((item) => item.id === conversationId);
+      const patientConversationRepo = this.conversationRepo as PatientConversationAccessRepository;
+      const hasAccess = typeof patientConversationRepo.hasPatientAccess === 'function'
+        ? await patientConversationRepo.hasPatientAccess(actor.userId, conversationId)
+        : (await this.conversationRepo.findByPatientId(actor.userId))
+          .some((item) => item.id === conversationId);
       if (!hasAccess) {
         throw new ForbiddenError('Access denied to this conversation');
       }
@@ -50,9 +57,14 @@ export class ListMessagesUseCase {
         !storageKey.startsWith('https://') &&
         !storageKey.startsWith('data:'),
       );
-    const signedUrls = attachmentKeys.length > 0
-      ? await this.storageService.getSignedUrls(Array.from(new Set(attachmentKeys)))
-      : {};
+    let signedUrls: Record<string, string> = {};
+    if (attachmentKeys.length > 0) {
+      try {
+        signedUrls = await this.storageService.getSignedUrls(Array.from(new Set(attachmentKeys)));
+      } catch (error) {
+        console.warn('[ListMessagesUseCase] Failed to sign attachment URLs:', error);
+      }
+    }
 
     return {
       data: result.data.map((message) => toMessageDTO(message, signedUrls)),

@@ -1,25 +1,29 @@
-import { eq, count, sql } from 'drizzle-orm';
+import { eq, count, sql, inArray } from 'drizzle-orm';
 import type { IMessageRepository, MessageListQuery, Attachment, Transaction } from '@medical-crm/domain';
 import { Message } from '@medical-crm/domain';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
 import { messages, users } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleMessageRepository implements IMessageRepository {
   constructor(private readonly db: CrmDb) {}
 
   async findById(id: string, tx?: Transaction): Promise<Message | null> {
     const db = (tx as CrmDb | undefined) ?? this.db;
-    const rows = await db
-      .select({
-        message: messages,
-        senderRole: users.role,
-        senderName: users.name,
-      })
-      .from(messages)
-      .leftJoin(users, eq(messages.senderId, users.id))
-      .where(eq(messages.id, id))
-      .limit(1);
+    const rows = await withTransientDatabaseRetry(
+      'load message by id',
+      () => db
+        .select({
+          message: messages,
+          senderRole: users.role,
+          senderName: users.name,
+        })
+        .from(messages)
+        .leftJoin(users, eq(messages.senderId, users.id))
+        .where(eq(messages.id, id))
+        .limit(1),
+    );
 
     if (rows.length === 0) return null;
     return this.rowToEntity(rows[0]!);
@@ -33,24 +37,27 @@ export class DrizzleMessageRepository implements IMessageRepository {
     const { page, limit } = query;
     const db = (tx as CrmDb | undefined) ?? this.db;
 
-    const [rows, countResult] = await Promise.all([
-      db
-        .select({
-          message: messages,
-          senderRole: users.role,
-          senderName: users.name,
-        })
-        .from(messages)
-        .leftJoin(users, eq(messages.senderId, users.id))
-        .where(eq(messages.conversationId, conversationId))
-        .orderBy(sql`${messages.createdAt} DESC`)
-        .limit(limit)
-        .offset((page - 1) * limit),
-      db
-        .select({ total: count() })
-        .from(messages)
-        .where(eq(messages.conversationId, conversationId)),
-    ]);
+    const [rows, countResult] = await withTransientDatabaseRetry(
+      'list messages by conversation id',
+      () => Promise.all([
+        db
+          .select({
+            message: messages,
+            senderRole: users.role,
+            senderName: users.name,
+          })
+          .from(messages)
+          .leftJoin(users, eq(messages.senderId, users.id))
+          .where(eq(messages.conversationId, conversationId))
+          .orderBy(sql`${messages.createdAt} DESC`)
+          .limit(limit)
+          .offset((page - 1) * limit),
+        db
+          .select({ total: count() })
+          .from(messages)
+          .where(eq(messages.conversationId, conversationId)),
+      ]),
+    );
 
     const total = Number(countResult[0]?.total ?? 0);
     const totalPages = Math.ceil(total / limit);
@@ -63,6 +70,33 @@ export class DrizzleMessageRepository implements IMessageRepository {
       totalPages,
       hasMore: page < totalPages,
     };
+  }
+
+  async countByConversationIds(
+    conversationIds: string[],
+    tx?: Transaction,
+  ): Promise<Record<string, number>> {
+    if (conversationIds.length === 0) {
+      return {};
+    }
+
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    const rows = await withTransientDatabaseRetry(
+      'count messages by conversation ids',
+      () => db
+        .select({
+          conversationId: messages.conversationId,
+          total: count(),
+        })
+        .from(messages)
+        .where(inArray(messages.conversationId, conversationIds))
+        .groupBy(messages.conversationId),
+    );
+
+    return rows.reduce<Record<string, number>>((accumulator, row) => {
+      accumulator[row.conversationId] = Number(row.total ?? 0);
+      return accumulator;
+    }, {});
   }
 
   async findPendingReview(tx?: Transaction): Promise<Message[]> {

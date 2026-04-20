@@ -386,6 +386,43 @@ describe('hospital api-client', () => {
     // clearSession is not called because cookie mutation is not allowed in Server Component context.
     // apiFetch returns a 401 Response instead, and apiClient handles the redirect.
   });
+
+  it('throws ApiError instead of redirecting when a portal page opts out of 401 redirects', async () => {
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
+    setSession({ access_token: 'valid-token', refresh_token: 'r', expires_at: futureExpiry });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { apiClient } = await import('@/lib/api-client');
+    await expect(
+      apiClient('/api/data', undefined, { onUnauthorized: 'throw' }),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+    });
+  });
+
+  it('throws ApiError instead of redirecting on unexpected 401 responses', async () => {
+    const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
+    setSession({ access_token: 'valid-token', refresh_token: 'r', expires_at: futureExpiry });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Upstream auth proxy mismatch' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { apiClient } = await import('@/lib/api-client');
+    await expect(apiClient('/api/data')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+      body: { error: 'Upstream auth proxy mismatch' },
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

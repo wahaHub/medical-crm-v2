@@ -1,7 +1,77 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { DomainError, NotFoundError, ForbiddenError, mapErrorToStatus } from '@medical-crm/utils';
+
+vi.mock('../middleware/security.js', () => ({
+  applySecurityMiddleware: vi.fn(),
+  perUserRateLimiter: async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
+vi.mock('@medical-crm/infrastructure/auth', () => ({
+  authMiddleware: async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
+vi.mock('@medical-crm/infrastructure/database/retry', () => ({
+  isTransientDatabaseError: vi.fn(() => false),
+}));
+
+vi.mock('@medical-crm/validation', () => ({
+  registerHospitalUserSchema: {
+    parse: (value: unknown) => value,
+  },
+}));
+
+vi.mock('../composition-root.js', () => ({
+  getServices: () => ({
+    registerHospitalUser: { execute: vi.fn(async () => ({})) },
+    validateRegistrationToken: { execute: vi.fn(async () => ({})) },
+  }),
+}));
+
+vi.mock('../routes/index.js', async () => {
+  const { Hono } = await import('hono');
+  const router = new Hono();
+  router.get('/missing-response', () => {
+    throw new Error('Context is not finalized. Did you forget to return a Response object or `await next()`?');
+  });
+  return { default: router };
+});
+
+vi.mock('../routes/internal.routes.js', async () => {
+  const { Hono } = await import('hono');
+  return { default: new Hono() };
+});
+
+vi.mock('../routes/patient-public.routes.js', async () => {
+  const { Hono } = await import('hono');
+  return { default: new Hono() };
+});
+
+vi.mock('../routes/patient-auth.routes.js', async () => {
+  const { Hono } = await import('hono');
+  return { default: new Hono() };
+});
+
+vi.mock('../routes/patient-protected.routes.js', async () => {
+  const { Hono } = await import('hono');
+  return { default: new Hono() };
+});
+
+vi.mock('../routes/public-booking.routes.js', async () => {
+  const { Hono } = await import('hono');
+  return { default: new Hono() };
+});
+
+vi.mock('../routes/chatbot.routes.js', async () => {
+  const { Hono } = await import('hono');
+  return { chatbotPublicRoutes: new Hono() };
+});
+
+vi.mock('../routes/chatbot-v3.routes.js', async () => {
+  const { Hono } = await import('hono');
+  return { chatbotV3PublicRoutes: new Hono() };
+});
 
 function createTestApp() {
   const app = new Hono();
@@ -63,6 +133,16 @@ describe('Global error handler', () => {
     });
 
     const res = await app.request('/throw-generic');
+    expect(res.status).toBe(500);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body['error']).toBe('Internal server error');
+  });
+
+  it('leaves unfinalized-context errors as 500s so router bugs stay visible', async () => {
+    const { default: app } = await import('../index');
+
+    const res = await app.request('/missing-response');
+
     expect(res.status).toBe(500);
     const body = await res.json() as Record<string, unknown>;
     expect(body['error']).toBe('Internal server error');

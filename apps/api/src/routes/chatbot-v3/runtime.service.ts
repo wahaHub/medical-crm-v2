@@ -313,10 +313,11 @@ export class ConversationOrchestratorV3RuntimeService {
     const orchestratorStartedAt = this.now();
     let decision: ConversationOrchestratorV3Decision;
     try {
-      decision = this.dependencies.journeyRuntimeAuthority.decide({
+      const authorityDecision = this.dependencies.journeyRuntimeAuthority.decide({
         ...decisionInput,
         suggestion,
       });
+      decision = preserveLaterStageSidePathDetour(authorityDecision, decisionInput.current, suggestion);
       const authorityReplayLineage = compactReplayLineage({
         ...supervisorReplayLineage,
         ...(decision.matchedRuleId ? { matchedRuleId: decision.matchedRuleId } : {}),
@@ -1180,6 +1181,43 @@ function cloneStageRef(
     stage: stageRef.stage,
     phase: stageRef.phase,
   };
+}
+
+function preserveLaterStageSidePathDetour(
+  decision: ConversationOrchestratorV3Decision,
+  current: ConversationOrchestratorV3StageRef,
+  suggestion: ConversationOrchestratorV3Suggestion,
+): ConversationOrchestratorV3Decision {
+  if (!shouldPreserveLaterStageSidePathDetour(current, suggestion, decision)) {
+    return decision;
+  }
+
+  return {
+    ...decision,
+    action: 'STAY',
+    from: cloneStageRef(current),
+    to: cloneStageRef(current),
+    dispatchAgent: 'FaqAgent',
+    write: {
+      authority: 'journey-runtime-authority',
+      stage: cloneStageRef(current),
+      factsPatch: {},
+    },
+  };
+}
+
+function shouldPreserveLaterStageSidePathDetour(
+  current: ConversationOrchestratorV3StageRef,
+  suggestion: ConversationOrchestratorV3Suggestion,
+  decision?: ConversationOrchestratorV3Decision,
+): boolean {
+  if (decision?.dispatchSource !== 'journey-runtime-authority') {
+    return false;
+  }
+
+  return (suggestion.intent === 'faq' || suggestion.intent === 'resource')
+    && suggestion.suggestedStage === 'EXPLAIN_PROCESS'
+    && (current.stage === 'COLLECT_MEDICAL_INPUTS' || current.stage === 'ONLINE_CONSULT');
 }
 
 function deriveCanonicalTruthPatch(

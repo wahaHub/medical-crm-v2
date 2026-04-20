@@ -453,6 +453,86 @@ describe('SupervisorService', () => {
     });
   });
 
+  it('recovers a clear later-stage faq intent from the raw message even when upstream suggestion weakens to progression on an attachment turn', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      latestUserMessage: 'What are your office hours?',
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue collecting records',
+      },
+      bootstrap: {
+        message: 'What are your office hours?',
+        attachments: [{ fileName: 'report.pdf' }],
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'clear later-stage faq request should detour without advancing the journey',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'What are your office hours?',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MEDICAL_INPUTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
+  it('keeps COLLECT_MEDICAL_INPUTS active when the follow-up clearly continues records sharing', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      latestUserMessage: 'I can share more medical records now.',
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'move on to consult',
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'clear records-sharing follow-up should stay on medical input collection',
+      task: {
+        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        latestUserMessage: 'I can share more medical records now.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'records.minimal_triage.complete': true,
+          'recommendation.selected': true,
+        },
+      },
+    });
+  });
+
   it('works from minimal context without requiring a large facts bundle', async () => {
     const result = await supervisor.suggest({
       currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',

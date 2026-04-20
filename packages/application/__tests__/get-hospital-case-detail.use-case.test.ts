@@ -347,4 +347,43 @@ describe('GetHospitalCaseDetailUseCase', () => {
       suggestedTests: 'Repeat CT',
     }));
   });
+
+  it('uses a batched message count lookup when available instead of per-conversation pagination', async () => {
+    mockConversationRepo.findMany = vi.fn().mockResolvedValue({
+      data: [
+        { id: 'conv-1' },
+        { id: 'conv-2' },
+      ],
+      total: 2,
+      page: 1,
+      limit: 100,
+      totalPages: 1,
+      hasMore: false,
+    });
+
+    const countByConversationIds = vi.fn().mockResolvedValue({
+      'conv-1': 2,
+      'conv-2': 5,
+    });
+    (
+      mockMessageRepo as IMessageRepository & {
+        countByConversationIds: typeof countByConversationIds;
+      }
+    ).countByConversationIds = countByConversationIds;
+
+    const result = await useCase.execute('case-id-1', adminActor);
+
+    expect(result.totalMessages).toBe(7);
+    expect(countByConversationIds).toHaveBeenCalledWith(['conv-1', 'conv-2']);
+    expect(mockMessageRepo.findByConversationId).not.toHaveBeenCalled();
+  });
+
+  it('degrades gracefully when document URL signing fails', async () => {
+    mockStorageService.getSignedUrls = vi.fn().mockRejectedValue(new Error('fetch failed'));
+
+    const result = await useCase.execute('case-id-1', adminActor);
+
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0]!.downloadUrl).toBe('');
+  });
 });

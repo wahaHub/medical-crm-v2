@@ -3,16 +3,20 @@ import type { ICaseProgressRepository } from '@medical-crm/domain';
 import { CaseProgress } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { caseProgress } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleCaseProgressRepository implements ICaseProgressRepository {
   constructor(private readonly db: CrmDb) {}
 
   async findByCaseId(caseId: string): Promise<CaseProgress[]> {
-    const rows = await this.db
-      .select()
-      .from(caseProgress)
-      .where(eq(caseProgress.caseId, caseId))
-      .orderBy(desc(caseProgress.recordedAt));
+    const rows = await withTransientDatabaseRetry(
+      'load case progress by case id',
+      () => this.db
+        .select()
+        .from(caseProgress)
+        .where(eq(caseProgress.caseId, caseId))
+        .orderBy(desc(caseProgress.recordedAt)),
+    );
 
     return rows.map((r) => this.rowToEntity(r));
   }

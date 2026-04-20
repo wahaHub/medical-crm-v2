@@ -63,8 +63,25 @@ describe('Hospital portal layout', () => {
     mockLoadMessages.mockClear();
   });
 
-  it('falls back to the default locale when the profile request fails', async () => {
-    mockApiFetch.mockRejectedValue(new Error('ECONNREFUSED'));
+  it('redirects to login when the profile request returns 401', async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+    });
+
+    const { default: PortalLayout } = await import('@/app/(portal)/layout');
+
+    await expect(
+      PortalLayout({ children: <div>Portal content</div> }),
+    ).rejects.toThrow('REDIRECT:/auth/login');
+  });
+
+  it('falls back to the default locale when the profile request fails with a non-auth error', async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => 'Service unavailable',
+    });
 
     const { default: PortalLayout } = await import('@/app/(portal)/layout');
     const markup = renderToStaticMarkup(

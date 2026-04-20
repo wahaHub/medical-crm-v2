@@ -6,6 +6,7 @@ import type { CrmDb } from '../crm-client.js';
 import type { Transaction } from '@medical-crm/domain';
 import { conversations } from '../schema/index.js';
 import { cases } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleConversationRepository implements IConversationRepository {
   constructor(private readonly db: CrmDb) {}
@@ -36,11 +37,14 @@ export class DrizzleConversationRepository implements IConversationRepository {
 
   async findById(id: string, tx?: Transaction): Promise<Conversation | null> {
     const db = (tx as CrmDb | undefined) ?? this.db;
-    const rows = await db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.id, id))
-      .limit(1);
+    const rows = await withTransientDatabaseRetry(
+      'load conversation by id',
+      () => db
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, id))
+        .limit(1),
+    );
 
     if (rows.length === 0) return null;
     return this.rowToEntity(rows[0]!);
@@ -70,19 +74,22 @@ export class DrizzleConversationRepository implements IConversationRepository {
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [rows, countResult] = await Promise.all([
-      db
-        .select()
-        .from(conversations)
-        .where(where)
-        .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`)
-        .limit(limit)
-        .offset((page - 1) * limit),
-      db
-        .select({ total: count() })
-        .from(conversations)
-        .where(where),
-    ]);
+    const [rows, countResult] = await withTransientDatabaseRetry(
+      'list conversations',
+      () => Promise.all([
+        db
+          .select()
+          .from(conversations)
+          .where(where)
+          .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`)
+          .limit(limit)
+          .offset((page - 1) * limit),
+        db
+          .select({ total: count() })
+          .from(conversations)
+          .where(where),
+      ]),
+    );
 
     const total = Number(countResult[0]?.total ?? 0);
     const totalPages = Math.ceil(total / limit);
@@ -105,13 +112,34 @@ export class DrizzleConversationRepository implements IConversationRepository {
       .from(cases)
       .where(eq(cases.patientId, patientId));
 
-    const rows = await db
-      .select()
-      .from(conversations)
-      .where(inArray(conversations.caseId, patientCaseIds))
-      .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`);
+    const rows = await withTransientDatabaseRetry(
+      'list conversations by patient id',
+      () => db
+        .select()
+        .from(conversations)
+        .where(inArray(conversations.caseId, patientCaseIds))
+        .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`),
+    );
 
     return rows.map((r) => this.rowToEntity(r));
+  }
+
+  async hasPatientAccess(patientId: string, conversationId: string, tx?: Transaction): Promise<boolean> {
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    const rows = await withTransientDatabaseRetry(
+      'check patient conversation access',
+      () => db
+        .select({ id: conversations.id })
+        .from(conversations)
+        .innerJoin(cases, eq(conversations.caseId, cases.id))
+        .where(and(
+          eq(cases.patientId, patientId),
+          eq(conversations.id, conversationId),
+        ))
+        .limit(1),
+    );
+
+    return rows.length > 0;
   }
 
   async findAdminPatientByCaseId(caseId: string, tx?: Transaction): Promise<Conversation | null> {

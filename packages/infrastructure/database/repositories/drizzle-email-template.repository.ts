@@ -3,6 +3,7 @@ import type { IEmailTemplateRepository, EmailTemplateListQuery, EmailTemplateAtt
 import { EmailTemplate } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { emailTemplates } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleEmailTemplateRepository implements IEmailTemplateRepository {
   constructor(private readonly db: CrmDb) {}
@@ -37,19 +38,25 @@ export class DrizzleEmailTemplateRepository implements IEmailTemplateRepository 
     const { page, limit } = query;
     const where = and(...conditions);
 
-    const [rows, countResult] = await Promise.all([
-      this.db
-        .select()
-        .from(emailTemplates)
-        .where(where)
-        .orderBy(sql`${emailTemplates.createdAt} DESC`)
-        .limit(limit)
-        .offset((page - 1) * limit),
-      this.db
-        .select({ total: count() })
-        .from(emailTemplates)
-        .where(where),
-    ]);
+    const { rows, countResult } = await withTransientDatabaseRetry(
+      'email template list',
+      async () => {
+        const rows = await this.db
+          .select()
+          .from(emailTemplates)
+          .where(where)
+          .orderBy(sql`${emailTemplates.createdAt} DESC`)
+          .limit(limit)
+          .offset((page - 1) * limit);
+
+        const countResult = await this.db
+          .select({ total: count() })
+          .from(emailTemplates)
+          .where(where);
+
+        return { rows, countResult };
+      },
+    );
 
     return {
       data: rows.map((r) => this.rowToEntity(r)),

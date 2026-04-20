@@ -3,27 +3,34 @@ import type { IDocumentRepository } from '@medical-crm/domain';
 import { Document } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { documents } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleDocumentRepository implements IDocumentRepository {
   constructor(private readonly db: CrmDb) {}
 
   async findById(id: string): Promise<Document | null> {
-    const rows = await this.db
-      .select()
-      .from(documents)
-      .where(eq(documents.id, id))
-      .limit(1);
+    const rows = await withTransientDatabaseRetry(
+      'load document by id',
+      () => this.db
+        .select()
+        .from(documents)
+        .where(eq(documents.id, id))
+        .limit(1),
+    );
 
     if (rows.length === 0) return null;
     return this.rowToEntity(rows[0]!);
   }
 
   async findByCaseId(caseId: string): Promise<Document[]> {
-    const rows = await this.db
-      .select()
-      .from(documents)
-      .where(and(eq(documents.caseId, caseId), ne(documents.status, 'DELETED')))
-      .orderBy(desc(documents.createdAt));
+    const rows = await withTransientDatabaseRetry(
+      'load documents by case id',
+      () => this.db
+        .select()
+        .from(documents)
+        .where(and(eq(documents.caseId, caseId), ne(documents.status, 'DELETED')))
+        .orderBy(desc(documents.createdAt)),
+    );
 
     return rows.map((r) => this.rowToEntity(r));
   }

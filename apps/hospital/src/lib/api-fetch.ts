@@ -36,7 +36,8 @@ export async function apiFetch(
       } catch {
         // Cookie mutation not allowed in this context — proceed with refreshed token anyway
       }
-    } catch {
+    } catch (error) {
+      console.warn(`[apiFetch] Token refresh failed for ${path}:`, error instanceof Error ? error.message : error);
       // Token refresh failed — return 401 so apiClient redirects to login.
       // Don't call clearSession() here as cookie mutation may not be allowed.
       return new Response(JSON.stringify({ error: 'Token refresh failed' }), {

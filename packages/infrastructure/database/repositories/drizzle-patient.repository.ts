@@ -2,6 +2,7 @@ import { eq, and, ne, sql } from 'drizzle-orm';
 import type { IPatientRepository, PatientAuthInfo, PatientBasicInfo, PatientSite } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { users } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzlePatientRepository implements IPatientRepository {
   constructor(private readonly db: CrmDb) {}
@@ -52,20 +53,23 @@ export class DrizzlePatientRepository implements IPatientRepository {
 
   async findById(id: string, site?: PatientSite): Promise<PatientBasicInfo | null> {
     try {
-      const rows = await this.db
-        .select({
-          id: users.id,
-          patientCode: users.patientCode,
-          preferredLanguage: users.preferredLanguage,
-          site: users.patientSite,
-        })
-        .from(users)
-        .where(
-          site
-            ? and(eq(users.id, id), eq(users.role, 'PATIENT'), eq(users.patientSite, site))
-            : and(eq(users.id, id), eq(users.role, 'PATIENT')),
-        )
-        .limit(1);
+      const rows = await withTransientDatabaseRetry(
+        'load patient by id',
+        () => this.db
+          .select({
+            id: users.id,
+            patientCode: users.patientCode,
+            preferredLanguage: users.preferredLanguage,
+            site: users.patientSite,
+          })
+          .from(users)
+          .where(
+            site
+              ? and(eq(users.id, id), eq(users.role, 'PATIENT'), eq(users.patientSite, site))
+              : and(eq(users.id, id), eq(users.role, 'PATIENT')),
+          )
+          .limit(1),
+      );
 
       if (rows.length === 0) return null;
       const row = rows[0]!;
@@ -80,15 +84,18 @@ export class DrizzlePatientRepository implements IPatientRepository {
         throw err;
       }
       if (site && site !== 'china') return null;
-      const rows = await this.db
-        .select({
-          id: users.id,
-          patientCode: users.patientCode,
-          preferredLanguage: users.preferredLanguage,
-        })
-        .from(users)
-        .where(and(eq(users.id, id), eq(users.role, 'PATIENT')))
-        .limit(1);
+      const rows = await withTransientDatabaseRetry(
+        'load patient by id (legacy schema fallback)',
+        () => this.db
+          .select({
+            id: users.id,
+            patientCode: users.patientCode,
+            preferredLanguage: users.preferredLanguage,
+          })
+          .from(users)
+          .where(and(eq(users.id, id), eq(users.role, 'PATIENT')))
+          .limit(1),
+      );
 
       if (rows.length === 0) return null;
       const row = rows[0]!;

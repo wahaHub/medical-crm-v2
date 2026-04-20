@@ -2,6 +2,7 @@ import React from 'react';
 // @ts-expect-error hospital tests do not include react-dom type declarations
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/errors';
 
 const mockApiClient = vi.fn();
 const mockApiFetch = vi.fn();
@@ -9,6 +10,7 @@ const mockLoadMessages = vi.fn(async () => ({ hospital: { portal: { messages: { 
 
 vi.mock('@/lib/api-client', () => ({
   apiClient: mockApiClient,
+  isUnauthorizedApiError: (error: unknown) => error instanceof ApiError && error.status === 401,
 }));
 
 vi.mock('@/lib/api-fetch', () => ({

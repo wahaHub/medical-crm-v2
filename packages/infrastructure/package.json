@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./database": "./database/crm-client.ts",
+    "./database/retry": "./database/transient-db-retry.ts",
     "./database/schema": "./database/schema/index.ts",
     "./supabase-main": "./supabase-main/client.ts",
     "./supabase-main/types": "./supabase-main/types.ts",

@@ -4,6 +4,7 @@ import { Case, CaseNumber } from '@medical-crm/domain';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
 import { cases } from '../schema/index.js';
+import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleCaseRepository implements ICaseRepository {
   constructor(private readonly db: CrmDb) {}
@@ -13,11 +14,15 @@ export class DrizzleCaseRepository implements ICaseRepository {
   }
 
   async findById(id: string, tx?: unknown): Promise<Case | null> {
-    const rows = await this.conn(tx)
-      .select()
-      .from(cases)
-      .where(eq(cases.id, id))
-      .limit(1);
+    const rows = await withTransientDatabaseRetry(
+      'load case by id',
+      () => this.conn(tx)
+        .select()
+        .from(cases)
+        .where(eq(cases.id, id))
+        .limit(1),
+      { retries: 2, retryDelayMs: 150 },
+    );
 
     if (rows.length === 0) return null;
     return this.rowToEntity(rows[0]!);
@@ -69,19 +74,22 @@ export class DrizzleCaseRepository implements ICaseRepository {
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [rows, countResult] = await Promise.all([
-      this.db
-        .select()
-        .from(cases)
-        .where(where)
-        .orderBy(sql`${cases.createdAt} DESC`)
-        .limit(limit)
-        .offset((page - 1) * limit),
-      this.db
-        .select({ total: count() })
-        .from(cases)
-        .where(where),
-    ]);
+    const [rows, countResult] = await withTransientDatabaseRetry(
+      'list cases',
+      () => Promise.all([
+        this.db
+          .select()
+          .from(cases)
+          .where(where)
+          .orderBy(sql`${cases.createdAt} DESC`)
+          .limit(limit)
+          .offset((page - 1) * limit),
+        this.db
+          .select({ total: count() })
+          .from(cases)
+          .where(where),
+      ]),
+    );
 
     const total = Number(countResult[0]?.total ?? 0);
     const totalPages = Math.ceil(total / limit);
@@ -171,12 +179,15 @@ export class DrizzleCaseRepository implements ICaseRepository {
     const prefix = `CASE-${year}-%`;
 
     // Extract numeric suffix and MAX on integer to avoid lexicographic string comparison issues
-    const result = await this.db
-      .select({
-        maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(${cases.caseNumber}, '-', 3) AS INTEGER)), 0)`,
-      })
-      .from(cases)
-      .where(ilike(cases.caseNumber, prefix));
+    const result = await withTransientDatabaseRetry(
+      'compute next case number',
+      () => this.db
+        .select({
+          maxSeq: sql<number>`COALESCE(MAX(CAST(SPLIT_PART(${cases.caseNumber}, '-', 3) AS INTEGER)), 0)`,
+        })
+        .from(cases)
+        .where(ilike(cases.caseNumber, prefix)),
+    );
 
     const nextSeq = (result[0]?.maxSeq ?? 0) + 1;
     return CaseNumber.generate(year, nextSeq);
@@ -187,18 +198,21 @@ export class DrizzleCaseRepository implements ICaseRepository {
     if (filters.hospitalId) conditions.push(eq(cases.assignedHospitalId, filters.hospitalId));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const result = await this.db
-      .select({
-        total: count(),
-        unassigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.assignmentStatus} = 'UNASSIGNED')`,
-        assigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.assignmentStatus} = 'ASSIGNED')`,
-        inTreatment: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'IN_TREATMENT')`,
-        postTreatment: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'POST_TREATMENT')`,
-        completed: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'COMPLETED')`,
-        followUp: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'FOLLOW_UP')`,
-      })
-      .from(cases)
-      .where(where);
+    const result = await withTransientDatabaseRetry(
+      'load case stats',
+      () => this.db
+        .select({
+          total: count(),
+          unassigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.assignmentStatus} = 'UNASSIGNED')`,
+          assigned: sql<number>`COUNT(*) FILTER (WHERE ${cases.assignmentStatus} = 'ASSIGNED')`,
+          inTreatment: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'IN_TREATMENT')`,
+          postTreatment: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'POST_TREATMENT')`,
+          completed: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'COMPLETED')`,
+          followUp: sql<number>`COUNT(*) FILTER (WHERE ${cases.treatmentStage} = 'FOLLOW_UP')`,
+        })
+        .from(cases)
+        .where(where),
+    );
 
     const r = result[0]!;
     return {
@@ -213,11 +227,14 @@ export class DrizzleCaseRepository implements ICaseRepository {
   }
 
   async findByPatientId(patientId: string): Promise<Case[]> {
-    const rows = await this.db
-      .select()
-      .from(cases)
-      .where(eq(cases.patientId, patientId))
-      .orderBy(sql`${cases.createdAt} DESC`);
+    const rows = await withTransientDatabaseRetry(
+      'load cases by patient id',
+      () => this.db
+        .select()
+        .from(cases)
+        .where(eq(cases.patientId, patientId))
+        .orderBy(sql`${cases.createdAt} DESC`),
+    );
 
     return rows.map((r) => this.rowToEntity(r));
   }

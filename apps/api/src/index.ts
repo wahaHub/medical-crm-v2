@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { DomainError, mapErrorToStatus } from '@medical-crm/utils';
 import { applySecurityMiddleware, perUserRateLimiter } from './middleware/security.js';
 import { authMiddleware } from '@medical-crm/infrastructure/auth';
+import { isTransientDatabaseError } from '@medical-crm/infrastructure/database/retry';
 import routes from './routes/index.js';
 import internalRoutes from './routes/internal.routes.js';
 import { registerHospitalUserSchema } from '@medical-crm/validation';
@@ -65,6 +66,8 @@ app.use('/api/v2/*', authMiddleware, perUserRateLimiter);
 // Mount authenticated API routes
 app.route('/', routes);
 
+app.notFound((c) => c.json({ error: 'Not found' }, 404));
+
 // Global error handler
 app.onError((err, c) => {
   if (err instanceof HTTPException) {
@@ -82,6 +85,10 @@ app.onError((err, c) => {
       code: 'VALIDATION_FAILED',
       details: (err as Error & { errors: unknown[] }).errors,
     }, 400);
+  }
+  if (isTransientDatabaseError(err)) {
+    console.error('Transient database error:', err);
+    return c.json({ error: 'Service temporarily unavailable' }, 503);
   }
   console.error('Unhandled error:', err);
   return c.json({ error: 'Internal server error' }, 500);

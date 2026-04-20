@@ -11,6 +11,18 @@ interface UserProfileResponse {
   preferredLanguage?: string;
 }
 
+function isRedirectFailure(error: unknown): boolean {
+  return (
+    error instanceof Error
+    && (
+      error.message.startsWith('REDIRECT:')
+      || ('digest' in error
+        && typeof (error as { digest?: unknown }).digest === 'string'
+        && (error as { digest: string }).digest.startsWith('NEXT_REDIRECT'))
+    )
+  );
+}
+
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
 
@@ -24,12 +36,19 @@ export default async function PortalLayout({ children }: { children: React.React
   }
 
   const profile = await apiFetch('/api/v2/users/me')
-    .then(async (profileRes) => (
-      profileRes.ok
+    .then(async (profileRes) => {
+      if (profileRes.status === 401) {
+        redirect('/auth/login');
+      }
+
+      return profileRes.ok
         ? await profileRes.json() as UserProfileResponse
-        : null
-    ))
+        : null;
+    })
     .catch((error) => {
+      if (isRedirectFailure(error)) {
+        throw error;
+      }
       console.error('[HospitalPortalLayout] Failed to load user profile:', error);
       return null;
     });

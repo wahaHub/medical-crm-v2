@@ -187,16 +187,39 @@ function sanitizeSuggestion(
     };
   }
 
+  const gatewaySuggestion = buildProposal({
+    intent: record.intent,
+    suggestedStage: record.suggestedStage,
+    dispatchAgent: isDispatchAgent(record.dispatchAgent) ? record.dispatchAgent : undefined,
+    reason: reason ?? fallback.reason,
+  }, input);
+  const correctedSuggestion = applyDeterministicPostGatewayCorrection(gatewaySuggestion, fallback);
+  const fallbackUsed = correctedSuggestion !== gatewaySuggestion;
+
   return {
-    suggestion: buildProposal({
-      intent: record.intent,
-      suggestedStage: record.suggestedStage,
-      dispatchAgent: isDispatchAgent(record.dispatchAgent) ? record.dispatchAgent : undefined,
-      reason: reason ?? fallback.reason,
-    }, input),
-    fallbackUsed: false,
+    suggestion: correctedSuggestion,
+    fallbackUsed,
     schemaValidationFailed: false,
   };
+}
+
+function applyDeterministicPostGatewayCorrection(
+  suggestion: SupervisorSuggestion,
+  fallback: SupervisorSuggestion,
+): SupervisorSuggestion {
+  return shouldRepairStaleMedicalInputCollection(suggestion, fallback)
+    ? fallback
+    : suggestion;
+}
+
+function shouldRepairStaleMedicalInputCollection(
+  suggestion: SupervisorSuggestion,
+  fallback: SupervisorSuggestion,
+): boolean {
+  return suggestion.intent === 'progression'
+    && suggestion.suggestedStage === 'COLLECT_MEDICAL_INPUTS'
+    && fallback.intent === 'progression'
+    && fallback.suggestedStage === 'ONLINE_CONSULT';
 }
 
 function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggestionSeed {

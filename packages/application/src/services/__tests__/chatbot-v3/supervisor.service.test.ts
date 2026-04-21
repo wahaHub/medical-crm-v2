@@ -352,6 +352,139 @@ describe('SupervisorService', () => {
     });
   });
 
+  it('repairs stale gateway collect-medical-inputs suggestions into online consult after documents exist', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => ({
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'keep asking for uploads',
+      }),
+    });
+
+    await expect(supervisorWithGateway.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [{ path: '/docs/report.pdf', name: 'report.pdf' }],
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'recommendation was selected and process was explained',
+      },
+      facts: {
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    })).resolves.toEqual({
+      intent: 'progression',
+      suggestedStage: 'ONLINE_CONSULT',
+      dispatchAgent: 'ConsultAgent',
+      reason: 'recommendation has been selected',
+      task: {
+        goal: 'Advance the online consultation workflow for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'recommendation.selected': true,
+        },
+      },
+    });
+  });
+
+  it('still lets the gateway control other schema-valid cases outside the repaired doc-upload stall', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => ({
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        reason: 'user is asking about the process',
+      }),
+    });
+
+    await expect(supervisorWithGateway.suggest(minimalInput)).resolves.toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'user is asking about the process',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
+  it('does not repair collect-medical-inputs when no supporting documents exist yet', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => ({
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'keep asking for uploads',
+      }),
+    });
+
+    await expect(supervisorWithGateway.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'recommendation was selected and process was explained',
+      },
+      facts: {
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    })).resolves.toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'keep asking for uploads',
+      task: {
+        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        latestUserMessage: 'Please recommend hospitals for me.',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'recommendation.selected': true,
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
   it('surfaces the post-recommendation structured state to the gateway prompt input', async () => {
     let capturedInput: SupervisorGatewayInput | undefined;
     const supervisorWithGateway = new SupervisorService({

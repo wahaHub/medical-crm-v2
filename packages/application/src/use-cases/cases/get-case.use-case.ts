@@ -1,14 +1,16 @@
-import type { ICaseRepository, IUserRepository, IHospitalRepository } from '@medical-crm/domain';
-import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
+import type { ICaseRepository, IUserRepository, IHospitalRepository, ICHCRepository } from '@medical-crm/domain';
+import { NotFoundError } from '@medical-crm/utils';
 import type { CaseDTO } from '../../dtos/case.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseDTO } from '../../mappers/case.mapper.js';
+import { assertHospitalCaseAccess } from './hospital-case-access.js';
 
 export class GetCaseUseCase {
   constructor(
     private readonly caseRepo: ICaseRepository,
     private readonly userRepo?: IUserRepository,
     private readonly hospitalRepo?: IHospitalRepository,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<CaseDTO> {
@@ -16,8 +18,8 @@ export class GetCaseUseCase {
     if (!entity) {
       throw new NotFoundError(`Case ${caseId} not found`);
     }
-    if (actor.role === 'HOSPITAL' && entity.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Access denied to this case');
+    if (actor.role === 'HOSPITAL') {
+      await assertHospitalCaseAccess(entity, actor.hospitalId, this.chcRepo);
     }
 
     // Look up hospital name
@@ -30,12 +32,20 @@ export class GetCaseUseCase {
     }
 
     // Look up patient contact info
-    let patientContact: { email?: string | null; phone?: string | null } | undefined;
+    let patientContact: {
+      email?: string | null;
+      phone?: string | null;
+      patientSite?: 'beauty' | 'china' | null;
+    } | undefined;
     if (this.userRepo) {
       try {
         const patient = await this.userRepo.findById(entity.patientId);
         if (patient) {
-          patientContact = { email: patient.email, phone: patient.phone };
+          patientContact = {
+            email: patient.email,
+            phone: patient.phone,
+            patientSite: patient.patientSite ?? null,
+          };
         }
       } catch { /* ignore */ }
     }

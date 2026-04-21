@@ -1256,9 +1256,10 @@
       "tryAgain": "Erneut versuchen",
       "description": "The page could not be loaded. Please try again."
     },
-    "loading": {
-      "label": "Wird geladen"
-    },
+  "loading": {
+    "caseDetail": "Falldetails werden geladen",
+    "label": "Wird geladen"
+  },
     "login": {
       "title": "Medical CRM",
       "subtitle": "Einheitliche Portalanmeldung",
@@ -2097,9 +2098,16 @@
           "unnamed": "Unbenannt"
         },
         "messages": {
+          "attachmentFallback": "Anhang",
           "empty": "No message records",
           "inputPlaceholder": "Enter message content...",
-          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)"
+          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+          "sections": {
+            "adminPatient": "Admin / KI und Patient",
+            "hospitalPatient": "Krankenhaus und Patient"
+          },
+          "sectionCount": "{count} Nachrichten",
+          "sectionEmpty": "In diesem Abschnitt gibt es noch keine Nachrichten"
         },
         "diagnosis": {
           "addButton": "Add Diagnosis",

@@ -3,8 +3,8 @@ import { AddHospitalToCaseUseCase } from '../src/use-cases/quotes/add-hospital-t
 import { RemoveHospitalFromCaseUseCase } from '../src/use-cases/quotes/remove-hospital-from-case.use-case.js';
 import { SendReminderUseCase } from '../src/use-cases/quotes/send-reminder.use-case.js';
 import { ListCaseHospitalContactsUseCase } from '../src/use-cases/quotes/list-case-hospital-contacts.use-case.js';
-import type { ICHCRepository } from '@medical-crm/domain';
-import { CaseHospitalContact } from '@medical-crm/domain';
+import type { ICHCRepository, ICaseRepository, IHospitalRepository, IUserRepository } from '@medical-crm/domain';
+import { CaseHospitalContact, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 const adminActor: Actor = {
@@ -55,14 +55,92 @@ function createMockRepo(): ICHCRepository {
   };
 }
 
+function createMockCaseRepo(): ICaseRepository {
+  return {
+    findById: vi.fn().mockResolvedValue(new Case({
+      id: 'case-1',
+      caseNumber: new CaseNumber('CASE-2026-0001'),
+      patientId: 'patient-1',
+      patientName: 'Jane Doe',
+      patientCountry: 'CN',
+      patientLanguage: 'zh',
+      assignedHospitalId: null,
+      primaryDiagnosis: null,
+      diagnosisCode: null,
+      symptoms: null,
+      medicalHistory: null,
+      aiSummary: null,
+      aiSummaryLanguage: null,
+      riskLevel: null,
+      status: 'ACTIVE',
+      stage: 'PENDING_ASSIGNMENT',
+      assignedAt: null,
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+      assignmentStatus: 'UNASSIGNED',
+      treatmentStage: null,
+      conditionSummary: null,
+      structuredData: null,
+      riskFlags: null,
+      priority: null,
+      lastEventAt: null,
+      aiSummaryStatus: 'NONE',
+      questionCollectorTemplateId: null,
+    })),
+    findMany: vi.fn(),
+    findByPatientId: vi.fn(),
+    save: vi.fn(),
+    nextCaseNumber: vi.fn(),
+    countByFilters: vi.fn(),
+  };
+}
+
+function createMockHospitalRepo(): IHospitalRepository {
+  return {
+    findById: vi.fn().mockResolvedValue({
+      id: 'hosp-1',
+      name: 'Cosmetic Alpha',
+      status: 'ACTIVE',
+      type: 'COSMETIC',
+    }),
+    findMatchingHospitals: vi.fn(),
+  };
+}
+
+function createMockUserRepo(): IUserRepository {
+  return {
+    create: vi.fn(),
+    findPreferredLanguage: vi.fn(),
+    findById: vi.fn().mockResolvedValue({
+      id: 'patient-1',
+      email: 'patient@example.com',
+      name: 'Jane Doe',
+      role: 'PATIENT',
+      phone: null,
+      patientSite: 'beauty',
+      preferredLanguage: 'zh',
+      hospitalId: null,
+      notificationSettings: null,
+    }),
+    update: vi.fn(),
+    listAdminEmails: vi.fn(),
+  };
+}
+
 // --------------- AddHospitalToCaseUseCase ---------------
 describe('AddHospitalToCaseUseCase', () => {
   let useCase: AddHospitalToCaseUseCase;
   let mockRepo: ICHCRepository;
+  let mockCaseRepo: ICaseRepository;
+  let mockHospitalRepo: IHospitalRepository;
+  let mockUserRepo: IUserRepository;
 
   beforeEach(() => {
     mockRepo = createMockRepo();
-    useCase = new AddHospitalToCaseUseCase(mockRepo);
+    mockCaseRepo = createMockCaseRepo();
+    mockHospitalRepo = createMockHospitalRepo();
+    mockUserRepo = createMockUserRepo();
+    useCase = new AddHospitalToCaseUseCase(mockRepo, mockCaseRepo, mockHospitalRepo, mockUserRepo);
   });
 
   it('creates a CHC with DISTRIBUTED status for ADMIN', async () => {
@@ -89,6 +167,66 @@ describe('AddHospitalToCaseUseCase', () => {
     await expect(
       useCase.execute('case-1', 'hosp-1', adminActor),
     ).rejects.toThrow('Hospital already added to this case');
+  });
+
+  it('throws when hospital type does not match the patient site derived hospital type', async () => {
+    (mockHospitalRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'hosp-1',
+      name: 'Regular Beta',
+      status: 'ACTIVE',
+      type: 'REGULAR',
+    });
+
+    await expect(
+      useCase.execute('case-1', 'hosp-1', adminActor),
+    ).rejects.toThrow('Hospital type mismatch');
+  });
+
+  it('throws when hospital is inactive', async () => {
+    (mockHospitalRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'hosp-1',
+      name: 'Cosmetic Alpha',
+      status: 'INACTIVE',
+      type: 'COSMETIC',
+    });
+
+    await expect(
+      useCase.execute('case-1', 'hosp-1', adminActor),
+    ).rejects.toThrow('Only active hospitals can be added to cases');
+  });
+
+  it('throws when patient site is missing so hospital type cannot be determined', async () => {
+    (mockUserRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'patient-1',
+      email: 'patient@example.com',
+      name: 'Jane Doe',
+      role: 'PATIENT',
+      phone: null,
+      patientSite: null,
+      preferredLanguage: 'zh',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+
+    await expect(
+      useCase.execute('case-1', 'hosp-1', adminActor),
+    ).rejects.toThrow('Case patient site is missing');
+  });
+
+  it('restores a previously removed hospital contact instead of creating a duplicate row', async () => {
+    const removed = makeMockCHC({ removedAt: new Date('2026-02-01'), removedReason: 'Old removal', subStatus: 'REMOVED' });
+    (mockRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue(removed);
+
+    const result = await useCase.execute('case-1', 'hosp-1', adminActor);
+
+    expect(mockRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'chc-1',
+      hospitalId: 'hosp-1',
+      removedAt: null,
+      removedReason: null,
+      subStatus: 'DISTRIBUTED',
+    }));
+    expect(result.id).toBe('chc-1');
   });
 });
 

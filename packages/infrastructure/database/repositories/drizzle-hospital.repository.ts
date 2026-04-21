@@ -12,6 +12,7 @@ export class DrizzleHospitalRepository implements IHospitalRepository {
         id: hospitals.id,
         name: hospitals.name,
         status: hospitals.status,
+        type: hospitals.type,
       })
       .from(hospitals)
       .where(eq(hospitals.id, id))
@@ -23,6 +24,7 @@ export class DrizzleHospitalRepository implements IHospitalRepository {
       id: row.id,
       name: row.name,
       status: row.status,
+      type: row.type,
     };
   }
 

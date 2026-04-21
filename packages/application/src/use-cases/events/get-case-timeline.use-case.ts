@@ -1,15 +1,17 @@
-import type { ICaseEventRepository, ICaseRepository, IJourneyRepository } from '@medical-crm/domain';
+import type { ICaseEventRepository, ICaseRepository, IJourneyRepository, ICHCRepository } from '@medical-crm/domain';
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { TimelineItemDTO } from '../../dtos/case-event.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { eventToTimelineItem } from '../../mappers/case-event.mapper.js';
 import { milestoneToTimelineItem } from '../../mappers/journey.mapper.js';
+import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export class GetCaseTimelineUseCase {
   constructor(
     private readonly eventRepo: ICaseEventRepository,
     private readonly journeyRepo: IJourneyRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<TimelineItemDTO[]> {
@@ -17,8 +19,8 @@ export class GetCaseTimelineUseCase {
     if (!caseEntity) {
       throw new NotFoundError(`Case ${caseId} not found`);
     }
-    if (actor.role === 'HOSPITAL' && caseEntity.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Access denied to this case');
+    if (actor.role === 'HOSPITAL') {
+      await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo);
     }
     if (actor.role === 'PATIENT' && caseEntity.patientId !== actor.userId) {
       throw new ForbiddenError('Access denied to this case');

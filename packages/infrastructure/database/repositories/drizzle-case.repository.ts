@@ -1,13 +1,30 @@
 import { eq, ilike, or, and, sql, count } from 'drizzle-orm';
-import type { ICaseRepository, CaseListQuery, CaseCountFilters, CaseStats } from '@medical-crm/domain';
+import { HOSPITAL_CASE_READ_CHC_STATUSES, type ICaseRepository, type CaseListQuery, type CaseCountFilters, type CaseStats } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
-import { cases } from '../schema/index.js';
+import { cases, caseHospitalContacts } from '../schema/index.js';
 import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 
 export class DrizzleCaseRepository implements ICaseRepository {
   constructor(private readonly db: CrmDb) {}
+
+  private buildHospitalAccessCondition(hospitalId: string) {
+    return or(
+      eq(cases.assignedHospitalId, hospitalId),
+      sql`exists (
+        select 1
+        from ${caseHospitalContacts}
+        where ${caseHospitalContacts.caseId} = ${cases.id}
+          and ${caseHospitalContacts.hospitalId} = ${hospitalId}
+          and ${caseHospitalContacts.subStatus} in (${sql.join(
+            HOSPITAL_CASE_READ_CHC_STATUSES.map((status) => sql`${status}`),
+            sql`, `,
+          )})
+          and ${caseHospitalContacts.removedAt} is null
+      )`,
+    );
+  }
 
   private conn(tx?: unknown): CrmDb {
     return tx ? (tx as CrmDb) : this.db;
@@ -34,7 +51,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
     const effectiveHospitalId = hospitalId ?? query.hospitalId;
 
     const conditions = [];
-    if (effectiveHospitalId) conditions.push(eq(cases.assignedHospitalId, effectiveHospitalId));
+    if (effectiveHospitalId) conditions.push(this.buildHospitalAccessCondition(effectiveHospitalId));
 
     // New model filters take priority; compat aliases map old → new columns
     if (query.assignmentStatus) {
@@ -195,7 +212,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
 
   async countByFilters(filters: CaseCountFilters): Promise<CaseStats> {
     const conditions = [];
-    if (filters.hospitalId) conditions.push(eq(cases.assignedHospitalId, filters.hospitalId));
+    if (filters.hospitalId) conditions.push(this.buildHospitalAccessCondition(filters.hospitalId));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const result = await withTransientDatabaseRetry(

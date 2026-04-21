@@ -1,15 +1,23 @@
 'use client';
 
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, StatusBadge, Button, DataTable, EmptyState, useMediaUpload, type Column } from '@medical-crm/ui';
 import { FileText, Upload, Trash2, Eye, Download, Paperclip, X, Building2, Send } from 'lucide-react';
 import { useCaseDocuments, useCaseHospitalContacts, useCaseProgress } from '@/queries/use-cases';
 import { addCaseNote, initCaseDocumentUpload, deleteDocument } from '@/actions/case-actions';
-import { requestQuotesForHospitalContacts } from '@/actions/quote-actions';
+import { addHospitalToCase, removeHospitalContact, requestQuotesForHospitalContacts, resetCaseAssignment } from '@/actions/quote-actions';
+import { useHospitals } from '@/queries/use-hospitals';
 import { useHospitalNameMap } from '@/queries/use-hospital-names';
 import { deriveSelectedHospitals, type HospitalContactLike } from '@/lib/case-selected-hospitals';
-import type { CaseProgressItem, CaseSummary } from '@/lib/api-types';
+import {
+  deriveHospitalAssignmentRows,
+  diffHospitalSelections,
+  filterHospitalAssignmentRows,
+  persistHospitalAssignmentSelectionChanges,
+  type HospitalAssignmentFilter,
+} from '@/lib/case-hospital-assignment';
+import type { CaseProgressItem, CaseSummary, HospitalSummary } from '@/lib/api-types';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -42,9 +50,20 @@ function InfoRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function resolveCaseHospitalType(caseData: CaseSummary): 'COSMETIC' | 'REGULAR' | null {
+  if (caseData.hospitalType === 'COSMETIC' || caseData.hospitalType === 'REGULAR') {
+    return caseData.hospitalType;
+  }
+  if (caseData.patientSite === 'beauty') return 'COSMETIC';
+  if (caseData.patientSite === 'china') return 'REGULAR';
+  return null;
+}
+
 // ── Patient Info Card ────────────────────────────────────────────────
 
 function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
+  const caseHospitalType = resolveCaseHospitalType(caseData);
+
   return (
     <Card>
       <CardHeader>
@@ -62,6 +81,8 @@ function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
         <InfoRow label="Disease" value={caseData.disease} />
         <InfoRow label="Treatment Timing" value={caseData.treatmentTime} />
         <InfoRow label="Language" value={caseData.patientLanguage} />
+        <InfoRow label="Patient Site" value={caseData.patientSite ?? undefined} />
+        <InfoRow label="Hospital Type" value={caseHospitalType ?? undefined} />
         <InfoRow label="Primary Diagnosis" value={caseData.primaryDiagnosis} />
         <InfoRow label="Risk Level" value={caseData.riskLevel} />
         <InfoRow label="Case Number" value={caseData.caseNumber} />
@@ -72,23 +93,130 @@ function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
 }
 
 function AssignedHospitalCard({ caseData }: { caseData: CaseSummary }) {
-  if (!caseData.assignedHospitalId) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Assigned Hospital</CardTitle>
-          <StatusBadge status="UNASSIGNED" />
-        </CardHeader>
-        <p className="text-sm text-slate-400">No hospital assigned to this case yet.</p>
-      </Card>
-    );
+  const queryClient = useQueryClient();
+  const caseHospitalType = resolveCaseHospitalType(caseData);
+  const canFilterNewHospitalsByType = Boolean(caseHospitalType);
+  const { data: rawContacts, refetch: refetchContacts } = useCaseHospitalContacts(caseData.id);
+  const existingContacts = toHospitalContacts(rawContacts);
+  const { data: hospitalsResponse, isPending: isLoadingHospitals } = useHospitals({
+    page: '1',
+    limit: '100',
+    status: 'ACTIVE',
+    ...(caseHospitalType ? { type: caseHospitalType } : {}),
+  });
+  const hospitalRows = useMemo(
+    () => deriveHospitalAssignmentRows({
+      assignedHospitalId: caseData.assignedHospitalId,
+      assignedHospitalName: caseData.hospitalName,
+      hospitals: canFilterNewHospitalsByType
+        ? ((hospitalsResponse?.data ?? []) as HospitalSummary[]).filter((hospital) => hospital.type === caseHospitalType)
+        : [],
+      contacts: existingContacts,
+    }),
+    [canFilterNewHospitalsByType, caseData.assignedHospitalId, caseData.hospitalName, caseHospitalType, existingContacts, hospitalsResponse?.data],
+  );
+  const initialSelectedHospitalIds = useMemo(
+    () => hospitalRows.filter((row) => row.checked).map((row) => row.hospitalId),
+    [hospitalRows],
+  );
+  const [selectedHospitalIds, setSelectedHospitalIds] = useState<string[]>(initialSelectedHospitalIds);
+  const [assignmentFilter, setAssignmentFilter] = useState<HospitalAssignmentFilter>('ALL');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [isSubmitting, startTransition] = useTransition();
+  const selectedHospitalIdSet = useMemo(
+    () => new Set(selectedHospitalIds),
+    [selectedHospitalIds],
+  );
+  const selectionDiff = useMemo(
+    () => diffHospitalSelections({
+      initialSelectedHospitalIds,
+      nextSelectedHospitalIds: selectedHospitalIds,
+    }),
+    [initialSelectedHospitalIds, selectedHospitalIds],
+  );
+  const filteredHospitalRows = useMemo(
+    () => filterHospitalAssignmentRows(hospitalRows, assignmentFilter),
+    [assignmentFilter, hospitalRows],
+  );
+  const hasSelectionChanges = selectionDiff.hospitalIdsToAdd.length > 0 || selectionDiff.hospitalIdsToRemove.length > 0;
+  const canCleanupExistingAssignments = hospitalRows.some((row) => row.checked);
+  const hasUnsupportedAdditionsWithoutType = !caseHospitalType && selectionDiff.hospitalIdsToAdd.length > 0;
+  const canSubmitSelectionChanges = (
+    (canFilterNewHospitalsByType || canCleanupExistingAssignments)
+    && !hasUnsupportedAdditionsWithoutType
+  );
+
+  useEffect(() => {
+    setSelectedHospitalIds(initialSelectedHospitalIds);
+  }, [initialSelectedHospitalIds]);
+
+  function toggleHospitalSelection(hospitalId: string) {
+    setSelectedHospitalIds((current) => (
+      current.includes(hospitalId)
+        ? current.filter((id) => id !== hospitalId)
+        : [...current, hospitalId]
+    ));
+  }
+
+  function handleSubmit() {
+    if (!canSubmitSelectionChanges) {
+      setSubmitError(
+        caseHospitalType
+          ? 'Hospital assignment changes are unavailable right now.'
+          : 'Patient site is missing, so you can only unassign hospitals already on this case.',
+      );
+      setSubmitSuccess(null);
+      return;
+    }
+
+    if (!hasSelectionChanges) {
+      setSubmitError('No hospital assignment changes to save');
+      setSubmitSuccess(null);
+      return;
+    }
+
+    setSubmitError(null);
+    setSubmitSuccess(null);
+    startTransition(async () => {
+      try {
+        const {
+          addedCount,
+          removedCount,
+          assignmentReset,
+          failures,
+        } = await persistHospitalAssignmentSelectionChanges({
+          caseId: caseData.id,
+          assignedHospitalId: caseData.assignedHospitalId,
+          assignmentStatus: caseData.assignmentStatus,
+          hospitalRows,
+          selectionDiff,
+          addHospitalToCase,
+          removeHospitalContact,
+          resetCaseAssignment,
+        });
+
+        const successMessages = [
+          addedCount > 0 ? `Assigned ${addedCount} hospital${addedCount === 1 ? '' : 's'}` : null,
+          removedCount > 0 ? `Unassigned ${removedCount} hospital${removedCount === 1 ? '' : 's'}` : null,
+          assignmentReset ? 'reset the primary assignment' : null,
+        ].filter(Boolean);
+
+        setSubmitSuccess(successMessages.length > 0 ? `${successMessages.join(', ')}.` : null);
+        setSubmitError(failures.length > 0 ? failures.join(' ') : null);
+      } finally {
+        await refetchContacts();
+        await queryClient.invalidateQueries({ queryKey: ['cases', caseData.id, 'hospital-contacts'] });
+        await queryClient.invalidateQueries({ queryKey: ['cases', caseData.id] });
+      }
+    });
   }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Assigned Hospital</CardTitle>
-        <StatusBadge status="ASSIGNED" />
+        <StatusBadge status={caseData.assignedHospitalId ? 'ASSIGNED' : 'UNASSIGNED'} />
       </CardHeader>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
         <InfoRow label="Hospital Name" value={caseData.hospitalName} />
@@ -96,6 +224,87 @@ function AssignedHospitalCard({ caseData }: { caseData: CaseSummary }) {
         <InfoRow label="Assignment Status" value={caseData.assignmentStatus} />
         <InfoRow label="Treatment Stage" value={caseData.treatmentStage} />
       </dl>
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-medium text-slate-700">
+          Manage {caseHospitalType ?? 'matching'} hospitals for this case
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          Check hospitals to keep them on this case. Uncheck hospitals to unassign them, then save all changes at once.
+        </p>
+        {!caseHospitalType ? (
+          <p className="mt-2 text-xs text-amber-700">
+            Patient site is missing on this case, so only cleanup unassignments are available until hospital type can be determined.
+          </p>
+        ) : null}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {(['ALL', 'DISTRIBUTED', 'AVAILABLE'] as const).map((filter) => {
+            const isActive = assignmentFilter === filter;
+            const count = filterHospitalAssignmentRows(hospitalRows, filter).length;
+            const label = filter === 'ALL' ? 'All' : filter === 'DISTRIBUTED' ? 'Distributed' : 'Available';
+            return (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setAssignmentFilter(filter)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  isActive
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+          {filteredHospitalRows.map((row) => (
+            <label
+              key={row.hospitalId}
+              className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedHospitalIdSet.has(row.hospitalId)}
+                  onChange={() => toggleHospitalSelection(row.hospitalId)}
+                  disabled={(!caseHospitalType && !selectedHospitalIdSet.has(row.hospitalId)) || isSubmitting || isLoadingHospitals}
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-slate-800">{row.hospitalName}</div>
+                  <div className="truncate text-xs text-slate-500">{row.hospitalId}</div>
+                </div>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                {row.statusLabel}
+              </span>
+            </label>
+          ))}
+        </div>
+        {filteredHospitalRows.length === 0 ? (
+          <p className="mt-2 text-xs text-slate-500">
+            {canFilterNewHospitalsByType
+              ? assignmentFilter === 'ALL'
+                ? 'No matching hospitals are currently available.'
+                : `No ${assignmentFilter === 'DISTRIBUTED' ? 'distributed' : 'available'} hospitals match this filter.`
+              : 'No hospital options are available until hospital type is known.'}
+          </p>
+        ) : null}
+        {submitError ? <p className="mt-3 text-sm text-rose-600">{submitError}</p> : null}
+        {submitSuccess ? <p className="mt-3 text-sm text-emerald-700">{submitSuccess}</p> : null}
+        <div className="mt-4 flex justify-end">
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={!canSubmitSelectionChanges || isSubmitting || isLoadingHospitals || !hasSelectionChanges}
+          >
+            {isSubmitting ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
+      </div>
     </Card>
   );
 }

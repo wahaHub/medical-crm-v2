@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GetCaseUseCase } from '../src/use-cases/cases/get-case.use-case.js';
-import type { ICaseRepository, IUserRepository, IHospitalRepository } from '@medical-crm/domain';
+import type { ICaseRepository, IUserRepository, IHospitalRepository, ICHCRepository } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -9,6 +9,7 @@ describe('GetCaseUseCase', () => {
   let mockCaseRepo: ICaseRepository;
   let mockUserRepo: IUserRepository;
   let mockHospitalRepo: IHospitalRepository;
+  let mockChcRepo: ICHCRepository;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -80,6 +81,7 @@ describe('GetCaseUseCase', () => {
         id: 'patient-1',
         email: 'jane@example.com',
         phone: '+8613800000000',
+        patientSite: 'beauty',
       }),
       listAdminEmails: vi.fn(),
     } as unknown as IUserRepository;
@@ -87,9 +89,19 @@ describe('GetCaseUseCase', () => {
       findById: vi.fn().mockResolvedValue({
         id: 'hosp-1',
         name: 'Beijing Eye Center',
+        status: 'ACTIVE',
+        type: 'COSMETIC',
       }),
     } as unknown as IHospitalRepository;
-    useCase = new GetCaseUseCase(mockCaseRepo, mockUserRepo, mockHospitalRepo);
+    mockChcRepo = {
+      findById: vi.fn(),
+      findByCaseAndHospital: vi.fn().mockResolvedValue(null),
+      findByCaseId: vi.fn(),
+      findByHospitalId: vi.fn(),
+      save: vi.fn(),
+      rejectOthersByCaseExcept: vi.fn(),
+    };
+    useCase = new GetCaseUseCase(mockCaseRepo, mockUserRepo, mockHospitalRepo, mockChcRepo);
   });
 
   it('returns CaseDTO for ADMIN actor', async () => {
@@ -120,6 +132,35 @@ describe('GetCaseUseCase', () => {
     ).rejects.toThrow('Access denied to this case');
   });
 
+  it('allows a hospital actor with an active hospital contact to access the case', async () => {
+    (mockChcRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'chc-1',
+      caseId: 'case-id-1',
+      hospitalId: 'hosp-2',
+      subStatus: 'QUOTED',
+      removedAt: null,
+    });
+
+    const result = await useCase.execute('case-id-1', otherHospitalActor);
+
+    expect(result.id).toBe('case-id-1');
+    expect(mockChcRepo.findByCaseAndHospital).toHaveBeenCalledWith('case-id-1', 'hosp-2');
+  });
+
+  it('rejects hospital access when the hospital contact is no longer portal-visible', async () => {
+    (mockChcRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'chc-1',
+      caseId: 'case-id-1',
+      hospitalId: 'hosp-2',
+      subStatus: 'REJECTED',
+      removedAt: null,
+    });
+
+    await expect(
+      useCase.execute('case-id-1', otherHospitalActor),
+    ).rejects.toThrow('Access denied to this case');
+  });
+
   it('throws NotFoundError when case does not exist', async () => {
     mockCaseRepo.findById = vi.fn().mockResolvedValue(null);
 
@@ -145,5 +186,12 @@ describe('GetCaseUseCase', () => {
     const result = await useCase.execute('case-id-1', adminActor);
     expect(result.createdAt).toBe('2026-01-10T08:00:00.000Z');
     expect(result.updatedAt).toBe('2026-01-15T10:00:00.000Z');
+  });
+
+  it('maps patient site and derived hospital type from the patient profile', async () => {
+    const result = await useCase.execute('case-id-1', adminActor);
+
+    expect(result.patientSite).toBe('beauty');
+    expect(result.hospitalType).toBe('COSMETIC');
   });
 });

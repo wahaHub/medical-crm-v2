@@ -1,8 +1,13 @@
-import type { Case, CaseProgress, Document, CaseStage } from '@medical-crm/domain';
-import type { CaseDTO, HospitalCaseDetailDTO } from '../dtos/case.dto.js';
+import type { Case, CaseProgress, CaseStage } from '@medical-crm/domain';
+import type {
+  CaseDTO,
+  HospitalCaseDetailDTO,
+  HospitalCaseMessageSectionDTO,
+} from '../dtos/case.dto.js';
+import type { DocumentWithUrlDTO } from '../dtos/document.dto.js';
 import { splitProgressByType } from './progress.mapper.js';
-import { toDocumentDTO } from './document.mapper.js';
 import { asRecord } from '../utils/structured-data.js';
+import { deriveHospitalTypeFromPatientSite } from '../utils/hospital-type.js';
 
 const STAGE_DISPLAY_MAP: Record<CaseStage, string> = {
   PENDING_ASSIGNMENT: 'transferred',
@@ -16,10 +21,15 @@ const STAGE_DISPLAY_MAP: Record<CaseStage, string> = {
 export function toCaseDTO(
   entity: Case,
   hospitalName?: string,
-  patientContact?: { email?: string | null; phone?: string | null },
+  patientContact?: {
+    email?: string | null;
+    phone?: string | null;
+    patientSite?: 'beauty' | 'china' | null;
+  },
 ): CaseDTO {
   const entryProfile = getEntryProfile(entity.structuredData ?? null);
   const customHospitalRequest = getCustomHospitalRequest(entity.structuredData ?? null);
+  const patientSite = patientContact?.patientSite ?? null;
 
   return {
     id: entity.id,
@@ -27,6 +37,8 @@ export function toCaseDTO(
     patientName: entity.patientName,
     patientCountry: entity.patientCountry,
     patientLanguage: entity.patientLanguage,
+    patientSite,
+    hospitalType: deriveHospitalTypeFromPatientSite(patientSite),
     patientEmail: patientContact?.email ?? null,
     patientPhone: patientContact?.phone ?? null,
     gender: entryProfile?.gender ?? null,
@@ -108,9 +120,9 @@ function deriveDisplayStatus(entity: Case): string {
 export function toHospitalCaseDetailDTO(
   entity: Case,
   progress: CaseProgress[],
-  documents: Document[],
-  signedUrls: Record<string, string>,
+  documents: DocumentWithUrlDTO[],
   patient: PatientInfo,
+  messageSections: HospitalCaseMessageSectionDTO[] = [],
   totalMessages = 0,
 ): HospitalCaseDetailDTO {
   const { diagnoses, phoneCalls, consultations } = splitProgressByType(progress);
@@ -138,9 +150,8 @@ export function toHospitalCaseDetailDTO(
     diagnoses,
     phoneCalls,
     consultationHistory: consultations,
-    documents: documents.map((d) =>
-      toDocumentDTO(d, signedUrls[d.storageKey] ?? ''),
-    ),
+    documents,
+    messageSections,
     totalMessages,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),

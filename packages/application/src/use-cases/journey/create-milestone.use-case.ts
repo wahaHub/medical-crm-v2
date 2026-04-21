@@ -4,6 +4,7 @@ import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { JourneyMilestoneDTO } from '../../dtos/journey.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toJourneyMilestoneDTO } from '../../mappers/journey.mapper.js';
+import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export interface CreateMilestoneInput {
   eventType: string;
@@ -28,9 +29,7 @@ export class CreateMilestoneUseCase {
     if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
 
     if (actor.role === 'HOSPITAL') {
-      if (actor.hospitalId !== caseEntity.assignedHospitalId) {
-        throw new ForbiddenError('Hospital can only create milestones for assigned cases');
-      }
+      assertAssignedHospitalCaseAccess(caseEntity, actor.hospitalId, 'Hospital can only create milestones for assigned cases');
     }
 
     const milestone = new JourneyMilestone({

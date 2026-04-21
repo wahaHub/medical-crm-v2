@@ -1,5 +1,6 @@
 import type { DocumentWithUrlDTO } from './document.dto.js';
 import type { DiagnosisDTO, PhoneCallDTO, ConsultationHistoryDTO } from './progress.dto.js';
+import type { MessageDTO } from './conversation.dto.js';
 
 export interface CaseDTO {
   id: string;
@@ -7,6 +8,8 @@ export interface CaseDTO {
   patientName: string;
   patientCountry: string | null;
   patientLanguage: string;
+  patientSite: 'beauty' | 'china' | null;
+  hospitalType: 'COSMETIC' | 'REGULAR' | null;
   patientEmail: string | null;
   patientPhone: string | null;
   gender: string | null;
@@ -57,9 +60,19 @@ export interface HospitalCaseDetailDTO {
   phoneCalls: PhoneCallDTO[];
   consultationHistory: ConsultationHistoryDTO[];
   documents: DocumentWithUrlDTO[];
+  messageSections: HospitalCaseMessageSectionDTO[];
   totalMessages: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface HospitalCaseMessageSectionDTO {
+  id: 'admin-patient' | 'hospital-patient';
+  title: string;
+  conversationCategory: 'ADMIN_PATIENT' | 'HOSPITAL_PATIENT';
+  conversationId: string | null;
+  messages: MessageDTO[];
+  totalMessages: number;
 }
 
 export interface CaseStatsDTO {

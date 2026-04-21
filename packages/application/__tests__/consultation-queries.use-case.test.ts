@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GetConsultationTranscriptUseCase } from '../src/use-cases/consultations/get-consultation-transcript.use-case.js';
 import { GetConsultationStatsUseCase } from '../src/use-cases/consultations/get-consultation-stats.use-case.js';
 import { ListCaseConsultationsUseCase } from '../src/use-cases/consultations/list-case-consultations.use-case.js';
-import type { IConsultationRepository, IConsultationTranscriptRepository, ICaseRepository } from '@medical-crm/domain';
+import type { IConsultationRepository, IConsultationTranscriptRepository, ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { Consultation, ConsultationTranscript, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -233,12 +233,16 @@ describe('ListCaseConsultationsUseCase', () => {
   let useCase: ListCaseConsultationsUseCase;
   let mockConsultationRepo: IConsultationRepository;
   let mockCaseRepo: ICaseRepository;
+  let mockChcRepo: ICHCRepository;
 
   beforeEach(() => {
     mockConsultationRepo = {
       findById: vi.fn(),
       findMany: vi.fn(),
-      findByCaseId: vi.fn().mockResolvedValue([makeConsultation(), makeConsultation({ id: 'consult-2' })]),
+      findByCaseId: vi.fn().mockResolvedValue([
+        makeConsultation(),
+        makeConsultation({ id: 'consult-2', hospitalId: 'hosp-2' }),
+      ]),
       save: vi.fn(),
       countByFilters: vi.fn(),
     };
@@ -250,8 +254,16 @@ describe('ListCaseConsultationsUseCase', () => {
       nextCaseNumber: vi.fn(),
       countByFilters: vi.fn(),
     };
+    mockChcRepo = {
+      findById: vi.fn(),
+      findByCaseAndHospital: vi.fn().mockResolvedValue(null),
+      findByCaseId: vi.fn(),
+      findByHospitalId: vi.fn(),
+      save: vi.fn(),
+      rejectOthersByCaseExcept: vi.fn(),
+    };
 
-    useCase = new ListCaseConsultationsUseCase(mockConsultationRepo, mockCaseRepo);
+    useCase = new ListCaseConsultationsUseCase(mockConsultationRepo, mockCaseRepo, mockChcRepo);
   });
 
   it('ADMIN can list consultations for a case', async () => {
@@ -283,7 +295,8 @@ describe('ListCaseConsultationsUseCase', () => {
   it('HOSPITAL actor can list consultations for cases assigned to their hospital', async () => {
     const result = await useCase.execute('case-1', hospitalActor);
 
-    expect(result).toHaveLength(2);
+    expect(result).toHaveLength(1);
+    expect(result[0].hospitalId).toBe('hosp-1');
     expect(mockCaseRepo.findById).toHaveBeenCalledWith('case-1');
   });
 
@@ -291,6 +304,22 @@ describe('ListCaseConsultationsUseCase', () => {
     await expect(
       useCase.execute('case-1', otherHospitalActor),
     ).rejects.toThrow('Case is not assigned to your hospital');
+  });
+
+  it('shows only the acting hospital consultations when access comes from a readable CHC', async () => {
+    (mockChcRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'chc-1',
+      caseId: 'case-1',
+      hospitalId: 'hosp-2',
+      subStatus: 'QUOTED',
+      removedAt: null,
+    });
+
+    const result = await useCase.execute('case-1', otherHospitalActor);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].hospitalId).toBe('hosp-2');
+    expect(result[0].id).toBe('consult-2');
   });
 
   it('throws ForbiddenError for PATIENT actor', async () => {

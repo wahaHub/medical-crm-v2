@@ -1,21 +1,23 @@
-import type { ICaseRepository, IDocumentRepository, IStorageService } from '@medical-crm/domain';
-import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
+import type { ICaseRepository, IDocumentRepository, IStorageService, ICHCRepository } from '@medical-crm/domain';
+import { NotFoundError } from '@medical-crm/utils';
 import type { DocumentDTO } from '../../dtos/document.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toDocumentDTO } from '../../mappers/document.mapper.js';
+import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export class ListDocumentsUseCase {
   constructor(
     private readonly documentRepo: IDocumentRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly storageService: IStorageService,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<DocumentDTO[]> {
     const caze = await this.caseRepo.findById(caseId);
     if (!caze) throw new NotFoundError(`Case ${caseId} not found`);
-    if (actor.role === 'HOSPITAL' && caze.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Access denied to this case');
+    if (actor.role === 'HOSPITAL') {
+      await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     }
 
     const docs = await this.documentRepo.findByCaseId(caseId);

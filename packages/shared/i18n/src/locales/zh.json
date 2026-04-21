@@ -1417,9 +1417,10 @@
       "tryAgain": "重试",
       "description": "页面加载失败，请重试。"
     },
-    "loading": {
-      "label": "正在加载"
-    },
+  "loading": {
+    "caseDetail": "正在加载病例详情",
+    "label": "正在加载"
+  },
     "login": {
       "title": "Medical CRM",
       "subtitle": "统一门户登录",
@@ -2248,9 +2249,16 @@
           "unnamed": "未命名"
         },
         "messages": {
+          "attachmentFallback": "附件",
           "empty": "暂无消息记录",
           "inputPlaceholder": "输入消息内容...",
-          "privacyNotice": "消息将通过 CRM 系统转发至患者（为保护患者隐私，您无法直接查看联系方式）"
+          "privacyNotice": "消息将通过 CRM 系统转发至患者（为保护患者隐私，您无法直接查看联系方式）",
+          "sections": {
+            "adminPatient": "客服 / AI 与患者",
+            "hospitalPatient": "医院与患者"
+          },
+          "sectionCount": "{count} 条消息",
+          "sectionEmpty": "该分区暂无消息"
         },
         "diagnosis": {
           "addButton": "添加诊断意见",

@@ -8,8 +8,9 @@ import type {
   IPatientRepository,
   IConversationRepository,
   IMessageRepository,
+  ICHCRepository,
 } from '@medical-crm/domain';
-import { Case, CaseNumber, CaseProgress, Document } from '@medical-crm/domain';
+import { Case, CaseNumber, CaseProgress, Conversation, Document, Message } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 describe('GetHospitalCaseDetailUseCase', () => {
@@ -21,6 +22,7 @@ describe('GetHospitalCaseDetailUseCase', () => {
   let mockPatientRepo: IPatientRepository;
   let mockConversationRepo: IConversationRepository;
   let mockMessageRepo: IMessageRepository;
+  let mockChcRepo: ICHCRepository;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -115,6 +117,80 @@ describe('GetHospitalCaseDetailUseCase', () => {
     updatedAt: new Date('2026-01-11T10:00:00Z'),
   });
 
+  const hospitalConversation = new Conversation({
+    id: 'conv-hospital',
+    caseId: 'case-id-1',
+    category: 'HOSPITAL_PATIENT',
+    title: 'Hospital thread',
+    hospitalId: 'hosp-1',
+    lastMessageId: 'msg-hospital-1',
+    lastMessageAt: new Date('2026-01-18T10:00:00Z'),
+    lastMessagePreview: 'We can schedule your consultation',
+    lastSenderId: 'hospital-1',
+    createdAt: new Date('2026-01-15T10:00:00Z'),
+    updatedAt: new Date('2026-01-18T10:00:00Z'),
+  });
+
+  const adminPatientConversation = new Conversation({
+    id: 'conv-admin',
+    caseId: 'case-id-1',
+    category: 'ADMIN_PATIENT',
+    title: 'Admin thread',
+    hospitalId: null,
+    lastMessageId: 'msg-admin-1',
+    lastMessageAt: new Date('2026-01-17T08:00:00Z'),
+    lastMessagePreview: 'Please upload your CT report',
+    lastSenderId: 'admin-1',
+    createdAt: new Date('2026-01-12T08:00:00Z'),
+    updatedAt: new Date('2026-01-17T08:00:00Z'),
+  });
+
+  const hospitalMessage = new Message({
+    id: 'msg-hospital-1',
+    conversationId: 'conv-hospital',
+    senderId: 'hospital-1',
+    senderRole: 'HOSPITAL',
+    senderName: 'Hospital Team',
+    content: 'We can schedule your consultation next week.',
+    originalLanguage: 'en',
+    translatedContent: '我们可以安排下周会诊。',
+    messageType: 'TEXT',
+    moderationStatus: 'ALLOWED',
+    attachments: [
+      {
+        fileName: 'hospital-plan.pdf',
+        fileSize: 10240,
+        mimeType: 'application/pdf',
+        storageKey: 'messages/case-id-1/hospital-plan.pdf',
+      },
+    ],
+    aiSummary: null,
+    createdAt: new Date('2026-01-18T10:00:00Z'),
+  });
+
+  const adminMessage = new Message({
+    id: 'msg-admin-1',
+    conversationId: 'conv-admin',
+    senderId: 'admin-1',
+    senderRole: 'ADMIN',
+    senderName: 'Medora AI',
+    content: 'Please upload your latest CT report.',
+    originalLanguage: 'en',
+    translatedContent: '请上传你最新的 CT 报告。',
+    messageType: 'FILE',
+    moderationStatus: 'ALLOWED',
+    attachments: [
+      {
+        fileName: 'ct-report.pdf',
+        fileSize: 20480,
+        mimeType: 'application/pdf',
+        storageKey: 'messages/case-id-1/ct-report.pdf',
+      },
+    ],
+    aiSummary: null,
+    createdAt: new Date('2026-01-17T08:00:00Z'),
+  });
+
   beforeEach(() => {
     mockCaseRepo = {
       findById: vi.fn().mockResolvedValue(mockCase),
@@ -145,6 +221,8 @@ describe('GetHospitalCaseDetailUseCase', () => {
       getSignedUrl: vi.fn(),
       getSignedUrls: vi.fn().mockResolvedValue({
         'cases/case-id-1/xray.jpg': 'https://storage.example.com/signed/xray.jpg',
+        'messages/case-id-1/hospital-plan.pdf': 'https://storage.example.com/signed/hospital-plan.pdf',
+        'messages/case-id-1/ct-report.pdf': 'https://storage.example.com/signed/ct-report.pdf',
       }),
     };
 
@@ -157,16 +235,63 @@ describe('GetHospitalCaseDetailUseCase', () => {
 
     mockConversationRepo = {
       findById: vi.fn(),
-      findMany: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+      findMany: vi.fn().mockResolvedValue({
+        data: [hospitalConversation],
+        total: 1,
+        page: 1,
+        limit: 100,
+        totalPages: 1,
+        hasMore: false,
+      }),
+      findAdminPatientByCaseId: vi.fn().mockResolvedValue(adminPatientConversation),
       save: vi.fn(),
     };
 
     mockMessageRepo = {
       findById: vi.fn(),
-      findByConversationId: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+      findByConversationId: vi.fn().mockImplementation((conversationId: string) => {
+        if (conversationId === 'conv-hospital') {
+          return Promise.resolve({
+            data: [hospitalMessage],
+            total: 1,
+            page: 1,
+            limit: 100,
+            totalPages: 1,
+            hasMore: false,
+          });
+        }
+
+        if (conversationId === 'conv-admin') {
+          return Promise.resolve({
+            data: [adminMessage],
+            total: 1,
+            page: 1,
+            limit: 100,
+            totalPages: 1,
+            hasMore: false,
+          });
+        }
+
+        return Promise.resolve({
+          data: [],
+          total: 0,
+          page: 1,
+          limit: 100,
+          totalPages: 0,
+          hasMore: false,
+        });
+      }),
       findPendingReview: vi.fn(),
       save: vi.fn(),
       delete: vi.fn(),
+    };
+    mockChcRepo = {
+      findById: vi.fn(),
+      findByCaseAndHospital: vi.fn().mockResolvedValue(null),
+      findByCaseId: vi.fn(),
+      findByHospitalId: vi.fn(),
+      save: vi.fn(),
+      rejectOthersByCaseExcept: vi.fn(),
     };
 
     useCase = new GetHospitalCaseDetailUseCase(
@@ -177,6 +302,7 @@ describe('GetHospitalCaseDetailUseCase', () => {
       mockPatientRepo,
       mockConversationRepo,
       mockMessageRepo,
+      mockChcRepo,
     );
   });
 
@@ -221,20 +347,43 @@ describe('GetHospitalCaseDetailUseCase', () => {
   it('includes documents with signed URLs', async () => {
     const result = await useCase.execute('case-id-1', adminActor);
 
-    expect(result.documents).toHaveLength(1);
+    expect(result.documents).toHaveLength(3);
     expect(result.documents[0]!.id).toBe('doc-1');
     expect(result.documents[0]!.fileName).toBe('xray.jpg');
     expect(result.documents[0]!.downloadUrl).toBe('https://storage.example.com/signed/xray.jpg');
-    expect(mockStorageService.getSignedUrls).toHaveBeenCalledWith(['cases/case-id-1/xray.jpg']);
+    expect(result.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileName: 'hospital-plan.pdf',
+        documentType: 'MESSAGE_ATTACHMENT',
+        downloadUrl: 'https://storage.example.com/signed/hospital-plan.pdf',
+      }),
+      expect.objectContaining({
+        fileName: 'ct-report.pdf',
+        documentType: 'MESSAGE_ATTACHMENT',
+        downloadUrl: 'https://storage.example.com/signed/ct-report.pdf',
+      }),
+    ]));
+    expect(mockStorageService.getSignedUrls).toHaveBeenCalledWith([
+      'cases/case-id-1/xray.jpg',
+      'messages/case-id-1/ct-report.pdf',
+      'messages/case-id-1/hospital-plan.pdf',
+    ]);
   });
 
-  it('returns empty documents array and skips getSignedUrls when no documents', async () => {
+  it('returns chat attachment documents even when the case has no standalone case documents', async () => {
     mockDocumentRepo.findByCaseId = vi.fn().mockResolvedValue([]);
 
     const result = await useCase.execute('case-id-1', adminActor);
 
-    expect(result.documents).toHaveLength(0);
-    expect(mockStorageService.getSignedUrls).not.toHaveBeenCalled();
+    expect(result.documents).toHaveLength(2);
+    expect(result.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fileName: 'ct-report.pdf' }),
+      expect.objectContaining({ fileName: 'hospital-plan.pdf' }),
+    ]));
+    expect(mockStorageService.getSignedUrls).toHaveBeenCalledWith([
+      'messages/case-id-1/ct-report.pdf',
+      'messages/case-id-1/hospital-plan.pdf',
+    ]);
   });
 
   it('fetches all data in parallel (caseRepo, progressRepo, documentRepo, patientRepo)', async () => {
@@ -243,6 +392,48 @@ describe('GetHospitalCaseDetailUseCase', () => {
     expect(mockProgressRepo.findByCaseId).toHaveBeenCalledWith('case-id-1');
     expect(mockDocumentRepo.findByCaseId).toHaveBeenCalledWith('case-id-1');
     expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1');
+  });
+
+  it('includes separate message sections for admin/patient and hospital/patient conversations', async () => {
+    const result = await useCase.execute('case-id-1', hospitalActor);
+
+    expect(result.messageSections).toEqual([
+      expect.objectContaining({
+        id: 'admin-patient',
+        conversationCategory: 'ADMIN_PATIENT',
+        totalMessages: 1,
+        messages: [
+          expect.objectContaining({
+            id: 'msg-admin-1',
+            senderRole: 'ADMIN',
+            attachments: [
+              expect.objectContaining({
+                fileName: 'ct-report.pdf',
+                url: 'https://storage.example.com/signed/ct-report.pdf',
+              }),
+            ],
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        id: 'hospital-patient',
+        conversationCategory: 'HOSPITAL_PATIENT',
+        totalMessages: 1,
+        messages: [
+          expect.objectContaining({
+            id: 'msg-hospital-1',
+            senderRole: 'HOSPITAL',
+            attachments: [
+              expect.objectContaining({
+                fileName: 'hospital-plan.pdf',
+                url: 'https://storage.example.com/signed/hospital-plan.pdf',
+              }),
+            ],
+          }),
+        ],
+      }),
+    ]);
+    expect(result.totalMessages).toBe(2);
   });
 
   it('returns patient code as empty string when patientInfo is null', async () => {
@@ -268,6 +459,35 @@ describe('GetHospitalCaseDetailUseCase', () => {
   });
 
   it('throws ForbiddenError when HOSPITAL actor accesses a case belonging to a different hospital', async () => {
+    await expect(
+      useCase.execute('case-id-1', otherHospitalActor),
+    ).rejects.toThrow('Access denied to this case');
+  });
+
+  it('allows a hospital actor with an active hospital contact to access the case detail', async () => {
+    (mockChcRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'chc-1',
+      caseId: 'case-id-1',
+      hospitalId: 'hosp-2',
+      subStatus: 'QUOTED',
+      removedAt: null,
+    });
+
+    const result = await useCase.execute('case-id-1', otherHospitalActor);
+
+    expect(result.id).toBe('case-id-1');
+    expect(mockChcRepo.findByCaseAndHospital).toHaveBeenCalledWith('case-id-1', 'hosp-2');
+  });
+
+  it('blocks a hospital contact that has already been rejected from viewing case detail', async () => {
+    (mockChcRepo.findByCaseAndHospital as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'chc-1',
+      caseId: 'case-id-1',
+      hospitalId: 'hosp-2',
+      subStatus: 'REJECTED',
+      removedAt: null,
+    });
+
     await expect(
       useCase.execute('case-id-1', otherHospitalActor),
     ).rejects.toThrow('Access denied to this case');
@@ -348,34 +568,65 @@ describe('GetHospitalCaseDetailUseCase', () => {
     }));
   });
 
-  it('uses a batched message count lookup when available instead of per-conversation pagination', async () => {
-    mockConversationRepo.findMany = vi.fn().mockResolvedValue({
-      data: [
-        { id: 'conv-1' },
-        { id: 'conv-2' },
-      ],
-      total: 2,
-      page: 1,
-      limit: 100,
-      totalPages: 1,
-      hasMore: false,
-    });
-
-    const countByConversationIds = vi.fn().mockResolvedValue({
-      'conv-1': 2,
-      'conv-2': 5,
-    });
-    (
-      mockMessageRepo as IMessageRepository & {
-        countByConversationIds: typeof countByConversationIds;
+  it('loads every paginated message page for each exposed case conversation', async () => {
+    mockMessageRepo.findByConversationId = vi.fn().mockImplementation((conversationId: string, query: { page: number }) => {
+      if (conversationId === 'conv-hospital' && query.page === 1) {
+        return Promise.resolve({
+          data: [hospitalMessage],
+          total: 2,
+          page: 1,
+          limit: 100,
+          totalPages: 2,
+          hasMore: true,
+        });
       }
-    ).countByConversationIds = countByConversationIds;
 
-    const result = await useCase.execute('case-id-1', adminActor);
+      if (conversationId === 'conv-hospital' && query.page === 2) {
+        return Promise.resolve({
+          data: [
+            new Message({
+              ...hospitalMessage,
+              id: 'msg-hospital-2',
+              content: 'Second page reply',
+              attachments: [],
+              createdAt: new Date('2026-01-18T11:00:00Z'),
+            }),
+          ],
+          total: 2,
+          page: 2,
+          limit: 100,
+          totalPages: 2,
+          hasMore: false,
+        });
+      }
 
-    expect(result.totalMessages).toBe(7);
-    expect(countByConversationIds).toHaveBeenCalledWith(['conv-1', 'conv-2']);
-    expect(mockMessageRepo.findByConversationId).not.toHaveBeenCalled();
+      if (conversationId === 'conv-admin') {
+        return Promise.resolve({
+          data: [adminMessage],
+          total: 1,
+          page: 1,
+          limit: 100,
+          totalPages: 1,
+          hasMore: false,
+        });
+      }
+
+      return Promise.resolve({
+        data: [],
+        total: 0,
+        page: query.page,
+        limit: 100,
+        totalPages: 0,
+        hasMore: false,
+      });
+    });
+
+    const result = await useCase.execute('case-id-1', hospitalActor);
+
+    expect(result.totalMessages).toBe(3);
+    expect(mockMessageRepo.findByConversationId).toHaveBeenCalledWith('conv-hospital', { page: 1, limit: 100 });
+    expect(mockMessageRepo.findByConversationId).toHaveBeenCalledWith('conv-hospital', { page: 2, limit: 100 });
+    expect(mockMessageRepo.findByConversationId).toHaveBeenCalledWith('conv-admin', { page: 1, limit: 100 });
   });
 
   it('degrades gracefully when document URL signing fails', async () => {
@@ -383,7 +634,7 @@ describe('GetHospitalCaseDetailUseCase', () => {
 
     const result = await useCase.execute('case-id-1', adminActor);
 
-    expect(result.documents).toHaveLength(1);
-    expect(result.documents[0]!.downloadUrl).toBe('');
+    expect(result.documents).toHaveLength(3);
+    expect(result.documents.every((document) => document.downloadUrl === '')).toBe(true);
   });
 });

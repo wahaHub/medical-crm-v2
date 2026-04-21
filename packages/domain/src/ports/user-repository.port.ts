@@ -22,6 +22,7 @@ export interface UserProfile {
   name: string;
   role: string;
   phone: string | null;
+  patientSite?: 'beauty' | 'china' | null;
   preferredLanguage: string;
   hospitalId: string | null;
   notificationSettings: NotificationPreferences | null;

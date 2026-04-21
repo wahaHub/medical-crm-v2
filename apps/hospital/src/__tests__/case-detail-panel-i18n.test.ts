@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
@@ -70,6 +72,7 @@ import {
   formatDocumentGroupLabel,
   formatCaseConversationCategoryForDisplay,
   formatCaseDetailUserFacingError,
+  formatMessageSectionTitle,
   formatQuestionnaireFallbackFieldLabel,
   getDiagnosisCostEstimateLabel,
   getDiagnosisSeverityLabel,
@@ -89,7 +92,80 @@ function createTranslationFn(overrides: Record<string, string>): TranslationFn {
   };
 }
 
+function readLocale(name: string) {
+  return JSON.parse(
+    readFileSync(
+      resolve(__dirname, `../../../packages/shared/i18n/src/locales/${name}.json`),
+      'utf8',
+    ),
+  ) as Record<string, unknown>;
+}
+
+function getNestedValue(record: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== 'object' || !(segment in current)) {
+      return undefined;
+    }
+
+    return (current as Record<string, unknown>)[segment];
+  }, record);
+}
+
 describe('case detail panel i18n helpers', () => {
+  it('does not leave raw english copy in the case detail panel ui', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../components/case-detail-panel.tsx'),
+      'utf8',
+    );
+
+    expect(source).not.toContain('No messages in this section yet');
+    expect(source).not.toContain('No messages yet in this section.');
+    expect(source).not.toContain("'Attachment'");
+    expect(source).not.toContain('Admin / AI & Patient');
+    expect(source).not.toContain('Hospital & Patient');
+    expect(source).toContain('hospital.cases.detail.messages.inputPlaceholder');
+  });
+
+  it('does not leave raw english copy in the case detail loading state', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../app/(portal)/cases/[id]/loading.tsx'),
+      'utf8',
+    );
+
+    expect(source).not.toContain('Loading case details');
+  });
+
+  it('defines case detail tab, diagnosis type, and message copy keys for every hospital locale', () => {
+    const requiredKeys = [
+      'hospital.cases.detail.tabs.aiSummary',
+      'hospital.cases.detail.tabs.intake',
+      'hospital.cases.detail.tabs.documents',
+      'hospital.cases.detail.tabs.messages',
+      'hospital.cases.detail.tabs.diagnosis',
+      'hospital.cases.detail.tabs.quote',
+      'hospital.cases.detail.tabs.marketing',
+      'hospital.cases.detail.tabs.invitation',
+      'hospital.cases.detail.tabs.consultation',
+      'hospital.cases.detail.diagnosis.type.preliminary',
+      'hospital.cases.detail.diagnosis.type.confirmed',
+      'hospital.cases.detail.diagnosis.type.followUp',
+      'hospital.cases.detail.messages.sections.adminPatient',
+      'hospital.cases.detail.messages.sections.hospitalPatient',
+      'hospital.cases.detail.messages.inputPlaceholder',
+      'hospital.cases.detail.messages.empty',
+      'hospital.cases.detail.messages.privacyNotice',
+      'hospital.loading.caseDetail',
+    ];
+
+    for (const locale of ['en', 'zh', 'de', 'fr', 'es', 'bn']) {
+      const messages = readLocale(locale);
+
+      for (const key of requiredKeys) {
+        expect(getNestedValue(messages, key), `${locale} missing ${key}`).toBeTypeOf('string');
+      }
+    }
+  });
+
   it('maps stable diagnosis cost and duration values to localized labels', () => {
     const t = createTranslationFn({
       'hospital.caseDetail.diagnosisDialog.costOptions.5k': 'Localized Under 5K',
@@ -164,6 +240,16 @@ describe('case detail panel i18n helpers', () => {
     expect(formatCaseConversationCategoryForDisplay('HOSPITAL_PATIENT', t)).toBe('Localized Patient');
     expect(formatCaseConversationCategoryForDisplay('ADMIN_HOSPITAL', t)).toBe('Localized Admin');
     expect(formatCaseConversationCategoryForDisplay('NEW_BACKEND_CATEGORY', t)).toBe('Localized Other');
+  });
+
+  it('maps message section ids to localized labels', () => {
+    const t = createTranslationFn({
+      'hospital.cases.detail.messages.sections.adminPatient': 'Localized Admin / Patient',
+      'hospital.cases.detail.messages.sections.hospitalPatient': 'Localized Hospital / Patient',
+    });
+
+    expect(formatMessageSectionTitle('admin-patient', t)).toBe('Localized Admin / Patient');
+    expect(formatMessageSectionTitle('hospital-patient', t)).toBe('Localized Hospital / Patient');
   });
 
   it('maps unknown document groups to a localized other-documents label', () => {

@@ -104,6 +104,7 @@ export type { Transaction, TransactionRunner } from './ports/transaction-runner.
 
 // Phase 2 M1: CHC + Quote Enums
 export type { CHCSubStatus, QuoteStatus } from './enums/index.js';
+export { HOSPITAL_CASE_READ_CHC_STATUSES } from './enums/index.js';
 
 // Phase 2 M2: Events / Timeline Enums
 export type { CaseEventType, ActorType } from './enums/index.js';

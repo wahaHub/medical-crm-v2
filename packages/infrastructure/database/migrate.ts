@@ -21,7 +21,80 @@ const PRE_EXISTING: Record<string, string> = {
        SELECT 1 FROM information_schema.tables
        WHERE table_name = 'message_tasks'
      ) AS applied`,
+  '030_ai_chat_process_explained.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'ai_chat_sessions' AND column_name = 'process_explained'
+     ) AS applied`,
+  '031_ai_chat_canonical_truth_flags.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'ai_chat_sessions' AND column_name = 'minimal_triage_complete'
+     ) AS applied`,
+  '031_patient_site_identity.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'users' AND column_name = 'patient_site'
+     ) AS applied`,
+  '032_ai_chat_canonical_truth_flags_nullable.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'ai_chat_sessions' AND column_name = 'handoff_active'
+     ) AS applied`,
+  '032_ai_chat_session_site_scope.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM pg_indexes
+       WHERE tablename = 'ai_chat_sessions' AND indexname = 'ai_chat_sessions_session_id_site_key'
+     ) AS applied`,
+  '033_ai_chat_canonical_truth_flags_repair.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'ai_chat_sessions' AND column_name = 'handoff_active'
+     ) AS applied`,
+  '034_message_sender_overrides.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'messages' AND column_name = 'sender_name_override'
+     ) AS applied`,
+  '035_admin_patient_conversation_uniqueness.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM pg_indexes
+       WHERE tablename = 'conversations' AND indexname IN (
+         'conversations_admin_patient_case_unique',
+         'conversations_admin_patient_case_unique_idx'
+       )
+     ) AS applied`,
+  '035_conversation_assistant_mode.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'conversations' AND column_name = 'assistant_mode'
+     ) AS applied`,
+  '036_email_notification_cooldowns.sql':
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_name = 'email_notification_cooldowns'
+     ) AS applied`,
 };
+
+async function recordPreExistingMigrationIfNeeded(
+  sql: postgres.Sql,
+  file: string,
+): Promise<boolean> {
+  const probe = PRE_EXISTING[file];
+  if (!probe) {
+    return false;
+  }
+
+  const probeRows = await sql.unsafe<{ applied: boolean }[]>(probe);
+  const applied = probeRows[0]?.applied ?? false;
+  if (!applied) {
+    return false;
+  }
+
+  await sql`INSERT INTO _migrations (name) VALUES (${file}) ON CONFLICT (name) DO NOTHING`;
+  console.log(`Recorded pre-existing migration: ${file}`);
+  return true;
+}
 
 async function migrate() {
   const databaseUrl = process.env['DATABASE_URL'];
@@ -38,25 +111,6 @@ async function migrate() {
     )
   `;
 
-  // Bootstrap: for each pre-existing migration not yet tracked,
-  // probe the real schema to decide whether to record or execute it.
-  // - Old DB (schema exists, tracking empty): records without executing
-  // - Fresh DB (schema missing, tracking empty): leaves it pending so it runs normally
-  const rows = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM _migrations`;
-  const count = rows[0]?.count ?? '0';
-  if (count === '0') {
-    for (const [name, probe] of Object.entries(PRE_EXISTING)) {
-      const probeRows = await sql.unsafe<{ applied: boolean }[]>(probe);
-      const applied = probeRows[0]?.applied ?? false;
-      if (applied) {
-        await sql`INSERT INTO _migrations (name) VALUES (${name})`;
-        console.log(`Bootstrap: ${name} — already applied, recorded.`);
-      } else {
-        console.log(`Bootstrap: ${name} — not found in schema, will execute normally.`);
-      }
-    }
-  }
-
   // Get applied migrations
   const applied = await sql<{ name: string }[]>`SELECT name FROM _migrations ORDER BY name`;
   const appliedSet = new Set(applied.map((r) => r.name));
@@ -68,6 +122,10 @@ async function migrate() {
 
   for (const file of files) {
     if (appliedSet.has(file)) continue;
+    if (await recordPreExistingMigrationIfNeeded(sql, file)) {
+      appliedSet.add(file);
+      continue;
+    }
     console.log(`Applying: ${file}`);
     const content = await readFile(join(MIGRATIONS_DIR, file), 'utf-8');
 
@@ -99,6 +157,7 @@ async function migrate() {
         await tx.unsafe('INSERT INTO _migrations (name) VALUES ($1)', [file]);
       });
     }
+    appliedSet.add(file);
     console.log(`Applied: ${file}`);
   }
 

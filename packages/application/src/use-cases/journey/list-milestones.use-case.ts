@@ -1,13 +1,15 @@
-import type { ICaseRepository, IJourneyRepository } from '@medical-crm/domain';
+import type { ICaseRepository, IJourneyRepository, ICHCRepository } from '@medical-crm/domain';
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { JourneyMilestoneDTO } from '../../dtos/journey.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toJourneyMilestoneDTO } from '../../mappers/journey.mapper.js';
+import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export class ListMilestonesUseCase {
   constructor(
     private readonly journeyRepo: IJourneyRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(
@@ -22,9 +24,7 @@ export class ListMilestonesUseCase {
     let visibleOnly = options?.visibleOnly ?? false;
 
     if (actor.role === 'HOSPITAL') {
-      if (actor.hospitalId !== caseEntity.assignedHospitalId) {
-        throw new ForbiddenError('Hospital can only access milestones for assigned cases');
-      }
+      await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo, 'Hospital can only access milestones for assigned cases');
       // Hospital sees all milestones for their case
     } else if (actor.role === 'PATIENT') {
       if (actor.userId !== caseEntity.patientId) {

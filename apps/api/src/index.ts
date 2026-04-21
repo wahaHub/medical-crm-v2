@@ -90,7 +90,20 @@ app.onError((err, c) => {
     console.error('Transient database error:', err);
     return c.json({ error: 'Service temporarily unavailable' }, 503);
   }
-  console.error('Unhandled error:', err);
+  const requestId = c.get('requestId');
+  const pathname = new URL(c.req.url).pathname;
+  console.error('Unhandled error:', {
+    requestId,
+    method: c.req.method,
+    path: pathname,
+    error: err instanceof Error
+      ? {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+        }
+      : err,
+  });
   return c.json({ error: 'Internal server error' }, 500);
 });
 

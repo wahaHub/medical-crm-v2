@@ -21,6 +21,8 @@ export interface CaseSummary {
   treatmentStage: string | null;
   patientCountry?: string | null;
   patientLanguage?: string | null;
+  patientSite?: 'beauty' | 'china' | null;
+  hospitalType?: 'COSMETIC' | 'REGULAR' | null;
   patientEmail?: string | null;
   patientPhone?: string | null;
   gender?: string | null;

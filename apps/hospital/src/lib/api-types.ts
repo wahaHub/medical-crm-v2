@@ -80,9 +80,19 @@ export interface HospitalCaseDetail {
   phoneCalls?: PhoneCallItem[];
   consultationHistory?: ConsultationHistoryItem[];
   documents: DocumentItem[];
+  messageSections: HospitalCaseMessageSection[];
   totalMessages: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface HospitalCaseMessageSection {
+  id: 'admin-patient' | 'hospital-patient';
+  title: string;
+  conversationCategory: 'ADMIN_PATIENT' | 'HOSPITAL_PATIENT';
+  conversationId: string | null;
+  messages: MessageItem[];
+  totalMessages: number;
 }
 
 /** Stats shapes */

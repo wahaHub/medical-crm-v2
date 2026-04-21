@@ -1,7 +1,10 @@
+import type { HospitalType } from '../enums/index.js';
+
 export interface HospitalInfo {
   id: string;
   name: string;
   status: string;
+  type: HospitalType;
 }
 
 export interface MatchedHospital {

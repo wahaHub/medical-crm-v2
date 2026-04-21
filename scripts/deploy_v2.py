@@ -412,6 +412,10 @@ def deploy_api(repo_root: Path, args: argparse.Namespace) -> None:
         set -e
         cd {shlex.quote(args.remote_dir)}
         pnpm install --frozen-lockfile
+        set -a
+        . ./.env
+        set +a
+        pnpm db:migrate
         sudo systemctl restart {shlex.quote(args.api_service)}
         """
     ).strip()

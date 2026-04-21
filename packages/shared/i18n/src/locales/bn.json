@@ -1247,9 +1247,10 @@
       "tryAgain": "আবার চেষ্টা করুন",
       "description": "The page could not be loaded. Please try again."
     },
-    "loading": {
-      "label": "লোড হচ্ছে"
-    },
+  "loading": {
+    "caseDetail": "কেসের বিস্তারিত লোড হচ্ছে",
+    "label": "লোড হচ্ছে"
+  },
     "login": {
       "title": "Medical CRM",
       "subtitle": "একীভূত পোর্টাল লগইন",
@@ -1450,9 +1451,16 @@
           "unnamed": "নামহীন"
         },
         "messages": {
+          "attachmentFallback": "সংযুক্তি",
           "empty": "No message records",
           "inputPlaceholder": "Enter message content...",
-          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)"
+          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+          "sections": {
+            "adminPatient": "অ্যাডমিন / এআই ও রোগী",
+            "hospitalPatient": "হাসপাতাল ও রোগী"
+          },
+          "sectionCount": "{count}টি বার্তা",
+          "sectionEmpty": "এই অংশে এখনও কোনো বার্তা নেই"
         },
         "diagnosis": {
           "addButton": "Add Diagnosis",

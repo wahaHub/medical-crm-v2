@@ -1256,9 +1256,10 @@
       "tryAgain": "Réessayer",
       "description": "The page could not be loaded. Please try again."
     },
-    "loading": {
-      "label": "Chargement"
-    },
+  "loading": {
+    "caseDetail": "Chargement des détails du dossier",
+    "label": "Chargement"
+  },
     "login": {
       "title": "Medical CRM",
       "subtitle": "Connexion unifiée au portail",
@@ -2097,9 +2098,16 @@
           "unnamed": "Sans nom"
         },
         "messages": {
+          "attachmentFallback": "Pièce jointe",
           "empty": "No message records",
           "inputPlaceholder": "Enter message content...",
-          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)"
+          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+          "sections": {
+            "adminPatient": "Admin / IA et patient",
+            "hospitalPatient": "Hôpital et patient"
+          },
+          "sectionCount": "{count} messages",
+          "sectionEmpty": "Aucun message dans cette section pour le moment"
         },
         "diagnosis": {
           "addButton": "Add Diagnosis",

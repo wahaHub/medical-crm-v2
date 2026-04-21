@@ -1,8 +1,9 @@
 import type { ICaseRepository } from '@medical-crm/domain';
-import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
+import { NotFoundError } from '@medical-crm/utils';
 import type { CaseDTO } from '../../dtos/case.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseDTO } from '../../mappers/case.mapper.js';
+import { assertAssignedHospitalCaseAccess } from './hospital-case-access.js';
 
 export interface UpdateCaseInput {
   primaryDiagnosis?: string;
@@ -19,8 +20,8 @@ export class UpdateCaseUseCase {
   async execute(caseId: string, input: UpdateCaseInput, actor: Actor): Promise<CaseDTO> {
     const entity = await this.caseRepo.findById(caseId);
     if (!entity) throw new NotFoundError(`Case ${caseId} not found`);
-    if (actor.role === 'HOSPITAL' && entity.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Access denied to this case');
+    if (actor.role === 'HOSPITAL') {
+      assertAssignedHospitalCaseAccess(entity, actor.hospitalId);
     }
 
     if (input.primaryDiagnosis !== undefined) entity.primaryDiagnosis = input.primaryDiagnosis;

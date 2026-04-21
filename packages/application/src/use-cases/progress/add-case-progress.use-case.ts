@@ -1,9 +1,10 @@
 import type { ICaseProgressRepository, ICaseRepository } from '@medical-crm/domain';
 import { CaseProgress } from '@medical-crm/domain';
-import { generateId, NotFoundError, ForbiddenError } from '@medical-crm/utils';
+import { generateId, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { CaseProgressDTO } from '../../dtos/progress.dto.js';
 import { toProgressDTO } from '../../mappers/progress.mapper.js';
+import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export type AddProgressInput =
   | { type: 'DIAGNOSIS'; caseId: string; title?: string; description?: string;
@@ -25,8 +26,8 @@ export class AddCaseProgressUseCase {
   async execute(input: AddProgressInput, actor: Actor): Promise<CaseProgressDTO> {
     const caze = await this.caseRepo.findById(input.caseId);
     if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
-    if (actor.role === 'HOSPITAL' && caze.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Access denied to this case');
+    if (actor.role === 'HOSPITAL') {
+      assertAssignedHospitalCaseAccess(caze, actor.hospitalId);
     }
 
     const { progressType, title, description, metadata } = this.mapInput(input);

@@ -73,3 +73,15 @@ export async function removeHospitalContact(contactId: string, caseId: string, r
   revalidatePath(`/cases/${caseId}`);
   return res.json();
 }
+
+export async function resetCaseAssignment(caseId: string) {
+  const res = await apiFetch(`/api/v2/cases/${caseId}/reset-assignment`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { error?: string; message?: string };
+    throw new Error(err.error ?? err.message ?? 'Failed to reset case assignment');
+  }
+  revalidatePath(`/cases/${caseId}`);
+  return res.json();
+}

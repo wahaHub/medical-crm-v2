@@ -32,8 +32,6 @@ import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
 import { CaseQuoteTab } from './tabs/case-quote-tab';
 import {
   useCaseConsultations,
-  useCaseConversations,
-  useConversationMessages,
   useCaseQuestionnaire,
   useQuestionTemplate,
 } from '@/queries/use-cases';
@@ -54,9 +52,6 @@ import type {
   HospitalCaseDetail,
   CaseSummary,
   ConsultationSummary,
-  PaginatedResponse,
-  ConversationSummary,
-  MessageItem,
   EmailTemplateItem,
 } from '@/lib/api-types';
 
@@ -323,6 +318,17 @@ export function formatCaseConversationCategoryForDisplay(category: string, t: Tr
   }
 
   return t('common.labels.other', undefined, 'Other');
+}
+
+export function formatMessageSectionTitle(
+  sectionId: 'admin-patient' | 'hospital-patient',
+  t: TranslationFn,
+): string {
+  if (sectionId === 'admin-patient') {
+    return t('hospital.cases.detail.messages.sections.adminPatient');
+  }
+
+  return t('hospital.cases.detail.messages.sections.hospitalPatient');
 }
 
 export function formatCaseParticipantRoleForDisplay(role: string, t: TranslationFn): string {
@@ -653,18 +659,9 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const { user } = useAuth();
   const { locale, t } = useHospitalI18n();
-  // Step 1: Find conversations for this case
-  const { data: convsRaw, isLoading: convsLoading } = useCaseConversations(caseDetail.id);
-  const convs = ((convsRaw as PaginatedResponse<ConversationSummary>)?.data ?? []) as ConversationSummary[];
-  const selectedConversation = convs.find((conv) => conv.category === 'HOSPITAL_PATIENT') ?? convs[0];
-  const conversationId = selectedConversation?.id;
-
-  // Step 2: Fetch messages for the preferred case conversation
-  const { data: msgsRaw, isLoading: msgsLoading } = useConversationMessages(conversationId);
-  const messages = ((msgsRaw as PaginatedResponse<MessageItem>)?.data ?? []) as MessageItem[];
-
-  const isLoading = convsLoading || msgsLoading;
   const patientName = caseDetail.patient.name;
+  const messageSections = caseDetail.messageSections ?? [];
+  const selectedConversationCategory = messageSections.find((section) => section.conversationId)?.conversationCategory ?? null;
   const patientContextLabels = {
     unknownParticipant: t('hospital.common.unknown', undefined, 'Unknown'),
     patientCode: t('hospital.messages.chat.patientCodeLabel', undefined, 'Patient Code'),
@@ -687,64 +684,123 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
       {/* Messages List */}
       <div className="flex-1 flex flex-col bg-white rounded-[1.5rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full" />
-            </div>
-          ) : messages.length > 0 ? (
+          {messageSections.length > 0 ? (
             <>
-              {(() => {
-                const reversed = [...messages].reverse();
-                return reversed.map((msg, idx) => {
-                const senderRole = msg.senderRole
-                  ?? (msg.senderId === user.id
-                    ? 'HOSPITAL'
-                    : selectedConversation?.category === 'ADMIN_HOSPITAL'
-                      ? 'ADMIN'
-                      : 'PATIENT');
-                const isHospital = senderRole === 'HOSPITAL' || senderRole === 'hospital';
-                const msgTime = new Date(msg.createdAt);
-                const timeStr = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(msgTime);
-                const prevMsg = idx > 0 ? reversed[idx - 1] : null;
-                const showDate = !prevMsg || new Date(prevMsg!.createdAt).toDateString() !== msgTime.toDateString();
-                const translatedCopy = msg.translatedContent ?? msg.contentTranslated;
-
-                return (
-                  <div key={msg.id}>
-                    {showDate && (
-                      <div className="text-center mb-4">
-                        <span className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
-                          {new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric' }).format(msgTime)}
-                        </span>
+              {messageSections.map((section) => (
+                <div key={section.id} className="space-y-4">
+                  <div className="sticky top-0 z-10 -mx-2 flex items-center justify-between rounded-2xl bg-slate-50/95 px-4 py-3 backdrop-blur">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">
+                        {formatMessageSectionTitle(section.id, t)}
                       </div>
-                    )}
-                    <div className={`flex gap-3 ${isHospital ? 'flex-row-reverse' : ''}`}>
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold mt-1 ${isHospital ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                        {isHospital ? 'H' : patientName.charAt(0)}
-                      </div>
-                      <div className="max-w-[70%] space-y-1">
-                        <div className={`p-3 rounded-2xl shadow-sm text-sm leading-relaxed ${
-                          isHospital
-                            ? 'bg-indigo-600 text-white rounded-tr-none'
-                            : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none'
-                        }`}>
-                          <p>{msg.content}</p>
-                          {!isHospital && translatedCopy && (
-                            <div className="text-xs mt-2 pt-2 border-t border-purple-100 text-purple-600">
-                              <Globe size={10} className="inline mr-1" />
-                              <span>{translatedCopy}</span>
-                            </div>
+                      <div className="text-xs text-slate-500">
+                        {section.totalMessages > 0
+                          ? t(
+                            'hospital.cases.detail.messages.sectionCount',
+                            { count: section.totalMessages },
+                          )
+                          : t(
+                            'hospital.cases.detail.messages.sectionEmpty',
                           )}
-                        </div>
-                        <div className={`text-[10px] text-slate-400 ${isHospital ? 'text-right' : 'pl-2'}`}>
-                          {timeStr}
-                        </div>
                       </div>
                     </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+                      {formatConversationCategoryLabel(section.conversationCategory)}
+                    </span>
                   </div>
-                );
-              });
-              })()}
+                  {section.messages.length > 0 ? (
+                    [...section.messages].reverse().map((msg, idx, reversed) => {
+                      const senderRole = msg.senderRole
+                        ?? (msg.senderId === user.id
+                          ? 'HOSPITAL'
+                          : section.conversationCategory === 'ADMIN_PATIENT'
+                            ? 'ADMIN'
+                            : 'PATIENT');
+                      const isHospital = senderRole === 'HOSPITAL' || senderRole === 'hospital';
+                      const isAdmin = senderRole === 'ADMIN' || senderRole === 'admin';
+                      const msgTime = new Date(msg.createdAt);
+                      const timeStr = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(msgTime);
+                      const prevMsg = idx > 0 ? reversed[idx - 1] : null;
+                      const showDate = !prevMsg || new Date(prevMsg.createdAt).toDateString() !== msgTime.toDateString();
+                      const translatedCopy = msg.translatedContent ?? msg.contentTranslated;
+                      const avatarClass = isHospital
+                        ? 'bg-indigo-100 text-indigo-600'
+                        : isAdmin
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-emerald-100 text-emerald-600';
+                      const bubbleClass = isHospital
+                        ? 'bg-indigo-600 text-white rounded-tr-none'
+                        : isAdmin
+                          ? 'bg-amber-50 border border-amber-100 text-amber-900 rounded-tl-none'
+                          : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none';
+                      const avatarLabel = isHospital ? 'H' : isAdmin ? 'A' : patientName.charAt(0);
+
+                      return (
+                        <div key={msg.id}>
+                          {showDate && (
+                            <div className="text-center mb-4">
+                              <span className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
+                                {new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric' }).format(msgTime)}
+                              </span>
+                            </div>
+                          )}
+                          <div className={`flex gap-3 ${isHospital ? 'flex-row-reverse' : ''}`}>
+                            <div className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${avatarClass}`}>
+                              {avatarLabel}
+                            </div>
+                            <div className="max-w-[70%] space-y-1">
+                              <div className={`rounded-2xl p-3 text-sm leading-relaxed shadow-sm ${bubbleClass}`}>
+                                <p>{msg.content}</p>
+                                {!isHospital && translatedCopy && (
+                                  <div className="mt-2 border-t border-purple-100 pt-2 text-xs text-purple-600">
+                                    <Globe size={10} className="mr-1 inline" />
+                                    <span>{translatedCopy}</span>
+                                  </div>
+                                )}
+                                {msg.attachments && msg.attachments.length > 0 ? (
+                                  <div className="mt-3 space-y-2">
+                                    {msg.attachments.map((attachment, attachmentIndex) => (
+                                      <a
+                                        key={`${msg.id}-attachment-${attachmentIndex}`}
+                                        href={attachment.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs ${
+                                          isHospital
+                                            ? 'bg-white/15 text-white'
+                                            : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                                        }`}
+                                        >
+                                        <FileText size={12} />
+                                        <span className="truncate">
+                                          {attachment.fileName
+                                            ?? attachment.name
+                                            ?? t(
+                                              'hospital.cases.detail.messages.attachmentFallback',
+                                            )}
+                                        </span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className={`text-[10px] text-slate-400 ${isHospital ? 'text-right' : 'pl-2'}`}>
+                                {timeStr}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-400">
+                      {t(
+                        'hospital.cases.detail.messages.sectionEmpty',
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
@@ -760,10 +816,9 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
           )}
         </div>
 
-        {/* Input Area */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-          <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-            <AlertCircle size={14} className="text-amber-600 shrink-0" />
+        <div className="border-t border-slate-100 bg-slate-50/50 p-4">
+          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <AlertCircle size={14} className="shrink-0 text-amber-600" />
             <p className="text-xs text-amber-700">
               {t(
                 'hospital.cases.detail.messages.privacyNotice',
@@ -772,22 +827,13 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
               )}
             </p>
           </div>
-          <div className="flex gap-2">
-            <textarea
-              placeholder={t('hospital.cases.detail.messages.inputPlaceholder', undefined, 'Type a message...')}
-              className="flex-1 resize-none h-14 p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 text-sm"
-            />
-            <button className="h-14 w-14 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm flex items-center justify-center">
-              <Send size={18} />
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Patient Context Panel (shared with Admin/Hospital message experiences) */}
       <MessageCaseDetailPanel
         caseId={caseDetail.id}
-        category={selectedConversation?.category ?? null}
+        category={selectedConversationCategory}
         participantRole={t('hospital.common.patient', undefined, 'Patient')}
         participantName={patientName}
         patientCode={caseDetail.patient.code}

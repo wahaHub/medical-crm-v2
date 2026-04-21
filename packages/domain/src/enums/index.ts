@@ -42,6 +42,7 @@ export type AISummaryStatusType = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAIL
 // Phase 2 M1: CHC + Quotes
 export type CHCSubStatus = 'DISTRIBUTED' | 'NEED_INFO' | 'QUOTED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'REMOVED';
 export type QuoteStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+export const HOSPITAL_CASE_READ_CHC_STATUSES = ['DISTRIBUTED', 'NEED_INFO', 'QUOTED', 'ACCEPTED'] as const satisfies readonly CHCSubStatus[];
 
 // Phase 2 M2: Events / Timeline
 export type CaseEventType =

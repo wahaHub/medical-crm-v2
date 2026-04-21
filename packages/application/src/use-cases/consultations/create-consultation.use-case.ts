@@ -1,9 +1,10 @@
 import { Consultation, type IConsultationRepository, type ICaseRepository } from '@medical-crm/domain';
-import { generateId, ForbiddenError, NotFoundError } from '@medical-crm/utils';
+import { generateId, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
+import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export interface CreateConsultationInput {
   caseId: string;
@@ -29,13 +30,10 @@ export class CreateConsultationUseCase {
     }
 
     if (actor.role === 'HOSPITAL') {
-      if (caseEntity.assignedHospitalId !== actor.hospitalId) {
-        throw new ForbiddenError('Access denied to this case');
-      }
+      assertAssignedHospitalCaseAccess(caseEntity, actor.hospitalId);
     }
 
     const now = new Date();
-
     const entity = new Consultation({
       id: generateId(),
       caseId: input.caseId,

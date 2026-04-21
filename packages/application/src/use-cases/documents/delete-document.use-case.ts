@@ -1,6 +1,7 @@
 import type { ICaseRepository, IDocumentRepository } from '@medical-crm/domain';
-import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
+import { NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
+import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export class DeleteDocumentUseCase {
   constructor(
@@ -11,8 +12,8 @@ export class DeleteDocumentUseCase {
   async execute(caseId: string, docId: string, actor: Actor): Promise<void> {
     const caze = await this.caseRepo.findById(caseId);
     if (!caze) throw new NotFoundError(`Case ${caseId} not found`);
-    if (actor.role === 'HOSPITAL' && caze.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Access denied to this case');
+    if (actor.role === 'HOSPITAL') {
+      assertAssignedHospitalCaseAccess(caze, actor.hospitalId);
     }
 
     const doc = await this.documentRepo.findById(docId);

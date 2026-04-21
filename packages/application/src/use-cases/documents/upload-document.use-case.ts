@@ -1,7 +1,8 @@
 import type { ICaseRepository, IDocumentRepository, ICaseProgressRepository, DocumentType, Sensitivity } from '@medical-crm/domain';
 import { Document, CaseProgress } from '@medical-crm/domain';
-import { generateId, NotFoundError, ForbiddenError } from '@medical-crm/utils';
+import { generateId, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
+import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export interface UploadDocumentInput {
   caseId: string;
@@ -24,8 +25,8 @@ export class UploadDocumentUseCase {
   async execute(input: UploadDocumentInput, actor: Actor): Promise<{ documentId: string }> {
     const caze = await this.caseRepo.findById(input.caseId);
     if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
-    if (actor.role === 'HOSPITAL' && caze.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Access denied to this case');
+    if (actor.role === 'HOSPITAL') {
+      assertAssignedHospitalCaseAccess(caze, actor.hospitalId);
     }
 
     const docId = generateId();

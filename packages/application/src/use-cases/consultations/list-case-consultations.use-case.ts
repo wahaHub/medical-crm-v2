@@ -1,13 +1,15 @@
-import type { IConsultationRepository, ICaseRepository } from '@medical-crm/domain';
+import type { IConsultationRepository, ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
+import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export class ListCaseConsultationsUseCase {
   constructor(
     private readonly consultationRepo: IConsultationRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<ConsultationDTO[]> {
@@ -21,11 +23,15 @@ export class ListCaseConsultationsUseCase {
     }
 
     // Hospital users can only see consultations for cases assigned to their hospital
-    if (actor.role === 'HOSPITAL' && caseEntity.assignedHospitalId !== actor.hospitalId) {
-      throw new ForbiddenError('Case is not assigned to your hospital');
+    if (actor.role === 'HOSPITAL') {
+      await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo, 'Case is not assigned to your hospital');
     }
 
     const consultations = await this.consultationRepo.findByCaseId(caseId);
-    return consultations.map(toConsultationDTO);
+    const visibleConsultations = actor.role === 'HOSPITAL'
+      ? consultations.filter((consultation) => consultation.hospitalId === actor.hospitalId)
+      : consultations;
+
+    return visibleConsultations.map(toConsultationDTO);
   }
 }

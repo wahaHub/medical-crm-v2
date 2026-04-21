@@ -57,7 +57,6 @@ describe('CreateConsultationUseCase', () => {
       nextCaseNumber: vi.fn(),
       countByFilters: vi.fn(),
     };
-
     useCase = new CreateConsultationUseCase(mockConsultationRepo, mockCaseRepo, mockTranslationTaskService as any);
   });
 

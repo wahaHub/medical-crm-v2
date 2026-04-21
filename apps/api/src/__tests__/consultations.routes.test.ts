@@ -13,6 +13,9 @@ const mockServices = {
   getConsultationStats: { execute: vi.fn() },
   listCaseConsultations: { execute: vi.fn() },
   mediaUpload: { createUploadIntent: vi.fn() },
+  caseRepo: { findById: vi.fn() },
+  patientRepo: { findById: vi.fn() },
+  notifyPatientOfCaseUpdate: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -63,6 +66,14 @@ describe('Consultation routes', () => {
       roles: ['ADMIN'],
       hospitalId: null,
     };
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: VALID_UUID,
+      patientId: 'patient-1',
+    });
+    mockServices.patientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      site: 'beauty',
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -88,6 +99,63 @@ describe('Consultation routes', () => {
       const body = await res.json();
       expect(body).toEqual(created);
       expect(mockServices.createConsultation.execute).toHaveBeenCalledOnce();
+    });
+
+    it('notifies the patient after a hospital schedules a consultation', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.createConsultation.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+      });
+
+      const res = await app.request('/api/v2/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId: VALID_UUID,
+          scheduledAt: '2026-04-01T10:00:00Z',
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith({
+        caseId: VALID_UUID,
+        patientId: 'patient-1',
+        site: 'beauty',
+        subject: 'Your consultation has been scheduled',
+        messagePreview: 'Your hospital scheduled a consultation and added the appointment to your case.',
+        dedupeKey: `consultation:${VALID_UUID}`,
+      });
+    });
+
+    it('still returns 201 when consultation notification delivery fails', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.createConsultation.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+      });
+      mockServices.notifyPatientOfCaseUpdate.execute.mockRejectedValueOnce(new Error('smtp down'));
+
+      const res = await app.request('/api/v2/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId: VALID_UUID,
+          scheduledAt: '2026-04-01T10:00:00Z',
+        }),
+      });
+
+      expect(res.status).toBe(201);
     });
 
     it('rejects missing required fields', async () => {

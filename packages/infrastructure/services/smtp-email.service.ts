@@ -171,6 +171,26 @@ export class SmtpEmailService implements IEmailService {
     await this.sendRaw(params.to, content.subject, content.text, content.html);
   }
 
+  async sendPatientCaseUpdateAlert(params: {
+    to: string;
+    patientName: string;
+    subject: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildPatientNewMessageEmail({
+      ...params,
+      preheader: 'Open your patient dashboard to review the latest update.',
+      eyebrow: 'Case Update',
+      title: params.subject,
+      introLine: `${params.patientName}, there is a new update on your Medora case.`,
+      primaryActionLabel: 'Review case update',
+      speaker: 'Medora case update',
+    });
+    await this.sendRaw(params.to, content.subject, content.text, content.html);
+  }
+
   private async sendRaw(to: string, subject: string, text: string, html: string): Promise<void> {
     await this.transporter.sendMail({
       from: this.from,

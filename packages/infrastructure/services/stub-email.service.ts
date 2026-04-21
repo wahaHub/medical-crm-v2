@@ -76,4 +76,15 @@ export class StubEmailService implements IEmailService {
   }): Promise<void> {
     console.log(`[STUB EMAIL] Patient new message alert to ${params.to} (${params.locale ?? 'default'}): ${params.patientName} :: ${params.messagePreview} :: ${params.dashboardLink}`);
   }
+
+  async sendPatientCaseUpdateAlert(params: {
+    to: string;
+    patientName: string;
+    subject: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    console.log(`[STUB EMAIL] Patient case update to ${params.to} (${params.locale ?? 'default'}): ${params.subject} :: ${params.patientName} :: ${params.messagePreview} :: ${params.dashboardLink}`);
+  }
 }

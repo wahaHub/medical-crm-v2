@@ -61,6 +61,26 @@ app.openapi(createConsultationRoute, async (c) => {
     patientLanguage: body.patientLanguage,
     notes: body.notes,
   }, actor);
+
+  if (actor.role === 'HOSPITAL') {
+    try {
+      const caseEntity = await svc.caseRepo.findById(body.caseId);
+      if (caseEntity) {
+        const patient = await svc.patientRepo.findById(caseEntity.patientId);
+        await svc.notifyPatientOfCaseUpdate.execute({
+          caseId: body.caseId,
+          patientId: caseEntity.patientId,
+          site: patient?.site ?? 'china',
+          subject: 'Your consultation has been scheduled',
+          messagePreview: 'Your hospital scheduled a consultation and added the appointment to your case.',
+          dedupeKey: `consultation:${result.id}`,
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to notify patient about a consultation update:', error);
+    }
+  }
+
   return c.json(result, 201);
 });
 

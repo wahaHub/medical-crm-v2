@@ -5,24 +5,31 @@ export function buildPatientNewMessageEmail(params: {
   messagePreview: string;
   dashboardLink: string;
   locale?: string | null;
+  subject?: string;
+  preheader?: string;
+  eyebrow?: string;
+  title?: string;
+  introLine?: string;
+  primaryActionLabel?: string;
+  speaker?: string;
 }) {
   return buildTransactionalEmail({
     locale: params.locale ?? 'en',
-    subject: 'Your Medora care team sent a new message',
-    preheader: 'Open your patient dashboard to read the latest update from Medora.',
-    eyebrow: 'Patient Update',
-    title: 'You have a new message',
+    subject: params.subject ?? 'Your Medora care team sent a new message',
+    preheader: params.preheader ?? 'Open your patient dashboard to read the latest update from Medora.',
+    eyebrow: params.eyebrow ?? 'Patient Update',
+    title: params.title ?? 'You have a new message',
     intro: [
-      `${params.patientName}, your Medora care team sent a new update.`,
+      params.introLine ?? `${params.patientName}, your Medora care team sent a new update.`,
     ],
     conversationItems: [
       {
-        speaker: 'Medora care team',
+        speaker: params.speaker ?? 'Medora care team',
         text: params.messagePreview,
       },
     ],
     primaryAction: {
-      label: 'Open patient dashboard',
+      label: params.primaryActionLabel ?? 'Open patient dashboard',
       url: params.dashboardLink,
     },
     footerLines: [

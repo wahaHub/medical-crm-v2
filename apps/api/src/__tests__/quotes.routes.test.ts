@@ -14,6 +14,9 @@ const mockServices = {
   resendQuote: { execute: vi.fn() },
   acceptQuote: { execute: vi.fn() },
   rejectQuote: { execute: vi.fn() },
+  caseRepo: { findById: vi.fn() },
+  patientRepo: { findById: vi.fn() },
+  notifyPatientOfCaseUpdate: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -80,6 +83,14 @@ describe('Quotes routes', () => {
       roles: ['ADMIN'],
       hospitalId: null,
     };
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: VALID_UUID,
+      patientId: 'patient-1',
+    });
+    mockServices.patientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      site: 'beauty',
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -229,6 +240,55 @@ describe('Quotes routes', () => {
       const body = await res.json();
       expect(body).toEqual(result);
       expect(mockServices.sendQuote.execute).toHaveBeenCalledWith(VALID_UUID, expect.anything());
+    });
+
+    it('notifies the patient after a hospital sends a quote', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: VALID_UUID_2,
+      };
+      mockServices.sendQuote.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+        isDraft: false,
+      });
+
+      const res = await app.request(`/api/v2/quotes/${VALID_UUID}/send`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith({
+        caseId: VALID_UUID,
+        patientId: 'patient-1',
+        site: 'beauty',
+        subject: 'Your treatment quote is ready',
+        messagePreview: 'Your hospital sent a treatment quote with one or more quoted items.',
+        dedupeKey: `quote:${VALID_UUID}`,
+      });
+    });
+
+    it('still returns 200 when quote notification delivery fails', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: VALID_UUID_2,
+      };
+      mockServices.sendQuote.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+        isDraft: false,
+      });
+      mockServices.notifyPatientOfCaseUpdate.execute.mockRejectedValueOnce(new Error('smtp down'));
+
+      const res = await app.request(`/api/v2/quotes/${VALID_UUID}/send`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(200);
     });
 
     it('returns 400 for invalid UUID', async () => {

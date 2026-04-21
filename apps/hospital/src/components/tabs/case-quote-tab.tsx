@@ -117,6 +117,51 @@ interface LineItem {
   amount: string;
 }
 
+type QuoteLineItemRecord = Record<string, unknown>;
+
+export function isValidLineItemAmount(amount: string): boolean {
+  return /^\d+(\.\d{1,2})?$/.test(amount.trim());
+}
+
+export function isCompleteLineItem(lineItem: LineItem): boolean {
+  return (
+    lineItem.name.trim().length > 0
+    && lineItem.amount.trim().length > 0
+    && isValidLineItemAmount(lineItem.amount)
+  );
+}
+
+export function calculateQuoteTotal(lineItems: LineItem[]): number {
+  return lineItems.reduce((sum, item) => {
+    const val = parseFloat(item.amount);
+    return sum + (Number.isNaN(val) ? 0 : val);
+  }, 0);
+}
+
+export function normalizeQuoteLineItems(lineItems: unknown): LineItem[] {
+  if (!Array.isArray(lineItems)) {
+    return [];
+  }
+
+  return lineItems
+    .map((lineItem) => {
+      if (!lineItem || typeof lineItem !== 'object') {
+        return null;
+      }
+
+      const record = lineItem as QuoteLineItemRecord;
+      return {
+        name: typeof record.name === 'string'
+          ? record.name
+          : typeof record.item === 'string'
+            ? record.item
+            : '',
+        amount: typeof record.amount === 'string' ? record.amount : '',
+      };
+    })
+    .filter((lineItem): lineItem is LineItem => Boolean(lineItem));
+}
+
 function addDays(date: Date, days: number): Date {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -197,10 +242,7 @@ function CreateQuoteModal({
   const [error, setError] = useState<string | null>(null);
 
   const total = useMemo(() => {
-    return lineItems.reduce((sum, item) => {
-      const val = parseFloat(item.amount);
-      return sum + (Number.isNaN(val) ? 0 : val);
-    }, 0);
+    return calculateQuoteTotal(lineItems.filter(isCompleteLineItem));
   }, [lineItems]);
 
   const handleLineItemChange = useCallback(
@@ -224,7 +266,14 @@ function CreateQuoteModal({
 
   const handleSubmit = async (andSend: boolean) => {
     setError(null);
-    const validItems = lineItems.filter((li) => li.name.trim() && li.amount.trim());
+    const hasInvalidAmount = lineItems.some((lineItem) =>
+      lineItem.amount.trim().length > 0 && !isValidLineItemAmount(lineItem.amount),
+    );
+    if (hasInvalidAmount) {
+      setError(t('hospital.cases.detail.quote.validation.invalidAmount', undefined, 'Each quote amount must be a valid number with up to two decimals.'));
+      return;
+    }
+    const validItems = lineItems.filter(isCompleteLineItem);
     if (validItems.length === 0) {
       setError(t('hospital.cases.detail.quote.validation.lineItemsRequired', undefined, 'Please add at least one line item.'));
       return;
@@ -420,6 +469,7 @@ function QuoteCard({
 }) {
   const { locale, t } = useHospitalI18n();
   const canEdit = quote.status === 'PENDING' || quote.isDraft;
+  const lineItems = normalizeQuoteLineItems(quote.lineItems);
   return (
     <div className="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm space-y-4">
       <div className="flex items-center justify-between">
@@ -451,9 +501,9 @@ function QuoteCard({
       </div>
 
       {/* Line Items */}
-      {quote.lineItems && quote.lineItems.length > 0 && (
+      {lineItems.length > 0 && (
         <div className="space-y-1.5">
-          {quote.lineItems.map((li, idx) => (
+          {lineItems.map((li, idx) => (
             <div key={idx} className="flex items-center justify-between text-sm px-3 py-2 bg-slate-50 rounded-lg">
               <span className="text-slate-700">{li.name}</span>
               <span className="font-medium text-slate-800">{quote.currency} {li.amount}</span>
@@ -532,8 +582,7 @@ export function CaseQuoteTab({ caseId }: { caseId: string }) {
   }
 
   const quoteList = Array.isArray(quotes) ? quotes : quotes?.data ?? [];
-  const existingQuote = quoteList.length > 0 ? quoteList[0] : null;
-  const hasQuote = !!existingQuote;
+  const hasQuote = quoteList.length > 0;
 
   return (
     <div className="space-y-6">
@@ -543,19 +592,21 @@ export function CaseQuoteTab({ caseId }: { caseId: string }) {
           <Receipt size={18} className="text-indigo-500" />
           {t('hospital.cases.detail.quote.title', undefined, 'Quote')}
         </h3>
-        {!hasQuote && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <Plus size={14} /> {t('hospital.cases.detail.quote.createButton', undefined, 'Create Quote')}
-          </button>
-        )}
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          <Plus size={14} /> {t('hospital.cases.detail.quote.createButton', undefined, 'Create Quote')}
+        </button>
       </div>
 
       {/* Quote display */}
       {hasQuote ? (
-        <QuoteCard quote={existingQuote} onSend={handleSend} onEdit={setEditingQuote} />
+        <div className="space-y-4">
+          {quoteList.map((quote) => (
+            <QuoteCard key={quote.id} quote={quote} onSend={handleSend} onEdit={setEditingQuote} />
+          ))}
+        </div>
       ) : (
         <div className="bg-white p-10 rounded-[1.5rem] border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 mb-4">
@@ -574,8 +625,8 @@ export function CaseQuoteTab({ caseId }: { caseId: string }) {
         </div>
       )}
 
-      {/* Create Modal — only when no existing quote */}
-      {showCreateModal && !hasQuote && (
+      {/* Create Modal */}
+      {showCreateModal && (
         <CreateQuoteModal
           caseId={caseId}
           onClose={() => setShowCreateModal(false)}
@@ -611,7 +662,9 @@ function EditQuoteModal({
 }) {
   const { t } = useHospitalI18n();
   const [lineItems, setLineItems] = useState<LineItem[]>(
-    quote.lineItems?.map((li) => ({ name: li.name, amount: li.amount })) ?? [{ name: '', amount: '' }],
+    normalizeQuoteLineItems(quote.lineItems).length > 0
+      ? normalizeQuoteLineItems(quote.lineItems)
+      : [{ name: '', amount: '' }],
   );
   const [notes, setNotes] = useState(quote.notes ?? '');
   const [validUntil, setValidUntil] = useState(() =>
@@ -622,10 +675,7 @@ function EditQuoteModal({
   const [error, setError] = useState<string | null>(null);
 
   const total = useMemo(() => {
-    return lineItems.reduce((sum, item) => {
-      const val = parseFloat(item.amount);
-      return sum + (Number.isNaN(val) ? 0 : val);
-    }, 0);
+    return calculateQuoteTotal(lineItems.filter(isCompleteLineItem));
   }, [lineItems]);
 
   const handleLineItemChange = useCallback(
@@ -649,7 +699,14 @@ function EditQuoteModal({
 
   const handleSubmit = async () => {
     setError(null);
-    const validItems = lineItems.filter((li) => li.name.trim() && li.amount.trim());
+    const hasInvalidAmount = lineItems.some((lineItem) =>
+      lineItem.amount.trim().length > 0 && !isValidLineItemAmount(lineItem.amount),
+    );
+    if (hasInvalidAmount) {
+      setError(t('hospital.cases.detail.quote.validation.invalidAmount', undefined, 'Each quote amount must be a valid number with up to two decimals.'));
+      return;
+    }
+    const validItems = lineItems.filter(isCompleteLineItem);
     if (validItems.length === 0) {
       setError(t('hospital.cases.detail.quote.validation.lineItemsRequired', undefined, 'Please add at least one line item.'));
       return;

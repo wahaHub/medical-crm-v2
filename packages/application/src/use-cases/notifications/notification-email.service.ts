@@ -179,6 +179,34 @@ export class NotificationEmailService {
     });
   }
 
+  async notifyPatientOfCaseUpdate(input: {
+    caseId: string;
+    patientId: string;
+    site: PatientSite;
+    subject: string;
+    messagePreview: string;
+    dedupeKey?: string;
+  }): Promise<void> {
+    const patient = await this.recipientRepo.findRecipientById(input.patientId);
+    if (!patient || patient.role !== 'PATIENT' || !patient.email) {
+      return;
+    }
+
+    await this.sendWithCooldown({
+      recipientId: patient.id,
+      notificationKind: 'patient-case-update',
+      dedupeKey: input.dedupeKey?.trim() || `${input.caseId}:${input.subject}`,
+      send: () => this.emailService.sendPatientCaseUpdateAlert({
+        to: patient.email,
+        patientName: patient.name || 'Patient',
+        subject: input.subject,
+        messagePreview: truncatePreview(input.messagePreview),
+        dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
+        locale: patient.preferredLanguage ?? null,
+      }),
+    });
+  }
+
   private async listOfflineAdmins(
     preferenceKey: keyof NotificationPreferences,
   ): Promise<AdminNotificationRecipient[]> {

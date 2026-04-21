@@ -126,6 +126,29 @@ app.openapi(sendQuoteRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
   const result = await svc.sendQuote.execute(id, actor);
+
+  if (actor.role === 'HOSPITAL') {
+    const caseId = 'caseId' in result && typeof result.caseId === 'string' ? result.caseId : null;
+    if (caseId) {
+      try {
+        const caseEntity = await svc.caseRepo.findById(caseId);
+        if (caseEntity) {
+          const patient = await svc.patientRepo.findById(caseEntity.patientId);
+          await svc.notifyPatientOfCaseUpdate.execute({
+            caseId,
+            patientId: caseEntity.patientId,
+            site: patient?.site ?? 'china',
+            subject: 'Your treatment quote is ready',
+            messagePreview: 'Your hospital sent a treatment quote with one or more quoted items.',
+            dedupeKey: `quote:${id}`,
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to notify patient about a quote update:', error);
+      }
+    }
+  }
+
   return c.json(result, 200);
 });
 

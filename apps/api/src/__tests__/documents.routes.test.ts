@@ -20,6 +20,10 @@ const mockServices = {
   mediaUpload: { createUploadIntent: vi.fn() },
   getCaseProgress: { execute: vi.fn() },
   addCaseProgress: { execute: vi.fn() },
+  caseRepo: { findById: vi.fn() },
+  documentRepo: { findById: vi.fn() },
+  patientRepo: { findById: vi.fn() },
+  notifyPatientOfCaseUpdate: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -34,7 +38,7 @@ import documentRoutes from '../routes/documents.routes.js';
 
 const app = new OpenAPIHono();
 
-const adminSession = {
+let currentSession = {
   userId: 'u-1',
   email: 'admin@test.com',
   roles: ['ADMIN'],
@@ -42,7 +46,7 @@ const adminSession = {
 };
 
 app.use('/api/v2/*', async (c, next) => {
-  c.set('session', adminSession);
+  c.set('session', currentSession);
   await next();
 });
 
@@ -62,6 +66,33 @@ const DOC_UUID = '00000000-0000-0000-0000-000000000002';
 describe('Documents routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    currentSession = {
+      userId: 'u-1',
+      email: 'admin@test.com',
+      roles: ['ADMIN'],
+      hospitalId: null,
+    };
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: CASE_UUID,
+      patientId: 'patient-1',
+      assignedHospitalId: 'hospital-1',
+    });
+    mockServices.patientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      site: 'beauty',
+    });
+    mockServices.listDocuments.execute.mockResolvedValue([
+      {
+        id: DOC_UUID,
+        documentType: 'INVITATION',
+      },
+    ]);
+    mockServices.documentRepo.findById.mockResolvedValue({
+      id: DOC_UUID,
+      caseId: CASE_UUID,
+      documentType: 'INVITATION',
+      status: 'ACTIVE',
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -101,6 +132,36 @@ describe('Documents routes', () => {
       expect(input).toMatchObject({ caseId: CASE_UUID, fileName: 'report.pdf', storageKey: 'crm/dev/cases/documents/case-1/asset-1/report.pdf' });
     });
 
+    it('does not notify the patient before the invitation file upload completes', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.mediaUpload.createUploadIntent.mockResolvedValue({
+        uploadUrl: 'https://storage.example.com/upload',
+        storageKey: 'crm/dev/cases/documents/case-1/asset-1/invitation.pdf',
+        expiresIn: 600,
+        asset: { fileName: 'invitation.pdf', mimeType: 'application/pdf', fileSize: 1024, storageKey: 'crm/dev/cases/documents/case-1/asset-1/invitation.pdf' },
+      });
+      mockServices.uploadDocument.execute.mockResolvedValue({ documentId: DOC_UUID });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: 'invitation.pdf',
+          fileSize: 1024,
+          mimeType: 'application/pdf',
+          documentType: 'INVITATION',
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).not.toHaveBeenCalled();
+    });
+
     it('rejects missing required fields', async () => {
       const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents`, {
         method: 'POST',
@@ -121,6 +182,47 @@ describe('Documents routes', () => {
 
       expect(res.status).toBe(400);
       expect(mockServices.uploadDocument.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/v2/cases/:caseId/documents/:docId/notify-patient', () => {
+    it('notifies the patient when a hospital confirms an uploaded invitation document', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith({
+        caseId: CASE_UUID,
+        patientId: 'patient-1',
+        site: 'beauty',
+        subject: 'Your invitation letter is available',
+        messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
+        dedupeKey: `document:${DOC_UUID}`,
+      });
+    });
+
+    it('returns 204 even if invitation notification delivery fails', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.notifyPatientOfCaseUpdate.execute.mockRejectedValueOnce(new Error('smtp down'));
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(204);
     });
   });
 

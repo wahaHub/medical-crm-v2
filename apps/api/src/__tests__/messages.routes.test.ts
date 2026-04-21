@@ -260,6 +260,42 @@ describe('Message routes', () => {
       });
     });
 
+    it('triggers offline patient email notifications for hospital replies in hospital-patient conversations', async () => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.getConversation.execute.mockResolvedValue({
+        id: VALID_UUID,
+        caseId: VALID_UUID,
+        category: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        assistantMode: 'AI_ACTIVE',
+      });
+      mockServices.sendMessage.execute.mockResolvedValue({
+        message: { id: VALID_MSG_ID, content: 'Hospital reply', senderRole: 'HOSPITAL' },
+        sideEffectMessages: [],
+      });
+
+      const res = await app.request(`/api/v2/conversations/${VALID_UUID}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'Hospital reply' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.notifyPatientOfAdminMessage.execute).toHaveBeenCalledWith({
+        conversationId: VALID_UUID,
+        caseId: VALID_UUID,
+        patientId: 'patient-1',
+        messagePreview: 'Hospital reply',
+        site: 'beauty',
+        isPatientOnline: false,
+      });
+    });
+
     it('triggers offline admin email notifications for patient replies in admin-patient conversations', async () => {
       currentSession = {
         userId: 'patient-1',

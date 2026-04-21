@@ -52,4 +52,12 @@ export interface IEmailService {
     dashboardLink: string;
     locale?: string | null;
   }): Promise<void>;
+  sendPatientCaseUpdateAlert(params: {
+    to: string;
+    patientName: string;
+    subject: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void>;
 }

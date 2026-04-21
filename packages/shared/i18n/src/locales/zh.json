@@ -2230,6 +2230,17 @@
           "documentsCount": "{count} 份文档",
           "messagesCount": "{count} 条消息"
         },
+        "tabs": {
+          "aiSummary": "AI 摘要",
+          "intake": "问诊表",
+          "documents": "文档",
+          "messages": "消息",
+          "diagnosis": "诊断",
+          "quote": "报价",
+          "marketing": "营销",
+          "invitation": "邀请函",
+          "consultation": "咨询"
+        },
         "intake": {
           "errorLoad": "加载失败:",
           "emptyTitle": "暂无问诊表数据",
@@ -2264,6 +2275,11 @@
           "addButton": "添加诊断意见",
           "empty": "暂无诊断意见",
           "icdCode": "ICD-10 编码",
+          "type": {
+            "preliminary": "初步诊断",
+            "confirmed": "确诊",
+            "followUp": "复诊跟进"
+          },
           "severity": {
             "mild": "轻度",
             "moderate": "中度",

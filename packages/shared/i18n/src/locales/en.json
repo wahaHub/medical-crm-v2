@@ -2229,6 +2229,17 @@
           "documentsCount": "{count} Docs",
           "messagesCount": "{count} Messages"
         },
+        "tabs": {
+          "aiSummary": "AI Summary",
+          "intake": "Intake",
+          "documents": "Documents",
+          "messages": "Messages",
+          "diagnosis": "Diagnosis",
+          "quote": "Quote",
+          "marketing": "Marketing",
+          "invitation": "Invitation Letter",
+          "consultation": "Consultation"
+        },
         "intake": {
           "errorLoad": "Loading failed:",
           "emptyTitle": "No medical intake data",
@@ -2250,8 +2261,8 @@
         "messages": {
           "attachmentFallback": "Attachment",
           "empty": "No message records",
-          "inputPlaceholder": "Enter message content...",
-          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+          "inputPlaceholder": "Type a message...",
+          "privacyNotice": "Privacy Notice: Patient contact information is hidden for privacy.",
           "sections": {
             "adminPatient": "Admin / AI & Patient",
             "hospitalPatient": "Hospital & Patient"
@@ -2263,6 +2274,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "type": {
+            "preliminary": "Preliminary",
+            "confirmed": "Confirmed",
+            "followUp": "Follow-up"
+          },
           "severity": {
             "mild": "Mild",
             "moderate": "Moderate",

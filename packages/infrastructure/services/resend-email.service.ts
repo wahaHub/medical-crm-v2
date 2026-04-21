@@ -186,6 +186,26 @@ export class ResendEmailService implements IEmailService {
     await this.sendRaw(params.to, content.subject, content.html, content.text);
   }
 
+  async sendPatientCaseUpdateAlert(params: {
+    to: string;
+    patientName: string;
+    subject: string;
+    messagePreview: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildPatientNewMessageEmail({
+      ...params,
+      preheader: 'Open your patient dashboard to review the latest update.',
+      eyebrow: 'Case Update',
+      title: params.subject,
+      introLine: `${params.patientName}, there is a new update on your Medora case.`,
+      primaryActionLabel: 'Review case update',
+      speaker: 'Medora case update',
+    });
+    await this.sendRaw(params.to, content.subject, content.html, content.text);
+  }
+
   private async sendRaw(to: string, subject: string, html: string, text: string): Promise<void> {
     const response = await fetchWithEmailTimeout('https://api.resend.com/emails', {
       method: 'POST',

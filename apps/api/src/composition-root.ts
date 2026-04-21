@@ -511,6 +511,16 @@ interface AppServices {
       isPatientOnline: boolean;
     }): Promise<void>;
   };
+  notifyPatientOfCaseUpdate: {
+    execute(input: {
+      caseId: string;
+      patientId: string;
+      site: import('@medical-crm/domain').PatientSite;
+      subject: string;
+      messagePreview: string;
+      dedupeKey?: string;
+    }): Promise<void>;
+  };
   sendPatientLoginLink: SendPatientLoginLinkUseCase;
   verifyPatientEntryToken: VerifyPatientEntryTokenUseCase;
   verifyMagicLink: VerifyMagicLinkUseCase;
@@ -1148,6 +1158,9 @@ export function getServices(): AppServices {
       },
       notifyPatientOfAdminMessage: {
         execute: (input) => notificationEmailService.notifyPatientOfAdminMessage(input),
+      },
+      notifyPatientOfCaseUpdate: {
+        execute: (input) => notificationEmailService.notifyPatientOfCaseUpdate(input),
       },
       sendPatientLoginLink: new SendPatientLoginLinkUseCase(userEmailLookupRepo, patientAuthService, magicLinkEmailService),
       verifyPatientEntryToken: new VerifyPatientEntryTokenUseCase(patientAuthService),

@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import { uploadDocumentSchema } from '@medical-crm/validation';
-import { ValidationError } from '@medical-crm/utils';
+import { ForbiddenError, ValidationError } from '@medical-crm/utils';
 import { access, readdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -237,6 +237,61 @@ app.openapi(uploadDocumentRoute, async (c) => {
     asset: uploadResult.asset,
     documentId,
   }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 1a. POST /api/v2/cases/:caseId/documents/:docId/notify-patient — NotifyPatientDocumentAvailable
+// ---------------------------------------------------------------------------
+const notifyPatientDocumentAvailableRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/cases/{caseId}/documents/{docId}/notify-patient',
+  request: {
+    params: docIdParamSchema,
+  },
+  responses: { 204: { description: 'Patient notification dispatched (best effort)' } },
+});
+
+app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
+  const { caseId, docId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+
+  if (actor.role !== 'HOSPITAL') {
+    return c.json({ error: 'Only hospital users can notify patients about uploaded case documents' }, 403);
+  }
+
+  const caseEntity = await svc.caseRepo.findById(caseId);
+  if (!caseEntity) {
+    return c.json({ error: 'Case not found' }, 404);
+  }
+  if (!actor.hospitalId || caseEntity.assignedHospitalId !== actor.hospitalId) {
+    throw new ForbiddenError('Access denied to this case');
+  }
+
+  const doc = await svc.documentRepo.findById(docId);
+  if (!doc || doc.caseId !== caseId || doc.status === 'DELETED') {
+    return c.json({ error: 'Document not found' }, 404);
+  }
+
+  if (doc.documentType !== 'INVITATION') {
+    return c.body(null, 204);
+  }
+
+  try {
+    const patient = await svc.patientRepo.findById(caseEntity.patientId);
+    await svc.notifyPatientOfCaseUpdate.execute({
+      caseId,
+      patientId: caseEntity.patientId,
+      site: patient?.site ?? 'china',
+      subject: 'Your invitation letter is available',
+      messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
+      dedupeKey: `document:${docId}`,
+    });
+  } catch (error) {
+    console.warn('Failed to notify patient about an invitation document:', error);
+  }
+
+  return c.body(null, 204);
 });
 
 // ---------------------------------------------------------------------------

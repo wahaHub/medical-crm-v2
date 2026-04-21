@@ -47,6 +47,7 @@ describe('NotificationEmailService', () => {
       sendAdminNewMessageAlert: vi.fn(),
       sendAdminNewTicketAlert: vi.fn(),
       sendPatientNewMessageAlert: vi.fn(),
+      sendPatientCaseUpdateAlert: vi.fn(),
     };
 
     process.env.ADMIN_ORIGIN = 'https://admin.example.com';
@@ -112,6 +113,33 @@ describe('NotificationEmailService', () => {
     });
 
     expect(emailService.sendPatientNewMessageAlert).not.toHaveBeenCalled();
+  });
+
+  it('sends generic patient case-update alerts with their own cooldown slot', async () => {
+    await service.notifyPatientOfCaseUpdate({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      site: 'china',
+      subject: 'Your treatment quote is ready',
+      messagePreview: 'Your hospital uploaded a quote with multiple treatment items.',
+      dedupeKey: 'quote:quote-1',
+    });
+
+    expect(cooldownRepo.tryAcquireSlot).toHaveBeenCalledWith({
+      recipientId: 'patient-1',
+      notificationKind: 'patient-case-update',
+      dedupeKey: 'quote:quote-1',
+      cooldownMs: 5 * 60 * 1000,
+    });
+    expect(emailService.sendPatientCaseUpdateAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'patient@example.com',
+        patientName: 'Patient One',
+        subject: 'Your treatment quote is ready',
+        messagePreview: 'Your hospital uploaded a quote with multiple treatment items.',
+        dashboardLink: 'https://www.medicaltourismchina.health/dashboard',
+      }),
+    );
   });
 
   it('suppresses duplicate emails when the cooldown slot is not acquired', async () => {

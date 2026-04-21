@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Paperclip,
 } from 'lucide-react';
 import { StatusBadge, MessageCaseDetailPanel, QuestionnaireReadonlyView, LoadingSpinner } from '@medical-crm/ui';
 import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
@@ -38,6 +39,8 @@ import {
 import { useConsultationTranscript } from '@/queries/use-consultations';
 import { useEmailTemplates } from '@/queries/use-email-templates';
 import { addDiagnosis } from '@/actions/case-actions';
+import { deleteCaseDocument, uploadCaseDocument } from '@/actions/document-actions';
+import { createConversation, sendMessage, sendMessageWithAttachments, uploadFile } from '@/actions/message-actions';
 import { CreateConsultationModal } from '@/components/create-consultation-modal';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -141,6 +144,13 @@ const UNSAFE_CASE_DETAIL_ERROR_PATTERNS = [
   /\bstatus\s*\d{3}\b/i,
   /\bcode\s*\d{3}\b/i,
 ];
+
+const MAX_DIAGNOSIS_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MAX_INVITATION_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+function isPdfFile(file: File): boolean {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+}
 
 function avatarColor(name: string) {
   let hash = 0;
@@ -482,7 +492,7 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
           {activeTab === 'diagnosis' && <DiagnosisTab caseDetail={caseDetail} />}
           {activeTab === 'quote' && <CaseQuoteTab caseId={caseDetail.id} />}
           {activeTab === 'marketing' && <MarketingTab caseDetail={caseDetail} />}
-          {activeTab === 'invitation' && <InvitationLetterTab />}
+          {activeTab === 'invitation' && <InvitationLetterTab caseDetail={caseDetail} />}
           {activeTab === 'consultation' && (
             <ConsultationTab
               consultations={consultationsList}
@@ -659,9 +669,18 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const { user } = useAuth();
   const { locale, t } = useHospitalI18n();
+  const router = useRouter();
   const patientName = caseDetail.patient.name;
   const messageSections = caseDetail.messageSections ?? [];
+  const hospitalPatientSection = messageSections.find((section) => section.id === 'hospital-patient') ?? null;
   const selectedConversationCategory = messageSections.find((section) => section.conversationId)?.conversationCategory ?? null;
+  const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
+  const [draftMessage, setDraftMessage] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isSending, setIsSending] = useState(false);
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const sendInFlightRef = useRef(false);
   const patientContextLabels = {
     unknownParticipant: t('hospital.common.unknown', undefined, 'Unknown'),
     patientCode: t('hospital.messages.chat.patientCodeLabel', undefined, 'Patient Code'),
@@ -678,6 +697,75 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   };
   const formatConversationCategoryLabel = (category: string) =>
     formatCaseConversationCategoryForDisplay(category, t);
+
+  useEffect(() => {
+    if (hospitalPatientSection?.conversationId) {
+      setPendingConversationId(null);
+    }
+  }, [hospitalPatientSection?.conversationId]);
+
+  const handleSend = async () => {
+    const trimmedMessage = draftMessage.trim();
+    if (sendInFlightRef.current || (!trimmedMessage && selectedFiles.length === 0)) {
+      return;
+    }
+
+    sendInFlightRef.current = true;
+    setComposerError(null);
+    setIsSending(true);
+
+    try {
+      let conversationId = pendingConversationId ?? hospitalPatientSection?.conversationId ?? null;
+      if (!conversationId) {
+        const conversation = await createConversation({ category: 'HOSPITAL_PATIENT', caseId: caseDetail.id }) as { id?: string };
+        conversationId = conversation?.id ?? null;
+        if (conversationId) {
+          setPendingConversationId(conversationId);
+        }
+      }
+
+      if (!conversationId) {
+        throw new Error('Please choose a patient conversation before sending a message.');
+      }
+
+      if (selectedFiles.length > 0) {
+        const attachments = [];
+        for (const file of selectedFiles) {
+          attachments.push(await uploadFile(conversationId, file));
+        }
+        const messageType = selectedFiles.every((file) => file.type.startsWith('image/')) ? 'IMAGE' : 'FILE';
+        await sendMessageWithAttachments(conversationId, trimmedMessage, messageType, attachments);
+      } else if (trimmedMessage) {
+        await sendMessage(conversationId, trimmedMessage);
+      }
+
+      setDraftMessage('');
+      setSelectedFiles([]);
+      router.refresh();
+    } catch (error) {
+      setComposerError(
+        formatCaseDetailUserFacingError(
+          error,
+          t,
+          'hospital.cases.detail.messages.errorSend',
+          'Failed to send message',
+        ),
+      );
+    } finally {
+      sendInFlightRef.current = false;
+      setIsSending(false);
+    }
+  };
+
+  const handleFilesSelected = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files?.length) {
+      return;
+    }
+
+    setSelectedFiles((current) => [...current, ...Array.from(files)]);
+    event.target.value = '';
+  };
 
   return (
     <div className="flex gap-6 h-[600px]">
@@ -826,6 +914,72 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                 'Privacy Notice: Patient contact information is hidden for privacy.',
               )}
             </p>
+          </div>
+          {composerError && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <AlertCircle size={14} className="shrink-0" />
+              <span>{composerError}</span>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
+          {selectedFiles.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+              {selectedFiles.map((file, index) => (
+                <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
+                  <FileText size={12} />
+                  <span className="max-w-[180px] truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                    className="text-slate-400 hover:text-rose-500"
+                    aria-label={t('hospital.messages.chat.removeFile', undefined, 'Remove file')}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-3 flex gap-2">
+            <textarea
+              value={draftMessage}
+              onChange={(event) => setDraftMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleSend();
+                }
+              }}
+              placeholder={t(
+                'hospital.cases.detail.messages.inputPlaceholder',
+                undefined,
+                'Type a message...',
+              )}
+              className="h-14 flex-1 resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSending}
+              className="flex h-14 w-14 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+              title={t('hospital.messages.chat.attachFiles', undefined, 'Attach files')}
+            >
+              <Paperclip size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={isSending || (!draftMessage.trim() && selectedFiles.length === 0)}
+              className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            </button>
           </div>
         </div>
       </div>
@@ -995,44 +1149,63 @@ function AddDiagnosisModal({
   const [treatmentRecommendation, setTreatmentRecommendation] = useState('');
   const [costEstimate, setCostEstimate] = useState('< $5k');
   const [treatmentDuration, setTreatmentDuration] = useState('< 1 Week');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!open) return null;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) {
       setError(t('hospital.cases.detail.diagnosis.validation.nameRequired', undefined, 'Diagnosis name is required.'));
       return;
     }
 
     setError(null);
-    startTransition(() => {
-      void (async () => {
-        try {
-          await addDiagnosis(caseId, {
-            title,
-            diagnosisType,
-            icdCode,
-            severity: severity.toUpperCase(),
-            description,
-            treatmentRecommendation,
-            costEstimate,
-            treatmentDuration,
-          });
-          onSuccess();
-        } catch (err) {
-          setError(
-            formatCaseDetailUserFacingError(
-              err,
-              t,
-              'hospital.cases.detail.diagnosis.errorSave',
-              'Failed to save diagnosis',
-            ),
-          );
+    setIsSaving(true);
+    const uploadedDocumentIds: string[] = [];
+    try {
+      for (const file of selectedFiles) {
+        const uploaded = await uploadCaseDocument(caseId, file, 'DIAGNOSIS');
+        if (uploaded.documentId) {
+          uploadedDocumentIds.push(uploaded.documentId);
         }
-      })();
-    });
+      }
+
+      await addDiagnosis(caseId, {
+        title,
+        diagnosisType,
+        icdCode,
+        severity: severity.toUpperCase(),
+        description,
+        treatmentRecommendation,
+        costEstimate,
+        treatmentDuration,
+      });
+      setSelectedFiles([]);
+      onSuccess();
+    } catch (err) {
+      if (uploadedDocumentIds.length > 0) {
+        const rollbackResults = await Promise.allSettled(
+          uploadedDocumentIds.map((documentId) => deleteCaseDocument(caseId, documentId)),
+        );
+        const failedRollbacks = rollbackResults.filter((result) => result.status === 'rejected');
+        if (failedRollbacks.length > 0) {
+          console.warn('Failed to roll back uploaded diagnosis documents after diagnosis save failed:', failedRollbacks);
+        }
+      }
+      setError(
+        formatCaseDetailUserFacingError(
+          err,
+          t,
+          'hospital.cases.detail.diagnosis.errorSave',
+          'Failed to save diagnosis',
+        ),
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -1110,13 +1283,68 @@ function AddDiagnosisModal({
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.diagnosis.addModal.attachments', undefined, 'Attachments (Max 10MB)')}</label>
-            <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 bg-slate-50/60"><FileText size={32} className="mb-2 text-slate-300" /><span className="text-sm font-medium">{t('hospital.cases.detail.diagnosis.addModal.attachmentsPlaceholder', undefined, 'Attachment upload is not wired yet')}</span></div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                if (files.length === 0) {
+                  return;
+                }
+
+                const oversizedFile = files.find((file) => file.size > MAX_DIAGNOSIS_ATTACHMENT_BYTES);
+                if (oversizedFile) {
+                  setError(
+                    t(
+                      'hospital.cases.detail.diagnosis.addModal.errors.maxSize',
+                      { fileName: oversizedFile.name },
+                      '{fileName} exceeds the 10MB file size limit.',
+                    ),
+                  );
+                  event.target.value = '';
+                  return;
+                }
+
+                setError(null);
+                setSelectedFiles((current) => [...current, ...files]);
+                event.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 bg-slate-50/60 hover:border-cyan-300 hover:bg-cyan-50/40 transition-colors"
+            >
+              <FileText size={32} className="mb-2 text-slate-300" />
+              <span className="text-sm font-medium">
+                {t('hospital.cases.detail.diagnosis.addModal.attachmentsPlaceholder', undefined, 'Click to upload diagnosis report or examination results')}
+              </span>
+            </button>
+            {selectedFiles.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedFiles.map((file, index) => (
+                  <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <FileText size={12} />
+                    <span className="max-w-[220px] truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                      className="text-slate-400 hover:text-rose-500"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50 rounded-b-[2rem]">
-          <button onClick={onClose} disabled={isPending} className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-full disabled:opacity-50">{t('hospital.common.cancel', undefined, 'Cancel')}</button>
-          <button onClick={handleSave} disabled={isPending} className="px-6 py-2.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-full flex items-center gap-2 shadow-md shadow-cyan-200/50 disabled:opacity-50">
-            {isPending ? <Loader2 size={16} className="animate-spin" /> : <Stethoscope size={16} />}
+          <button onClick={onClose} disabled={isSaving} className="px-6 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-full disabled:opacity-50">{t('hospital.common.cancel', undefined, 'Cancel')}</button>
+          <button onClick={() => void handleSave()} disabled={isSaving} className="px-6 py-2.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-full flex items-center gap-2 shadow-md shadow-cyan-200/50 disabled:opacity-50">
+            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Stethoscope size={16} />}
             {t('hospital.cases.detail.diagnosis.addModal.save', undefined, 'Save Diagnosis')}
           </button>
         </div>
@@ -1352,20 +1580,159 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 
 // ── Tab: Invitation Letter ──────────────────────────────────────────
 
-function InvitationLetterTab() {
-  const { t } = useHospitalI18n();
+function InvitationLetterTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
+  const { locale, t } = useHospitalI18n();
+  const router = useRouter();
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const invitationDocuments = caseDetail.documents.filter((document) =>
+    (document.documentType ?? document.type) === 'INVITATION'
+    || (document.documentType ?? document.type) === 'INVITATION_LETTER',
+  );
+
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    setError(null);
+    setIsUploading(true);
+    try {
+      for (const file of [...selectedFiles]) {
+        await uploadCaseDocument(caseDetail.id, file, 'INVITATION');
+        setSelectedFiles((current) => current.filter((selectedFile) => selectedFile !== file));
+      }
+      router.refresh();
+    } catch (uploadError) {
+      setError(
+        formatCaseDetailUserFacingError(
+          uploadError,
+          t,
+          'hospital.cases.detail.invitation.errorUpload',
+          'Failed to upload invitation letter',
+        ),
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
       <h3 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2"><FileSignature size={20} className="text-indigo-600" /> {t('hospital.cases.detail.invitation.title', undefined, 'Invitation Letter Upload')}</h3>
       <div className="space-y-6">
         <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl text-sm text-indigo-800">{t('hospital.cases.detail.invitation.description', undefined, "Upload the official hospital invitation letter required for the patient's medical visa application.")}</div>
-        <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 hover:border-indigo-300 transition-colors cursor-pointer">
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <AlertCircle size={16} />
+            {error}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            if (files.length === 0) {
+              return;
+            }
+
+            const invalidFile = files.find((file) => !isPdfFile(file));
+            if (invalidFile) {
+              setError(
+                t(
+                  'hospital.cases.detail.invitation.errors.pdfOnly',
+                  { fileName: invalidFile.name },
+                  '{fileName} must be a PDF file.',
+                ),
+              );
+              event.target.value = '';
+              return;
+            }
+
+            const oversizedFile = files.find((file) => file.size > MAX_INVITATION_ATTACHMENT_BYTES);
+            if (oversizedFile) {
+              setError(
+                t(
+                  'hospital.cases.detail.invitation.errors.maxSize',
+                  { fileName: oversizedFile.name },
+                  '{fileName} exceeds the 5MB file size limit.',
+                ),
+              );
+              event.target.value = '';
+              return;
+            }
+
+            setError(null);
+            setSelectedFiles((current) => [...current, ...files]);
+            event.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 hover:border-indigo-300 transition-colors cursor-pointer"
+        >
           <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-4"><Upload size={32} /></div>
           <span className="text-base font-semibold text-slate-700 mb-1">{t('hospital.cases.detail.invitation.uploadPrompt', undefined, 'Click to upload or drag and drop')}</span>
           <span className="text-sm">{t('hospital.cases.detail.invitation.uploadHint', undefined, 'PDF format only (Max 5MB)')}</span>
+        </button>
+        {selectedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {selectedFiles.map((file, index) => (
+              <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <FileText size={12} />
+                <span className="max-w-[220px] truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                  className="text-slate-400 hover:text-rose-500"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {invitationDocuments.length > 0 && (
+          <div className="space-y-3">
+            {invitationDocuments.map((document) => (
+              <div key={document.id} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-700">{document.fileName ?? t('hospital.cases.detail.documents.unnamed', undefined, 'Unnamed')}</p>
+                  {document.createdAt && (
+                    <p className="text-xs text-slate-400">{new Intl.DateTimeFormat(locale).format(new Date(document.createdAt))}</p>
+                  )}
+                </div>
+                {document.downloadUrl && (
+                  <a
+                    href={document.downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-indigo-600 ring-1 ring-slate-200 hover:bg-indigo-50"
+                  >
+                    {t('hospital.cases.detail.invitation.viewFile', undefined, 'View File')}
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-end pt-4">
+          <button
+            type="button"
+            onClick={() => void handleUpload()}
+            disabled={isUploading || selectedFiles.length === 0}
+            className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isUploading ? t('hospital.cases.detail.invitation.uploading', undefined, 'Uploading...') : t('hospital.cases.detail.invitation.submit', undefined, 'Submit Letter')}
+          </button>
         </div>
-        <div className="flex justify-end pt-4"><button className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-md shadow-indigo-200/50">{t('hospital.cases.detail.invitation.submit', undefined, 'Submit Letter')}</button></div>
       </div>
     </div>
   );

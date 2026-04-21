@@ -151,19 +151,21 @@ app.openapi(sendMessageRoute, async (c) => {
       });
     }
 
-    if (caseEntity && conversation.category === 'ADMIN_PATIENT') {
+    if (caseEntity && (conversation.category === 'ADMIN_PATIENT' || conversation.category === 'HOSPITAL_PATIENT')) {
       const messagePreview = buildMessagePreview(result.content);
       if (actor.userId === caseEntity.patientId) {
-        try {
-          await svc.notifyAdminsOfPatientMessage.execute({
-            conversationId: id,
-            caseId: conversation.caseId,
-            patientId: caseEntity.patientId,
-            patientName: null,
-            messagePreview,
-          });
-        } catch (error) {
-          console.warn('Failed to notify admins about a patient message:', error);
+        if (conversation.category === 'ADMIN_PATIENT') {
+          try {
+            await svc.notifyAdminsOfPatientMessage.execute({
+              conversationId: id,
+              caseId: conversation.caseId,
+              patientId: caseEntity.patientId,
+              patientName: null,
+              messagePreview,
+            });
+          } catch (error) {
+            console.warn('Failed to notify admins about a patient message:', error);
+          }
         }
       } else {
         try {

@@ -95,7 +95,7 @@ function createTranslationFn(overrides: Record<string, string>): TranslationFn {
 function readLocale(name: string) {
   return JSON.parse(
     readFileSync(
-      resolve(__dirname, `../../../packages/shared/i18n/src/locales/${name}.json`),
+      resolve(__dirname, `../../../../packages/shared/i18n/src/locales/${name}.json`),
       'utf8',
     ),
   ) as Record<string, unknown>;

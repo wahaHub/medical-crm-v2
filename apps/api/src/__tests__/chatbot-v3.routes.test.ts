@@ -2434,6 +2434,104 @@ describe('chatbot-v3 runtime', () => {
     );
   });
 
+  it('preserves COLLECT_MEDICAL_INPUTS while dispatching a recovered faq detour with attachments', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'We are open from 9 AM to 6 PM Monday through Saturday.',
+          citedFaqIds: ['faq-hours-1'],
+          confidence: 'high' as const,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          dispatchAgent: 'FaqAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+          write: {
+            authority: 'journey-runtime-authority' as const,
+            stage: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+            factsPatch: {
+              'process.explained': true,
+            },
+          },
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-faq-detour-records-1',
+      sessionId: 'session-faq-detour-records-1',
+      turnId: 'turn-faq-detour-records-1',
+      message: 'What are your office hours?',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-faq-detour-records-1/report.pdf',
+      }],
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'continue collecting records',
+      },
+      bootstrap: {
+        message: 'What are your office hours?',
+        attachments: [{
+          fileName: 'report.pdf',
+        }],
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(result.suggestion).toMatchObject({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+    });
+    expect(result.decision).toMatchObject({
+      action: 'STAY',
+      from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      dispatchAgent: 'FaqAgent',
+    });
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(result.writeIntents).toEqual(expect.objectContaining({
+      canonicalTruthPatch: {},
+    }));
+    expect(result.render).toEqual({
+      path: 'FAQ_ANSWER',
+    });
+  });
+
   it('emits a canonical truth patch when the records worker completes minimal triage', async () => {
     const runtime = new ConversationOrchestratorV3RuntimeService({
       idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },

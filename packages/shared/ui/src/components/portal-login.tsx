@@ -6,6 +6,7 @@ type LoginResponse = {
   success?: boolean;
   redirectTo?: string;
   details?: string;
+  errorCode?: string;
   error?: string;
 };
 
@@ -21,6 +22,9 @@ export type PortalLoginProps = {
   submittingLabel?: string;
   genericLoginFailedMessage?: string;
   genericLoginErrorMessage?: string;
+  missingCredentialsMessage?: string;
+  invalidCredentialsMessage?: string;
+  unauthorizedMessage?: string;
   alternatePortalLabel?: string;
 };
 
@@ -36,6 +40,9 @@ export function PortalLogin({
   submittingLabel = 'Signing in...',
   genericLoginFailedMessage = 'Login failed',
   genericLoginErrorMessage = 'An error occurred during login',
+  missingCredentialsMessage = 'Username and password are required',
+  invalidCredentialsMessage = 'Invalid credentials',
+  unauthorizedMessage = 'This account is not authorized for this portal',
   alternatePortalLabel,
 }: PortalLoginProps) {
   const [username, setUsername] = useState('');
@@ -43,6 +50,8 @@ export function PortalLogin({
   const [error, setError] = useState('');
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const getLoginErrorCode = (response: LoginResponse) => response.errorCode ?? response.error;
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -63,7 +72,18 @@ export function PortalLogin({
         return;
       }
 
-      setError(data.details || data.error || genericLoginFailedMessage);
+      const errorCode = getLoginErrorCode(data);
+      const errorMessage = errorCode === 'LOGIN_FIELDS_REQUIRED'
+        ? missingCredentialsMessage
+        : errorCode === 'INVALID_CREDENTIALS'
+          ? invalidCredentialsMessage
+          : errorCode === 'LOGIN_NOT_AUTHORIZED'
+            ? unauthorizedMessage
+            : response.ok
+              ? genericLoginFailedMessage
+              : genericLoginErrorMessage;
+
+      setError(errorMessage);
       setRedirectTo(data.redirectTo || null);
       setIsSubmitting(false);
     } catch {

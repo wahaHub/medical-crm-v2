@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
@@ -129,6 +129,38 @@ type SaveProgressState = {
 };
 
 const MATERIALS_DEBUG_PREFIX = '[hospital.materials.debug]';
+const SAFE_USER_ERROR_PATTERNS = [
+  /^please\b/i,
+  /^select\b/i,
+  /^choose\b/i,
+  /^enter\b/i,
+  /^provide\b/i,
+  /^upload\b/i,
+  /^add\b/i,
+  /^remove\b/i,
+  /^set\b/i,
+  /\brequired\b/i,
+  /\binvalid\b/i,
+  /\bmissing\b/i,
+  /\bmust\b/i,
+  /\bcannot\b/i,
+  /\bcan't\b/i,
+  /\bat least\b/i,
+  /\btoo\b/i,
+  /\bneeds?\s+to\b/i,
+  /\bis\s+required\b/i,
+  /\bis\s+invalid\b/i,
+  /\bis\s+missing\b/i,
+];
+
+const UNSAFE_USER_ERROR_PATTERNS = [
+  /\b(database|db|sql|prisma|orm|postgres|mysql|redis|mongo|server|service|gateway|proxy|network|fetch|request|response|timeout|exception|stack|trace|traceback|econn|enotfound|econnreset|unauthorized|forbidden|internal|bucket|storage|cdn|cloudflare|token)\b/i,
+  /^failed\b/i,
+  /^unable\b/i,
+  /\bstatus\s*\d{3}\b/i,
+  /\bcode\s*\d{3}\b/i,
+  /\bnot found\b/i,
+];
 
 function extractDebugDetails(error: unknown): string | undefined {
   if (error instanceof Error) {
@@ -145,12 +177,56 @@ function extractDebugDetails(error: unknown): string | undefined {
   return undefined;
 }
 
+export function extractSafeUserErrorDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  const rawDetail = error.message.trim();
+  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    !detail
+    || detail.includes(MATERIALS_DEBUG_PREFIX)
+    || /[\r\n]/.test(rawDetail)
+    || detail.length > 160
+    || UNSAFE_USER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+    || !SAFE_USER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+  ) {
+    return undefined;
+  }
+
+  return detail;
+}
+
+export function formatUserFacingError(
+  error: unknown,
+  t: TranslationFn,
+  summaryKey: string,
+  summaryFallback: string,
+): string {
+  const summary = t(summaryKey, undefined, summaryFallback);
+  const detail = extractSafeUserErrorDetail(error);
+
+  if (!detail) {
+    return summary;
+  }
+
+  return t(
+    'hospital.materials.errors.withDetail',
+    { summary, detail },
+    '{summary} Details: {detail}',
+  );
+}
+
 function extractSaveFailureMessage(error: unknown, t: TranslationFn): string {
   const debugDetails = extractDebugDetails(error);
   if (!debugDetails) {
-    return error instanceof Error
-      ? error.message
-      : t('hospital.materials.save.failure', undefined, 'Failed to save hospital information.');
+    return formatUserFacingError(
+      error,
+      t,
+      'hospital.materials.save.failure',
+      'Failed to save hospital information.',
+    );
   }
 
   try {
@@ -978,7 +1054,7 @@ function ChipSelector({
             onClick={() => setShowAddModal(true)}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white text-blue-600 border border-blue-200 rounded-md text-xs font-medium hover:bg-blue-50 transition-colors"
           >
-            <Plus size={12} /> Add
+            <Plus size={12} /> {t('hospital.materials.actions.add', undefined, 'Add')}
           </button>
         )}
       </div>
@@ -1164,13 +1240,20 @@ function getDayNames(t: TranslationFn) {
   ];
 }
 
-function parseHoursString(
-  hours: string | undefined,
-  dayNames: Array<{ key: string; label: string; labelFull: string }>,
-): Record<string, { open: string; close: string; closed: boolean }> {
+const OPERATING_HOURS_DAY_KEYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const;
+
+function parseHoursString(hours: string | undefined): Record<string, { open: string; close: string; closed: boolean }> {
   const result: Record<string, { open: string; close: string; closed: boolean }> = {};
-  dayNames.forEach((day) => {
-    result[day.key] = { open: '09:00', close: '18:00', closed: false };
+  OPERATING_HOURS_DAY_KEYS.forEach((dayKey) => {
+    result[dayKey] = { open: '09:00', close: '18:00', closed: false };
   });
   if (!hours) return result;
   const parts = hours.split(',').map((s) => s.trim());
@@ -1246,7 +1329,7 @@ function formatHoursToString(hours: Record<string, { open: string; close: string
     .join(', ');
 }
 
-function OperatingHoursModal({
+export function OperatingHoursModal({
   hours,
   onChange,
   isOpen,
@@ -1258,14 +1341,14 @@ function OperatingHoursModal({
   onClose: () => void;
 }) {
   const { t } = useHospitalI18n();
-  const dayNames = getDayNames(t);
-  const [structuredHours, setStructuredHours] = useState(() => parseHoursString(hours, dayNames));
+  const dayNames = useMemo(() => getDayNames(t), [t]);
+  const [structuredHours, setStructuredHours] = useState(() => parseHoursString(hours));
   const [quickOpen, setQuickOpen] = useState('09:00');
   const [quickClose, setQuickClose] = useState('18:00');
 
   useEffect(() => {
-    setStructuredHours(parseHoursString(hours, dayNames));
-  }, [dayNames, hours]);
+    setStructuredHours(parseHoursString(hours));
+  }, [hours]);
 
   const updateDay = (dayKey: string, field: 'open' | 'close' | 'closed', value: string | boolean) => {
     setStructuredHours((prev) => ({
@@ -1886,7 +1969,12 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             await task.run();
             updateSaveProgress(task.id, { status: 'done' });
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Upload failed';
+            const message = formatUserFacingError(
+              error,
+              t,
+              'hospital.materials.uploadProgress.uploadFailed',
+              'Upload failed',
+            );
             failedTargetKey ??= task.targetKey;
             updateSaveProgress(task.id, { status: 'failed', error: message });
             throw error;
@@ -3641,14 +3729,18 @@ function ProcedureRow({
         <td className="px-6 py-4 text-right">
           <div className="flex items-center justify-end gap-2">
             <button
+              type="button"
               onClick={onEdit}
               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+              aria-label={tx('hospital.materials.buttons.edit', 'Edit')}
             >
               <Edit2 size={16} />
             </button>
             <button
+              type="button"
               onClick={onDelete}
               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+              aria-label={tx('hospital.materials.buttons.delete', 'Delete')}
             >
               <Trash2 size={16} />
             </button>
@@ -3730,8 +3822,9 @@ function ProceduresTab() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center py-16">
+      <div className="flex flex-col items-center gap-3 py-16 text-sm text-slate-500">
         <LoadingSpinner size="lg" />
+        <span>{tx('hospital.materials.procedures.loadingProcedures', 'Loading procedures...')}</span>
       </div>
     );
   }
@@ -4285,9 +4378,12 @@ function SurgeonsTab() {
       <EmptyState
         icon={<Users size={48} />}
         title={tx('hospital.materials.surgeons.loadFailedTitle', 'Surgeons failed to load')}
-        description={error instanceof Error
-          ? error.message
-          : tx('hospital.materials.surgeons.loadFailedDescription', 'Unable to load surgeons.')}
+        description={formatUserFacingError(
+          error,
+          t,
+          'hospital.materials.surgeons.loadFailedDescription',
+          'Unable to load surgeons.',
+        )}
       />
     );
   }
@@ -4574,9 +4670,12 @@ function SurgeonModal({
             items: prev.items.map((item) => (item.id === 'upload-surgeon-image' ? { ...item, status: 'done' } : item)),
           }));
         } catch (error) {
-          const message = error instanceof Error
-            ? error.message
-            : tx('hospital.materials.uploadProgress.uploadFailed', 'Upload failed');
+          const message = formatUserFacingError(
+            error,
+            t,
+            'hospital.materials.uploadProgress.uploadFailed',
+            'Upload failed',
+          );
           setSaveProgress((prev) => ({
             ...prev,
             canDismiss: true,
@@ -4630,14 +4729,23 @@ function SurgeonModal({
         });
       }, 400);
       onClose();
-    } catch {
+    } catch (error) {
       setSaveProgress((prev) => ({
         ...prev,
         canDismiss: true,
         failedTargetKey: 'surgeon-form',
         items: prev.items.map((item) => (
           item.id === 'save-surgeon'
-            ? { ...item, status: 'failed', error: tx('hospital.materials.surgeons.saveFailed', 'Failed to save surgeon.') }
+            ? {
+              ...item,
+              status: 'failed',
+              error: formatUserFacingError(
+                error,
+                t,
+                'hospital.materials.surgeons.saveFailed',
+                'Failed to save surgeon.',
+              ),
+            }
             : item
         )),
       }));
@@ -4809,9 +4917,12 @@ function BeforeAfterTab() {
       <EmptyState
         icon={<Camera size={48} />}
         title={tx('hospital.materials.cases.loadFailedTitle', 'Cases failed to load')}
-        description={error instanceof Error
-          ? error.message
-          : tx('hospital.materials.cases.loadFailedDescription', 'Unable to load case gallery.')}
+        description={formatUserFacingError(
+          error,
+          t,
+          'hospital.materials.cases.loadFailedDescription',
+          'Unable to load case gallery.',
+        )}
       />
     );
   }
@@ -5058,9 +5169,12 @@ function BeforeAfterModal({
               items: prev.items.map((item) => (item.id === taskId ? { ...item, status: 'done' } : item)),
             }));
           } catch (error) {
-            const message = error instanceof Error
-              ? error.message
-              : tx('hospital.materials.uploadProgress.uploadFailed', 'Upload failed');
+            const message = formatUserFacingError(
+              error,
+              t,
+              'hospital.materials.uploadProgress.uploadFailed',
+              'Upload failed',
+            );
             setSaveProgress((prev) => ({
               ...prev,
               canDismiss: true,
@@ -5114,9 +5228,12 @@ function BeforeAfterModal({
       }, 400);
       onClose();
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : tx('hospital.materials.cases.saveFailed', 'Failed to save case study.');
+      const message = formatUserFacingError(
+        error,
+        t,
+        'hospital.materials.cases.saveFailed',
+        'Failed to save case study.',
+      );
       setSaveProgress((prev) => ({
         ...prev,
         canDismiss: true,

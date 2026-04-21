@@ -60,6 +60,24 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   PT_BR: 'pt-BR',
 };
 
+function getLocalizedUnknownLabel(t?: TranslateFn): string {
+  return t?.('hospital.common.unknown', undefined, 'Unknown') ?? '';
+}
+
+function looksLikeCode(value: string): boolean {
+  const trimmed = value.trim();
+  return /^[A-Z]{2,4}$/.test(trimmed) || /^[a-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,2}$/.test(trimmed);
+}
+
+function looksLikeReadableLabel(value: string): boolean {
+  const trimmed = value.trim();
+  return /^[\p{L}][\p{L}\s.'-]{1,}$/u.test(trimmed) && !looksLikeCode(trimmed);
+}
+
+function normalizeCodeToken(value: string): string {
+  return value.trim().replace(/[_\s]+/g, '-').toLowerCase();
+}
+
 export function getHospitalStatusLabel(status: string | null | undefined, t: TranslateFn): string {
   const normalized = status?.trim().toUpperCase() || 'UNKNOWN';
   const meta = STATUS_LABELS[normalized];
@@ -68,7 +86,7 @@ export function getHospitalStatusLabel(status: string | null | undefined, t: Tra
     return t(meta.key, undefined, meta.fallback);
   }
 
-  return normalized.replace(/_/g, ' ');
+  return t('hospital.common.statuses.unknown', undefined, 'Unknown');
 }
 
 export function formatDurationMinutesLabel(minutes: number, t: TranslateFn): string {
@@ -78,41 +96,67 @@ export function formatDurationMinutesLabel(minutes: number, t: TranslateFn): str
 export function getLocalizedCountryLabel(
   country: string | null | undefined,
   locale: string,
+  t?: TranslateFn,
 ): string {
   if (!country) return '';
+  if (looksLikeReadableLabel(country)) return country.trim();
 
   const normalized = country.trim().toUpperCase();
   const regionCode =
     REGION_ALIASES[normalized] ??
     (/^[A-Z]{2}$/.test(normalized) ? normalized : undefined);
+  const fallbackLabel = getLocalizedUnknownLabel(t);
 
   if (!regionCode || typeof Intl.DisplayNames !== 'function') {
-    return country;
+    return looksLikeReadableLabel(country) ? country.trim() : fallbackLabel;
   }
 
   const displayNames = new Intl.DisplayNames([locale], { type: 'region' });
-  return displayNames.of(regionCode) ?? country;
+  const localizedLabel = displayNames.of(regionCode);
+
+  if (!localizedLabel) {
+    return looksLikeReadableLabel(country) ? country.trim() : fallbackLabel;
+  }
+
+  if (looksLikeCode(country) && normalizeCodeToken(localizedLabel) === normalizeCodeToken(regionCode)) {
+    return fallbackLabel;
+  }
+
+  return localizedLabel;
 }
 
 export function getLocalizedLanguageLabel(
   language: string | null | undefined,
   locale: string,
+  t?: TranslateFn,
 ): string {
   if (!language) return '';
+  if (looksLikeReadableLabel(language)) return language.trim();
 
   const normalized = language.trim().replace(/_/g, '-');
   const aliasKey = normalized.replace(/-/g, '_').toUpperCase();
   const languageCode = LANGUAGE_ALIASES[aliasKey] ?? normalized;
+  const fallbackLabel = getLocalizedUnknownLabel(t);
 
   if (typeof Intl.DisplayNames !== 'function') {
-    return language;
+    return looksLikeReadableLabel(language) ? language.trim() : fallbackLabel;
   }
 
   try {
     const displayNames = new Intl.DisplayNames([locale], { type: 'language' });
-    return displayNames.of(languageCode) ?? language;
+    const localizedLabel = displayNames.of(languageCode);
+
+    if (!localizedLabel) {
+      return looksLikeReadableLabel(language) ? language.trim() : fallbackLabel;
+    }
+
+    if (looksLikeCode(language) && normalizeCodeToken(localizedLabel) === normalizeCodeToken(languageCode)) {
+      return fallbackLabel;
+    }
+
+    return localizedLabel;
   } catch {
-    return language;
+    return looksLikeReadableLabel(language) ? language.trim() : fallbackLabel;
   }
 }
 
@@ -130,5 +174,9 @@ export function getHospitalGenderShortLabel(
     return t('hospital.common.genderFemaleShort', undefined, 'F');
   }
 
-  return gender ?? '';
+  if (!normalized) {
+    return '';
+  }
+
+  return t('hospital.common.unknown', undefined, 'Unknown');
 }

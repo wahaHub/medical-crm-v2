@@ -19,6 +19,7 @@ import {
 } from '@medical-crm/i18n';
 
 type TranslationValues = Record<string, string | number>;
+export const HOSPITAL_LOCALE_COOKIE_NAME = 'medical-crm-hospital-locale';
 
 interface HospitalI18nContextValue {
   locale: Locale;
@@ -48,6 +49,11 @@ export function HospitalI18nProvider({
     setLocaleState(normalizeLocale(initialLocale));
     setMessages(initialMessages);
   }, [initialLocale, initialMessages]);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.cookie = `${HOSPITAL_LOCALE_COOKIE_NAME}=${locale}; path=/; max-age=31536000; samesite=lax`;
+  }, [locale]);
 
   const setLocale = async (nextLocaleInput: string) => {
     const nextLocale = normalizeLocale(nextLocaleInput);

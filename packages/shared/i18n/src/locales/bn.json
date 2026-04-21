@@ -1244,7 +1244,8 @@
     },
     "error": {
       "title": "কিছু সমস্যা হয়েছে",
-      "tryAgain": "আবার চেষ্টা করুন"
+      "tryAgain": "আবার চেষ্টা করুন",
+      "description": "The page could not be loaded. Please try again."
     },
     "loading": {
       "label": "লোড হচ্ছে"
@@ -1262,7 +1263,10 @@
       "alternatePortalLabel": "অ্যাডমিন পোর্টালে যান",
       "errors": {
         "loginFailed": "সাইন ইন ব্যর্থ হয়েছে",
-        "requestFailed": "সাইন ইন করার সময় একটি ত্রুটি হয়েছে"
+        "requestFailed": "সাইন ইন করার সময় একটি ত্রুটি হয়েছে",
+        "missingCredentials": "Username and password are required",
+        "invalidCredentials": "Invalid credentials",
+        "notAuthorized": "This account is not authorized for this portal"
       }
     },
     "dashboard": {
@@ -1353,7 +1357,53 @@
       "profile": "প্রোফাইল",
       "role": "ভূমিকা",
       "stats": "পরিসংখ্যান",
-      "today": "Today"
+      "today": "Today",
+      "errors": {
+        "withDetail": "{summary} Details: {detail}"
+      },
+      "actions": {
+        "cancel": "বাতিল",
+        "close": "বন্ধ করুন",
+        "creating": "তৈরি করা হচ্ছে...",
+        "delete": "মুছুন",
+        "deleting": "মুছে ফেলা হচ্ছে...",
+        "edit": "সম্পাদনা",
+        "save": "সংরক্ষণ",
+        "send": "পাঠান",
+        "saving": "সংরক্ষণ করা হচ্ছে..."
+      },
+      "labels": {
+        "attachments": "Attachments"
+      },
+      "progress": {
+        "done": "Done",
+        "failed": "Failed",
+        "finishedWithErrors": "Finished with errors",
+        "uploading": "Uploading...",
+        "uploadingAndSaving": "Uploading and saving",
+        "waiting": "Waiting"
+      },
+      "statuses": {
+        "new": "নতুন",
+        "scheduled": "নির্ধারিত",
+        "active": "সক্রিয়",
+        "assigned": "বরাদ্দ করা হয়েছে",
+        "unassigned": "অনির্ধারিত",
+        "inProgress": "চলমান",
+        "completed": "সম্পন্ন",
+        "cancelled": "বাতিল",
+        "noShow": "উপস্থিত হননি",
+        "pendingReview": "পর্যালোচনার অপেক্ষায়",
+        "approved": "অনুমোদিত",
+        "rejected": "প্রত্যাখ্যাত",
+        "unknown": "অজানা"
+      },
+      "status": {
+        "active": "Active",
+        "draft": "Draft",
+        "inactive": "Inactive",
+        "loading": "Loading..."
+      }
     },
     "cases": {
       "list": {
@@ -1408,6 +1458,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "severity": {
+            "mild": "হালকা",
+            "moderate": "মাঝারি",
+            "severe": "তীব্র"
+          },
           "unknownCondition": "অজানা অবস্থা",
           "validation": {
             "nameRequired": "রোগ নির্ণয়ের নাম আবশ্যক।"
@@ -1435,6 +1490,46 @@
             "attachments": "Attachment Document (Optional)",
             "attachmentsPlaceholder": "Click to upload diagnosis report or examination results",
             "save": "Save Diagnosis"
+          }
+        },
+        "quote": {
+          "title": "খরচের কোটেশন",
+          "createTitle": "কোটেশন তৈরি করুন",
+          "editTitle": "কোটেশন সম্পাদনা করুন",
+          "createButton": "কোটেশন তৈরি করুন",
+          "emptyTitle": "এখনও কোনো কোটেশন নেই",
+          "emptyDescription": "রোগীর সঙ্গে আনুমানিক খরচ শেয়ার করতে একটি কোটেশন তৈরি করুন।",
+          "errorLoad": "কোটেশন লোড করা যায়নি।",
+          "errorCreate": "কোটেশন তৈরি করা যায়নি।",
+          "errorUpdate": "কোটেশন আপডেট করা যায়নি।",
+          "fields": {
+            "currency": "মুদ্রা",
+            "itemNamePlaceholder": "আইটেমের নাম",
+            "lineItems": "আইটেমসমূহ",
+            "notes": "নোট",
+            "notesPlaceholder": "অভ্যন্তরীণ বা রোগীর জন্য নোট যোগ করুন...",
+            "notesShortPlaceholder": "নোট যোগ করুন...",
+            "total": "মোট",
+            "validUntil": "পর্যন্ত বৈধ"
+          },
+          "actions": {
+            "addItem": "আইটেম যোগ করুন",
+            "createAndSend": "তৈরি করে পাঠান",
+            "saveChanges": "পরিবর্তন সংরক্ষণ করুন"
+          },
+          "meta": {
+            "created": "তৈরি হয়েছে",
+            "validUntil": "পর্যন্ত বৈধ"
+          },
+          "status": {
+            "pending": "অপেক্ষমাণ",
+            "accepted": "গৃহীত",
+            "rejected": "প্রত্যাখ্যাত",
+            "expired": "মেয়াদোত্তীর্ণ"
+          },
+          "validation": {
+            "lineItemsRequired": "অন্তত একটি আইটেম যোগ করুন।",
+            "validUntilRequired": "\"পর্যন্ত বৈধ\" এর জন্য একটি বৈধ তারিখ নির্বাচন করুন।"
           }
         },
         "marketing": {
@@ -1515,6 +1610,11 @@
           "transcriptLoading": "রেকর্ড লোড হচ্ছে...",
           "transcriptEmpty": "Transcript Not Yet Generated",
           "transcriptPending": "After video consultation ends, AI will automatically transcribe the full conversation"
+        },
+        "aiSummary": {
+          "title": "AI সারাংশ",
+          "emptyTitle": "কোনো AI সারাংশ উপলভ্য নয়",
+          "emptyDescription": "কেস প্রক্রিয়াকরণের পর এখানে AI-উৎপাদিত সারাংশ দেখা যাবে।"
         }
       }
     },
@@ -1598,6 +1698,11 @@
           "enableAiTranslation": "এআই অনুবাদ চালু করুন",
           "notesPlaceholder": "ঐচ্ছিক নোট...",
           "crmNotification": "পরামর্শ নির্ধারিত হলে রোগীর কাছে একটি CRM নোটিফিকেশন পাঠানো হবে।"
+        },
+        "error": {
+          "unexpected": "An unexpected error occurred while loading the consultations page.",
+          "loadFailed": "Failed to load consultations",
+          "retry": "Try again"
         }
       },
       "videoRoom": {
@@ -1627,6 +1732,10 @@
         }
       },
       "messages": {
+        "page": {
+          "title": "মেসেজ",
+          "forwardingMode": "CRM ফরওয়ার্ডিং মোড"
+        },
         "banner": {
           "description": "All patient communications are automatically forwarded and synced to this CRM."
         },
@@ -1713,6 +1822,7 @@
         "attachFiles": "Attach files",
         "caseInfo": "Case Info",
         "file": "File",
+        "pdf": "PDF",
         "fileType": "FILE",
         "image": "Image",
         "noMessages": "No messages yet",
@@ -1817,6 +1927,7 @@
         "confirmDelete": "Delete this procedure?",
         "currencyLabel": "Currency",
         "defaultCurrency": "USD",
+        "loadingProcedures": "Loading procedures...",
         "durationField": "Duration",
         "durationLabel": "Duration: ",
         "durationPlaceholder": "e.g. 2-3 hours",
@@ -1951,6 +2062,591 @@
         "uploadHint": "Upload multiple photos to build the case gallery.",
         "uploadImageTask": "Upload case image: {fileName}",
         "uploadPhotos": "Upload Photos"
+      },
+      "page": {
+        "title": "Marketing Materials",
+        "description": "Manage your hospital profile, procedures, surgeons, and case studies."
+      },
+      "actions": {
+        "add": "Add",
+        "addDepartments": "Add Departments",
+        "addEquipment": "Add Equipment",
+        "addTestimonial": "Add Testimonial",
+        "addVideos": "Add Videos",
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "chooseFile": "Choose File",
+        "confirm": "Confirm",
+        "doneSelected": "Done ({count} selected)",
+        "editProfile": "Edit",
+        "remove": "Remove",
+        "save": "Save",
+        "saveChanges": "Save Changes",
+        "saving": "Saving...",
+        "selectDepartments": "Select Departments",
+        "selectOptions": "Select options",
+        "setHours": "Set Hours",
+        "upload": "Upload",
+        "uploadPhotos": "Upload Photos",
+        "uploadVideo": "Upload Video"
+      },
+      "airportServices": {
+        "assistance": "Airport Assistance",
+        "complimentaryTransfer": "Complimentary Airport Transfer",
+        "paidTransfer": "Paid Airport Pickup",
+        "visaOnArrival": "Visa on Arrival Assistance"
+      },
+      "amenities": {
+        "concierge": "Medical Tourism Concierge",
+        "familyAccommodation": "Family Accommodation",
+        "halalFood": "Halal Food Available",
+        "insuranceCoordination": "International Insurance Coordination",
+        "interpreter": "Interpreter Services",
+        "pharmacy": "24/7 Pharmacy",
+        "privateSuite": "Private Recovery Suites",
+        "vegetarian": "Vegetarian Options",
+        "visaAssistance": "Visa Assistance",
+        "wifi": "Free Wi-Fi"
+      },
+      "buttons": {
+        "edit": "Edit",
+        "save": "Save",
+        "saving": "Saving...",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "add": "Add",
+        "upload": "Upload",
+        "uploading": "Uploading...",
+        "replace": "Replace"
+      },
+      "certifications": {
+        "aahrpp": "AAHRPP",
+        "cap": "CAP Accreditation",
+        "iso15189": "ISO 15189",
+        "iso9001": "ISO 9001:2015",
+        "jci": "JCI Accreditation",
+        "nabh": "NABH Accreditation"
+      },
+      "consumerWebsite": {
+        "copied": "Copied!",
+        "copy": "Copy",
+        "defaultDescription": "The following information will be published as hospital information on www.medorabeauty.com",
+        "open": "Open",
+        "regularDescription": "The following information will be published as hospital information on www.medicaltourismchina.health",
+        "title": "Consumer Website Link"
+      },
+      "days": {
+        "fri": "Fri",
+        "friday": "Friday",
+        "mon": "Mon",
+        "monday": "Monday",
+        "sat": "Sat",
+        "saturday": "Saturday",
+        "sun": "Sun",
+        "sunday": "Sunday",
+        "thu": "Thu",
+        "thursday": "Thursday",
+        "tue": "Tue",
+        "tuesday": "Tuesday",
+        "wed": "Wed",
+        "wednesday": "Wednesday"
+      },
+      "departments": {
+        "anesthesiology": "Anesthesiology (麻醉科)",
+        "annualPatientsCount": "{count} Annual Patients",
+        "cardiology": "Cardiology (心血管内科)",
+        "cardiothoracic": "Cardiothoracic Surgery (心胸外科)",
+        "dermatology": "Dermatology (皮肤科)",
+        "emergency": "Emergency (急诊科)",
+        "endocrinology": "Endocrinology (内分泌科)",
+        "ent": "ENT (耳鼻喉科)",
+        "gastroenterology": "Gastroenterology (消化内科)",
+        "generalSurgery": "General Surgery (普外科)",
+        "hematology": "Hematology (血液科)",
+        "icu": "ICU (重症医学科)",
+        "infectious": "Infectious Disease (感染科)",
+        "laboratory": "Laboratory (检验科)",
+        "neonatology": "Neonatology (新生儿科)",
+        "nephrology": "Nephrology (肾内科)",
+        "neurology": "Neurology (神经内科)",
+        "neurosurgery": "Neurosurgery (神经外科)",
+        "obgyn": "Obstetrics & Gynecology (妇产科)",
+        "oncology": "Oncology (肿瘤科)",
+        "ophthalmology": "Ophthalmology (眼科)",
+        "orthopedics": "Orthopedics (骨科)",
+        "pathology": "Pathology (病理科)",
+        "pediatrics": "Pediatrics (儿科)",
+        "pharmacy": "Pharmacy (药剂科)",
+        "psychiatry": "Psychiatry (精神科)",
+        "radiology": "Radiology (放射科)",
+        "rehabilitation": "Rehabilitation (康复科)",
+        "respiratory": "Respiratory Medicine (呼吸内科)",
+        "rheumatology": "Rheumatology (风湿免疫科)",
+        "specialistsCount": "{count} Specialists",
+        "stomatology": "Stomatology (口腔科)",
+        "tcm": "Traditional Chinese Medicine (中医科)",
+        "urology": "Urology (泌尿外科)",
+        "vascular": "Vascular Surgery (血管外科)"
+      },
+      "empty": {
+        "clickToUploadPhotos": "Click to upload photos",
+        "noDepartmentsConfigured": "No departments configured.",
+        "noHeroImage": "No hero image",
+        "noKeyServices": "No key services set",
+        "noNearbyAttractions": "No nearby attractions",
+        "noPhotosUploaded": "No photos uploaded",
+        "noVideoTestimonials": "No video testimonials",
+        "noneSelected": "None selected"
+      },
+      "errors": {
+        "withDetail": "{summary} Details: {detail}"
+      },
+      "fields": {
+        "address": "Address",
+        "annualPatients": "Annual Patients",
+        "beds": "Number of Beds",
+        "country": "Country",
+        "departmentImage": "Department Image",
+        "description": "Description",
+        "email": "Email",
+        "heroImage": "Hero Image",
+        "hospitalName": "Hospital Name",
+        "keyServices": "Key Services",
+        "notSet": "Not Set",
+        "operatingHours": "Operating Hours",
+        "patientCapacity": "Patient Capacity",
+        "patientNameRequired": "Patient Name *",
+        "phone": "Phone",
+        "photos": "Photos",
+        "procedure": "Procedure",
+        "promotionalVideos": "Promotional Video",
+        "selectField": "Select {field}",
+        "specialists": "Specialists",
+        "tagline": "Tagline",
+        "totalPatientsServed": "Total Patients Served",
+        "website": "Website",
+        "yearEstablished": "Year Established"
+      },
+      "followup": {
+        "lifetime": "Lifetime Follow-up Care",
+        "localPartner": "Local Partner Clinic Referral",
+        "oneYear": "1 Year Follow-up",
+        "sixMonths": "6 Months Follow-up",
+        "telemedicine": "Remote Telemedicine"
+      },
+      "header": {
+        "editing": "Editing hospital information...",
+        "viewing": "Viewing hospital information"
+      },
+      "hints": {
+        "departmentImage": "Upload an image representing this department"
+      },
+      "hospitalTier": {
+        "class1": "Class 1 (一级)",
+        "class2a": "Class 2A (二甲)",
+        "class2b": "Class 2B (二乙)",
+        "class3a": "Class 3A (三甲)",
+        "class3b": "Class 3B (三乙)",
+        "international": "International Hospital (国际医院)",
+        "unrated": "Unrated (未评级)"
+      },
+      "languages": {
+        "arabic": "Arabic",
+        "chinese": "Chinese",
+        "english": "English",
+        "french": "French",
+        "german": "German",
+        "japanese": "Japanese",
+        "korean": "Korean",
+        "russian": "Russian",
+        "spanish": "Spanish",
+        "thai": "Thai"
+      },
+      "media": {
+        "heroAlt": "Hero",
+        "image": "Image",
+        "imagePlaceholder": "https://... or click Upload",
+        "noVideosUploaded": "No video uploaded",
+        "photoNumber": "Photo {count}",
+        "videos": "Videos"
+      },
+      "operatingHours": {
+        "closed": "Closed",
+        "none": "No hours set",
+        "title": "Operating Hours",
+        "weekdays": "Weekdays"
+      },
+      "ownership": {
+        "jointVenture": "Joint Venture",
+        "military": "Military",
+        "nonProfit": "Non-profit",
+        "private": "Private",
+        "public": "Public",
+        "universityAffiliated": "University-affiliated"
+      },
+      "paymentMethods": {
+        "alipay": "Alipay",
+        "applePay": "Apple Pay",
+        "bankTransfer": "Bank Transfer",
+        "cash": "Cash",
+        "creditCard": "Credit Card",
+        "debitCard": "Debit Card",
+        "googlePay": "Google Pay",
+        "insuranceDirect": "Insurance Direct Billing",
+        "internationalTransfer": "International Transfer",
+        "paypal": "PayPal",
+        "unionPay": "UnionPay",
+        "wechatPay": "WeChat Pay"
+      },
+      "placeholders": {
+        "address": "Full address",
+        "attractionDistance": "Distance (e.g. 2km)",
+        "attractionName": "Attraction name",
+        "bedCount": "e.g. 200",
+        "country": "e.g. USA",
+        "departmentDescription": "Describe the department and its capabilities...",
+        "email": "hospital@example.com",
+        "hospitalDescription": "Hospital description...",
+        "hospitalName": "Hospital name",
+        "keyServices": "Press Enter/Tab/comma to add tags",
+        "operatingHours": "e.g. Mon-Fri 09:00-18:00",
+        "patientCapacity": "e.g. 500",
+        "patientName": "e.g. John D.",
+        "phone": "+1 234 567 890",
+        "procedure": "e.g. Rhinoplasty",
+        "tagline": "A short tagline",
+        "totalPatientsServed": "e.g. 10000",
+        "website": "https://...",
+        "yearEstablished": "e.g. 2005"
+      },
+      "reviewBanner": {
+        "aiReview": "AI review + human verification, within 0.5 business days",
+        "description": "Your submitted materials will be pre-reviewed by AI and verified by our team before publication. Please ensure information is accurate and professional.",
+        "title": "Review Instructions",
+        "translation": "Content will be AI-translated into multiple languages"
+      },
+      "save": {
+        "departmentImageIncomplete": "A department image is still a local preview.",
+        "equipmentImageIncomplete": "An equipment image is still a local preview.",
+        "failure": "Failed to save hospital information.",
+        "failureWithDebug": "Failed to save hospital information. Expand the debug logs for details.",
+        "heroImageIncomplete": "Hero image upload did not finalize.",
+        "hospitalInfoAction": "Save hospital information",
+        "hospitalInfoTitle": "Saving hospital information",
+        "hospitalPhotoIncomplete": "At least one hospital photo is still a local preview.",
+        "promotionalVideoIncomplete": "At least one promotional video is still a local preview.",
+        "testimonialVideoIncomplete": "At least one testimonial video is still a local preview.",
+        "uploadDepartmentImage": "Upload department image: {fileName}",
+        "uploadEquipmentImage": "Upload equipment image: {fileName}",
+        "uploadHeroImage": "Upload hero image: {fileName}",
+        "uploadHospitalPhoto": "Upload hospital photo: {fileName}",
+        "uploadPromotionalVideo": "Upload promotional video: {fileName}",
+        "uploadTestimonialVideo": "Upload testimonial video: {fileName}"
+      },
+      "sections": {
+        "basicInformation": "Basic Information",
+        "contactLocation": "Contact & Location",
+        "departments": "Departments",
+        "hospitalCapacity": "Hospital Capacity",
+        "medicalEquipment": "Medical Equipment",
+        "nearbyAttractions": "Nearby Attractions",
+        "photosVideos": "Hospital Photos & Videos",
+        "videoTestimonials": "Video Testimonials"
+      },
+      "tabs": {
+        "cases": "Case Gallery",
+        "info": "Hospital Info",
+        "procedures": "Procedures",
+        "surgeons": "Surgeon Team"
+      },
+      "testimonials": {
+        "unknownPatient": "Unknown Patient"
+      },
+      "uploadProgress": {
+        "close": "Close",
+        "debugDescription": "Raw backend error / validation JSON",
+        "debugTitle": "Technical debug logs",
+        "dismissAndLocate": "Dismiss and locate issue",
+        "done": "Done",
+        "errorSummary": "Upload finished with errors",
+        "inProgressSummary": "Uploading and saving your changes",
+        "pending": "Waiting",
+        "saving": "Saving...",
+        "uploadFailed": "Upload failed",
+        "uploading": "Uploading..."
+      }
+    },
+    "settings": {
+      "page": {
+        "title": "Settings",
+        "description": "Manage your account and notification preferences"
+      },
+      "password": {
+        "title": "Password",
+        "description": "Update your account password",
+        "currentLabel": "Current Password",
+        "currentPlaceholder": "Enter current password",
+        "newLabel": "New Password",
+        "newPlaceholder": "Enter new password",
+        "confirmLabel": "Confirm New Password",
+        "confirmPlaceholder": "Confirm new password",
+        "submit": "Update Password",
+        "feedback": {
+          "allFieldsRequired": "All fields are required.",
+          "mismatch": "New password and confirmation do not match.",
+          "minimumLength": "New password must be at least 8 characters.",
+          "saved": "Password updated successfully.",
+          "saveFailed": "Failed to update password."
+        }
+      },
+      "language": {
+        "title": "Preferred Language",
+        "description": "Choose the language for your portal interface",
+        "label": "Language",
+        "submit": "Save Language",
+        "options": {
+          "en": "English",
+          "zh": "Chinese",
+          "fr": "French",
+          "de": "German",
+          "es": "Spanish",
+          "bn": "Bengali"
+        },
+        "feedback": {
+          "saved": "Language preference saved.",
+          "saveFailed": "Failed to save language preference."
+        }
+      },
+      "notifications": {
+        "title": "Email Notifications",
+        "description": "Control which email notifications you receive",
+        "submit": "Save Notifications",
+        "feedback": {
+          "saved": "Notification preferences saved.",
+          "saveFailed": "Failed to save notification preferences."
+        },
+        "options": {
+          "newCase": {
+            "label": "New Case",
+            "description": "Get notified when a new patient case is assigned to your hospital"
+          },
+          "newMessage": {
+            "label": "New Message",
+            "description": "Get notified when you receive a new message from a patient or coordinator"
+          },
+          "quoteStatusChange": {
+            "label": "Quote Status Change",
+            "description": "Get notified when a quote status is updated"
+          },
+          "consultationReminder": {
+            "label": "Consultation Reminder",
+            "description": "Receive reminders for upcoming consultations"
+          }
+        }
+      }
+    },
+    "faq": {
+      "page": {
+        "title": "Chatbot & FAQ",
+        "description": "Manage frequently asked questions for AI chatbot"
+      },
+      "filters": {
+        "all": "All"
+      },
+      "actions": {
+        "deleteCategory": "Delete category",
+        "newCategory": "New Category",
+        "newFaq": "New FAQ"
+      },
+      "loading": "Loading FAQs...",
+      "empty": {
+        "noFaqs": "No FAQ items yet. Create your first FAQ to get started.",
+        "noResults": "No FAQs match your search."
+      },
+      "deleteFaq": {
+        "title": "Delete FAQ",
+        "message": "Are you sure you want to delete this FAQ item? This action cannot be undone."
+      },
+      "deleteCategory": {
+        "title": "Delete Category",
+        "message": "Are you sure you want to delete this category? This action cannot be undone.",
+        "blockedMessage": "This category has {count} FAQ(s). You must delete or move all FAQs before deleting the category."
+      },
+      "table": {
+        "question": "Question",
+        "status": "Status",
+        "updated": "Updated",
+        "actions": "Actions",
+        "attachmentsCount": "{count} attachment{suffix}"
+      },
+      "progress": {
+        "updatingTitle": "Updating FAQ",
+        "creatingTitle": "Creating FAQ",
+        "saveDetails": "Save FAQ details",
+        "createFaq": "Create FAQ",
+        "saveAttachments": "Save attachments",
+        "attachUploads": "Attach uploads to FAQ",
+        "uploadAttachment": "Upload attachment: {fileName}"
+      },
+      "errors": {
+        "faqIdMissing": "FAQ ID missing after save",
+        "uploadRequestFailed": "Upload request did not reach storage. Check browser CORS/network errors.",
+        "uploadFailed": "Upload failed for \"{fileName}\" (status {status})",
+        "uploadAttachmentFailed": "Failed to upload attachment",
+        "saveFailed": "Failed to save FAQ"
+      },
+      "modal": {
+        "title": {
+          "create": "Create FAQ",
+          "edit": "Edit FAQ"
+        },
+        "fields": {
+          "category": "Category",
+          "status": "Status",
+          "question": "Question",
+          "questionPlaceholder": "e.g. What procedures do you offer?",
+          "answer": "Answer",
+          "answerPlaceholder": "Provide a clear answer...",
+          "keywords": "Keywords",
+          "keywordsHint": "(comma-separated)",
+          "keywordsPlaceholder": "e.g. rhinoplasty, nose, surgery",
+          "noCategoriesOption": "-- Create a category first --"
+        },
+        "actions": {
+          "addAttachment": "Add Attachment",
+          "create": "Create FAQ",
+          "update": "Update FAQ"
+        },
+        "attachments": {
+          "pendingNote": "Pending attachments will upload when you save."
+        },
+        "validation": {
+          "questionAndAnswerRequired": "Question and Answer are required.",
+          "categoryRequired": "Category is required. Create a category first."
+        }
+      },
+      "categoryModal": {
+        "title": "New Category",
+        "fields": {
+          "name": "Category Name",
+          "namePlaceholder": "e.g. Pre-Surgery, Post-Surgery, Pricing"
+        },
+        "actions": {
+          "create": "Create Category"
+        },
+        "validation": {
+          "nameRequired": "Category name is required."
+        },
+        "errors": {
+          "createFailed": "Failed to create category"
+        }
+      },
+      "search": {
+        "placeholder": "Search by question, answer, or keywords..."
+      }
+    },
+    "emailTemplates": {
+      "page": {
+        "title": "Email Templates",
+        "description": "Manage email templates for patient communications"
+      },
+      "types": {
+        "all": "All",
+        "intro": "Intro",
+        "quote": "Quote",
+        "marketing": "Marketing",
+        "followup": "Follow-up",
+        "postOps": "Post-Ops",
+        "custom": "Custom"
+      },
+      "actions": {
+        "newTemplate": "New Template"
+      },
+      "search": {
+        "placeholder": "Search by name..."
+      },
+      "loading": "Loading templates...",
+      "empty": {
+        "noTemplates": "No email templates yet. Create your first template to get started.",
+        "noResults": "No templates match your search."
+      },
+      "table": {
+        "name": "Name",
+        "type": "Type",
+        "subject": "Subject",
+        "status": "Status",
+        "lastUpdated": "Last Updated",
+        "actions": "Actions"
+      },
+      "delete": {
+        "title": "Delete Template",
+        "message": "Are you sure you want to delete this template? This action cannot be undone."
+      },
+      "progress": {
+        "saveDetails": "Save template details",
+        "createTemplate": "Create template",
+        "uploadAttachment": "Upload attachment: {fileName}",
+        "saveAttachments": "Save attachments",
+        "attachUploads": "Attach uploads to template",
+        "updatingTitle": "Updating template",
+        "creatingTitle": "Creating template"
+      },
+      "errors": {
+        "templateIdMissing": "Template ID missing after save",
+        "uploadRequestFailed": "Upload request did not reach storage. Check browser CORS/network errors.",
+        "uploadFailed": "Upload failed for \"{fileName}\" (status {status})",
+        "uploadAttachmentFailed": "Failed to upload attachment",
+        "saveFailed": "Failed to save template"
+      },
+      "modal": {
+        "title": {
+          "create": "Create Template",
+          "edit": "Edit Template"
+        },
+        "fields": {
+          "name": "Template Name",
+          "namePlaceholder": "e.g. Welcome Patient",
+          "type": "Type",
+          "status": "Status",
+          "subject": "Subject",
+          "subjectPlaceholder": "Email subject line...",
+          "body": "Body",
+          "bodyPlaceholder": "Email body content..."
+        },
+        "actions": {
+          "addFiles": "Add Photos or Files",
+          "create": "Create Template",
+          "update": "Update Template"
+        },
+        "attachments": {
+          "supportedFormats": "Supported: JPEG, PNG, WebP, GIF, PDF, DOCX (max 10MB)"
+        },
+        "validation": {
+          "nameAndSubjectRequired": "Name and Subject are required."
+        }
+      }
+    },
+    "app": {
+      "title": "Medical CRM — Hospital Portal"
+    },
+    "attachments": {
+      "preview": {
+        "frameTitle": "{fileName} preview",
+        "remove": "Remove attachment",
+        "status": {
+          "pending": "Pending upload",
+          "attached": "Attached"
+        },
+        "kind": {
+          "pdf": "PDF preview",
+          "image": "Image preview",
+          "file": "File attachment"
+        }
+      },
+      "fileSize": {
+        "bytes": "{value} বাইট",
+        "kb": "{value} কেবি",
+        "mb": "{value} এমবি"
       }
     }
   },

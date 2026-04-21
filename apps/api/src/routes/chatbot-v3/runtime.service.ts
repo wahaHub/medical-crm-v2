@@ -352,10 +352,11 @@ export class ConversationOrchestratorV3RuntimeService {
     const orchestratorStartedAt = this.now();
     let decision: ConversationOrchestratorV3Decision;
     try {
-      decision = this.dependencies.journeyRuntimeAuthority.decide({
+      const authorityDecision = this.dependencies.journeyRuntimeAuthority.decide({
         ...decisionInput,
         suggestion,
       });
+      decision = preserveLaterStageSidePathDetour(authorityDecision, decisionInput.current, suggestion);
       const authorityReplayLineage = compactReplayLineage({
         ...supervisorReplayLineage,
         ...(decision.matchedRuleId ? { matchedRuleId: decision.matchedRuleId } : {}),
@@ -565,7 +566,7 @@ export class ConversationOrchestratorV3RuntimeService {
   private buildDecisionInput(
     input: ConversationOrchestratorV3HandleTurnInput,
   ): ConversationOrchestratorV3DecisionInput {
-    const current = deriveCurrentStageFromStatusSnapshot(input.statusSnapshot);
+    const current = resolveDecisionInputCurrent(input);
     const structuredState = resolveStructuredState(input);
     return {
       current,
@@ -599,7 +600,7 @@ export class ConversationOrchestratorV3RuntimeService {
   ): ConversationOrchestratorV3DecisionInput {
     return {
       ...this.buildDecisionInput(input),
-      facts: resolveSupervisorFacts(input.statusSnapshot),
+      facts: mergeSupervisorFacts(input.statusSnapshot, input.facts),
     };
   }
 
@@ -1263,6 +1264,22 @@ function resolveSupervisorFacts(
   };
 }
 
+function mergeSupervisorFacts(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  facts: ConversationOrchestratorV3Facts | undefined,
+): ConversationOrchestratorV3Facts {
+  if (!hasStructuredStatusSnapshot(statusSnapshot)) {
+    return {
+      ...(facts ?? {}),
+    };
+  }
+
+  return {
+    ...(facts ?? {}),
+    ...resolveSupervisorFacts(statusSnapshot),
+  };
+}
+
 export function deriveCurrentStageFromStatusSnapshot(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): ConversationOrchestratorV3StageRef {
@@ -1283,6 +1300,46 @@ export function deriveCurrentStageFromStatusSnapshot(
     stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
     phase: 'active',
   };
+}
+
+function resolveDecisionInputCurrent(
+  input: ConversationOrchestratorV3HandleTurnInput,
+): ConversationOrchestratorV3StageRef {
+  if (hasStructuredStatusSnapshot(input.statusSnapshot)) {
+    return deriveCurrentStageFromStatusSnapshot(input.statusSnapshot);
+  }
+
+  if (shouldTrustCallerContextWithoutSnapshot(input) && input.current) {
+    return input.current;
+  }
+
+  return deriveCurrentStageFromStatusSnapshot(input.statusSnapshot);
+}
+
+function hasStructuredStatusSnapshot(
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): boolean {
+  if (!statusSnapshot) {
+    return false;
+  }
+
+  return hasActiveHandoffStatus(statusSnapshot)
+    || hasCrisisSafetySignal(statusSnapshot)
+    || isStage(statusSnapshot.journeyCurrentStage)
+    || statusSnapshot.minimalTriageStatus !== undefined
+    || statusSnapshot.minimalTriageAnswersSummary !== undefined
+    || statusSnapshot.recommendationSelectionStatus !== undefined
+    || statusSnapshot.recommendationSelectedHospitalIds !== undefined
+    || statusSnapshot.supportingDocuments !== undefined
+    || statusSnapshot.conversationSummary !== undefined;
+}
+
+function shouldTrustCallerContextWithoutSnapshot(
+  input: ConversationOrchestratorV3HandleTurnInput,
+): boolean {
+  return input.suggestion !== undefined
+    || input.userAction !== undefined
+    || Object.keys(input.facts ?? {}).length > 0;
 }
 
 function resolveStructuredState(
@@ -1684,6 +1741,43 @@ function cloneStageRef(
     stage: stageRef.stage,
     phase: stageRef.phase,
   };
+}
+
+function preserveLaterStageSidePathDetour(
+  decision: ConversationOrchestratorV3Decision,
+  current: ConversationOrchestratorV3StageRef,
+  suggestion: ConversationOrchestratorV3Suggestion,
+): ConversationOrchestratorV3Decision {
+  if (!shouldPreserveLaterStageSidePathDetour(current, suggestion, decision)) {
+    return decision;
+  }
+
+  return {
+    ...decision,
+    action: 'STAY',
+    from: cloneStageRef(current),
+    to: cloneStageRef(current),
+    dispatchAgent: 'FaqAgent',
+    write: {
+      authority: 'journey-runtime-authority',
+      stage: cloneStageRef(current),
+      factsPatch: {},
+    },
+  };
+}
+
+function shouldPreserveLaterStageSidePathDetour(
+  current: ConversationOrchestratorV3StageRef,
+  suggestion: ConversationOrchestratorV3Suggestion,
+  decision?: ConversationOrchestratorV3Decision,
+): boolean {
+  if (decision?.dispatchSource !== 'journey-runtime-authority') {
+    return false;
+  }
+
+  return (suggestion.intent === 'faq' || suggestion.intent === 'resource')
+    && suggestion.suggestedStage === 'EXPLAIN_PROCESS'
+    && (current.stage === 'COLLECT_MEDICAL_INPUTS' || current.stage === 'ONLINE_CONSULT');
 }
 
 function deriveCanonicalTruthPatch(

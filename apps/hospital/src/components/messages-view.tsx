@@ -93,6 +93,115 @@ interface AttachmentTranslationState {
   targetLanguage: string;
 }
 
+type TranslationFn = (key: string, values?: Record<string, string | number>, fallback?: string) => string;
+
+const SAFE_MESSAGE_ERROR_PATTERNS = [
+  /\brequired\b/i,
+  /\binvalid\b/i,
+  /\bunsupported\b/i,
+  /\btoo large\b/i,
+  /\bpassword protected\b/i,
+  /\bencrypted\b/i,
+  /\bempty\b/i,
+  /\bcorrupt(?:ed)?\b/i,
+  /\bselect\b/i,
+  /\bchoose\b/i,
+  /\bprovide\b/i,
+];
+
+const UNSAFE_MESSAGE_ERROR_PATTERNS = [
+  /\b(database|db|sql|prisma|orm|postgres|mysql|redis|mongo|server|service|gateway|proxy|network|fetch|request|response|timeout|exception|stack|trace|traceback|econn|enotfound|econnreset|unauthorized|forbidden|internal|bucket|storage|cdn|cloudflare|token)\b/i,
+  /^failed\b/i,
+  /^unable\b/i,
+  /\bstatus\s*\d{3}\b/i,
+  /\bcode\s*\d{3}\b/i,
+];
+
+export function extractSafeMessageErrorDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  const rawDetail = error.message.trim();
+  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    !detail
+    || /[\r\n]/.test(rawDetail)
+    || detail.length > 160
+    || UNSAFE_MESSAGE_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+    || !SAFE_MESSAGE_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+  ) {
+    return undefined;
+  }
+
+  return detail;
+}
+
+export function formatUserFacingMessageError(
+  error: unknown,
+  t: TranslationFn,
+  summaryKey: string,
+  summaryFallback: string,
+): string {
+  const summary = t(summaryKey, undefined, summaryFallback);
+  const detail = extractSafeMessageErrorDetail(error);
+
+  if (!detail) {
+    return summary;
+  }
+
+  return t(
+    'hospital.common.errors.withDetail',
+    { summary, detail },
+    '{summary} Details: {detail}',
+  );
+}
+
+export function formatConversationCategoryForDisplay(category: string, t: TranslationFn): string {
+  if (category === 'ADMIN_HOSPITAL') {
+    return t('hospital.messages.chat.admin', undefined, 'Admin');
+  }
+
+  if (category === 'ADMIN_PATIENT' || category === 'HOSPITAL_PATIENT') {
+    return t('hospital.portal.messages.chat.patient', undefined, 'Patient');
+  }
+
+  return t('common.labels.other', undefined, 'Other');
+}
+
+export function formatParticipantRoleForDisplay(role: string, t: TranslationFn): string {
+  if (role === 'ADMIN_HOSPITAL') {
+    return t('hospital.messages.chat.admin', undefined, 'Admin');
+  }
+
+  if (role === 'ADMIN_PATIENT' || role === 'HOSPITAL_PATIENT' || role === 'PATIENT') {
+    return t('hospital.portal.messages.chat.patient', undefined, 'Patient');
+  }
+
+  if (role === 'HOSPITAL') {
+    return t('hospital.messages.chat.hospital', undefined, 'Hospital');
+  }
+
+  return t('common.labels.other', undefined, 'Other');
+}
+
+export function formatAttachmentTypeForDisplay(
+  attachment: Pick<ChatAttachment, 'type'>,
+  t: TranslationFn,
+): string {
+  const type = attachment.type?.toLowerCase();
+
+  if (type === 'application/pdf') {
+    return t('hospital.messages.chat.pdf', undefined, 'PDF');
+  }
+
+  if (type?.startsWith('image/')) {
+    return t('hospital.messages.chat.image', undefined, 'Image');
+  }
+
+  return t('hospital.messages.chat.file', undefined, 'File');
+}
+
 /** Map raw API messages to the ChatMessage shape expected by the UI */
 function mapApiMessages(
   raw: ApiMessage[],
@@ -262,7 +371,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   const previewRequestRef = useRef(0);
   const fallbackPreviewFileName = tx('hospital.portal.messages.preview.fallbackFileName', 'document.pdf');
   const fallbackAttachmentLabel = tx('hospital.portal.messages.preview.attachmentAlt', 'Attachment');
-  const localizedPortalLanguage = getLocalizedLanguageLabel(portalLanguage, locale) || portalLanguage.toUpperCase();
+  const localizedPortalLanguage = getLocalizedLanguageLabel(portalLanguage, locale, t);
 
   const { data: liveConversations } = useConversations();
   const liveResponse = liveConversations as PaginatedResponse<ConversationSummary> | undefined;
@@ -428,8 +537,8 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   }, [locale, tx]);
 
   const formatPreviewLanguageLabel = useCallback((language: string) => {
-    return getLocalizedLanguageLabel(language, locale) || language.toUpperCase();
-  }, [locale]);
+    return getLocalizedLanguageLabel(language, locale, t);
+  }, [locale, t]);
 
   const previewPdfLabels = useMemo(() => ({
     unavailableTitle: tx('hospital.portal.messages.preview.pdfUnavailable', 'PDF preview is unavailable'),
@@ -472,9 +581,8 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   }, [fallbackAttachmentLabel]);
 
   const formatChatAttachmentTypeLabel = useCallback((attachment: ChatAttachment) => {
-    return attachment.type?.split('/')[1]?.toUpperCase()
-      ?? tx('hospital.messages.chat.fileType', 'FILE');
-  }, [tx]);
+    return formatAttachmentTypeForDisplay(attachment, t);
+  }, [t]);
 
   const handleOpenAttachment = useCallback(async (attachment: ChatAttachment) => {
     const requestId = previewRequestRef.current + 1;
@@ -555,9 +663,12 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         translatedPath: translatedPdf.path,
       });
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : tx('hospital.portal.messages.preview.translationFailed', 'Failed to translate PDF preview');
+      const message = formatUserFacingMessageError(
+        error,
+        t,
+        'hospital.portal.messages.preview.translationFailed',
+        'Failed to translate PDF preview',
+      );
       if (previewRequestRef.current !== requestId) {
         return;
       }
@@ -608,20 +719,8 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
     case: tx('hospital.common.case', 'Case'),
     hospital: tx('hospital.messages.chat.hospital', 'Hospital'),
   };
-  const formatConversationCategoryLabel = (category: string) =>
-    category === 'ADMIN_HOSPITAL'
-      ? tx('hospital.messages.chat.admin', 'Admin')
-      : category === 'ADMIN_PATIENT' || category === 'HOSPITAL_PATIENT'
-        ? tx('hospital.portal.messages.chat.patient', 'Patient')
-        : category.replace(/_/g, ' / ');
-  const formatParticipantRoleLabel = (role: string) =>
-    role === 'ADMIN_HOSPITAL'
-      ? tx('hospital.messages.chat.admin', 'Admin')
-      : role === 'ADMIN_PATIENT' || role === 'HOSPITAL_PATIENT' || role === 'PATIENT'
-        ? tx('hospital.portal.messages.chat.patient', 'Patient')
-        : role === 'HOSPITAL'
-          ? tx('hospital.messages.chat.hospital', 'Hospital')
-        : role;
+  const formatConversationCategoryLabel = (category: string) => formatConversationCategoryForDisplay(category, t);
+  const formatParticipantRoleLabel = (role: string) => formatParticipantRoleForDisplay(role, t);
 
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)]">
@@ -795,12 +894,12 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   <EmptyState
                     icon={<MessageSquare size={48} />}
                     title={tx('hospital.portal.messages.chat.loadFailed', 'Conversation failed to load')}
-                    description={messagesError instanceof Error
-                      ? messagesError.message
-                      : tx(
-                        'hospital.portal.messages.chat.loadFailedDescription',
-                        'Unable to load conversation messages.',
-                      )}
+                    description={formatUserFacingMessageError(
+                      messagesError,
+                      t,
+                      'hospital.portal.messages.chat.loadFailedDescription',
+                      'Unable to load conversation messages.',
+                    )}
                   />
                 </div>
 	              ) : (
@@ -947,11 +1046,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               patientCode={caseDetail?.patient?.code ?? null}
               patientAge={caseDetail?.patient?.age ?? null}
               patientGender={
-                caseDetail?.patient?.gender === 'MALE'
-                  ? 'M'
-                  : caseDetail?.patient?.gender === 'FEMALE'
-                    ? 'F'
-                    : caseDetail?.patient?.gender ?? null
+                getHospitalGenderShortLabel(caseDetail?.patient?.gender, t) || null
               }
               patientLanguage={caseDetail?.patient?.language ?? null}
               caseStatus={caseDetail?.displayStatus ?? null}
@@ -963,7 +1058,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
               caseLinkLabel={tx('hospital.messages.chat.viewFullCaseDetails', 'View Full Case Details')}
               labels={messageCasePanelLabels}
               formatCategoryLabel={formatConversationCategoryLabel}
-              formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale)}
+              formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale, t)}
               formatStatusLabel={(status) => getHospitalStatusLabel(status, t)}
               formatGenderLabel={(gender) => getHospitalGenderShortLabel(gender, t)}
               formatAgeLabel={(age) => tx('hospital.common.ageYears', '{age} y/o', { age })}
@@ -998,7 +1093,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                   {tx('hospital.portal.messages.preview.original', 'Original')}
                 </h3>
                 <span className="text-xs text-slate-500">
-                  {previewAttachment.type ?? tx('hospital.portal.messages.preview.attachmentType', 'attachment')}
+                  {formatAttachmentTypeForDisplay(previewAttachment, t)}
                 </span>
               </div>
               <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">

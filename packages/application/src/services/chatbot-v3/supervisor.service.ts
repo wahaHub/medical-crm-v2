@@ -93,7 +93,7 @@ export class SupervisorService {
   constructor(private readonly gateway?: SupervisorSuggestionGateway) {}
 
   deriveDecisionLineage(input: OrchestratorV3DecisionInput): SupervisorDecisionLineage | null {
-    const bootstrapOverride = resolveBootstrapOverride(input.bootstrap);
+    const bootstrapOverride = resolveBootstrapOverride(input);
     return bootstrapOverride ? { bootstrapOverride } : null;
   }
 
@@ -230,8 +230,29 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     return recoveredLaterStageFaqDetour;
   }
 
-  if (currentStage === 'RECOMMENDATION' || recommendationSelectionStatus !== null) {
-    if (recommendationSelectionStatus === 'skipped') {
+  const recoveredSidePathIntent = recoverLaterStageSidePathIntent(input);
+  if (recoveredSidePathIntent) {
+    return {
+      intent: recoveredSidePathIntent,
+      suggestedStage: 'EXPLAIN_PROCESS',
+      reason: clampReason('clear later-stage faq request should detour without advancing the journey'),
+    };
+  }
+
+  if (shouldContinueMedicalInputCollection(input)) {
+    return {
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      reason: clampReason('clear records-sharing follow-up should stay on medical input collection'),
+    };
+  }
+
+  const recommendationSelected = recommendationSelectionStatus === 'selected'
+    || input.facts?.['recommendation.selected'] === true;
+  const recommendationSkipped = recommendationSelectionStatus === 'skipped';
+
+  if (currentStage === 'RECOMMENDATION' || recommendationSelectionStatus !== null || recommendationSelected) {
+    if (recommendationSkipped) {
       return {
         intent: 'progression',
         suggestedStage: 'EXPLAIN_PROCESS',
@@ -239,7 +260,7 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
       };
     }
 
-    if (recommendationSelectionStatus === 'selected' && processExplained !== true) {
+    if (recommendationSelected && processExplained !== true) {
       return {
         intent: 'progression',
         suggestedStage: 'EXPLAIN_PROCESS',
@@ -248,7 +269,7 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     }
 
     if (
-      recommendationSelectionStatus === 'selected'
+      recommendationSelected
       && processExplained === true
       && supportingDocuments.length === 0
     ) {
@@ -260,7 +281,7 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     }
 
     if (
-      recommendationSelectionStatus === 'selected'
+      recommendationSelected
       && processExplained === true
       && supportingDocuments.length > 0
     ) {
@@ -308,7 +329,9 @@ function recoverLaterStageFaqDetour(
     intent: 'faq',
     suggestedStage: 'EXPLAIN_PROCESS',
     reason: clampReason(
-      'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
+      input.facts?.['records.minimal_triage.complete'] === true
+        ? 'clear later-stage faq request should detour without advancing the journey'
+        : 'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
     ),
   };
 }
@@ -389,6 +412,100 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
+function recoverLaterStageSidePathIntent(
+  input: OrchestratorV3DecisionInput,
+): OrchestratorV3Intent | null {
+  if (input.suggestion.intent === 'faq' || input.suggestion.intent === 'resource') {
+    return null;
+  }
+
+  if (!isLaterStageForSidePathRecovery(resolveCurrentStage(input))) {
+    return null;
+  }
+
+  const latestUserMessage = resolveLatestUserMessage(input);
+  if (isClearResourceQuestion(latestUserMessage)) {
+    return 'resource';
+  }
+
+  if (isClearFaqQuestion(latestUserMessage)) {
+    return 'faq';
+  }
+
+  return null;
+}
+
+function isLaterStageForSidePathRecovery(stage: ChatJourneyStage | null | undefined): boolean {
+  return stage === 'RECOMMENDATION'
+    || stage === 'COLLECT_MEDICAL_INPUTS'
+    || stage === 'ONLINE_CONSULT';
+}
+
+function isClearFaqQuestion(message: string): boolean {
+  const normalized = normalizeMessage(message)?.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const startsWithQuestionWord = /^(what|when|where|which|who|why|how|can|could|do|does|did|is|are|was|were)\b/.test(normalized);
+  const faqTopicSignals = [
+    /\boffice hours\b/,
+    /\bhours\b/,
+    /\bopen\b/,
+    /\bclose\b/,
+    /\baddress\b/,
+    /\blocation\b/,
+    /\bcontact\b/,
+    /\bphone\b/,
+    /\bwechat\b/,
+    /\bwhatsapp\b/,
+    /\bemail\b/,
+    /\bprice\b/,
+    /\bpricing\b/,
+    /\bcost\b/,
+    /\bpayment\b/,
+    /\binsurance\b/,
+    /\bhow long\b/,
+    /\bprocess\b/,
+    /\bconsult(?:ation)?\b/,
+    /\bschedule\b/,
+    /\btiming\b/,
+    /\bwait time\b/,
+  ].some((pattern) => pattern.test(normalized));
+
+  return (startsWithQuestionWord || normalized.includes('?')) && faqTopicSignals;
+}
+
+function isClearResourceQuestion(message: string): boolean {
+  const normalized = normalizeMessage(message)?.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const resourceVerbSignals = /\b(send|share|show|give|provide|upload|open)\b/.test(normalized);
+  const resourceNounSignals = /\b(link|form|questionnaire|guide|brochure|address|contact details|hours|documents?)\b/.test(normalized);
+
+  return resourceVerbSignals && resourceNounSignals;
+}
+
+function shouldContinueMedicalInputCollection(
+  input: OrchestratorV3DecisionInput,
+): boolean {
+  if (resolveCurrentStage(input) !== 'COLLECT_MEDICAL_INPUTS') {
+    return false;
+  }
+
+  const normalized = normalizeMessage(resolveLatestUserMessage(input))?.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  const sharingSignals = /\b(share|upload|send|provide|submit|attach|bring)\b/.test(normalized);
+  const recordSignals = /\b(record|records|report|reports|medical record|medical records|pathology|scan|lab|labs|results|documents?)\b/.test(normalized);
+
+  return sharingSignals && recordSignals;
+}
+
 function isDirectHumanRequest(bootstrap: OrchestratorV3BootstrapSignals | undefined): boolean {
   const message = bootstrap?.message.trim() ?? '';
   if (message.length === 0) {
@@ -399,15 +516,21 @@ function isDirectHumanRequest(bootstrap: OrchestratorV3BootstrapSignals | undefi
 }
 
 function resolveBootstrapOverride(
-  bootstrap: OrchestratorV3BootstrapSignals | undefined,
+  input: OrchestratorV3DecisionInput,
 ): ChatbotV3BootstrapOverride | null {
+  const bootstrap = input.bootstrap;
   if (isDirectHumanRequest(bootstrap)) {
     return bootstrap?.canCreateHandoff
       ? 'direct_human_request_handoff'
       : 'direct_human_request_faq_fallback';
   }
 
-  return null;
+  return (bootstrap?.attachments?.length ?? 0) > 0
+    && resolveCurrentStage(input) === 'COLLECT_MINIMAL_MEDICAL_FACTS'
+    && !isLaterStageBootstrapContext(input)
+    && recoverLaterStageSidePathIntent(input) === null
+    ? 'attachments_to_minimal_triage'
+    : null;
 }
 
 function buildBootstrapOverrideSuggestion(
@@ -426,6 +549,12 @@ function buildBootstrapOverrideSuggestion(
         suggestedStage: 'EXPLAIN_PROCESS',
         dispatchAgent: 'FaqAgent',
         reason: clampReason('direct human request cannot create handoff ticket for this session'),
+      };
+    case 'attachments_to_minimal_triage':
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: clampReason('attachments provided by user'),
       };
   }
 }
@@ -658,6 +787,17 @@ function resolveCurrentStage(input: OrchestratorV3DecisionInput): ChatJourneySta
 function resolveCurrentStageRef(
   input: OrchestratorV3DecisionInput,
 ): ChatbotV3StageRef {
+  if (isChatJourneyStage(input.currentStage)) {
+    return {
+      stage: input.currentStage,
+      phase: input.current.phase,
+    };
+  }
+
+  if (isChatJourneyStage(input.current?.stage)) {
+    return input.current;
+  }
+
   const journeyCurrentStage = input.statusSnapshot?.journeyCurrentStage;
   const journeyCurrentPhase = input.statusSnapshot?.journeyCurrentPhase;
 
@@ -685,13 +825,28 @@ function resolveRecommendationSelectionStatus(
 function hasStructuredRecommendationSelected(
   input: OrchestratorV3DecisionInput,
 ): boolean {
-  return resolveRecommendationSelectionStatus(input) === 'selected';
+  return resolveRecommendationSelectionStatus(input) === 'selected'
+    || input.facts?.['recommendation.selected'] === true;
 }
 
 function resolveProcessExplained(
   input: OrchestratorV3DecisionInput,
 ): boolean {
   return input.facts?.['process.explained'] === true;
+}
+
+function isLaterStageBootstrapContext(
+  input: OrchestratorV3DecisionInput,
+): boolean {
+  return isLaterStageForSidePathRecovery(input.currentStage)
+    || isLaterStageForSidePathRecovery(input.current?.stage)
+    || isLaterStageForSidePathRecovery(input.statusSnapshot?.journeyCurrentStage)
+    || isLaterStageForSidePathRecovery(
+      isChatJourneyStage(input.suggestion.suggestedStage) ? input.suggestion.suggestedStage : undefined,
+    )
+    || input.facts?.['records.minimal_triage.complete'] === true
+    || input.facts?.['recommendation.selected'] === true
+    || input.facts?.['process.explained'] === true;
 }
 
 function hasStructuredMinimalTriageComplete(

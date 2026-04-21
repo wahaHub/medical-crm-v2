@@ -62,12 +62,89 @@ import type {
 
 // ── Shared Helpers ──────────────────────────────────────────────────
 
+type TranslationFn = ReturnType<typeof useHospitalI18n>['t'];
+
 const AVATAR_COLORS = [
   'bg-indigo-100 text-indigo-600',
   'bg-emerald-100 text-emerald-600',
   'bg-amber-100 text-amber-600',
   'bg-rose-100 text-rose-600',
   'bg-sky-100 text-sky-600',
+];
+
+const DIAGNOSIS_COST_OPTIONS = [
+  {
+    value: '< $5k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.5k',
+    fallback: 'Under 5K USD',
+  },
+  {
+    value: '$5k - $10k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.5-10k',
+    fallback: '5-10K USD',
+  },
+  {
+    value: '$10k - $20k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.10-20k',
+    fallback: '10-20K USD',
+  },
+  {
+    value: '$20k - $50k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.20-50k',
+    fallback: '20-50K USD',
+  },
+  {
+    value: '> $50k',
+    key: 'hospital.caseDetail.diagnosisDialog.costOptions.50k+',
+    fallback: 'Over 50K USD',
+  },
+] as const;
+
+const DIAGNOSIS_DURATION_OPTIONS = [
+  {
+    value: '< 1 Week',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.1week',
+    fallback: 'Within 1 week',
+  },
+  {
+    value: '1 - 2 Weeks',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.2weeks',
+    fallback: '1-2 weeks',
+  },
+  {
+    value: '2 Weeks - 1 Month',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.1month',
+    fallback: '2 weeks - 1 month',
+  },
+  {
+    value: '1 - 3 Months',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.3months',
+    fallback: '1-3 months',
+  },
+  {
+    value: '> 3 Months',
+    key: 'hospital.caseDetail.diagnosisDialog.durationOptions.6months',
+    fallback: 'Over 3 months',
+  },
+] as const;
+
+const SAFE_CASE_DETAIL_ERROR_PATTERNS = [
+  /\brequired\b/i,
+  /\binvalid\b/i,
+  /\bunsupported\b/i,
+  /\bselect\b/i,
+  /\bchoose\b/i,
+  /\bprovide\b/i,
+  /\bmust\b/i,
+  /\bmissing\b/i,
+];
+
+const UNSAFE_CASE_DETAIL_ERROR_PATTERNS = [
+  /\b(database|db|sql|prisma|orm|postgres|mysql|redis|mongo|server|service|gateway|proxy|network|fetch|request|response|timeout|exception|stack|trace|traceback|econn|enotfound|econnreset|unauthorized|forbidden|internal|bucket|storage|cdn|cloudflare|token)\b/i,
+  /^failed\b/i,
+  /^unable\b/i,
+  /\bstatus\s*\d{3}\b/i,
+  /\bcode\s*\d{3}\b/i,
 ];
 
 function avatarColor(name: string) {
@@ -112,6 +189,171 @@ function formatTranscriptTimestamp(timestamp: string | null | undefined, locale:
     hour: 'numeric',
     minute: '2-digit',
   }).format(parsed);
+}
+
+function getDiagnosisOptionLabel(
+  value: string | null | undefined,
+  options: ReadonlyArray<{ value: string; key: string; fallback: string }>,
+  translate: (key: string, values?: Record<string, string | number>, fallback?: string) => string,
+) {
+  if (!value) return '';
+
+  const normalizedValue = value.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const matchedOption = options.find((option) => option.value === normalizedValue);
+  if (!matchedOption) return translate('common.labels.other', undefined, 'Other');
+
+  return translate(matchedOption.key, undefined, matchedOption.fallback);
+}
+
+export function extractSafeCaseDetailErrorDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  const rawDetail = error.message.trim();
+  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    !detail
+    || /[\r\n]/.test(rawDetail)
+    || detail.length > 160
+    || UNSAFE_CASE_DETAIL_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+    || !SAFE_CASE_DETAIL_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+  ) {
+    return undefined;
+  }
+
+  return detail;
+}
+
+export function formatCaseDetailUserFacingError(
+  error: unknown,
+  t: TranslationFn,
+  summaryKey: string,
+  summaryFallback: string,
+): string {
+  const summary = t(summaryKey, undefined, summaryFallback);
+  const detail = extractSafeCaseDetailErrorDetail(error);
+
+  if (!detail) {
+    return summary;
+  }
+
+  return t(
+    'hospital.common.errors.withDetail',
+    { summary, detail },
+    '{summary} Details: {detail}',
+  );
+}
+
+function getTemplateTypeLabel(
+  value: string,
+  translate: (key: string, values?: Record<string, string | number>, fallback?: string) => string,
+) {
+  const normalizedValue = value.trim().toLowerCase();
+  const optionMap: Record<string, { key: string; fallback: string }> = {
+    intro: { key: 'hospital.emailTemplates.types.intro', fallback: 'Intro' },
+    quote: { key: 'hospital.emailTemplates.types.quote', fallback: 'Quote' },
+    marketing: { key: 'hospital.emailTemplates.types.marketing', fallback: 'Marketing' },
+    followup: { key: 'hospital.emailTemplates.types.followup', fallback: 'Follow-up' },
+    follow_up: { key: 'hospital.emailTemplates.types.followup', fallback: 'Follow-up' },
+    post_ops: { key: 'hospital.emailTemplates.types.postOps', fallback: 'Post-Ops' },
+    custom: { key: 'hospital.emailTemplates.types.custom', fallback: 'Custom' },
+  };
+
+  const matchedOption = optionMap[normalizedValue];
+  return matchedOption
+    ? translate(matchedOption.key, undefined, matchedOption.fallback)
+    : translate('common.labels.other', undefined, 'Other');
+}
+
+function normalizeStableFieldKey(value: string) {
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[\s.-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
+function humanizeStableFieldKey(value: string) {
+  const normalized = normalizeStableFieldKey(value);
+  if (!normalized) return value;
+
+  return normalized
+    .split('_')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+export function getDiagnosisCostEstimateLabel(value: string, t: TranslationFn) {
+  return getDiagnosisOptionLabel(value, DIAGNOSIS_COST_OPTIONS, t);
+}
+
+export function getDiagnosisTreatmentDurationLabel(value: string, t: TranslationFn) {
+  return getDiagnosisOptionLabel(value, DIAGNOSIS_DURATION_OPTIONS, t);
+}
+
+export function getMarketingTemplateTypeLabel(type: string, t: TranslationFn) {
+  return getTemplateTypeLabel(type, t);
+}
+
+export function getDiagnosisSeverityLabel(value: string | null | undefined, t: TranslationFn): string {
+  const normalized = value?.trim().toLowerCase();
+
+  if (normalized === 'mild' || normalized === 'moderate' || normalized === 'severe') {
+    return t(`hospital.cases.detail.diagnosis.severity.${normalized}`, undefined, normalized);
+  }
+
+  if (!normalized) {
+    return '';
+  }
+
+  return t('hospital.common.unknown', undefined, 'Unknown');
+}
+
+export function formatCaseConversationCategoryForDisplay(category: string, t: TranslationFn): string {
+  if (category === 'ADMIN_HOSPITAL') {
+    return t('hospital.messages.chat.admin', undefined, 'Admin');
+  }
+
+  if (category === 'ADMIN_PATIENT' || category === 'HOSPITAL_PATIENT') {
+    return t('hospital.common.patient', undefined, 'Patient');
+  }
+
+  return t('common.labels.other', undefined, 'Other');
+}
+
+export function formatCaseParticipantRoleForDisplay(role: string, t: TranslationFn): string {
+  if (role === 'ADMIN_HOSPITAL' || role === 'ADMIN') {
+    return t('hospital.messages.chat.admin', undefined, 'Admin');
+  }
+
+  if (role === 'ADMIN_PATIENT' || role === 'HOSPITAL_PATIENT' || role === 'PATIENT') {
+    return t('hospital.common.patient', undefined, 'Patient');
+  }
+
+  if (role === 'HOSPITAL') {
+    return t('hospital.messages.chat.hospital', undefined, 'Hospital');
+  }
+
+  return t('common.labels.other', undefined, 'Other');
+}
+
+export function formatQuestionnaireFallbackFieldLabel(key: string, t: TranslationFn) {
+  const normalizedKey = normalizeStableFieldKey(key);
+  const fallbackLabel = humanizeStableFieldKey(key);
+
+  if (!normalizedKey) {
+    return fallbackLabel;
+  }
+
+  return t(
+    `hospital.cases.detail.intake.fields.${normalizedKey}`,
+    undefined,
+    fallbackLabel,
+  );
 }
 
 // ── Tab Definitions ─────────────────────────────────────────────────
@@ -175,18 +417,14 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
               )}
               {patient.gender && (
                 <span>
-                  • {patient.gender === 'MALE'
-                    ? t('hospital.common.genderMaleShort', undefined, 'M')
-                    : patient.gender === 'FEMALE'
-                      ? t('hospital.common.genderFemaleShort', undefined, 'F')
-                      : patient.gender}
+                  • {getHospitalGenderShortLabel(patient.gender, t)}
                 </span>
               )}
               {patient.country && (
                 <>
                   <span className="w-1 h-1 bg-slate-300 rounded-full" />
                   <span className="flex items-center gap-1.5">
-                    <Globe size={14} /> {getLocalizedCountryLabel(patient.country, locale)}
+                    <Globe size={14} /> {getLocalizedCountryLabel(patient.country, locale, t)}
                   </span>
                 </>
               )}
@@ -284,9 +522,12 @@ function IntakeTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   }
 
   if (error) {
-    const message = error instanceof Error
-      ? error.message
-      : t('hospital.cases.detail.intake.errorLoad', undefined, 'Failed to load medical intake');
+    const message = formatCaseDetailUserFacingError(
+      error,
+      t,
+      'hospital.cases.detail.intake.errorLoad',
+      'Failed to load medical intake',
+    );
     return (
       <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
         {message}
@@ -298,6 +539,7 @@ function IntakeTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     <QuestionnaireReadonlyView
       template={template ?? null}
       response={questionnairePayload ?? null}
+      formatFieldLabel={(key) => formatQuestionnaireFallbackFieldLabel(key, t)}
       copy={{
         emptyStateTitle: t('hospital.cases.detail.intake.emptyTitle', undefined, 'No medical intake data'),
         emptyStateDescription: t(
@@ -329,6 +571,20 @@ function formatFileSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export function formatDocumentGroupLabel(type: string, t: TranslationFn): string {
+  const fallbackLabel = t('hospital.cases.detail.documents.groups.otherDocuments', undefined, 'Other Documents');
+  const groupLabels: Record<string, string> = {
+    MEDICAL_INTAKE: t('hospital.cases.detail.documents.groups.medicalIntake', undefined, 'Medical Intake'),
+    DIAGNOSIS: t('hospital.cases.detail.documents.groups.diagnosis', undefined, 'Diagnosis'),
+    INVITATION_LETTER: t('hospital.cases.detail.documents.groups.invitationLetter', undefined, 'Invitation Letter'),
+    INVITATION: t('hospital.cases.detail.documents.groups.invitationLetter', undefined, 'Invitation Letter'),
+    MESSAGE_ATTACHMENT: t('hospital.cases.detail.documents.groups.messageAttachments', undefined, 'Message Attachments'),
+    OTHER: fallbackLabel,
+  };
+
+  return groupLabels[type] ?? fallbackLabel;
+}
+
 function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const { locale, t } = useHospitalI18n();
   const docs = caseDetail.documents;
@@ -338,14 +594,6 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     if (!groups[type]) groups[type] = [];
     groups[type].push(doc);
   }
-  const groupLabels: Record<string, string> = {
-    MEDICAL_INTAKE: t('hospital.cases.detail.documents.groups.medicalIntake', undefined, 'Medical Intake'),
-    DIAGNOSIS: t('hospital.cases.detail.documents.groups.diagnosis', undefined, 'Diagnosis'),
-    INVITATION_LETTER: t('hospital.cases.detail.documents.groups.invitationLetter', undefined, 'Invitation Letter'),
-    INVITATION: t('hospital.cases.detail.documents.groups.invitationLetter', undefined, 'Invitation Letter'),
-    MESSAGE_ATTACHMENT: t('hospital.cases.detail.documents.groups.messageAttachments', undefined, 'Message Attachments'),
-    OTHER: t('hospital.cases.detail.documents.groups.otherDocuments', undefined, 'Other Documents'),
-  };
   if (docs.length === 0) return (
     <div className="text-center py-12 bg-white rounded-[1.5rem] border border-slate-100 shadow-sm">
       <FileText size={40} className="mx-auto mb-3 text-slate-300" />
@@ -359,7 +607,7 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
       {Object.entries(groups).map(([type, typeDocs]) => (
         <div key={type}>
           <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-            {groupLabels[type] ?? type}
+            {formatDocumentGroupLabel(type, t)}
             <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{typeDocs.length}</span>
           </h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -377,7 +625,7 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       {doc.language && (
                         <>
                           <span>-</span>
-                          <span>{getLocalizedLanguageLabel(doc.language, locale)}</span>
+                          <span>{getLocalizedLanguageLabel(doc.language, locale, t)}</span>
                         </>
                       )}
                     </div>
@@ -432,11 +680,7 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     hospital: t('hospital.messages.chat.hospital', undefined, 'Hospital'),
   };
   const formatConversationCategoryLabel = (category: string) =>
-    category.includes('PATIENT')
-      ? t('hospital.common.patient', undefined, 'Patient')
-      : category.includes('ADMIN')
-        ? t('hospital.messages.chat.admin', undefined, 'Admin')
-        : category.replace(/_/g, ' / ');
+    formatCaseConversationCategoryForDisplay(category, t);
 
   return (
     <div className="flex gap-6 h-[600px]">
@@ -549,11 +793,7 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
         patientCode={caseDetail.patient.code}
         patientAge={caseDetail.patient.age}
         patientGender={
-          caseDetail.patient.gender === 'MALE'
-            ? 'M'
-            : caseDetail.patient.gender === 'FEMALE'
-              ? 'F'
-              : caseDetail.patient.gender ?? null
+          getHospitalGenderShortLabel(caseDetail.patient.gender, t) || null
         }
         caseStatus={caseDetail.displayStatus}
         diagnosis={caseDetail.medicalCondition.primaryDiagnosis}
@@ -562,11 +802,11 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
         patientLanguage={caseDetail.patient.language}
         labels={patientContextLabels}
         formatCategoryLabel={formatConversationCategoryLabel}
-        formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale)}
+        formatLanguageLabel={(language) => getLocalizedLanguageLabel(language, locale, t)}
         formatStatusLabel={(status) => getHospitalStatusLabel(status, t)}
         formatGenderLabel={(gender) => getHospitalGenderShortLabel(gender, t)}
         formatAgeLabel={(age) => t('hospital.common.ageYears', { age }, '{age} y/o')}
-        formatParticipantRoleLabel={(role) => role}
+        formatParticipantRoleLabel={(role) => formatCaseParticipantRoleForDisplay(role, t)}
       />
     </div>
   );
@@ -609,7 +849,7 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
               <div className="flex items-center gap-3 mb-4">
                 {d.severity && (
                   <span className={`px-2.5 py-1 border rounded-md text-xs font-semibold uppercase tracking-wide ${severityStyle}`}>
-                    {t(`hospital.cases.detail.diagnosis.severity.${severityKey}`, undefined, d.severity)}
+                    {getDiagnosisSeverityLabel(d.severity, t)}
                   </span>
                 )}
                 {d.icdCode && (
@@ -649,7 +889,7 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       <p className="text-xs text-slate-500 mb-1">
                         {t('hospital.cases.detail.diagnosis.fields.estimatedCost', undefined, 'Estimated Cost')}
                       </p>
-                      <p className="text-sm font-medium text-slate-700">{d.costEstimate}</p>
+                      <p className="text-sm font-medium text-slate-700">{getDiagnosisCostEstimateLabel(d.costEstimate, t)}</p>
                     </div>
                   )}
                   {d.treatmentDuration && (
@@ -657,7 +897,7 @@ function DiagnosisTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       <p className="text-xs text-slate-500 mb-1">
                         {t('hospital.cases.detail.diagnosis.fields.treatmentDuration', undefined, 'Treatment Duration')}
                       </p>
-                      <p className="text-sm font-medium text-slate-700">{d.treatmentDuration}</p>
+                      <p className="text-sm font-medium text-slate-700">{getDiagnosisTreatmentDurationLabel(d.treatmentDuration, t)}</p>
                     </div>
                   )}
                 </div>
@@ -736,7 +976,14 @@ function AddDiagnosisModal({
           });
           onSuccess();
         } catch (err) {
-          setError(err instanceof Error ? err.message : t('hospital.cases.detail.diagnosis.errorSave', undefined, 'Failed to save diagnosis'));
+          setError(
+            formatCaseDetailUserFacingError(
+              err,
+              t,
+              'hospital.cases.detail.diagnosis.errorSave',
+              'Failed to save diagnosis',
+            ),
+          );
         }
       })();
     });
@@ -803,7 +1050,7 @@ function AddDiagnosisModal({
                     onChange={() => setSeverity(option.value)}
                   />
                   <span className={`${option.color} font-medium`}>
-                    {t(`hospital.cases.detail.diagnosis.severity.${option.value}`, undefined, option.label)}
+                    {getDiagnosisSeverityLabel(option.value, t) || option.label}
                   </span>
                 </label>
               ))}
@@ -854,8 +1101,6 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     const list = Array.isArray(templatesData) ? templatesData : (templatesData as { data?: EmailTemplateItem[] }).data ?? [];
     return list.filter((t) => t.status === 'active');
   })();
-
-  const formatTemplateType = (type: string) => type.replace(/_/g, ' ');
 
   const replaceVariables = (text: string) => {
     return text
@@ -994,8 +1239,8 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                       ? t('hospital.cases.detail.marketing.noActiveTemplates', undefined, 'No active templates - create one in Email Templates page')
                       : t('hospital.cases.detail.marketing.selectTemplate', undefined, '-- Select a template --')}
                   </option>
-                  {activeTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name} ({formatTemplateType(t.type)})</option>
+                  {activeTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name} ({getMarketingTemplateTypeLabel(template.type, t)})</option>
                   ))}
                 </select>
                 {activeTemplates.length === 0 && templatesData && (

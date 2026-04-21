@@ -38,7 +38,8 @@ export type SupervisorReadDomain =
 
 export type ChatbotV3BootstrapOverride =
   | 'direct_human_request_handoff'
-  | 'direct_human_request_faq_fallback';
+  | 'direct_human_request_faq_fallback'
+  | 'attachments_to_minimal_triage';
 
 export interface SupervisorDecisionLineage {
   bootstrapOverride: ChatbotV3BootstrapOverride;

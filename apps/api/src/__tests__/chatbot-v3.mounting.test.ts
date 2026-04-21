@@ -2026,6 +2026,84 @@ describe('Chatbot v3 public route mounting', () => {
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
   });
 
+  it('detours a later-stage faq with attachments without rewriting the persisted COLLECT_MEDICAL_INPUTS stage, then resumes records collection', async () => {
+    const readSession = persistMountingSession(createPersistedMountingSession({
+      statusSnapshot: {
+        chatbot_v2: {
+          journey_snapshot: {
+            current_stage: 'COLLECT_MEDICAL_INPUTS',
+            current_phase: 'active',
+          },
+        },
+        minimalTriageComplete: true,
+        recommendationGenerated: true,
+        recommendationSelected: true,
+        processExplained: true,
+        docUploadStatus: 'submitted',
+      },
+    }));
+
+    mockServices.listFaqItems.execute.mockResolvedValue({
+      data: [{
+        id: 'faq-hours-1',
+        question: 'What are your office hours?',
+        answer: 'We are open from 9 AM to 6 PM Monday through Saturday.',
+        category: 'General',
+      }],
+    });
+    mockServices.getFaqItem.execute.mockResolvedValue({
+      id: 'faq-hours-1',
+      question: 'What are your office hours?',
+      answer: 'We are open from 9 AM to 6 PM Monday through Saturday.',
+      category: 'General',
+    });
+
+    const app = await loadApp();
+    const driver = createChatbotV3SessionDriver({
+      app,
+      sessionId: 'session-v3-1',
+      cookies: {
+        chatbot_session_secret: SESSION_SECRET,
+      },
+    });
+
+    const faqTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'What are your office hours?',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-v3-1/report.pdf',
+      }],
+    })).body);
+
+    expect(faqTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(faqTurn.messages[0]?.text).toContain('We are open from 9 AM to 6 PM Monday through Saturday.');
+    expect(readSession().statusSnapshot.chatbot_v2.journey_snapshot).toMatchObject({
+      current_stage: 'COLLECT_MEDICAL_INPUTS',
+      current_phase: 'active',
+    });
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
+    expect(readSession().statusSnapshot.docUploadStatus).toBe('submitted');
+
+    const resumeTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
+      message: 'I can share more medical records now.',
+    })).body);
+
+    expect(resumeTurn.journey).toMatchObject({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(resumeTurn.messages[0]?.text).toContain('Please upload or share any pathology reports');
+    expect(readSession().statusSnapshot.chatbot_v2.journey_snapshot).toMatchObject({
+      current_stage: 'COLLECT_MEDICAL_INPUTS',
+      current_phase: 'active',
+    });
+  });
+
   it('keeps a real recommendation revisit compare loop canonical across committed turns', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {

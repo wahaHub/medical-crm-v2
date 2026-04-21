@@ -123,6 +123,8 @@ describe('hospital auth — login API route', () => {
     expect(res.status).toBe(401);
     const data = await res.json();
     expect(data.error).toBe('Invalid credentials');
+    expect(data.errorCode).toBe('INVALID_CREDENTIALS');
+    expect(data.details).toBeUndefined();
   });
 
   it('sets the hospital session cookie on successful hospital login', async () => {

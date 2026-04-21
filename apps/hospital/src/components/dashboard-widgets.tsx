@@ -222,7 +222,7 @@ export function DashboardWidgets({ data }: { data: DashboardData }) {
             <div className="space-y-4">
               {data.recentCases.map((c) => {
                 const patientName = c.patientName || unknownLabel;
-                const countryLabel = getLocalizedCountryLabel(c.patientCountry, locale);
+                const countryLabel = getLocalizedCountryLabel(c.patientCountry, locale, t);
                 return (
                   <div
                     key={c.id}

@@ -15,7 +15,7 @@ export default function MaterialsPage() {
           {t(
             'hospital.materials.page.description',
             undefined,
-            'Manage your hospital&apos;s public profile, procedures, team, and case studies.',
+            'Manage your hospital profile, procedures, surgeons, and case studies.',
           )}
         </p>
       </div>

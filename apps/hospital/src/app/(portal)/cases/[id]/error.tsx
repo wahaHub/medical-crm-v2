@@ -1,4 +1,5 @@
 'use client';
+
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 
 type TranslationFn = ReturnType<typeof useHospitalI18n>['t'];
@@ -48,7 +49,7 @@ function extractSafeUserErrorDetail(error: unknown): string | undefined {
   if (
     !detail
     || /[\r\n]/.test(rawDetail)
-    || detail === 'An unexpected error occurred.'
+    || detail === 'The page could not be loaded. Please try again.'
     || detail.length > 160
     || UNSAFE_USER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
     || !SAFE_USER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
@@ -79,7 +80,13 @@ function formatUserFacingError(
   );
 }
 
-export default function GlobalError({ error, reset }: { error: Error; reset: () => void }) {
+export default function CaseDetailError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   const { t } = useHospitalI18n();
   const message = formatUserFacingError(
     error,
@@ -89,13 +96,21 @@ export default function GlobalError({ error, reset }: { error: Error; reset: () 
   );
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold text-slate-900">
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">
+          {t('hospital.common.case', undefined, 'Case')}
+        </h1>
+      </div>
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+        <h2 className="text-lg font-semibold text-red-800">
           {t('hospital.error.title', undefined, 'Something went wrong')}
         </h2>
-        <p className="mt-2 text-sm text-slate-500">{message}</p>
-        <button onClick={reset} className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">
+        <p className="mt-2 text-sm text-red-600">{message}</p>
+        <button
+          onClick={reset}
+          className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
+        >
           {t('hospital.error.tryAgain', undefined, 'Try again')}
         </button>
       </div>

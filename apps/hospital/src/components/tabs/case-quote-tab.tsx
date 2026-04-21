@@ -17,6 +17,65 @@ import { Edit2 } from 'lucide-react';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import type { QuoteItem } from '@/lib/api-types';
 
+const SAFE_QUOTE_ERROR_PATTERNS = [
+  /\brequired\b/i,
+  /\binvalid\b/i,
+  /\bunsupported\b/i,
+  /\bselect\b/i,
+  /\bchoose\b/i,
+  /\bprovide\b/i,
+  /\bmust\b/i,
+  /\bmissing\b/i,
+];
+
+const UNSAFE_QUOTE_ERROR_PATTERNS = [
+  /\b(database|db|sql|prisma|orm|postgres|mysql|redis|mongo|server|service|gateway|proxy|network|fetch|request|response|timeout|exception|stack|trace|traceback|econn|enotfound|econnreset|unauthorized|forbidden|internal|bucket|storage|cdn|cloudflare|token)\b/i,
+  /^failed\b/i,
+  /^unable\b/i,
+  /\bstatus\s*\d{3}\b/i,
+  /\bcode\s*\d{3}\b/i,
+];
+
+function extractSafeQuoteErrorDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  const rawDetail = error.message.trim();
+  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    !detail
+    || /[\r\n]/.test(rawDetail)
+    || detail.length > 160
+    || UNSAFE_QUOTE_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+    || !SAFE_QUOTE_ERROR_PATTERNS.some((pattern) => pattern.test(detail))
+  ) {
+    return undefined;
+  }
+
+  return detail;
+}
+
+function formatQuoteUserFacingError(
+  error: unknown,
+  t: ReturnType<typeof useHospitalI18n>['t'],
+  summaryKey: string,
+  summaryFallback: string,
+): string {
+  const summary = t(summaryKey, undefined, summaryFallback);
+  const detail = extractSafeQuoteErrorDetail(error);
+
+  if (!detail) {
+    return summary;
+  }
+
+  return t(
+    'hospital.common.errors.withDetail',
+    { summary, detail },
+    '{summary} Details: {detail}',
+  );
+}
+
 // ── Status Badge ────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
@@ -24,14 +83,29 @@ const STATUS_STYLES: Record<string, string> = {
   ACCEPTED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   REJECTED: 'bg-rose-50 text-rose-700 border-rose-200',
   EXPIRED: 'bg-slate-100 text-slate-500 border-slate-200',
+  UNKNOWN: 'bg-slate-100 text-slate-500 border-slate-200',
 };
+
+export function getQuoteStatusLabel(
+  status: string,
+  t: ReturnType<typeof useHospitalI18n>['t'],
+): string {
+  const normalized = status.trim().toUpperCase();
+
+  if (normalized in STATUS_STYLES && normalized !== 'UNKNOWN') {
+    return t(`hospital.cases.detail.quote.status.${normalized.toLowerCase()}`, undefined, normalized);
+  }
+
+  return t('hospital.common.statuses.unknown', undefined, 'Unknown');
+}
 
 function QuoteStatusBadge({ status }: { status: string }) {
   const { t } = useHospitalI18n();
-  const style = STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
+  const normalized = status.trim().toUpperCase();
+  const style = STATUS_STYLES[normalized] ?? STATUS_STYLES.UNKNOWN;
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${style}`}>
-      {t(`hospital.cases.detail.quote.status.${status.toLowerCase()}`, undefined, status)}
+      {getQuoteStatusLabel(status, t)}
     </span>
   );
 }
@@ -175,7 +249,14 @@ function CreateQuoteModal({
       }
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('hospital.cases.detail.quote.errorCreate', undefined, 'Failed to create quote'));
+      setError(
+        formatQuoteUserFacingError(
+          err,
+          t,
+          'hospital.cases.detail.quote.errorCreate',
+          'Failed to create quote',
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -304,7 +385,7 @@ function CreateQuoteModal({
             disabled={submitting}
             className="px-4 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
           >
-            {submitting ? <Loader2 size={16} className="animate-spin" /> : t('hospital.common.save', undefined, 'Save')}
+            {submitting ? <Loader2 size={16} className="animate-spin" /> : t('hospital.common.actions.save', undefined, 'Save')}
           </button>
           <button
             type="button"
@@ -355,7 +436,7 @@ function QuoteCard({
               onClick={() => onEdit(quote)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              <Edit2 size={12} /> {t('hospital.common.edit', undefined, 'Edit')}
+              <Edit2 size={12} /> {t('hospital.common.actions.edit', undefined, 'Edit')}
             </button>
           )}
           {quote.status === 'PENDING' && quote.isDraft && (
@@ -363,7 +444,7 @@ function QuoteCard({
               onClick={() => onSend(quote.id)}
               className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
             >
-              <Send size={12} /> {t('hospital.common.send', undefined, 'Send')}
+              <Send size={12} /> {t('hospital.common.actions.send', undefined, 'Send')}
             </button>
           )}
         </div>
@@ -589,7 +670,14 @@ function EditQuoteModal({
       });
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('hospital.cases.detail.quote.errorUpdate', undefined, 'Failed to update quote'));
+      setError(
+        formatQuoteUserFacingError(
+          err,
+          t,
+          'hospital.cases.detail.quote.errorUpdate',
+          'Failed to update quote',
+        ),
+      );
     } finally {
       setSubmitting(false);
     }

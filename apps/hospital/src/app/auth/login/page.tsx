@@ -31,6 +31,21 @@ export default function LoginPage() {
         undefined,
         'An error occurred during login'
       )}
+      missingCredentialsMessage={t(
+        'hospital.login.errors.missingCredentials',
+        undefined,
+        'Username and password are required'
+      )}
+      invalidCredentialsMessage={t(
+        'hospital.login.errors.invalidCredentials',
+        undefined,
+        'Invalid credentials'
+      )}
+      unauthorizedMessage={t(
+        'hospital.login.errors.notAuthorized',
+        undefined,
+        'This account is not authorized for this portal'
+      )}
       alternatePortalLabel={t(
         'hospital.login.alternatePortalLabel',
         undefined,

@@ -75,6 +75,7 @@ export type ChatbotV3StatusSnapshot = Partial<Pick<
   | 'minimalTriageStatus'
   | 'minimalTriageAnswersSummary'
   | 'minimalTriageComplete'
+  | 'processExplained'
   | 'recommendationSelectionStatus'
   | 'recommendationSelectedHospitalIds'
   | 'supportingDocuments'
@@ -127,6 +128,7 @@ export interface SupervisorGatewayInput {
   journeyCurrentPhase?: AiChatStatusSnapshot['journeyCurrentPhase'];
   minimalTriageStatus?: AiChatStatusSnapshot['minimalTriageStatus'] | null;
   minimalTriageAnswersSummary?: string | null;
+  processExplained?: boolean | null;
   recommendationSelectionStatus?: AiChatStatusSnapshot['recommendationSelectionStatus'] | null;
   recommendationSelectedHospitalIds?: string[] | null;
   supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];

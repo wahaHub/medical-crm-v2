@@ -352,6 +352,89 @@ describe('SupervisorService', () => {
     });
   });
 
+  it('surfaces the post-recommendation structured state to the gateway prompt input', async () => {
+    let capturedInput: SupervisorGatewayInput | undefined;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async (input) => {
+        capturedInput = input;
+        return {
+          intent: 'progression',
+          suggestedStage: 'ONLINE_CONSULT',
+          reason: 'gateway suggestion',
+        };
+      },
+    });
+
+    await supervisorWithGateway.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [
+          {
+            path: 'uploads/report-a.pdf',
+            name: 'report-a.pdf',
+          },
+          {
+            path: 'uploads/report-b.pdf',
+            name: 'report-b.pdf',
+          },
+        ],
+      },
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'recommendation was selected and process was explained',
+      },
+      facts: {
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(capturedInput).toEqual(expect.objectContaining({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      recommendationSelectionStatus: 'selected',
+      recommendationSelectedHospitalIds: ['hospital-1'],
+      processExplained: true,
+      supportingDocuments: [
+        {
+          path: 'uploads/report-a.pdf',
+          name: 'report-a.pdf',
+        },
+        {
+          path: 'uploads/report-b.pdf',
+          name: 'report-b.pdf',
+        },
+      ],
+      statusSnapshot: expect.objectContaining({
+        processExplained: true,
+        supportingDocuments: [
+          {
+            path: 'uploads/report-a.pdf',
+            name: 'report-a.pdf',
+          },
+          {
+            path: 'uploads/report-b.pdf',
+            name: 'report-b.pdf',
+          },
+        ],
+      }),
+    }));
+  });
+
   it('sends minimal context plus read-domain hints to the supervisor gateway', async () => {
     let capturedInput: SupervisorGatewayInput | undefined;
     const supervisorWithGateway = new SupervisorService({
@@ -383,6 +466,7 @@ describe('SupervisorService', () => {
       journeyCurrentPhase: 'active',
       minimalTriageStatus: 'skipped',
       minimalTriageAnswersSummary: null,
+      processExplained: false,
       recommendationSelectionStatus: 'pending',
       recommendationSelectedHospitalIds: [],
       supportingDocuments: [],
@@ -392,6 +476,7 @@ describe('SupervisorService', () => {
         minimalTriageStatus: 'skipped',
         minimalTriageAnswersSummary: null,
         minimalTriageComplete: true,
+        processExplained: false,
         recommendationSelectionStatus: 'pending',
         recommendationSelectedHospitalIds: [],
         supportingDocuments: [],

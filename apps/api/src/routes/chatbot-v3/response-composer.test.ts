@@ -708,6 +708,112 @@ describe('ResponseComposer', () => {
     expect(response.messages[0]?.text).toContain('diagnosis proof');
   });
 
+  it('counts the first supporting document from the persisted COLLECT_MEDICAL_INPUTS snapshot', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'I uploaded my first supporting document.',
+        attachments: [{
+          fileName: 'report-a.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot/session-1/report-a.pdf',
+        }],
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+          reason: 'collect diagnosis proof',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchAgent: 'RecordsAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [{
+          path: 'uploads/report-a.pdf',
+          name: 'report-a.pdf',
+        }],
+      } as any,
+    });
+
+    expect(response.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          uploadedCount: 1,
+          required: true,
+        }),
+      }),
+    ]));
+  });
+
+  it('counts repeated supporting documents from the persisted list instead of the current turn attachment only', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'I uploaded a second supporting document.',
+        attachments: [{
+          fileName: 'report-b.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot/session-1/report-b.pdf',
+        }],
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+          reason: 'collect diagnosis proof',
+        },
+        decision: {
+          action: 'ADVANCE',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchAgent: 'RecordsAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [
+          {
+            path: 'uploads/report-a.pdf',
+            name: 'report-a.pdf',
+          },
+          {
+            path: 'uploads/report-b.pdf',
+            name: 'report-b.pdf',
+          },
+        ],
+      } as any,
+    });
+
+    expect(response.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          uploadedCount: 2,
+          required: true,
+        }),
+      }),
+    ]));
+  });
+
   it('does not let stale pre-stage upload residue count as diagnosis-proof completion on stage entry', () => {
     const response = composeResponse({
       body: createRequest({

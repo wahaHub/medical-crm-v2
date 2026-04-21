@@ -12,6 +12,22 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
       .map(([domain, value]) => `${domain}=${JSON.stringify(value)}`)
       .join('\n')
     : 'none';
+  const supportingDocuments = input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments ?? [];
+  const supportingDocumentsSummary = supportingDocuments.length === 0
+    ? '[]'
+    : JSON.stringify(supportingDocuments.map((document) => ({
+        name: document.name,
+        path: document.path,
+      })));
+  const recommendationSelectionStatus = input.recommendationSelectionStatus
+    ?? input.statusSnapshot?.recommendationSelectionStatus
+    ?? 'none';
+  const selectedHospitalIds = input.recommendationSelectedHospitalIds
+    ?? input.statusSnapshot?.recommendationSelectedHospitalIds
+    ?? [];
+  const processExplained = input.processExplained
+    ?? input.statusSnapshot?.processExplained
+    ?? false;
 
   return [
     'You are the Supervisor, the main agent for chatbot-v3.',
@@ -48,5 +64,12 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     `intake_target_destination=${input.intake.targetDestination ?? ''}`,
     `intake_language=${input.intake.language ?? ''}`,
     `intake_gender=${input.intake.gender ?? ''}`,
+    '',
+    'Structured post-recommendation state:',
+    `recommendation_selection_status=${recommendationSelectionStatus}`,
+    `process.explained=${processExplained}`,
+    `selected_hospital_ids=${JSON.stringify(selectedHospitalIds)}`,
+    `supporting_documents_count=${supportingDocuments.length}`,
+    `supporting_documents=${supportingDocumentsSummary}`,
   ].join('\n');
 }

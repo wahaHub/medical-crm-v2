@@ -61,4 +61,47 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('"state":"confirmed"');
     expect(prompt).toContain('If fetched domain reads are already provided below');
   });
+
+  it('surfaces the structured post-recommendation state for the supervisor prompt', () => {
+    const prompt = buildSupervisorPrompt({
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      conversationSummary: 'The user selected a hospital and has already uploaded supporting documents.',
+      latestUserMessage: 'I uploaded another file.',
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+      recommendationSelectionStatus: 'selected',
+      recommendationSelectedHospitalIds: ['hospital-1'],
+      processExplained: true,
+      supportingDocuments: [
+        {
+          path: 'uploads/report-a.pdf',
+          name: 'report-a.pdf',
+        },
+        {
+          path: 'uploads/report-b.pdf',
+          name: 'report-b.pdf',
+        },
+      ],
+      availableReadDomains: ['records.status'],
+      conversationSummaryContract: {
+        owner: 'runtime',
+        refreshTrigger: 'after_final_assistant_response',
+        sizeDiscipline: 'compact',
+        freshness: 'latest_committed_turn',
+        persistenceStrategy: 'persisted_with_session',
+      },
+    });
+
+    expect(prompt).toContain('Structured post-recommendation state:');
+    expect(prompt).toContain('recommendation_selection_status=selected');
+    expect(prompt).toContain('process.explained=true');
+    expect(prompt).toContain('selected_hospital_ids=["hospital-1"]');
+    expect(prompt).toContain('supporting_documents_count=2');
+    expect(prompt).toContain('report-a.pdf');
+    expect(prompt).toContain('report-b.pdf');
+  });
 });

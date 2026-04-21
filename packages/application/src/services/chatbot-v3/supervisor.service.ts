@@ -678,6 +678,7 @@ function buildGatewayInput(input: OrchestratorV3DecisionInput): SupervisorGatewa
     minimalTriageAnswersSummary: input.minimalTriageAnswersSummary
       ?? input.statusSnapshot?.minimalTriageAnswersSummary
       ?? null,
+    processExplained: resolveProcessExplained(input),
     recommendationSelectionStatus: input.recommendationSelectionStatus
       ?? input.statusSnapshot?.recommendationSelectionStatus
       ?? undefined,
@@ -690,7 +691,7 @@ function buildGatewayInput(input: OrchestratorV3DecisionInput): SupervisorGatewa
   return {
     currentStage: resolveCurrentStage(input),
     ...structuredState,
-      statusSnapshot: input.statusSnapshot
+    statusSnapshot: input.statusSnapshot
       ? {
           journeyCurrentStage: structuredState.journeyCurrentStage,
           ...(structuredState.journeyCurrentPhase
@@ -698,12 +699,14 @@ function buildGatewayInput(input: OrchestratorV3DecisionInput): SupervisorGatewa
             : {}),
           minimalTriageStatus: structuredState.minimalTriageStatus,
           minimalTriageAnswersSummary: structuredState.minimalTriageAnswersSummary,
+          processExplained: structuredState.processExplained,
           recommendationSelectionStatus: structuredState.recommendationSelectionStatus,
           recommendationSelectedHospitalIds: structuredState.recommendationSelectedHospitalIds,
           minimalTriageComplete: input.statusSnapshot?.minimalTriageComplete,
           supportingDocuments: structuredState.supportingDocuments ?? [],
         }
       : undefined,
+    processExplained: structuredState.processExplained,
     conversationSummary: input.conversationSummary ?? '',
     latestUserMessage: resolveLatestUserMessage(input),
     intake: resolveIntake(input),
@@ -832,7 +835,8 @@ function hasStructuredRecommendationSelected(
 function resolveProcessExplained(
   input: OrchestratorV3DecisionInput,
 ): boolean {
-  return input.facts?.['process.explained'] === true;
+  return input.statusSnapshot?.processExplained === true
+    || input.facts?.['process.explained'] === true;
 }
 
 function isLaterStageBootstrapContext(

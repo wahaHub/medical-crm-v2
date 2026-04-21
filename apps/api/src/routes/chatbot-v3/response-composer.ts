@@ -453,16 +453,20 @@ function readUploadedCount(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   stage: ConversationOrchestratorV3TurnResult['journey']['stage'],
 ): number {
+  if (stage === 'COLLECT_MEDICAL_INPUTS') {
+    if (Array.isArray(statusSnapshot?.supportingDocuments)) {
+      return statusSnapshot.supportingDocuments.length;
+    }
+
+    return body.attachments?.length ?? 0;
+  }
+
   if ((body.attachments?.length ?? 0) > 0) {
     return body.attachments?.length ?? 0;
   }
 
   if (hasAnyStatus(statusSnapshot?.docUploadStatus, ['COMPLETED', 'SUBMITTED', 'READY'])) {
     return 1;
-  }
-
-  if (stage === 'COLLECT_MEDICAL_INPUTS') {
-    return 0;
   }
 
   return hasAnyStatus(statusSnapshot?.formStatus, ['COMPLETED', 'SUBMITTED', 'READY']) ? 1 : 0;

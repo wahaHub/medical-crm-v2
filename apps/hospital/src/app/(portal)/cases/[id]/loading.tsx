@@ -13,7 +13,9 @@ export default function CaseDetailLoading() {
       aria-live="polite"
     >
       <LoadingSpinner size="lg" />
-      <p className="text-sm font-medium text-slate-500">{t('hospital.loading.caseDetail')}</p>
+      <p className="text-sm font-medium text-slate-500">
+        {t('hospital.loading.caseDetail')}
+      </p>
     </div>
   );
 }

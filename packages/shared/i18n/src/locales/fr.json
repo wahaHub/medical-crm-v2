@@ -2087,7 +2087,7 @@
           "diagnosis": "Diagnostic",
           "quote": "Devis",
           "marketing": "Marketing",
-          "invitation": "Lettre d'invitation",
+          "invitation": "Lettre d’invitation",
           "consultation": "Consultation"
         },
         "intake": {
@@ -2110,9 +2110,9 @@
         },
         "messages": {
           "attachmentFallback": "Pièce jointe",
-          "empty": "No message records",
-          "inputPlaceholder": "Enter message content...",
-          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+          "empty": "Aucun message pour le moment",
+          "inputPlaceholder": "Saisir un message...",
+          "privacyNotice": "Avis de confidentialité : les coordonnées du patient sont masquées pour protéger sa vie privée.",
           "sections": {
             "adminPatient": "Admin / IA et patient",
             "hospitalPatient": "Hôpital et patient"
@@ -2121,9 +2121,9 @@
           "sectionEmpty": "Aucun message dans cette section pour le moment"
         },
         "diagnosis": {
-          "addButton": "Add Diagnosis",
-          "empty": "No diagnosis yet",
-          "icdCode": "ICD-10 Code",
+          "addButton": "Ajouter un diagnostic",
+          "empty": "Aucun diagnostic pour le moment",
+          "icdCode": "Code CIM-10",
           "type": {
             "preliminary": "Préliminaire",
             "confirmed": "Confirmé",

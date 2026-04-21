@@ -1435,9 +1435,9 @@
         "tabs": {
           "aiSummary": "AI সারাংশ",
           "intake": "ইনটেক",
-          "documents": "নথি",
-          "messages": "বার্তা",
-          "diagnosis": "রোগনির্ণয়",
+          "documents": "ডকুমেন্টস",
+          "messages": "মেসেজ",
+          "diagnosis": "রোগ নির্ণয়",
           "quote": "কোটেশন",
           "marketing": "মার্কেটিং",
           "invitation": "আমন্ত্রণপত্র",
@@ -1463,9 +1463,9 @@
         },
         "messages": {
           "attachmentFallback": "সংযুক্তি",
-          "empty": "No message records",
-          "inputPlaceholder": "Enter message content...",
-          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+          "empty": "এখনও কোনো বার্তা নেই",
+          "inputPlaceholder": "একটি বার্তা লিখুন...",
+          "privacyNotice": "গোপনীয়তা নোটিশ: রোগীর যোগাযোগের তথ্য গোপনীয়তার জন্য লুকানো আছে।",
           "sections": {
             "adminPatient": "অ্যাডমিন / এআই ও রোগী",
             "hospitalPatient": "হাসপাতাল ও রোগী"
@@ -1474,9 +1474,9 @@
           "sectionEmpty": "এই অংশে এখনও কোনো বার্তা নেই"
         },
         "diagnosis": {
-          "addButton": "Add Diagnosis",
-          "empty": "No diagnosis yet",
-          "icdCode": "ICD-10 Code",
+          "addButton": "রোগ নির্ণয় যোগ করুন",
+          "empty": "এখনও কোনো রোগ নির্ণয় নেই",
+          "icdCode": "ICD-10 কোড",
           "type": {
             "preliminary": "প্রাথমিক",
             "confirmed": "নিশ্চিত",

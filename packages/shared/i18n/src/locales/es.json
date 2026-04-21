@@ -2085,7 +2085,7 @@
           "documents": "Documentos",
           "messages": "Mensajes",
           "diagnosis": "Diagnóstico",
-          "quote": "Presupuesto",
+          "quote": "Cotización",
           "marketing": "Marketing",
           "invitation": "Carta de invitación",
           "consultation": "Consulta"
@@ -2110,9 +2110,9 @@
         },
         "messages": {
           "attachmentFallback": "Adjunto",
-          "empty": "No message records",
-          "inputPlaceholder": "Enter message content...",
-          "privacyNotice": "Messages will be forwarded to patients through CRM system (to protect patient privacy, you cannot directly view contact information)",
+          "empty": "Aún no hay mensajes",
+          "inputPlaceholder": "Escribe un mensaje...",
+          "privacyNotice": "Aviso de privacidad: la información de contacto del paciente está oculta para proteger su privacidad.",
           "sections": {
             "adminPatient": "Administración / IA y paciente",
             "hospitalPatient": "Hospital y paciente"
@@ -2121,9 +2121,9 @@
           "sectionEmpty": "Todavía no hay mensajes en esta sección"
         },
         "diagnosis": {
-          "addButton": "Add Diagnosis",
-          "empty": "No diagnosis yet",
-          "icdCode": "ICD-10 Code",
+          "addButton": "Agregar diagnóstico",
+          "empty": "Aún no hay diagnósticos",
+          "icdCode": "Código ICD-10",
           "type": {
             "preliminary": "Preliminar",
             "confirmed": "Confirmado",

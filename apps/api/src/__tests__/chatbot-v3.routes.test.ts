@@ -4224,6 +4224,72 @@ describe('chatbot-v3 public route validation', () => {
     );
   });
 
+  it('advances a supporting-doc follow-up into ONLINE_CONSULT once at least one persisted document exists', async () => {
+    const app = new Hono();
+    app.route('/', chatbotV3PublicRoutes);
+    app.onError((err, c) => {
+      if (err.name === 'ZodError' && 'errors' in err) {
+        return c.json({
+          error: 'Validation failed',
+          code: 'VALIDATION_FAILED',
+          details: (err as Error & { errors: unknown[] }).errors,
+        }, 400);
+      }
+
+      throw err;
+    });
+
+    routeMockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-route-consult-1',
+      sessionId: 'session-v3-route-consult-1',
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update('secret-v3-route-consult-1').digest('hex'),
+      patientId: null,
+      difyConversationId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Confirmed lung cancer. Diagnosed three months ago. PET-CT and pathology completed.',
+        minimalTriageComplete: true,
+        processExplained: true,
+        recommendationGenerated: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        recommendationSelected: true,
+        consultationStatus: 'not_introduced',
+        supportingDocuments: [{
+          path: 'chatbot/session-v3-route-consult-1/diagnosis-certificate.pdf',
+          name: 'diagnosis-certificate.pdf',
+        }],
+        conversationSummary: 'stage=COLLECT_MEDICAL_INPUTS | user=I already uploaded the documents. What is next now? | assistant=Please upload your diagnosis proof...',
+      },
+    });
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        Cookie: 'chatbot_session_secret=secret-v3-route-consult-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-route-consult-1',
+        message: 'I already uploaded the documents. What is next now?',
+      }),
+    });
+
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.journey).toEqual({
+      stage: 'ONLINE_CONSULT',
+      phase: 'active',
+    });
+  });
+
   it('filters identical recommendation selection arrays out of status patches', () => {
     expect(filterUnchangedStatusPatch(
       {

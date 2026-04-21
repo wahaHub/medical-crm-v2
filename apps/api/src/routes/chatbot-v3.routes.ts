@@ -341,6 +341,13 @@ function createJourneyRuntimeAuthorityAdapter() {
       const authorityDecision = authority.decide({
         current,
         proposal: input.suggestion,
+        journeyCurrentStage: input.journeyCurrentStage,
+        journeyCurrentPhase: input.journeyCurrentPhase,
+        minimalTriageStatus: input.minimalTriageStatus,
+        minimalTriageAnswersSummary: input.minimalTriageAnswersSummary,
+        recommendationSelectionStatus: input.recommendationSelectionStatus,
+        recommendationSelectedHospitalIds: input.recommendationSelectedHospitalIds,
+        supportingDocuments: input.supportingDocuments,
         facts: input.facts,
         statusSnapshot: input.statusSnapshot,
         handoff: input.handoff,

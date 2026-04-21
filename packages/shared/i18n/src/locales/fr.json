@@ -2079,6 +2079,17 @@
           "documentsCount": "{count} docs",
           "messagesCount": "{count} messages"
         },
+        "tabs": {
+          "aiSummary": "Résumé IA",
+          "intake": "Admission",
+          "documents": "Documents",
+          "messages": "Messages",
+          "diagnosis": "Diagnostic",
+          "quote": "Devis",
+          "marketing": "Marketing",
+          "invitation": "Lettre d'invitation",
+          "consultation": "Consultation"
+        },
         "intake": {
           "errorLoad": "Loading failed:",
           "emptyTitle": "Aucune donnée d’admission médicale",
@@ -2113,6 +2124,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "type": {
+            "preliminary": "Préliminaire",
+            "confirmed": "Confirmé",
+            "followUp": "Suivi"
+          },
           "severity": {
             "mild": "Légère",
             "moderate": "Modérée",

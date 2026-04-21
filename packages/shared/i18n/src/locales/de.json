@@ -2079,6 +2079,17 @@
           "documentsCount": "{count} Dokumente",
           "messagesCount": "{count} Nachrichten"
         },
+        "tabs": {
+          "aiSummary": "KI-Zusammenfassung",
+          "intake": "Aufnahme",
+          "documents": "Dokumente",
+          "messages": "Nachrichten",
+          "diagnosis": "Diagnose",
+          "quote": "Kostenvoranschlag",
+          "marketing": "Marketing",
+          "invitation": "Einladungsschreiben",
+          "consultation": "Konsultation"
+        },
         "intake": {
           "errorLoad": "Loading failed:",
           "emptyTitle": "Keine medizinischen Aufnahmeangaben",
@@ -2113,6 +2124,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "type": {
+            "preliminary": "Vorläufig",
+            "confirmed": "Bestätigt",
+            "followUp": "Nachkontrolle"
+          },
           "severity": {
             "mild": "Leicht",
             "moderate": "Mittel",

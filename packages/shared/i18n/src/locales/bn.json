@@ -1432,6 +1432,17 @@
           "documentsCount": "{count} নথি",
           "messagesCount": "{count} বার্তা"
         },
+        "tabs": {
+          "aiSummary": "AI সারাংশ",
+          "intake": "ইনটেক",
+          "documents": "নথি",
+          "messages": "বার্তা",
+          "diagnosis": "রোগনির্ণয়",
+          "quote": "কোটেশন",
+          "marketing": "মার্কেটিং",
+          "invitation": "আমন্ত্রণপত্র",
+          "consultation": "কনসালটেশন"
+        },
         "intake": {
           "errorLoad": "Loading failed:",
           "emptyTitle": "কোনও মেডিকেল ইনটেক তথ্য নেই",
@@ -1466,6 +1477,11 @@
           "addButton": "Add Diagnosis",
           "empty": "No diagnosis yet",
           "icdCode": "ICD-10 Code",
+          "type": {
+            "preliminary": "প্রাথমিক",
+            "confirmed": "নিশ্চিত",
+            "followUp": "ফলো-আপ"
+          },
           "severity": {
             "mild": "হালকা",
             "moderate": "মাঝারি",

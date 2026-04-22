@@ -112,4 +112,47 @@ describe('DrizzleConversationRepository integration', () => {
     await testDb.delete(conversations).where(eq(conversations.id, first.id));
     await testDb.delete(cases).where(eq(cases.id, savedCase.id));
   });
+
+  it('findOrCreateHospitalPatientConversation returns a single HOSPITAL_PATIENT conversation under concurrent calls', async () => {
+    const savedCase = await caseRepo.save(makeCase());
+    const hospitalId = randomUUID();
+    const now = new Date();
+    const buildConversation = () => new Conversation({
+      id: randomUUID(),
+      caseId: savedCase.id,
+      category: 'HOSPITAL_PATIENT',
+      title: null,
+      hospitalId,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const [first, second] = await Promise.all([
+      conversationRepo.findOrCreateHospitalPatientConversation!(buildConversation()),
+      conversationRepo.findOrCreateHospitalPatientConversation!(buildConversation()),
+    ]);
+
+    expect(first.id).toBe(second.id);
+    expect(first.caseId).toBe(savedCase.id);
+    expect(first.category).toBe('HOSPITAL_PATIENT');
+    expect(first.hospitalId).toBe(hospitalId);
+
+    const rows = await testDb
+      .select()
+      .from(conversations)
+      .where(and(
+        eq(conversations.caseId, savedCase.id),
+        eq(conversations.hospitalId, hospitalId),
+        eq(conversations.category, 'HOSPITAL_PATIENT'),
+      ));
+
+    expect(rows).toHaveLength(1);
+
+    await testDb.delete(conversations).where(eq(conversations.id, first.id));
+    await testDb.delete(cases).where(eq(cases.id, savedCase.id));
+  });
 });

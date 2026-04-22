@@ -65,7 +65,7 @@ export class SelectHospitalsUseCase {
         updatedAt: now,
       });
 
-      const saved = await this.conversationRepo.save(conversation);
+      const saved = await this.conversationRepo.findOrCreateHospitalPatientConversation(conversation);
       conversationIds.push(saved.id);
     }
 

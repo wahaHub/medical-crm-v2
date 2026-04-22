@@ -45,7 +45,9 @@ export class CreateConversationUseCase {
 
     const saved = input.category === 'ADMIN_PATIENT' && input.caseId
       ? await this.conversationRepo.findOrCreateAdminPatientConversation(entity)
-      : await this.conversationRepo.save(entity);
+      : input.category === 'HOSPITAL_PATIENT' && input.caseId && hospitalId
+        ? await this.conversationRepo.findOrCreateHospitalPatientConversation(entity)
+        : await this.conversationRepo.save(entity);
     return toConversationDTO(saved);
   }
 

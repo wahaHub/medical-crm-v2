@@ -2110,15 +2110,21 @@
         },
         "messages": {
           "attachmentFallback": "Pièce jointe",
+          "composerHint": "Répondez ici au patient au nom de l'hôpital.",
           "empty": "Aucun message pour le moment",
+          "errorSend": "Échec de l'envoi du message",
+          "hospitalThreadEmpty": "Aucun message hôpital pour le moment. Votre première réponse lancera ce fil.",
           "inputPlaceholder": "Saisir un message...",
           "privacyNotice": "Avis de confidentialité : les coordonnées du patient sont masquées pour protéger sa vie privée.",
+          "readOnlyHint": "Ce fil est en lecture seule. Revenez sur Hôpital et patient pour répondre.",
+          "readOnlyTitle": "Les mises à jour admin / IA sont en lecture seule",
           "sections": {
             "adminPatient": "Admin / IA et patient",
             "hospitalPatient": "Hôpital et patient"
           },
           "sectionCount": "{count} messages",
-          "sectionEmpty": "Aucun message dans cette section pour le moment"
+          "sectionEmpty": "Aucun message dans cette section pour le moment",
+          "switchBackToHospital": "Répondre comme hôpital"
         },
         "diagnosis": {
           "addButton": "Ajouter un diagnostic",

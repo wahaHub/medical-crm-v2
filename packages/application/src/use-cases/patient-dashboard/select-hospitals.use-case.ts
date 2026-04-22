@@ -112,7 +112,7 @@ export class SelectHospitalsUseCase {
         createdAt: now,
         updatedAt: now,
       });
-      await this.conversationRepo.save(conversation);
+      await this.conversationRepo.findOrCreateHospitalPatientConversation(conversation);
     }
 
     return results;

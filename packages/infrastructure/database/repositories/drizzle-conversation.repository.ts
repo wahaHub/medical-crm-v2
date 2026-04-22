@@ -11,14 +11,13 @@ import { withTransientDatabaseRetry } from '../transient-db-retry.js';
 export class DrizzleConversationRepository implements IConversationRepository {
   constructor(private readonly db: CrmDb) {}
 
-  private isAdminPatientCaseUniqueViolation(err: unknown): boolean {
+  private hasUniqueViolation(err: unknown, indexNames: string[]): boolean {
     let current: unknown = err;
     while (current) {
       if (current instanceof Error) {
         const message = current.message.toLowerCase();
         if (
-          message.includes('conversations_admin_patient_case_unique')
-          || message.includes('conversations_admin_patient_case_unique_idx')
+          indexNames.some((indexName) => message.includes(indexName.toLowerCase()))
           || message.includes('duplicate key value')
         ) {
           return true;
@@ -33,6 +32,20 @@ export class DrizzleConversationRepository implements IConversationRepository {
     }
 
     return false;
+  }
+
+  private isAdminPatientCaseUniqueViolation(err: unknown): boolean {
+    return this.hasUniqueViolation(err, [
+      'conversations_admin_patient_case_unique',
+      'conversations_admin_patient_case_unique_idx',
+    ]);
+  }
+
+  private isHospitalPatientCaseHospitalUniqueViolation(err: unknown): boolean {
+    return this.hasUniqueViolation(err, [
+      'conversations_hospital_patient_case_hospital_unique',
+      'conversations_hospital_patient_case_hospital_unique_idx',
+    ]);
   }
 
   async findById(id: string, tx?: Transaction): Promise<Conversation | null> {
@@ -161,6 +174,30 @@ export class DrizzleConversationRepository implements IConversationRepository {
     return this.rowToEntity(rows[0]!);
   }
 
+  async findHospitalPatientByCaseAndHospitalId(
+    caseId: string,
+    hospitalId: string,
+    tx?: Transaction,
+  ): Promise<Conversation | null> {
+    const db = (tx as CrmDb | undefined) ?? this.db;
+    const rows = await db
+      .select()
+      .from(conversations)
+      .where(and(
+        eq(conversations.caseId, caseId),
+        eq(conversations.hospitalId, hospitalId),
+        eq(conversations.category, 'HOSPITAL_PATIENT'),
+      ))
+      .orderBy(conversations.createdAt)
+      .limit(1);
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return this.rowToEntity(rows[0]!);
+  }
+
   async save(entity: Conversation, tx?: Transaction): Promise<Conversation> {
     const now = new Date().toISOString();
     const db = (tx as CrmDb | undefined) ?? this.db;
@@ -257,6 +294,52 @@ export class DrizzleConversationRepository implements IConversationRepository {
       }
 
       const resolved = await this.findAdminPatientByCaseId(entity.caseId, tx);
+      if (resolved) {
+        return resolved;
+      }
+
+      throw err;
+    }
+  }
+
+  async findOrCreateHospitalPatientConversation(entity: Conversation, tx?: Transaction): Promise<Conversation> {
+    if (entity.category !== 'HOSPITAL_PATIENT' || !entity.caseId || !entity.hospitalId) {
+      return this.save(entity, tx);
+    }
+
+    if (!tx) {
+      return this.db.transaction(async (innerTx) =>
+        this.findOrCreateHospitalPatientConversation(entity, innerTx as unknown as Transaction),
+      );
+    }
+
+    const db = tx as CrmDb;
+    const conversationKey = `${entity.caseId}:${entity.hospitalId}`;
+    await db.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${conversationKey}), hashtext('HOSPITAL_PATIENT'))`,
+    );
+
+    const existing = await this.findHospitalPatientByCaseAndHospitalId(
+      entity.caseId,
+      entity.hospitalId,
+      tx,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    try {
+      return await this.save(entity, tx);
+    } catch (err) {
+      if (!this.isHospitalPatientCaseHospitalUniqueViolation(err)) {
+        throw err;
+      }
+
+      const resolved = await this.findHospitalPatientByCaseAndHospitalId(
+        entity.caseId,
+        entity.hospitalId,
+        tx,
+      );
       if (resolved) {
         return resolved;
       }

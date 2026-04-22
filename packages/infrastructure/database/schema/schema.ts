@@ -281,8 +281,10 @@ export const conversations = pgTable("conversations", {
 	uniqueIndex("conversations_admin_patient_case_unique").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")).where(sql`${table.category} = 'ADMIN_PATIENT' and ${table.caseId} is not null`),
 	index("conversations_case_id_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")),
 	index("conversations_category_idx").using("btree", table.category.asc().nullsLast().op("enum_ops")),
+	uniqueIndex("conversations_hospital_patient_case_hospital_unique").using("btree", table.caseId.asc().nullsLast().op("uuid_ops"), table.hospitalId.asc().nullsLast().op("uuid_ops")).where(sql`${table.category} = 'HOSPITAL_PATIENT' and ${table.caseId} is not null and ${table.hospitalId} is not null`),
 	index("idx_conversations_hospital_category_time").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops"), table.category.asc().nullsLast().op("enum_ops"), table.lastMessageAt.desc().nullsLast().op("timestamptz_ops")),
 	uniqueIndex("conversations_admin_patient_case_unique_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops")).where(sql`${table.category} = 'ADMIN_PATIENT' and ${table.caseId} is not null`),
+	uniqueIndex("conversations_hospital_patient_case_hospital_unique_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops"), table.hospitalId.asc().nullsLast().op("uuid_ops")).where(sql`${table.category} = 'HOSPITAL_PATIENT' and ${table.caseId} is not null and ${table.hospitalId} is not null`),
 	foreignKey({
 			columns: [table.caseId],
 			foreignColumns: [cases.id],

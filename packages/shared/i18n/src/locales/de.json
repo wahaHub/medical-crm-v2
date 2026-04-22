@@ -2110,15 +2110,21 @@
         },
         "messages": {
           "attachmentFallback": "Anhang",
+          "composerHint": "Antworten Sie hier als Krankenhaus direkt an den Patienten.",
           "empty": "Noch keine Nachrichten",
+          "errorSend": "Nachricht konnte nicht gesendet werden",
+          "hospitalThreadEmpty": "Noch keine Krankenhausnachrichten. Ihre erste Antwort startet diesen Verlauf.",
           "inputPlaceholder": "Nachricht eingeben...",
           "privacyNotice": "Datenschutzhinweis: Kontaktinformationen von Patienten werden zum Schutz der Privatsphäre ausgeblendet.",
+          "readOnlyHint": "Dieser Verlauf ist schreibgeschützt. Wechseln Sie zurück zu Krankenhaus und Patient, um zu antworten.",
+          "readOnlyTitle": "Admin-/KI-Updates sind schreibgeschützt",
           "sections": {
             "adminPatient": "Admin / KI und Patient",
             "hospitalPatient": "Krankenhaus und Patient"
           },
           "sectionCount": "{count} Nachrichten",
-          "sectionEmpty": "In diesem Abschnitt gibt es noch keine Nachrichten"
+          "sectionEmpty": "In diesem Abschnitt gibt es noch keine Nachrichten",
+          "switchBackToHospital": "Als Krankenhaus antworten"
         },
         "diagnosis": {
           "addButton": "Diagnose hinzufügen",

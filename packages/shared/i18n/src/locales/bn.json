@@ -1463,15 +1463,21 @@
         },
         "messages": {
           "attachmentFallback": "সংযুক্তি",
+          "composerHint": "এখান থেকে হাসপাতালের পক্ষ থেকে রোগীকে উত্তর দিন।",
           "empty": "এখনও কোনো বার্তা নেই",
+          "errorSend": "বার্তা পাঠানো যায়নি",
+          "hospitalThreadEmpty": "এখনও হাসপাতালের কোনো বার্তা নেই। আপনার প্রথম উত্তরেই এই থ্রেড শুরু হবে।",
           "inputPlaceholder": "একটি বার্তা লিখুন...",
           "privacyNotice": "গোপনীয়তা নোটিশ: রোগীর যোগাযোগের তথ্য গোপনীয়তার জন্য লুকানো আছে।",
+          "readOnlyHint": "এই ফিডটি শুধু পড়ার জন্য। উত্তর দিতে হাসপাতাল ও রোগী ভিউ-তে ফিরে যান।",
+          "readOnlyTitle": "Admin / AI আপডেট শুধু দেখার জন্য",
           "sections": {
             "adminPatient": "অ্যাডমিন / এআই ও রোগী",
             "hospitalPatient": "হাসপাতাল ও রোগী"
           },
           "sectionCount": "{count}টি বার্তা",
-          "sectionEmpty": "এই অংশে এখনও কোনো বার্তা নেই"
+          "sectionEmpty": "এই অংশে এখনও কোনো বার্তা নেই",
+          "switchBackToHospital": "হাসপাতাল হিসেবে উত্তর দিন"
         },
         "diagnosis": {
           "addButton": "রোগ নির্ণয় যোগ করুন",

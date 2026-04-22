@@ -25,10 +25,10 @@ describe('CreateConversationUseCase', () => {
   beforeEach(() => {
     mockConversationRepo = {
       findById: vi.fn(),
-      findMany: vi.fn(),
       findByPatientId: vi.fn(),
       save: vi.fn().mockImplementation((entity: Conversation) => Promise.resolve(entity)),
       findOrCreateAdminPatientConversation: vi.fn().mockImplementation((entity: Conversation) => Promise.resolve(entity)),
+      findOrCreateHospitalPatientConversation: vi.fn().mockImplementation((entity: Conversation) => Promise.resolve(entity)),
     };
     useCase = new CreateConversationUseCase(mockConversationRepo);
   });
@@ -51,7 +51,33 @@ describe('CreateConversationUseCase', () => {
 
     expect(result.category).toBe('HOSPITAL_PATIENT');
     expect(result.hospitalId).toBe('h-1'); // auto-filled from actor
-    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.findOrCreateHospitalPatientConversation).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing hospital-patient conversation for the same case and hospital', async () => {
+    const existingConversation = new Conversation({
+      id: 'conv-existing',
+      category: 'HOSPITAL_PATIENT',
+      caseId: 'case-1',
+      hospitalId: 'h-1',
+      title: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+    vi.mocked(mockConversationRepo.findOrCreateHospitalPatientConversation).mockResolvedValueOnce(existingConversation);
+
+    const result = await useCase.execute(
+      { category: 'HOSPITAL_PATIENT', caseId: 'case-1' },
+      hospitalActor,
+    );
+
+    expect(result.id).toBe('conv-existing');
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 
   it('creates a conversation with the provided category', async () => {

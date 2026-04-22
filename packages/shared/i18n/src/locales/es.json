@@ -2110,15 +2110,21 @@
         },
         "messages": {
           "attachmentFallback": "Adjunto",
+          "composerHint": "Responde aquí al paciente en nombre del hospital.",
           "empty": "Aún no hay mensajes",
+          "errorSend": "No se pudo enviar el mensaje",
+          "hospitalThreadEmpty": "Todavía no hay mensajes del hospital. Tu primera respuesta iniciará este hilo.",
           "inputPlaceholder": "Escribe un mensaje...",
           "privacyNotice": "Aviso de privacidad: la información de contacto del paciente está oculta para proteger su privacidad.",
+          "readOnlyHint": "Este hilo es de solo lectura. Vuelve a Hospital y paciente para responder.",
+          "readOnlyTitle": "Las actualizaciones de admin / IA son solo de lectura",
           "sections": {
             "adminPatient": "Administración / IA y paciente",
             "hospitalPatient": "Hospital y paciente"
           },
           "sectionCount": "{count} mensajes",
-          "sectionEmpty": "Todavía no hay mensajes en esta sección"
+          "sectionEmpty": "Todavía no hay mensajes en esta sección",
+          "switchBackToHospital": "Responder como hospital"
         },
         "diagnosis": {
           "addButton": "Agregar diagnóstico",

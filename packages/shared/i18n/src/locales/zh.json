@@ -2261,15 +2261,21 @@
         },
         "messages": {
           "attachmentFallback": "附件",
+          "composerHint": "在这里以医院身份与患者沟通。",
           "empty": "暂无消息记录",
+          "errorSend": "发送消息失败",
+          "hospitalThreadEmpty": "医院与患者之间还没有消息，你的第一条回复将开启该会话。",
           "inputPlaceholder": "输入消息内容...",
           "privacyNotice": "消息将通过 CRM 系统转发至患者（为保护患者隐私，您无法直接查看联系方式）",
+          "readOnlyHint": "此消息流仅供查看。切回“医院与患者”后才能回复。",
+          "readOnlyTitle": "客服 / AI 动态仅支持查看",
           "sections": {
             "adminPatient": "客服 / AI 与患者",
             "hospitalPatient": "医院与患者"
           },
           "sectionCount": "{count} 条消息",
-          "sectionEmpty": "该分区暂无消息"
+          "sectionEmpty": "该分区暂无消息",
+          "switchBackToHospital": "切换到医院回复"
         },
         "diagnosis": {
           "addButton": "添加诊断意见",

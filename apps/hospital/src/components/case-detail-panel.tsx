@@ -666,6 +666,10 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 
 // ── Tab: Messages ───────────────────────────────────────────────────
 
+type MessageSectionId = 'admin-patient' | 'hospital-patient';
+
+const DEFAULT_ACTIVE_MESSAGE_SECTION_ID: MessageSectionId = 'hospital-patient';
+
 function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const { user } = useAuth();
   const { locale, t } = useHospitalI18n();
@@ -673,7 +677,7 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const patientName = caseDetail.patient.name;
   const messageSections = caseDetail.messageSections ?? [];
   const hospitalPatientSection = messageSections.find((section) => section.id === 'hospital-patient') ?? null;
-  const selectedConversationCategory = messageSections.find((section) => section.conversationId)?.conversationCategory ?? null;
+  const [activeSectionId, setActiveSectionId] = useState<MessageSectionId>(DEFAULT_ACTIVE_MESSAGE_SECTION_ID);
   const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
   const [draftMessage, setDraftMessage] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -681,6 +685,12 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [composerError, setComposerError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sendInFlightRef = useRef(false);
+  const activeSection = messageSections.find((section) => section.id === activeSectionId)
+    ?? hospitalPatientSection
+    ?? messageSections[0]
+    ?? null;
+  const isHospitalPatientSectionActive = activeSection?.id === 'hospital-patient';
+  const selectedConversationCategory = activeSection?.conversationCategory ?? null;
   const patientContextLabels = {
     unknownParticipant: t('hospital.common.unknown', undefined, 'Unknown'),
     patientCode: t('hospital.messages.chat.patientCodeLabel', undefined, 'Patient Code'),
@@ -706,7 +716,11 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 
   const handleSend = async () => {
     const trimmedMessage = draftMessage.trim();
-    if (sendInFlightRef.current || (!trimmedMessage && selectedFiles.length === 0)) {
+    if (
+      sendInFlightRef.current
+      || !isHospitalPatientSectionActive
+      || (!trimmedMessage && selectedFiles.length === 0)
+    ) {
       return;
     }
 
@@ -757,6 +771,11 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     }
   };
 
+  const handleSelectSection = (sectionId: MessageSectionId) => {
+    setActiveSectionId(sectionId);
+    setComposerError(null);
+  };
+
   const handleFilesSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files?.length) {
@@ -771,37 +790,91 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
     <div className="flex gap-6 h-[600px]">
       {/* Messages List */}
       <div className="flex-1 flex flex-col bg-white rounded-[1.5rem] border border-slate-100 shadow-sm overflow-hidden">
+        <div className="border-b border-slate-100 bg-white/90 px-6 py-4 backdrop-blur">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-2xl bg-slate-100 p-1">
+              {messageSections.map((section) => {
+                const isActive = section.id === activeSection?.id;
+
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => handleSelectSection(section.id)}
+                    aria-pressed={isActive}
+                    className={`inline-flex items-center gap-2 rounded-[1rem] px-4 py-2 text-sm font-semibold transition ${
+                      isActive
+                        ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <span>{formatMessageSectionTitle(section.id, t)}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      isActive
+                        ? 'bg-indigo-50 text-indigo-700'
+                        : 'bg-white text-slate-500 ring-1 ring-slate-200'
+                    }`}
+                    >
+                      {section.totalMessages}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+              {formatConversationCategoryLabel(activeSection?.conversationCategory ?? 'HOSPITAL_PATIENT')}
+            </span>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            {isHospitalPatientSectionActive
+              ? t(
+                'hospital.cases.detail.messages.composerHint',
+                undefined,
+                'Reply here in the hospital thread.',
+              )
+              : t(
+                'hospital.cases.detail.messages.readOnlyHint',
+                undefined,
+                'This view is read-only. Return to the patient thread to reply.',
+              )}
+          </p>
+        </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messageSections.length > 0 ? (
+          {activeSection ? (
             <>
-              {messageSections.map((section) => (
-                <div key={section.id} className="space-y-4">
-                  <div className="sticky top-0 z-10 -mx-2 flex items-center justify-between rounded-2xl bg-slate-50/95 px-4 py-3 backdrop-blur">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800">
-                        {formatMessageSectionTitle(section.id, t)}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {section.totalMessages > 0
+              <div className="space-y-4">
+                <div className="sticky top-0 z-10 -mx-2 flex items-center justify-between rounded-2xl bg-slate-50/95 px-4 py-3 backdrop-blur">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-800">
+                      {formatMessageSectionTitle(activeSection.id, t)}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {activeSection.totalMessages > 0
+                        ? t(
+                          'hospital.cases.detail.messages.sectionCount',
+                          { count: activeSection.totalMessages },
+                        )
+                        : isHospitalPatientSectionActive
                           ? t(
-                            'hospital.cases.detail.messages.sectionCount',
-                            { count: section.totalMessages },
+                            'hospital.cases.detail.messages.hospitalThreadEmpty',
+                            undefined,
+                            'No hospital messages yet. Your first reply will start this thread.',
                           )
                           : t(
                             'hospital.cases.detail.messages.sectionEmpty',
                           )}
-                      </div>
                     </div>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
-                      {formatConversationCategoryLabel(section.conversationCategory)}
-                    </span>
                   </div>
-                  {section.messages.length > 0 ? (
-                    [...section.messages].reverse().map((msg, idx, reversed) => {
+                  <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+                    {formatConversationCategoryLabel(activeSection.conversationCategory)}
+                  </span>
+                </div>
+                {activeSection.messages.length > 0 ? (
+                  [...activeSection.messages].reverse().map((msg, idx, reversed) => {
                       const senderRole = msg.senderRole
                         ?? (msg.senderId === user.id
                           ? 'HOSPITAL'
-                          : section.conversationCategory === 'ADMIN_PATIENT'
+                          : activeSection.conversationCategory === 'ADMIN_PATIENT'
                             ? 'ADMIN'
                             : 'PATIENT');
                       const isHospital = senderRole === 'HOSPITAL' || senderRole === 'hospital';
@@ -879,16 +952,21 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                           </div>
                         </div>
                       );
-                    })
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-400">
-                      {t(
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-400">
+                    {isHospitalPatientSectionActive
+                      ? t(
+                        'hospital.cases.detail.messages.hospitalThreadEmpty',
+                        undefined,
+                        'No hospital messages yet. Your first reply will start this thread.',
+                      )
+                      : t(
                         'hospital.cases.detail.messages.sectionEmpty',
                       )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
@@ -915,72 +993,106 @@ function MessagesTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
               )}
             </p>
           </div>
-          {composerError && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              <AlertCircle size={14} className="shrink-0" />
-              <span>{composerError}</span>
-            </div>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFilesSelected}
-          />
-          {selectedFiles.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-              {selectedFiles.map((file, index) => (
-                <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
-                  <FileText size={12} />
-                  <span className="max-w-[180px] truncate">{file.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
-                    className="text-slate-400 hover:text-rose-500"
-                    aria-label={t('hospital.messages.chat.removeFile', undefined, 'Remove file')}
-                  >
-                    <X size={12} />
-                  </button>
+          {isHospitalPatientSectionActive ? (
+            <>
+              {composerError && (
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{composerError}</span>
                 </div>
-              ))}
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFilesSelected}
+              />
+              {selectedFiles.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                  {selectedFiles.map((file, index) => (
+                    <div key={`${file.name}-${index}`} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
+                      <FileText size={12} />
+                      <span className="max-w-[180px] truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                        className="text-slate-400 hover:text-rose-500"
+                        aria-label={t('hospital.messages.chat.removeFile', undefined, 'Remove file')}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 flex gap-2">
+                <textarea
+                  value={draftMessage}
+                  onChange={(event) => setDraftMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleSend();
+                    }
+                  }}
+                  placeholder={t(
+                    'hospital.cases.detail.messages.inputPlaceholder',
+                    undefined,
+                    'Type a message...',
+                  )}
+                  className="h-14 flex-1 resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending}
+                  className="flex h-14 w-14 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  title={t('hospital.messages.chat.attachFiles', undefined, 'Attach files')}
+                >
+                  <Paperclip size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSend()}
+                  disabled={isSending || (!draftMessage.trim() && selectedFiles.length === 0)}
+                  className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div>
+                <div className="text-sm font-medium text-slate-800">
+                  {t(
+                    'hospital.cases.detail.messages.readOnlyTitle',
+                    undefined,
+                    'Admin / AI updates are read-only',
+                  )}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {t(
+                    'hospital.cases.detail.messages.readOnlyHint',
+                    undefined,
+                    'This view is read-only. Return to the patient thread to reply.',
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSelectSection('hospital-patient')}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700"
+              >
+                {t(
+                  'hospital.cases.detail.messages.switchBackToHospital',
+                  undefined,
+                  'Open hospital reply',
+                )}
+              </button>
             </div>
           )}
-          <div className="mt-3 flex gap-2">
-            <textarea
-              value={draftMessage}
-              onChange={(event) => setDraftMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSend();
-                }
-              }}
-              placeholder={t(
-                'hospital.cases.detail.messages.inputPlaceholder',
-                undefined,
-                'Type a message...',
-              )}
-              className="h-14 flex-1 resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isSending}
-              className="flex h-14 w-14 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
-              title={t('hospital.messages.chat.attachFiles', undefined, 'Attach files')}
-            >
-              <Paperclip size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSend()}
-              disabled={isSending || (!draftMessage.trim() && selectedFiles.length === 0)}
-              className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-            </button>
-          </div>
         </div>
       </div>
 

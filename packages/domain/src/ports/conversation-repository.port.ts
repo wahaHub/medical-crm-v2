@@ -15,6 +15,7 @@ export interface IConversationRepository {
   findMany(query: ConversationListQuery, hospitalId?: string, tx?: Transaction): Promise<PaginatedResult<Conversation>>;
   findByPatientId(patientId: string, tx?: Transaction): Promise<Conversation[]>;
   findOrCreateAdminPatientConversation(entity: Conversation, tx?: Transaction): Promise<Conversation>;
+  findOrCreateHospitalPatientConversation(entity: Conversation, tx?: Transaction): Promise<Conversation>;
   save(entity: Conversation, tx?: Transaction): Promise<Conversation>;
   findByIdForUpdate?(id: string, tx?: Transaction): Promise<Conversation | null>;
   findAdminPatientByCaseId?(caseId: string, tx?: Transaction): Promise<Conversation | null>;

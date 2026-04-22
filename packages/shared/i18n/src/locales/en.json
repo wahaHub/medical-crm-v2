@@ -2260,15 +2260,21 @@
         },
         "messages": {
           "attachmentFallback": "Attachment",
+          "composerHint": "Reply here to chat with the patient as the hospital.",
           "empty": "No message records",
+          "errorSend": "Failed to send message",
+          "hospitalThreadEmpty": "No hospital messages yet. Your first reply will start this thread.",
           "inputPlaceholder": "Type a message...",
           "privacyNotice": "Privacy Notice: Patient contact information is hidden for privacy.",
+          "readOnlyHint": "This feed is read-only. Switch back to Hospital & Patient to reply.",
+          "readOnlyTitle": "Admin / AI updates are read-only",
           "sections": {
             "adminPatient": "Admin / AI & Patient",
             "hospitalPatient": "Hospital & Patient"
           },
           "sectionCount": "{count} messages",
-          "sectionEmpty": "No messages in this section yet"
+          "sectionEmpty": "No messages in this section yet",
+          "switchBackToHospital": "Reply as hospital"
         },
         "diagnosis": {
           "addButton": "Add Diagnosis",

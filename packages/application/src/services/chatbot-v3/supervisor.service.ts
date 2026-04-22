@@ -19,7 +19,7 @@ import type {
 import type { LlmNodeAdapter } from './llm-adapter.types.js';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
-  resolveChatbotV3DispatchAgent,
+  resolveChatbotV3ProposalDispatchAgent,
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
 } from './types.js';
 
@@ -323,11 +323,19 @@ function recoverFaqDetour(
   input: OrchestratorV3DecisionInput,
   currentStage: ChatJourneyStage,
 ): SupervisorSuggestionSeed | null {
-  if (input.suggestion.intent !== 'unknown') {
-    return null;
+  const latestUserMessage = resolveLatestUserMessage(input);
+  if (isClearResourceQuestion(latestUserMessage)) {
+    return {
+      intent: 'resource',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      reason: clampReason(
+        isLaterStage(currentStage) && input.facts?.['records.minimal_triage.complete'] === true
+          ? 'clear later-stage resource request should detour without advancing the journey'
+          : 'clear resource request should detour through FAQ handling without rewriting the primary stage',
+      ),
+    };
   }
 
-  const latestUserMessage = resolveLatestUserMessage(input);
   if (!looksLikeFaqQuestion(latestUserMessage)) {
     return null;
   }
@@ -537,19 +545,24 @@ function buildProposal(
   const suggestedStage = isChatJourneyStage(suggestion.suggestedStage)
     ? suggestion.suggestedStage
     : inferStageFromInput(input);
-  const dispatchAgent = resolveChatbotV3DispatchAgent(suggestedStage);
+  const dispatchAgent = resolveChatbotV3ProposalDispatchAgent({
+    intent: suggestion.intent,
+    suggestedStage,
+    dispatchAgent: suggestion.dispatchAgent,
+  });
 
-  if (!dispatchAgent) {
-    throw new Error(`Unable to resolve dispatch agent for stage ${suggestedStage}`);
-  }
-
-  return {
+  const proposal: SupervisorProposal = {
     intent: suggestion.intent,
     suggestedStage,
     dispatchAgent,
     reason: clampReason(suggestion.reason || 'supervisor fallback suggestion'),
-    task: buildTask(dispatchAgent, suggestedStage, input),
   };
+
+  if (dispatchAgent) {
+    proposal.task = buildTask(dispatchAgent, suggestedStage, input);
+  }
+
+  return proposal;
 }
 
 function buildTask(

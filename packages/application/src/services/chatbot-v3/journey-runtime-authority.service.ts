@@ -9,6 +9,7 @@ import {
   type JourneyRuntimeAuthorityInput,
   type JourneyRuntimeAuthorityWrite,
   resolveChatbotV3DispatchAgent,
+  resolveChatbotV3ProposalDispatchAgent,
 } from './types.js';
 
 export class JourneyRuntimeAuthorityService {
@@ -84,7 +85,7 @@ export class JourneyRuntimeAuthorityService {
           input,
           stage: targetStage,
           action: deriveAction(input.current.stage, targetStage),
-          dispatchAgent: resolveCanonicalDispatchAgent(targetStage),
+          dispatchAgent: resolveExplainProcessDispatchAgent(input),
           reason: input.proposal.reason,
           factsPatch: {
             'process.explained': true,
@@ -133,7 +134,7 @@ function allowDecision({
   input: JourneyRuntimeAuthorityInput;
   stage: ChatJourneyStage;
   action: JourneyRuntimeAuthorityDecision['action'];
-  dispatchAgent?: ChatbotV3DispatchAgent;
+  dispatchAgent?: ChatbotV3DispatchAgent | null;
   reason: string;
   factsPatch?: JourneyRuntimeAuthorityWrite['factsPatch'];
 }): JourneyRuntimeAuthorityDecision {
@@ -145,14 +146,10 @@ function allowDecision({
       stage,
       phase: 'active',
     },
-    dispatch: dispatchAgent
-      ? {
-          outcome: 'ALLOW',
-          agent: dispatchAgent,
-        }
-      : {
-          outcome: 'DENY',
-        },
+    dispatch: {
+      outcome: 'ALLOW',
+      agent: dispatchAgent ?? null,
+    },
       write: {
         authority: 'journey-runtime-authority',
         stage: {
@@ -261,6 +258,18 @@ function resolveCanonicalDispatchAgent(stage: ChatJourneyStage): ChatbotV3Dispat
   if (!dispatchAgent) {
     throw new Error(`Unable to resolve canonical dispatch agent for stage ${stage}`);
   }
+  return dispatchAgent;
+}
+
+function resolveExplainProcessDispatchAgent(
+  input: JourneyRuntimeAuthorityInput,
+): ChatbotV3DispatchAgent | null {
+  const dispatchAgent = resolveChatbotV3ProposalDispatchAgent({
+    intent: input.proposal.intent,
+    suggestedStage: input.proposal.suggestedStage,
+    dispatchAgent: input.proposal.dispatchAgent,
+  });
+
   return dispatchAgent;
 }
 

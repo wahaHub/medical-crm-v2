@@ -95,13 +95,13 @@ export interface SupervisorTask {
 export interface SupervisorSuggestionSeed {
   intent: ChatbotV3Intent;
   suggestedStage: ChatJourneyStage;
-  dispatchAgent?: ChatbotV3DispatchAgent;
+  dispatchAgent?: ChatbotV3DispatchAgent | null;
   reason: string;
 }
 
 export interface SupervisorProposal extends SupervisorSuggestionSeed {
-  dispatchAgent: ChatbotV3DispatchAgent;
-  task: SupervisorTask;
+  dispatchAgent: ChatbotV3DispatchAgent | null;
+  task?: SupervisorTask;
 }
 
 export type ChatbotV3Suggestion = SupervisorProposal;
@@ -174,7 +174,7 @@ export type OrchestratorV3BootstrapSignals = ChatbotV3BootstrapSignals;
 export type OrchestratorV3Facts = ChatbotV3Facts;
 
 export interface JourneyRuntimeAuthorityProposal extends SupervisorSuggestionSeed {
-  dispatchAgent?: ChatbotV3DispatchAgent;
+  dispatchAgent?: ChatbotV3DispatchAgent | null;
 }
 
 export interface JourneyRuntimeAuthorityInput {
@@ -196,7 +196,7 @@ export interface JourneyRuntimeAuthorityInput {
 
 export interface JourneyRuntimeAuthorityDispatch {
   outcome: 'ALLOW' | 'DENY';
-  agent?: ChatbotV3DispatchAgent;
+  agent?: ChatbotV3DispatchAgent | null;
 }
 
 export interface JourneyRuntimeAuthorityWrite {
@@ -221,8 +221,6 @@ export function resolveChatbotV3DispatchAgent(
   stage: ChatJourneyStage,
 ): ChatbotV3DispatchAgent | undefined {
   switch (stage) {
-    case 'EXPLAIN_PROCESS':
-      return 'FaqAgent';
     case 'COLLECT_MINIMAL_MEDICAL_FACTS':
     case 'COLLECT_MEDICAL_INPUTS':
       return 'RecordsAgent';
@@ -235,6 +233,18 @@ export function resolveChatbotV3DispatchAgent(
     default:
       return undefined;
   }
+}
+
+export function resolveChatbotV3ProposalDispatchAgent(
+  proposal: Pick<SupervisorSuggestionSeed, 'intent' | 'suggestedStage' | 'dispatchAgent'>,
+): ChatbotV3DispatchAgent | null {
+  if (proposal.suggestedStage === 'EXPLAIN_PROCESS') {
+    return proposal.intent === 'faq' || proposal.intent === 'resource'
+      ? 'FaqAgent'
+      : null;
+  }
+
+  return resolveChatbotV3DispatchAgent(proposal.suggestedStage) ?? null;
 }
 
 export interface ChatbotV3JumpRule {

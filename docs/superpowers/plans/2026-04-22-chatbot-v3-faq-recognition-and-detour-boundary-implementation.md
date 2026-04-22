@@ -4,7 +4,7 @@
 
 **Goal:** Make FAQ a stage-agnostic detour path across chatbot-v3 so informal or standard FAQ-like questions stop collapsing into triage/workflow continuation, and FAQ misses are answered honestly without rewriting the persisted primary stage.
 
-**Architecture:** Move FAQ recognition from later-stage-only heuristics into a single stage-agnostic routing boundary in the supervisor/control plane. Separate FAQ recognition from FAQ answerability so the system can route a question into FAQ handling even when the FAQ subsystem later returns a miss; on miss, return an explicit FAQ-miss response while preserving the current primary stage.
+**Architecture:** Move FAQ recognition from later-stage-only heuristics into a single stage-agnostic routing boundary in the supervisor/control plane. Separate FAQ recognition from FAQ answerability so the system can route a question into FAQ handling even when the FAQ subsystem later returns a miss; on miss, return an explicit FAQ-miss response while preserving the current primary stage. Also decouple `EXPLAIN_PROCESS` from the stage-to-agent mapping so it becomes a system-rendered stage with `dispatchAgent = null`.
 
 **Tech Stack:** TypeScript, Hono API routes, chatbot-v3 runtime/supervisor services, FAQ LLM adapter, Vitest, real-api live session probes.
 
@@ -13,13 +13,17 @@
 ## File Map
 
 - Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/packages/application/src/services/chatbot-v3/supervisor.service.ts`
-  - Replace later-stage-only FAQ recovery with stage-agnostic FAQ recognition.
+  - Replace later-stage-only FAQ recovery with stage-agnostic FAQ recognition, and allow `EXPLAIN_PROCESS` proposals to be emitted without an agent task/dispatch.
 - Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/packages/application/src/services/chatbot-v3/types.ts`
-  - Add any minimal structured signal needed to carry FAQ-miss semantics without polluting progression truth.
+  - Add any minimal structured signal needed to carry FAQ-miss semantics without polluting progression truth, allow system-rendered stages to have `dispatchAgent = null`, and relax proposal types that currently require a non-null dispatch agent.
+- Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/packages/application/src/services/chatbot-v3/journey-runtime-authority.service.ts`
+  - Remove `EXPLAIN_PROCESS -> FaqAgent` coupling from the authoritative dispatch path and preserve null dispatch for this stage.
 - Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/apps/api/src/routes/chatbot-v3/runtime.service.ts`
-  - Preserve primary stage while allowing FAQ detour in all stages.
+  - Preserve primary stage while allowing FAQ detour in all stages and render `EXPLAIN_PROCESS` without agent dispatch.
 - Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/apps/api/src/routes/chatbot-v3/response-composer.ts`
-  - Render explicit FAQ-miss text instead of falling back to triage/workflow prompts.
+  - Render explicit FAQ-miss text instead of falling back to triage/workflow prompts, and handle `EXPLAIN_PROCESS` as a system-rendered stage that still emits the explicit process-overview copy rather than generic stage guidance.
+- Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/apps/api/src/routes/chatbot-v3.routes.ts`
+  - Preserve the route/runtime handoff for null-dispatch `EXPLAIN_PROCESS` so it reaches the explicit process-overview render path rather than generic no-dispatch guidance.
 - Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/apps/api/src/routes/chatbot-v3/faq-llm-adapter.ts`
   - Keep the raw FAQ answer payload aligned with the current answer schema, but do not treat this file as the final visible FAQ-miss boundary.
 - Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/apps/api/src/routes/chatbot-v3/faq-route-adapter.ts`
@@ -145,6 +149,11 @@ Cover at least:
 - FAQ in `COLLECT_MEDICAL_INPUTS` stays in `COLLECT_MEDICAL_INPUTS`
 - FAQ in `ONLINE_CONSULT` stays in `ONLINE_CONSULT`
 - FAQ in `HUMAN_HANDOFF` stays in `HUMAN_HANDOFF`
+- normal progression into `EXPLAIN_PROCESS` does not dispatch `FaqAgent`
+- `EXPLAIN_PROCESS` renders correctly with `dispatchAgent = null`
+- the authoritative decision path preserves `dispatchAgent = null` for `EXPLAIN_PROCESS`
+- null-dispatch `EXPLAIN_PROCESS` still renders `PROCESS_OVERVIEW` rather than generic `STAGE_GUIDANCE`
+- the supervisor proposal path accepts `EXPLAIN_PROCESS` with `dispatchAgent = null` and does not throw
 - for each case, verify both response `journey.stage` and persisted session stage remain unchanged
 
 - [ ] **Step 2: Run the route test file**
@@ -172,6 +181,8 @@ Expected live results:
 - handoff remains higher priority than FAQ
 - FAQ asked during `HUMAN_HANDOFF` does not rewrite the persisted handoff stage
 - if FAQ cannot answer, response is explicit and honest rather than disguised workflow continuation
+- `RECOMMENDATION_SELECTED` and `What is next?` progress into `EXPLAIN_PROCESS` without being rendered as FAQ miss
+- the visible assistant text during `EXPLAIN_PROCESS` is the real process explanation, not the generic explain-process fallback text
 
 - [ ] **Step 4: Commit Chunk 3**
 
@@ -187,6 +198,7 @@ git -C /Users/haowang/Desktop/claws/medical-crm-v2 commit -m "test(chatbot-v3): 
 - [ ] `pnpm --dir /Users/haowang/Desktop/claws/medical-crm-v2 --filter @medical-crm/application typecheck`
 - [ ] `pnpm --dir /Users/haowang/Desktop/claws/medical-crm-v2 --filter @medical-crm/api typecheck`
 - [ ] live targeted session transcript confirms FAQ detour or honest FAQ miss in early stage
+- [ ] live targeted session transcript confirms `RECOMMENDATION_SELECTED` and `What is next?` produce the real process explanation without FAQ miss
 
 ## Notes For Implementers
 
@@ -196,3 +208,8 @@ git -C /Users/haowang/Desktop/claws/medical-crm-v2 commit -m "test(chatbot-v3): 
 - Use the existing FAQ answerability boundary explicitly: answer text must be non-empty, cited FAQ ids must exist, and confidence must not be `low`.
 - Do not let FAQ miss rewrite the persisted primary stage.
 - Explicit human request remains higher priority than FAQ.
+- Do not force `EXPLAIN_PROCESS` through `FaqAgent`. This stage is system-rendered and should allow `dispatchAgent = null`.
+- Update both the shared resolver and `journey-runtime-authority.service.ts`; fixing only runtime/composer behavior is insufficient.
+- Null dispatch for `EXPLAIN_PROCESS` must still produce the explicit process-overview render state.
+- Update the supervisor proposal plumbing as well: `SupervisorProposal` and `buildProposal()` must allow `EXPLAIN_PROCESS` with `dispatchAgent = null` and skip agent-task creation for that stage.
+- Update the route/runtime handoff so null-dispatch `EXPLAIN_PROCESS` reaches `PROCESS_OVERVIEW` instead of the generic `STAGE_GUIDANCE` fast path.

@@ -6,7 +6,7 @@ import {
   type OrchestratorV3DecisionInput,
   type OrchestratorV3DispatchAgent,
   type OrchestratorV3StageRef,
-  resolveChatbotV3DispatchAgent,
+  resolveChatbotV3ProposalDispatchAgent,
 } from './types.js';
 
 export type {
@@ -23,7 +23,7 @@ export interface OrchestratorV3Decision {
   action: 'STAY' | 'ADVANCE' | 'SKIP' | 'HANDOFF';
   from: OrchestratorV3StageRef;
   to: OrchestratorV3StageRef;
-  dispatchAgent?: OrchestratorV3DispatchAgent;
+  dispatchAgent?: OrchestratorV3DispatchAgent | null;
   dispatchSource: 'orchestrator';
   matchedRuleId?: string;
   whyNotSkip?: string;
@@ -46,7 +46,7 @@ export class OrchestratorV3Service {
       current: input.current,
       proposal: {
         ...input.suggestion,
-        dispatchAgent: input.suggestion.dispatchAgent ?? resolveChatbotV3DispatchAgent(input.suggestion.suggestedStage),
+        dispatchAgent: resolveChatbotV3ProposalDispatchAgent(input.suggestion),
       },
       facts: input.facts,
       handoff: input.handoff,

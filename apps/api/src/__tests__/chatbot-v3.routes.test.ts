@@ -23,7 +23,7 @@ import {
   InvalidChatbotV3ActionError,
   deriveCurrentStageFromStatusSnapshot,
 } from '../routes/chatbot-v3/runtime.service.js';
-import { composeResponse } from '../routes/chatbot-v3/response-composer.js';
+import { composeResponse, PROCESS_OVERVIEW_TEXT } from '../routes/chatbot-v3/response-composer.js';
 import { createToolGateway } from '../routes/chatbot-v3/tool-gateway.js';
 import type {
   FaqWorkerTask,
@@ -2462,6 +2462,7 @@ describe('chatbot-v3 runtime', () => {
           action: 'STAY' as const,
           from: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
           to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          dispatchAgent: null as const,
           dispatchSource: 'journey-runtime-authority' as const,
           write: {
             authority: 'journey-runtime-authority' as const,
@@ -2510,6 +2511,198 @@ describe('chatbot-v3 runtime', () => {
     expect(result.render).toEqual({
       path: 'PROCESS_OVERVIEW',
     });
+  });
+
+  it('renders process overview for a system-rendered EXPLAIN_PROCESS progression with null dispatch', async () => {
+    const authority = new JourneyRuntimeAuthorityService();
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'EXPLAIN_PROCESS' as const,
+          dispatchAgent: null as any,
+          reason: 'present the process overview',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide(input) {
+          const decision = authority.decide({
+            current: input.current ?? {
+              stage: input.currentStage ?? 'COLLECT_MINIMAL_MEDICAL_FACTS',
+              phase: 'active',
+            },
+            proposal: input.suggestion,
+            facts: input.facts,
+            handoff: input.handoff,
+            bootstrap: input.bootstrap,
+            intake: input.intake,
+            statusSnapshot: input.statusSnapshot,
+          });
+
+          if (decision.outcome === 'DENY') {
+            return {
+              action: 'STAY' as const,
+              from: decision.from,
+              to: decision.to,
+              dispatchSource: 'journey-runtime-authority' as const,
+              whyNotSkip: decision.reason,
+              write: decision.write,
+            };
+          }
+
+          return {
+            action: decision.action === 'REPEAT' ? 'STAY' : 'ADVANCE' as const,
+            from: decision.from,
+            to: decision.to,
+            dispatchAgent: decision.dispatch.outcome === 'ALLOW'
+              ? decision.dispatch.agent
+              : undefined,
+            dispatchSource: 'journey-runtime-authority' as const,
+            write: decision.write,
+          };
+        },
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-write-intent-derive-null-dispatch-1',
+      sessionId: 'session-write-intent-derive-null-dispatch-1',
+      turnId: 'turn-write-intent-derive-null-dispatch-1',
+      message: 'What is next?',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'post',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+    });
+
+    expect(result.decision.dispatchAgent).toBeNull();
+    expect(result.render).toEqual({
+      path: 'PROCESS_OVERVIEW',
+    });
+    expect(result.writeIntents?.statusPatch?.journeyCurrentStage).toBe('EXPLAIN_PROCESS');
+
+    const response = composeResponse({
+      body: {
+        sessionId: 'session-write-intent-derive-null-dispatch-1',
+        message: 'What is next?',
+      } as any,
+      result,
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+    });
+
+    expect(response.messages[0]?.text).toBe(PROCESS_OVERVIEW_TEXT);
+    expect(response.messages[0]?.text).not.toContain('reliable FAQ answer');
+    expect(response.journey).toEqual({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+    });
+  });
+
+  it('persists the null-dispatch EXPLAIN_PROCESS state through the real Hono route', async () => {
+    const app = new Hono();
+    app.route('/', chatbotV3PublicRoutes);
+    app.onError((err, c) => {
+      if (err.name === 'ZodError' && 'errors' in err) {
+        return c.json({
+          error: 'Validation failed',
+          code: 'VALIDATION_FAILED',
+          details: (err as Error & { errors: unknown[] }).errors,
+        }, 400);
+      }
+
+      throw err;
+    });
+
+    routeMockServices.aiChatSessionRepo.patchStatus.mockClear();
+    routeMockServices.aiChatSessionRepo.save.mockClear();
+    routeMockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-route-process-overview-1',
+      sessionId: 'session-v3-route-process-overview-1',
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update('secret-v3-route-process-overview-1').digest('hex'),
+      patientId: null,
+      difyConversationId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+        processExplained: false,
+        conversationSummary: 'stage=RECOMMENDATION | user=What is next? | assistant=You should review your recommendation first.',
+      },
+    });
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        Cookie: 'chatbot_session_secret=secret-v3-route-process-overview-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-route-process-overview-1',
+        message: 'What is next?',
+      }),
+    });
+
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.messages[0]?.text).toBe(PROCESS_OVERVIEW_TEXT);
+    expect(body.journey).toEqual({
+      stage: 'EXPLAIN_PROCESS',
+      phase: 'active',
+    });
+    expect(routeMockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledWith(
+      'session-v3-route-process-overview-1',
+      'china',
+      expect.objectContaining({
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        journeyCurrentPhase: 'active',
+        processExplained: true,
+      }),
+    );
+
+    routeMockServices.idempotencyExecutor.execute.mockClear();
+    routeMockServices.aiChatSessionRepo.findBySessionId.mockClear();
+    routeMockServices.aiChatSessionRepo.save.mockClear();
+    routeMockServices.aiChatSessionRepo.patchStatus.mockClear();
   });
 
   it('does not emit processExplained when faq dispatch returns a bounded faq answer', async () => {

@@ -82,6 +82,36 @@ The important rule is:
 
 ## Stage Semantics
 
+### `EXPLAIN_PROCESS` is a system-rendered stage
+
+`EXPLAIN_PROCESS` should not require an agent dispatch.
+
+It is a canonical workflow stage whose primary behavior is:
+- show the process explanation
+- preserve the persisted primary stage
+- wait for the next explicit progression input
+
+The system may still allow FAQ detours while the persisted primary stage is `EXPLAIN_PROCESS`, but that does not mean `EXPLAIN_PROCESS` itself is owned by `FaqAgent`.
+
+The important rule is:
+- `EXPLAIN_PROCESS` must be treated as a system-rendered stage
+- the control plane may set `suggestedStage = EXPLAIN_PROCESS`
+- but `dispatchAgent` for that primary stage should be `null`
+- this null-dispatch behavior must be enforced in both the shared stage-to-agent resolver and the authority layer
+
+In concrete terms:
+- `EXPLAIN_PROCESS` must be removed from the shared `stage -> agent` resolver that currently couples it to `FaqAgent`
+- `JourneyRuntimeAuthority` must preserve `suggestedStage = EXPLAIN_PROCESS` while returning `dispatchAgent = null`
+
+This avoids incorrectly collapsing normal progression turns into FAQ handling just because the user is currently in the process-explanation stage.
+
+When the primary stage is `EXPLAIN_PROCESS`, the visible response must still show the actual process explanation.
+
+The important rule is:
+- null dispatch must not fall back to generic stage guidance
+- the runtime/composer layer must still emit the explicit process-overview render path
+- `EXPLAIN_PROCESS` must continue to show the real process explanation copy even though no agent is dispatched
+
 ### FAQ detour does not rewrite primary stage
 
 FAQ handling is a detour, not progression.
@@ -164,5 +194,6 @@ The preferred shape is:
 This design is successful when:
 - informal FAQ-like questions are no longer treated as triage continuation by default
 - FAQ misses are answered honestly instead of being silently converted into workflow prompts
+- `EXPLAIN_PROCESS` is no longer coupled to `FaqAgent`
 - all stages behave consistently with the same FAQ detour model
 - persisted primary stage remains stable across FAQ detours

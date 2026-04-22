@@ -256,6 +256,47 @@ describe('JourneyRuntimeAuthorityService', () => {
     });
   });
 
+  it('preserves a null dispatch proposal for a system-rendered process explanation', () => {
+    const decision = service.decide(createInput({
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'post',
+      },
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: null as any,
+        reason: 'show the process overview',
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: null,
+    });
+    expect(decision.write).toEqual({
+      authority: 'journey-runtime-authority',
+      stage: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      journeyCurrentStage: 'EXPLAIN_PROCESS',
+      journeyCurrentPhase: 'active',
+      factsPatch: {
+        'process.explained': true,
+      },
+    });
+  });
+
   it('allows later-stage faq detours to reuse EXPLAIN_PROCESS as a dispatch anchor without rewriting the primary stage contract', () => {
     const decision = service.decide(createInput({
       current: {

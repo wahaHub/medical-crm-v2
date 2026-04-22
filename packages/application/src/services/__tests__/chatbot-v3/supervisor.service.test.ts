@@ -264,7 +264,125 @@ describe('SupervisorService', () => {
     expect(result.dispatchAgent).toBe('RecommendationAgent');
   });
 
-  it('does not detour an unknown workflow question into FAQ handling', async () => {
+  it('normalizes progression EXPLAIN_PROCESS to null dispatch even when the gateway names FaqAgent', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v2',
+      run: async () => ({
+        intent: 'progression',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: 'FaqAgent',
+        reason: 'present the process overview',
+      }),
+    });
+
+    await expect(supervisorWithGateway.suggest({
+      ...minimalInput,
+      latestUserMessage: 'What is next?',
+      currentStage: 'RECOMMENDATION',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'post',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+      },
+      facts: {
+        'recommendation.selected': true,
+        'process.explained': false,
+      },
+    })).resolves.toEqual({
+      intent: 'progression',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: null,
+      reason: 'present the process overview',
+    });
+  });
+
+  it('recovers a clear FAQ question from early-stage progression input even when upstream intent is not unknown', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      latestUserMessage: 'What are your office hours?',
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: 'upstream classifier missed the FAQ turn',
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'What are your office hours?',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
+  it('preserves a resource detour from EXPLAIN_PROCESS even when upstream intent is progression', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'EXPLAIN_PROCESS',
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      latestUserMessage: 'Send me the address.',
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'upstream classifier missed the resource request',
+      },
+      facts: {
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'resource',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'clear resource request should detour through FAQ handling without rewriting the primary stage',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'Send me the address.',
+        necessaryFacts: {
+          'current.stage': 'EXPLAIN_PROCESS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
+  it('routes a workflow question into a null-dispatch process explanation instead of FAQ handling', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
       currentStage: 'RECOMMENDATION',
@@ -285,14 +403,16 @@ describe('SupervisorService', () => {
       latestUserMessage: 'What should I do next?',
       suggestion: {
         intent: 'unknown',
-        suggestedStage: 'RECOMMENDATION',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: null as any,
         reason: 'upstream classifier missed the workflow question',
       },
     });
 
     expect(result.intent).toBe('progression');
     expect(result.suggestedStage).toBe('EXPLAIN_PROCESS');
-    expect(result.dispatchAgent).toBe('FaqAgent');
+    expect(result.dispatchAgent).toBeNull();
+    expect(result).not.toHaveProperty('task');
   });
 
   it('does not misclassify a records upload question as FAQ when the turn continues medical input collection', async () => {
@@ -460,17 +580,10 @@ describe('SupervisorService', () => {
     expect(result).toEqual({
       intent: 'progression',
       suggestedStage: 'EXPLAIN_PROCESS',
-      dispatchAgent: 'FaqAgent',
+      dispatchAgent: null,
       reason: 'recommendation selected and process explanation should follow',
-      task: {
-        goal: 'Answer the user\'s question using FAQ knowledge only.',
-        latestUserMessage: 'Please recommend hospitals for me.',
-        necessaryFacts: {
-          'current.stage': 'RECOMMENDATION',
-          'intake.target_destination': 'Shanghai',
-        },
-      },
     });
+    expect(result).not.toHaveProperty('task');
   });
 
   it('prefers supporting-document collection after process explanation when no documents exist yet', async () => {
@@ -1047,17 +1160,10 @@ describe('SupervisorService', () => {
     expect(result).toEqual({
       intent: 'progression',
       suggestedStage: 'EXPLAIN_PROCESS',
-      dispatchAgent: 'FaqAgent',
+      dispatchAgent: null,
       reason: 'recommendation skip should continue into process explanation',
-      task: {
-        goal: 'Answer the user\'s question using FAQ knowledge only.',
-        latestUserMessage: 'Please recommend hospitals for me.',
-        necessaryFacts: {
-          'current.stage': 'RECOMMENDATION',
-          'intake.target_destination': 'Shanghai',
-        },
-      },
     });
+    expect(result).not.toHaveProperty('task');
   });
 
   it('preserves faq detours from COLLECT_MEDICAL_INPUTS even when the turn includes attachments', async () => {
@@ -1350,7 +1456,8 @@ describe('SupervisorService', () => {
     });
 
     expect(result.dispatchAgent).toBe('FaqAgent');
-    expect(result.task.latestUserMessage).toBe('Can you explain the process?');
+    expect(result.task).toBeDefined();
+    expect(result.task?.latestUserMessage).toBe('Can you explain the process?');
   });
 
   it('keeps supervisor output free of authority-owned mutation fields', async () => {

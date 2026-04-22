@@ -131,7 +131,7 @@ export interface ConversationOrchestratorV3Decision {
   action: 'STAY' | 'ADVANCE' | 'SKIP' | 'HANDOFF';
   from: ConversationOrchestratorV3StageRef;
   to: ConversationOrchestratorV3StageRef;
-  dispatchAgent?: AgentName;
+  dispatchAgent?: AgentName | null;
   dispatchSource: 'journey-runtime-authority';
   matchedRuleId?: string;
   whyNotSkip?: string;
@@ -410,7 +410,9 @@ export class ConversationOrchestratorV3RuntimeService {
         },
         runtimeDebug,
         render: {
-          path: 'STAGE_GUIDANCE',
+          path: decision.dispatchAgent === null && decision.to.stage === 'EXPLAIN_PROCESS'
+            ? 'PROCESS_OVERVIEW'
+            : 'STAGE_GUIDANCE',
         },
       } satisfies ConversationOrchestratorV3TurnResult;
       return this.finalizeTurnResult(
@@ -1871,7 +1873,7 @@ function deriveRenderState(
   if (
     result.journey.stage === 'EXPLAIN_PROCESS'
     && !isDeniedSemanticHandoff(result)
-    && result.decision.write?.factsPatch?.['process.explained'] === true
+    && result.decision.dispatchAgent === null
   ) {
     return {
       path: 'PROCESS_OVERVIEW',

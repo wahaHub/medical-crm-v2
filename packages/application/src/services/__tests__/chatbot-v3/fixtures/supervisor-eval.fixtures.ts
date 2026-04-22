@@ -80,16 +80,8 @@ export const SUPERVISOR_EVAL_FIXTURES: SupervisorEvalFixture[] = [
     expected: {
       intent: 'progression',
       suggestedStage: 'EXPLAIN_PROCESS',
-      dispatchAgent: 'FaqAgent',
+      dispatchAgent: null,
       reason: 'recommendation selected and process explanation should follow',
-      task: {
-        goal: FAQ_GOAL,
-        latestUserMessage: 'yes',
-        necessaryFacts: {
-          'current.stage': 'RECOMMENDATION',
-          'intake.target_destination': 'Shanghai',
-        },
-      },
     },
   },
   {

@@ -23,6 +23,7 @@ import {
   InvalidChatbotV3ActionError,
   deriveCurrentStageFromStatusSnapshot,
 } from '../routes/chatbot-v3/runtime.service.js';
+import { composeResponse } from '../routes/chatbot-v3/response-composer.js';
 import { createToolGateway } from '../routes/chatbot-v3/tool-gateway.js';
 import type {
   FaqWorkerTask,
@@ -90,6 +91,215 @@ function createFaqTask(
     supervisorReason: 'user is asking an faq question',
     ...overrides,
   };
+}
+
+type FaqStagePreservationScenario = {
+  stage: 'COLLECT_MINIMAL_MEDICAL_FACTS'
+    | 'RECOMMENDATION'
+    | 'EXPLAIN_PROCESS'
+    | 'COLLECT_MEDICAL_INPUTS'
+    | 'ONLINE_CONSULT'
+    | 'HUMAN_HANDOFF';
+  sessionId: string;
+  turnId: string;
+  traceId: string;
+  message: string;
+  faqResult: {
+    answer: string;
+    citedFaqIds: string[];
+    confidence: 'high' | 'low';
+  };
+  statusSnapshot: Partial<any>;
+  expectRenderPath: 'FAQ_ANSWER' | 'FAQ_MISS';
+  expectAssistantText: string;
+  expectHandOffRequired?: boolean;
+};
+
+async function runFaqStagePreservationScenario(scenario: FaqStagePreservationScenario) {
+  const faqAgent = {
+    execute: vi.fn(async () => ({
+      status: 'ok' as const,
+      data: scenario.faqResult,
+    })),
+  };
+  const runtime = new ConversationOrchestratorV3RuntimeService({
+    idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+    supervisor: new SupervisorService(),
+    journeyRuntimeAuthority: {
+      decide: vi.fn(() => ({
+        action: 'ADVANCE' as const,
+        from: { stage: scenario.stage, phase: 'active' as const },
+        to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+        dispatchAgent: 'FaqAgent' as const,
+        dispatchSource: 'journey-runtime-authority' as const,
+        write: {
+          authority: 'journey-runtime-authority' as const,
+          stage: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          factsPatch: {
+            'process.explained': true,
+          },
+        },
+      })),
+    },
+    gateway: {
+      status: {
+        query: vi.fn(async () => ({
+          status: 'ok' as const,
+          data: { snapshot: {} },
+        })),
+      },
+    } as any,
+    agents: {
+      FaqAgent: faqAgent,
+    },
+  });
+
+  const result = await runtime.handleTurn({
+    traceId: scenario.traceId,
+    sessionId: scenario.sessionId,
+    turnId: scenario.turnId,
+    message: scenario.message,
+    site: 'china',
+    current: {
+      stage: scenario.stage,
+      phase: 'active',
+    },
+    statusSnapshot: {
+      journeyCurrentStage: scenario.stage,
+      journeyCurrentPhase: 'active',
+      ...scenario.statusSnapshot,
+    } as any,
+  });
+
+  const response = composeResponse({
+    body: {
+      sessionId: scenario.sessionId,
+      message: scenario.message,
+    } as any,
+    result,
+    sessionStatusSnapshot: {
+      journeyCurrentStage: scenario.stage,
+      journeyCurrentPhase: 'active',
+      ...scenario.statusSnapshot,
+    } as any,
+  });
+
+  expect(result.render).toEqual({
+    path: scenario.expectRenderPath,
+  });
+  expect(response.messages[0]?.text).toContain(scenario.expectAssistantText);
+  expect(response.journey).toEqual({
+    stage: scenario.stage,
+    phase: 'active',
+  });
+  expect(response.cards.map((card) => card.cardType)).toEqual(expectedFaqCardTypes(
+    scenario.stage,
+    scenario.expectRenderPath,
+  ));
+  expectFaqCardPayloads(response, scenario.stage, scenario.expectRenderPath);
+  expect(result.writeIntents?.statusPatch).not.toEqual(expect.objectContaining({
+    journeyCurrentStage: 'EXPLAIN_PROCESS',
+  }));
+
+  if (scenario.expectHandOffRequired !== undefined) {
+    expect(response.handoff.required).toBe(scenario.expectHandOffRequired);
+  }
+
+  return { result, response };
+}
+
+function expectedFaqCardTypes(
+  stage: FaqStagePreservationScenario['stage'],
+  renderPath: FaqStagePreservationScenario['expectRenderPath'],
+): string[] {
+  if (renderPath === 'FAQ_MISS') {
+    return [];
+  }
+
+  switch (stage) {
+    case 'COLLECT_MINIMAL_MEDICAL_FACTS':
+      return ['UPLOAD_RECORDS'];
+    case 'RECOMMENDATION':
+      return [];
+    case 'EXPLAIN_PROCESS':
+      return ['PROCESS_GUIDE'];
+    case 'COLLECT_MEDICAL_INPUTS':
+      return ['UPLOAD_RECORDS'];
+    case 'ONLINE_CONSULT':
+      return ['CONSULT_BOOKING'];
+    case 'HUMAN_HANDOFF':
+      return ['HANDOFF_STATUS'];
+  }
+}
+
+function expectFaqCardPayloads(
+  response: { cards: Array<{ cardType: string; payload: Record<string, unknown> }> },
+  stage: FaqStagePreservationScenario['stage'],
+  renderPath: FaqStagePreservationScenario['expectRenderPath'],
+) {
+  if (renderPath === 'FAQ_MISS') {
+    expect(response.cards).toEqual([]);
+    return;
+  }
+
+  switch (stage) {
+    case 'COLLECT_MINIMAL_MEDICAL_FACTS':
+      expect(response.cards).toEqual([
+        expect.objectContaining({
+          cardType: 'UPLOAD_RECORDS',
+          payload: expect.objectContaining({
+            required: true,
+            uploadedCount: 1,
+          }),
+        }),
+      ]);
+      return;
+    case 'RECOMMENDATION':
+      expect(response.cards).toEqual([]);
+      return;
+    case 'EXPLAIN_PROCESS':
+      expect(response.cards).toEqual([
+        expect.objectContaining({
+          cardType: 'PROCESS_GUIDE',
+          payload: expect.objectContaining({
+            guideId: 'medical-travel-process',
+            title: 'Medical travel process',
+          }),
+        }),
+      ]);
+      return;
+    case 'COLLECT_MEDICAL_INPUTS':
+      expect(response.cards).toEqual([
+        expect.objectContaining({
+          cardType: 'UPLOAD_RECORDS',
+          payload: expect.objectContaining({
+            required: true,
+            uploadedCount: 2,
+          }),
+        }),
+      ]);
+      return;
+    case 'ONLINE_CONSULT':
+      expect(response.cards).toEqual([
+        expect.objectContaining({
+          cardType: 'CONSULT_BOOKING',
+          payload: expect.objectContaining({
+            status: 'idle',
+          }),
+        }),
+      ]);
+      return;
+    case 'HUMAN_HANDOFF':
+      expect(response.cards).toEqual([
+        expect.objectContaining({
+          cardType: 'HANDOFF_STATUS',
+          payload: expect.objectContaining({
+            required: true,
+          }),
+        }),
+      ]);
+      expect(response.cards[0]?.payload).not.toHaveProperty('ticketId');
+  }
 }
 
 describe('chatbot-v3 ToolGateway', () => {
@@ -2360,6 +2570,10 @@ describe('chatbot-v3 runtime', () => {
         stage: 'EXPLAIN_PROCESS',
         phase: 'active',
       },
+      statusSnapshot: {
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        journeyCurrentPhase: 'active',
+      } as any,
     });
 
     expect(result.writeIntents).toEqual(expect.objectContaining({
@@ -3801,13 +4015,373 @@ describe('chatbot-v3 runtime', () => {
     expect(result.render).toEqual({
       path: 'FAQ_ANSWER',
     });
+    const response = composeResponse({
+      body: {
+        sessionId: 'session-later-stage-faq-recovery-1',
+        message: 'What are your office hours?',
+      } as any,
+      result,
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [
+          {
+            storageKey: 'chatbot/session-later-stage-faq-recovery-1/doc-1.pdf',
+          },
+          {
+            storageKey: 'chatbot/session-later-stage-faq-recovery-1/doc-2.pdf',
+          },
+        ],
+      } as any,
+    });
     expect(result.writeIntents?.statusPatch).not.toEqual(expect.objectContaining({
       journeyCurrentStage: 'EXPLAIN_PROCESS',
     }));
+    expect(response.cards).toEqual([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: expect.objectContaining({
+          required: true,
+          uploadedCount: 2,
+        }),
+      }),
+    ]);
     expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).toContain(
       'stage=COLLECT_MEDICAL_INPUTS',
     );
   });
+
+  it('preserves COLLECT_MEDICAL_INPUTS and renders explicit FAQ miss text when FAQ retrieval is unreliable', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: ' ',
+          citedFaqIds: [],
+          confidence: 'low' as const,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MEDICAL_INPUTS' as const, phase: 'active' as const },
+          to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          dispatchAgent: 'FaqAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+          write: {
+            authority: 'journey-runtime-authority' as const,
+            stage: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+            factsPatch: {
+              'process.explained': true,
+            },
+          },
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-faq-miss-1',
+      sessionId: 'session-faq-miss-1',
+      turnId: 'turn-faq-miss-1',
+      message: 'What are your office hours?',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'process.explained': true,
+      },
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+    });
+
+    expect(result.render).toEqual({
+      path: 'FAQ_MISS',
+    });
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    const response = composeResponse({
+      body: {
+        sessionId: 'session-faq-miss-1',
+        message: 'What are your office hours?',
+      } as any,
+      result,
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+      } as any,
+    });
+    expect(result.writeIntents?.statusPatch).not.toEqual(expect.objectContaining({
+      journeyCurrentStage: 'EXPLAIN_PROCESS',
+    }));
+    expect(response.cards).toEqual([]);
+    expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).toContain(
+      'reliable FAQ answer',
+    );
+    expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).not.toContain(
+      'Please upload your diagnosis proof',
+    );
+  });
+
+  it('preserves COLLECT_MINIMAL_MEDICAL_FACTS and renders explicit FAQ miss text when FAQ retrieval is unreliable from the early stage', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: ' ',
+          citedFaqIds: [],
+          confidence: 'low' as const,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'ADVANCE' as const,
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+          dispatchAgent: 'FaqAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+          write: {
+            authority: 'journey-runtime-authority' as const,
+            stage: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
+            factsPatch: {
+              'process.explained': true,
+            },
+          },
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-faq-miss-early-1',
+      sessionId: 'session-faq-miss-early-1',
+      turnId: 'turn-faq-miss-early-1',
+      message: 'What are your office hours?',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      } as any,
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+    });
+
+    const response = composeResponse({
+      body: {
+        sessionId: 'session-faq-miss-early-1',
+        message: 'What are your office hours?',
+      } as any,
+      result,
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      } as any,
+    });
+
+    expect(result.render).toEqual({
+      path: 'FAQ_MISS',
+    });
+    expect(response.messages[0]?.text).toContain('reliable FAQ answer');
+    expect(response.journey).toEqual({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    });
+    expect(result.writeIntents?.statusPatch?.journeyCurrentStage).toBeUndefined();
+    expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).toContain(
+      'stage=COLLECT_MINIMAL_MEDICAL_FACTS',
+    );
+    expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).not.toContain(
+      'Please upload your diagnosis proof',
+    );
+  });
+
+  it.each([
+    {
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
+      sessionId: 'session-faq-preserve-minimal-answer-1',
+      turnId: 'turn-faq-preserve-minimal-answer-1',
+      traceId: 'trace-faq-preserve-minimal-answer-1',
+      message: 'What are your office hours?',
+      faqResult: {
+        answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+        citedFaqIds: ['faq-hours-1'],
+        confidence: 'high' as const,
+      },
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageComplete: false,
+        docUploadStatus: 'READY',
+      } as const,
+      expectRenderPath: 'FAQ_ANSWER' as const,
+      expectAssistantText: 'Our office hours are Monday to Friday, 9am to 6pm.',
+    },
+    {
+      stage: 'RECOMMENDATION' as const,
+      sessionId: 'session-faq-preserve-recommendation-answer-1',
+      turnId: 'turn-faq-preserve-recommendation-answer-1',
+      traceId: 'trace-faq-preserve-recommendation-answer-1',
+      message: 'What are your office hours?',
+      faqResult: {
+        answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+        citedFaqIds: ['faq-hours-1'],
+        confidence: 'high' as const,
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        recommendationSelected: true,
+      } as const,
+      expectRenderPath: 'FAQ_ANSWER' as const,
+      expectAssistantText: 'Our office hours are Monday to Friday, 9am to 6pm.',
+    },
+    {
+      stage: 'EXPLAIN_PROCESS' as const,
+      sessionId: 'session-faq-preserve-process-answer-1',
+      turnId: 'turn-faq-preserve-process-answer-1',
+      traceId: 'trace-faq-preserve-process-answer-1',
+      message: 'What are your office hours?',
+      faqResult: {
+        answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+        citedFaqIds: ['faq-hours-1'],
+        confidence: 'high' as const,
+      },
+      statusSnapshot: {
+        processExplained: true,
+      } as const,
+      expectRenderPath: 'FAQ_ANSWER' as const,
+      expectAssistantText: 'Our office hours are Monday to Friday, 9am to 6pm.',
+    },
+    {
+      stage: 'ONLINE_CONSULT' as const,
+      sessionId: 'session-faq-preserve-consult-answer-1',
+      turnId: 'turn-faq-preserve-consult-answer-1',
+      traceId: 'trace-faq-preserve-consult-answer-1',
+      message: 'How long does online consultation usually take to schedule?',
+      faqResult: {
+        answer: 'Online consultations are usually arranged within 24 hours.',
+        citedFaqIds: ['faq-consult-1'],
+        confidence: 'high' as const,
+      },
+      statusSnapshot: {
+        consultationStatus: 'not_introduced',
+      } as const,
+      expectRenderPath: 'FAQ_ANSWER' as const,
+      expectAssistantText: 'Online consultations are usually arranged within 24 hours.',
+    },
+    {
+      stage: 'HUMAN_HANDOFF' as const,
+      sessionId: 'session-faq-preserve-handoff-answer-1',
+      turnId: 'turn-faq-preserve-handoff-answer-1',
+      traceId: 'trace-faq-preserve-handoff-answer-1',
+      message: 'What are your office hours?',
+      faqResult: {
+        answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+        citedFaqIds: ['faq-hours-1'],
+        confidence: 'high' as const,
+      },
+      statusSnapshot: {
+        handoffStatus: 'in_progress',
+      } as const,
+      expectRenderPath: 'FAQ_ANSWER' as const,
+      expectAssistantText: 'Our office hours are Monday to Friday, 9am to 6pm.',
+      expectHandOffRequired: true,
+    },
+  ])(
+    'keeps FAQ answers on the persisted primary stage in %s',
+    async (scenario) => {
+      await runFaqStagePreservationScenario(scenario);
+    },
+  );
+
+  it.each([
+    {
+      stage: 'ONLINE_CONSULT' as const,
+      sessionId: 'session-faq-preserve-consult-miss-1',
+      turnId: 'turn-faq-preserve-consult-miss-1',
+      traceId: 'trace-faq-preserve-consult-miss-1',
+      message: 'How long does online consultation usually take to schedule?',
+      faqResult: {
+        answer: ' ',
+        citedFaqIds: [],
+        confidence: 'low' as const,
+      },
+      statusSnapshot: {
+        consultationStatus: 'not_introduced',
+      } as const,
+      expectRenderPath: 'FAQ_MISS' as const,
+      expectAssistantText: 'reliable FAQ answer',
+    },
+  ])(
+    'keeps FAQ miss responses on the persisted primary stage in %s',
+    async (scenario) => {
+      await runFaqStagePreservationScenario(scenario);
+    },
+  );
 
   it('does not escalate canonical minimal triage truth from a collection-mode worker hallucination', async () => {
     const recordsAgent = new RecordsAgent(

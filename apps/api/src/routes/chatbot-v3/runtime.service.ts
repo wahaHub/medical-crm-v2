@@ -14,6 +14,7 @@ import {
   type SupervisorDomainReadResults,
   type SupervisorReadDomain,
 } from '@medical-crm/application';
+import type { ChatbotV3FaqResolution } from '../../../../packages/application/src/services/chatbot-v3/types.js';
 import type { AgentAction, AgentName } from './agents.js';
 import { buildAssistantText, buildEffectiveStatusSnapshot } from './response-composer.js';
 import {
@@ -123,7 +124,7 @@ export interface ConversationOrchestratorV3WriteIntents {
 }
 
 export interface ConversationOrchestratorV3RenderState {
-  path: 'PROCESS_OVERVIEW' | 'FAQ_ANSWER' | 'STAGE_GUIDANCE';
+  path: 'PROCESS_OVERVIEW' | 'FAQ_ANSWER' | 'FAQ_MISS' | 'STAGE_GUIDANCE';
 }
 
 export interface ConversationOrchestratorV3Decision {
@@ -167,6 +168,7 @@ export interface ConversationOrchestratorV3TurnResult {
   decision: ConversationOrchestratorV3Decision;
   journey: ConversationOrchestratorV3StageRef;
   dispatchResult: ToolResult<unknown> | null;
+  faqResolution?: ChatbotV3FaqResolution;
   fallbackStatus: ToolResult<StatusQueryOutput> | null;
   turnOutcome: {
     status: 'ok' | 'degraded';
@@ -497,6 +499,8 @@ export class ConversationOrchestratorV3RuntimeService {
         return this.finalizeTurnResult(normalizedInput, decision, degraded, turnStartedAt);
       }
 
+      const faqResolution = resolveFaqResolution(decision, dispatchResult);
+
       this.emitNodeEvent(normalizedInput, {
         node: 'Tool',
         action: dispatchAction.type,
@@ -516,15 +520,26 @@ export class ConversationOrchestratorV3RuntimeService {
         decision,
         journey: decision.to,
         dispatchResult,
+        ...(faqResolution ? { faqResolution } : {}),
         fallbackStatus: null,
         turnOutcome: {
           status: 'ok',
           recoverableErrorCode: null,
         },
         runtimeDebug,
-        render: {
-          path: 'STAGE_GUIDANCE',
-        },
+        render: deriveRenderState({
+          suggestion,
+          decision,
+          journey: decision.to,
+          dispatchResult,
+          ...(faqResolution ? { faqResolution } : {}),
+          fallbackStatus: null,
+          turnOutcome: {
+            status: 'ok',
+            recoverableErrorCode: null,
+          },
+          runtimeDebug,
+        } as ConversationOrchestratorV3TurnResult),
       } satisfies ConversationOrchestratorV3TurnResult;
       return this.finalizeTurnResult(
         normalizedInput,
@@ -1658,6 +1673,10 @@ function deriveJourneyStatusPatch(
     return undefined;
   }
 
+  if (result.decision.dispatchAgent === 'FaqAgent') {
+    return undefined;
+  }
+
   if (shouldPreservePersistedJourneyStage(input, result)) {
     return undefined;
   }
@@ -1835,10 +1854,18 @@ function deriveRenderState(
     } satisfies ConversationOrchestratorV3RenderState;
   }
 
-  if (hasStructuredFaqAnswer(result)) {
-    return {
-      path: 'FAQ_ANSWER',
-    } satisfies ConversationOrchestratorV3RenderState;
+  if (result.decision.dispatchAgent === 'FaqAgent') {
+    if (result.faqResolution === 'answer' || hasStructuredFaqAnswer(result)) {
+      return {
+        path: 'FAQ_ANSWER',
+      } satisfies ConversationOrchestratorV3RenderState;
+    }
+
+    if (result.faqResolution === 'miss' || result.dispatchResult?.status === 'ok') {
+      return {
+        path: 'FAQ_MISS',
+      } satisfies ConversationOrchestratorV3RenderState;
+    }
   }
 
   if (
@@ -1894,13 +1921,32 @@ function hasStructuredFaqAnswer(
     return false;
   }
 
-  const data = asRecord(result.dispatchResult.data);
+  return hasStructuredFaqAnswerData(result.dispatchResult);
+}
+
+function hasStructuredFaqAnswerData(
+  dispatchResult: Extract<ToolResult<unknown>, { status: 'ok' }>,
+): boolean {
+  const data = asRecord(dispatchResult.data);
   const answer = asString(data['answer']);
   const confidence = asString(data['confidence']);
   const citedFaqIds = asArray(data['citedFaqIds'])
     .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
 
   return Boolean(answer && confidence !== 'low' && citedFaqIds.length > 0);
+}
+
+function resolveFaqResolution(
+  decision: ConversationOrchestratorV3Decision,
+  dispatchResult: Extract<ToolResult<unknown>, { status: 'ok' }>,
+): ChatbotV3FaqResolution | undefined {
+  if (decision.dispatchAgent !== 'FaqAgent') {
+    return undefined;
+  }
+
+  return hasStructuredFaqAnswerData(dispatchResult)
+    ? 'answer'
+    : 'miss';
 }
 
 function hasActiveHandoffStatus(

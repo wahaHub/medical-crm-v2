@@ -50,27 +50,15 @@ const DIRECT_HUMAN_REQUEST_PATTERNS = [
   /\b(?:live|real) (?:agent|person|human)\b/i,
 ] as const;
 
-const LATER_STAGE_FAQ_QUESTION_PATTERNS = [
-  /(?:^|\b)(?:what|when|where|which|who|why|how|can|could|do|does|is|are)\b/i,
+const FAQ_QUESTION_PATTERNS = [
+  /(?:^|\b)(?:what|when|where|which|who|why|how|can|could|do|does|did|is|are|am|was|were|should|would|will|may|might)\b/i,
   /\?/,
+  /\b(?:can you|could you|would you|do you|does it|do we|is it|is that|are you|am i|should i|would it|what are|what is|how long|how much|how often|why is|where is|when is)\b/i,
 ] as const;
 
-const LATER_STAGE_FAQ_TOPIC_PATTERNS = [
-  /\b(?:office|opening|business)\s+hours\b/i,
-  /\bhours?\b/i,
-  /\bpricing?\b/i,
-  /\bcosts?\b/i,
-  /\bfees?\b/i,
-  /\bcontact\b/i,
-  /\bphone\b/i,
-  /\bemail\b/i,
-  /\baddress\b/i,
-  /\blocation\b/i,
-  /\btimeline\b/i,
-  /\bschedul(?:e|ing)\b/i,
-  /\bconsult(?:ation)?\b/i,
-  /\bprocess\b/i,
-  /\bpolicy\b/i,
+const WORKFLOW_QUESTION_PATTERNS = [
+  /\bwhat (?:should|do) i do (?:next|now|from here)\b/i,
+  /\bwhat(?:'s| is) next\b/i,
 ] as const;
 
 const EXPLICIT_PROGRESSION_PATTERNS = [
@@ -248,11 +236,6 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
     };
   }
 
-  const recoveredLaterStageFaqDetour = recoverLaterStageFaqDetour(input, currentStage);
-  if (recoveredLaterStageFaqDetour) {
-    return recoveredLaterStageFaqDetour;
-  }
-
   const recoveredSidePathIntent = recoverLaterStageSidePathIntent(input);
   if (recoveredSidePathIntent) {
     return {
@@ -260,6 +243,11 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
       suggestedStage: 'EXPLAIN_PROCESS',
       reason: clampReason('clear later-stage faq request should detour without advancing the journey'),
     };
+  }
+
+  const recoveredFaqDetour = recoverFaqDetour(input, currentStage);
+  if (recoveredFaqDetour) {
+    return recoveredFaqDetour;
   }
 
   if (shouldContinueMedicalInputCollection(input)) {
@@ -331,20 +319,16 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
   };
 }
 
-function recoverLaterStageFaqDetour(
+function recoverFaqDetour(
   input: OrchestratorV3DecisionInput,
   currentStage: ChatJourneyStage,
 ): SupervisorSuggestionSeed | null {
-  if (!isLaterStage(currentStage)) {
-    return null;
-  }
-
-  if (input.suggestion.intent === 'handoff' || input.suggestion.intent === 'consult') {
+  if (input.suggestion.intent !== 'unknown') {
     return null;
   }
 
   const latestUserMessage = resolveLatestUserMessage(input);
-  if (!looksLikeClearLaterStageFaqQuestion(latestUserMessage)) {
+  if (!looksLikeFaqQuestion(latestUserMessage)) {
     return null;
   }
 
@@ -352,7 +336,7 @@ function recoverLaterStageFaqDetour(
     intent: 'faq',
     suggestedStage: 'EXPLAIN_PROCESS',
     reason: clampReason(
-      input.facts?.['records.minimal_triage.complete'] === true
+      isLaterStage(currentStage) && input.facts?.['records.minimal_triage.complete'] === true
         ? 'clear later-stage faq request should detour without advancing the journey'
         : 'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
     ),
@@ -413,7 +397,7 @@ function isLaterStage(stage: ChatJourneyStage): boolean {
     || stage === 'ONLINE_CONSULT';
 }
 
-function looksLikeClearLaterStageFaqQuestion(message: string): boolean {
+function looksLikeFaqQuestion(message: string): boolean {
   const normalized = message.trim();
   if (normalized.length === 0) {
     return false;
@@ -423,12 +407,11 @@ function looksLikeClearLaterStageFaqQuestion(message: string): boolean {
     return false;
   }
 
-  const looksLikeQuestion = LATER_STAGE_FAQ_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized));
-  if (!looksLikeQuestion) {
+  if (WORKFLOW_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return false;
   }
 
-  return LATER_STAGE_FAQ_TOPIC_PATTERNS.some((pattern) => pattern.test(normalized));
+  return FAQ_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -451,7 +434,7 @@ function recoverLaterStageSidePathIntent(
     return 'resource';
   }
 
-  if (isClearFaqQuestion(latestUserMessage)) {
+  if (looksLikeFaqQuestion(latestUserMessage)) {
     return 'faq';
   }
 
@@ -462,41 +445,6 @@ function isLaterStageForSidePathRecovery(stage: ChatJourneyStage | null | undefi
   return stage === 'RECOMMENDATION'
     || stage === 'COLLECT_MEDICAL_INPUTS'
     || stage === 'ONLINE_CONSULT';
-}
-
-function isClearFaqQuestion(message: string): boolean {
-  const normalized = normalizeMessage(message)?.toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-
-  const startsWithQuestionWord = /^(what|when|where|which|who|why|how|can|could|do|does|did|is|are|was|were)\b/.test(normalized);
-  const faqTopicSignals = [
-    /\boffice hours\b/,
-    /\bhours\b/,
-    /\bopen\b/,
-    /\bclose\b/,
-    /\baddress\b/,
-    /\blocation\b/,
-    /\bcontact\b/,
-    /\bphone\b/,
-    /\bwechat\b/,
-    /\bwhatsapp\b/,
-    /\bemail\b/,
-    /\bprice\b/,
-    /\bpricing\b/,
-    /\bcost\b/,
-    /\bpayment\b/,
-    /\binsurance\b/,
-    /\bhow long\b/,
-    /\bprocess\b/,
-    /\bconsult(?:ation)?\b/,
-    /\bschedule\b/,
-    /\btiming\b/,
-    /\bwait time\b/,
-  ].some((pattern) => pattern.test(normalized));
-
-  return (startsWithQuestionWord || normalized.includes('?')) && faqTopicSignals;
 }
 
 function isClearResourceQuestion(message: string): boolean {

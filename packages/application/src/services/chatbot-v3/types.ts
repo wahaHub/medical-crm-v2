@@ -30,6 +30,8 @@ export type ChatbotV3DispatchAgent =
   | 'ConsultAgent'
   | 'HandoffAgent';
 
+export type ChatbotV3FaqResolution = 'answer' | 'miss';
+
 export type SupervisorReadDomain =
   | 'records.status'
   | 'recommendation.status'

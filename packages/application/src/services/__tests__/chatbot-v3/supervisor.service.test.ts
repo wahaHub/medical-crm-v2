@@ -216,6 +216,218 @@ describe('SupervisorService', () => {
     expect(result.reason).toBe('minimal triage still needs structured state');
   });
 
+  it.each([
+    'What are your hours?',
+    'do you guys even work on sundays lol',
+    'if i already got scans done elsewhere is that okay or annoying for you',
+    'how long are people usually stuck in china for this, roughly',
+  ])('routes early-stage faq-like input to FAQ handling: %s', async (latestUserMessage) => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      latestUserMessage,
+      suggestion: {
+        intent: 'unknown',
+        suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        reason: 'upstream classifier did not recognize the FAQ turn',
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'faq',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage,
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
+  it('does not misclassify a progression question as FAQ when progression is already suggested', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      latestUserMessage: 'What should I do next?',
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        reason: 'continue the workflow',
+      },
+    });
+
+    expect(result.intent).toBe('progression');
+    expect(result.suggestedStage).toBe('RECOMMENDATION');
+    expect(result.dispatchAgent).toBe('RecommendationAgent');
+  });
+
+  it('does not detour an unknown workflow question into FAQ handling', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'RECOMMENDATION',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [],
+      },
+      latestUserMessage: 'What should I do next?',
+      suggestion: {
+        intent: 'unknown',
+        suggestedStage: 'RECOMMENDATION',
+        reason: 'upstream classifier missed the workflow question',
+      },
+    });
+
+    expect(result.intent).toBe('progression');
+    expect(result.suggestedStage).toBe('EXPLAIN_PROCESS');
+    expect(result.dispatchAgent).toBe('FaqAgent');
+  });
+
+  it('does not misclassify a records upload question as FAQ when the turn continues medical input collection', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      latestUserMessage: 'Can I upload the scan now?',
+      suggestion: {
+        intent: 'progression',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: 'continue collecting supporting documents',
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'clear records-sharing follow-up should stay on medical input collection',
+      task: {
+        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        latestUserMessage: 'Can I upload the scan now?',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'recommendation.selected': true,
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
+  it('does not detour an unknown upload question into FAQ handling', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      latestUserMessage: 'Can I upload the scan now?',
+      suggestion: {
+        intent: 'unknown',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'upstream classifier missed the records-follow-up question',
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+      dispatchAgent: 'RecordsAgent',
+      reason: 'clear records-sharing follow-up should stay on medical input collection',
+      task: {
+        goal: 'Collect the medical inputs needed to support online consultation for this user.',
+        latestUserMessage: 'Can I upload the scan now?',
+        necessaryFacts: {
+          'intake.condition': 'lung cancer',
+          'intake.target_destination': 'Shanghai',
+          'recommendation.selected': true,
+          'records.minimal_triage.complete': true,
+        },
+      },
+    });
+  });
+
+  it('keeps later-stage resource detours available even for question-shaped address requests', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      latestUserMessage: 'Can you send me the address?',
+      suggestion: {
+        intent: 'unknown',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'upstream classifier did not recognize the resource request',
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'resource',
+      suggestedStage: 'EXPLAIN_PROCESS',
+      dispatchAgent: 'FaqAgent',
+      reason: 'clear later-stage faq request should detour without advancing the journey',
+      task: {
+        goal: 'Answer the user\'s question using FAQ knowledge only.',
+        latestUserMessage: 'Can you send me the address?',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MEDICAL_INPUTS',
+          'intake.target_destination': 'Shanghai',
+        },
+      },
+    });
+  });
+
   it('prefers process explanation after recommendation selection when the process has not been explained', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
@@ -741,6 +953,32 @@ describe('SupervisorService', () => {
     });
   });
 
+  it('keeps an explicit human request on the handoff path instead of letting FAQ recognition win', async () => {
+    const result = await supervisor.suggest({
+      ...minimalInput,
+      latestUserMessage: 'I want a human.',
+      bootstrap: {
+        message: 'I want a human.',
+        canCreateHandoff: true,
+      },
+    });
+
+    expect(result).toEqual({
+      intent: 'handoff',
+      suggestedStage: 'HUMAN_HANDOFF',
+      dispatchAgent: 'HandoffAgent',
+      reason: 'direct user request for a human',
+      task: {
+        goal: 'Initiate a human handoff for this user.',
+        latestUserMessage: 'I want a human.',
+        necessaryFacts: {
+          'current.stage': 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          'handoff.active': false,
+        },
+      },
+    });
+  });
+
   it('routes denied direct human requests into an explicit faq explanation path instead of a normal worker', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
@@ -909,7 +1147,7 @@ describe('SupervisorService', () => {
       intent: 'faq',
       suggestedStage: 'EXPLAIN_PROCESS',
       dispatchAgent: 'FaqAgent',
-      reason: 'clear faq-style question should detour through FAQ handling without rewriting the primary stage',
+      reason: 'clear later-stage faq request should detour without advancing the journey',
       task: {
         goal: 'Answer the user\'s question using FAQ knowledge only.',
         latestUserMessage: 'What are your office hours?',

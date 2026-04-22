@@ -25,6 +25,7 @@ export interface ResponseComposerInput {
 
 export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, then you can upload supporting documents, and after that we can move toward online consult.';
 const FAQ_DEGRADED_TEXT = 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.';
+const FAQ_MISS_TEXT = 'I could not find a reliable FAQ answer right now, but your current stage is still saved. You can continue the current step or ask for a human if needed.';
 const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
 const CONSULT_DEGRADED_TEXT = 'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.';
 const HANDOFF_DENIED_TEXT = 'Before we connect you with a human, please complete the current step first.';
@@ -54,7 +55,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
       text: buildAssistantText(input.result, effectiveStatusSnapshot),
     }],
     turnOutcome: input.result.turnOutcome,
-    cards: buildCards(input.body, input.result, effectiveStatusSnapshot),
+    cards: buildCards(input.body, input.result, visibleJourney, effectiveStatusSnapshot),
     journey: visibleJourney,
     handoff: {
       required: visibleJourney.stage === 'HUMAN_HANDOFF'
@@ -87,6 +88,10 @@ export function buildAssistantText(
   const guidanceFamily = classifyGuidanceFamily(result);
   if (guidanceFamily) {
     return renderGuidanceFamilyText(guidanceFamily);
+  }
+
+  if (isFaqMiss(result)) {
+    return FAQ_MISS_TEXT;
   }
 
   if (result.render.path === 'FAQ_ANSWER') {
@@ -345,9 +350,14 @@ function buildRecommendationGenerateText(
 function buildCards(
   body: ChatbotV3ChatRequest,
   result: ConversationOrchestratorV3TurnResult,
+  visibleJourney: ConversationOrchestratorV3TurnResult['journey'],
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): ChatbotV3Card[] {
-  switch (result.journey.stage) {
+  if (isFaqMiss(result)) {
+    return [];
+  }
+
+  switch (visibleJourney.stage) {
     case 'EXPLAIN_PROCESS':
       return [{
         cardId: 'card-process-guide',
@@ -371,19 +381,25 @@ function buildCards(
         cardType: 'UPLOAD_RECORDS',
         payload: {
           required: true,
-          uploadedCount: readUploadedCount(body, statusSnapshot, result.journey.stage),
+          uploadedCount: readUploadedCount(body, statusSnapshot, visibleJourney.stage),
         },
         actions: [],
       }];
-    case 'RECOMMENDATION':
+    case 'RECOMMENDATION': {
+      const candidates = readRecommendations(result.dispatchResult);
+      if (result.decision.dispatchAgent === 'FaqAgent' && candidates.length === 0) {
+        return [];
+      }
+
       return [{
         cardId: 'card-recommendations',
         cardType: 'RECOMMENDATION_LIST',
         payload: {
-          candidates: readRecommendations(result.dispatchResult),
+          candidates,
         },
         actions: buildRecommendationActions(result.dispatchResult),
       }];
+    }
     case 'ONLINE_CONSULT':
       return [{
         cardId: 'card-consult-booking',
@@ -557,6 +573,11 @@ function readHandoffId(dispatchResult: ToolResult<unknown> | null): string | nul
   }
 
   return asString(asRecord(dispatchResult.data)['handoffId']);
+}
+
+function isFaqMiss(result: ConversationOrchestratorV3TurnResult): boolean {
+  return result.decision.dispatchAgent === 'FaqAgent'
+    && (result.render.path === 'FAQ_MISS' || result.faqResolution === 'miss');
 }
 
 function hasActiveHandoffStatus(

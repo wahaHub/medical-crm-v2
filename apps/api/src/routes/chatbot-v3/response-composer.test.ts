@@ -120,6 +120,97 @@ describe('ResponseComposer', () => {
     ]));
   });
 
+  it('suppresses recommendation cards when faq detours cannot reconstruct the recommendation payload', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'What are your office hours?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'faq answer stays on the persisted recommendation stage',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'RECOMMENDATION', phase: 'active' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+            citedFaqIds: ['faq-hours-1'],
+            confidence: 'high',
+          },
+        },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+      },
+    });
+
+    expect(response.journey).toEqual({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(response.cards).toEqual([]);
+  });
+
+  it('uses the persisted primary stage to compute upload counts for faq detours', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'What are your office hours?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'faq answer should preserve the minimal intake stage',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+            citedFaqIds: ['faq-hours-1'],
+            confidence: 'high',
+          },
+        },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+        docUploadStatus: 'READY',
+      },
+    });
+
+    expect(response.journey).toEqual({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    });
+    expect(response.cards).toEqual([
+      expect.objectContaining({
+        cardType: 'UPLOAD_RECORDS',
+        payload: {
+          required: true,
+          uploadedCount: 1,
+        },
+      }),
+    ]);
+  });
+
   it('returns normal guidance when semantic handoff is denied by prerequisites', () => {
     const response = composeResponse({
       body: createRequest({
@@ -188,6 +279,53 @@ describe('ResponseComposer', () => {
 
     expect(response.messages[0]?.text).toContain('Here is the process');
     expect(response.messages[0]?.text).not.toContain('I could not find an exact FAQ answer yet');
+  });
+
+  it('renders an explicit FAQ miss instead of triage or upload guidance when the FAQ answer is unreliable', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Can I upload the scan now?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'faq',
+          suggestedStage: 'EXPLAIN_PROCESS',
+          reason: 'faq answer was not reliable',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            answer: ' ',
+            citedFaqIds: [],
+            confidence: 'low',
+          },
+        },
+        render: {
+          path: 'FAQ_MISS' as any,
+        },
+      }),
+      sessionStatusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+      },
+    });
+
+    expect(response.messages[0]?.text).toContain('reliable FAQ answer');
+    expect(response.messages[0]?.text).not.toContain('3 follow-up questions');
+    expect(response.messages[0]?.text).not.toContain('Please upload your diagnosis proof');
+    expect(response.cards).toEqual([]);
+    expect(response.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
   });
 
   it('uses concise guidance copy for the minimal medical facts stage', () => {

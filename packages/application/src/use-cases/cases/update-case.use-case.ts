@@ -1,9 +1,9 @@
-import type { ICaseRepository } from '@medical-crm/domain';
+import type { ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { NotFoundError } from '@medical-crm/utils';
 import type { CaseDTO } from '../../dtos/case.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseDTO } from '../../mappers/case.mapper.js';
-import { assertAssignedHospitalCaseAccess } from './hospital-case-access.js';
+import { assertHospitalCaseAccess } from './hospital-case-access.js';
 
 export interface UpdateCaseInput {
   primaryDiagnosis?: string;
@@ -15,13 +15,16 @@ export interface UpdateCaseInput {
 }
 
 export class UpdateCaseUseCase {
-  constructor(private readonly caseRepo: ICaseRepository) {}
+  constructor(
+    private readonly caseRepo: ICaseRepository,
+    private readonly chcRepo?: ICHCRepository,
+  ) {}
 
   async execute(caseId: string, input: UpdateCaseInput, actor: Actor): Promise<CaseDTO> {
     const entity = await this.caseRepo.findById(caseId);
     if (!entity) throw new NotFoundError(`Case ${caseId} not found`);
     if (actor.role === 'HOSPITAL') {
-      assertAssignedHospitalCaseAccess(entity, actor.hospitalId);
+      await assertHospitalCaseAccess(entity, actor.hospitalId, this.chcRepo);
     }
 
     if (input.primaryDiagnosis !== undefined) entity.primaryDiagnosis = input.primaryDiagnosis;

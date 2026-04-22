@@ -1,3 +1,5 @@
+import { readUploadError, uploadToSignedUrl } from '@/lib/direct-upload';
+
 async function localApiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -92,16 +94,10 @@ export async function uploadFile(
     }),
   });
 
-  const uploadRes = await fetch(init.upload.uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-    },
-    body: file,
-  });
+  const uploadRes = await uploadToSignedUrl(init.upload.uploadUrl, file);
 
   if (!uploadRes.ok) {
-    throw new Error(`Upload failed with status ${uploadRes.status}`);
+    throw new Error(await readUploadError(uploadRes, file.name));
   }
 
   const attachment = init.asset ?? init.attachment;

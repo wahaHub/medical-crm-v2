@@ -9,6 +9,7 @@ import type {
   IEmailNotificationCooldownRepository,
   IConversationRepository,
   IMessageRepository,
+  ICHCRepository,
   IStorageService,
   IAiChatSessionRepository,
   IAiChatMessageRepository,
@@ -23,6 +24,7 @@ import {
   GetCaseUseCase,
   GetHospitalCaseDetailUseCase,
   UpdateCaseUseCase,
+  SaveCaseDiagnosisUseCase,
   AssignCaseUseCase,
   UpdateCaseStatusUseCase,
   AdvanceCaseStageUseCase,
@@ -210,9 +212,9 @@ import {
   GetAiPolicyContextUseCase,
   DecideAiPolicyUseCase,
   ApplyAiPolicyWritebackUseCase,
+  ResumeConversationAiUseCase,
 } from '@medical-crm/application';
 import type { IMagicLinkEmailService, IPatientOnboardingEmailService } from '@medical-crm/application';
-import { ResumeConversationAiUseCase } from '../../../packages/application/src/use-cases/conversations/resume-conversation-ai.use-case.js';
 import {
   DrizzleCaseRepository,
   DrizzleDocumentRepository,
@@ -294,6 +296,7 @@ interface AppServices {
   progressRepo: ICaseProgressRepository;
   hospitalRepo: IHospitalRepository;
   patientRepo: IPatientRepository;
+  chcRepo: ICHCRepository;
   userEmailLookupRepo: IUserEmailLookupRepository;
   conversationRepo: IConversationRepository;
   messageRepo: IMessageRepository;
@@ -316,6 +319,7 @@ interface AppServices {
   getCase: GetCaseUseCase;
   getHospitalCaseDetail: GetHospitalCaseDetailUseCase;
   updateCase: UpdateCaseUseCase;
+  saveCaseDiagnosis: SaveCaseDiagnosisUseCase;
   assignCase: AssignCaseUseCase;
   updateCaseStatus: UpdateCaseStatusUseCase;
   advanceCaseStage: AdvanceCaseStageUseCase;
@@ -893,6 +897,26 @@ export function getServices(): AppServices {
           throw error;
         }
       },
+      async sendPatientCaseUpdateAlert(params: {
+        to: string;
+        patientName: string;
+        subject: string;
+        messagePreview: string;
+        bodyLines?: string[];
+        dashboardLink: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendPatientCaseUpdateAlert(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Patient case-update delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendPatientCaseUpdateAlert(params);
+            return;
+          }
+          throw error;
+        }
+      },
     };
 
     // Patient auth
@@ -977,7 +1001,7 @@ export function getServices(): AppServices {
     _services = {
       crmDb, mainSupabase, chinaSupabase,
       idempotencyExecutor: idempotencyGuard,
-      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
+      caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, chcRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
       txRunner,
       mediaUpload: mediaUploadService,
@@ -990,16 +1014,17 @@ export function getServices(): AppServices {
       listCases,
       getCase: new GetCaseUseCase(caseRepo, userRepo, hospitalRepo, chcRepo),
       getHospitalCaseDetail: new GetHospitalCaseDetailUseCase(caseRepo, progressRepo, documentRepo, routedStorageService, patientRepo, conversationRepo, messageRepo, chcRepo),
-      updateCase: new UpdateCaseUseCase(caseRepo),
+      updateCase: new UpdateCaseUseCase(caseRepo, chcRepo),
+      saveCaseDiagnosis: new SaveCaseDiagnosisUseCase(caseRepo, progressRepo, chcRepo),
       assignCase: new AssignCaseUseCase(caseRepo, hospitalRepo, assignmentService, progressRepo),
       updateCaseStatus: new UpdateCaseStatusUseCase(caseRepo, progressRepo),
       advanceCaseStage: new AdvanceCaseStageUseCase(caseRepo, progressRepo),
       getCaseStats: new GetCaseStatsUseCase(caseRepo),
-      uploadDocument: new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo),
+      uploadDocument: new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, chcRepo),
       listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, routedStorageService, chcRepo),
-      deleteDocument: new DeleteDocumentUseCase(documentRepo, caseRepo),
+      deleteDocument: new DeleteDocumentUseCase(documentRepo, caseRepo, chcRepo),
       getCaseProgress: new GetCaseProgressUseCase(progressRepo, caseRepo, chcRepo),
-      addCaseProgress: new AddCaseProgressUseCase(progressRepo, caseRepo),
+      addCaseProgress: new AddCaseProgressUseCase(progressRepo, caseRepo, chcRepo),
 
       createHospital: new CreateHospitalUseCase(hospitalManagementRepo, syncService),
       listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
@@ -1028,7 +1053,7 @@ export function getServices(): AppServices {
       retranslateMessage: new RetranslateMessageUseCase(messageRepo, translationService),
       processMessageTasks: new ProcessMessageTasksUseCase(messageTaskRepo, messageRepo, translationService),
 
-      createConsultation: new CreateConsultationUseCase(consultationRepo, caseRepo, translationTaskService),
+      createConsultation: new CreateConsultationUseCase(consultationRepo, caseRepo, translationTaskService, chcRepo),
       getConsultation: new GetConsultationUseCase(consultationRepo),
       listConsultations: new ListConsultationsUseCase(consultationRepo),
       updateConsultation: new UpdateConsultationUseCase(consultationRepo, translationTaskService),

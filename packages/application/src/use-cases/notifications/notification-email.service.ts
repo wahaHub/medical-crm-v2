@@ -185,6 +185,7 @@ export class NotificationEmailService {
     site: PatientSite;
     subject: string;
     messagePreview: string;
+    bodyLines?: string[];
     dedupeKey?: string;
   }): Promise<void> {
     const patient = await this.recipientRepo.findRecipientById(input.patientId);
@@ -201,6 +202,7 @@ export class NotificationEmailService {
         patientName: patient.name || 'Patient',
         subject: input.subject,
         messagePreview: truncatePreview(input.messagePreview),
+        bodyLines: input.bodyLines?.filter((line) => line.trim().length > 0),
         dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
         locale: patient.preferredLanguage ?? null,
       }),

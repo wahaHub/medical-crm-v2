@@ -4,6 +4,7 @@ import type {
   ICaseRepository,
   IDocumentRepository,
   ICaseProgressRepository,
+  ICHCRepository,
 } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
@@ -13,6 +14,7 @@ describe('UploadDocumentUseCase', () => {
   let mockCaseRepo: ICaseRepository;
   let mockDocumentRepo: IDocumentRepository;
   let mockProgressRepo: ICaseProgressRepository;
+  let mockChcRepo: ICHCRepository;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -82,11 +84,20 @@ describe('UploadDocumentUseCase', () => {
       findByCaseId: vi.fn(),
       save: vi.fn().mockImplementation((progress) => Promise.resolve(progress)),
     };
+    mockChcRepo = {
+      findById: vi.fn(),
+      findByCaseAndHospital: vi.fn().mockResolvedValue(null),
+      findByCaseId: vi.fn(),
+      findByHospitalId: vi.fn(),
+      save: vi.fn(),
+      rejectOthersByCaseExcept: vi.fn(),
+    };
 
     useCase = new UploadDocumentUseCase(
       mockDocumentRepo,
       mockCaseRepo,
       mockProgressRepo,
+      mockChcRepo,
     );
   });
 
@@ -117,6 +128,36 @@ describe('UploadDocumentUseCase', () => {
 
   it('allows hospital actor to upload to their own assigned case', async () => {
     // makeFreshCase defaults to assignedHospitalId = 'hosp-1' (same as hospitalActor)
+    const result = await useCase.execute(validInput, hospitalActor);
+
+    expect(result.documentId).toBeTruthy();
+    expect(mockDocumentRepo.save).toHaveBeenCalledOnce();
+  });
+
+  it('allows hospital actor to upload to a distributed case contact', async () => {
+    mockCaseRepo.findById = vi.fn().mockImplementation(() =>
+      Promise.resolve(makeFreshCase('primary-hosp')),
+    );
+    vi.mocked(mockChcRepo.findByCaseAndHospital).mockResolvedValue({
+      id: 'chc-1',
+      caseId: 'case-1',
+      hospitalId: 'hosp-1',
+      subStatus: 'DISTRIBUTED',
+      selectedByPatientAt: null,
+      distributedAt: new Date('2026-03-01T08:00:00Z'),
+      firstReplyAt: null,
+      quoteId: null,
+      patientViewedQuoteAt: null,
+      patientAcceptedAt: null,
+      patientRejectedAt: null,
+      reminderSentAt: null,
+      removedAt: null,
+      removedReason: null,
+      version: 1,
+      createdAt: new Date('2026-03-01T08:00:00Z'),
+      updatedAt: new Date('2026-03-01T08:00:00Z'),
+    } as any);
+
     const result = await useCase.execute(validInput, hospitalActor);
 
     expect(result.documentId).toBeTruthy();

@@ -1,8 +1,15 @@
-import type { ICaseRepository, IDocumentRepository, ICaseProgressRepository, DocumentType, Sensitivity } from '@medical-crm/domain';
+import type {
+  ICaseRepository,
+  IDocumentRepository,
+  ICaseProgressRepository,
+  ICHCRepository,
+  DocumentType,
+  Sensitivity,
+} from '@medical-crm/domain';
 import { Document, CaseProgress } from '@medical-crm/domain';
 import { generateId, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
-import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export interface UploadDocumentInput {
   caseId: string;
@@ -20,13 +27,14 @@ export class UploadDocumentUseCase {
     private readonly documentRepo: IDocumentRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly progressRepo: ICaseProgressRepository,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(input: UploadDocumentInput, actor: Actor): Promise<{ documentId: string }> {
     const caze = await this.caseRepo.findById(input.caseId);
     if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
     if (actor.role === 'HOSPITAL') {
-      assertAssignedHospitalCaseAccess(caze, actor.hospitalId);
+      await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     }
 
     const docId = generateId();

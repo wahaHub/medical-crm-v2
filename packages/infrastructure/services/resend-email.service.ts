@@ -191,6 +191,7 @@ export class ResendEmailService implements IEmailService {
     patientName: string;
     subject: string;
     messagePreview: string;
+    bodyLines?: string[];
     dashboardLink: string;
     locale?: string | null;
   }): Promise<void> {
@@ -200,6 +201,7 @@ export class ResendEmailService implements IEmailService {
       eyebrow: 'Case Update',
       title: params.subject,
       introLine: `${params.patientName}, there is a new update on your Medora case.`,
+      body: params.bodyLines,
       primaryActionLabel: 'Review case update',
       speaker: 'Medora case update',
     });

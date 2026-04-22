@@ -3,6 +3,7 @@ import { buildTransactionalEmail } from './transactional-email.template.js';
 export function buildPatientNewMessageEmail(params: {
   patientName: string;
   messagePreview: string;
+  body?: string[];
   dashboardLink: string;
   locale?: string | null;
   subject?: string;
@@ -22,6 +23,7 @@ export function buildPatientNewMessageEmail(params: {
     intro: [
       params.introLine ?? `${params.patientName}, your Medora care team sent a new update.`,
     ],
+    body: params.body,
     conversationItems: [
       {
         speaker: params.speaker ?? 'Medora care team',

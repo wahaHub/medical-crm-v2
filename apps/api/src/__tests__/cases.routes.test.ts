@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -10,6 +11,7 @@ const mockServices = {
   getCase: { execute: vi.fn() },
   getHospitalCaseDetail: { execute: vi.fn() },
   updateCase: { execute: vi.fn() },
+  saveCaseDiagnosis: { execute: vi.fn() },
   assignCase: { execute: vi.fn() },
   updateCaseStatus: { execute: vi.fn() },
   advanceCaseStage: { execute: vi.fn() },
@@ -19,6 +21,9 @@ const mockServices = {
   deleteDocument: { execute: vi.fn() },
   getCaseProgress: { execute: vi.fn() },
   addCaseProgress: { execute: vi.fn() },
+  caseRepo: { findById: vi.fn() },
+  patientRepo: { findById: vi.fn() },
+  notifyPatientOfCaseUpdate: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -62,6 +67,14 @@ app.route('/', caseRoutes);
 
 const VALID_UUID = '00000000-0000-0000-0000-000000000001';
 
+function buildExpectedMarketingDedupeKey(caseId: string, subject: string, messagePreview: string): string {
+  const digest = createHash('sha256')
+    .update(`${subject.trim()}\n${messagePreview.trim()}`)
+    .digest('hex')
+    .slice(0, 16);
+  return `marketing-email:${caseId}:${digest}`;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -75,6 +88,15 @@ describe('Cases routes', () => {
       roles: ['ADMIN'],
       hospitalId: null,
     };
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: VALID_UUID,
+      patientId: 'patient-1',
+      assignedHospitalId: 'hospital-1',
+    });
+    mockServices.patientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      site: 'beauty',
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -333,6 +355,134 @@ describe('Cases routes', () => {
 
       expect(res.status).toBe(400);
       expect(mockServices.assignCase.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/v2/cases/:id/marketing-email', () => {
+    it('sends a patient case-update email for hospital outreach', async () => {
+      currentSession = {
+        userId: 'u-2',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/marketing-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: 'Your personalized treatment plan',
+          messagePreview: 'We prepared a personalized treatment plan for your case.\n\nPlease reply to discuss next steps.',
+        }),
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith({
+        caseId: VALID_UUID,
+        patientId: 'patient-1',
+        site: 'beauty',
+        subject: 'Your personalized treatment plan',
+        messagePreview: 'We prepared a personalized treatment plan for your case.\n\nPlease reply to discuss next steps.',
+        dedupeKey: buildExpectedMarketingDedupeKey(
+          VALID_UUID,
+          'Your personalized treatment plan',
+          'We prepared a personalized treatment plan for your case.\n\nPlease reply to discuss next steps.',
+        ),
+      });
+    });
+
+    it('uses a distinct dedupe key when the subject stays the same but the body changes', async () => {
+      currentSession = {
+        userId: 'u-2',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+
+      await app.request(`/api/v2/cases/${VALID_UUID}/marketing-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: 'Your personalized treatment plan',
+          messagePreview: 'Version one.',
+        }),
+      });
+
+      await app.request(`/api/v2/cases/${VALID_UUID}/marketing-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: 'Your personalized treatment plan',
+          messagePreview: 'Version two.',
+        }),
+      });
+
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        dedupeKey: buildExpectedMarketingDedupeKey(VALID_UUID, 'Your personalized treatment plan', 'Version one.'),
+      }));
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        dedupeKey: buildExpectedMarketingDedupeKey(VALID_UUID, 'Your personalized treatment plan', 'Version two.'),
+      }));
+    });
+
+    it('still returns 204 when patient notification delivery fails', async () => {
+      currentSession = {
+        userId: 'u-2',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.notifyPatientOfCaseUpdate.execute.mockRejectedValueOnce(new Error('smtp down'));
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/marketing-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: 'Your personalized treatment plan',
+          messagePreview: 'Please review the latest proposal from our care team.',
+        }),
+      });
+
+      expect(res.status).toBe(204);
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('POST /api/v2/cases/:id/diagnosis', () => {
+    it('saves diagnosis through the composite diagnosis use case', async () => {
+      currentSession = {
+        userId: 'u-2',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.saveCaseDiagnosis.execute.mockResolvedValue({
+        id: 'progress-1',
+        type: 'DIAGNOSIS',
+      });
+
+      const res = await app.request(`/api/v2/cases/${VALID_UUID}/diagnosis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Updated diagnosis',
+          icdCode: 'A01.1',
+          description: 'Detailed note',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockServices.saveCaseDiagnosis.execute).toHaveBeenCalledWith(
+        VALID_UUID,
+        {
+          title: 'Updated diagnosis',
+          icdCode: 'A01.1',
+          description: 'Detailed note',
+        },
+        expect.anything(),
+      );
     });
   });
 });

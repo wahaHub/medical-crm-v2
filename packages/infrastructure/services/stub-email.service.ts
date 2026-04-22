@@ -82,9 +82,10 @@ export class StubEmailService implements IEmailService {
     patientName: string;
     subject: string;
     messagePreview: string;
+    bodyLines?: string[];
     dashboardLink: string;
     locale?: string | null;
   }): Promise<void> {
-    console.log(`[STUB EMAIL] Patient case update to ${params.to} (${params.locale ?? 'default'}): ${params.subject} :: ${params.patientName} :: ${params.messagePreview} :: ${params.dashboardLink}`);
+    console.log(`[STUB EMAIL] Patient case update to ${params.to} (${params.locale ?? 'default'}): ${params.subject} :: ${params.patientName} :: ${params.messagePreview} :: ${params.bodyLines?.join(' | ') ?? ''} :: ${params.dashboardLink}`);
   }
 }

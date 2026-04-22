@@ -38,7 +38,7 @@ import {
 } from '@/queries/use-cases';
 import { useConsultationTranscript } from '@/queries/use-consultations';
 import { useEmailTemplates } from '@/queries/use-email-templates';
-import { addDiagnosis } from '@/actions/case-actions';
+import { addDiagnosis, sendCaseMarketingEmail } from '@/actions/case-actions';
 import { deleteCaseDocument, uploadCaseDocument } from '@/actions/document-actions';
 import { createConversation, sendMessage, sendMessageWithAttachments, uploadFile } from '@/actions/message-actions';
 import { CreateConsultationModal } from '@/components/create-consultation-modal';
@@ -230,6 +230,22 @@ export function extractSafeCaseDetailErrorDetail(error: unknown): string | undef
   return detail;
 }
 
+function extractCaseDetailDebugDetails(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === 'object' && error && 'body' in error) {
+    try {
+      return JSON.stringify((error as { body?: unknown }).body, null, 2);
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
 export function formatCaseDetailUserFacingError(
   error: unknown,
   t: TranslationFn,
@@ -316,6 +332,123 @@ export function getDiagnosisSeverityLabel(value: string | null | undefined, t: T
   }
 
   return t('hospital.common.unknown', undefined, 'Unknown');
+}
+
+type CaseDetailProgressStatus = 'pending' | 'uploading' | 'saving' | 'done' | 'failed';
+
+type CaseDetailProgressItem = {
+  id: string;
+  label: string;
+  status: CaseDetailProgressStatus;
+  error?: string;
+};
+
+type CaseDetailProgressState = {
+  open: boolean;
+  title: string;
+  items: CaseDetailProgressItem[];
+  canDismiss: boolean;
+  debugDetails?: string;
+};
+
+function CaseDetailProgressModal({
+  state,
+  onDismiss,
+}: {
+  state: CaseDetailProgressState;
+  onDismiss: () => void;
+}) {
+  const { t } = useHospitalI18n();
+
+  if (!state.open) return null;
+
+  const completedCount = state.items.filter((item) => item.status === 'done').length;
+  const progress = state.items.length > 0 ? Math.round((completedCount / state.items.length) * 100) : 0;
+  const hasFailure = state.items.some((item) => item.status === 'failed');
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/35 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-xl rounded-[1.5rem] bg-white shadow-2xl">
+        <div className="border-b border-slate-100 px-6 py-5">
+          <h3 className="text-lg font-semibold text-slate-900">{state.title}</h3>
+        </div>
+        <div className="space-y-5 px-6 py-5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm text-slate-500">
+              <span>
+                {hasFailure
+                  ? t('hospital.common.progress.finishedWithErrors', undefined, 'Finished with errors')
+                  : t('hospital.common.progress.uploadingAndSaving', undefined, 'Uploading and saving')}
+              </span>
+              <span>{progress}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className={`h-full transition-all duration-300 ${
+                  hasFailure
+                    ? 'bg-gradient-to-r from-amber-400 to-rose-500'
+                    : 'bg-gradient-to-r from-cyan-500 to-blue-500'
+                }`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+            {state.items.map((item) => (
+              <div
+                key={item.id}
+                className={`flex items-start gap-3 rounded-xl border px-3 py-3 ${
+                  item.status === 'failed'
+                    ? 'border-rose-200 bg-rose-50'
+                    : item.status === 'done'
+                      ? 'border-emerald-200 bg-emerald-50'
+                      : 'border-slate-200 bg-white'
+                }`}
+              >
+                <div className="mt-0.5 shrink-0">
+                  {item.status === 'done' && <CheckCircle size={16} className="text-emerald-600" />}
+                  {item.status === 'failed' && <X size={16} className="text-rose-600" />}
+                  {(item.status === 'uploading' || item.status === 'saving') && <LoadingSpinner size="sm" />}
+                  {item.status === 'pending' && <div className="h-4 w-4 rounded-full bg-slate-200" />}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-800">{item.label}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {item.status === 'pending' && t('hospital.common.progress.waiting', undefined, 'Waiting')}
+                    {item.status === 'uploading' && t('hospital.common.progress.uploading', undefined, 'Uploading...')}
+                    {item.status === 'saving' && t('hospital.common.actions.saving', undefined, 'Saving...')}
+                    {item.status === 'done' && t('hospital.common.progress.done', undefined, 'Done')}
+                    {item.status === 'failed' && (item.error || t('hospital.common.progress.failed', undefined, 'Failed'))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {state.debugDetails ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-950 p-3 text-xs text-slate-100">
+              <div className="mb-2 font-semibold text-slate-200">
+                {t('hospital.common.debugLogs', undefined, 'Debug logs')}
+              </div>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words">{state.debugDetails}</pre>
+            </div>
+          ) : null}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={onDismiss}
+              disabled={!state.canDismiss}
+              className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {t('hospital.common.actions.close', undefined, 'Close')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function formatCaseConversationCategoryForDisplay(category: string, t: TranslationFn): string {
@@ -1264,9 +1397,30 @@ function AddDiagnosisModal({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<CaseDetailProgressState>({
+    open: false,
+    title: '',
+    items: [],
+    canDismiss: false,
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!open) return null;
+
+  const updateProgressItem = (
+    id: string,
+    status: CaseDetailProgressStatus,
+    errorMessage?: string,
+  ) => {
+    setSaveProgress((current) => ({
+      ...current,
+      items: current.items.map((item) => (
+        item.id === id
+          ? { ...item, status, error: errorMessage }
+          : item
+      )),
+    }));
+  };
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -1276,15 +1430,36 @@ function AddDiagnosisModal({
 
     setError(null);
     setIsSaving(true);
+    const progressItems: CaseDetailProgressItem[] = [
+      ...selectedFiles.map((file, index) => ({
+        id: `file-${index}`,
+        label: file.name,
+        status: 'pending' as const,
+      })),
+      {
+        id: 'save-diagnosis',
+        label: t('hospital.cases.detail.diagnosis.progress.saveDiagnosis', undefined, 'Saving diagnosis details'),
+        status: 'pending',
+      },
+    ];
+    setSaveProgress({
+      open: true,
+      title: t('hospital.cases.detail.diagnosis.progress.title', undefined, 'Saving diagnosis'),
+      items: progressItems,
+      canDismiss: false,
+    });
     const uploadedDocumentIds: string[] = [];
     try {
-      for (const file of selectedFiles) {
+      for (const [index, file] of selectedFiles.entries()) {
+        updateProgressItem(`file-${index}`, 'uploading');
         const uploaded = await uploadCaseDocument(caseId, file, 'DIAGNOSIS');
         if (uploaded.documentId) {
           uploadedDocumentIds.push(uploaded.documentId);
         }
+        updateProgressItem(`file-${index}`, 'done');
       }
 
+      updateProgressItem('save-diagnosis', 'saving');
       await addDiagnosis(caseId, {
         title,
         diagnosisType,
@@ -1295,9 +1470,25 @@ function AddDiagnosisModal({
         costEstimate,
         treatmentDuration,
       });
+      updateProgressItem('save-diagnosis', 'done');
+      setSaveProgress((current) => ({ ...current, open: false, canDismiss: true }));
       setSelectedFiles([]);
       onSuccess();
     } catch (err) {
+      const debugDetails = extractCaseDetailDebugDetails(err);
+      const failingStepId = uploadedDocumentIds.length < selectedFiles.length
+        ? `file-${uploadedDocumentIds.length}`
+        : 'save-diagnosis';
+      updateProgressItem(
+        failingStepId,
+        'failed',
+        formatCaseDetailUserFacingError(
+          err,
+          t,
+          'hospital.cases.detail.diagnosis.errorSave',
+          'Failed to save diagnosis',
+        ),
+      );
       if (uploadedDocumentIds.length > 0) {
         const rollbackResults = await Promise.allSettled(
           uploadedDocumentIds.map((documentId) => deleteCaseDocument(caseId, documentId)),
@@ -1305,6 +1496,15 @@ function AddDiagnosisModal({
         const failedRollbacks = rollbackResults.filter((result) => result.status === 'rejected');
         if (failedRollbacks.length > 0) {
           console.warn('Failed to roll back uploaded diagnosis documents after diagnosis save failed:', failedRollbacks);
+          setSaveProgress((current) => ({
+            ...current,
+            debugDetails: [
+              debugDetails,
+              'Rollback failures:',
+              JSON.stringify(failedRollbacks, null, 2),
+            ].filter(Boolean).join('\n\n'),
+            canDismiss: true,
+          }));
         }
       }
       setError(
@@ -1315,6 +1515,11 @@ function AddDiagnosisModal({
           'Failed to save diagnosis',
         ),
       );
+      setSaveProgress((current) => ({
+        ...current,
+        debugDetails: current.debugDetails ?? debugDetails,
+        canDismiss: true,
+      }));
     } finally {
       setIsSaving(false);
     }
@@ -1322,6 +1527,10 @@ function AddDiagnosisModal({
 
   return (
     <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <CaseDetailProgressModal
+        state={saveProgress}
+        onDismiss={() => setSaveProgress((current) => ({ ...current, open: false }))}
+      />
       <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10 rounded-t-[2rem]">
           <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2"><Stethoscope size={20} className="text-cyan-600" /> {t('hospital.cases.detail.diagnosis.addModal.title', undefined, 'Add Diagnosis')}</h2>
@@ -1480,6 +1689,9 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   );
   const [emailBody, setEmailBody] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [marketingError, setMarketingError] = useState<string | null>(null);
+  const [marketingSuccess, setMarketingSuccess] = useState<string | null>(null);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const { data: templatesData } = useEmailTemplates();
 
   const activeTemplates: EmailTemplateItem[] = (() => {
@@ -1555,6 +1767,111 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
 
     setSelectedModules([...selectedModules, moduleId]);
   };
+
+  const handleGenerateEmail = () => {
+    const selectedLabels = [...coreModules, ...optionalModules]
+      .filter((module) => coreModules.some((core) => core.id === module.id) || selectedModules.includes(module.id))
+      .map((module) => `- ${module.label}`)
+      .join('\n');
+
+    setMarketingError(null);
+    setMarketingSuccess(null);
+    setEmailBody([
+      t(
+        'hospital.cases.detail.marketing.generatedGreeting',
+        { patientName: caseDetail.patient.name },
+        'Hello {patientName},',
+      ),
+      '',
+      t(
+        'hospital.cases.detail.marketing.generatedIntro',
+        { diagnosis: caseDetail.medicalCondition.primaryDiagnosis ?? t('hospital.common.unknown', undefined, 'Unknown') },
+        'We prepared a personalized treatment update for your case related to {diagnosis}.',
+      ),
+      '',
+      selectedLabels,
+      '',
+      t('hospital.cases.detail.marketing.generatedClosing', undefined, 'Please reply if you would like us to walk you through the next step.'),
+    ].join('\n'));
+  };
+
+  const handleSaveDraft = () => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      `hospital-case-marketing-draft:${caseDetail.id}`,
+      JSON.stringify({
+        subject: emailSubject,
+        body: emailBody,
+        selectedTemplateId,
+        selectedModules,
+      }),
+    );
+    setMarketingError(null);
+    setMarketingSuccess(t('hospital.cases.detail.marketing.draftSaved', undefined, 'Draft saved on this device.'));
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailSubject.trim() || !emailBody.trim()) {
+      setMarketingError(
+        t(
+          'hospital.cases.detail.marketing.validation.subjectAndBodyRequired',
+          undefined,
+          'Subject and email content are required.',
+        ),
+      );
+      return;
+    }
+
+    setIsSendingEmail(true);
+    setMarketingError(null);
+    setMarketingSuccess(null);
+    try {
+      await sendCaseMarketingEmail(caseDetail.id, {
+        subject: emailSubject,
+        messagePreview: emailBody,
+      });
+      setMarketingSuccess(
+        t(
+          'hospital.cases.detail.marketing.emailSent',
+          undefined,
+          'Email outreach sent to the patient.',
+        ),
+      );
+    } catch (error) {
+      setMarketingError(
+        formatCaseDetailUserFacingError(
+          error,
+          t,
+          'hospital.cases.detail.marketing.errorSend',
+          'Failed to send email outreach',
+        ),
+      );
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const rawDraft = window.localStorage.getItem(`hospital-case-marketing-draft:${caseDetail.id}`);
+    if (!rawDraft) return;
+
+    try {
+      const parsed = JSON.parse(rawDraft) as {
+        subject?: string;
+        body?: string;
+        selectedTemplateId?: string;
+        selectedModules?: string[];
+      };
+      if (parsed.subject) setEmailSubject(parsed.subject);
+      if (parsed.body) setEmailBody(parsed.body);
+      if (parsed.selectedTemplateId) setSelectedTemplateId(parsed.selectedTemplateId);
+      if (Array.isArray(parsed.selectedModules)) setSelectedModules(parsed.selectedModules);
+    } catch {
+      // Ignore malformed local drafts.
+    }
+  }, [caseDetail.id]);
+
   return (
     <div className="space-y-8">
       <div className="flex justify-center mb-2">
@@ -1598,7 +1915,11 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
                 </div>
               </div>
               <div className="pt-4">
-                <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-indigo-500 hover:from-pink-600 hover:to-indigo-600 text-white text-sm font-semibold rounded-full shadow-lg shadow-pink-200/50">
+                <button
+                  type="button"
+                  onClick={handleGenerateEmail}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-indigo-500 hover:from-pink-600 hover:to-indigo-600 text-white text-sm font-semibold rounded-full shadow-lg shadow-pink-200/50"
+                >
                   <Sparkles size={16} /> {t('hospital.cases.detail.marketing.generateEmail', undefined, 'One-Click Generate Email')}
                 </button>
               </div>
@@ -1609,6 +1930,16 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
               {t('hospital.cases.detail.marketing.composeTitle', undefined, 'Compose Email')}
             </h3>
             <div className="space-y-5">
+              {marketingError ? (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {marketingError}
+                </div>
+              ) : null}
+              {marketingSuccess ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {marketingSuccess}
+                </div>
+              ) : null}
               {/* Load Template dropdown */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -1650,8 +1981,22 @@ function MarketingTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
               <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.marketing.subject', undefined, 'Subject')}</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none" /></div>
               <div><label className="block text-sm font-semibold text-slate-700 mb-2">{t('hospital.cases.detail.marketing.emailContent', undefined, 'Email Content')}</label><textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-pink-500/20 text-sm outline-none h-48 resize-none" placeholder={t('hospital.cases.detail.marketing.emailContentPlaceholder', undefined, 'Generated content will appear here...')} /></div>
               <div className="flex justify-end gap-3 pt-4">
-                <button className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full">{t('hospital.cases.detail.marketing.saveDraft', undefined, 'Save Draft')}</button>
-                <button className="px-6 py-2.5 text-sm font-semibold text-white bg-pink-600 hover:bg-pink-700 rounded-full flex items-center gap-2 shadow-md shadow-pink-200/50"><Send size={16} /> {t('hospital.cases.detail.marketing.sendEmail', undefined, 'Send Email')}</button>
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  className="px-6 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-full"
+                >
+                  {t('hospital.cases.detail.marketing.saveDraft', undefined, 'Save Draft')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSendEmail()}
+                  disabled={isSendingEmail}
+                  className="px-6 py-2.5 text-sm font-semibold text-white bg-pink-600 hover:bg-pink-700 rounded-full flex items-center gap-2 shadow-md shadow-pink-200/50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSendingEmail ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  {t('hospital.cases.detail.marketing.sendEmail', undefined, 'Send Email')}
+                </button>
               </div>
             </div>
           </div>

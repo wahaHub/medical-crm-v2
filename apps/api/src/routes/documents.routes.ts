@@ -1,8 +1,8 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { toActor } from '@medical-crm/application';
+import { assertHospitalCaseAccess, toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import { uploadDocumentSchema } from '@medical-crm/validation';
-import { ForbiddenError, ValidationError } from '@medical-crm/utils';
+import { ValidationError } from '@medical-crm/utils';
 import { access, readdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -264,9 +264,7 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
   if (!caseEntity) {
     return c.json({ error: 'Case not found' }, 404);
   }
-  if (!actor.hospitalId || caseEntity.assignedHospitalId !== actor.hospitalId) {
-    throw new ForbiddenError('Access denied to this case');
-  }
+  await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
 
   const doc = await svc.documentRepo.findById(docId);
   if (!doc || doc.caseId !== caseId || doc.status === 'DELETED') {

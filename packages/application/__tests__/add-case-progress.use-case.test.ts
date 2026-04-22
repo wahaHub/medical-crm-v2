@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AddCaseProgressUseCase } from '../src/use-cases/progress/add-case-progress.use-case.js';
-import type { ICaseProgressRepository, ICaseRepository } from '@medical-crm/domain';
+import type { ICaseProgressRepository, ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -8,6 +8,7 @@ describe('AddCaseProgressUseCase', () => {
   let useCase: AddCaseProgressUseCase;
   let mockProgressRepo: ICaseProgressRepository;
   let mockCaseRepo: ICaseRepository;
+  let mockChcRepo: ICHCRepository;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -59,8 +60,16 @@ describe('AddCaseProgressUseCase', () => {
       findByCaseId: vi.fn(),
       save: vi.fn().mockImplementation((progress) => Promise.resolve(progress)),
     };
+    mockChcRepo = {
+      findById: vi.fn(),
+      findByCaseAndHospital: vi.fn().mockResolvedValue(null),
+      findByCaseId: vi.fn(),
+      findByHospitalId: vi.fn(),
+      save: vi.fn(),
+      rejectOthersByCaseExcept: vi.fn(),
+    };
 
-    useCase = new AddCaseProgressUseCase(mockProgressRepo, mockCaseRepo);
+    useCase = new AddCaseProgressUseCase(mockProgressRepo, mockCaseRepo, mockChcRepo);
   });
 
   describe('DIAGNOSIS type', () => {
@@ -206,6 +215,39 @@ describe('AddCaseProgressUseCase', () => {
       );
 
       expect(result.progressType).toBe('STATUS_CHANGE');
+      expect(mockProgressRepo.save).toHaveBeenCalledOnce();
+    });
+
+    it('allows hospital actor to add progress to a distributed case contact', async () => {
+      mockCaseRepo.findById = vi.fn().mockImplementation(() =>
+        Promise.resolve(makeFreshCase('primary-hosp')),
+      );
+      vi.mocked(mockChcRepo.findByCaseAndHospital).mockResolvedValue({
+        id: 'chc-1',
+        caseId: 'case-1',
+        hospitalId: 'hosp-1',
+        subStatus: 'DISTRIBUTED',
+        selectedByPatientAt: null,
+        distributedAt: new Date('2026-03-01T08:00:00Z'),
+        firstReplyAt: null,
+        quoteId: null,
+        patientViewedQuoteAt: null,
+        patientAcceptedAt: null,
+        patientRejectedAt: null,
+        reminderSentAt: null,
+        removedAt: null,
+        removedReason: null,
+        version: 1,
+        createdAt: new Date('2026-03-01T08:00:00Z'),
+        updatedAt: new Date('2026-03-01T08:00:00Z'),
+      } as any);
+
+      const result = await useCase.execute(
+        { type: 'DIAGNOSIS', caseId: 'case-1', title: 'Distributed diagnosis' },
+        hospitalActor,
+      );
+
+      expect(result.title).toBe('Distributed diagnosis');
       expect(mockProgressRepo.save).toHaveBeenCalledOnce();
     });
   });

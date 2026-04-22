@@ -142,6 +142,32 @@ describe('NotificationEmailService', () => {
     );
   });
 
+  it('passes the full body lines through for richer patient case-update emails', async () => {
+    await service.notifyPatientOfCaseUpdate({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      site: 'china',
+      subject: 'Your personalized treatment plan',
+      messagePreview: 'Line one of the outreach.\n\nLine two with next steps.',
+      bodyLines: [
+        'Line one of the outreach.',
+        'Line two with next steps.',
+      ],
+      dedupeKey: 'marketing-email:case-1:plan',
+    });
+
+    expect(emailService.sendPatientCaseUpdateAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: 'Your personalized treatment plan',
+        messagePreview: 'Line one of the outreach. Line two with next steps.',
+        bodyLines: [
+          'Line one of the outreach.',
+          'Line two with next steps.',
+        ],
+      }),
+    );
+  });
+
   it('suppresses duplicate emails when the cooldown slot is not acquired', async () => {
     vi.mocked(cooldownRepo.tryAcquireSlot).mockResolvedValueOnce(false);
 

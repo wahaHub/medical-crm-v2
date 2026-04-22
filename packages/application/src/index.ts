@@ -143,8 +143,14 @@ export type { CreateCaseInput } from './use-cases/cases/create-case.use-case.js'
 export { ListCasesUseCase } from './use-cases/cases/list-cases.use-case.js';
 export { GetCaseUseCase } from './use-cases/cases/get-case.use-case.js';
 export { GetHospitalCaseDetailUseCase } from './use-cases/cases/get-hospital-case-detail.use-case.js';
+export {
+  assertHospitalCaseAccess,
+  hasHospitalCaseAccess,
+} from './use-cases/cases/hospital-case-access.js';
 export { UpdateCaseUseCase } from './use-cases/cases/update-case.use-case.js';
 export type { UpdateCaseInput } from './use-cases/cases/update-case.use-case.js';
+export { SaveCaseDiagnosisUseCase } from './use-cases/cases/save-case-diagnosis.use-case.js';
+export type { SaveCaseDiagnosisInput } from './use-cases/cases/save-case-diagnosis.use-case.js';
 export { AssignCaseUseCase } from './use-cases/cases/assign-case.use-case.js';
 export { UpdateCaseStatusUseCase } from './use-cases/cases/update-case-status.use-case.js';
 export { AdvanceCaseStageUseCase } from './use-cases/cases/advance-case-stage.use-case.js';
@@ -184,6 +190,7 @@ export { ListConversationsUseCase } from './use-cases/conversations/list-convers
 export { GetConversationUseCase } from './use-cases/conversations/get-conversation.use-case.js';
 export { UpdateConversationUseCase } from './use-cases/conversations/update-conversation.use-case.js';
 export type { UpdateConversationInput } from './use-cases/conversations/update-conversation.use-case.js';
+export { ResumeConversationAiUseCase } from './use-cases/conversations/resume-conversation-ai.use-case.js';
 
 // Use Cases — Messages
 export { SendMessageUseCase } from './use-cases/messages/send-message.use-case.js';

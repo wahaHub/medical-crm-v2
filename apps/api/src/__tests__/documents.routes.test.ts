@@ -24,6 +24,7 @@ const mockServices = {
   documentRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
+  chcRepo: { findByCaseAndHospital: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -93,6 +94,7 @@ describe('Documents routes', () => {
       documentType: 'INVITATION',
       status: 'ACTIVE',
     });
+    mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue(null);
   });
 
   // -----------------------------------------------------------------------
@@ -223,6 +225,34 @@ describe('Documents routes', () => {
       });
 
       expect(res.status).toBe(204);
+    });
+
+    it('allows a distributed hospital contact to notify the patient about an invitation document', async () => {
+      currentSession = {
+        userId: 'hospital-2',
+        email: 'distributed@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-2',
+      };
+      mockServices.caseRepo.findById.mockResolvedValue({
+        id: CASE_UUID,
+        patientId: 'patient-1',
+        assignedHospitalId: 'hospital-1',
+      });
+      mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue({
+        id: 'chc-1',
+        caseId: CASE_UUID,
+        hospitalId: 'hospital-2',
+        subStatus: 'DISTRIBUTED',
+        removedAt: null,
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledOnce();
     });
   });
 

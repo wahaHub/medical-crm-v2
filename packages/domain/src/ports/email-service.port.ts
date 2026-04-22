@@ -57,6 +57,7 @@ export interface IEmailService {
     patientName: string;
     subject: string;
     messagePreview: string;
+    bodyLines?: string[];
     dashboardLink: string;
     locale?: string | null;
   }): Promise<void>;

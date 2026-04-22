@@ -48,6 +48,18 @@ export const updateCaseSchema = z.object({
   patientLanguage: z.string().max(10).optional(),
 });
 
+export const saveCaseDiagnosisSchema = z.object({
+  title: z.string().trim().min(1),
+  diagnosisType: z.string().optional(),
+  icdCode: z.string().max(50).optional(),
+  severity: z.string().optional(),
+  description: z.string().optional(),
+  treatmentRecommendation: z.string().optional(),
+  suggestedTests: z.string().optional(),
+  costEstimate: z.string().optional(),
+  treatmentDuration: z.string().optional(),
+});
+
 export const assignCaseSchema = z.object({
   hospitalId: z.string().uuid(),
 });
@@ -62,4 +74,5 @@ export const advanceCaseStageSchema = z.object({
 
 export type CreateCaseInput = z.infer<typeof createCaseSchema>;
 export type UpdateCaseInput = z.infer<typeof updateCaseSchema>;
+export type SaveCaseDiagnosisInput = z.infer<typeof saveCaseDiagnosisSchema>;
 export type AssignCaseInput = z.infer<typeof assignCaseSchema>;

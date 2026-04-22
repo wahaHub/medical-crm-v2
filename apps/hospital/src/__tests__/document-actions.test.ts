@@ -152,11 +152,49 @@ describe('document actions', () => {
 
     const file = new File(['pdf'], 'invitation.pdf', { type: 'application/pdf' });
 
-    await expect(uploadCaseDocument('case-1', file, 'INVITATION')).rejects.toThrow('Upload failed with status 500');
+    await expect(uploadCaseDocument('case-1', file, 'INVITATION')).rejects.toThrow('Upload failed for "invitation.pdf" (status 500)');
     expect(global.fetch).toHaveBeenNthCalledWith(3, '/api/cases/case-1/documents/doc-invitation-1', expect.objectContaining({
       method: 'DELETE',
       credentials: 'same-origin',
     }));
+  });
+
+  it('falls back to the media upload proxy when direct document upload throws a network error', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        upload: {
+          uploadUrl: 'https://storage.example.com/upload',
+          storageKey: 'cases/case-1/report.pdf',
+        },
+        asset: {
+          storageKey: 'cases/case-1/report.pdf',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 3,
+        },
+        documentId: 'doc-1',
+      }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 })));
+
+    const file = new File(['abc'], 'report.pdf', { type: 'application/pdf' });
+
+    const result = await uploadCaseDocument('case-1', file, 'DIAGNOSIS');
+
+    expect(global.fetch).toHaveBeenNthCalledWith(3, '/api/media/upload', expect.objectContaining({
+      method: 'POST',
+      body: expect.any(FormData),
+    }));
+    expect(result).toEqual({
+      storageKey: 'cases/case-1/report.pdf',
+      fileName: 'report.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 3,
+      documentId: 'doc-1',
+    });
   });
 
   it('deletes an uploaded case document', async () => {

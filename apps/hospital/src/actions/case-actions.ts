@@ -44,24 +44,13 @@ export async function addDiagnosis(
   const title = trimToUndefined(data.title);
   if (!title) throw new Error('Diagnosis name is required');
 
-  const icdCode = trimToUndefined(data.icdCode);
-
-  await apiClient(`/api/v2/cases/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      primaryDiagnosis: title,
-      diagnosisCode: icdCode,
-    }),
-  });
-
-  const result = await apiClient(`/api/v2/cases/${id}/progress`, {
+  const result = await apiClient(`/api/v2/cases/${id}/diagnosis`, {
     method: 'POST',
     body: JSON.stringify({
-      type: 'DIAGNOSIS',
       title,
       description: trimToUndefined(data.description),
       diagnosisType: trimToUndefined(data.diagnosisType),
-      icdCode,
+      icdCode: trimToUndefined(data.icdCode),
       severity: trimToUndefined(data.severity),
       treatmentRecommendation: trimToUndefined(data.treatmentRecommendation),
       suggestedTests: trimToUndefined(data.suggestedTests),
@@ -71,6 +60,25 @@ export async function addDiagnosis(
   });
 
   revalidatePath('/cases');
+  revalidatePath(`/cases/${id}`);
+  return result;
+}
+
+export async function sendCaseMarketingEmail(
+  id: string,
+  data: {
+    subject: string;
+    messagePreview: string;
+  },
+) {
+  const result = await apiClient(`/api/v2/cases/${id}/marketing-email`, {
+    method: 'POST',
+    body: JSON.stringify({
+      subject: trimToUndefined(data.subject),
+      messagePreview: trimToUndefined(data.messagePreview),
+    }),
+  });
+
   revalidatePath(`/cases/${id}`);
   return result;
 }

@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { toActor } from '@medical-crm/application';
+import { assertHospitalCaseAccess, toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import {
   createCaseSchema,
   updateCaseSchema,
+  saveCaseDiagnosisSchema,
   assignCaseSchema,
   updateCaseStatusSchema,
   advanceCaseStageSchema,
@@ -19,6 +21,19 @@ const app = new OpenAPIHono();
 const caseIdParamSchema = z.object({
   id: z.string().uuid(),
 });
+
+const sendMarketingEmailSchema = z.object({
+  subject: z.string().trim().min(1),
+  messagePreview: z.string().trim().min(1),
+});
+
+function buildMarketingEmailDedupeKey(caseId: string, subject: string, messagePreview: string): string {
+  const digest = createHash('sha256')
+    .update(`${subject.trim()}\n${messagePreview.trim()}`)
+    .digest('hex')
+    .slice(0, 16);
+  return `marketing-email:${caseId}:${digest}`;
+}
 
 // ---------------------------------------------------------------------------
 // 1. POST /api/v2/cases — CreateCase (ADMIN only)
@@ -130,6 +145,28 @@ app.openapi(updateCaseRoute, async (c) => {
   return c.json(result, 200);
 });
 
+const saveCaseDiagnosisRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/cases/{id}/diagnosis',
+  request: {
+    params: caseIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: saveCaseDiagnosisSchema } },
+      required: true,
+    },
+  },
+  responses: { 200: { description: 'Case diagnosis saved' } },
+});
+
+app.openapi(saveCaseDiagnosisRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.saveCaseDiagnosis.execute(id, body, actor);
+  return c.json(result, 200);
+});
+
 // ---------------------------------------------------------------------------
 // 6. PATCH /api/v2/cases/:id/status — UpdateCaseStatus
 // ---------------------------------------------------------------------------
@@ -204,6 +241,53 @@ app.openapi(assignCaseRoute, async (c) => {
   const svc = getServices();
   const result = await svc.assignCase.execute(id, hospitalId, actor);
   return c.json(result, 200);
+});
+
+const sendMarketingEmailRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/cases/{id}/marketing-email',
+  request: {
+    params: caseIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: sendMarketingEmailSchema } },
+      required: true,
+    },
+  },
+  responses: { 204: { description: 'Marketing email dispatched (best effort)' } },
+});
+
+app.openapi(sendMarketingEmailRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+
+  if (actor.role !== 'HOSPITAL') {
+    return c.json({ error: 'Only hospital users can send patient marketing emails' }, 403);
+  }
+
+  const caseEntity = await svc.caseRepo.findById(id);
+  if (!caseEntity) {
+    return c.json({ error: 'Case not found' }, 404);
+  }
+
+  await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
+
+  const patient = await svc.patientRepo.findById(caseEntity.patientId);
+  try {
+    await svc.notifyPatientOfCaseUpdate.execute({
+      caseId: id,
+      patientId: caseEntity.patientId,
+      site: patient?.site ?? 'china',
+      subject: body.subject,
+      messagePreview: body.messagePreview,
+      dedupeKey: buildMarketingEmailDedupeKey(id, body.subject, body.messagePreview),
+    });
+  } catch (error) {
+    console.warn('Failed to send patient marketing email:', error);
+  }
+
+  return c.body(null, 204);
 });
 
 export default app;

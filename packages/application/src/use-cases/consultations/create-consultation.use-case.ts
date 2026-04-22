@@ -1,10 +1,10 @@
-import { Consultation, type IConsultationRepository, type ICaseRepository } from '@medical-crm/domain';
+import { Consultation, type IConsultationRepository, type ICaseRepository, type ICHCRepository } from '@medical-crm/domain';
 import { generateId, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
-import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export interface CreateConsultationInput {
   caseId: string;
@@ -21,6 +21,7 @@ export class CreateConsultationUseCase {
     private readonly consultationRepo: IConsultationRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly translationTaskService: TranslationTaskService,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(input: CreateConsultationInput, actor: Actor): Promise<ConsultationDTO> {
@@ -30,14 +31,17 @@ export class CreateConsultationUseCase {
     }
 
     if (actor.role === 'HOSPITAL') {
-      assertAssignedHospitalCaseAccess(caseEntity, actor.hospitalId);
+      await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo);
     }
 
     const now = new Date();
+    const consultationHospitalId = actor.role === 'HOSPITAL'
+      ? actor.hospitalId ?? ''
+      : caseEntity.assignedHospitalId ?? '';
     const entity = new Consultation({
       id: generateId(),
       caseId: input.caseId,
-      hospitalId: caseEntity.assignedHospitalId ?? '',
+      hospitalId: consultationHospitalId,
       patientId: caseEntity.patientId,
       doctorId: null,
       status: 'SCHEDULED',

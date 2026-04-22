@@ -1,10 +1,10 @@
-import type { ICaseProgressRepository, ICaseRepository } from '@medical-crm/domain';
+import type { ICaseProgressRepository, ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { CaseProgress } from '@medical-crm/domain';
 import { generateId, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { CaseProgressDTO } from '../../dtos/progress.dto.js';
 import { toProgressDTO } from '../../mappers/progress.mapper.js';
-import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
 export type AddProgressInput =
   | { type: 'DIAGNOSIS'; caseId: string; title?: string; description?: string;
@@ -21,13 +21,14 @@ export class AddCaseProgressUseCase {
   constructor(
     private readonly progressRepo: ICaseProgressRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly chcRepo?: ICHCRepository,
   ) {}
 
   async execute(input: AddProgressInput, actor: Actor): Promise<CaseProgressDTO> {
     const caze = await this.caseRepo.findById(input.caseId);
     if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
     if (actor.role === 'HOSPITAL') {
-      assertAssignedHospitalCaseAccess(caze, actor.hospitalId);
+      await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     }
 
     const { progressType, title, description, metadata } = this.mapInput(input);

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CreateConsultationUseCase } from '../src/use-cases/consultations/create-consultation.use-case.js';
 
 const mockTranslationTaskService = { enqueue: vi.fn() };
-import type { IConsultationRepository, ICaseRepository } from '@medical-crm/domain';
+import type { IConsultationRepository, ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { Consultation, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -40,6 +40,7 @@ describe('CreateConsultationUseCase', () => {
   let useCase: CreateConsultationUseCase;
   let mockConsultationRepo: IConsultationRepository;
   let mockCaseRepo: ICaseRepository;
+  let mockChcRepo: ICHCRepository;
 
   beforeEach(() => {
     mockConsultationRepo = {
@@ -57,7 +58,20 @@ describe('CreateConsultationUseCase', () => {
       nextCaseNumber: vi.fn(),
       countByFilters: vi.fn(),
     };
-    useCase = new CreateConsultationUseCase(mockConsultationRepo, mockCaseRepo, mockTranslationTaskService as any);
+    mockChcRepo = {
+      findById: vi.fn(),
+      findByCaseAndHospital: vi.fn().mockResolvedValue(null),
+      findByCaseId: vi.fn(),
+      findByHospitalId: vi.fn(),
+      save: vi.fn(),
+      rejectOthersByCaseExcept: vi.fn(),
+    };
+    useCase = new (CreateConsultationUseCase as any)(
+      mockConsultationRepo,
+      mockCaseRepo,
+      mockTranslationTaskService as any,
+      mockChcRepo,
+    );
   });
 
   it('throws NotFoundError when case does not exist', async () => {
@@ -87,6 +101,35 @@ describe('CreateConsultationUseCase', () => {
 
     expect(result.caseId).toBe('case-1');
     expect(result.status).toBe('SCHEDULED');
+  });
+
+  it('allows a distributed hospital contact to create a consultation', async () => {
+    mockCaseRepo.findById = vi.fn().mockResolvedValue(makeCase({ assignedHospitalId: 'hosp-primary' }));
+    vi.mocked(mockChcRepo.findByCaseAndHospital).mockResolvedValue({
+      id: 'chc-1',
+      caseId: 'case-1',
+      hospitalId: 'hosp-1',
+      subStatus: 'DISTRIBUTED',
+      selectedByPatientAt: null,
+      distributedAt: new Date('2026-03-01T08:00:00Z'),
+      firstReplyAt: null,
+      quoteId: null,
+      patientViewedQuoteAt: null,
+      patientAcceptedAt: null,
+      patientRejectedAt: null,
+      reminderSentAt: null,
+      removedAt: null,
+      removedReason: null,
+      version: 1,
+      createdAt: new Date('2026-03-01T08:00:00Z'),
+      updatedAt: new Date('2026-03-01T08:00:00Z'),
+    } as any);
+
+    const result = await useCase.execute({ caseId: 'case-1', scheduledAt }, hospitalActor);
+
+    expect(result.caseId).toBe('case-1');
+    expect(result.status).toBe('SCHEDULED');
+    expect(result.hospitalId).toBe('hosp-1');
   });
 
   it('sets hospitalId from case.assignedHospitalId', async () => {

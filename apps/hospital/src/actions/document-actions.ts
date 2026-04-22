@@ -1,3 +1,5 @@
+import { readUploadError, uploadToSignedUrl } from '@/lib/direct-upload';
+
 interface CaseDocumentUploadAsset {
   storageKey: string;
   fileName: string;
@@ -68,13 +70,7 @@ export async function uploadCaseDocument(
     }),
   });
 
-  const uploadRes = await fetch(init.upload.uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-    },
-    body: file,
-  });
+  const uploadRes = await uploadToSignedUrl(init.upload.uploadUrl, file);
 
   if (!uploadRes.ok) {
     if (init.documentId) {
@@ -84,7 +80,7 @@ export async function uploadCaseDocument(
         console.warn('Failed to clean up case document after upload failure:', error);
       }
     }
-    throw new Error(`Upload failed with status ${uploadRes.status}`);
+    throw new Error(await readUploadError(uploadRes, file.name));
   }
 
   if (!init.asset) {

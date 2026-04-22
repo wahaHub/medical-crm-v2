@@ -22,4 +22,21 @@ describe('rateLimitByIp', () => {
     const res = await app.request('/test', { method: 'POST' });
     expect(res.status).toBe(429);
   });
+
+  it('allows explicit debug bypass when authorized', async () => {
+    const app = new Hono();
+    app.use('/*', rateLimitByIp(
+      { maxRequests: 1, windowMs: 60_000 },
+      { shouldBypass: (c) => c.req.header('x-debug-bypass-token') === 'debug-token' },
+    ));
+    app.post('/test', (c) => c.json({ ok: true }));
+
+    await app.request('/test', { method: 'POST' });
+    const res = await app.request('/test', {
+      method: 'POST',
+      headers: { 'x-debug-bypass-token': 'debug-token' },
+    });
+
+    expect(res.status).toBe(200);
+  });
 });

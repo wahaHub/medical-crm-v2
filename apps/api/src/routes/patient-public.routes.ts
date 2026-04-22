@@ -8,6 +8,7 @@ import {
 import { NotFoundError } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { rateLimitByIp } from '../middleware/rate-limit.middleware.js';
+import { isDebugBypassAuthorized } from '../middleware/debug-bypass.js';
 import { initOnboardingSchema, matchHospitalsSchema } from '@medical-crm/validation';
 import { seedWidgetStarterMessage } from './patient-widget-starter.js';
 import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
@@ -140,7 +141,16 @@ async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<b
 }
 
 // POST /onboarding/init — rate limited
-app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT), async (c) => {
+app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT, {
+  shouldBypass: (c) => isDebugBypassAuthorized(c),
+  onBypass: (c, key) => {
+    console.info('debug bypass used for onboarding-rate-limit', {
+      path: new URL(c.req.url).pathname,
+      ipKey: key,
+      site: c.req.header('x-medora-site') ?? null,
+    });
+  },
+}), async (c) => {
   let site;
   try {
     site = resolvePatientSiteContext(c);

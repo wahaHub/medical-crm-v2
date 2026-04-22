@@ -5,6 +5,7 @@ import {
   VerifyPatientEntryTokenAuthError,
 } from '@medical-crm/application';
 import { NotFoundError } from '@medical-crm/utils';
+import { getDebugBypassHeaderName } from '../middleware/debug-bypass.js';
 import patientPublicRoutes from '../routes/patient-public.routes.js';
 
 const { mockGetServices } = vi.hoisted(() => ({
@@ -148,6 +149,8 @@ describe('patientPublicRoutes', () => {
 
   beforeEach(() => {
     mockGetServices.mockReset();
+    delete process.env.DEBUG_BYPASS_ENABLED;
+    delete process.env.DEBUG_BYPASS_TOKEN;
   });
 
   it('returns a restore token from onboarding and seeds the widget through Dify instead of local hospital matching', async () => {
@@ -977,5 +980,70 @@ describe('patientPublicRoutes', () => {
       error: 'This email is already associated with a hospital or admin account.',
       code: 'EMAIL_ROLE_CONFLICT',
     });
+  });
+
+  it('allows onboarding rate-limit bypass only when the configured debug token is present', async () => {
+    process.env.DEBUG_BYPASS_ENABLED = 'true';
+    process.env.DEBUG_BYPASS_TOKEN = 'debug-token';
+
+    const execute = vi.fn().mockImplementation(async () => ({
+      patientId: `patient-${execute.mock.calls.length}`,
+      caseId: `case-${execute.mock.calls.length}`,
+      nextStep: 'select-hospitals',
+      token: `session-token-${execute.mock.calls.length}`,
+      restoreToken: `restore-token-${execute.mock.calls.length}`,
+      restoreCookie: `restore-cookie-${execute.mock.calls.length}`,
+      isExistingPatient: false,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: `widget-chat:patient-${execute.mock.calls.length}:case-${execute.mock.calls.length}`,
+      },
+    }));
+
+    mockGetServices.mockReturnValue(createBaseServices({
+      initOnboarding: { execute },
+    }));
+
+    const body = JSON.stringify({
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+      captchaToken: 'captcha-token',
+    });
+
+    for (let i = 0; i < 200; i += 1) {
+      const res = await requestWithSite('/onboarding/init', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-real-ip': '203.0.113.10',
+        },
+        body,
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const blocked = await requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-real-ip': '203.0.113.10',
+      },
+      body,
+    });
+    expect(blocked.status).toBe(429);
+
+    const bypass = await requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-real-ip': '203.0.113.10',
+        [getDebugBypassHeaderName()]: 'debug-token',
+      },
+      body,
+    });
+    expect(bypass.status).toBe(200);
+    expect(execute).toHaveBeenCalledTimes(201);
   });
 });

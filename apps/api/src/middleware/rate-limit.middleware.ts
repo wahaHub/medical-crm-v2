@@ -5,6 +5,11 @@ interface RateLimitConfig {
   windowMs: number;
 }
 
+interface RateLimitOptions {
+  shouldBypass?: (c: Parameters<MiddlewareHandler>[0]) => boolean;
+  onBypass?: (c: Parameters<MiddlewareHandler>[0], key: string) => void;
+}
+
 const CLEANUP_INTERVAL = 100;
 
 function cleanupExpiredEntries(map: Map<string, { count: number; resetAt: number }>, now: number): void {
@@ -15,13 +20,24 @@ function cleanupExpiredEntries(map: Map<string, { count: number; resetAt: number
   }
 }
 
-function createLimiter(config: RateLimitConfig, getKey: (c: Parameters<MiddlewareHandler>[0]) => string): MiddlewareHandler {
+function createLimiter(
+  config: RateLimitConfig,
+  getKey: (c: Parameters<MiddlewareHandler>[0]) => string,
+  options: RateLimitOptions = {},
+): MiddlewareHandler {
   const hits = new Map<string, { count: number; resetAt: number }>();
   let requestsSinceCleanup = 0;
 
   return async (c, next) => {
     requestsSinceCleanup += 1;
     const key = getKey(c).trim();
+
+    if (options.shouldBypass?.(c)) {
+      options.onBypass?.(c, key);
+      await next();
+      return;
+    }
+
     const now = Date.now();
     if (requestsSinceCleanup % CLEANUP_INTERVAL === 0) {
       cleanupExpiredEntries(hits, now);
@@ -43,7 +59,7 @@ function createLimiter(config: RateLimitConfig, getKey: (c: Parameters<Middlewar
   };
 }
 
-export function rateLimitByIp(config: RateLimitConfig): MiddlewareHandler {
+export function rateLimitByIp(config: RateLimitConfig, options: RateLimitOptions = {}): MiddlewareHandler {
   return createLimiter(config, (c) =>
     c.req
       .header('x-forwarded-for')
@@ -51,7 +67,7 @@ export function rateLimitByIp(config: RateLimitConfig): MiddlewareHandler {
       .at(0)
       ?.trim() ??
     c.req.header('x-real-ip') ??
-    'unknown',
+    'unknown', options,
   );
 }
 

@@ -9,7 +9,7 @@ import { GetIntakeTemplateUseCase } from '../src/use-cases/patient-intake/get-in
 import { SubmitIntakeUseCase } from '../src/use-cases/patient-intake/submit-intake.use-case.js';
 import { SubmitPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/submit-patient-qc-response.use-case.js';
 import { GetPatientQCResponseUseCase } from '../src/use-cases/patient-dashboard/get-patient-qc-response.use-case.js';
-import type { ICaseRepository, IConversationRepository, IQuoteRepository, ICHCRepository, IQuestionCollectorRepository } from '@medical-crm/domain';
+import type { ICaseRepository, IConversationRepository, IQuoteRepository, ICHCRepository, IQuestionCollectorRepository, IHospitalRepository } from '@medical-crm/domain';
 import { AiChatMessage, AiChatSession, Case, CaseNumber, Conversation, Quote, QuoteNumber, CaseHospitalContact, QCResponse, QCTemplate } from '@medical-crm/domain';
 import type { IAiChatMessageRepository, IAiChatSessionRepository } from '@medical-crm/domain';
 import type { TransactionRunner } from '@medical-crm/domain';
@@ -106,6 +106,8 @@ function makeMockConversationRepo(): IConversationRepository {
     findById: vi.fn(),
     findMany: vi.fn(),
     findByPatientId: vi.fn(),
+    findOrCreateAdminPatientConversation: vi.fn(),
+    findOrCreateHospitalPatientConversation: vi.fn().mockImplementation((entity) => Promise.resolve(entity)),
     save: vi.fn(),
   };
 }
@@ -129,6 +131,13 @@ function makeMockCHCRepo(): ICHCRepository {
     findByHospitalId: vi.fn(),
     save: vi.fn(),
     rejectOthersByCaseExcept: vi.fn(),
+  };
+}
+
+function makeMockHospitalRepo(): IHospitalRepository {
+  return {
+    findById: vi.fn(),
+    findMatchingHospitals: vi.fn(),
   };
 }
 
@@ -197,11 +206,13 @@ describe('GetPatientCaseDetailUseCase', () => {
 
 describe('GetPatientConversationsUseCase', () => {
   let convRepo: IConversationRepository;
+  let hospitalRepo: IHospitalRepository;
   let useCase: GetPatientConversationsUseCase;
 
   beforeEach(() => {
     convRepo = makeMockConversationRepo();
-    useCase = new GetPatientConversationsUseCase(convRepo);
+    hospitalRepo = makeMockHospitalRepo();
+    useCase = new GetPatientConversationsUseCase(convRepo, hospitalRepo);
   });
 
   it('returns conversations for patient', async () => {
@@ -210,6 +221,12 @@ describe('GetPatientConversationsUseCase', () => {
       makeMockConversation({ id: 'conv-2', assistantMode: 'AI_ACTIVE' }),
     ];
     vi.mocked(convRepo.findByPatientId).mockResolvedValue(conversations);
+    vi.mocked(hospitalRepo.findById).mockResolvedValue({
+      id: 'hospital-1',
+      name: 'Seoul Aesthetic',
+      status: 'ACTIVE',
+      type: 'COSMETIC',
+    });
 
     const result = await useCase.execute({ patientId: 'patient-1' });
 
@@ -217,6 +234,16 @@ describe('GetPatientConversationsUseCase', () => {
     expect(result).toHaveLength(2);
     expect(result[0]?.assistantMode).toBe('HUMAN_TAKEOVER');
     expect(result[1]?.assistantMode).toBe('AI_ACTIVE');
+    expect(result[0]).toMatchObject({
+      type: 'patient-admin',
+      hospitalName: null,
+      unreadCount: 0,
+    });
+    expect(result[1]).toMatchObject({
+      type: 'patient-hospital',
+      hospitalName: 'Seoul Aesthetic',
+      lastMessage: null,
+    });
   });
 });
 
@@ -336,7 +363,7 @@ describe('SelectHospitalsUseCase', () => {
 
     expect(result).toHaveLength(2);
     expect(chcRepo.save).toHaveBeenCalledTimes(2);
-    expect(convRepo.save).toHaveBeenCalledTimes(2);
+    expect(convRepo.findOrCreateHospitalPatientConversation).toHaveBeenCalledTimes(2);
   });
 
   it('persists a custom hospital request onto the case structured data', async () => {

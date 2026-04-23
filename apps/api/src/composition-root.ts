@@ -1140,7 +1140,7 @@ export function getServices(): AppServices {
 
       getPatientCases: new GetPatientCasesUseCase(caseRepo),
       getPatientCaseDetail: new GetPatientCaseDetailUseCase(caseRepo),
-      getPatientConversations: new GetPatientConversationsUseCase(conversationRepo),
+      getPatientConversations: new GetPatientConversationsUseCase(conversationRepo, hospitalRepo),
       patientAcceptQuote: new PatientAcceptQuoteUseCase(quoteRepo, caseRepo),
       patientRejectQuote: new PatientRejectQuoteUseCase(quoteRepo, caseRepo),
       getIntakeTemplate: new GetIntakeTemplateUseCase(),

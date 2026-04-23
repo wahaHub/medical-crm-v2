@@ -120,6 +120,7 @@ export type {
   AiPolicySemanticSignals,
 } from './dtos/ai-policy.dto.js';
 export type { ConversationDTO, MessageDTO } from './dtos/conversation.dto.js';
+export type { PatientConversationSummaryDTO } from './dtos/patient-conversation.dto.js';
 export type { ConsultationDTO, ConsultationTranscriptDTO } from './dtos/consultation.dto.js';
 export type { CaseHospitalContactDTO } from './dtos/case-hospital-contact.dto.js';
 export type { QuoteDTO } from './dtos/quote.dto.js';

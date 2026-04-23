@@ -82,13 +82,15 @@ describe('patientProtectedRoutes', () => {
         id: 'conv-1',
         caseId: 'case-1',
         category: 'ADMIN_PATIENT',
+        type: 'patient-admin',
         title: null,
         hospitalId: null,
+        hospitalName: null,
         assistantMode: 'HUMAN_TAKEOVER',
+        unreadCount: 0,
+        lastMessage: null,
         lastMessageAt: null,
         lastMessagePreview: null,
-        lastSenderId: null,
-        createdAt: '2026-04-18T00:00:00.000Z',
         updatedAt: '2026-04-18T00:00:00.000Z',
       },
     ]);
@@ -102,6 +104,7 @@ describe('patientProtectedRoutes', () => {
     expect(await res.json()).toEqual([
       expect.objectContaining({
         id: 'conv-1',
+        type: 'patient-admin',
         assistantMode: 'HUMAN_TAKEOVER',
       }),
     ]);

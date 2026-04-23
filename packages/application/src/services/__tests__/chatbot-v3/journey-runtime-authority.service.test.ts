@@ -328,9 +328,147 @@ describe('JourneyRuntimeAuthorityService', () => {
       outcome: 'ALLOW',
       agent: 'FaqAgent',
     });
+  });
+
+  it.each([
+    {
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
+      intent: 'faq' as const,
+    },
+    {
+      stage: 'RECOMMENDATION' as const,
+      intent: 'resource' as const,
+    },
+    {
+      stage: 'EXPLAIN_PROCESS' as const,
+      intent: 'faq' as const,
+    },
+    {
+      stage: 'COLLECT_MEDICAL_INPUTS' as const,
+      intent: 'resource' as const,
+    },
+    {
+      stage: 'ONLINE_CONSULT' as const,
+      intent: 'faq' as const,
+    },
+  ])('allows %s detours from every primary stage', ({ stage, intent }) => {
+    const decision = service.decide(createInput({
+      current: {
+        stage,
+        phase: 'active',
+      },
+      proposal: {
+        intent,
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: 'FaqAgent',
+        reason: 'clear later-stage faq request should detour without advancing the journey',
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+      bootstrap: {
+        message: 'What are your office hours?',
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'FaqAgent',
+    });
     expect(decision.write.stage).toEqual({
       stage: 'EXPLAIN_PROCESS',
       phase: 'active',
+    });
+  });
+
+  it('keeps an explicit human request ahead of faq detours', () => {
+    const decision = service.decide(createInput({
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      proposal: {
+        intent: 'faq',
+        suggestedStage: 'EXPLAIN_PROCESS',
+        dispatchAgent: 'FaqAgent',
+        reason: 'clear later-stage faq request should detour without advancing the journey',
+      },
+      handoff: {
+        userRequestedHuman: true,
+      },
+      facts: {
+        'process.explained': true,
+      },
+      bootstrap: {
+        message: 'I want a human please',
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ESCALATE');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'HandoffAgent',
+    });
+    expect(decision.write).toMatchObject({
+      stage: {
+        stage: 'HUMAN_HANDOFF',
+        phase: 'active',
+      },
+      journeyCurrentStage: 'HUMAN_HANDOFF',
+      journeyCurrentPhase: 'active',
+      factsPatch: {
+        'handoff.active': true,
+      },
+    });
+  });
+
+  it('resumes the mainline after a faq detour from explain process', () => {
+    const decision = service.decide(createInput({
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        dispatchAgent: 'RecordsAgent',
+        reason: 'move on to medical inputs after a faq detour',
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        supportingDocuments: [{ path: '/docs/labs.pdf', name: 'labs.pdf' }],
+      },
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ADVANCE');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'RecordsAgent',
+    });
+    expect(decision.write).toMatchObject({
+      stage: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+      journeyCurrentPhase: 'active',
     });
   });
 
@@ -462,7 +600,7 @@ describe('JourneyRuntimeAuthorityService', () => {
     });
   });
 
-  it('denies a repeated faq explanation without an explicit repeat request', () => {
+  it('allows a repeated faq explanation without an explicit repeat request', () => {
     const decision = service.decide(createInput({
       current: {
         stage: 'RECOMMENDATION',
@@ -480,12 +618,12 @@ describe('JourneyRuntimeAuthorityService', () => {
       },
     }));
 
-    expect(decision.outcome).toBe('DENY');
-    expect(decision.action).toBe('STAY');
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ADVANCE');
     expect(decision.dispatch).toEqual({
-      outcome: 'DENY',
+      outcome: 'ALLOW',
+      agent: 'FaqAgent',
     });
-    expect(decision.reason).toContain('explicitly requested');
   });
 
   it('allows a repeated faq explanation when the user explicitly asks again', () => {

@@ -231,14 +231,6 @@ function shouldEscalateToHuman(input: JourneyRuntimeAuthorityInput): boolean {
 
 function canShowExplainProcess(input: JourneyRuntimeAuthorityInput): boolean {
   if (input.proposal.intent === 'faq' || input.proposal.intent === 'resource') {
-    if (isLaterStageFaqDetourAnchor(input.current.stage)) {
-      return true;
-    }
-
-    if (hasProcessExplained(input.facts)) {
-      return isExplicitRepeatExplainRequest(input.bootstrap?.message);
-    }
-
     return true;
   }
 
@@ -289,10 +281,6 @@ function canAdvanceToConsult(input: JourneyRuntimeAuthorityInput): boolean {
 
 function isPostRecommendationStage(stage: ChatJourneyStage): boolean {
   return CHATBOT_V3_JOURNEY_STAGES.indexOf(stage) >= CHATBOT_V3_JOURNEY_STAGES.indexOf('RECOMMENDATION');
-}
-
-function isLaterStageFaqDetourAnchor(stage: ChatJourneyStage): boolean {
-  return stage === 'COLLECT_MEDICAL_INPUTS' || stage === 'ONLINE_CONSULT';
 }
 
 function hasProcessExplained(facts: ChatbotV3Facts | undefined): boolean {

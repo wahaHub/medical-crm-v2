@@ -197,9 +197,7 @@ async function runFaqStagePreservationScenario(scenario: FaqStagePreservationSce
     scenario.expectRenderPath,
   ));
   expectFaqCardPayloads(response, scenario.stage, scenario.expectRenderPath);
-  expect(result.writeIntents?.statusPatch).not.toEqual(expect.objectContaining({
-    journeyCurrentStage: 'EXPLAIN_PROCESS',
-  }));
+  expect(result.writeIntents?.statusPatch?.journeyCurrentStage).toBeUndefined();
 
   if (scenario.expectHandOffRequired !== undefined) {
     expect(response.handoff.required).toBe(scenario.expectHandOffRequired);
@@ -4510,6 +4508,33 @@ describe('chatbot-v3 runtime', () => {
       expectAssistantText: 'Our office hours are Monday to Friday, 9am to 6pm.',
     },
     {
+      stage: 'COLLECT_MEDICAL_INPUTS' as const,
+      sessionId: 'session-faq-preserve-medical-inputs-answer-1',
+      turnId: 'turn-faq-preserve-medical-inputs-answer-1',
+      traceId: 'trace-faq-preserve-medical-inputs-answer-1',
+      message: 'What are your office hours?',
+      faqResult: {
+        answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
+        citedFaqIds: ['faq-hours-1'],
+        confidence: 'high' as const,
+      },
+      statusSnapshot: {
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [
+          {
+            storageKey: 'chatbot/session-faq-preserve-medical-inputs-answer-1/doc-1.pdf',
+          },
+          {
+            storageKey: 'chatbot/session-faq-preserve-medical-inputs-answer-1/doc-2.pdf',
+          },
+        ],
+      } as const,
+      expectRenderPath: 'FAQ_ANSWER' as const,
+      expectAssistantText: 'Our office hours are Monday to Friday, 9am to 6pm.',
+    },
+    {
       stage: 'ONLINE_CONSULT' as const,
       sessionId: 'session-faq-preserve-consult-answer-1',
       turnId: 'turn-faq-preserve-consult-answer-1',
@@ -4575,6 +4600,37 @@ describe('chatbot-v3 runtime', () => {
       await runFaqStagePreservationScenario(scenario);
     },
   );
+
+  it('renders FAQ_MISS from EXPLAIN_PROCESS without falling back to process overview copy', async () => {
+    const scenario: FaqStagePreservationScenario = {
+      stage: 'EXPLAIN_PROCESS',
+      sessionId: 'session-faq-miss-process-1',
+      turnId: 'turn-faq-miss-process-1',
+      traceId: 'trace-faq-miss-process-1',
+      message: 'What are your office hours?',
+      faqResult: {
+        answer: ' ',
+        citedFaqIds: [],
+        confidence: 'low' as const,
+      },
+      statusSnapshot: {
+        processExplained: true,
+      } as const,
+      expectRenderPath: 'FAQ_MISS',
+      expectAssistantText: 'I could not find a reliable FAQ answer right now',
+    };
+
+    const { result, response } = await runFaqStagePreservationScenario(scenario);
+
+    expect(result.render).toEqual({
+      path: 'FAQ_MISS',
+    });
+    expect(response.messages[0]?.text).toContain(
+      'I could not find a reliable FAQ answer right now',
+    );
+    expect(response.messages[0]?.text).not.toBe(PROCESS_OVERVIEW_TEXT);
+    expect(result.writeIntents?.statusPatch?.journeyCurrentStage).toBeUndefined();
+  });
 
   it('does not escalate canonical minimal triage truth from a collection-mode worker hallucination', async () => {
     const recordsAgent = new RecordsAgent(

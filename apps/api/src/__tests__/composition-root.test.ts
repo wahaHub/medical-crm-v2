@@ -7,6 +7,9 @@ vi.mock('@medical-crm/infrastructure/database', () => ({
 vi.mock('@medical-crm/infrastructure/supabase-main', () => ({
   getMainSupabase: vi.fn(() => ({})),
 }));
+vi.mock('@medical-crm/infrastructure/supabase-crm', () => ({
+  getCrmSupabase: vi.fn(() => ({})),
+}));
 vi.mock('@medical-crm/infrastructure/supabase-china', () => ({
   getChinaSupabase: vi.fn(() => ({})),
 }));

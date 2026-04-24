@@ -285,6 +285,7 @@ import {
   materialsRegularPolicies,
 } from '@medical-crm/application/upload-policies';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
+import { getCrmSupabase } from '@medical-crm/infrastructure/supabase-crm';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
 import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, OpenAIBatchTranslationService, TranslationWritebackService, DifyApiClientService } from '@medical-crm/infrastructure/services';
@@ -295,6 +296,7 @@ import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempoten
 interface AppServices {
   // infrastructure
   crmDb: ReturnType<typeof getCrmDb>;
+  crmSupabase: ReturnType<typeof getCrmSupabase>;
   mainSupabase: ReturnType<typeof getMainSupabase>;
   chinaSupabase: ReturnType<typeof getChinaSupabase>;
   idempotencyExecutor: Pick<IdempotencyGuard, 'execute'>;
@@ -641,6 +643,7 @@ function resolveKeycloakAdminBaseUrl(): string {
 export function getServices(): AppServices {
   if (!_services) {
     const crmDb = getCrmDb();
+    const crmSupabase = getCrmSupabase();
     const mainSupabase = getMainSupabase();
     const chinaSupabase = getChinaSupabase();
 
@@ -763,6 +766,7 @@ export function getServices(): AppServices {
     // Materials: route to correct Supabase based on hospital type (COSMETIC → Main, REGULAR → China)
     const cosmeticMaterialsRepo = new SupabaseMaterialsRepository(mainSupabase, routedStorageService);
     const regularMaterialsRepo = new ChinaMedicalMaterialsRepository(chinaSupabase, routedStorageService);
+    const sharedReviewPackageMaterialsRepo = new SupabaseMaterialsRepository(crmSupabase, routedStorageService);
 
     // Hospital type resolver — uses DrizzleHospitalManagementRepository to look up type
     const hospitalTypeCache = new Map<string, 'COSMETIC' | 'REGULAR'>();
@@ -776,7 +780,12 @@ export function getServices(): AppServices {
       return type;
     };
 
-    const materialsRepo = new RoutingMaterialsRepository(cosmeticMaterialsRepo, regularMaterialsRepo, resolveHospitalType);
+    const materialsRepo = new RoutingMaterialsRepository(
+      cosmeticMaterialsRepo,
+      regularMaterialsRepo,
+      sharedReviewPackageMaterialsRepo,
+      resolveHospitalType,
+    );
     const resendEmailService = ResendEmailService.fromEnv();
     const smtpEmailService = SmtpEmailService.fromEnv();
     if (!resendEmailService && !smtpEmailService) {
@@ -1012,12 +1021,12 @@ export function getServices(): AppServices {
       handoffPolicyService,
     );
     const batchTranslationService = new OpenAIBatchTranslationService(process.env['OPENAI_API_KEY'] ?? '');
-    const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase);
+    const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase, crmSupabase);
 
     const listCases = new ListCasesUseCase(caseRepo);
 
     _services = {
-      crmDb, mainSupabase, chinaSupabase,
+      crmDb, crmSupabase, mainSupabase, chinaSupabase,
       idempotencyExecutor: idempotencyGuard,
       caseRepo, documentRepo, progressRepo, hospitalRepo, patientRepo, chcRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,

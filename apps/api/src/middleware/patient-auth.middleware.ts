@@ -31,7 +31,7 @@ export function patientAuthMiddleware(
       const payload = await authService.verifySessionToken(token, site);
       c.set('patientSession', payload);
       c.set('patientSite', site);
-      await next();
+      return await next();
     } catch {
       return c.json({ error: 'Invalid or expired session' }, 401);
     }

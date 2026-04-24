@@ -34,8 +34,7 @@ function createLimiter(
 
     if (options.shouldBypass?.(c)) {
       options.onBypass?.(c, key);
-      await next();
-      return;
+      return await next();
     }
 
     const now = Date.now();
@@ -46,8 +45,7 @@ function createLimiter(
 
     if (!entry || now > entry.resetAt) {
       hits.set(key, { count: 1, resetAt: now + config.windowMs });
-      await next();
-      return;
+      return await next();
     }
 
     if (entry.count >= config.maxRequests) {
@@ -55,7 +53,7 @@ function createLimiter(
     }
 
     entry.count++;
-    await next();
+    return await next();
   };
 }
 
@@ -90,8 +88,7 @@ export function rateLimitByKey(
 
     if (!entry || now > entry.resetAt) {
       hits.set(key, { count: 1, resetAt: now + config.windowMs });
-      await next();
-      return;
+      return await next();
     }
 
     if (entry.count >= config.maxRequests) {
@@ -99,6 +96,6 @@ export function rateLimitByKey(
     }
 
     entry.count++;
-    await next();
+    return await next();
   };
 }

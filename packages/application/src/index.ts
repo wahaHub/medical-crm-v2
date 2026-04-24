@@ -255,6 +255,19 @@ export type { CreateBeforeAfterCaseInput } from './use-cases/materials/create-be
 export { UpdateBeforeAfterCaseUseCase } from './use-cases/materials/update-before-after-case.use-case.js';
 export type { UpdateBeforeAfterCaseInput } from './use-cases/materials/update-before-after-case.use-case.js';
 export { DeleteBeforeAfterCaseUseCase } from './use-cases/materials/delete-before-after-case.use-case.js';
+export { GetMaterialsReviewsUseCase } from './use-cases/materials/get-reviews.use-case.js';
+export { CreateMaterialsReviewUseCase } from './use-cases/materials/create-review.use-case.js';
+export type { CreateMaterialsReviewInput } from './use-cases/materials/create-review.use-case.js';
+export { UpdateMaterialsReviewUseCase } from './use-cases/materials/update-review.use-case.js';
+export type { UpdateMaterialsReviewInput } from './use-cases/materials/update-review.use-case.js';
+export { DeleteMaterialsReviewUseCase } from './use-cases/materials/delete-review.use-case.js';
+export { GetMaterialsPackagesUseCase } from './use-cases/materials/get-packages.use-case.js';
+export { GetMaterialsPackageUseCase } from './use-cases/materials/get-package.use-case.js';
+export { CreateMaterialsPackageUseCase } from './use-cases/materials/create-package.use-case.js';
+export type { CreateMaterialsPackageInput } from './use-cases/materials/create-package.use-case.js';
+export { UpdateMaterialsPackageUseCase } from './use-cases/materials/update-package.use-case.js';
+export type { UpdateMaterialsPackageInput } from './use-cases/materials/update-package.use-case.js';
+export { DeleteMaterialsPackageUseCase } from './use-cases/materials/delete-package.use-case.js';
 
 // Use Cases — Quotes / CHC
 export { AddHospitalToCaseUseCase } from './use-cases/quotes/add-hospital-to-case.use-case.js';

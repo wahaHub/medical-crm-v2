@@ -100,4 +100,61 @@ export class RoutingMaterialsRepository implements IMaterialsRepository {
     const repo = await this.getRepo(hospitalId);
     return repo.deleteBeforeAfterCase(id, hospitalId);
   }
+
+  async listReviews(hospitalId: string): ReturnType<IMaterialsRepository['listReviews']> {
+    const repo = await this.getRepo(hospitalId);
+    return repo.listReviews(hospitalId);
+  }
+
+  async createReview(
+    data: Parameters<IMaterialsRepository['createReview']>[0],
+  ): ReturnType<IMaterialsRepository['createReview']> {
+    const repo = await this.getRepo(data.hospitalId);
+    return repo.createReview(data);
+  }
+
+  async updateReview(
+    id: string,
+    hospitalId: string,
+    data: Parameters<IMaterialsRepository['updateReview']>[2],
+  ): ReturnType<IMaterialsRepository['updateReview']> {
+    const repo = await this.getRepo(hospitalId);
+    return repo.updateReview(id, hospitalId, data);
+  }
+
+  async deleteReview(id: string, hospitalId: string): Promise<void> {
+    const repo = await this.getRepo(hospitalId);
+    return repo.deleteReview(id, hospitalId);
+  }
+
+  async listPackages(hospitalId: string): ReturnType<IMaterialsRepository['listPackages']> {
+    const repo = await this.getRepo(hospitalId);
+    return repo.listPackages(hospitalId);
+  }
+
+  async getPackage(id: string, hospitalId: string): ReturnType<IMaterialsRepository['getPackage']> {
+    const repo = await this.getRepo(hospitalId);
+    return repo.getPackage(id, hospitalId);
+  }
+
+  async createPackage(
+    data: Parameters<IMaterialsRepository['createPackage']>[0],
+  ): ReturnType<IMaterialsRepository['createPackage']> {
+    const repo = await this.getRepo(data.hospitalId);
+    return repo.createPackage(data);
+  }
+
+  async updatePackage(
+    id: string,
+    hospitalId: string,
+    data: Parameters<IMaterialsRepository['updatePackage']>[2],
+  ): ReturnType<IMaterialsRepository['updatePackage']> {
+    const repo = await this.getRepo(hospitalId);
+    return repo.updatePackage(id, hospitalId, data);
+  }
+
+  async deletePackage(id: string, hospitalId: string): Promise<void> {
+    const repo = await this.getRepo(hospitalId);
+    return repo.deletePackage(id, hospitalId);
+  }
 }

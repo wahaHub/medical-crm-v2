@@ -44,6 +44,15 @@ function makeRepo(): IMaterialsRepository {
     createBeforeAfterCase: vi.fn<() => Promise<MaterialsBeforeAfterCase>>(),
     updateBeforeAfterCase: vi.fn<() => Promise<MaterialsBeforeAfterCase>>(),
     deleteBeforeAfterCase: vi.fn<() => Promise<void>>(),
+    listReviews: vi.fn().mockResolvedValue([]),
+    createReview: vi.fn(),
+    updateReview: vi.fn(),
+    deleteReview: vi.fn(),
+    listPackages: vi.fn().mockResolvedValue([]),
+    getPackage: vi.fn().mockResolvedValue(null),
+    createPackage: vi.fn(),
+    updatePackage: vi.fn(),
+    deletePackage: vi.fn(),
   };
 }
 

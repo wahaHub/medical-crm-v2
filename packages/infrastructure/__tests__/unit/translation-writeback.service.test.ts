@@ -35,7 +35,7 @@ function makeResult(translations: Record<string, Record<string, unknown>>): Batc
   };
 }
 
-function cloneRows(rows: HospitalI18nRow[]): HospitalI18nRow[] {
+function cloneRows<T extends Record<string, unknown>>(rows: T[]): T[] {
   return rows.map((row) => structuredClone(row));
 }
 
@@ -87,6 +87,78 @@ function makeChinaSupabase(rows: HospitalI18nRow[]): SupabaseClient & { upsertCa
   };
 
   return client as SupabaseClient & { upsertCalls: Array<Record<string, unknown>> };
+}
+
+type MaterialRow = Record<string, unknown> & {
+  id: string;
+  translations?: Record<string, Record<string, unknown>>;
+};
+
+function makeMaterialSupabase(rowsByTable: {
+  hospital_material_reviews?: MaterialRow[];
+  hospital_material_packages?: MaterialRow[];
+}) {
+  const state = {
+    hospital_material_reviews: cloneRows(rowsByTable.hospital_material_reviews ?? []),
+    hospital_material_packages: cloneRows(rowsByTable.hospital_material_packages ?? []),
+  };
+  const updateCalls: Array<{ table: string; id: string; payload: Record<string, unknown> }> = [];
+
+  const from = vi.fn((table: string) => {
+    if (!(table in state)) {
+      throw new Error(`Unexpected table: ${table}`);
+    }
+
+    return {
+      select: vi.fn(() => ({
+        eq: vi.fn((column: string, value: string) => {
+          if (column !== 'id') {
+            throw new Error(`Unexpected filter column: ${column}`);
+          }
+
+          return {
+            single: vi.fn(async () => {
+              const row = state[table as keyof typeof state].find((entry) => entry.id === value);
+              return {
+                data: row ? structuredClone(row) : null,
+                error: row ? null : { message: `Row not found for ${table}:${value}` },
+              };
+            }),
+          };
+        }),
+      })),
+      update: vi.fn((payload: Record<string, unknown>) => ({
+        eq: vi.fn(async (column: string, value: string) => {
+          if (column !== 'id') {
+            throw new Error(`Unexpected update filter column: ${column}`);
+          }
+
+          updateCalls.push({
+            table,
+            id: value,
+            payload: structuredClone(payload),
+          });
+
+          const rows = state[table as keyof typeof state];
+          const index = rows.findIndex((entry) => entry.id === value);
+          if (index >= 0) {
+            rows[index] = {
+              ...rows[index],
+              ...structuredClone(payload),
+            };
+          }
+
+          return { error: null };
+        }),
+      })),
+    };
+  });
+
+  return {
+    client: { from } as unknown as SupabaseClient,
+    from,
+    updateCalls,
+  };
 }
 
 describe('TranslationWritebackService hospital chunk writeback', () => {
@@ -417,5 +489,260 @@ describe('TranslationWritebackService hospital chunk writeback', () => {
         },
       ],
     });
+  });
+});
+
+describe('TranslationWritebackService materials review/package writeback', () => {
+  it('merges beauty review translations into hospital_material_reviews without overwriting existing language fields', async () => {
+    const beautySupabase = makeMaterialSupabase({
+      hospital_material_reviews: [
+        {
+          id: 'review-1',
+          translations: {
+            en: {
+              treatmentName: 'Existing treatment',
+              preserved_note: 'keep me',
+            },
+            ja: {
+              reviewComment: '既存のコメント',
+            },
+          },
+        },
+      ],
+    });
+    const chinaSupabase = makeMaterialSupabase({});
+    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+
+    await service.writeback(
+      makeTask({
+        sourceDb: 'supabase_beauty',
+        entityType: 'review',
+        entityId: 'review-1',
+      }),
+      makeResult({
+        en: {
+          treatmentName: 'Updated treatment',
+          reviewComment: 'Translated review comment',
+          media: [{ caption: 'Translated caption' }],
+        },
+        ko: {
+          reviewTitle: '번역된 제목',
+          review_title: 'ignored legacy casing',
+        },
+      }),
+    );
+
+    expect(beautySupabase.from).toHaveBeenCalledWith('hospital_material_reviews');
+    expect(beautySupabase.updateCalls).toHaveLength(1);
+    expect(beautySupabase.updateCalls[0]).toMatchObject({
+      table: 'hospital_material_reviews',
+      id: 'review-1',
+      payload: {
+        translations: {
+          en: {
+            treatmentName: 'Updated treatment',
+            preserved_note: 'keep me',
+            reviewComment: 'Translated review comment',
+          },
+          ja: {
+            reviewComment: '既存のコメント',
+          },
+          ko: {
+            reviewTitle: '번역된 제목',
+          },
+        },
+        updated_at: expect.any(String),
+      },
+    });
+    expect(chinaSupabase.updateCalls).toHaveLength(0);
+  });
+
+  it('merges beauty package translations into hospital_material_packages without overwriting existing language fields', async () => {
+    const beautySupabase = makeMaterialSupabase({
+      hospital_material_packages: [
+        {
+          id: 'package-1',
+          translations: {
+            en: {
+              title: 'Existing package title',
+              summary: 'Existing summary',
+            },
+            fr: {
+              title: 'Titre existant',
+            },
+          },
+        },
+      ],
+    });
+    const chinaSupabase = makeMaterialSupabase({});
+    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+
+    await service.writeback(
+      makeTask({
+        sourceDb: 'supabase_beauty',
+        entityType: 'package',
+        entityId: 'package-1',
+      }),
+      makeResult({
+        en: {
+          subtitle: 'Translated subtitle',
+          includes: [{ text: 'Translated inclusion' }],
+          tags: [{ label: 'ignore me', category: 'service' }],
+        },
+        zh: {
+          title: '翻译后的标题',
+        },
+      }),
+    );
+
+    expect(beautySupabase.from).toHaveBeenCalledWith('hospital_material_packages');
+    expect(beautySupabase.updateCalls).toHaveLength(1);
+    expect(beautySupabase.updateCalls[0]).toMatchObject({
+      table: 'hospital_material_packages',
+      id: 'package-1',
+      payload: {
+        translations: {
+          en: {
+            title: 'Existing package title',
+            summary: 'Existing summary',
+            subtitle: 'Translated subtitle',
+            includes: [{ text: 'Translated inclusion' }],
+          },
+          fr: {
+            title: 'Titre existant',
+          },
+          zh: {
+            title: '翻译后的标题',
+          },
+        },
+        updated_at: expect.any(String),
+      },
+    });
+    expect(chinaSupabase.updateCalls).toHaveLength(0);
+  });
+
+  it('merges china review translations into hospital_material_reviews without overwriting existing language fields', async () => {
+    const beautySupabase = makeMaterialSupabase({});
+    const chinaSupabase = makeMaterialSupabase({
+      hospital_material_reviews: [
+        {
+          id: 'review-2',
+          translations: {
+            en: {
+              reviewTitle: 'Existing title',
+              source_tag: 'keep',
+            },
+            zh: {
+              reviewComment: '旧的评论',
+            },
+          },
+        },
+      ],
+    });
+    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+
+    await service.writeback(
+      makeTask({
+        sourceDb: 'supabase_china',
+        entityType: 'review',
+        entityId: 'review-2',
+      }),
+      makeResult({
+        en: {
+          reviewComment: 'Updated review comment',
+        },
+        ja: {
+          reviewTitle: '新しいタイトル',
+          media: [{ caption: 'キャプション' }],
+        },
+      }),
+    );
+
+    expect(chinaSupabase.from).toHaveBeenCalledWith('hospital_material_reviews');
+    expect(chinaSupabase.updateCalls).toHaveLength(1);
+    expect(chinaSupabase.updateCalls[0]).toMatchObject({
+      table: 'hospital_material_reviews',
+      id: 'review-2',
+      payload: {
+        translations: {
+          en: {
+            reviewTitle: 'Existing title',
+            source_tag: 'keep',
+            reviewComment: 'Updated review comment',
+          },
+          zh: {
+            reviewComment: '旧的评论',
+          },
+          ja: {
+            reviewTitle: '新しいタイトル',
+          },
+        },
+        updated_at: expect.any(String),
+      },
+    });
+    expect(beautySupabase.updateCalls).toHaveLength(0);
+  });
+
+  it('merges china package translations into hospital_material_packages without overwriting existing language fields', async () => {
+    const beautySupabase = makeMaterialSupabase({});
+    const chinaSupabase = makeMaterialSupabase({
+      hospital_material_packages: [
+        {
+          id: 'package-2',
+          translations: {
+            en: {
+              title: 'Existing package title',
+              extras: ['keep'],
+            },
+            ko: {
+              summary: '기존 요약',
+            },
+          },
+        },
+      ],
+    });
+    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+
+    await service.writeback(
+      makeTask({
+        sourceDb: 'supabase_china',
+        entityType: 'package',
+        entityId: 'package-2',
+      }),
+      makeResult({
+        en: {
+          summary: 'Updated summary',
+          reviews: [{ reviewerCountry: 'KR', comment: 'Translated review' }],
+        },
+        fr: {
+          subtitle: 'Sous-titre traduit',
+        },
+      }),
+    );
+
+    expect(chinaSupabase.from).toHaveBeenCalledWith('hospital_material_packages');
+    expect(chinaSupabase.updateCalls).toHaveLength(1);
+    expect(chinaSupabase.updateCalls[0]).toMatchObject({
+      table: 'hospital_material_packages',
+      id: 'package-2',
+      payload: {
+        translations: {
+          en: {
+            title: 'Existing package title',
+            extras: ['keep'],
+            summary: 'Updated summary',
+            reviews: [{ comment: 'Translated review' }],
+          },
+          ko: {
+            summary: '기존 요약',
+          },
+          fr: {
+            subtitle: 'Sous-titre traduit',
+          },
+        },
+        updated_at: expect.any(String),
+      },
+    });
+    expect(beautySupabase.updateCalls).toHaveLength(0);
   });
 });

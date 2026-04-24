@@ -400,3 +400,110 @@ export interface MaterialsBeforeAfterCaseDTO {
   description: string | null;
   images: Array<{ url: string }>;
 }
+
+/** Materials review media item */
+export interface MaterialsReviewMediaDTO {
+  id: string;
+  type: 'image' | 'video';
+  url: string;
+  storageKey?: string | null;
+  thumbnailUrl: string | null;
+  thumbnailStorageKey?: string | null;
+  caption: string | null;
+  sortOrder: number;
+}
+
+/** Materials review — hospital-level patient review content */
+export interface MaterialsReviewDTO {
+  id: string;
+  sortOrder: number;
+  isActive: boolean;
+  featured: boolean;
+  patientName: string;
+  patientCountry: string | null;
+  patientAvatarUrl: string | null;
+  patientAvatarStorageKey?: string | null;
+  treatmentName: string;
+  reviewTitle: string;
+  reviewComment: string;
+  rating: number;
+  reviewDate: string | null;
+  media: MaterialsReviewMediaDTO[];
+  translations?: Record<string, Record<string, unknown>>;
+}
+
+/** Materials package gallery item */
+export interface MaterialsPackageGalleryItemDTO {
+  id: string;
+  imageUrl: string;
+  storageKey?: string | null;
+  sortOrder: number;
+}
+
+/** Materials package tag item */
+export interface MaterialsPackageTagDTO {
+  id: string;
+  label: string;
+  category: string;
+}
+
+/** Materials package include item */
+export interface MaterialsPackageIncludeDTO {
+  id: string;
+  text: string;
+  sortOrder: number;
+}
+
+/** Materials package process step */
+export interface MaterialsPackageProcessDTO {
+  id: string;
+  stepTitle: string;
+  description: string;
+  sortOrder: number;
+}
+
+/** Materials package patient case item */
+export interface MaterialsPackageCaseDTO {
+  id: string;
+  patientName: string;
+  patientAge: number | null;
+  patientCountry: string | null;
+  story: string;
+  result: string;
+  sortOrder: number;
+}
+
+/** Materials package review item */
+export interface MaterialsPackageReviewDTO {
+  id: string;
+  reviewerName: string;
+  reviewerCountry: string | null;
+  rating: number;
+  reviewDate: string | null;
+  comment: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+/** Materials package — hospital-owned package detail payload */
+export interface MaterialsPackageDTO {
+  id: string;
+  slug: string;
+  sortOrder: number;
+  isActive: boolean;
+  title: string;
+  subtitle: string | null;
+  coverImageUrl: string;
+  coverImageStorageKey?: string | null;
+  gallery: MaterialsPackageGalleryItemDTO[];
+  price: string;
+  currency: string;
+  duration: string | null;
+  summary: string;
+  tags: MaterialsPackageTagDTO[];
+  includes: MaterialsPackageIncludeDTO[];
+  process: MaterialsPackageProcessDTO[];
+  cases: MaterialsPackageCaseDTO[];
+  reviews: MaterialsPackageReviewDTO[];
+  translations?: Record<string, Record<string, unknown>>;
+}

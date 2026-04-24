@@ -183,6 +183,239 @@ export async function deleteBeforeAfterCase(id: string) {
   revalidatePath('/materials');
 }
 
+function readStringField(value: unknown, key: string): string | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const raw = record[key];
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw : undefined;
+}
+
+function summarizeMaterialsPackagePayload(data: Record<string, unknown>) {
+  return {
+    keys: Object.keys(data).sort(),
+    slug: readStringField(data, 'slug'),
+    title: readStringField(data, 'title'),
+    subtitle: readStringField(data, 'subtitle'),
+    summary: readStringField(data, 'summary'),
+    price: readStringField(data, 'price'),
+    currency: readStringField(data, 'currency'),
+    gallery: summarizeArrayField(data.gallery, {
+      keys: ['id', 'imageUrl', 'sortOrder'],
+    }),
+    tags: summarizeArrayField(data.tags, {
+      keys: ['id', 'label', 'category'],
+    }),
+    includes: summarizeArrayField(data.includes, {
+      keys: ['id', 'text', 'sortOrder'],
+    }),
+    process: summarizeArrayField(data.process, {
+      keys: ['id', 'stepTitle', 'description', 'sortOrder'],
+    }),
+    cases: summarizeArrayField(data.cases, {
+      keys: ['id', 'patientName', 'patientAge', 'patientCountry', 'story', 'result', 'sortOrder'],
+    }),
+    reviews: summarizeArrayField(data.reviews, {
+      keys: ['id', 'reviewerName', 'reviewerCountry', 'rating', 'reviewDate', 'comment', 'sortOrder', 'isActive'],
+    }),
+  };
+}
+
+function summarizePackageSlugCollision(data: Record<string, unknown>, error: ApiError) {
+  const body = error.body;
+  const slug =
+    readStringField(data, 'slug')
+    ?? readStringField(body, 'slug')
+    ?? readStringField(body, 'conflictingSlug')
+    ?? readStringField(body, 'existingSlug');
+  const title =
+    readStringField(data, 'title')
+    ?? readStringField(body, 'title')
+    ?? readStringField(body, 'packageTitle')
+    ?? readStringField(body, 'existingTitle');
+  const conflictTitle =
+    readStringField(body, 'conflictingTitle')
+    ?? readStringField(body, 'existingPackageTitle');
+
+  return {
+    slug: slug ?? 'unknown',
+    title: title ?? null,
+    conflictTitle: conflictTitle ?? null,
+    message: title
+      ? `Package slug "${slug ?? 'unknown'}" already exists for "${title}".`
+      : `Package slug "${slug ?? 'unknown'}" already exists.`,
+  };
+}
+
+function readApiErrorMessage(body: unknown, fallback: string): string {
+  if (!body || typeof body !== 'object') {
+    return fallback;
+  }
+
+  const record = body as Record<string, unknown>;
+  const fields = ['message', 'error', 'code', 'detail'];
+  for (const field of fields) {
+    const value = record[field];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return fallback;
+}
+
+async function callHospitalMaterialsEndpoint<T>(
+  path: string,
+  init: RequestInit,
+  fallbackError: string,
+): Promise<T> {
+  try {
+    return await apiClient<T>(path, init);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw new Error(readApiErrorMessage(error.body, fallbackError));
+    }
+    throw error;
+  }
+}
+
+export async function createReview(data: Record<string, unknown>) {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
+  const result = await callHospitalMaterialsEndpoint(
+    `/api/v2/hospitals/${hospitalId}/materials/reviews`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
+    'Failed to create review.',
+  );
+  revalidatePath('/materials');
+  return result;
+}
+
+export async function updateReview(id: string, data: Record<string, unknown>) {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
+  const result = await callHospitalMaterialsEndpoint(
+    `/api/v2/hospitals/${hospitalId}/materials/reviews/${id}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    },
+    'Failed to update review.',
+  );
+  revalidatePath('/materials');
+  return result;
+}
+
+export async function deleteReview(id: string) {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
+  await callHospitalMaterialsEndpoint(
+    `/api/v2/hospitals/${hospitalId}/materials/reviews/${id}`,
+    { method: 'DELETE' },
+    'Failed to delete review.',
+  );
+  revalidatePath('/materials');
+}
+
+export async function createMaterialsPackage(data: Record<string, unknown>) {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
+  try {
+    const result = await apiClient(`/api/v2/hospitals/${hospitalId}/materials/packages`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    revalidatePath('/materials');
+    return result;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      if (error.status === 409) {
+        const collision = summarizePackageSlugCollision(data, error);
+        console.error('[hospital.materials.packages] slug collision', JSON.stringify({
+          hospitalId,
+          summary: summarizeMaterialsPackagePayload(data),
+          collision,
+          responseBody: error.body,
+        }, null, 2));
+        throw new Error(collision.message);
+      }
+
+      console.error('[hospital.materials.packages] create failed', JSON.stringify({
+        hospitalId,
+        summary: summarizeMaterialsPackagePayload(data),
+        status: error.status,
+        responseBody: error.body,
+      }, null, 2));
+      throw new Error(readApiErrorMessage(error.body, 'Failed to create package.'));
+    }
+    throw error;
+  }
+}
+
+export async function updateMaterialsPackage(id: string, data: Record<string, unknown>) {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
+  try {
+    const result = await apiClient(`/api/v2/hospitals/${hospitalId}/materials/packages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    revalidatePath('/materials');
+    return result;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      if (error.status === 409) {
+        const collision = summarizePackageSlugCollision(data, error);
+        console.error('[hospital.materials.packages] slug collision', JSON.stringify({
+          hospitalId,
+          packageId: id,
+          summary: summarizeMaterialsPackagePayload(data),
+          collision,
+          responseBody: error.body,
+        }, null, 2));
+        throw new Error(collision.message);
+      }
+
+      console.error('[hospital.materials.packages] update failed', JSON.stringify({
+        hospitalId,
+        packageId: id,
+        summary: summarizeMaterialsPackagePayload(data),
+        status: error.status,
+        responseBody: error.body,
+      }, null, 2));
+      throw new Error(readApiErrorMessage(error.body, 'Failed to update package.'));
+    }
+    throw error;
+  }
+}
+
+export async function deleteMaterialsPackage(id: string) {
+  const hospitalId = await getSessionHospitalId();
+  if (!hospitalId) throw new Error('No hospital ID in session');
+  try {
+    await apiClient(`/api/v2/hospitals/${hospitalId}/materials/packages/${id}`, {
+      method: 'DELETE',
+    });
+    revalidatePath('/materials');
+  } catch (error) {
+    if (error instanceof ApiError) {
+      console.error('[hospital.materials.packages] delete failed', JSON.stringify({
+        hospitalId,
+        packageId: id,
+        status: error.status,
+        responseBody: error.body,
+      }, null, 2));
+      throw new Error(readApiErrorMessage(error.body, 'Failed to delete package.'));
+    }
+    throw error;
+  }
+}
+
 export async function uploadMaterialFile(
   materialKind: string,
   params: { fileName: string; fileSize: number; mimeType: string },

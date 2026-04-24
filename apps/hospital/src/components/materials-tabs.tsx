@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
@@ -36,6 +36,8 @@ import {
   ChevronDown,
   ChevronRight,
   Play,
+  MessageSquareQuote,
+  Package,
 } from 'lucide-react';
 import {
   Button,
@@ -72,6 +74,8 @@ import type {
 import { useAuth } from '@/lib/auth-context';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import { sanitizeDepartmentStats } from '@/lib/materials-payload';
+import { ReviewsTab } from '@/components/materials/reviews-tab';
+import { PackagesTab } from '@/components/materials/packages-tab';
 
 type TranslationFn = (key: string, values?: Record<string, string | number>, fallback?: string) => string;
 
@@ -84,11 +88,11 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-function isLocalPreviewUrl(value: string | null | undefined): value is string {
+export function isLocalPreviewUrl(value: string | null | undefined): value is string {
   return typeof value === 'string' && (value.startsWith('blob:') || value.startsWith('data:'));
 }
 
-async function uploadMaterialAsset(file: File, materialKind: string): Promise<UploadedAsset> {
+export async function uploadMaterialAsset(file: File, materialKind: string): Promise<UploadedAsset> {
   const result = await uploadMaterialFile(materialKind, {
     fileName: file.name,
     fileSize: file.size,
@@ -108,9 +112,9 @@ async function uploadMaterialAsset(file: File, materialKind: string): Promise<Up
   return result.asset;
 }
 
-type SaveProgressStatus = 'pending' | 'uploading' | 'saving' | 'done' | 'failed';
+export type SaveProgressStatus = 'pending' | 'uploading' | 'saving' | 'done' | 'failed';
 
-type SaveProgressItem = {
+export type SaveProgressItem = {
   id: string;
   label: string;
   targetKey?: string;
@@ -118,7 +122,7 @@ type SaveProgressItem = {
   error?: string;
 };
 
-type SaveProgressState = {
+export type SaveProgressState = {
   open: boolean;
   title: string;
   items: SaveProgressItem[];
@@ -257,13 +261,13 @@ function extractSaveFailureMessage(error: unknown, t: TranslationFn): string {
   );
 }
 
-function getFlashClass(active: boolean) {
+export function getFlashClass(active: boolean) {
   return active
     ? 'rounded-2xl ring-2 ring-amber-400 ring-offset-4 ring-offset-white animate-pulse transition-shadow duration-700'
     : '';
 }
 
-function UploadProgressModal({
+export function UploadProgressModal({
   state,
   onDismiss,
 }: {
@@ -364,7 +368,7 @@ function UploadProgressModal({
 }
 
 // ── Reusable Image Upload Widget ───────────────────────────────────
-function ImageUploadWidget({
+export function ImageUploadWidget({
   value,
   onChange,
   onFileSelect,
@@ -515,7 +519,7 @@ function ImageUploadWidget({
 }
 
 // ── Reusable Video Upload Widget ───────────────────────────────────
-function VideoUploadWidget({
+export function VideoUploadWidget({
   videos,
   onAdd,
   onRemove,
@@ -629,6 +633,8 @@ function getMaterialsTabs(t: TranslationFn) {
     { id: 'procedures', label: t('hospital.materials.tabs.procedures', undefined, 'Procedures'), icon: Stethoscope },
     { id: 'surgeons', label: t('hospital.materials.tabs.surgeons', undefined, 'Surgeons'), icon: Users },
     { id: 'cases', label: t('hospital.materials.tabs.cases', undefined, 'Case Gallery'), icon: Camera },
+    { id: 'reviews', label: t('hospital.materials.tabs.reviews', undefined, 'Reviews'), icon: MessageSquareQuote },
+    { id: 'packages', label: t('hospital.materials.tabs.packages', undefined, 'Packages'), icon: Package },
   ];
 }
 
@@ -718,7 +724,9 @@ export function MaterialsTabs() {
   const isRegular = hospitalType === 'regular_hospital';
 
   const tabs = getMaterialsTabs(t);
-  const visibleTabs = isRegular ? tabs.filter((tab) => tab.id !== 'procedures') : tabs;
+  const visibleTabs = isRegular
+    ? tabs.filter((tab) => tab.id !== 'procedures')
+    : tabs.filter((tab) => tab.id !== 'reviews' && tab.id !== 'packages');
 
   return (
     <div className="space-y-6">
@@ -791,6 +799,8 @@ export function MaterialsTabs() {
       {activeTab === 'procedures' && !isRegular && <ProceduresTab />}
       {activeTab === 'surgeons' && <SurgeonsTab />}
       {activeTab === 'cases' && <BeforeAfterTab />}
+      {activeTab === 'reviews' && isRegular && <ReviewsTab />}
+      {activeTab === 'packages' && isRegular && <PackagesTab />}
     </div>
   );
 }

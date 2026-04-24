@@ -19,6 +19,171 @@ const hospitalIdAndIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+type MaterialsRouteServices = ReturnType<typeof getServices> & {
+  getMaterialsReviews: { execute: (hospitalId: string, actor: unknown) => Promise<unknown> };
+  createMaterialsReview: { execute: (hospitalId: string, input: unknown, actor: unknown) => Promise<unknown> };
+  updateMaterialsReview: { execute: (hospitalId: string, reviewId: string, input: unknown, actor: unknown) => Promise<unknown> };
+  deleteMaterialsReview: { execute: (hospitalId: string, reviewId: string, actor: unknown) => Promise<void> };
+  getMaterialsPackages: { execute: (hospitalId: string, actor: unknown) => Promise<unknown> };
+  getMaterialsPackage: { execute: (hospitalId: string, packageId: string, actor: unknown) => Promise<unknown> };
+  createMaterialsPackage: { execute: (hospitalId: string, input: unknown, actor: unknown) => Promise<unknown> };
+  updateMaterialsPackage: { execute: (hospitalId: string, packageId: string, input: unknown, actor: unknown) => Promise<unknown> };
+  deleteMaterialsPackage: { execute: (hospitalId: string, packageId: string, actor: unknown) => Promise<void> };
+};
+
+const getMaterialsRouteServices = (): MaterialsRouteServices => getServices() as MaterialsRouteServices;
+
+async function assertRegularMaterialsFeature(
+  services: MaterialsRouteServices,
+  hospitalId: string,
+  feature: 'reviews' | 'packages',
+): Promise<void> {
+  const hospitalType = await services.resolveHospitalType(hospitalId);
+  if (hospitalType !== 'REGULAR') {
+    throw new ForbiddenError(`Materials ${feature} are only available for regular hospitals`);
+  }
+}
+
+const isValidDateOnly = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+
+const requiredString = (max: number) => z.string().trim().min(1).max(max);
+const optionalString = (max: number) => z.string().trim().max(max).nullable().optional();
+const optionalDateOnly = z.string().refine(isValidDateOnly, 'Invalid date').nullable().optional();
+
+const reviewMediaSchema = z.object({
+  id: z.string().uuid().optional(),
+  type: z.enum(['image', 'video']),
+  url: requiredString(2048),
+  thumbnailUrl: optionalString(2048),
+  caption: optionalString(300),
+  sortOrder: z.number().int().optional(),
+});
+
+const createReviewSchema = z.object({
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+  featured: z.boolean().optional(),
+  patientName: requiredString(120),
+  patientCountry: optionalString(120),
+  patientAvatarUrl: optionalString(2048),
+  treatmentName: optionalString(160),
+  reviewTitle: optionalString(180),
+  reviewComment: requiredString(4000),
+  rating: z.number().int().min(1).max(5),
+  reviewDate: optionalDateOnly,
+  media: z.array(reviewMediaSchema).optional(),
+});
+
+const updateReviewSchema = z.object({
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+  featured: z.boolean().optional(),
+  patientName: requiredString(120).optional(),
+  patientCountry: optionalString(120),
+  patientAvatarUrl: optionalString(2048),
+  treatmentName: optionalString(160),
+  reviewTitle: optionalString(180),
+  reviewComment: requiredString(4000).optional(),
+  rating: z.number().int().min(1).max(5).optional(),
+  reviewDate: optionalDateOnly,
+  media: z.array(reviewMediaSchema).optional(),
+});
+
+const packagePriceSchema = z.string().regex(/^\d+(\.\d{1,2})?$/, 'Invalid price format');
+const packageTagCategoryValues = ['treatment', 'service', 'audience', 'city', 'price', 'style'] as const;
+const packageTagCategorySchema = z.enum(packageTagCategoryValues);
+
+const packageGalleryItemSchema = z.object({
+  id: z.string().uuid().optional(),
+  imageUrl: requiredString(2048),
+  sortOrder: z.number().int().optional(),
+});
+
+const packageTagSchema = z.object({
+  id: z.string().uuid().optional(),
+  label: requiredString(80),
+  category: packageTagCategorySchema.nullable().optional(),
+});
+
+const packageIncludeSchema = z.object({
+  id: z.string().uuid().optional(),
+  text: requiredString(200),
+  sortOrder: z.number().int().optional(),
+});
+
+const packageProcessSchema = z.object({
+  id: z.string().uuid().optional(),
+  stepTitle: requiredString(160),
+  description: requiredString(2000),
+  sortOrder: z.number().int().optional(),
+});
+
+const packageCaseSchema = z.object({
+  id: z.string().uuid().optional(),
+  patientName: requiredString(120),
+  patientAge: z.number().int(),
+  patientCountry: requiredString(120),
+  story: requiredString(3000),
+  result: requiredString(3000),
+  sortOrder: z.number().int().optional(),
+});
+
+const packageReviewSchema = z.object({
+  id: z.string().uuid().optional(),
+  reviewerName: requiredString(120),
+  reviewerCountry: requiredString(120),
+  rating: z.number().int().min(1).max(5),
+  reviewDate: z.string().refine(isValidDateOnly, 'Invalid date'),
+  comment: requiredString(4000),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+});
+
+const createPackageSchema = z.object({
+  slug: requiredString(160),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+  title: requiredString(180),
+  subtitle: optionalString(220),
+  coverImageUrl: requiredString(2048),
+  gallery: z.array(packageGalleryItemSchema).optional(),
+  price: packagePriceSchema,
+  currency: requiredString(10),
+  duration: optionalString(80),
+  summary: requiredString(4000),
+  tags: z.array(packageTagSchema).optional(),
+  includes: z.array(packageIncludeSchema).optional(),
+  process: z.array(packageProcessSchema).optional(),
+  cases: z.array(packageCaseSchema).optional(),
+  reviews: z.array(packageReviewSchema).optional(),
+});
+
+const updatePackageSchema = z.object({
+  slug: requiredString(160).optional(),
+  sortOrder: z.number().int().optional(),
+  isActive: z.boolean().optional(),
+  title: requiredString(180).optional(),
+  subtitle: optionalString(220),
+  coverImageUrl: requiredString(2048).optional(),
+  gallery: z.array(packageGalleryItemSchema).optional(),
+  price: packagePriceSchema.optional(),
+  currency: requiredString(10).optional(),
+  duration: optionalString(80),
+  summary: requiredString(4000).optional(),
+  tags: z.array(packageTagSchema).optional(),
+  includes: z.array(packageIncludeSchema).optional(),
+  process: z.array(packageProcessSchema).optional(),
+  cases: z.array(packageCaseSchema).optional(),
+  reviews: z.array(packageReviewSchema).optional(),
+});
+
 // ---------------------------------------------------------------------------
 // 1. GET /api/v2/hospitals/:hospitalId/materials/info — GetHospitalInfo
 // ---------------------------------------------------------------------------
@@ -485,7 +650,222 @@ app.openapi(deleteBeforeAfterCaseRoute, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// 15. POST /api/v2/hospitals/:hospitalId/materials/upload — InitMaterialsUpload
+// 15. GET /api/v2/hospitals/:hospitalId/materials/reviews — GetMaterialsReviews
+// ---------------------------------------------------------------------------
+const getMaterialsReviewsRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/hospitals/{hospitalId}/materials/reviews',
+  request: { params: hospitalIdParamSchema },
+  responses: { 200: { description: 'List of hospital materials reviews' } },
+});
+
+app.openapi(getMaterialsReviewsRoute, async (c) => {
+  const { hospitalId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'reviews');
+  const result = await svc.getMaterialsReviews.execute(hospitalId, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 16. POST /api/v2/hospitals/:hospitalId/materials/reviews — CreateMaterialsReview
+// ---------------------------------------------------------------------------
+const createMaterialsReviewRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/hospitals/{hospitalId}/materials/reviews',
+  request: {
+    params: hospitalIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: createReviewSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Hospital materials review created' } },
+});
+
+app.openapi(createMaterialsReviewRoute, async (c) => {
+  const { hospitalId } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'reviews');
+  const result = await svc.createMaterialsReview.execute(hospitalId, body, actor);
+  return c.json(result, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 17. PUT /api/v2/hospitals/:hospitalId/materials/reviews/:id — UpdateMaterialsReview
+// ---------------------------------------------------------------------------
+const updateMaterialsReviewRoute = createRoute({
+  method: 'put',
+  path: '/api/v2/hospitals/{hospitalId}/materials/reviews/{id}',
+  request: {
+    params: hospitalIdAndIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: updateReviewSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: { 200: { description: 'Hospital materials review updated' } },
+});
+
+app.openapi(updateMaterialsReviewRoute, async (c) => {
+  const { hospitalId, id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'reviews');
+  const result = await svc.updateMaterialsReview.execute(hospitalId, id, body, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 18. DELETE /api/v2/hospitals/:hospitalId/materials/reviews/:id — DeleteMaterialsReview
+// ---------------------------------------------------------------------------
+const deleteMaterialsReviewRoute = createRoute({
+  method: 'delete',
+  path: '/api/v2/hospitals/{hospitalId}/materials/reviews/{id}',
+  request: { params: hospitalIdAndIdParamSchema },
+  responses: { 204: { description: 'Hospital materials review deleted' } },
+});
+
+app.openapi(deleteMaterialsReviewRoute, async (c) => {
+  const { hospitalId, id } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'reviews');
+  await svc.deleteMaterialsReview.execute(hospitalId, id, actor);
+  return c.body(null, 204);
+});
+
+// ---------------------------------------------------------------------------
+// 19. GET /api/v2/hospitals/:hospitalId/materials/packages — GetMaterialsPackages
+// ---------------------------------------------------------------------------
+const getMaterialsPackagesRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/hospitals/{hospitalId}/materials/packages',
+  request: { params: hospitalIdParamSchema },
+  responses: { 200: { description: 'List of hospital materials packages' } },
+});
+
+app.openapi(getMaterialsPackagesRoute, async (c) => {
+  const { hospitalId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'packages');
+  const result = await svc.getMaterialsPackages.execute(hospitalId, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 20. GET /api/v2/hospitals/:hospitalId/materials/packages/:id — GetMaterialsPackage
+// ---------------------------------------------------------------------------
+const getMaterialsPackageRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/hospitals/{hospitalId}/materials/packages/{id}',
+  request: { params: hospitalIdAndIdParamSchema },
+  responses: { 200: { description: 'Hospital materials package details' } },
+});
+
+app.openapi(getMaterialsPackageRoute, async (c) => {
+  const { hospitalId, id } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'packages');
+  const result = await svc.getMaterialsPackage.execute(hospitalId, id, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 21. POST /api/v2/hospitals/:hospitalId/materials/packages — CreateMaterialsPackage
+// ---------------------------------------------------------------------------
+const createMaterialsPackageRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/hospitals/{hospitalId}/materials/packages',
+  request: {
+    params: hospitalIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: createPackageSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Hospital materials package created' } },
+});
+
+app.openapi(createMaterialsPackageRoute, async (c) => {
+  const { hospitalId } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'packages');
+  const result = await svc.createMaterialsPackage.execute(hospitalId, body, actor);
+  return c.json(result, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 22. PUT /api/v2/hospitals/:hospitalId/materials/packages/:id — UpdateMaterialsPackage
+// ---------------------------------------------------------------------------
+const updateMaterialsPackageRoute = createRoute({
+  method: 'put',
+  path: '/api/v2/hospitals/{hospitalId}/materials/packages/{id}',
+  request: {
+    params: hospitalIdAndIdParamSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: updatePackageSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: { 200: { description: 'Hospital materials package updated' } },
+});
+
+app.openapi(updateMaterialsPackageRoute, async (c) => {
+  const { hospitalId, id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'packages');
+  const result = await svc.updateMaterialsPackage.execute(hospitalId, id, body, actor);
+  return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 23. DELETE /api/v2/hospitals/:hospitalId/materials/packages/:id — DeleteMaterialsPackage
+// ---------------------------------------------------------------------------
+const deleteMaterialsPackageRoute = createRoute({
+  method: 'delete',
+  path: '/api/v2/hospitals/{hospitalId}/materials/packages/{id}',
+  request: { params: hospitalIdAndIdParamSchema },
+  responses: { 204: { description: 'Hospital materials package deleted' } },
+});
+
+app.openapi(deleteMaterialsPackageRoute, async (c) => {
+  const { hospitalId, id } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getMaterialsRouteServices();
+  await assertRegularMaterialsFeature(svc, hospitalId, 'packages');
+  await svc.deleteMaterialsPackage.execute(hospitalId, id, actor);
+  return c.body(null, 204);
+});
+
+// ---------------------------------------------------------------------------
+// 24. POST /api/v2/hospitals/:hospitalId/materials/upload — InitMaterialsUpload
 // ---------------------------------------------------------------------------
 const materialsUploadInitSchema = z.object({
   materialKind: z.string().min(1),

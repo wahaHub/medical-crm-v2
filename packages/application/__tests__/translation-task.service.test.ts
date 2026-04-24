@@ -89,7 +89,7 @@ describe('TranslationTaskService', () => {
       );
     });
 
-    it('filters out null, undefined, and empty string fields', async () => {
+    it('filters out undefined and empty string fields while preserving explicit null clears', async () => {
       const input: EnqueueTranslationInput = {
         sourceDb: 'crm',
         entityType: 'case',
@@ -106,25 +106,43 @@ describe('TranslationTaskService', () => {
       await service.enqueue(input);
       expect(mockTaskRepo.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          fieldsToTranslate: { name: 'John', valid: 'keep me' },
+          fieldsToTranslate: { name: 'John', nullVal: null, valid: 'keep me' },
         }),
       );
     });
 
-    it('skips upsert when all fields are empty', async () => {
+    it('skips upsert when all fields are undefined or empty strings', async () => {
       const input: EnqueueTranslationInput = {
         sourceDb: 'crm',
         entityType: 'case',
         entityId: 'entity-1',
         fieldsToTranslate: {
           emptyStr: '',
-          nullVal: null,
           undefinedVal: undefined,
         },
         targetLanguages: ['zh'],
       };
       await service.enqueue(input);
       expect(mockTaskRepo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('keeps all-null payloads so writeback can clear translated fields', async () => {
+      const input: EnqueueTranslationInput = {
+        sourceDb: 'crm',
+        entityType: 'case',
+        entityId: 'entity-1',
+        fieldsToTranslate: {
+          title: null,
+          subtitle: null,
+        },
+        targetLanguages: ['zh'],
+      };
+      await service.enqueue(input);
+      expect(mockTaskRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fieldsToTranslate: { title: null, subtitle: null },
+        }),
+      );
     });
 
     it('skips upsert when fieldsToTranslate is empty object', async () => {

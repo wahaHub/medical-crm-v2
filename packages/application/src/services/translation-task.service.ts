@@ -5,10 +5,11 @@ export class TranslationTaskService {
   constructor(private readonly taskRepo: ITranslationTaskRepository) {}
 
   async enqueue(input: EnqueueTranslationInput): Promise<void> {
-    // Filter out empty/null/undefined fields
+    // Filter out fields that carry no translation signal while preserving
+    // explicit nulls so downstream writeback can clear stale localized values.
     const filtered: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(input.fieldsToTranslate)) {
-      if (value !== null && value !== undefined && value !== '') {
+      if (value !== undefined && value !== '') {
         filtered[key] = value;
       }
     }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   IMaterialsRepository,
@@ -7,7 +8,7 @@ import type {
   MaterialsSurgeon,
   MaterialsBeforeAfterCase,
 } from '@medical-crm/domain';
-import { NotFoundError } from '@medical-crm/utils';
+import { ConflictError, NotFoundError } from '@medical-crm/utils';
 import {
   buildSurgeonMutation,
   mapCaseAssetsToImages,
@@ -754,5 +755,542 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       .eq('hospital_id', hospitalId);
 
     if (error) throw error;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reviews
+  // ---------------------------------------------------------------------------
+
+  async listReviews(hospitalId: string): ReturnType<IMaterialsRepository['listReviews']> {
+    const { data, error } = await this.supabase
+      .from('hospital_material_reviews')
+      .select('id, hospital_id, sort_order, is_active, featured, patient_name, patient_country, patient_avatar_url, treatment_name, review_title, review_comment, rating, review_date, media, translations')
+      .eq('hospital_id', hospitalId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    return Promise.all((data ?? []).map((row) => this.mapMaterialsReviewRow(row)));
+  }
+
+  async createReview(
+    data: Parameters<IMaterialsRepository['createReview']>[0],
+  ): ReturnType<IMaterialsRepository['createReview']> {
+    const { data: row, error } = await this.supabase
+      .from('hospital_material_reviews')
+      .insert({
+        hospital_id: data.hospitalId,
+        sort_order: data.sortOrder,
+        is_active: data.isActive,
+        featured: data.featured,
+        patient_name: data.patientName,
+        patient_country: data.patientCountry,
+        patient_avatar_url: data.patientAvatarStorageKey ?? data.patientAvatarUrl,
+        treatment_name: data.treatmentName,
+        review_title: data.reviewTitle,
+        review_comment: data.reviewComment,
+        rating: data.rating,
+        review_date: data.reviewDate,
+        media: this.normalizeReviewMedia(data.media),
+        translations: data.translations ?? {},
+      })
+      .select('id, hospital_id, sort_order, is_active, featured, patient_name, patient_country, patient_avatar_url, treatment_name, review_title, review_comment, rating, review_date, media, translations')
+      .single();
+
+    if (error) throw error;
+
+    return this.mapMaterialsReviewRow(row);
+  }
+
+  async updateReview(
+    id: string,
+    hospitalId: string,
+    updates: Parameters<IMaterialsRepository['updateReview']>[2],
+  ): ReturnType<IMaterialsRepository['updateReview']> {
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (updates.sortOrder !== undefined) updateData['sort_order'] = updates.sortOrder;
+    if (updates.isActive !== undefined) updateData['is_active'] = updates.isActive;
+    if (updates.featured !== undefined) updateData['featured'] = updates.featured;
+    if (updates.patientName !== undefined) updateData['patient_name'] = updates.patientName;
+    if (updates.patientCountry !== undefined) updateData['patient_country'] = updates.patientCountry;
+    if (updates.patientAvatarUrl !== undefined || updates.patientAvatarStorageKey !== undefined) {
+      updateData['patient_avatar_url'] = updates.patientAvatarStorageKey ?? updates.patientAvatarUrl;
+    }
+    if (updates.treatmentName !== undefined) updateData['treatment_name'] = updates.treatmentName;
+    if (updates.reviewTitle !== undefined) updateData['review_title'] = updates.reviewTitle;
+    if (updates.reviewComment !== undefined) updateData['review_comment'] = updates.reviewComment;
+    if (updates.rating !== undefined) updateData['rating'] = updates.rating;
+    if (updates.reviewDate !== undefined) updateData['review_date'] = updates.reviewDate;
+    if (updates.media !== undefined) updateData['media'] = this.normalizeReviewMedia(updates.media);
+    if (updates.translations !== undefined) updateData['translations'] = updates.translations;
+
+    const { data: row, error } = await this.supabase
+      .from('hospital_material_reviews')
+      .update(updateData)
+      .eq('id', id)
+      .eq('hospital_id', hospitalId)
+      .select('id, hospital_id, sort_order, is_active, featured, patient_name, patient_country, patient_avatar_url, treatment_name, review_title, review_comment, rating, review_date, media, translations')
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') throw new NotFoundError(`Review ${id} not found for hospital ${hospitalId}`);
+      throw error;
+    }
+    if (!row) throw new NotFoundError(`Review ${id} not found for hospital ${hospitalId}`);
+
+    return this.mapMaterialsReviewRow(row);
+  }
+
+  async deleteReview(id: string, hospitalId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('hospital_material_reviews')
+      .delete()
+      .eq('id', id)
+      .eq('hospital_id', hospitalId);
+
+    if (error) throw error;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Packages
+  // ---------------------------------------------------------------------------
+
+  async listPackages(hospitalId: string): ReturnType<IMaterialsRepository['listPackages']> {
+    const { data, error } = await this.supabase
+      .from('hospital_material_packages')
+      .select('id, hospital_id, slug, sort_order, is_active, title, subtitle, cover_image_url, gallery, price, currency, duration, summary, tags, includes, process, cases, reviews, translations')
+      .eq('hospital_id', hospitalId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    return Promise.all((data ?? []).map((row) => this.mapMaterialsPackageRow(row)));
+  }
+
+  async getPackage(id: string, hospitalId: string): ReturnType<IMaterialsRepository['getPackage']> {
+    const { data, error } = await this.supabase
+      .from('hospital_material_packages')
+      .select('id, hospital_id, slug, sort_order, is_active, title, subtitle, cover_image_url, gallery, price, currency, duration, summary, tags, includes, process, cases, reviews, translations')
+      .eq('id', id)
+      .eq('hospital_id', hospitalId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+
+    return data ? this.mapMaterialsPackageRow(data) : null;
+  }
+
+  async createPackage(
+    data: Parameters<IMaterialsRepository['createPackage']>[0],
+  ): ReturnType<IMaterialsRepository['createPackage']> {
+    const { data: row, error } = await this.supabase
+      .from('hospital_material_packages')
+      .insert({
+        hospital_id: data.hospitalId,
+        slug: data.slug,
+        sort_order: data.sortOrder,
+        is_active: data.isActive,
+        title: data.title,
+        subtitle: data.subtitle,
+        cover_image_url: data.coverImageStorageKey ?? data.coverImageUrl,
+        gallery: this.normalizePackageGallery(data.gallery),
+        price: data.price,
+        currency: data.currency,
+        duration: data.duration,
+        summary: data.summary,
+        tags: this.normalizePackageTags(data.tags),
+        includes: this.normalizePackageIncludes(data.includes),
+        process: this.normalizePackageProcess(data.process),
+        cases: this.normalizePackageCases(data.cases),
+        reviews: this.normalizePackageReviews(data.reviews),
+        translations: data.translations ?? {},
+      })
+      .select('id, hospital_id, slug, sort_order, is_active, title, subtitle, cover_image_url, gallery, price, currency, duration, summary, tags, includes, process, cases, reviews, translations')
+      .single();
+
+    this.throwPackageSlugConflict(error);
+    if (error) throw error;
+
+    return this.mapMaterialsPackageRow(row);
+  }
+
+  async updatePackage(
+    id: string,
+    hospitalId: string,
+    updates: Parameters<IMaterialsRepository['updatePackage']>[2],
+  ): ReturnType<IMaterialsRepository['updatePackage']> {
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (updates.slug !== undefined) updateData['slug'] = updates.slug;
+    if (updates.sortOrder !== undefined) updateData['sort_order'] = updates.sortOrder;
+    if (updates.isActive !== undefined) updateData['is_active'] = updates.isActive;
+    if (updates.title !== undefined) updateData['title'] = updates.title;
+    if (updates.subtitle !== undefined) updateData['subtitle'] = updates.subtitle;
+    if (updates.coverImageUrl !== undefined || updates.coverImageStorageKey !== undefined) {
+      updateData['cover_image_url'] = updates.coverImageStorageKey ?? updates.coverImageUrl;
+    }
+    if (updates.gallery !== undefined) updateData['gallery'] = this.normalizePackageGallery(updates.gallery);
+    if (updates.price !== undefined) updateData['price'] = updates.price;
+    if (updates.currency !== undefined) updateData['currency'] = updates.currency;
+    if (updates.duration !== undefined) updateData['duration'] = updates.duration;
+    if (updates.summary !== undefined) updateData['summary'] = updates.summary;
+    if (updates.tags !== undefined) updateData['tags'] = this.normalizePackageTags(updates.tags);
+    if (updates.includes !== undefined) updateData['includes'] = this.normalizePackageIncludes(updates.includes);
+    if (updates.process !== undefined) updateData['process'] = this.normalizePackageProcess(updates.process);
+    if (updates.cases !== undefined) updateData['cases'] = this.normalizePackageCases(updates.cases);
+    if (updates.reviews !== undefined) updateData['reviews'] = this.normalizePackageReviews(updates.reviews);
+    if (updates.translations !== undefined) updateData['translations'] = updates.translations;
+
+    const { data: row, error } = await this.supabase
+      .from('hospital_material_packages')
+      .update(updateData)
+      .eq('id', id)
+      .eq('hospital_id', hospitalId)
+      .select('id, hospital_id, slug, sort_order, is_active, title, subtitle, cover_image_url, gallery, price, currency, duration, summary, tags, includes, process, cases, reviews, translations')
+      .single();
+
+    this.throwPackageSlugConflict(error);
+    if (error) {
+      if (error.code === 'PGRST116') throw new NotFoundError(`Package ${id} not found for hospital ${hospitalId}`);
+      throw error;
+    }
+    if (!row) throw new NotFoundError(`Package ${id} not found for hospital ${hospitalId}`);
+
+    return this.mapMaterialsPackageRow(row);
+  }
+
+  async deletePackage(id: string, hospitalId: string): Promise<void> {
+    const { error } = await this.supabase
+      .from('hospital_material_packages')
+      .delete()
+      .eq('id', id)
+      .eq('hospital_id', hospitalId);
+
+    if (error) throw error;
+  }
+
+  private async mapMaterialsReviewRow(row: Record<string, unknown>) {
+    const patientAvatar = await resolveMediaRef((row.patient_avatar_url as string | null) ?? null, this.storage);
+    const rawMedia = this.normalizeReviewMedia(row.media);
+    const [mediaUrls, mediaThumbnailUrls] = await Promise.all([
+      resolveMediaRefs(rawMedia.map((item) => item.url), this.storage),
+      resolveMediaRefs(rawMedia.map((item) => item.thumbnailUrl), this.storage),
+    ]);
+
+    return {
+      id: row.id as string,
+      hospitalId: row.hospital_id as string,
+      sortOrder: (row.sort_order as number | null) ?? 0,
+      isActive: (row.is_active as boolean | null) ?? true,
+      featured: (row.featured as boolean | null) ?? false,
+      patientName: (row.patient_name as string | null) ?? '',
+      patientCountry: (row.patient_country as string | null) ?? null,
+      patientAvatarUrl: patientAvatar.url || null,
+      patientAvatarStorageKey: patientAvatar.storageKey,
+      treatmentName: (row.treatment_name as string | null) ?? null,
+      reviewTitle: (row.review_title as string | null) ?? null,
+      reviewComment: (row.review_comment as string | null) ?? '',
+      rating: (row.rating as number | null) ?? 0,
+      reviewDate: (row.review_date as string | null) ?? null,
+      media: rawMedia.map((item, index) => ({
+        ...item,
+        url: mediaUrls[index]?.url ?? item.url,
+        storageKey: mediaUrls[index]?.storageKey ?? null,
+        thumbnailUrl: mediaThumbnailUrls[index]?.url || item.thumbnailUrl,
+        thumbnailStorageKey: mediaThumbnailUrls[index]?.storageKey ?? null,
+      })),
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
+    };
+  }
+
+  private normalizeReviewMedia(
+    media: unknown,
+  ): Parameters<IMaterialsRepository['createReview']>[0]['media'] {
+    if (!Array.isArray(media)) return [];
+
+    return media
+      .map((item, index) => {
+        const record = item as Record<string, unknown>;
+        const type = record.type === 'video' ? 'video' : 'image';
+        const storageKey = typeof record.storageKey === 'string' ? record.storageKey : null;
+        const thumbnailStorageKey = typeof record.thumbnailStorageKey === 'string'
+          ? record.thumbnailStorageKey
+          : null;
+        const url = storageKey ?? (typeof record.url === 'string' ? record.url : '');
+        if (!url) return null;
+
+        return {
+          id: typeof record.id === 'string' && record.id.length > 0 ? record.id : randomUUID(),
+          type,
+          url,
+          thumbnailUrl: thumbnailStorageKey ?? (typeof record.thumbnailUrl === 'string' ? record.thumbnailUrl : null),
+          caption: typeof record.caption === 'string' ? record.caption : null,
+          sortOrder: typeof record.sortOrder === 'number' ? record.sortOrder : index,
+        };
+      })
+      .filter((item): item is Parameters<IMaterialsRepository['createReview']>[0]['media'][number] => item !== null)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  private async mapMaterialsPackageRow(row: Record<string, unknown>) {
+    const coverImage = await resolveMediaRef((row.cover_image_url as string | null) ?? null, this.storage);
+    const rawGallery = this.normalizePackageGallery(row.gallery);
+    const galleryImages = await resolveMediaRefs(rawGallery.map((item) => item.imageUrl), this.storage);
+
+    return {
+      id: row.id as string,
+      hospitalId: row.hospital_id as string,
+      slug: (row.slug as string | null) ?? '',
+      sortOrder: (row.sort_order as number | null) ?? 0,
+      isActive: (row.is_active as boolean | null) ?? true,
+      title: (row.title as string | null) ?? '',
+      subtitle: (row.subtitle as string | null) ?? null,
+      coverImageUrl: coverImage.url || '',
+      coverImageStorageKey: coverImage.storageKey,
+      gallery: rawGallery.map((item, index) => ({
+        ...item,
+        imageUrl: galleryImages[index]?.url ?? item.imageUrl,
+        storageKey: galleryImages[index]?.storageKey ?? null,
+      })),
+      price: String(row.price ?? ''),
+      currency: (row.currency as string | null) ?? '',
+      duration: (row.duration as string | null) ?? null,
+      summary: (row.summary as string | null) ?? '',
+      tags: this.normalizePackageTags(row.tags),
+      includes: this.normalizePackageIncludes(row.includes),
+      process: this.normalizePackageProcess(row.process),
+      cases: this.normalizePackageCases(row.cases),
+      reviews: this.normalizePackageReviews(row.reviews),
+      translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
+    };
+  }
+
+  private normalizePackageGallery(
+    value: unknown,
+  ): Parameters<IMaterialsRepository['createPackage']>[0]['gallery'] {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .map((item, index) => {
+        const record = item as Record<string, unknown>;
+        const storageKey = typeof record.storageKey === 'string' ? record.storageKey : null;
+        const imageUrl = storageKey ?? (typeof record.imageUrl === 'string'
+          ? record.imageUrl
+          : typeof record.image_url === 'string'
+            ? record.image_url
+            : '');
+        if (!imageUrl) return null;
+
+        return {
+          id: typeof record.id === 'string' && record.id.length > 0 ? record.id : randomUUID(),
+          imageUrl,
+          sortOrder: typeof record.sortOrder === 'number'
+            ? record.sortOrder
+            : typeof record.sort_order === 'number'
+              ? record.sort_order
+              : index,
+        };
+      })
+      .filter((item): item is Parameters<IMaterialsRepository['createPackage']>[0]['gallery'][number] => item !== null)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  private normalizePackageTags(
+    value: unknown,
+  ): Parameters<IMaterialsRepository['createPackage']>[0]['tags'] {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .map((item) => {
+        const record = item as Record<string, unknown>;
+        const label = typeof record.label === 'string' ? record.label : '';
+        if (!label) return null;
+
+        return {
+          id: typeof record.id === 'string' && record.id.length > 0 ? record.id : randomUUID(),
+          label,
+          category: typeof record.category === 'string' ? record.category : null,
+        };
+      })
+      .filter((item): item is Parameters<IMaterialsRepository['createPackage']>[0]['tags'][number] => item !== null);
+  }
+
+  private normalizePackageIncludes(
+    value: unknown,
+  ): Parameters<IMaterialsRepository['createPackage']>[0]['includes'] {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .map((item, index) => {
+        const record = item as Record<string, unknown>;
+        const text = typeof record.text === 'string' ? record.text : '';
+        if (!text) return null;
+
+        return {
+          id: typeof record.id === 'string' && record.id.length > 0 ? record.id : randomUUID(),
+          text,
+          sortOrder: typeof record.sortOrder === 'number'
+            ? record.sortOrder
+            : typeof record.sort_order === 'number'
+              ? record.sort_order
+              : index,
+        };
+      })
+      .filter((item): item is Parameters<IMaterialsRepository['createPackage']>[0]['includes'][number] => item !== null)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  private normalizePackageProcess(
+    value: unknown,
+  ): Parameters<IMaterialsRepository['createPackage']>[0]['process'] {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .map((item, index) => {
+        const record = item as Record<string, unknown>;
+        const stepTitle = typeof record.stepTitle === 'string'
+          ? record.stepTitle
+          : typeof record.step_title === 'string'
+            ? record.step_title
+            : '';
+        const description = typeof record.description === 'string' ? record.description : '';
+        if (!stepTitle || !description) return null;
+
+        return {
+          id: typeof record.id === 'string' && record.id.length > 0 ? record.id : randomUUID(),
+          stepTitle,
+          description,
+          sortOrder: typeof record.sortOrder === 'number'
+            ? record.sortOrder
+            : typeof record.sort_order === 'number'
+              ? record.sort_order
+              : index,
+        };
+      })
+      .filter((item): item is Parameters<IMaterialsRepository['createPackage']>[0]['process'][number] => item !== null)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  private normalizePackageCases(
+    value: unknown,
+  ): Parameters<IMaterialsRepository['createPackage']>[0]['cases'] {
+    if (!Array.isArray(value)) return [];
+
+    type PackageCase = Parameters<IMaterialsRepository['createPackage']>[0]['cases'][number];
+
+    const cases: Array<PackageCase | null> = value
+      .map((item, index) => {
+        const record = item as Record<string, unknown>;
+        const patientName = typeof record.patientName === 'string'
+          ? record.patientName
+          : typeof record.patient_name === 'string'
+            ? record.patient_name
+            : '';
+        const story = typeof record.story === 'string' ? record.story : '';
+        const result = typeof record.result === 'string' ? record.result : '';
+        if (!patientName || !story || !result) return null;
+
+        return {
+          id: typeof record.id === 'string' && record.id.length > 0 ? record.id : randomUUID(),
+          patientName,
+          patientAge: this.normalizePackageCaseAge(record.patientAge ?? record.patient_age),
+          patientCountry: typeof record.patientCountry === 'string'
+            ? record.patientCountry
+            : typeof record.patient_country === 'string'
+              ? record.patient_country
+              : null,
+          story,
+          result,
+          sortOrder: typeof record.sortOrder === 'number'
+            ? record.sortOrder
+            : typeof record.sort_order === 'number'
+              ? record.sort_order
+              : index,
+        };
+      });
+
+    return cases
+      .filter((item): item is PackageCase => item !== null)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  private normalizePackageCaseAge(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+  }
+
+  private normalizePackageReviews(
+    value: unknown,
+  ): Parameters<IMaterialsRepository['createPackage']>[0]['reviews'] {
+    if (!Array.isArray(value)) return [];
+
+    return value
+      .map((item, index) => {
+        const record = item as Record<string, unknown>;
+        const reviewerName = typeof record.reviewerName === 'string'
+          ? record.reviewerName
+          : typeof record.reviewer_name === 'string'
+            ? record.reviewer_name
+            : '';
+        const comment = typeof record.comment === 'string' ? record.comment : '';
+        const rating = typeof record.rating === 'number' ? record.rating : null;
+        if (!reviewerName || !comment || rating === null) return null;
+
+        return {
+          id: typeof record.id === 'string' && record.id.length > 0 ? record.id : randomUUID(),
+          reviewerName,
+          reviewerCountry: typeof record.reviewerCountry === 'string'
+            ? record.reviewerCountry
+            : typeof record.reviewer_country === 'string'
+              ? record.reviewer_country
+              : null,
+          rating,
+          reviewDate: typeof record.reviewDate === 'string'
+            ? record.reviewDate
+            : typeof record.review_date === 'string'
+              ? record.review_date
+              : null,
+          comment,
+          sortOrder: typeof record.sortOrder === 'number'
+            ? record.sortOrder
+            : typeof record.sort_order === 'number'
+              ? record.sort_order
+              : index,
+          isActive: typeof record.isActive === 'boolean'
+            ? record.isActive
+            : typeof record.is_active === 'boolean'
+              ? record.is_active
+              : true,
+        };
+      })
+      .filter((item): item is Parameters<IMaterialsRepository['createPackage']>[0]['reviews'][number] => item !== null)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  private throwPackageSlugConflict(error: { code?: string; message?: string } | null): void {
+    if (!error) return;
+
+    if (
+      error.code === '23505'
+      || error.message?.includes('hospital_material_packages_hospital_id_slug_unique')
+      || error.message?.includes('duplicate key value')
+    ) {
+      throw new ConflictError('Package slug already exists for this hospital');
+    }
   }
 }

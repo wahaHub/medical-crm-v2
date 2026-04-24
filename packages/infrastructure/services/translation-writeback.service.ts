@@ -17,8 +17,9 @@ import {
  *
  * Routes translation results back to the correct database and table based on
  * task.sourceDb and task.entityType, merging translated fields into the
- * entity's `translations` JSONB column (CRM) or the appropriate i18n row
- * (Supabase Beauty: hospital_translations, Supabase China: hospital_i18n).
+ * entity's `translations` JSONB column (CRM, material reviews/packages) or
+ * the appropriate i18n row (Supabase Beauty: hospital_translations,
+ * Supabase China: hospital_i18n).
  */
 export class TranslationWritebackService {
   constructor(
@@ -109,6 +110,12 @@ export class TranslationWritebackService {
         break;
       case 'procedure_case':
         await this.beautyMergeProcedureCaseTranslations(task.entityId, result.translations);
+        break;
+      case 'review':
+        await this.beautyMergeMaterialReviewTranslations(task.entityId, result.translations);
+        break;
+      case 'package':
+        await this.beautyMergeMaterialPackageTranslations(task.entityId, result.translations);
         break;
       case 'hospital_info':
         await this.beautyWritebackHospitalInfo(task.entityId, result.translations);
@@ -206,6 +213,58 @@ export class TranslationWritebackService {
     }
   }
 
+  /**
+   * Merge translated fields into hospital_material_reviews.translations JSONB column (Beauty).
+   */
+  private async beautyMergeMaterialReviewTranslations(
+    reviewId: string,
+    translations: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
+    await this.beautyMergeMaterialTranslations(
+      'hospital_material_reviews',
+      reviewId,
+      this.sanitizeReviewTranslations(translations),
+    );
+  }
+
+  /**
+   * Merge translated fields into hospital_material_packages.translations JSONB column (Beauty).
+   */
+  private async beautyMergeMaterialPackageTranslations(
+    packageId: string,
+    translations: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
+    await this.beautyMergeMaterialTranslations(
+      'hospital_material_packages',
+      packageId,
+      this.sanitizePackageTranslations(translations),
+    );
+  }
+
+  private async beautyMergeMaterialTranslations(
+    tableName: 'hospital_material_reviews' | 'hospital_material_packages',
+    entityId: string,
+    translations: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
+    const { data: existing, error: fetchError } = await this.beautySupabase
+      .from(tableName)
+      .select('translations')
+      .eq('id', entityId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const currentTranslations = (existing?.translations as Record<string, unknown> | null) ?? {};
+    const merged = this.mergeLanguageTranslations(currentTranslations, translations);
+
+    const { error } = await this.beautySupabase
+      .from(tableName)
+      .update({ translations: merged, updated_at: new Date().toISOString() })
+      .eq('id', entityId);
+
+    if (error) throw error;
+  }
+
   // ---------------------------------------------------------------------------
   // Supabase China writeback
   // ---------------------------------------------------------------------------
@@ -217,6 +276,12 @@ export class TranslationWritebackService {
         break;
       case 'procedure_case':
         await this.chinaMergeProcedureCaseTranslations(task.entityId, result.translations);
+        break;
+      case 'review':
+        await this.chinaMergeMaterialReviewTranslations(task.entityId, result.translations);
+        break;
+      case 'package':
+        await this.chinaMergeMaterialPackageTranslations(task.entityId, result.translations);
         break;
       case 'hospital_info':
         await this.chinaWritebackHospitalInfo(task, result.translations);
@@ -274,6 +339,58 @@ export class TranslationWritebackService {
       .from('procedure_cases')
       .update({ translations: merged, updated_at: new Date().toISOString() })
       .eq('id', caseId);
+
+    if (error) throw error;
+  }
+
+  /**
+   * Merge translated fields into hospital_material_reviews.translations JSONB column (China).
+   */
+  private async chinaMergeMaterialReviewTranslations(
+    reviewId: string,
+    translations: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
+    await this.chinaMergeMaterialTranslations(
+      'hospital_material_reviews',
+      reviewId,
+      this.sanitizeReviewTranslations(translations),
+    );
+  }
+
+  /**
+   * Merge translated fields into hospital_material_packages.translations JSONB column (China).
+   */
+  private async chinaMergeMaterialPackageTranslations(
+    packageId: string,
+    translations: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
+    await this.chinaMergeMaterialTranslations(
+      'hospital_material_packages',
+      packageId,
+      this.sanitizePackageTranslations(translations),
+    );
+  }
+
+  private async chinaMergeMaterialTranslations(
+    tableName: 'hospital_material_reviews' | 'hospital_material_packages',
+    entityId: string,
+    translations: Record<string, Record<string, unknown>>,
+  ): Promise<void> {
+    const { data: existing, error: fetchError } = await this.chinaSupabase
+      .from(tableName)
+      .select('translations')
+      .eq('id', entityId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const currentTranslations = (existing?.translations as Record<string, unknown> | null) ?? {};
+    const merged = this.mergeLanguageTranslations(currentTranslations, translations);
+
+    const { error } = await this.chinaSupabase
+      .from(tableName)
+      .update({ translations: merged, updated_at: new Date().toISOString() })
+      .eq('id', entityId);
 
     if (error) throw error;
   }
@@ -429,6 +546,64 @@ export class TranslationWritebackService {
       result[lang] = { ...existingLang, ...fields };
     }
     return result;
+  }
+
+  private sanitizeReviewTranslations(
+    translations: Record<string, Record<string, unknown>>,
+  ): Record<string, Record<string, unknown>> {
+    const sanitized: Record<string, Record<string, unknown>> = {};
+
+    for (const [lang, fields] of Object.entries(translations)) {
+      const next: Record<string, unknown> = {};
+      if ('treatmentName' in fields) next['treatmentName'] = fields['treatmentName'] ?? null;
+      if ('reviewTitle' in fields) next['reviewTitle'] = fields['reviewTitle'] ?? null;
+      if ('reviewComment' in fields) next['reviewComment'] = fields['reviewComment'] ?? null;
+      if (Object.keys(next).length > 0) sanitized[lang] = next;
+    }
+
+    return sanitized;
+  }
+
+  private sanitizePackageTranslations(
+    translations: Record<string, Record<string, unknown>>,
+  ): Record<string, Record<string, unknown>> {
+    const sanitized: Record<string, Record<string, unknown>> = {};
+
+    for (const [lang, fields] of Object.entries(translations)) {
+      const next: Record<string, unknown> = {};
+      if ('title' in fields) next['title'] = fields['title'] ?? null;
+      if ('subtitle' in fields) next['subtitle'] = fields['subtitle'] ?? null;
+      if ('summary' in fields) next['summary'] = fields['summary'] ?? null;
+      if ('includes' in fields && Array.isArray(fields['includes'])) {
+        next['includes'] = (fields['includes'] as unknown[])
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+          .map((item) => ({ text: item['text'] ?? null }));
+      }
+      if ('process' in fields && Array.isArray(fields['process'])) {
+        next['process'] = (fields['process'] as unknown[])
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+          .map((item) => ({
+            stepTitle: item['stepTitle'] ?? null,
+            description: item['description'] ?? null,
+          }));
+      }
+      if ('cases' in fields && Array.isArray(fields['cases'])) {
+        next['cases'] = (fields['cases'] as unknown[])
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+          .map((item) => ({
+            story: item['story'] ?? null,
+            result: item['result'] ?? null,
+          }));
+      }
+      if ('reviews' in fields && Array.isArray(fields['reviews'])) {
+        next['reviews'] = (fields['reviews'] as unknown[])
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+          .map((item) => ({ comment: item['comment'] ?? null }));
+      }
+      if (Object.keys(next).length > 0) sanitized[lang] = next;
+    }
+
+    return sanitized;
   }
 
   private resolveHospitalLocaleNameSeed(

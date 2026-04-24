@@ -82,6 +82,15 @@ import {
   CreateBeforeAfterCaseUseCase,
   UpdateBeforeAfterCaseUseCase,
   DeleteBeforeAfterCaseUseCase,
+  GetMaterialsReviewsUseCase,
+  CreateMaterialsReviewUseCase,
+  UpdateMaterialsReviewUseCase,
+  DeleteMaterialsReviewUseCase,
+  GetMaterialsPackagesUseCase,
+  GetMaterialsPackageUseCase,
+  CreateMaterialsPackageUseCase,
+  UpdateMaterialsPackageUseCase,
+  DeleteMaterialsPackageUseCase,
   AddHospitalToCaseUseCase,
   RemoveHospitalFromCaseUseCase,
   SendReminderUseCase,
@@ -594,6 +603,15 @@ interface AppServices {
   createBeforeAfterCase: CreateBeforeAfterCaseUseCase;
   updateBeforeAfterCase: UpdateBeforeAfterCaseUseCase;
   deleteBeforeAfterCase: DeleteBeforeAfterCaseUseCase;
+  getMaterialsReviews: GetMaterialsReviewsUseCase;
+  createMaterialsReview: CreateMaterialsReviewUseCase;
+  updateMaterialsReview: UpdateMaterialsReviewUseCase;
+  deleteMaterialsReview: DeleteMaterialsReviewUseCase;
+  getMaterialsPackages: GetMaterialsPackagesUseCase;
+  getMaterialsPackage: GetMaterialsPackageUseCase;
+  createMaterialsPackage: CreateMaterialsPackageUseCase;
+  updateMaterialsPackage: UpdateMaterialsPackageUseCase;
+  deleteMaterialsPackage: DeleteMaterialsPackageUseCase;
 }
 
 let _services: AppServices | null = null;
@@ -1261,6 +1279,15 @@ export function getServices(): AppServices {
       createBeforeAfterCase: new CreateBeforeAfterCaseUseCase(materialsRepo, resolveHospitalType, translationTaskService),
       updateBeforeAfterCase: new UpdateBeforeAfterCaseUseCase(materialsRepo, resolveHospitalType, translationTaskService),
       deleteBeforeAfterCase: new DeleteBeforeAfterCaseUseCase(materialsRepo),
+      getMaterialsReviews: new GetMaterialsReviewsUseCase(materialsRepo, resolveHospitalType),
+      createMaterialsReview: new CreateMaterialsReviewUseCase(materialsRepo, resolveHospitalType, translationTaskService),
+      updateMaterialsReview: new UpdateMaterialsReviewUseCase(materialsRepo, resolveHospitalType, translationTaskService),
+      deleteMaterialsReview: new DeleteMaterialsReviewUseCase(materialsRepo, resolveHospitalType),
+      getMaterialsPackages: new GetMaterialsPackagesUseCase(materialsRepo, resolveHospitalType),
+      getMaterialsPackage: new GetMaterialsPackageUseCase(materialsRepo, resolveHospitalType),
+      createMaterialsPackage: new CreateMaterialsPackageUseCase(materialsRepo, resolveHospitalType, translationTaskService),
+      updateMaterialsPackage: new UpdateMaterialsPackageUseCase(materialsRepo, resolveHospitalType, translationTaskService),
+      deleteMaterialsPackage: new DeleteMaterialsPackageUseCase(materialsRepo, resolveHospitalType),
     };
   }
   return _services!;

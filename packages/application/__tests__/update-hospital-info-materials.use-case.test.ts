@@ -27,6 +27,15 @@ describe('UpdateHospitalInfoUseCase', () => {
       createBeforeAfterCase: vi.fn(),
       updateBeforeAfterCase: vi.fn(),
       deleteBeforeAfterCase: vi.fn(),
+      listReviews: vi.fn(),
+      createReview: vi.fn(),
+      updateReview: vi.fn(),
+      deleteReview: vi.fn(),
+      listPackages: vi.fn(),
+      getPackage: vi.fn(),
+      createPackage: vi.fn(),
+      updatePackage: vi.fn(),
+      deletePackage: vi.fn(),
     };
 
     const translationTaskService = {

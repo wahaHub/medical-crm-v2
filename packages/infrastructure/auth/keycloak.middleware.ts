@@ -179,7 +179,7 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
       void touchLastLogin(crmIdentity.id);
     }
 
-    return await next();
+    await next();
   }
 );
 
@@ -189,7 +189,7 @@ export const requireRole = (...roles: string[]) =>
     if (!roles.some((r) => session.roles.includes(r))) {
       throw new HTTPException(403, { message: 'Insufficient permissions' });
     }
-    return await next();
+    await next();
   });
 
 export const requireHospital = createMiddleware(async (c, next) => {
@@ -197,5 +197,5 @@ export const requireHospital = createMiddleware(async (c, next) => {
   if (!session.hospitalId) {
     throw new HTTPException(403, { message: 'No hospital association' });
   }
-  return await next();
+  await next();
 });

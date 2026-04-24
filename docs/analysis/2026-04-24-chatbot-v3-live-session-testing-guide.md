@@ -416,6 +416,20 @@ Relevant code:
 - `/Users/haowang/Desktop/claws/medical-crm-v2/apps/api/src/middleware/rate-limit.middleware.ts`
 
 This was correct production behavior, but it blocked high-volume live probing.
+The most important operational conclusion is:
+- when we tried to widen the live-session matrix, the real bottleneck was usually **patient onboarding rate limit**
+- that is a bootstrap-layer bottleneck
+- it is **not automatically evidence that the downstream chatbot runtime is broken**
+
+In practice, this means:
+- if new scenarios start failing before a real chat session is even established
+- and the failure is `429 Too many requests`
+- the correct diagnosis is usually onboarding-rate-limit pressure, not chatbot turn logic failure
+
+So the first debugging question should be:
+- \"Did this scenario fail during bootstrap, or after a valid widget chat session was already established?\"
+
+If the failure happened during bootstrap, do not classify the whole matrix as a chatbot runtime regression yet.
 So we added a minimal, explicit debug bypass.
 
 ## 15. How Debug Bypass Works
@@ -438,6 +452,12 @@ Current onboarding integration:
 - when used, it logs a clear bypass message
 
 This means we can run repeated live bootstrap tests without weakening the production default behavior for ordinary traffic.
+It is also the main answer to the matrix-scaling problem:
+- keep production rate limiting on by default
+- only bypass the onboarding gate in controlled debug runs
+- let every later chat turn continue through the normal deployed `chatbot-v3` runtime
+
+That way, we avoid confusing a bootstrap throttle with a chatbot behavior regression.
 
 ## 16. The Difference Between Production Behavior And Debug Testing Behavior
 

@@ -39,4 +39,18 @@ describe('rateLimitByIp', () => {
 
     expect(res.status).toBe(200);
   });
+
+  it('does not leak downstream context through outer middleware', async () => {
+    const app = new Hono();
+    app.use('/*', async (_c, next) => {
+      await next();
+    });
+    app.use('/*', rateLimitByIp({ maxRequests: 3, windowMs: 60_000 }));
+    app.get('/test', (c) => c.json({ ok: true }));
+
+    const res = await app.request('/test');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
 });

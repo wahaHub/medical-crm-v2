@@ -170,6 +170,37 @@ describe('authMiddleware', () => {
     expect(lookup.limit).toHaveBeenCalledTimes(1);
   });
 
+  it('does not bubble a context object through outer middleware', async () => {
+    const lookup = makeLookupDb([
+      [{ id: 'crm-user-1', hospitalId: 'hospital-1' }],
+    ]);
+
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        sub: 'kc-user-1',
+        email: 'hospital@example.com',
+        azp: 'hospital-portal',
+        realm_access: { roles: ['hospital'] },
+      },
+    });
+    mockGetCrmDb.mockReturnValue(lookup.db);
+
+    const { authMiddleware } = await import('../../auth/keycloak.middleware.js');
+    const app = new Hono();
+    app.use('/*', async (_c, next) => {
+      await next();
+    });
+    app.use('/*', authMiddleware);
+    app.get('/test', (c) => c.json({ ok: true }));
+
+    const res = await app.request('/test', {
+      headers: { Authorization: 'Bearer wrapped-token' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
   it('dedupes concurrent cold-miss CRM identity lookups for the same token subject', async () => {
     let resolveLookup: ((value: Array<{ id: string; hospitalId: string | null }>) => void) | undefined;
     const lookupPromise = new Promise<Array<{ id: string; hospitalId: string | null }>>((resolve) => {

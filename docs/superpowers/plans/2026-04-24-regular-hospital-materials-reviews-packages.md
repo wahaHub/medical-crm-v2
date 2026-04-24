@@ -23,6 +23,8 @@
 - `apps/hospital/src/app/api/materials/cases/route.ts`
 - `apps/hospital/src/actions/materials-actions.ts`
 - `apps/hospital/src/components/materials-tabs.tsx`
+- `apps/hospital/src/lib/materials-payload.ts`
+- `apps/hospital/src/__tests__/materials-payload.test.ts`
 - `apps/hospital/src/lib/api-types.ts`
 - `apps/hospital/src/queries/use-materials.ts`
 - `apps/hospital/src/__tests__/materials-tabs.test.ts`
@@ -31,6 +33,7 @@
 - `packages/infrastructure/services/routing-materials.repository.ts`
 - `packages/infrastructure/supabase-main/supabase-materials.repository.ts`
 - `packages/infrastructure/supabase-china/china-medical-materials.repository.ts`
+- `packages/infrastructure/database/migrations/040_materials_reviews_and_packages.sql`
 - `packages/shared/i18n/src/locales/en.json`
 - `packages/shared/i18n/src/locales/zh.json`
 - `packages/shared/i18n/src/locales/fr.json`
@@ -42,6 +45,8 @@
 
 - `apps/hospital/src/app/api/materials/reviews/route.ts`
 - `apps/hospital/src/app/api/materials/packages/route.ts`
+- `apps/hospital/src/app/api/materials/reviews/[id]/route.ts`
+- `apps/hospital/src/app/api/materials/packages/[id]/route.ts`
 - `apps/hospital/src/components/materials/reviews-tab.tsx`
 - `apps/hospital/src/components/materials/packages-tab.tsx`
 - `apps/hospital/src/components/materials/package-editor.tsx`
@@ -67,6 +72,7 @@
 - `packages-tab.tsx` owns package list management.
 - `package-editor.tsx` owns package section editing and nested sub-item management.
 - `materials-tabs.tsx` remains the composition shell and conditional tab registration point.
+- `materials-payload.ts` owns the consumer-facing review/package payload mapping helpers.
 
 ---
 
@@ -177,6 +183,55 @@ it('creates a materials package with nested detail sections', async () => {
   });
   expect(res.status).toBe(201);
 });
+
+it('rejects invalid review payloads', async () => {
+  const res = await app.request(`/api/v2/hospitals/${hospitalId}/materials/reviews`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ patientName: '', rating: 6, reviewComment: '', reviewDate: 'not-a-date' }),
+  });
+  expect(res.status).toBe(400);
+});
+
+it('rejects invalid review media payloads', async () => {
+  const res = await app.request(`/api/v2/hospitals/${hospitalId}/materials/reviews`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      patientName: 'Sarah',
+      rating: 5,
+      reviewComment: 'Great care',
+      media: [{ type: 'gif', url: 'https://example.com/review.gif' }],
+    }),
+  });
+  expect(res.status).toBe(400);
+});
+
+it('rejects invalid package payloads', async () => {
+  const res = await app.request(`/api/v2/hospitals/${hospitalId}/materials/packages`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ title: '', slug: '', price: 'abc', currency: '', summary: '', coverImageUrl: '' }),
+  });
+  expect(res.status).toBe(400);
+});
+
+it('rejects invalid package review rating payloads', async () => {
+  const res = await app.request(`/api/v2/hospitals/${hospitalId}/materials/packages`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      title: 'Premium LASIK',
+      slug: 'premium-lasik',
+      price: '1200',
+      currency: 'USD',
+      summary: 'Summary',
+      coverImageUrl: 'https://example.com/cover.jpg',
+      reviews: [{ reviewerName: 'Jane', reviewerCountry: 'US', rating: 6, reviewDate: '2026-04-24', comment: 'Great' }],
+    }),
+  });
+  expect(res.status).toBe(400);
+});
 ```
 
 - [ ] **Step 2: Run the API route tests to verify they fail**
@@ -224,6 +279,18 @@ Add:
   - process
   - cases
   - package reviews
+- explicit field-level validation for:
+  - review `patientName` required
+  - review `rating` integer 1-5
+  - review `reviewComment` required
+  - review `reviewDate` valid when present
+  - package `title` required
+  - package `slug` required and unique per hospital
+  - package `price` required numeric format
+  - package `currency` required
+  - package `summary` required
+  - package `coverImageUrl` required
+  - reasonable text length caps to prevent consumer layout overflow
 
 Keep request schemas route-local unless a second caller needs shared validation immediately.
 
@@ -250,6 +317,7 @@ git commit -m "feat(materials): add review and package api use cases"
 - Modify: `packages/infrastructure/services/routing-materials.repository.ts`
 - Modify: `packages/infrastructure/supabase-main/supabase-materials.repository.ts`
 - Modify: `packages/infrastructure/supabase-china/china-medical-materials.repository.ts`
+- Create: `packages/infrastructure/database/migrations/040_materials_reviews_and_packages.sql`
 
 - [ ] **Step 1: Write failing repository-level tests for list/create/update coverage where test seams already exist**
 
@@ -290,7 +358,24 @@ async listReviews(hospitalId: string) {
 }
 ```
 
-- [ ] **Step 4: Implement review/package persistence in `supabase-materials.repository.ts`**
+- [ ] **Step 4: Add the concrete storage migration before repository writes**
+
+Create `packages/infrastructure/database/migrations/040_materials_reviews_and_packages.sql` with the hospital-scoped storage needed for:
+
+- hospital materials reviews
+- hospital materials packages
+- any nested package substructures, either as JSON columns or normalized child tables
+- per-hospital package slug uniqueness enforcement
+
+Run:
+
+```bash
+pnpm --filter @medical-crm/infrastructure db:generate
+```
+
+Expected: the new migration is recorded and ready before repository code depends on it.
+
+- [ ] **Step 5: Implement review/package persistence in `supabase-materials.repository.ts`**
 
 Store:
 
@@ -304,30 +389,26 @@ Requirements:
 - reject duplicate slugs within the same hospital
 - round-trip all fields needed by the spec
 
-- [ ] **Step 5: Implement interface-complete behavior in `china-medical-materials.repository.ts`**
+- [ ] **Step 6: Implement interface-complete behavior in `china-medical-materials.repository.ts`**
 
-Because this phase is regular-only:
+Regular hospital materials route through the China materials repository, so these methods must be fully implemented against the same concrete storage contract. Do not leave the China path as a no-op, an empty array fallback, or a stub that hides missing persistence work.
 
-- return safe no-op or empty implementations if this repository can never be called for the new regular-only path
-- or implement the same interface shape if routing can reach it
-
-Do not leave the interface partially implemented.
-
-- [ ] **Step 6: Re-run repository/infrastructure checks**
+- [ ] **Step 7: Re-run repository/infrastructure checks**
 
 Run:
 
 ```bash
+pnpm --filter @medical-crm/infrastructure exec vitest run __tests__/unit/translation-writeback.service.test.ts
 pnpm --filter @medical-crm/infrastructure typecheck
 pnpm --filter @medical-crm/api exec vitest run src/__tests__/materials.routes.test.ts
 ```
 
 Expected: PASS with no missing method errors.
 
-- [ ] **Step 7: Commit the repository layer**
+- [ ] **Step 8: Commit the repository layer**
 
 ```bash
-git add packages/infrastructure/services/routing-materials.repository.ts packages/infrastructure/supabase-main/supabase-materials.repository.ts packages/infrastructure/supabase-china/china-medical-materials.repository.ts
+git add packages/infrastructure/services/routing-materials.repository.ts packages/infrastructure/supabase-main/supabase-materials.repository.ts packages/infrastructure/supabase-china/china-medical-materials.repository.ts packages/infrastructure/database/migrations/040_materials_reviews_and_packages.sql
 git commit -m "feat(materials): persist hospital reviews and packages"
 ```
 
@@ -353,6 +434,7 @@ expect(source).toContain("queryKey: ['materials', 'reviews']");
 expect(source).toContain("queryKey: ['materials', 'packages']");
 expect(source).toContain("/api/materials/reviews");
 expect(source).toContain("/api/materials/packages");
+expect(source).toContain("/api/materials/packages/${id}");
 ```
 
 - [ ] **Step 2: Run the hospital materials test to verify it fails**
@@ -377,17 +459,30 @@ export async function GET(): Promise<Response> {
 }
 ```
 
-Do the same for packages.
+Do the same for packages, and add the id-based proxy routes needed by item-level operations:
+
+- `apps/hospital/src/app/api/materials/reviews/[id]/route.ts` for review update/delete
+- `apps/hospital/src/app/api/materials/packages/[id]/route.ts` for package detail/update/delete
+
+Follow the existing `cases/[id]/route.ts` style for param-driven reads, and keep the collection routes separate from the item routes.
 
 - [ ] **Step 4: Extend `api-types.ts` with `MaterialsReviewDTO` and `MaterialsPackageDTO`**
 
 Model nested DTOs explicitly so the React tab components do not operate on `Record<string, unknown>`.
 
-- [ ] **Step 5: Extend `use-materials.ts` with `useReviews()` and `usePackages()`**
+- [ ] **Step 5: Extend `use-materials.ts` with `useReviews()`, `usePackages()`, and a package detail hook**
 
 ```ts
 export function useReviews() {
   return useQuery({ queryKey: ['materials', 'reviews'], queryFn: () => queryFetch('/api/materials/reviews') });
+}
+
+export function usePackage(id: string) {
+  return useQuery({
+    queryKey: ['materials', 'packages', id],
+    queryFn: () => queryFetch(`/api/materials/packages/${id}`),
+    enabled: !!id,
+  });
 }
 ```
 
@@ -408,6 +503,9 @@ Requirements:
 - revalidate `/materials`
 - preserve the current debug/upload conventions
 - add package slug collision summaries when possible
+- enqueue translation tasks for the spec's translatable fields:
+  - hospital reviews: `treatmentName`, `reviewTitle`, `reviewComment`
+  - packages: `title`, `subtitle`, `summary`, `includes[].text`, `process[].stepTitle`, `process[].description`, `cases[].story`, `cases[].result`, `reviews[].comment`
 
 - [ ] **Step 7: Re-run the hospital materials test to verify the plumbing expectations pass**
 
@@ -449,7 +547,10 @@ expect(source).toContain("hospital.materials.tabs.packages");
 expect(source).toContain("isRegular &&");
 ```
 
-If there is a behavior-level seam available, add a render test that confirms the tabs are omitted for non-regular hospitals.
+Add a runtime behavior test that mounts the materials tabs and proves:
+
+- regular hospitals see `Reviews` and `Packages`
+- cosmetic hospitals do not see `Reviews` and `Packages`
 
 - [ ] **Step 2: Run the hospital materials test to verify it fails**
 
@@ -468,13 +569,43 @@ Requirements:
 - show `Reviews` and `Packages` only for regular hospitals
 - keep the tab shell localized
 - import focused components instead of implementing both tabs inline inside the already-large file
+- make the package list card surface show the spec-required summary fields:
+  - cover image
+  - title
+  - subtitle
+  - price and currency
+  - duration
+  - tags
+  - active state
+  - package review count
+  - patient case count
+- include list-level controls for add, edit, delete, reorder, and active/inactive toggle
 
 - [ ] **Step 4: Implement `reviews-tab.tsx`**
 
 Behavior:
 
 - list reviews
-- add/edit modal or side panel
+- add/edit modal or side panel with `Basic Info`, `Content`, and `Media` sections
+- `Basic Info` fields:
+  - patient name
+  - patient country
+  - patient avatar
+  - treatment name
+  - rating
+  - review date
+  - featured
+  - active
+- `Content` fields:
+  - review title
+  - review comment
+- `Media` fields:
+  - image and video uploads
+  - thumbnail URL
+  - caption
+  - media ordering / sort order
+- inline load failures in the editor should render inside the panel instead of collapsing the tab
+- save failures should toast and preserve the current input state
 - active toggle
 - delete confirmation
 - ordering controls
@@ -494,6 +625,12 @@ Behavior:
 
 - package list card grid or list
 - edit button opens the package editor
+- add/delete/reorder/active toggle controls in the list header or each card row
+- inline load failures in the editor should render inside the panel instead of collapsing the tab
+- save failures should toast and preserve the current input state
+- section-specific package save errors should identify the failing editor section
+- delete confirmation is required before destructive actions
+- slug collisions must surface a concrete user-facing error
 - package editor sections:
   - Basic
   - Commercial
@@ -570,6 +707,8 @@ Cover:
 - review and package row actions
 - package editor section headings
 
+Also verify the new fields participate in the existing translation/writeback flow by extending the relevant materials translation tests, not just the UI copy catalog.
+
 - [ ] **Step 4: Re-run the locale coverage test**
 
 Run:
@@ -587,7 +726,56 @@ git add packages/shared/i18n/src/locales apps/hospital/src/__tests__/materials-t
 git commit -m "feat(i18n): add materials reviews and packages copy"
 ```
 
-### Task 7: Run end-to-end verification for the new slice
+### Task 7: Verify translation writeback and consumer payload mapping
+
+**Files:**
+- Modify: `packages/infrastructure/__tests__/unit/translation-writeback.service.test.ts`
+- Modify: `apps/hospital/src/lib/materials-payload.ts`
+- Modify: `apps/hospital/src/__tests__/materials-payload.test.ts`
+
+- [ ] **Step 1: Add failing translation writeback coverage for reviews and packages**
+
+Extend the existing translation writeback tests so they assert the new review/package translatable fields are merged back into the correct storage shape.
+
+- [ ] **Step 2: Add failing consumer payload mapping coverage**
+
+Extend the hospital materials payload tests so they verify the stored review/package shapes map into the consumer-facing Hospital Navigator payloads for:
+
+- `PatientReviews`
+- `PackageList`
+- `PackageDetail`
+
+For `PackageDetail`, make the contract explicit about:
+
+- gallery images
+- tags
+- title and subtitle
+- price and currency
+- duration
+- summary
+- includes
+- treatment process
+- hospital identity context used in the detail page and PDF export path
+- cases
+- package-level patient reviews
+- PDF-exported fields derived from the same package detail surface
+
+- [ ] **Step 3: Implement the mapping helpers and writeback assertions**
+
+Keep the editor/storage shapes separate from the consumer contract. The tests should prove that translation-writeback and consumer mapping both preserve the fields required by the spec while omitting editor-only metadata.
+
+- [ ] **Step 4: Re-run the translation and payload tests**
+
+Run:
+
+```bash
+pnpm --filter @medical-crm/infrastructure exec vitest run __tests__/unit/translation-writeback.service.test.ts
+pnpm --filter @medical-crm/hospital exec vitest run src/__tests__/materials-payload.test.ts
+```
+
+Expected: PASS.
+
+### Task 8: Run end-to-end verification for the new slice
 
 **Files:**
 - Verify only; no new files required unless a missing test seam is discovered
@@ -646,7 +834,7 @@ Only do this step if verification required follow-up cleanup edits.
 - Do not introduce a publish workflow.
 - Keep hospital reviews and package reviews as separate data models.
 - Prefer extracting new UI into `apps/hospital/src/components/materials/*` rather than further growing `materials-tabs.tsx`.
-- If persistence requires new backing tables or a migration outside the materials repositories, add that work as a prerequisite before Task 3 and keep the table names hospital-scoped and narrowly aligned with this feature.
+- If persistence requires new backing tables or columns, land the migration first and then wire both Supabase repositories to that concrete schema. Do not leave the regular-hospital China repository as a no-op or empty fallback, because regular hospital materials route through it.
 
 ---
 

@@ -125,4 +125,23 @@ describe('ResumeConversationAiUseCase', () => {
     expect(result.resumeNotice).toBeNull();
     expect(messageRepo.save).not.toHaveBeenCalled();
   });
+
+  it('does not persist a half-finished resume when the resume notice save fails', async () => {
+    (conversationRepo as IConversationRepository & {
+      compareAndSetAssistantMode: (
+        id: string,
+        fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+      ) => Promise<Conversation | null>;
+    }).compareAndSetAssistantMode = vi.fn(async () => makeConversation({
+      assistantMode: 'AI_ACTIVE',
+    }));
+    messageRepo.save = vi.fn().mockRejectedValue(new Error('failed to persist resume notice'));
+
+    await expect(useCase.execute('conv-1', adminActor)).rejects.toThrow(
+      'failed to persist resume notice',
+    );
+
+    expect(conversationRepo.save).not.toHaveBeenCalled();
+  });
 });

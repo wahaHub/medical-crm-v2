@@ -215,10 +215,27 @@ describe('GetPatientConversationsUseCase', () => {
     useCase = new GetPatientConversationsUseCase(convRepo, hospitalRepo);
   });
 
-  it('returns conversations for patient', async () => {
+  it('returns care-team and hospital session summaries plus case authority meta for patient', async () => {
     const conversations = [
-      makeMockConversation({ category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'HUMAN_TAKEOVER' }),
-      makeMockConversation({ id: 'conv-2', assistantMode: 'AI_ACTIVE' }),
+      makeMockConversation({
+        id: 'conv-admin',
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+        assistantMode: 'HUMAN_TAKEOVER',
+        caseId: 'case-1',
+      }),
+      makeMockConversation({
+        id: 'conv-2',
+        assistantMode: 'AI_ACTIVE',
+        caseId: 'case-1',
+      }),
+      makeMockConversation({
+        id: 'conv-other-case-admin',
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+        assistantMode: 'AI_ACTIVE',
+        caseId: 'case-2',
+      }),
     ];
     vi.mocked(convRepo.findByPatientId).mockResolvedValue(conversations);
     vi.mocked(hospitalRepo.findById).mockResolvedValue({
@@ -228,22 +245,62 @@ describe('GetPatientConversationsUseCase', () => {
       type: 'COSMETIC',
     });
 
-    const result = await useCase.execute({ patientId: 'patient-1' });
+    const result = await useCase.execute({ patientId: 'patient-1', caseId: 'case-1' });
 
     expect(convRepo.findByPatientId).toHaveBeenCalledWith('patient-1');
-    expect(result).toHaveLength(2);
-    expect(result[0]?.assistantMode).toBe('HUMAN_TAKEOVER');
-    expect(result[1]?.assistantMode).toBe('AI_ACTIVE');
-    expect(result[0]).toMatchObject({
-      type: 'patient-admin',
-      hospitalName: null,
-      unreadCount: 0,
+    expect(result).toEqual({
+      sessions: [
+        expect.objectContaining({
+          sessionId: 'widget-chat:patient-1:case-1',
+          caseId: 'case-1',
+          type: 'CARE_TEAM',
+          title: 'Medora Care Team',
+          hospitalId: null,
+          hospitalName: null,
+          isAiAvailable: false,
+        }),
+        expect.objectContaining({
+          sessionId: 'hospital:hospital-1:case-1',
+          caseId: 'case-1',
+          type: 'HOSPITAL',
+          title: 'Seoul Aesthetic',
+          hospitalId: 'hospital-1',
+          hospitalName: 'Seoul Aesthetic',
+          isAiAvailable: false,
+        }),
+      ],
+      meta: {
+        caseId: 'case-1',
+        chatAuthority: 'HUMAN_TAKEOVER',
+      },
     });
-    expect(result[1]).toMatchObject({
-      type: 'patient-hospital',
-      hospitalName: 'Seoul Aesthetic',
-      lastMessage: null,
-    });
+  });
+
+  it('filters out legacy hospital sessions that are missing a caseId', async () => {
+    vi.mocked(convRepo.findByPatientId).mockResolvedValue([
+      makeMockConversation({
+        id: 'conv-admin',
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+        assistantMode: 'HUMAN_TAKEOVER',
+        caseId: 'case-1',
+      }),
+      makeMockConversation({
+        id: 'conv-hospital-null-case',
+        category: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        caseId: null,
+      }),
+    ]);
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.sessions).toEqual([
+      expect.objectContaining({
+        sessionId: 'widget-chat:patient-1:case-1',
+        type: 'CARE_TEAM',
+      }),
+    ]);
   });
 });
 

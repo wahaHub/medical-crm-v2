@@ -33,6 +33,7 @@ export interface SendMessageResult {
 type TxConversationRepository = IConversationRepository & {
   findById(id: string, tx?: Transaction): Promise<Conversation | null>;
   save(entity: Conversation, tx?: Transaction): Promise<Conversation>;
+  findAdminPatientByCaseId?(caseId: string, tx?: Transaction): Promise<Conversation | null>;
   compareAndSetAssistantMode?(
     id: string,
     fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
@@ -102,10 +103,12 @@ export class SendMessageUseCase {
     }
 
     // 6. Save message (before enqueue!)
-    const isAdminTakeoverCandidate = actor.role === 'ADMIN' && conversation.category === 'ADMIN_PATIENT';
+    const isHumanTakeoverCandidate =
+      (actor.role === 'ADMIN' && conversation.category === 'ADMIN_PATIENT')
+      || (actor.role === 'HOSPITAL' && conversation.category === 'HOSPITAL_PATIENT');
 
-    const result = isAdminTakeoverCandidate
-      ? await this.txRunner.run(async (tx) => this.persistAdminTakeoverMessage(tx, conversationId, message))
+    const result = isHumanTakeoverCandidate
+      ? await this.txRunner.run(async (tx) => this.persistHumanTakeoverMessage(tx, conversationId, message))
       : await this.persistStandardMessage(conversation, message);
 
     // 7. IMAGE/FILE: async enqueue
@@ -136,7 +139,7 @@ export class SendMessageUseCase {
     };
   }
 
-  private async persistAdminTakeoverMessage(
+  private async persistHumanTakeoverMessage(
     tx: Transaction,
     conversationId: string,
     message: Message,
@@ -167,6 +170,7 @@ export class SendMessageUseCase {
 
     if (transitionedConversation) {
       conversation.assistantMode = 'HUMAN_TAKEOVER';
+      await this.syncCaseAuthorityToHumanTakeover(conversation, conversationRepo, tx);
       const handoffNotice = await messageRepo.save(new Message({
         id: generateId(),
         conversationId,
@@ -195,6 +199,7 @@ export class SendMessageUseCase {
       await conversationRepo.save(transitionedConversation, tx);
     } else {
       conversation.assistantMode = 'HUMAN_TAKEOVER';
+      await this.syncCaseAuthorityToHumanTakeover(conversation, conversationRepo, tx);
       conversation.updateLastMessage({
         id: saved.id,
         content: saved.content,
@@ -208,6 +213,37 @@ export class SendMessageUseCase {
       message: toMessageDTO(saved),
       sideEffectMessages,
     };
+  }
+
+  private async syncCaseAuthorityToHumanTakeover(
+    conversation: Conversation,
+    conversationRepo: TxConversationRepository,
+    tx: Transaction,
+  ): Promise<void> {
+    if (conversation.category !== 'HOSPITAL_PATIENT' || !conversation.caseId) {
+      return;
+    }
+
+    const adminConversation = conversationRepo.findAdminPatientByCaseId
+      ? await conversationRepo.findAdminPatientByCaseId(conversation.caseId, tx)
+      : null;
+
+    if (!adminConversation || adminConversation.assistantMode !== 'AI_ACTIVE') {
+      return;
+    }
+
+    if (conversationRepo.compareAndSetAssistantMode) {
+      await conversationRepo.compareAndSetAssistantMode(
+        adminConversation.id,
+        'AI_ACTIVE',
+        'HUMAN_TAKEOVER',
+        tx,
+      );
+      return;
+    }
+
+    adminConversation.assistantMode = 'HUMAN_TAKEOVER';
+    await conversationRepo.save(adminConversation, tx);
   }
 
   private async deriveRecipientLang(

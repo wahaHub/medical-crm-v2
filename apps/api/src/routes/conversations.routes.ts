@@ -11,6 +11,25 @@ import { wsManager } from '../ws/ws-manager.js';
 
 const app = new OpenAPIHono();
 
+async function resolveCareTeamPatientRoom(
+  svc: ReturnType<typeof getServices>,
+  conversation: {
+    category?: string | null;
+    caseId?: string | null;
+  },
+): Promise<string | null> {
+  if (conversation.category !== 'ADMIN_PATIENT' || !conversation.caseId) {
+    return null;
+  }
+
+  const caseEntity = await svc.caseRepo.findById(conversation.caseId);
+  if (!caseEntity) {
+    return null;
+  }
+
+  return `conv:widget-chat:${caseEntity.patientId}:${conversation.caseId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Param schemas
 // ---------------------------------------------------------------------------
@@ -107,11 +126,18 @@ app.openapi(updateConversationRoute, async (c) => {
   }
   if (body.assistantMode === 'AI_ACTIVE') {
     const result = await svc.resumeConversationAi.execute(id, actor);
+    const patientConversationRoom = await resolveCareTeamPatientRoom(svc, result.conversation);
     if (result.resumeNotice) {
       wsManager.broadcast(`conv:${id}`, {
         type: 'new_message',
         data: result.resumeNotice,
       });
+      if (patientConversationRoom) {
+        wsManager.broadcast(patientConversationRoom, {
+          type: 'new_message',
+          data: result.resumeNotice,
+        });
+      }
     }
     return c.json(result.conversation, 200);
   }

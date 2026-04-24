@@ -26,8 +26,8 @@ export function registerPatientWs(
         try {
           const payload = await authService.verifySessionToken(token, site);
           const { getPatientConversations } = getServices();
-          const conversations = await getPatientConversations.execute({ patientId: payload.userId });
-          const hasConversationAccess = conversations.some((item) => item.id === conversationId);
+          const conversationSummary = await getPatientConversations.execute({ patientId: payload.userId });
+          const hasConversationAccess = conversationSummary.sessions.some((item) => item.sessionId === conversationId);
           if (!hasConversationAccess) {
             ws.close(4003, 'Forbidden');
             return;

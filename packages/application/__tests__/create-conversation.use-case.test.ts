@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CreateConversationUseCase } from '../src/use-cases/conversations/create-conversation.use-case.js';
 import type { IConversationRepository } from '@medical-crm/domain';
 import { Conversation } from '@medical-crm/domain';
+import { ValidationError } from '@medical-crm/utils';
 import type { Actor } from '../src/types/actor.js';
 
 describe('CreateConversationUseCase', () => {
@@ -77,6 +78,32 @@ describe('CreateConversationUseCase', () => {
     );
 
     expect(result.id).toBe('conv-existing');
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects hospital-patient creation when hospitalId cannot be resolved', async () => {
+    const adminWithoutHospitalActor: Actor = {
+      userId: 'admin-2',
+      email: 'admin2@test.com',
+      role: 'ADMIN',
+      hospitalId: null,
+    };
+
+    await expect(
+      useCase.execute(
+        { category: 'HOSPITAL_PATIENT', caseId: 'case-1' },
+        adminWithoutHospitalActor,
+      ),
+    ).rejects.toMatchObject({
+      message: 'HOSPITAL_PATIENT conversations require both caseId and hospitalId',
+    });
+    await expect(
+      useCase.execute(
+        { category: 'HOSPITAL_PATIENT', caseId: 'case-1' },
+        adminWithoutHospitalActor,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mockConversationRepo.findOrCreateHospitalPatientConversation).not.toHaveBeenCalled();
     expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 

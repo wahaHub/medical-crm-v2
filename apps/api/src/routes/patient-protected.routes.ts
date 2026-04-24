@@ -16,6 +16,9 @@ const messageUploadInitSchema = z.object({
   fileSize: z.number().positive(),
   mimeType: z.string().min(1),
 });
+const patientConversationListQuerySchema = z.object({
+  caseId: z.string().uuid().optional(),
+});
 const patientTicketTypeSchema = z.enum([
   'GENERAL_SUPPORT',
   'MEDICAL_QUESTION',
@@ -101,6 +104,28 @@ function toPatientTicketType(type: string): z.infer<typeof patientTicketTypeSche
   return domainTicketTypeToPatient[type] ?? 'GENERAL_SUPPORT';
 }
 
+function parsePatientSessionId(sessionId: string): (
+  | { type: 'CARE_TEAM'; caseId: string }
+  | { type: 'HOSPITAL'; caseId: string; hospitalId: string }
+  | null
+) {
+  if (sessionId.startsWith('widget-chat:')) {
+    const [, , ...rest] = sessionId.split(':');
+    const caseId = rest.join(':').trim();
+    return caseId ? { type: 'CARE_TEAM', caseId } : null;
+  }
+
+  if (sessionId.startsWith('hospital:')) {
+    const [, hospitalId, ...rest] = sessionId.split(':');
+    const caseId = rest.join(':').trim();
+    if (hospitalId && caseId) {
+      return { type: 'HOSPITAL', hospitalId, caseId };
+    }
+  }
+
+  return null;
+}
+
 function toPatientTicket<T extends { type: string }>(ticket: T): Omit<T, 'type'> & { type: z.infer<typeof patientTicketTypeSchema> } {
   return {
     ...ticket,
@@ -117,6 +142,39 @@ function buildNotificationPreview(content: string | null | undefined): string {
 function isAllowedUploadTarget(url: URL): boolean {
   const hostname = url.hostname.toLowerCase();
   return hostname.endsWith('.r2.cloudflarestorage.com') || hostname.endsWith('.amazonaws.com');
+}
+
+async function resolveFormalConversationForPatientSession(
+  patientId: string,
+  sessionId: string,
+) {
+  const parsed = parsePatientSessionId(sessionId);
+  if (!parsed) {
+    throw new NotFoundError(`Patient session ${sessionId} not found`);
+  }
+
+  const { conversationRepo } = getServices();
+  const conversations = await conversationRepo.findByPatientId(patientId);
+
+  if (parsed.type === 'CARE_TEAM') {
+    const conversation = conversations.find((item) =>
+      item.category === 'ADMIN_PATIENT' && item.caseId === parsed.caseId,
+    );
+    if (!conversation) {
+      throw new NotFoundError(`Patient session ${sessionId} not found`);
+    }
+    return conversation;
+  }
+
+  const conversation = conversations.find((item) =>
+    item.category === 'HOSPITAL_PATIENT'
+    && item.caseId === parsed.caseId
+    && item.hospitalId === parsed.hospitalId,
+  );
+  if (!conversation) {
+    throw new NotFoundError(`Patient session ${sessionId} not found`);
+  }
+  return conversation;
 }
 
 // Apply patient auth to ALL routes in this file
@@ -207,8 +265,9 @@ app.post('/select-hospitals', async (c) => {
 // GET /conversations
 app.get('/conversations', async (c) => {
   const session = c.get('patientSession');
+  const query = patientConversationListQuerySchema.parse(c.req.query());
   const { getPatientConversations } = getServices();
-  const result = await getPatientConversations.execute({ patientId: session.userId });
+  const result = await getPatientConversations.execute({ patientId: session.userId, caseId: query.caseId });
   return c.json(result);
 });
 
@@ -227,6 +286,99 @@ app.get('/conversations/:convId/messages', async (c) => {
   }));
   const response = { ...result, assistantMode: conversation.assistantMode, data };
   return c.json(response);
+});
+
+// GET /sessions/:sessionId/messages
+app.get('/sessions/:sessionId/messages', async (c) => {
+  const query = listMessagesQuerySchema.parse(c.req.query());
+  const session = c.get('patientSession');
+  const site = c.get('patientSite');
+  const sessionId = c.req.param('sessionId');
+  const { getPatientSessionDetail } = getServices();
+  const result = await getPatientSessionDetail.execute({
+    patientId: session.userId,
+    sessionId,
+    site,
+    limit: query.limit,
+  });
+  return c.json(result);
+});
+
+// POST /sessions/:sessionId/messages
+app.post('/sessions/:sessionId/messages', async (c) => {
+  const body = sendPatientMessageSchema.parse(await c.req.json());
+  const session = c.get('patientSession');
+  const sessionId = c.req.param('sessionId');
+  const actor = toPatientActor(session);
+  const conversation = await resolveFormalConversationForPatientSession(session.userId, sessionId);
+
+  if (conversation.category === 'ADMIN_PATIENT' && conversation.assistantMode === 'AI_ACTIVE') {
+    return c.json({ error: 'Care-team AI is still active for this session' }, 409);
+  }
+
+  const { sendMessage, caseRepo, notifyAdminsOfPatientMessage } = getServices();
+  const executionResult = await sendMessage.execute(conversation.id, {
+    content: body.content,
+    messageType: body.messageType,
+    attachments: body.attachments,
+  }, actor);
+  const result = 'message' in executionResult ? executionResult.message : executionResult;
+  const response = {
+    ...result,
+    senderRole: 'PATIENT',
+  };
+  wsManager.broadcast(`conv:${sessionId}`, {
+    type: 'new_message',
+    data: response,
+  });
+  if (conversation.caseId && conversation.category === 'ADMIN_PATIENT') {
+    const caseEntity = await caseRepo.findById(conversation.caseId);
+    if (caseEntity) {
+      try {
+        await notifyAdminsOfPatientMessage.execute({
+          conversationId: conversation.id,
+          caseId: conversation.caseId,
+          patientId: caseEntity.patientId,
+          patientName: null,
+          messagePreview: buildNotificationPreview(response.content),
+        });
+      } catch (error) {
+        console.warn('Failed to notify admins about a patient portal session message:', error);
+      }
+    }
+  }
+  return c.json(response);
+});
+
+// POST /sessions/:sessionId/attachments/upload
+app.post('/sessions/:sessionId/attachments/upload', async (c) => {
+  const body = messageUploadInitSchema.parse(await c.req.json());
+  const session = c.get('patientSession');
+  const sessionId = c.req.param('sessionId');
+  const conversation = await resolveFormalConversationForPatientSession(session.userId, sessionId);
+
+  if (conversation.category === 'ADMIN_PATIENT' && conversation.assistantMode === 'AI_ACTIVE') {
+    return c.json({ error: 'Care-team AI is still active for this session' }, 409);
+  }
+
+  const { mediaUpload } = getServices();
+  const result = await mediaUpload.createUploadIntent({
+    policyId: 'message_attachment',
+    ownerType: 'conversation',
+    ownerId: conversation.id,
+    fileName: body.fileName,
+    fileSize: body.fileSize,
+    mimeType: body.mimeType,
+  });
+
+  return c.json({
+    upload: {
+      uploadUrl: result.uploadUrl,
+      storageKey: result.storageKey,
+      expiresIn: result.expiresIn,
+    },
+    asset: result.asset,
+  }, 201);
 });
 
 // POST /conversations/:convId/attachments/upload
@@ -289,9 +441,12 @@ app.post('/uploads/proxy', async (c) => {
 
   if (!upstream.ok) {
     const body = await upstream.text();
-    return c.json(
-      { error: body || 'Failed to upload file', status: upstream.status },
-      upstream.status || 502,
+    return new Response(
+      JSON.stringify({ error: body || 'Failed to upload file', status: upstream.status }),
+      {
+        status: upstream.status || 502,
+        headers: { 'Content-Type': 'application/json' },
+      },
     );
   }
 

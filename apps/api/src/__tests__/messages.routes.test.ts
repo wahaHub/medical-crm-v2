@@ -75,6 +75,7 @@ describe('Message routes', () => {
       id: VALID_UUID,
       caseId: VALID_UUID,
       category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hosp-1',
       assistantMode: 'AI_ACTIVE',
     });
     mockServices.caseRepo.findById.mockResolvedValue({
@@ -132,6 +133,10 @@ describe('Message routes', () => {
       const body = await res.json();
       expect(body).toEqual(created.message);
       expect(mockBroadcast).toHaveBeenCalledWith(`conv:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: VALID_MSG_ID, senderRole: 'ADMIN' },
+      });
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:hospital:hosp-1:${VALID_UUID}`, {
         type: 'new_message',
         data: { id: VALID_MSG_ID, senderRole: 'ADMIN' },
       });
@@ -199,6 +204,7 @@ describe('Message routes', () => {
         id: VALID_UUID,
         caseId: VALID_UUID,
         category: 'ADMIN_PATIENT',
+        hospitalId: null,
         assistantMode: 'AI_ACTIVE',
       });
       mockServices.sendMessage.execute.mockResolvedValue({
@@ -219,7 +225,15 @@ describe('Message routes', () => {
         type: 'new_message',
         data: { id: VALID_MSG_ID, content: 'Admin reply' },
       });
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:widget-chat:patient-1:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: VALID_MSG_ID, content: 'Admin reply' },
+      });
       expect(mockBroadcast).toHaveBeenCalledWith(`conv:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: 'notice-1', content: 'Medora AI 已转人工，现由顾问接手', messageType: 'SYSTEM' },
+      });
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:widget-chat:patient-1:${VALID_UUID}`, {
         type: 'new_message',
         data: { id: 'notice-1', content: 'Medora AI 已转人工，现由顾问接手', messageType: 'SYSTEM' },
       });

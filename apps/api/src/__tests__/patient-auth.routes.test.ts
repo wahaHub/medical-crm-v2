@@ -176,8 +176,8 @@ describe('patientAuthRoutes', () => {
           sessionId: 'widget-chat:patient-1:case-1',
         },
         formalConversationState: {
-          activeConversationId: 'conv-admin-1',
-          conversationIds: ['conv-admin-1'],
+          activeConversationId: 'widget-chat:patient-1:case-1',
+          conversationIds: ['widget-chat:patient-1:case-1'],
         },
         chatbotOrchestrationState: {
           conversationSummary: '',
@@ -212,8 +212,8 @@ describe('patientAuthRoutes', () => {
         sessionId: 'widget-chat:patient-1:case-1',
       },
       formalConversationState: {
-        activeConversationId: 'conv-admin-1',
-        conversationIds: ['conv-admin-1'],
+        activeConversationId: 'widget-chat:patient-1:case-1',
+        conversationIds: ['widget-chat:patient-1:case-1'],
       },
       chatbotOrchestrationState: {
         conversationSummary: '',
@@ -264,8 +264,8 @@ describe('patientAuthRoutes', () => {
           sessionId: 'widget-chat:patient-1:case-1',
         },
         formalConversationState: {
-          activeConversationId: 'conv-admin-1',
-          conversationIds: ['conv-admin-1'],
+          activeConversationId: 'widget-chat:patient-1:case-1',
+          conversationIds: ['widget-chat:patient-1:case-1'],
         },
         chatbotOrchestrationState: {
           conversationSummary: '',
@@ -300,8 +300,8 @@ describe('patientAuthRoutes', () => {
         sessionId: 'widget-chat:patient-1:case-1',
       },
       formalConversationState: {
-        activeConversationId: 'conv-admin-1',
-        conversationIds: ['conv-admin-1'],
+        activeConversationId: 'widget-chat:patient-1:case-1',
+        conversationIds: ['widget-chat:patient-1:case-1'],
       },
       chatbotOrchestrationState: {
         conversationSummary: '',
@@ -425,8 +425,8 @@ describe('patientAuthRoutes', () => {
           sessionId: 'widget-chat:patient-1:case-1',
         },
         formalConversationState: {
-          activeConversationId: 'conv-admin-1',
-          conversationIds: ['conv-admin-1', 'conv-hospital-1'],
+          activeConversationId: 'widget-chat:patient-1:case-1',
+          conversationIds: ['widget-chat:patient-1:case-1', 'hospital:hospital-1:case-1'],
         },
         chatbotOrchestrationState: {
           conversationSummary: 'Patient selected hospital-1 and can continue.',
@@ -464,8 +464,8 @@ describe('patientAuthRoutes', () => {
         sessionId: 'widget-chat:patient-1:case-1',
       },
       formalConversationState: {
-        activeConversationId: 'conv-admin-1',
-        conversationIds: ['conv-admin-1', 'conv-hospital-1'],
+        activeConversationId: 'widget-chat:patient-1:case-1',
+        conversationIds: ['widget-chat:patient-1:case-1', 'hospital:hospital-1:case-1'],
       },
       chatbotOrchestrationState: {
         conversationSummary: 'Patient selected hospital-1 and can continue.',

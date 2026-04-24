@@ -494,7 +494,8 @@ describe('TranslationWritebackService hospital chunk writeback', () => {
 
 describe('TranslationWritebackService materials review/package writeback', () => {
   it('merges beauty review translations into hospital_material_reviews without overwriting existing language fields', async () => {
-    const beautySupabase = makeMaterialSupabase({
+    const beautySupabase = makeMaterialSupabase({});
+    const crmSupabase = makeMaterialSupabase({
       hospital_material_reviews: [
         {
           id: 'review-1',
@@ -511,7 +512,12 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       ],
     });
     const chinaSupabase = makeMaterialSupabase({});
-    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+    const service = new TranslationWritebackService(
+      {} as never,
+      beautySupabase.client,
+      chinaSupabase.client,
+      crmSupabase.client,
+    );
 
     await service.writeback(
       makeTask({
@@ -532,9 +538,9 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       }),
     );
 
-    expect(beautySupabase.from).toHaveBeenCalledWith('hospital_material_reviews');
-    expect(beautySupabase.updateCalls).toHaveLength(1);
-    expect(beautySupabase.updateCalls[0]).toMatchObject({
+    expect(crmSupabase.from).toHaveBeenCalledWith('hospital_material_reviews');
+    expect(crmSupabase.updateCalls).toHaveLength(1);
+    expect(crmSupabase.updateCalls[0]).toMatchObject({
       table: 'hospital_material_reviews',
       id: 'review-1',
       payload: {
@@ -554,11 +560,13 @@ describe('TranslationWritebackService materials review/package writeback', () =>
         updated_at: expect.any(String),
       },
     });
+    expect(beautySupabase.updateCalls).toHaveLength(0);
     expect(chinaSupabase.updateCalls).toHaveLength(0);
   });
 
   it('merges beauty package translations into hospital_material_packages without overwriting existing language fields', async () => {
-    const beautySupabase = makeMaterialSupabase({
+    const beautySupabase = makeMaterialSupabase({});
+    const crmSupabase = makeMaterialSupabase({
       hospital_material_packages: [
         {
           id: 'package-1',
@@ -575,7 +583,12 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       ],
     });
     const chinaSupabase = makeMaterialSupabase({});
-    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+    const service = new TranslationWritebackService(
+      {} as never,
+      beautySupabase.client,
+      chinaSupabase.client,
+      crmSupabase.client,
+    );
 
     await service.writeback(
       makeTask({
@@ -595,9 +608,9 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       }),
     );
 
-    expect(beautySupabase.from).toHaveBeenCalledWith('hospital_material_packages');
-    expect(beautySupabase.updateCalls).toHaveLength(1);
-    expect(beautySupabase.updateCalls[0]).toMatchObject({
+    expect(crmSupabase.from).toHaveBeenCalledWith('hospital_material_packages');
+    expect(crmSupabase.updateCalls).toHaveLength(1);
+    expect(crmSupabase.updateCalls[0]).toMatchObject({
       table: 'hospital_material_packages',
       id: 'package-1',
       payload: {
@@ -618,12 +631,14 @@ describe('TranslationWritebackService materials review/package writeback', () =>
         updated_at: expect.any(String),
       },
     });
+    expect(beautySupabase.updateCalls).toHaveLength(0);
     expect(chinaSupabase.updateCalls).toHaveLength(0);
   });
 
   it('merges china review translations into hospital_material_reviews without overwriting existing language fields', async () => {
     const beautySupabase = makeMaterialSupabase({});
-    const chinaSupabase = makeMaterialSupabase({
+    const chinaSupabase = makeMaterialSupabase({});
+    const crmSupabase = makeMaterialSupabase({
       hospital_material_reviews: [
         {
           id: 'review-2',
@@ -639,7 +654,12 @@ describe('TranslationWritebackService materials review/package writeback', () =>
         },
       ],
     });
-    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+    const service = new TranslationWritebackService(
+      {} as never,
+      beautySupabase.client,
+      chinaSupabase.client,
+      crmSupabase.client,
+    );
 
     await service.writeback(
       makeTask({
@@ -658,9 +678,9 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       }),
     );
 
-    expect(chinaSupabase.from).toHaveBeenCalledWith('hospital_material_reviews');
-    expect(chinaSupabase.updateCalls).toHaveLength(1);
-    expect(chinaSupabase.updateCalls[0]).toMatchObject({
+    expect(crmSupabase.from).toHaveBeenCalledWith('hospital_material_reviews');
+    expect(crmSupabase.updateCalls).toHaveLength(1);
+    expect(crmSupabase.updateCalls[0]).toMatchObject({
       table: 'hospital_material_reviews',
       id: 'review-2',
       payload: {
@@ -681,11 +701,13 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       },
     });
     expect(beautySupabase.updateCalls).toHaveLength(0);
+    expect(chinaSupabase.updateCalls).toHaveLength(0);
   });
 
   it('merges china package translations into hospital_material_packages without overwriting existing language fields', async () => {
     const beautySupabase = makeMaterialSupabase({});
-    const chinaSupabase = makeMaterialSupabase({
+    const chinaSupabase = makeMaterialSupabase({});
+    const crmSupabase = makeMaterialSupabase({
       hospital_material_packages: [
         {
           id: 'package-2',
@@ -701,7 +723,12 @@ describe('TranslationWritebackService materials review/package writeback', () =>
         },
       ],
     });
-    const service = new TranslationWritebackService({} as never, beautySupabase.client, chinaSupabase.client);
+    const service = new TranslationWritebackService(
+      {} as never,
+      beautySupabase.client,
+      chinaSupabase.client,
+      crmSupabase.client,
+    );
 
     await service.writeback(
       makeTask({
@@ -720,9 +747,9 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       }),
     );
 
-    expect(chinaSupabase.from).toHaveBeenCalledWith('hospital_material_packages');
-    expect(chinaSupabase.updateCalls).toHaveLength(1);
-    expect(chinaSupabase.updateCalls[0]).toMatchObject({
+    expect(crmSupabase.from).toHaveBeenCalledWith('hospital_material_packages');
+    expect(crmSupabase.updateCalls).toHaveLength(1);
+    expect(crmSupabase.updateCalls[0]).toMatchObject({
       table: 'hospital_material_packages',
       id: 'package-2',
       payload: {
@@ -744,5 +771,6 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       },
     });
     expect(beautySupabase.updateCalls).toHaveLength(0);
+    expect(chinaSupabase.updateCalls).toHaveLength(0);
   });
 });

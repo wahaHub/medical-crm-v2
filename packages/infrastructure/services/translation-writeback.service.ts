@@ -26,6 +26,7 @@ export class TranslationWritebackService {
     private readonly crmDb: CrmDb,
     private readonly beautySupabase: SupabaseClient,
     private readonly chinaSupabase: SupabaseClient,
+    private readonly crmSupabase?: SupabaseClient,
   ) {}
 
   async writeback(task: TranslationTask, result: BatchTranslateResult): Promise<void> {
@@ -246,7 +247,8 @@ export class TranslationWritebackService {
     entityId: string,
     translations: Record<string, Record<string, unknown>>,
   ): Promise<void> {
-    const { data: existing, error: fetchError } = await this.beautySupabase
+    const materialsSupabase = this.crmSupabase ?? this.beautySupabase;
+    const { data: existing, error: fetchError } = await materialsSupabase
       .from(tableName)
       .select('translations')
       .eq('id', entityId)
@@ -257,7 +259,7 @@ export class TranslationWritebackService {
     const currentTranslations = (existing?.translations as Record<string, unknown> | null) ?? {};
     const merged = this.mergeLanguageTranslations(currentTranslations, translations);
 
-    const { error } = await this.beautySupabase
+    const { error } = await materialsSupabase
       .from(tableName)
       .update({ translations: merged, updated_at: new Date().toISOString() })
       .eq('id', entityId);
@@ -376,7 +378,8 @@ export class TranslationWritebackService {
     entityId: string,
     translations: Record<string, Record<string, unknown>>,
   ): Promise<void> {
-    const { data: existing, error: fetchError } = await this.chinaSupabase
+    const materialsSupabase = this.crmSupabase ?? this.chinaSupabase;
+    const { data: existing, error: fetchError } = await materialsSupabase
       .from(tableName)
       .select('translations')
       .eq('id', entityId)
@@ -387,7 +390,7 @@ export class TranslationWritebackService {
     const currentTranslations = (existing?.translations as Record<string, unknown> | null) ?? {};
     const merged = this.mergeLanguageTranslations(currentTranslations, translations);
 
-    const { error } = await this.chinaSupabase
+    const { error } = await materialsSupabase
       .from(tableName)
       .update({ translations: merged, updated_at: new Date().toISOString() })
       .eq('id', entityId);

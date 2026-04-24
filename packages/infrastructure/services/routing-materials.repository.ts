@@ -23,6 +23,7 @@ export class RoutingMaterialsRepository implements IMaterialsRepository {
   constructor(
     private readonly cosmeticRepo: IMaterialsRepository,
     private readonly regularRepo: IMaterialsRepository,
+    private readonly sharedReviewPackageRepo: IMaterialsRepository,
     private readonly resolveType: HospitalTypeResolver,
   ) {}
 
@@ -102,15 +103,13 @@ export class RoutingMaterialsRepository implements IMaterialsRepository {
   }
 
   async listReviews(hospitalId: string): ReturnType<IMaterialsRepository['listReviews']> {
-    const repo = await this.getRepo(hospitalId);
-    return repo.listReviews(hospitalId);
+    return this.sharedReviewPackageRepo.listReviews(hospitalId);
   }
 
   async createReview(
     data: Parameters<IMaterialsRepository['createReview']>[0],
   ): ReturnType<IMaterialsRepository['createReview']> {
-    const repo = await this.getRepo(data.hospitalId);
-    return repo.createReview(data);
+    return this.sharedReviewPackageRepo.createReview(data);
   }
 
   async updateReview(
@@ -118,30 +117,25 @@ export class RoutingMaterialsRepository implements IMaterialsRepository {
     hospitalId: string,
     data: Parameters<IMaterialsRepository['updateReview']>[2],
   ): ReturnType<IMaterialsRepository['updateReview']> {
-    const repo = await this.getRepo(hospitalId);
-    return repo.updateReview(id, hospitalId, data);
+    return this.sharedReviewPackageRepo.updateReview(id, hospitalId, data);
   }
 
   async deleteReview(id: string, hospitalId: string): Promise<void> {
-    const repo = await this.getRepo(hospitalId);
-    return repo.deleteReview(id, hospitalId);
+    return this.sharedReviewPackageRepo.deleteReview(id, hospitalId);
   }
 
   async listPackages(hospitalId: string): ReturnType<IMaterialsRepository['listPackages']> {
-    const repo = await this.getRepo(hospitalId);
-    return repo.listPackages(hospitalId);
+    return this.sharedReviewPackageRepo.listPackages(hospitalId);
   }
 
   async getPackage(id: string, hospitalId: string): ReturnType<IMaterialsRepository['getPackage']> {
-    const repo = await this.getRepo(hospitalId);
-    return repo.getPackage(id, hospitalId);
+    return this.sharedReviewPackageRepo.getPackage(id, hospitalId);
   }
 
   async createPackage(
     data: Parameters<IMaterialsRepository['createPackage']>[0],
   ): ReturnType<IMaterialsRepository['createPackage']> {
-    const repo = await this.getRepo(data.hospitalId);
-    return repo.createPackage(data);
+    return this.sharedReviewPackageRepo.createPackage(data);
   }
 
   async updatePackage(
@@ -149,12 +143,10 @@ export class RoutingMaterialsRepository implements IMaterialsRepository {
     hospitalId: string,
     data: Parameters<IMaterialsRepository['updatePackage']>[2],
   ): ReturnType<IMaterialsRepository['updatePackage']> {
-    const repo = await this.getRepo(hospitalId);
-    return repo.updatePackage(id, hospitalId, data);
+    return this.sharedReviewPackageRepo.updatePackage(id, hospitalId, data);
   }
 
   async deletePackage(id: string, hospitalId: string): Promise<void> {
-    const repo = await this.getRepo(hospitalId);
-    return repo.deletePackage(id, hospitalId);
+    return this.sharedReviewPackageRepo.deletePackage(id, hospitalId);
   }
 }

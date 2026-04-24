@@ -10,6 +10,7 @@
     "./supabase-main": "./supabase-main/client.ts",
     "./supabase-main/types": "./supabase-main/types.ts",
     "./supabase-main/materials": "./supabase-main/supabase-materials.repository.ts",
+    "./supabase-crm": "./supabase-crm/client.ts",
     "./supabase-china": "./supabase-china/client.ts",
     "./supabase-china/types": "./supabase-china/types.ts",
     "./supabase-china/materials": "./supabase-china/china-medical-materials.repository.ts",

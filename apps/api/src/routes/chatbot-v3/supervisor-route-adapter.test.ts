@@ -68,6 +68,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     expect(fetchImpl).toHaveBeenCalledOnce();
+    const request = fetchImpl.mock.calls[0]?.[1];
+    const payload = request?.body ? JSON.parse(String(request.body)) : null;
+    expect(payload).not.toHaveProperty('temperature');
   });
 
   it('returns undefined when the supervisor llm route is disabled', () => {

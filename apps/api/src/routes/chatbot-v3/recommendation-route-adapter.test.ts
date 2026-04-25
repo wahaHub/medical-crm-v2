@@ -66,6 +66,9 @@ describe('createChatbotV3RecommendationRouteAdapter', () => {
     });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const request = fetchImpl.mock.calls[0]?.[1];
+    const payload = request?.body ? JSON.parse(String(request.body)) : null;
+    expect(payload).not.toHaveProperty('temperature');
     expect(adapter.getLastRunMetadata()).toMatchObject({
       nodeModel: 'gpt-4o-mini',
       fallbackUsed: false,

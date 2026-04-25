@@ -76,7 +76,6 @@ async function runStructuredOpenAiPrompt(input: {
       signal: controller.signal,
       body: JSON.stringify({
         model: input.model,
-        temperature: 0,
         response_format: {
           type: 'json_object',
         },

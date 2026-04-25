@@ -26,6 +26,7 @@ type StoredHospitalReview = {
   rating?: number | null;
   reviewDate?: string | null;
   media?: StoredReviewMedia[] | null;
+  translations?: Record<string, Record<string, unknown>> | null;
 };
 
 type StoredPackageTag = {
@@ -92,6 +93,7 @@ type StoredPackage = {
   process?: StoredPackageProcess[] | null;
   cases?: StoredPackageCase[] | null;
   reviews?: StoredPackageReview[] | null;
+  translations?: Record<string, Record<string, unknown>> | null;
 };
 
 type HospitalIdentity = {
@@ -126,6 +128,78 @@ function sortTags(items: StoredPackageTag[] | null | undefined) {
   });
 }
 
+function normalizeLocale(locale: string) {
+  return locale.trim().toLowerCase().replace(/_/g, '-');
+}
+
+function getLocalizedFields(
+  translations: Record<string, Record<string, unknown>> | null | undefined,
+  locale?: string,
+) {
+  if (!locale) return undefined;
+
+  const normalizedLocale = normalizeLocale(locale);
+  const candidates = [normalizedLocale, normalizedLocale.split('-')[0]]
+    .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index);
+
+  for (const candidate of candidates) {
+    const entry = Object.entries(translations ?? {}).find(([translationLocale]) => normalizeLocale(translationLocale) === candidate);
+    if (entry) {
+      return entry[1];
+    }
+  }
+
+  return undefined;
+}
+
+function pickLocalizedText(baseValue: string | null | undefined, translatedValue: unknown) {
+  if (typeof translatedValue === 'string' && translatedValue.trim().length > 0) {
+    return translatedValue;
+  }
+
+  return baseValue ?? '';
+}
+
+function pickLocalizedOptionalText(baseValue: string | null | undefined, translatedValue: unknown) {
+  if (typeof translatedValue === 'string' && translatedValue.trim().length > 0) {
+    return translatedValue;
+  }
+
+  return baseValue ?? undefined;
+}
+
+function pickLocalizedNumber(baseValue: number | null | undefined, translatedValue: unknown) {
+  if (typeof translatedValue === 'number' && Number.isFinite(translatedValue)) {
+    return translatedValue;
+  }
+
+  return baseValue ?? 0;
+}
+
+function mergeLocalizedRecord<T extends Record<string, unknown>>(base: T, translated: Record<string, unknown> | null | undefined): T {
+  if (!translated) {
+    return base;
+  }
+
+  return Object.fromEntries(
+    Object.entries(base).map(([key, value]) => {
+      const translatedValue = translated[key];
+      if (translatedValue === undefined || translatedValue === null || translatedValue === '') {
+        return [key, value];
+      }
+      return [key, translatedValue];
+    }),
+  ) as T;
+}
+
+function getLocalizedArray(
+  localized: Record<string, unknown> | undefined,
+  key: string,
+): Array<Record<string, unknown> | null | undefined> {
+  const value = localized?.[key];
+  return Array.isArray(value) ? value as Array<Record<string, unknown> | null | undefined> : [];
+}
+
 function formatNumber(value: string | null | undefined) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
@@ -154,64 +228,78 @@ export function sanitizeDepartmentStats(
   );
 }
 
-export function mapHospitalReviewsToPatientReviews(reviews: StoredHospitalReview[] | null | undefined) {
+export function mapHospitalReviewsToPatientReviews(reviews: StoredHospitalReview[] | null | undefined, locale?: string) {
   return sortByOrder(reviews)
     .filter((review) => review.isActive ?? true)
-    .map((review) => ({
-      id: review.id ?? '',
-      name: review.patientName ?? '',
-      country: review.patientCountry ?? '',
-      avatar: review.patientAvatarUrl ?? '',
-      rating: review.rating ?? 0,
-      date: review.reviewDate ?? '',
-      treatment: review.treatmentName ?? '',
-      title: review.reviewTitle ?? '',
-      comment: review.reviewComment ?? '',
-      featured: review.featured ?? false,
-      media: sortByOrder(review.media)
-        .filter((item) => item.url)
-        .map((item) => ({
-          id: item.id ?? '',
-          type: item.type ?? 'image',
-          url: item.url ?? '',
-          thumb: item.thumbnailUrl ?? undefined,
-          caption: item.caption ?? undefined,
-        })),
-    }));
+    .map((review) => {
+      const localized = getLocalizedFields(review.translations, locale) as Record<string, unknown> | undefined;
+
+      return {
+        id: review.id ?? '',
+        name: pickLocalizedText(review.patientName, localized?.patientName),
+        country: pickLocalizedText(review.patientCountry, localized?.patientCountry),
+        avatar: pickLocalizedOptionalText(review.patientAvatarUrl, localized?.patientAvatarUrl) ?? '',
+        rating: pickLocalizedNumber(review.rating, localized?.rating),
+        date: pickLocalizedText(review.reviewDate, localized?.reviewDate),
+        treatment: pickLocalizedText(review.treatmentName, localized?.treatmentName),
+        title: pickLocalizedText(review.reviewTitle, localized?.reviewTitle),
+        comment: pickLocalizedText(review.reviewComment, localized?.reviewComment),
+        featured: review.featured ?? false,
+        media: sortByOrder(review.media)
+          .map((item, index) => {
+            const localizedMedia = getLocalizedArray(localized, 'media')[index];
+
+            return {
+              id: item.id ?? '',
+              type: (localizedMedia?.type as 'image' | 'video' | undefined) ?? item.type ?? 'image',
+              url: pickLocalizedText(item.url, localizedMedia?.url),
+              thumb: pickLocalizedOptionalText(item.thumbnailUrl, localizedMedia?.thumbnailUrl),
+              caption: pickLocalizedOptionalText(item.caption, localizedMedia?.caption),
+            };
+          })
+          .filter((item) => item.url),
+      };
+    });
 }
 
-export function mapHospitalPackagesToPackageList(packages: StoredPackage[] | null | undefined) {
+export function mapHospitalPackagesToPackageList(packages: StoredPackage[] | null | undefined, locale?: string) {
   return sortByOrder(packages)
     .filter((item) => item.isActive ?? true)
-    .map((item) => ({
-    id: item.id ?? '',
-    slug: item.slug ?? '',
-    title: item.title ?? '',
-    subtitle: item.subtitle ?? '',
-    coverImage: item.coverImageUrl ?? '',
-    priceUSD: formatNumber(item.price),
-    duration: item.duration ?? '',
-    tags: sortTags(item.tags)
-      .filter((tag) => tag.label)
-      .map((tag) => ({
-        label: tag.label ?? '',
-        category: tag.category ?? '',
-      })),
-    caseCount: (item.cases ?? []).length,
-    reviewCount: (item.reviews ?? []).filter((review) => review.isActive ?? true).length,
-    isActive: item.isActive ?? false,
-    }));
+    .map((item) => {
+      const localized = getLocalizedFields(item.translations, locale) as Record<string, unknown> | undefined;
+
+      return {
+        id: item.id ?? '',
+        slug: item.slug ?? '',
+        title: pickLocalizedText(item.title, localized?.title),
+        subtitle: pickLocalizedText(item.subtitle, localized?.subtitle),
+        coverImage: item.coverImageUrl ?? '',
+        priceUSD: formatNumber(item.price),
+        duration: item.duration ?? '',
+        tags: sortTags(item.tags)
+          .filter((tag) => tag.label)
+          .map((tag) => ({
+            label: tag.label ?? '',
+            category: tag.category ?? '',
+          })),
+        caseCount: (item.cases ?? []).length,
+        reviewCount: (item.reviews ?? []).filter((review) => review.isActive ?? true).length,
+        isActive: item.isActive ?? false,
+      };
+    });
 }
 
 export function mapHospitalPackageToPackageDetail(input: {
   hospital: HospitalIdentity;
   packageItem: StoredPackage;
+  locale?: string;
 }) {
-  const { hospital, packageItem } = input;
+  const { hospital, packageItem, locale } = input;
   if (!(packageItem.isActive ?? true)) {
     return null;
   }
 
+  const localized = getLocalizedFields(packageItem.translations, locale) as Record<string, unknown> | undefined;
   const gallery = sortByOrder(packageItem.gallery)
     .map((item) => item.imageUrl ?? '')
     .filter(Boolean);
@@ -222,30 +310,68 @@ export function mapHospitalPackageToPackageDetail(input: {
       category: tag.category ?? '',
     }));
   const includes = sortByOrder(packageItem.includes)
-    .map((item) => item.text ?? '')
-    .filter(Boolean);
+    .map((item, index) => {
+      const translatedInclude = getLocalizedArray(localized, 'includes')[index];
+
+      return {
+        text: pickLocalizedText(item.text, translatedInclude?.text),
+      };
+    })
+    .filter((item) => item.text)
+    .map((item) => item.text);
   const process = sortByOrder(packageItem.process)
+    .map((item, index) => {
+      const translatedProcess = getLocalizedArray(localized, 'process')[index];
+
+      return mergeLocalizedRecord({
+        stepTitle: item.stepTitle ?? '',
+        description: item.description ?? '',
+      }, translatedProcess);
+    })
     .filter((item) => item.stepTitle || item.description)
     .map((item) => ({
       step: item.stepTitle ?? '',
       desc: item.description ?? '',
     }));
   const cases = sortByOrder(packageItem.cases)
-    .filter((item) => item.patientName || item.story || item.result)
+    .map((item, index) => {
+      const translatedCase = getLocalizedArray(localized, 'cases')[index];
+
+      return mergeLocalizedRecord({
+        name: item.patientName ?? '',
+        age: item.patientAge ?? null,
+        country: item.patientCountry ?? '',
+        story: item.story ?? '',
+        result: item.result ?? '',
+      }, translatedCase);
+    })
+    .filter((item) => item.name || item.story || item.result)
     .map((item) => ({
-      name: item.patientName ?? '',
-      age: item.patientAge ?? null,
-      country: item.patientCountry ?? '',
+      name: item.name ?? '',
+      age: item.age ?? null,
+      country: item.country ?? '',
       story: item.story ?? '',
       result: item.result ?? '',
     }));
   const reviews = sortByOrder(packageItem.reviews)
     .filter((item) => item.isActive ?? true)
+    .map((item, index) => {
+      const translatedReview = getLocalizedArray(localized, 'reviews')[index];
+
+      return mergeLocalizedRecord({
+        name: item.reviewerName ?? '',
+        country: item.reviewerCountry ?? '',
+        rating: item.rating ?? 0,
+        date: item.reviewDate ?? '',
+        comment: item.comment ?? '',
+      }, translatedReview);
+    })
+    .filter((item) => item.name || item.comment)
     .map((item) => ({
-      name: item.reviewerName ?? '',
-      country: item.reviewerCountry ?? '',
+      name: item.name ?? '',
+      country: item.country ?? '',
       rating: item.rating ?? 0,
-      date: item.reviewDate ?? '',
+      date: item.date ?? '',
       comment: item.comment ?? '',
     }));
   const priceUSD = formatNumber(packageItem.price);
@@ -254,13 +380,13 @@ export function mapHospitalPackageToPackageDetail(input: {
   return {
     id: packageItem.id ?? '',
     slug: packageItem.slug ?? '',
-    title: packageItem.title ?? '',
-    subtitle: packageItem.subtitle ?? '',
+    title: pickLocalizedText(packageItem.title, localized?.title),
+    subtitle: pickLocalizedText(packageItem.subtitle, localized?.subtitle),
     coverImage: packageItem.coverImageUrl ?? '',
     gallery,
     priceUSD,
     duration: packageItem.duration ?? '',
-    summary: packageItem.summary ?? '',
+    summary: pickLocalizedText(packageItem.summary, localized?.summary),
     includes,
     process,
     tags,
@@ -274,13 +400,13 @@ export function mapHospitalPackageToPackageDetail(input: {
     },
     pdf: {
       fileName: `${packageItem.slug ?? 'package'}.pdf`,
-      title: packageItem.title ?? '',
-      subtitle: packageItem.subtitle ?? '',
+      title: pickLocalizedText(packageItem.title, localized?.title),
+      subtitle: pickLocalizedText(packageItem.subtitle, localized?.subtitle),
       hospitalName: hospital.name ?? '',
       priceLine: `${packageItem.currency ?? ''} ${priceUSD}`.trim(),
       duration: packageItem.duration ?? '',
       tags: tags.map((tag) => tag.label).join(' | '),
-      summary: packageItem.summary ?? '',
+      summary: pickLocalizedText(packageItem.summary, localized?.summary),
       includes,
       process: process.map((item) => `${item.step}: ${item.desc}`),
       cases: cases.map((item) => `${item.name} (${item.age}, ${item.country}) - ${item.story} Result: ${item.result}`),

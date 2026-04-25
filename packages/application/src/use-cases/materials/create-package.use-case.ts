@@ -51,10 +51,10 @@ type PackageTranslationSource = {
   title: string;
   subtitle?: string | null;
   summary: string;
-  includes: Array<{ text: string }>;
-  process: Array<{ stepTitle: string; description: string }>;
-  cases: Array<{ story: string; result: string }>;
-  reviews: Array<{ comment: string }>;
+  includes: Array<{ id?: string; text: string }>;
+  process: Array<{ id?: string; stepTitle: string; description: string }>;
+  cases: Array<{ id?: string; story: string; result: string }>;
+  reviews: Array<{ id?: string; comment: string }>;
 };
 
 export class CreateMaterialsPackageUseCase {
@@ -149,22 +149,25 @@ function buildPackageTranslationFields(pkg: PackageTranslationSource): Record<st
     summary: pkg.summary,
     includes: pkg.includes
       .filter((item) => hasText(item.text))
-      .map((item) => ({ text: item.text })),
+      .map((item) => ({ ...(item.id ? { id: item.id } : {}), text: item.text })),
     process: pkg.process
       .filter((item) => hasText(item.stepTitle) && hasText(item.description))
       .map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
         stepTitle: item.stepTitle,
         description: item.description,
       })),
     cases: pkg.cases
       .filter((item) => hasText(item.story) && hasText(item.result))
       .map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
         story: item.story,
         result: item.result,
       })),
     reviews: pkg.reviews
       .filter((item) => hasText(item.comment))
       .map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
         comment: item.comment,
       })),
   };

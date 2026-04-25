@@ -139,7 +139,12 @@ function getLocalizedFields(
   if (!locale) return undefined;
 
   const normalizedLocale = normalizeLocale(locale);
-  const candidates = [normalizedLocale, normalizedLocale.split('-')[0]]
+  const candidates = [
+    normalizedLocale,
+    normalizedLocale.split('-')[0],
+    normalizedLocale === 'zh' ? undefined : 'zh',
+    normalizedLocale === 'en' ? undefined : 'en',
+  ]
     .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index);
 
   for (const candidate of candidates) {
@@ -198,6 +203,23 @@ function getLocalizedArray(
 ): Array<Record<string, unknown> | null | undefined> {
   const value = localized?.[key];
   return Array.isArray(value) ? value as Array<Record<string, unknown> | null | undefined> : [];
+}
+
+function getLocalizedItemByIdOrIndex(
+  localized: Record<string, unknown> | undefined,
+  key: string,
+  itemId: string | null | undefined,
+  index: number,
+) {
+  const localizedItems = getLocalizedArray(localized, key);
+  if (itemId) {
+    const matched = localizedItems.find((entry) => entry?.id === itemId);
+    if (matched) {
+      return matched;
+    }
+  }
+
+  return localizedItems[index];
 }
 
 function formatNumber(value: string | null | undefined) {
@@ -311,7 +333,7 @@ export function mapHospitalPackageToPackageDetail(input: {
     }));
   const includes = sortByOrder(packageItem.includes)
     .map((item, index) => {
-      const translatedInclude = getLocalizedArray(localized, 'includes')[index];
+      const translatedInclude = getLocalizedItemByIdOrIndex(localized, 'includes', item.id, index);
 
       return {
         text: pickLocalizedText(item.text, translatedInclude?.text),
@@ -321,7 +343,7 @@ export function mapHospitalPackageToPackageDetail(input: {
     .map((item) => item.text);
   const process = sortByOrder(packageItem.process)
     .map((item, index) => {
-      const translatedProcess = getLocalizedArray(localized, 'process')[index];
+      const translatedProcess = getLocalizedItemByIdOrIndex(localized, 'process', item.id, index);
 
       return mergeLocalizedRecord({
         stepTitle: item.stepTitle ?? '',
@@ -335,7 +357,7 @@ export function mapHospitalPackageToPackageDetail(input: {
     }));
   const cases = sortByOrder(packageItem.cases)
     .map((item, index) => {
-      const translatedCase = getLocalizedArray(localized, 'cases')[index];
+      const translatedCase = getLocalizedItemByIdOrIndex(localized, 'cases', item.id, index);
 
       return mergeLocalizedRecord({
         name: item.patientName ?? '',
@@ -356,7 +378,7 @@ export function mapHospitalPackageToPackageDetail(input: {
   const reviews = sortByOrder(packageItem.reviews)
     .filter((item) => item.isActive ?? true)
     .map((item, index) => {
-      const translatedReview = getLocalizedArray(localized, 'reviews')[index];
+      const translatedReview = getLocalizedItemByIdOrIndex(localized, 'reviews', item.id, index);
 
       return mergeLocalizedRecord({
         name: item.reviewerName ?? '',

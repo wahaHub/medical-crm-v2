@@ -119,6 +119,26 @@ function makeRepo(): IMaterialsRepository {
     ...Object.fromEntries(Object.entries(updates).filter(([, value]) => value !== undefined)),
   });
 
+  const normalizePackageArrays = (value: Partial<MaterialsPackage>): Partial<MaterialsPackage> => ({
+    ...value,
+    includes: value.includes?.map((item, index) => ({
+      ...item,
+      id: item.id || `include-${index + 1}`,
+    })),
+    process: value.process?.map((item, index) => ({
+      ...item,
+      id: item.id || `process-${index + 1}`,
+    })),
+    cases: value.cases?.map((item, index) => ({
+      ...item,
+      id: item.id || `case-${index + 1}`,
+    })),
+    reviews: value.reviews?.map((item, index) => ({
+      ...item,
+      id: item.id || `pkg-review-${index + 1}`,
+    })),
+  });
+
   return {
     getHospitalInfo: vi.fn<() => Promise<MaterialsHospitalInfo | null>>(),
     updateHospitalInfo: vi.fn<() => Promise<MaterialsHospitalInfo>>(),
@@ -156,12 +176,12 @@ function makeRepo(): IMaterialsRepository {
       }),
     ),
     createPackage: vi.fn<(data: Omit<MaterialsPackage, 'id'>) => Promise<MaterialsPackage>>().mockImplementation(async (data) => ({
-      ...data,
+      ...normalizePackageArrays(data),
       id: pkg.id,
     })),
     updatePackage: vi.fn<(id: string, hospitalId: string, data: Partial<MaterialsPackage>) => Promise<MaterialsPackage>>().mockImplementation(
       async (id, hospitalId, data) => ({
-        ...mergeDefined(pkg, data),
+        ...mergeDefined(pkg, normalizePackageArrays(data)),
         id,
         hospitalId,
       }),
@@ -473,10 +493,10 @@ describe('materials review and package translation flow', () => {
         title: 'Premium LASIK',
         subtitle: 'Bilingual care',
         summary: 'A complete package.',
-        includes: [{ text: 'SMILE procedure' }],
-        process: [{ stepTitle: 'Day 1', description: 'Arrival and tests' }],
-        cases: [{ story: 'Wanted to dive without glasses.', result: 'Back to diving in two weeks.' }],
-        reviews: [{ comment: 'Excellent experience.' }],
+        includes: [{ id: 'include-1', text: 'SMILE procedure' }],
+        process: [{ id: 'process-1', stepTitle: 'Day 1', description: 'Arrival and tests' }],
+        cases: [{ id: 'case-1', story: 'Wanted to dive without glasses.', result: 'Back to diving in two weeks.' }],
+        reviews: [{ id: 'pkg-review-1', comment: 'Excellent experience.' }],
       },
     });
   });
@@ -507,6 +527,32 @@ describe('materials review and package translation flow', () => {
         process: [],
         cases: [],
         reviews: [],
+      },
+    });
+  });
+
+  it('hydrates normalized nested ids from the saved package before enqueuing update translations', async () => {
+    const repo = makeRepo();
+    const resolveHospitalType = vi.fn().mockResolvedValue('REGULAR');
+    const translationTaskService = { enqueue: vi.fn() };
+    const useCase = new UpdateMaterialsPackageUseCase(repo, resolveHospitalType, translationTaskService as any);
+
+    await useCase.execute('hospital-1', 'package-1', {
+      includes: [{ text: 'Updated include' }],
+      process: [{ stepTitle: 'Updated day', description: 'Updated process' }],
+      cases: [{ patientName: 'Mr. Ahmad', patientAge: 32, patientCountry: 'Malaysia', story: 'Updated story', result: 'Updated result' }],
+      reviews: [{ reviewerName: 'Sarah K.', reviewerCountry: 'Singapore', rating: 5, reviewDate: '2026-04-23', comment: 'Updated review' }],
+    }, actor);
+
+    expect(translationTaskService.enqueue).toHaveBeenCalledWith({
+      sourceDb: 'supabase_china',
+      entityType: 'package',
+      entityId: 'package-1',
+      fieldsToTranslate: {
+        includes: [{ id: 'include-1', text: 'Updated include' }],
+        process: [{ id: 'process-1', stepTitle: 'Updated day', description: 'Updated process' }],
+        cases: [{ id: 'case-1', story: 'Updated story', result: 'Updated result' }],
+        reviews: [{ id: 'pkg-review-1', comment: 'Updated review' }],
       },
     });
   });

@@ -51,10 +51,10 @@ type PackageTranslationSource = {
   title?: string;
   subtitle?: string | null;
   summary?: string;
-  includes?: Array<{ text: string }>;
-  process?: Array<{ stepTitle: string; description: string }>;
-  cases?: Array<{ story: string; result: string }>;
-  reviews?: Array<{ comment: string }>;
+  includes?: Array<{ id?: string; text: string }>;
+  process?: Array<{ id?: string; stepTitle: string; description: string }>;
+  cases?: Array<{ id?: string; story: string; result: string }>;
+  reviews?: Array<{ id?: string; comment: string }>;
 };
 
 export class UpdateMaterialsPackageUseCase {
@@ -124,31 +124,33 @@ export class UpdateMaterialsPackageUseCase {
 
     const translationSource: PackageTranslationSource = {};
     if ('title' in input) {
-      translationSource.title = input.title;
+      translationSource.title = saved.title;
     }
     if ('subtitle' in input) {
-      translationSource.subtitle = input.subtitle;
+      translationSource.subtitle = saved.subtitle;
     }
     if ('summary' in input) {
-      translationSource.summary = input.summary;
+      translationSource.summary = saved.summary;
     }
     if ('includes' in input) {
-      translationSource.includes = input.includes?.map((item) => ({ text: item.text })) ?? [];
+      translationSource.includes = saved.includes?.map((item) => ({ id: item.id, text: item.text ?? '' })) ?? [];
     }
     if ('process' in input) {
-      translationSource.process = input.process?.map((item) => ({
-        stepTitle: item.stepTitle,
-        description: item.description,
+      translationSource.process = saved.process?.map((item) => ({
+        id: item.id,
+        stepTitle: item.stepTitle ?? '',
+        description: item.description ?? '',
       })) ?? [];
     }
     if ('cases' in input) {
-      translationSource.cases = input.cases?.map((item) => ({
-        story: item.story,
-        result: item.result,
+      translationSource.cases = saved.cases?.map((item) => ({
+        id: item.id,
+        story: item.story ?? '',
+        result: item.result ?? '',
       })) ?? [];
     }
     if ('reviews' in input) {
-      translationSource.reviews = input.reviews?.map((item) => ({ comment: item.comment })) ?? [];
+      translationSource.reviews = saved.reviews?.map((item) => ({ id: item.id, comment: item.comment ?? '' })) ?? [];
     }
 
     const fieldsToTranslate = buildPackageTranslationFields(translationSource);
@@ -183,13 +185,14 @@ function buildPackageTranslationFields(pkg: PackageTranslationSource): Record<st
   if ('includes' in pkg) {
     fields.includes = (pkg.includes ?? [])
       .filter((item) => hasText(item.text))
-      .map((item) => ({ text: item.text }));
+      .map((item) => ({ ...(item.id ? { id: item.id } : {}), text: item.text }));
   }
 
   if ('process' in pkg) {
     fields.process = (pkg.process ?? [])
       .filter((item) => hasText(item.stepTitle) && hasText(item.description))
       .map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
         stepTitle: item.stepTitle,
         description: item.description,
       }));
@@ -199,6 +202,7 @@ function buildPackageTranslationFields(pkg: PackageTranslationSource): Record<st
     fields.cases = (pkg.cases ?? [])
       .filter((item) => hasText(item.story) && hasText(item.result))
       .map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
         story: item.story,
         result: item.result,
       }));
@@ -208,6 +212,7 @@ function buildPackageTranslationFields(pkg: PackageTranslationSource): Record<st
     fields.reviews = (pkg.reviews ?? [])
       .filter((item) => hasText(item.comment))
       .map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
         comment: item.comment,
       }));
   }

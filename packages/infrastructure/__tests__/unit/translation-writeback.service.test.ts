@@ -599,7 +599,7 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       makeResult({
         en: {
           subtitle: 'Translated subtitle',
-          includes: [{ text: 'Translated inclusion' }],
+          includes: [{ id: 'include-1', text: 'Translated inclusion' }],
           tags: [{ label: 'ignore me', category: 'service' }],
         },
         zh: {
@@ -619,7 +619,7 @@ describe('TranslationWritebackService materials review/package writeback', () =>
             title: 'Existing package title',
             summary: 'Existing summary',
             subtitle: 'Translated subtitle',
-            includes: [{ text: 'Translated inclusion' }],
+            includes: [{ id: 'include-1', text: 'Translated inclusion' }],
           },
           fr: {
             title: 'Titre existant',
@@ -739,7 +739,7 @@ describe('TranslationWritebackService materials review/package writeback', () =>
       makeResult({
         en: {
           summary: 'Updated summary',
-          reviews: [{ reviewerCountry: 'KR', comment: 'Translated review' }],
+          reviews: [{ id: 'review-1', reviewerCountry: 'KR', comment: 'Translated review' }],
         },
         fr: {
           subtitle: 'Sous-titre traduit',
@@ -758,7 +758,7 @@ describe('TranslationWritebackService materials review/package writeback', () =>
             title: 'Existing package title',
             extras: ['keep'],
             summary: 'Updated summary',
-            reviews: [{ comment: 'Translated review' }],
+            reviews: [{ id: 'review-1', comment: 'Translated review' }],
           },
           ko: {
             summary: '기존 요약',

@@ -580,12 +580,16 @@ export class TranslationWritebackService {
       if ('includes' in fields && Array.isArray(fields['includes'])) {
         next['includes'] = (fields['includes'] as unknown[])
           .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
-          .map((item) => ({ text: item['text'] ?? null }));
+          .map((item) => ({
+            ...(item['id'] !== undefined ? { id: item['id'] } : {}),
+            text: item['text'] ?? null,
+          }));
       }
       if ('process' in fields && Array.isArray(fields['process'])) {
         next['process'] = (fields['process'] as unknown[])
           .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
           .map((item) => ({
+            ...(item['id'] !== undefined ? { id: item['id'] } : {}),
             stepTitle: item['stepTitle'] ?? null,
             description: item['description'] ?? null,
           }));
@@ -594,6 +598,7 @@ export class TranslationWritebackService {
         next['cases'] = (fields['cases'] as unknown[])
           .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
           .map((item) => ({
+            ...(item['id'] !== undefined ? { id: item['id'] } : {}),
             story: item['story'] ?? null,
             result: item['result'] ?? null,
           }));
@@ -601,7 +606,10 @@ export class TranslationWritebackService {
       if ('reviews' in fields && Array.isArray(fields['reviews'])) {
         next['reviews'] = (fields['reviews'] as unknown[])
           .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
-          .map((item) => ({ comment: item['comment'] ?? null }));
+          .map((item) => ({
+            ...(item['id'] !== undefined ? { id: item['id'] } : {}),
+            comment: item['comment'] ?? null,
+          }));
       }
       if (Object.keys(next).length > 0) sanitized[lang] = next;
     }

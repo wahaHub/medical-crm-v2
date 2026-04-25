@@ -151,6 +151,37 @@ describe('materials consumer payload mapping', () => {
     ]);
   });
 
+  it('falls back to english review translations when the requested locale is unavailable', () => {
+    expect(mapHospitalReviewsToPatientReviews([
+      {
+        id: 'review-1',
+        sortOrder: 1,
+        isActive: true,
+        featured: false,
+        patientName: 'Sarah Johnson',
+        patientCountry: 'USA',
+        treatmentName: 'LASIK Surgery',
+        reviewTitle: 'Life-changing experience',
+        reviewComment: 'Excellent clinical team and smooth follow-up.',
+        rating: 5,
+        reviewDate: '2026-04-24',
+        translations: {
+          en: {
+            treatmentName: 'LASIK Care',
+            reviewTitle: 'Excellent outcome',
+            reviewComment: 'English fallback copy.',
+          },
+        },
+      },
+    ], 'fr')).toEqual([
+      expect.objectContaining({
+        treatment: 'LASIK Care',
+        title: 'Excellent outcome',
+        comment: 'English fallback copy.',
+      }),
+    ]);
+  });
+
   it('maps packages into the PackageList consumer contract with summary counts', () => {
     expect(mapHospitalPackagesToPackageList([
       {
@@ -261,6 +292,41 @@ describe('materials consumer payload mapping', () => {
         reviewCount: 0,
         isActive: true,
       },
+    ]);
+  });
+
+  it('falls back to english package translations when the requested locale is unavailable', () => {
+    expect(mapHospitalPackagesToPackageList([
+      {
+        id: 'package-1',
+        slug: 'premium-lasik',
+        sortOrder: 1,
+        isActive: true,
+        title: 'Premium LASIK Vision Correction Package',
+        subtitle: 'SMILE + bilingual care + follow-up',
+        coverImageUrl: 'https://cdn.example.com/cover.jpg',
+        gallery: [],
+        price: '3800',
+        currency: 'USD',
+        duration: '5-7 days in China',
+        summary: 'A complete overseas LASIK journey.',
+        tags: [],
+        includes: [],
+        process: [],
+        cases: [],
+        reviews: [],
+        translations: {
+          en: {
+            title: 'English fallback package',
+            subtitle: 'English fallback subtitle',
+          },
+        },
+      },
+    ], 'de')).toEqual([
+      expect.objectContaining({
+        title: 'English fallback package',
+        subtitle: 'English fallback subtitle',
+      }),
     ]);
   });
 
@@ -555,5 +621,78 @@ describe('materials consumer payload mapping', () => {
         ],
       },
     });
+  });
+
+  it('matches translated package nested arrays by id before falling back to array position', () => {
+    expect(mapHospitalPackageToPackageDetail({
+      hospital: hospitalInfo,
+      locale: 'en',
+      packageItem: {
+        id: 'package-1',
+        slug: 'premium-lasik',
+        sortOrder: 1,
+        isActive: true,
+        title: 'Premium LASIK Vision Correction Package',
+        coverImageUrl: 'https://cdn.example.com/cover.jpg',
+        price: '3800',
+        currency: 'USD',
+        summary: 'Base summary',
+        tags: [],
+        gallery: [],
+        includes: [
+          { id: 'include-2', text: 'Airport pickup', sortOrder: 2 },
+          { id: 'include-1', text: 'SMILE procedure', sortOrder: 1 },
+        ],
+        process: [
+          { id: 'process-2', stepTitle: 'Day 2', description: 'Procedure day', sortOrder: 2 },
+          { id: 'process-1', stepTitle: 'Day 1', description: 'Arrival and tests', sortOrder: 1 },
+        ],
+        cases: [
+          { id: 'case-2', patientName: 'Ms. Tanaka', patientAge: 28, patientCountry: 'Japan', story: 'Story 2', result: 'Result 2', sortOrder: 2 },
+          { id: 'case-1', patientName: 'Mr. Ahmad', patientAge: 32, patientCountry: 'Malaysia', story: 'Story 1', result: 'Result 1', sortOrder: 1 },
+        ],
+        reviews: [
+          { id: 'review-2', reviewerName: 'David L.', reviewerCountry: 'Australia', rating: 4, reviewDate: '2026-04-20', comment: 'Comment 2', sortOrder: 2, isActive: true },
+          { id: 'review-1', reviewerName: 'Sarah K.', reviewerCountry: 'Singapore', rating: 5, reviewDate: '2026-04-23', comment: 'Comment 1', sortOrder: 1, isActive: true },
+        ],
+        translations: {
+          en: {
+            includes: [
+              { id: 'include-2', text: 'Airport transfer' },
+              { id: 'include-1', text: 'SMILE surgery' },
+            ],
+            process: [
+              { id: 'process-2', stepTitle: 'Day 2 translated', description: 'Procedure day translated' },
+              { id: 'process-1', stepTitle: 'Day 1 translated', description: 'Arrival and tests translated' },
+            ],
+            cases: [
+              { id: 'case-2', story: 'Translated story 2', result: 'Translated result 2' },
+              { id: 'case-1', story: 'Translated story 1', result: 'Translated result 1' },
+            ],
+            reviews: [
+              { id: 'review-2', comment: 'Translated comment 2' },
+              { id: 'review-1', comment: 'Translated comment 1' },
+            ],
+          },
+        },
+      },
+    })).toEqual(expect.objectContaining({
+      includes: [
+        'SMILE surgery',
+        'Airport transfer',
+      ],
+      process: [
+        { step: 'Day 1 translated', desc: 'Arrival and tests translated' },
+        { step: 'Day 2 translated', desc: 'Procedure day translated' },
+      ],
+      cases: [
+        expect.objectContaining({ story: 'Translated story 1', result: 'Translated result 1' }),
+        expect.objectContaining({ story: 'Translated story 2', result: 'Translated result 2' }),
+      ],
+      reviews: [
+        expect.objectContaining({ comment: 'Translated comment 1' }),
+        expect.objectContaining({ comment: 'Translated comment 2' }),
+      ],
+    }));
   });
 });

@@ -8,6 +8,7 @@ import {
   SupervisorService,
 } from '@medical-crm/application';
 import {
+  AiChatMessage,
   AiChatSession as AiChatSessionEntity,
   deriveCanonicalTruthFlagsFromStatusSnapshot,
   normalizeSupportingDocuments,
@@ -19,6 +20,8 @@ import type {
 } from '@medical-crm/domain';
 import {
   chatbotV3ChatRequestSchema,
+  type ChatbotV3ChatRequest,
+  type ChatbotV3ChatResponse,
   chatbotV3ChatResponseSchema,
   chatbotV3UploadInitRequestSchema,
   chatbotV3UploadInitResponseSchema,
@@ -163,6 +166,16 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     sessionStatusSnapshot: session?.statusSnapshot,
     includeRuntimeDebug: process.env.NODE_ENV !== 'production',
   }));
+  if (session) {
+    await persistChatbotV3TurnHistory({
+      services,
+      session,
+      body,
+      response,
+      traceId,
+      turnId,
+    });
+  }
   if (session) {
     const statusPatch = filterUnchangedStatusPatch(
       session.statusSnapshot,
@@ -432,6 +445,130 @@ function resolveTraceId(c: Context): string {
   }
 
   return trimmed;
+}
+
+async function persistChatbotV3TurnHistory(input: {
+  services: AppServices;
+  session: AiChatSession;
+  body: ChatbotV3ChatRequest;
+  response: ChatbotV3ChatResponse;
+  traceId: string;
+  turnId: string;
+}): Promise<void> {
+  const userCreatedAt = new Date();
+  const assistantText = input.response.messages.find((message) => message.text.trim().length > 0)?.text ?? '';
+  const userMessage = new AiChatMessage({
+    id: createDeterministicTurnMessageId(input.session.id, input.turnId, 'USER'),
+    sessionId: input.session.id,
+    role: 'USER',
+    content: input.body.message ?? '',
+    intent: null,
+    riskLevel: null,
+    canAnswer: null,
+    nextAction: null,
+    citations: [],
+    metadata: {
+      channel: 'chatbot-v3',
+      traceId: input.traceId,
+      turnId: input.turnId,
+      ...(input.body.action ? { action: input.body.action } : {}),
+      ...(input.body.attachments ? { attachments: input.body.attachments } : {}),
+      ...(input.body.pageContext ? { pageContext: input.body.pageContext } : {}),
+    },
+    createdAt: userCreatedAt,
+  });
+  await createOrUpdateAiChatHistoryMessage(input.services, userMessage);
+
+  const assistantCreatedAt = new Date(userCreatedAt.getTime() + 1);
+  const assistantMessage = new AiChatMessage({
+    id: createDeterministicTurnMessageId(input.session.id, input.turnId, 'ASSISTANT'),
+    sessionId: input.session.id,
+    role: 'ASSISTANT',
+    content: assistantText,
+    intent: null,
+    riskLevel: null,
+    canAnswer: input.response.turnOutcome.status === 'ok',
+    nextAction: null,
+    citations: [],
+    metadata: {
+      channel: 'chatbot-v3',
+      traceId: input.traceId,
+      turnId: input.turnId,
+      responseMessages: input.response.messages,
+      turnOutcome: input.response.turnOutcome,
+      cards: input.response.cards,
+      journey: input.response.journey,
+      handoff: input.response.handoff,
+      ...(input.response.runtimeDebug ? { runtimeDebug: input.response.runtimeDebug } : {}),
+    },
+    createdAt: assistantCreatedAt,
+  });
+  await createOrUpdateAiChatHistoryMessage(input.services, assistantMessage);
+}
+
+async function createOrUpdateAiChatHistoryMessage(
+  services: AppServices,
+  message: AiChatMessage,
+): Promise<void> {
+  try {
+    await services.aiChatMessageRepo.create(message);
+    return;
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+  }
+
+  const updated = await services.aiChatMessageRepo.updateMessage(message.id, {
+    content: message.content,
+    intent: message.intent,
+    resolvedIntent: message.resolvedIntent,
+    riskLevel: message.riskLevel,
+    canAnswer: message.canAnswer,
+    nextAction: message.nextAction,
+    secondaryAction: message.secondaryAction,
+    responseMode: message.responseMode,
+    citations: message.citations,
+    metadata: message.metadata,
+    reasonCodes: message.reasonCodes,
+    shortlist: message.shortlist,
+    writebackStatus: message.writebackStatus,
+    toolTrace: message.toolTrace,
+  });
+
+  if (!updated) {
+    throw new Error(`Failed to persist chatbot-v3 history message ${message.id}`);
+  }
+}
+
+function createDeterministicTurnMessageId(
+  sessionDbId: string,
+  turnId: string,
+  role: 'USER' | 'ASSISTANT',
+): string {
+  const digest = createHash('sha256')
+    .update(`chatbot-v3:${sessionDbId}:${turnId}:${role}`)
+    .digest('hex');
+  const variant = ((Number.parseInt(digest.slice(16, 18), 16) & 0x3f) | 0x80)
+    .toString(16)
+    .padStart(2, '0');
+
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `5${digest.slice(13, 16)}`,
+    `${variant}${digest.slice(18, 20)}`,
+    digest.slice(20, 32),
+  ].join('-');
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Error
+    && (
+      error.message.includes('duplicate key')
+      || error.message.includes('unique')
+      || (error as Error & { code?: string }).code === '23505'
+    );
 }
 
 function resolveFacts(

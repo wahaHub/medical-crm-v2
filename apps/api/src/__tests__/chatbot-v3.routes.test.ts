@@ -35,6 +35,10 @@ const routeMockServices = vi.hoisted(() => ({
   idempotencyExecutor: {
     execute: vi.fn(async (_key: string, _operation: string, fn: () => Promise<unknown>) => fn()),
   },
+  aiChatMessageRepo: {
+    create: vi.fn(async (entity: unknown) => entity),
+    updateMessage: vi.fn(),
+  },
   aiChatSessionRepo: {
     findBySessionId: vi.fn(),
     save: vi.fn(),
@@ -5045,6 +5049,90 @@ describe('chatbot-v3 public route validation', () => {
         ],
       }),
     );
+  });
+
+  it('persists user and assistant ai chat messages for successful v3 turns', async () => {
+    const app = new Hono();
+    app.route('/', chatbotV3PublicRoutes);
+    app.onError((err, c) => {
+      if (err.name === 'ZodError' && 'errors' in err) {
+        return c.json({
+          error: 'Validation failed',
+          code: 'VALIDATION_FAILED',
+          details: (err as Error & { errors: unknown[] }).errors,
+        }, 400);
+      }
+
+      throw err;
+    });
+
+    routeMockServices.aiChatMessageRepo.create.mockClear();
+    routeMockServices.aiChatMessageRepo.updateMessage.mockClear();
+    routeMockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
+      id: 'db-session-v3-route-history-1',
+      sessionId: 'session-v3-route-history-1',
+      site: 'china',
+      sessionSecretHash: createHash('sha256').update('secret-v3-route-history-1').digest('hex'),
+      patientId: null,
+      difyConversationId: null,
+      hospitalType: 'COSMETIC',
+      status: 'ACTIVE',
+      statusSnapshot: {
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+      },
+    });
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-medora-site': 'china',
+        'x-request-id': 'trace-v3-route-history-1',
+        'Idempotency-Key': 'turn-v3-route-history-1',
+        Cookie: 'chatbot_session_secret=secret-v3-route-history-1',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-route-history-1',
+        message: 'I need help getting started.',
+      }),
+    });
+
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.messages[0]?.text).toBeTruthy();
+    expect(routeMockServices.aiChatMessageRepo.create).toHaveBeenCalledTimes(2);
+    expect(routeMockServices.aiChatMessageRepo.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        sessionId: 'db-session-v3-route-history-1',
+        role: 'USER',
+        content: 'I need help getting started.',
+      }),
+    );
+    expect(routeMockServices.aiChatMessageRepo.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        sessionId: 'db-session-v3-route-history-1',
+        role: 'ASSISTANT',
+        content: body.messages[0]?.text,
+        metadata: expect.objectContaining({
+          turnOutcome: body.turnOutcome,
+          journey: body.journey,
+          handoff: body.handoff,
+          cards: body.cards,
+        }),
+      }),
+    );
+    const persistedUserMessage = vi.mocked(routeMockServices.aiChatMessageRepo.create).mock.calls[0]?.[0] as {
+      createdAt: Date;
+    };
+    const persistedAssistantMessage = vi.mocked(routeMockServices.aiChatMessageRepo.create).mock.calls[1]?.[0] as {
+      createdAt: Date;
+    };
+    expect(persistedUserMessage.createdAt.getTime()).toBeLessThan(persistedAssistantMessage.createdAt.getTime());
   });
 
   it('advances a supporting-doc follow-up into ONLINE_CONSULT once at least one persisted document exists', async () => {

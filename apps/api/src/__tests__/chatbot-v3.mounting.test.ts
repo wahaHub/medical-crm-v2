@@ -168,6 +168,10 @@ const mockServices = {
   idempotencyExecutor: {
     execute: vi.fn(async (_key: string, _operation: string, fn: () => Promise<unknown>) => fn()),
   },
+  aiChatMessageRepo: {
+    create: vi.fn(async (entity: unknown) => entity),
+    updateMessage: vi.fn(),
+  },
   aiChatSessionRepo: {
     findBySessionId: vi.fn(),
     save: vi.fn(),

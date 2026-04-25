@@ -744,6 +744,52 @@ describe('Materials routes', () => {
       );
     });
 
+    it('returns 201 with upload URL and asset for REGULAR hospital + package_cover materialKind', async () => {
+      mockResolveHospitalType.mockResolvedValue('REGULAR');
+      mockServices.mediaUpload.createUploadIntent.mockResolvedValue(uploadIntentResult);
+
+      const res = await app.request(`/api/v2/hospitals/${VALID_HOSPITAL_ID}/materials/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validBody, materialKind: 'package_cover' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          policyId: 'materials_regular_hospital_image',
+          ownerType: 'hospital_material',
+          ownerId: VALID_HOSPITAL_ID,
+          fileName: 'photo.jpg',
+          fileSize: 204800,
+          mimeType: 'image/jpeg',
+        }),
+      );
+    });
+
+    it('returns 201 with upload URL and asset for REGULAR hospital + review_avatar materialKind', async () => {
+      mockResolveHospitalType.mockResolvedValue('REGULAR');
+      mockServices.mediaUpload.createUploadIntent.mockResolvedValue(uploadIntentResult);
+
+      const res = await app.request(`/api/v2/hospitals/${VALID_HOSPITAL_ID}/materials/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...validBody, materialKind: 'review_avatar' }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          policyId: 'materials_regular_hospital_image',
+          ownerType: 'hospital_material',
+          ownerId: VALID_HOSPITAL_ID,
+          fileName: 'photo.jpg',
+          fileSize: 204800,
+          mimeType: 'image/jpeg',
+        }),
+      );
+    });
+
     it('returns 422 for unknown materialKind', async () => {
       mockResolveHospitalType.mockResolvedValue('COSMETIC');
 

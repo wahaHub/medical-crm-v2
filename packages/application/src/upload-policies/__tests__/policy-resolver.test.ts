@@ -31,4 +31,22 @@ describe('resolveMaterialsPolicyId', () => {
       'materials_beauty_testimonial_video',
     );
   });
+
+  it('resolves REGULAR package cover uploads', () => {
+    expect(resolveMaterialsPolicyId('REGULAR', 'package_cover')).toBe(
+      'materials_regular_hospital_image',
+    );
+  });
+
+  it('resolves REGULAR review avatar uploads', () => {
+    expect(resolveMaterialsPolicyId('REGULAR', 'review_avatar')).toBe(
+      'materials_regular_hospital_image',
+    );
+  });
+
+  it('resolves REGULAR review video uploads', () => {
+    expect(resolveMaterialsPolicyId('REGULAR', 'review_video')).toBe(
+      'materials_regular_hospital_video',
+    );
+  });
 });

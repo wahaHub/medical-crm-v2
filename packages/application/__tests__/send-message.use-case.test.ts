@@ -72,6 +72,7 @@ describe('SendMessageUseCase', () => {
     mockConversationRepo = {
       findById: vi.fn().mockResolvedValue(makeConversation()),
       findMany: vi.fn(),
+      findAdminPatientByCaseId: vi.fn(),
       save: vi
         .fn()
         .mockImplementation((entity: Conversation) => Promise.resolve(entity)),
@@ -460,6 +461,136 @@ describe('SendMessageUseCase', () => {
     const savedConversation = mockConversationRepo.save.mock.calls.at(-1)?.[0] as Conversation;
     expect(savedConversation.assistantMode).toBe('HUMAN_TAKEOVER');
     expect(savedConversation.lastMessagePreview).toBe('Following up as the human owner.');
+  });
+
+  it('transitions HOSPITAL_PATIENT conversations to HUMAN_TAKEOVER and appends the handoff notice on the first hospital send', async () => {
+    const conversation = makeConversation({
+      id: 'conv-hospital',
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hosp-1',
+      caseId: 'case-1',
+      title: null,
+      assistantMode: 'AI_ACTIVE',
+    });
+    const adminConversation = makeConversation({
+      id: 'conv-admin',
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      caseId: 'case-1',
+      title: null,
+      assistantMode: 'AI_ACTIVE',
+    });
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+    (mockConversationRepo as IConversationRepository & {
+      findAdminPatientByCaseId: (caseId: string) => Promise<Conversation | null>;
+    }).findAdminPatientByCaseId = vi.fn().mockResolvedValue(adminConversation);
+    (mockConversationRepo as IConversationRepository & {
+      compareAndSetAssistantMode: (
+        id: string,
+        fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+      ) => Promise<Conversation | null>;
+    }).compareAndSetAssistantMode = vi.fn(async (id, _fromMode, toMode) => {
+      if (id === 'conv-hospital') {
+        return makeConversation({
+          ...conversation,
+          assistantMode: toMode,
+          category: 'HOSPITAL_PATIENT',
+          hospitalId: 'hosp-1',
+          caseId: 'case-1',
+          title: null,
+        });
+      }
+
+      if (id === 'conv-admin') {
+        return makeConversation({
+          ...adminConversation,
+          assistantMode: toMode,
+          category: 'ADMIN_PATIENT',
+          hospitalId: null,
+          caseId: 'case-1',
+          title: null,
+        });
+      }
+
+      return null;
+    });
+
+    const result = await useCase.execute(
+      'conv-hospital',
+      { content: 'Doctor is taking over this case now.', messageType: 'TEXT' },
+      hospitalActor,
+    );
+
+    expect(mockTxRunner.run).toHaveBeenCalledOnce();
+    expect(result.message.senderId).toBe('hosp-user-1');
+    expect(result.message.senderRole).toBe('HOSPITAL');
+    expect(result.sideEffectMessages).toHaveLength(1);
+    expect(mockMessageRepo.save).toHaveBeenCalledTimes(2);
+
+    const persistedNotice = mockMessageRepo.save.mock.calls[1]?.[0] as Message;
+    expect(persistedNotice).toMatchObject({
+      conversationId: 'conv-hospital',
+      senderId: null,
+      senderRoleOverride: 'SYSTEM',
+      messageType: 'SYSTEM',
+      content: 'Medora AI 已转人工，现由顾问接手',
+    });
+
+    expect((mockConversationRepo as IConversationRepository & {
+      findAdminPatientByCaseId: (caseId: string) => Promise<Conversation | null>;
+    }).findAdminPatientByCaseId).toHaveBeenCalledWith('case-1', expect.anything());
+    expect((mockConversationRepo as IConversationRepository & {
+      compareAndSetAssistantMode: (
+        id: string,
+        fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+      ) => Promise<Conversation | null>;
+    }).compareAndSetAssistantMode).toHaveBeenCalledWith(
+      'conv-admin',
+      'AI_ACTIVE',
+      'HUMAN_TAKEOVER',
+      expect.anything(),
+    );
+
+    const savedConversation = mockConversationRepo.save.mock.calls.at(-1)?.[0] as Conversation;
+    expect(savedConversation.assistantMode).toBe('HUMAN_TAKEOVER');
+    expect(savedConversation.lastMessagePreview).toBe('Medora AI 已转人工，现由顾问接手');
+  });
+
+  it('does not persist a half-finished takeover when the handoff notice save fails', async () => {
+    const conversation = makeConversation({
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      title: null,
+      assistantMode: 'AI_ACTIVE',
+    });
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+    (mockConversationRepo as IConversationRepository & {
+      compareAndSetAssistantMode: (
+        id: string,
+        fromMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+        toMode: 'AI_ACTIVE' | 'HUMAN_TAKEOVER',
+      ) => Promise<Conversation | null>;
+    }).compareAndSetAssistantMode = vi.fn(async () => makeConversation({
+      ...conversation,
+      assistantMode: 'HUMAN_TAKEOVER',
+      hospitalId: null,
+      title: null,
+      category: 'ADMIN_PATIENT',
+    }));
+    mockMessageRepo.save = vi
+      .fn()
+      .mockImplementationOnce(async (entity: Message) => entity)
+      .mockRejectedValueOnce(new Error('failed to persist handoff notice'));
+
+    await expect(useCase.execute(
+      'conv-1',
+      { content: 'Escalating to the care team.', messageType: 'TEXT' },
+      adminActor,
+    )).rejects.toThrow('failed to persist handoff notice');
+
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 
   it('appends the handoff notice exactly once when concurrent first admin sends race', async () => {

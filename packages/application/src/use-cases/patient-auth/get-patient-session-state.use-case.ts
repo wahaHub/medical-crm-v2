@@ -177,13 +177,17 @@ export class GetPatientSessionStateUseCase {
     );
     const hospitalConversationIds = currentCaseConversations
       .filter((conversation) => conversation.category === 'HOSPITAL_PATIENT')
-      .map((conversation) => conversation.id);
+      .filter((conversation) => Boolean(conversation.hospitalId))
+      .map((conversation) => toHospitalSessionId(caseId, conversation.hospitalId));
+    const caseAuthority = currentCaseConversations.some((conversation) => conversation.assistantMode === 'HUMAN_TAKEOVER')
+      ? 'HUMAN_TAKEOVER'
+      : 'AI_ACTIVE';
 
     if (existingAdminConversation) {
       return {
-        activeConversationId: existingAdminConversation.id,
-        conversationIds: [existingAdminConversation.id, ...hospitalConversationIds],
-        activeAssistantMode: existingAdminConversation.assistantMode ?? 'AI_ACTIVE',
+        activeConversationId: toCareTeamSessionId(patientId, caseId),
+        conversationIds: [toCareTeamSessionId(patientId, caseId), ...hospitalConversationIds],
+        activeAssistantMode: existingAdminConversation.assistantMode ?? caseAuthority,
       };
     }
 
@@ -193,6 +197,7 @@ export class GetPatientSessionStateUseCase {
       caseId,
       hospitalId: null,
       category: 'ADMIN_PATIENT',
+      assistantMode: caseAuthority,
       title: null,
       lastMessageId: null,
       lastMessageAt: null,
@@ -203,11 +208,19 @@ export class GetPatientSessionStateUseCase {
     });
     const savedConversation = await this.conversationRepo.findOrCreateAdminPatientConversation(conversation);
     return {
-      activeConversationId: savedConversation.id,
-      conversationIds: [savedConversation.id, ...hospitalConversationIds],
-      activeAssistantMode: savedConversation.assistantMode,
+      activeConversationId: toCareTeamSessionId(patientId, caseId),
+      conversationIds: [toCareTeamSessionId(patientId, caseId), ...hospitalConversationIds],
+      activeAssistantMode: savedConversation.assistantMode ?? caseAuthority,
     };
   }
+}
+
+function toCareTeamSessionId(patientId: string, caseId: string): string {
+  return `widget-chat:${patientId}:${caseId}`;
+}
+
+function toHospitalSessionId(caseId: string, hospitalId: string | null): string {
+  return `hospital:${hospitalId}:${caseId}`;
 }
 
 type EntryProfile = {

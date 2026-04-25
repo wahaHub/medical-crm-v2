@@ -120,7 +120,11 @@ export type {
   AiPolicySemanticSignals,
 } from './dtos/ai-policy.dto.js';
 export type { ConversationDTO, MessageDTO } from './dtos/conversation.dto.js';
-export type { PatientConversationSummaryDTO } from './dtos/patient-conversation.dto.js';
+export type {
+  PatientConversationSummariesDTO,
+  PatientCaseChatMetaDTO,
+  PatientSessionSummaryDTO,
+} from './dtos/patient-conversation.dto.js';
 export type { ConsultationDTO, ConsultationTranscriptDTO } from './dtos/consultation.dto.js';
 export type { CaseHospitalContactDTO } from './dtos/case-hospital-contact.dto.js';
 export type { QuoteDTO } from './dtos/quote.dto.js';
@@ -463,6 +467,7 @@ export { HospitalDashboardUseCase } from './use-cases/dashboard/hospital-dashboa
 export { GetPatientCasesUseCase } from './use-cases/patient-dashboard/get-patient-cases.use-case.js';
 export { GetPatientCaseDetailUseCase } from './use-cases/patient-dashboard/get-patient-case-detail.use-case.js';
 export { GetPatientConversationsUseCase } from './use-cases/patient-dashboard/get-patient-conversations.use-case.js';
+export { GetPatientSessionDetailUseCase } from './use-cases/patient-dashboard/get-patient-session-detail.use-case.js';
 export { PatientAcceptQuoteUseCase } from './use-cases/patient-dashboard/patient-accept-quote.use-case.js';
 export { PatientRejectQuoteUseCase } from './use-cases/patient-dashboard/patient-reject-quote.use-case.js';
 export { SelectHospitalsUseCase } from './use-cases/patient-dashboard/select-hospitals.use-case.js';

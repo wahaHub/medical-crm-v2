@@ -76,38 +76,93 @@ describe('patientProtectedRoutes', () => {
     });
   });
 
-  it('returns assistantMode on patient conversation reads', async () => {
-    const execute = vi.fn().mockResolvedValue([
-      {
-        id: 'conv-1',
+  it('returns patient session summaries plus case authority meta on /conversations', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      sessions: [
+        {
+          sessionId: 'widget-chat:patient-1:case-1',
+          caseId: 'case-1',
+          type: 'CARE_TEAM',
+          title: 'Medora Care Team',
+          hospitalId: null,
+          hospitalName: null,
+          isAiAvailable: false,
+          unreadCount: 0,
+          lastMessagePreview: null,
+          lastMessageAt: null,
+          updatedAt: '2026-04-18T00:00:00.000Z',
+        },
+      ],
+      meta: {
         caseId: 'case-1',
-        category: 'ADMIN_PATIENT',
-        type: 'patient-admin',
-        title: null,
-        hospitalId: null,
-        hospitalName: null,
-        assistantMode: 'HUMAN_TAKEOVER',
-        unreadCount: 0,
-        lastMessage: null,
-        lastMessageAt: null,
-        lastMessagePreview: null,
-        updatedAt: '2026-04-18T00:00:00.000Z',
+        chatAuthority: 'HUMAN_TAKEOVER',
       },
-    ]);
+    });
+    mockGetServices.mockReturnValue({
+      getPatientConversations: { execute },
+    });
+
+    const res = await patientProtectedRoutes.request('/conversations?caseId=11111111-1111-4111-8111-111111111111');
+
+    expect(res.status).toBe(200);
+    expect(execute).toHaveBeenCalledWith({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(await res.json()).toEqual({
+      sessions: [
+        expect.objectContaining({
+          sessionId: 'widget-chat:patient-1:case-1',
+          type: 'CARE_TEAM',
+          title: 'Medora Care Team',
+          isAiAvailable: false,
+        }),
+      ],
+      meta: {
+        caseId: 'case-1',
+        chatAuthority: 'HUMAN_TAKEOVER',
+      },
+    });
+  });
+
+  it('does not leak legacy conversation-shaped payloads from /conversations', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      sessions: [
+        {
+          sessionId: 'widget-chat:patient-1:case-1',
+          caseId: 'case-1',
+          type: 'CARE_TEAM',
+          title: 'Medora Care Team',
+          hospitalId: null,
+          hospitalName: null,
+          isAiAvailable: false,
+          unreadCount: 0,
+          lastMessagePreview: null,
+          lastMessageAt: null,
+          updatedAt: '2026-04-18T00:00:00.000Z',
+        },
+      ],
+      meta: {
+        caseId: 'case-1',
+        chatAuthority: 'HUMAN_TAKEOVER',
+      },
+    });
     mockGetServices.mockReturnValue({
       getPatientConversations: { execute },
     });
 
     const res = await patientProtectedRoutes.request('/conversations');
+    const payload = await res.json();
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([
-      expect.objectContaining({
-        id: 'conv-1',
-        type: 'patient-admin',
-        assistantMode: 'HUMAN_TAKEOVER',
-      }),
-    ]);
+    expect(payload).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.any(String),
+          assistantMode: expect.any(String),
+        }),
+      ]),
+    );
   });
 
   it('returns assistantMode alongside patient message list responses and preserves explicit sender roles', async () => {
@@ -146,6 +201,119 @@ describe('patientProtectedRoutes', () => {
       limit: 20,
       totalPages: 1,
       hasMore: false,
+    });
+  });
+
+  it('returns merged patient session detail payloads on /sessions/:sessionId/messages', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-1',
+      caseId: 'case-1',
+      type: 'CARE_TEAM',
+      title: 'Medora Care Team',
+      hospitalId: null,
+      hospitalName: null,
+      isAiAvailable: false,
+      chatAuthority: 'HUMAN_TAKEOVER',
+      data: [
+        { id: 'msg-ai', sessionId: 'widget-chat:patient-1:case-1', source: 'CHATBOT', conversationId: null, senderRole: 'AI', senderName: 'Medora AI', content: 'AI reply', messageType: 'TEXT', moderationStatus: null, attachments: [], createdAt: '2026-04-18T00:00:00.000Z' },
+        { id: 'msg-admin', sessionId: 'widget-chat:patient-1:case-1', source: 'FORMAL', conversationId: 'conv-1', senderRole: 'ADMIN', senderName: 'Medora Care Team', content: 'Human reply', messageType: 'TEXT', moderationStatus: 'ALLOWED', attachments: [], createdAt: '2026-04-18T00:01:00.000Z' },
+      ],
+      total: 2,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+      hasMore: false,
+    });
+    mockGetServices.mockReturnValue({
+      getPatientSessionDetail: { execute },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages');
+
+    expect(res.status).toBe(200);
+    expect(execute).toHaveBeenCalledWith({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      limit: 50,
+    });
+    expect(await res.json()).toEqual(
+      expect.objectContaining({
+        sessionId: 'widget-chat:patient-1:case-1',
+        type: 'CARE_TEAM',
+        chatAuthority: 'HUMAN_TAKEOVER',
+        data: [
+          expect.objectContaining({ id: 'msg-ai', source: 'CHATBOT', senderRole: 'AI' }),
+          expect.objectContaining({ id: 'msg-admin', source: 'FORMAL', senderRole: 'ADMIN' }),
+        ],
+      }),
+    );
+  });
+
+  it('routes human-takeover care-team session sends through the formal message path', async () => {
+    const getConversation = { execute: vi.fn().mockResolvedValue({ id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', assistantMode: 'HUMAN_TAKEOVER' }) };
+    const sendMessage = {
+      execute: vi.fn().mockResolvedValue({
+        message: {
+          id: 'msg-1',
+          conversationId: 'conv-1',
+          senderId: 'patient-1',
+          senderRole: 'PATIENT',
+          senderName: null,
+          content: 'Need a human update',
+          originalLanguage: 'en',
+          translatedContent: null,
+          messageType: 'TEXT',
+          moderationStatus: 'ALLOWED',
+          attachments: [],
+          aiSummary: null,
+          createdAt: '2026-04-18T00:00:00.000Z',
+        },
+      }),
+    };
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([
+          { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'HUMAN_TAKEOVER' },
+        ]),
+      },
+      sendMessage,
+      caseRepo: { findById: vi.fn().mockResolvedValue({ id: 'case-1', patientId: 'patient-1' }) },
+      notifyAdminsOfPatientMessage: { execute: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'Need a human update', messageType: 'TEXT' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendMessage.execute).toHaveBeenCalledWith(
+      'conv-1',
+      expect.objectContaining({ content: 'Need a human update', messageType: 'TEXT' }),
+      expect.objectContaining({ userId: 'patient-1', role: 'PATIENT' }),
+    );
+  });
+
+  it('rejects formal care-team session sends while AI is still active', async () => {
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([
+          { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'AI_ACTIVE' },
+        ]),
+      },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'hello', messageType: 'TEXT' }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'Care-team AI is still active for this session',
     });
   });
 

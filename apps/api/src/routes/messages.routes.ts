@@ -18,6 +18,37 @@ function buildMessagePreview(content: string | null | undefined): string {
   return normalized.length > 180 ? `${normalized.slice(0, 179).trimEnd()}...` : normalized;
 }
 
+async function resolvePatientConversationRoom(
+  svc: ReturnType<typeof getServices>,
+  conversation: {
+    category: string;
+    caseId: string | null;
+    hospitalId?: string | null;
+  },
+): Promise<string | null> {
+  if (
+    (conversation.category !== 'ADMIN_PATIENT' && conversation.category !== 'HOSPITAL_PATIENT')
+    || !conversation.caseId
+  ) {
+    return null;
+  }
+
+  const caseEntity = await svc.caseRepo.findById(conversation.caseId);
+  if (!caseEntity) {
+    return null;
+  }
+
+  if (conversation.category === 'ADMIN_PATIENT') {
+    return `conv:widget-chat:${caseEntity.patientId}:${conversation.caseId}`;
+  }
+
+  if (!conversation.hospitalId) {
+    return null;
+  }
+
+  return `conv:hospital:${conversation.hospitalId}:${conversation.caseId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Param schemas
 // ---------------------------------------------------------------------------
@@ -131,15 +162,28 @@ app.openapi(sendMessageRoute, async (c) => {
   const executionResult = await svc.sendMessage.execute(id, body, actor);
   const result = 'message' in executionResult ? executionResult.message : executionResult;
   const sideEffectMessages = 'sideEffectMessages' in executionResult ? executionResult.sideEffectMessages : [];
+  const patientConversationRoom = await resolvePatientConversationRoom(svc, conversation);
   wsManager.broadcast(`conv:${id}`, {
     type: 'new_message',
     data: result,
   });
+  if (patientConversationRoom) {
+    wsManager.broadcast(patientConversationRoom, {
+      type: 'new_message',
+      data: result,
+    });
+  }
   for (const sideEffectMessage of sideEffectMessages) {
     wsManager.broadcast(`conv:${id}`, {
       type: 'new_message',
       data: sideEffectMessage,
     });
+    if (patientConversationRoom) {
+      wsManager.broadcast(patientConversationRoom, {
+        type: 'new_message',
+        data: sideEffectMessage,
+      });
+    }
   }
 
   if (conversation.caseId) {
@@ -178,7 +222,8 @@ app.openapi(sendMessageRoute, async (c) => {
             site: patient?.site ?? 'china',
             isPatientOnline:
               wsManager.hasSubscribers(`patient:${caseEntity.patientId}`)
-              || wsManager.hasSubscribers(`conv:${id}`),
+              || wsManager.hasSubscribers(`conv:${id}`)
+              || (patientConversationRoom ? wsManager.hasSubscribers(patientConversationRoom) : false),
           });
         } catch (error) {
           console.warn('Failed to notify patient about an admin reply:', error);

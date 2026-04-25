@@ -16,6 +16,7 @@ const mockServices = {
   getConversation: { execute: vi.fn() },
   updateConversation: { execute: vi.fn() },
   resumeConversationAi: { execute: vi.fn() },
+  caseRepo: { findById: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -59,6 +60,10 @@ const VALID_UUID = '00000000-0000-0000-0000-000000000001';
 describe('Conversation routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServices.caseRepo.findById.mockResolvedValue({
+      id: VALID_UUID,
+      patientId: 'patient-1',
+    });
     currentSession = {
       userId: 'u-1',
       email: 'admin@test.com',
@@ -152,7 +157,7 @@ describe('Conversation routes', () => {
 
     it('routes assistantMode=AI_ACTIVE through the dedicated resume use case and broadcasts the resume notice', async () => {
       mockServices.resumeConversationAi.execute.mockResolvedValue({
-        conversation: { id: VALID_UUID, assistantMode: 'AI_ACTIVE' },
+        conversation: { id: VALID_UUID, caseId: VALID_UUID, category: 'ADMIN_PATIENT', assistantMode: 'AI_ACTIVE' },
         resumeNotice: { id: 'notice-1', content: 'Medora AI 已重新接入，可继续为您提供初步协助', messageType: 'SYSTEM' },
       });
 
@@ -172,7 +177,11 @@ describe('Conversation routes', () => {
         type: 'new_message',
         data: { id: 'notice-1', content: 'Medora AI 已重新接入，可继续为您提供初步协助', messageType: 'SYSTEM' },
       });
-      expect(await res.json()).toEqual({ id: VALID_UUID, assistantMode: 'AI_ACTIVE' });
+      expect(mockBroadcast).toHaveBeenCalledWith(`conv:widget-chat:patient-1:${VALID_UUID}`, {
+        type: 'new_message',
+        data: { id: 'notice-1', content: 'Medora AI 已重新接入，可继续为您提供初步协助', messageType: 'SYSTEM' },
+      });
+      expect(await res.json()).toEqual(expect.objectContaining({ id: VALID_UUID, assistantMode: 'AI_ACTIVE' }));
     });
 
     it('rejects direct HUMAN_TAKEOVER writes on the public update route', async () => {

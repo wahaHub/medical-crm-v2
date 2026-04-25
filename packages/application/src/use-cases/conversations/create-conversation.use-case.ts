@@ -1,5 +1,5 @@
 import { Conversation, type IConversationRepository, type ConversationCategory, type ICaseRepository, type IHospitalRepository } from '@medical-crm/domain';
-import { generateId, ForbiddenError } from '@medical-crm/utils';
+import { generateId, ForbiddenError, ValidationError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { ConversationDTO } from '../../dtos/conversation.dto.js';
 import { toConversationDTO } from '../../mappers/conversation.mapper.js';
@@ -25,6 +25,10 @@ export class CreateConversationUseCase {
 
     const now = new Date();
     const hospitalId = input.hospitalId ?? (actor.role === 'HOSPITAL' ? actor.hospitalId : null);
+
+    if (input.category === 'HOSPITAL_PATIENT' && (!input.caseId || !hospitalId)) {
+      throw new ValidationError('HOSPITAL_PATIENT conversations require both caseId and hospitalId');
+    }
 
     // Auto-generate title if not provided
     const title = input.title ?? (await this.buildTitle(hospitalId, input.caseId));

@@ -165,8 +165,8 @@ describe('GetPatientSessionStateUseCase', () => {
         sessionId: 'widget-chat:patient-1:case-2',
       },
       formalConversationState: {
-        activeConversationId: expect.any(String),
-        conversationIds: [expect.any(String), 'conv-hosp-1'],
+        activeConversationId: 'widget-chat:patient-1:case-2',
+        conversationIds: ['widget-chat:patient-1:case-2'],
         activeAssistantMode: 'AI_ACTIVE',
       },
       journeySnapshot: {
@@ -238,8 +238,8 @@ describe('GetPatientSessionStateUseCase', () => {
       sessionId: 'widget-chat:patient-1:case-1',
     });
     expect(result.formalConversationState).toEqual({
-      activeConversationId: 'conv-1',
-      conversationIds: ['conv-1'],
+      activeConversationId: 'widget-chat:patient-1:case-1',
+      conversationIds: ['widget-chat:patient-1:case-1'],
       activeAssistantMode: 'HUMAN_TAKEOVER',
     });
     expect(result.journeySnapshot).toEqual({
@@ -289,12 +289,64 @@ describe('GetPatientSessionStateUseCase', () => {
     const result = await useCase.execute({ patientId: 'patient-1' });
 
     expect(result.formalConversationState).toEqual({
-      activeConversationId: 'conv-existing',
-      conversationIds: ['conv-existing'],
+      activeConversationId: 'widget-chat:patient-1:case-1',
+      conversationIds: ['widget-chat:patient-1:case-1'],
       activeAssistantMode: 'HUMAN_TAKEOVER',
     });
     expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledOnce();
     expect(mockConversationRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('bootstraps a new care-team conversation in HUMAN_TAKEOVER when a hospital thread already took over the case', async () => {
+    mockPatientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      patientCode: 'P001',
+      preferredLanguage: 'en',
+    });
+    mockUserRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      email: 'hao@example.com',
+      name: 'Hao Wang',
+      role: 'PATIENT',
+      phone: '+1234',
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+    mockCaseRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'case-1',
+        patientName: 'Hao Wang',
+        patientCountry: 'Shanghai',
+        structuredData: null,
+        createdAt: new Date('2026-03-01T00:00:00Z'),
+      },
+    ]);
+    mockChcRepo.findByCaseId.mockResolvedValue([{ hospitalId: 'hospital-1', removedAt: null }]);
+    mockConversationRepo.findByPatientId.mockResolvedValue([
+      {
+        id: 'conv-hospital-1',
+        caseId: 'case-1',
+        category: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        assistantMode: 'HUMAN_TAKEOVER',
+      },
+    ]);
+    mockConversationRepo.findOrCreateAdminPatientConversation.mockImplementation(async (conversation: any) => conversation);
+
+    const result = await useCase.execute({ patientId: 'patient-1' });
+
+    expect(result.formalConversationState).toEqual({
+      activeConversationId: 'widget-chat:patient-1:case-1',
+      conversationIds: ['widget-chat:patient-1:case-1', 'hospital:hospital-1:case-1'],
+      activeAssistantMode: 'HUMAN_TAKEOVER',
+    });
+    expect(mockConversationRepo.findOrCreateAdminPatientConversation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'ADMIN_PATIENT',
+        assistantMode: 'HUMAN_TAKEOVER',
+      }),
+    );
   });
 
   it('provisions the canonical widget chatbot session on restore when it does not exist yet', async () => {

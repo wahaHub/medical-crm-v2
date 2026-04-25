@@ -163,6 +163,7 @@ import {
   GetPatientCasesUseCase,
   GetPatientCaseDetailUseCase,
   GetPatientConversationsUseCase,
+  GetPatientSessionDetailUseCase,
   PatientAcceptQuoteUseCase,
   PatientRejectQuoteUseCase,
   GetIntakeTemplateUseCase,
@@ -311,6 +312,7 @@ interface AppServices {
   messageRepo: IMessageRepository;
   aiChatSessionRepo: IAiChatSessionRepository;
   aiChatMessageRepo: IAiChatMessageRepository;
+  conversationRepo: IConversationRepository;
   aiUserProfileRepo: IAiUserProfileRepository;
   aiSyncOutboxRepo: IAiSyncOutboxRepository;
   difyDocumentMappingRepo: IDifyDocumentMappingRepository;
@@ -546,6 +548,7 @@ interface AppServices {
   getPatientCases: GetPatientCasesUseCase;
   getPatientCaseDetail: GetPatientCaseDetailUseCase;
   getPatientConversations: GetPatientConversationsUseCase;
+  getPatientSessionDetail: GetPatientSessionDetailUseCase;
   patientAcceptQuote: PatientAcceptQuoteUseCase;
   patientRejectQuote: PatientRejectQuoteUseCase;
   getIntakeTemplate: GetIntakeTemplateUseCase;
@@ -991,6 +994,7 @@ export function getServices(): AppServices {
     const contextBuilderService = new ContextBuilderService(
       aiChatSessionRepo,
       aiChatMessageRepo,
+      conversationRepo,
       aiUserProfileRepo,
       aiChatTimelineEventRepo,
       aiFollowupTriggerRepo,
@@ -1159,6 +1163,14 @@ export function getServices(): AppServices {
       getPatientCases: new GetPatientCasesUseCase(caseRepo),
       getPatientCaseDetail: new GetPatientCaseDetailUseCase(caseRepo),
       getPatientConversations: new GetPatientConversationsUseCase(conversationRepo, hospitalRepo),
+      getPatientSessionDetail: new GetPatientSessionDetailUseCase(
+        conversationRepo,
+        messageRepo,
+        aiChatSessionRepo,
+        aiChatMessageRepo,
+        routedStorageService,
+        hospitalRepo,
+      ),
       patientAcceptQuote: new PatientAcceptQuoteUseCase(quoteRepo, caseRepo),
       patientRejectQuote: new PatientRejectQuoteUseCase(quoteRepo, caseRepo),
       getIntakeTemplate: new GetIntakeTemplateUseCase(),

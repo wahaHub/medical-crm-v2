@@ -36,6 +36,32 @@ type CrmIdentity = {
   hospitalId: string | null;
 };
 
+function extractRoles(payload: jose.JWTPayload): string[] {
+  const mergedRoles = new Set<string>();
+
+  for (const role of ((payload.realm_access as { roles?: string[] } | undefined)?.roles ?? [])) {
+    mergedRoles.add(role);
+  }
+
+  if (Array.isArray((payload as Record<string, unknown>).roles)) {
+    for (const role of (payload as Record<string, unknown>).roles as unknown[]) {
+      if (typeof role === 'string' && role.length > 0) {
+        mergedRoles.add(role);
+      }
+    }
+  }
+
+  const resourceAccess =
+    (payload.resource_access as Record<string, { roles?: string[] }> | undefined) ?? {};
+  for (const clientId of Object.keys(resourceAccess)) {
+    for (const role of resourceAccess[clientId]?.roles ?? []) {
+      mergedRoles.add(role);
+    }
+  }
+
+  return [...mergedRoles];
+}
+
 async function touchLastLogin(userId: string): Promise<void> {
   const nowMs = Date.now();
   const lastTouchedAt = lastLoginTouchCache.get(userId);
@@ -165,17 +191,18 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
       throw new HTTPException(401, { message: 'Unauthorized' });
     }
 
+    const roles = extractRoles(payload);
+
     c.set('session', {
       userId: crmIdentity.id,
       email,
-      roles: (payload.realm_access as { roles?: string[] })?.roles ?? [],
+      roles,
       hospitalId:
         crmIdentity.hospitalId
         ?? (payload as Record<string, unknown>).hospital_id as string
         ?? null,
     });
-    const roles = (payload.realm_access as { roles?: string[] })?.roles ?? [];
-    if (roles.includes('admin') || roles.includes('hospital')) {
+    if (roles.includes('admin') || roles.includes('hospital') || roles.includes('regular_hospital')) {
       void touchLastLogin(crmIdentity.id);
     }
 

@@ -42,20 +42,36 @@ export function decodeJWT(token: string): Record<string, unknown> | null {
 
 /** Extract roles from a Keycloak JWT payload (supports multiple formats). */
 function extractRoles(payload: Record<string, unknown>): string[] {
+  const mergedRoles = new Set<string>();
+
   // 1. Standard: realm_access.roles
   const realmAccess = payload.realm_access as { roles?: string[] } | undefined;
-  if (realmAccess?.roles?.length) return realmAccess.roles;
+  for (const role of realmAccess?.roles ?? []) {
+    mergedRoles.add(role);
+  }
 
   // 2. Top-level roles array
-  if (Array.isArray(payload.roles) && payload.roles.length) return payload.roles as string[];
+  if (Array.isArray(payload.roles)) {
+    for (const role of payload.roles) {
+      if (typeof role === 'string' && role.length > 0) {
+        mergedRoles.add(role);
+      }
+    }
+  }
 
   // 3. Client roles: resource_access.<client>.roles
   const resourceAccess = payload.resource_access as Record<string, { roles?: string[] }> | undefined;
   if (resourceAccess) {
     for (const clientId of Object.keys(resourceAccess)) {
       const clientRoles = resourceAccess[clientId]?.roles;
-      if (clientRoles?.length) return clientRoles;
+      for (const role of clientRoles ?? []) {
+        mergedRoles.add(role);
+      }
     }
+  }
+
+  if (mergedRoles.size > 0) {
+    return [...mergedRoles];
   }
 
   // 4. Fallback heuristics (temporary until Keycloak role mapper is fixed)

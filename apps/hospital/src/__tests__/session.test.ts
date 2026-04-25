@@ -151,6 +151,38 @@ describe('hospital auth — login API route', () => {
     expect(mockSaveSession).not.toHaveBeenCalled();
   });
 
+  it('preserves regular_hospital when Keycloak splits roles across realm and client access', async () => {
+    const payload = {
+      sub: 'user-regular-1',
+      email: 'lilygenerateimage@gmail.com',
+      realm_access: { roles: ['hospital'] },
+      resource_access: {
+        account: { roles: ['manage-account'] },
+        'hospital-portal': { roles: ['regular_hospital'] },
+      },
+      hospital_id: 'h-regular-1',
+    };
+    const fakeJwt = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        access_token: fakeJwt,
+        refresh_token: 'refresh-regular',
+        id_token: 'id-regular',
+        expires_in: 300,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const { POST } = await import('@/app/api/auth/login/route');
+    const res = await POST(makeLoginRequest({ username: 'lilygenerateimage@gmail.com', password: 'pass' }));
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.user.roles).toEqual(
+      expect.arrayContaining(['hospital', 'regular_hospital']),
+    );
+  });
+
   it('accepts admin accounts and redirects to admin origin', async () => {
     const payload = { sub: 'admin-1', email: 'admin@test.com', realm_access: { roles: ['admin'] } };
     const fakeJwt = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;

@@ -289,4 +289,34 @@ describe('authMiddleware', () => {
     expect(second.status).toBe(200);
     expect(lookup.where).toHaveBeenCalledTimes(1);
   });
+
+  it('merges regular_hospital client roles with realm roles into the session', async () => {
+    const lookup = makeLookupDb([
+      [{ id: 'crm-user-1', hospitalId: 'hospital-1' }],
+    ]);
+
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        sub: 'kc-user-1',
+        email: 'lilygenerateimage@gmail.com',
+        azp: 'hospital-portal',
+        realm_access: { roles: ['hospital'] },
+        resource_access: {
+          account: { roles: ['manage-account'] },
+          'hospital-portal': { roles: ['regular_hospital'] },
+        },
+      },
+    });
+    mockGetCrmDb.mockReturnValue(lookup.db);
+
+    const app = await createApp();
+    const res = await app.request('/test', {
+      headers: { Authorization: 'Bearer regular-token' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      roles: expect.arrayContaining(['hospital', 'regular_hospital']),
+    });
+  });
 });

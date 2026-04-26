@@ -46,6 +46,7 @@ describe('createChatbotV3RecordsRouteAdapter', () => {
       model: 'gpt-4o-mini',
       fetchImpl,
       timeoutMs: 50,
+      reasoningEffort: 'none',
     });
 
     await expect(adapter.runStatus({
@@ -58,6 +59,7 @@ describe('createChatbotV3RecordsRouteAdapter', () => {
     const request = fetchImpl.mock.calls[0]?.[1];
     const payload = request?.body ? JSON.parse(String(request.body)) : null;
     expect(payload).not.toHaveProperty('temperature');
+    expect(payload.reasoning_effort).toBe('none');
     expect(adapter.getLastRunMetadata()).toMatchObject({
       nodeModel: 'gpt-4o-mini',
       fallbackUsed: false,
@@ -86,6 +88,7 @@ describe('createChatbotV3RecordsRouteAdapter', () => {
       model: 'gpt-4o-mini',
       fetchImpl,
       timeoutMs: 50,
+      reasoningEffort: 'none',
     });
 
     await expect(adapter.runStatus({
@@ -107,6 +110,37 @@ describe('createChatbotV3RecordsRouteAdapter', () => {
       nodeModel: 'gpt-4o-mini',
       fallbackUsed: false,
       schemaValidationFailed: false,
+    });
+  });
+
+  it('surfaces request-layer failure metadata when the OpenAI call throws', async () => {
+    const fetchImpl = vi.fn(async () => {
+      const error = new Error('socket hang up');
+      error.name = 'AbortError';
+      throw error;
+    });
+
+    const adapter = createChatbotV3RecordsRouteAdapter({
+      enabled: true,
+      apiKey: 'test-key',
+      model: 'gpt-4o-mini',
+      fetchImpl,
+      timeoutMs: 50,
+      reasoningEffort: 'none',
+    });
+
+    await expect(adapter.runStatus({
+      task: createRecordsTask('I have chest pain, it started 3 days ago, it feels moderate, and I already had a blood test.'),
+    })).resolves.toMatchObject({
+      'records.minimal_triage.complete': true,
+    });
+
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      nodeModel: 'gpt-4o-mini',
+      fallbackUsed: true,
+      schemaValidationFailed: false,
+      llmFailurePhase: 'request',
+      llmErrorName: 'AbortError',
     });
   });
 });

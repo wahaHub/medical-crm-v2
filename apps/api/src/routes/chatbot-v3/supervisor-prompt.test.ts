@@ -23,10 +23,13 @@ describe('buildSupervisorPrompt', () => {
       },
     });
 
-    expect(prompt).toContain('The object must include: intent, suggestedStage, dispatchAgent, reason, task.');
-    expect(prompt).toContain('The task object must include: goal, latestUserMessage, necessaryFacts.');
+    expect(prompt).toContain('Required output keys: intent, suggestedStage.');
+    expect(prompt).toContain('Optional keys: dispatchAgent, task, reason.');
+    expect(prompt).toContain('For non-detour EXPLAIN_PROCESS progression, omit dispatchAgent and task.');
+    expect(prompt).toContain('If task is present, it must include exactly: goal, latestUserMessage, necessaryFacts.');
     expect(prompt).toContain('requestedReadDomains');
-    expect(prompt).toContain('requesting at most two');
+    expect(prompt).toContain('Allowed intent values:');
+    expect(prompt).toContain('Allowed dispatchAgent values when dispatchAgent is present:');
     expect(prompt).toContain('Available domain reads:');
     expect(prompt).toContain('records.status, recommendation.status');
   });
@@ -103,5 +106,56 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('supporting_documents_count=2');
     expect(prompt).toContain('report-a.pdf');
     expect(prompt).toContain('report-b.pdf');
+  });
+
+  it('uses a compact agent guide instead of the full registry dump', () => {
+    const prompt = buildSupervisorPrompt({
+      currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      conversationSummary: 'The user just started and no recommendations have been shown.',
+      latestUserMessage: 'Please recommend hospitals for me.',
+      intake: {
+        condition: 'lung cancer',
+        targetDestination: 'Shanghai',
+        language: 'en',
+        gender: 'female',
+      },
+      availableReadDomains: ['records.status', 'recommendation.status'],
+      conversationSummaryContract: {
+        owner: 'runtime',
+        refreshTrigger: 'after_final_assistant_response',
+        sizeDiscipline: 'compact',
+        freshness: 'latest_committed_turn',
+        persistenceStrategy: 'persisted_with_session',
+      },
+    });
+
+    expect(prompt).toContain('Compact agent guide:');
+    expect(prompt).not.toContain('Supervisor-facing agent registry:');
+  });
+
+  it('documents the null-dispatch contract for normal explain-process progression', () => {
+    const prompt = buildSupervisorPrompt({
+      currentStage: 'RECOMMENDATION',
+      conversationSummary: 'The user selected a hospital and needs the process overview.',
+      latestUserMessage: 'What happens next?',
+      intake: {
+        condition: 'brain tumor',
+        targetDestination: 'China',
+        language: 'zh',
+        gender: 'female',
+      },
+      availableReadDomains: ['records.status', 'recommendation.status'],
+      conversationSummaryContract: {
+        owner: 'runtime',
+        refreshTrigger: 'after_final_assistant_response',
+        sizeDiscipline: 'compact',
+        freshness: 'latest_committed_turn',
+        persistenceStrategy: 'persisted_with_session',
+      },
+    });
+
+    expect(prompt).toContain('Allowed dispatchAgent values when dispatchAgent is present:');
+    expect(prompt).toContain('For normal progression into EXPLAIN_PROCESS, omit dispatchAgent and task.');
+    expect(prompt).toContain('Use FaqAgent inside EXPLAIN_PROCESS only for a real FAQ/resource detour');
   });
 });

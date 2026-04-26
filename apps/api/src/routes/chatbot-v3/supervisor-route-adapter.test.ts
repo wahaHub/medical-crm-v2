@@ -32,6 +32,7 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
       apiKey: 'test-openai-key',
       fetchImpl: fetchImpl as typeof fetch,
       model: 'gpt-4o-mini',
+      reasoningEffort: 'none',
     });
 
     await expect(adapter?.run({
@@ -71,6 +72,7 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     const request = fetchImpl.mock.calls[0]?.[1];
     const payload = request?.body ? JSON.parse(String(request.body)) : null;
     expect(payload).not.toHaveProperty('temperature');
+    expect(payload.reasoning_effort).toBe('none');
   });
 
   it('returns undefined when the supervisor llm route is disabled', () => {

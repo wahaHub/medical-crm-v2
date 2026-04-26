@@ -4,6 +4,10 @@ import {
   RECORDS_COLLECTION_PROMPT_VERSION,
   RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION,
 } from './records-prompts.js';
+import {
+  buildChatbotV3LlmRequestFailure,
+  parseStructuredOpenAiJsonResponse,
+} from './llm-route-error.js';
 
 type FetchLike = typeof fetch;
 
@@ -13,15 +17,8 @@ interface CreateChatbotV3RecordsRouteAdapterOptions {
   model?: string;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
+  reasoningEffort?: string;
 }
-
-type OpenAiChatCompletionsResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string | null;
-    };
-  }>;
-};
 
 export function createChatbotV3RecordsRouteAdapter(
   options: CreateChatbotV3RecordsRouteAdapterOptions = {},
@@ -29,6 +26,9 @@ export function createChatbotV3RecordsRouteAdapter(
   const enabled = options.enabled ?? process.env['CHATBOT_V3_RECORDS_LLM_ENABLED'] === 'true';
   const apiKey = options.apiKey?.trim() ?? process.env['OPENAI_API_KEY']?.trim() ?? '';
   const model = options.model?.trim() ?? process.env['CHATBOT_V3_RECORDS_LLM_MODEL']?.trim() ?? 'gpt-4o-mini';
+  const reasoningEffort = normalizeReasoningEffort(
+    options.reasoningEffort ?? process.env['CHATBOT_V3_RECORDS_LLM_REASONING_EFFORT'],
+  );
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const timeoutMs = normalizeTimeoutMs(options.timeoutMs ?? Number.parseInt(
     process.env['CHATBOT_V3_RECORDS_LLM_TIMEOUT_MS'] ?? '3000',
@@ -50,6 +50,7 @@ export function createChatbotV3RecordsRouteAdapter(
       run: async (input) => runStructuredOpenAiPrompt({
         apiKey,
         model,
+        reasoningEffort,
         fetchImpl,
         timeoutMs,
         prompt: buildRecordsWorkerPrompt(input.task),
@@ -61,6 +62,7 @@ export function createChatbotV3RecordsRouteAdapter(
 async function runStructuredOpenAiPrompt(input: {
   apiKey: string;
   model: string;
+  reasoningEffort?: string;
   fetchImpl: FetchLike;
   timeoutMs: number;
   prompt: string;
@@ -72,65 +74,57 @@ async function runStructuredOpenAiPrompt(input: {
 
   let response: Response;
   try {
-    response = await input.fetchImpl('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${input.apiKey}`,
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: input.model,
-        response_format: {
-          type: 'json_object',
+    try {
+      response = await input.fetchImpl('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${input.apiKey}`,
         },
-        messages: [
-          {
-            role: 'system',
-            content: 'Return a single JSON object only. Do not include markdown fences or commentary.',
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: input.model,
+          ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
+          response_format: {
+            type: 'json_object',
           },
-          {
-            role: 'user',
-            content: input.prompt,
-          },
-        ],
-      }),
-    });
+          messages: [
+            {
+              role: 'system',
+              content: 'Return a single JSON object only. Do not include markdown fences or commentary.',
+            },
+            {
+              role: 'user',
+              content: input.prompt,
+            },
+          ],
+        }),
+      });
+    } catch (error) {
+      throw buildChatbotV3LlmRequestFailure('records route llm', error);
+    }
   } finally {
     clearTimeout(timeout);
   }
 
-  if (!response.ok) {
-    throw new Error(`records route llm request failed with status ${response.status}`);
-  }
-
-  const payload = await response.json() as OpenAiChatCompletionsResponse;
-  const content = payload.choices?.[0]?.message?.content;
-  const parsed = parseStructuredResponse(content);
-  if (!parsed) {
-    throw new Error('records route llm returned non-json content');
-  }
-  return parsed;
-}
-
-function parseStructuredResponse(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('{')) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed);
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
-  } catch {
-    return null;
-  }
+  return parseStructuredOpenAiJsonResponse(response, 'records route llm');
 }
 
 function normalizeTimeoutMs(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 3000;
+}
+
+function normalizeReasoningEffort(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'none'
+    || normalized === 'minimal'
+    || normalized === 'low'
+    || normalized === 'medium'
+    || normalized === 'high'
+    ? normalized
+    : undefined;
 }

@@ -23,26 +23,26 @@ function createRecordsTask(
 
 describe('RecordsLlmAdapter', () => {
   it('frames minimal triage as a post-intake follow-up instead of a cold-start intake', () => {
-    expect(buildRecordsWorkerPrompt(createRecordsTask('What do you need from me first?'))).toContain(
+    const prompt = buildRecordsWorkerPrompt(createRecordsTask('What do you need from me first?'));
+    expect(prompt).toContain(
       'We already have the submitted intake, so this step is only the 3-question follow-up needed to refine recommendation.',
     );
+    expect(prompt).toContain('Return only the exact structured JSON fields required below.');
+    expect(prompt).toContain('Use the canonical question strings exactly as written below. Do not translate or paraphrase them.');
   });
 
   it('frames medical collection mode as diagnosis-proof upload guidance instead of a generic records interview', () => {
-    expect(buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
+    const prompt = buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
       fromStage: 'COLLECT_MEDICAL_INPUTS',
       toStage: 'COLLECT_MEDICAL_INPUTS',
       mode: 'medical_collection',
       minimalTriageComplete: true,
-    }))).toContain(
+    }));
+    expect(prompt).toContain(
       'Ask only for diagnosis proof, a diagnosis certificate, or another supporting diagnosis document for this stage.',
     );
-    expect(buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
-      fromStage: 'COLLECT_MEDICAL_INPUTS',
-      toStage: 'COLLECT_MEDICAL_INPUTS',
-      mode: 'medical_collection',
-      minimalTriageComplete: true,
-    }))).not.toContain('treatment history');
+    expect(prompt).not.toContain('treatment history');
+    expect(prompt).toContain('Return exactly these keys:');
   });
 
   it('uses structured task metadata to choose collection mode without parsing string envelopes', async () => {

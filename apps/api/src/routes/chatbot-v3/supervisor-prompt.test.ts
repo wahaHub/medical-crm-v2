@@ -108,6 +108,34 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('report-b.pdf');
   });
 
+  it('surfaces minimal triage summary as the sole triage-complete signal for routing', () => {
+    const prompt = buildSupervisorPrompt({
+      currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      conversationSummary: 'The user just answered the triage follow-up in free-form text.',
+      latestUserMessage: '1. 脑瘤，很疼 2. 半年前 3. 没有进行任何测试',
+      intake: {
+        condition: 'brain tumor',
+        targetDestination: 'China',
+        language: 'zh',
+        gender: 'female',
+      },
+      minimalTriageAnswersSummary: '1. 脑瘤，很疼 2. 半年前 3. 没有进行任何测试',
+      availableReadDomains: ['records.status', 'recommendation.status'],
+      conversationSummaryContract: {
+        owner: 'runtime',
+        refreshTrigger: 'after_final_assistant_response',
+        sizeDiscipline: 'compact',
+        freshness: 'latest_committed_turn',
+        persistenceStrategy: 'persisted_with_session',
+      },
+    });
+
+    expect(prompt).toContain('minimal_triage_answers_summary=1. 脑瘤，很疼 2. 半年前 3. 没有进行任何测试');
+    expect(prompt).toContain('If minimal_triage_answers_summary is non-empty and recommendation_selection_status=none, use intent=progression, suggestedStage=RECOMMENDATION, and dispatchAgent=RecommendationAgent.');
+    expect(prompt).toContain('If the workflow is still gathering minimal triage follow-up and minimal_triage_answers_summary is empty');
+    expect(prompt).toContain('Do not use EXPLAIN_PROCESS before recommendation_selection_status is selected or skipped');
+  });
+
   it('uses a compact agent guide instead of the full registry dump', () => {
     const prompt = buildSupervisorPrompt({
       currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',

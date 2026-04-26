@@ -27,6 +27,9 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
   const processExplained = input.processExplained
     ?? input.statusSnapshot?.processExplained
     ?? false;
+  const minimalTriageAnswersSummary = input.minimalTriageAnswersSummary
+    ?? input.statusSnapshot?.minimalTriageAnswersSummary
+    ?? null;
 
   return [
     'You are SupervisorRouter for chatbot-v3.',
@@ -62,12 +65,14 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'Hard routing rules:',
     '1. If the user is clearly asking a FAQ, process, pricing, timeline, visa, payment, or service clarification question, use intent=faq and dispatchAgent=FaqAgent while keeping the current primary stage unless the context below makes another stage explicit.',
     '2. If the user clearly requests a human, use intent=handoff, suggestedStage=HUMAN_HANDOFF, dispatchAgent=HandoffAgent.',
-    '3. If the workflow is still gathering minimal triage follow-up, use suggestedStage=COLLECT_MINIMAL_MEDICAL_FACTS and dispatchAgent=RecordsAgent.',
-    '4. If the workflow is gathering diagnosis proof or supporting diagnosis documents, use suggestedStage=COLLECT_MEDICAL_INPUTS and dispatchAgent=RecordsAgent.',
-    '5. If recommendation work is next, use suggestedStage=RECOMMENDATION and dispatchAgent=RecommendationAgent.',
-    '6. If the user is ready for online consultation progression, use suggestedStage=ONLINE_CONSULT and dispatchAgent=ConsultAgent.',
-    '7. EXPLAIN_PROCESS is the system-rendered process-overview stage. For normal progression into EXPLAIN_PROCESS, omit dispatchAgent and task.',
-    '8. Use FaqAgent inside EXPLAIN_PROCESS only for a real FAQ/resource detour, not for the normal process overview.',
+    '3. If minimal_triage_answers_summary is non-empty and recommendation_selection_status=none, use intent=progression, suggestedStage=RECOMMENDATION, and dispatchAgent=RecommendationAgent.',
+    '4. If the workflow is still gathering minimal triage follow-up and minimal_triage_answers_summary is empty, use suggestedStage=COLLECT_MINIMAL_MEDICAL_FACTS and dispatchAgent=RecordsAgent.',
+    '5. If the workflow is gathering diagnosis proof or supporting diagnosis documents, use suggestedStage=COLLECT_MEDICAL_INPUTS and dispatchAgent=RecordsAgent.',
+    '6. If recommendation work is next, use suggestedStage=RECOMMENDATION and dispatchAgent=RecommendationAgent.',
+    '7. If the user is ready for online consultation progression, use suggestedStage=ONLINE_CONSULT and dispatchAgent=ConsultAgent.',
+    '8. Do not use EXPLAIN_PROCESS before recommendation_selection_status is selected or skipped, unless the user is asking a real FAQ/resource detour.',
+    '9. EXPLAIN_PROCESS is the system-rendered process-overview stage. For normal progression into EXPLAIN_PROCESS, omit dispatchAgent and task.',
+    '10. Use FaqAgent inside EXPLAIN_PROCESS only for a real FAQ/resource detour, not for the normal process overview.',
     '',
     'Conversation Summary Contract:',
     `owner=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.owner}`,
@@ -90,6 +95,7 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     `intake_target_destination=${input.intake.targetDestination ?? ''}`,
     `intake_language=${input.intake.language ?? ''}`,
     `intake_gender=${input.intake.gender ?? ''}`,
+    `minimal_triage_answers_summary=${minimalTriageAnswersSummary ?? ''}`,
     '',
     'Structured post-recommendation state:',
     `recommendation_selection_status=${recommendationSelectionStatus}`,

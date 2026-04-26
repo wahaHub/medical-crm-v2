@@ -1,16 +1,12 @@
-import type { SupervisorGatewayInput } from '@medical-crm/application';
+import type { SupervisorEventType, SupervisorGatewayInput } from '@medical-crm/application';
 import {
+  SUPERVISOR_EVENT_TYPES,
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
 } from '@medical-crm/application';
 
-export const SUPERVISOR_PROMPT_VERSION = 'supervisor-prompt-v2';
+export const SUPERVISOR_PROMPT_VERSION = 'supervisor-prompt-v3-events';
 
 export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
-  const fetchedDomainReads = input.domainReadResults
-    ? Object.entries(input.domainReadResults)
-      .map(([domain, value]) => `${domain}=${JSON.stringify(value)}`)
-      .join('\n')
-    : 'none';
   const supportingDocuments = input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments ?? [];
   const supportingDocumentsSummary = supportingDocuments.length === 0
     ? '[]'
@@ -30,49 +26,24 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
   const minimalTriageAnswersSummary = input.minimalTriageAnswersSummary
     ?? input.statusSnapshot?.minimalTriageAnswersSummary
     ?? null;
+  const allowedEvents = getAllowedSupervisorEvents(input).join(', ');
+  const allEvents = SUPERVISOR_EVENT_TYPES.join(', ');
 
   return [
     'You are SupervisorRouter for chatbot-v3.',
-    'Choose exactly one next action for the latest user message.',
-    'Return exactly one JSON object. No markdown. No commentary.',
-    'Use only the exact allowed values below. Do not invent new intent names, stage names, agent names, or keys.',
-    'Required output keys: intent, suggestedStage.',
-    'Optional keys: dispatchAgent, task, reason.',
-    'Include dispatchAgent and task together whenever a real agent should run.',
-    'For non-detour EXPLAIN_PROCESS progression, omit dispatchAgent and task.',
-    'If task is present, it must include exactly: goal, latestUserMessage, necessaryFacts.',
-    'Read-domain rule: only return {"requestedReadDomains":[...]} when the latest user message explicitly depends on prior persisted state, such as previously uploaded records, previous recommendations, current case progress, or handoff status.',
-    'If the latest user message can be routed from the context below, do not request read domains.',
-    'If fetched domain reads are already provided below, prefer the final proposal instead of requesting more reads.',
-    'Do not write journey state directly. JourneyRuntimeAuthority is the final writer.',
+    'Extract the semantic event from the latest user message only.',
+    'Return exactly one SupervisorEvent JSON object. No markdown. No commentary.',
+    'Required keys: eventType, confidence, source.',
+    'source must be "llm". confidence is non-authoritative.',
+    'Do not include metadata in the current strict schema.',
+    'Do not return suggestedStage, dispatchAgent, task, intent, requestedReadDomains, or write patches.',
+    'Do not decide workflow state, agent dispatch, persistence writes, or reducer output.',
     '',
-    'Allowed intent values:',
-    'faq, progression, resource, consult, handoff, unknown',
+    'Allowed eventType values:',
+    allEvents,
     '',
-    'Allowed suggestedStage values:',
-    'COLLECT_MINIMAL_MEDICAL_FACTS, RECOMMENDATION, EXPLAIN_PROCESS, COLLECT_MEDICAL_INPUTS, ONLINE_CONSULT, HUMAN_HANDOFF',
-    '',
-    'Allowed dispatchAgent values when dispatchAgent is present:',
-    'FaqAgent, RecordsAgent, RecommendationAgent, ConsultAgent, HandoffAgent',
-    '',
-    'Compact agent guide:',
-    '- FaqAgent: FAQ, process question, service clarification, or factual side question.',
-    '- RecordsAgent: minimal triage follow-up or diagnosis-proof upload guidance.',
-    '- RecommendationAgent: recommend, compare, refresh, or explain hospitals.',
-    '- ConsultAgent: move or continue the deterministic online consult step.',
-    '- HandoffAgent: direct human request or active human handoff.',
-    '',
-    'Hard routing rules:',
-    '1. If the user is clearly asking a FAQ, process, pricing, timeline, visa, payment, or service clarification question, use intent=faq and dispatchAgent=FaqAgent while keeping the current primary stage unless the context below makes another stage explicit.',
-    '2. If the user clearly requests a human, use intent=handoff, suggestedStage=HUMAN_HANDOFF, dispatchAgent=HandoffAgent.',
-    '3. If minimal_triage_answers_summary is non-empty and recommendation_selection_status=none, use intent=progression, suggestedStage=RECOMMENDATION, and dispatchAgent=RecommendationAgent.',
-    '4. If the workflow is still gathering minimal triage follow-up and minimal_triage_answers_summary is empty, use suggestedStage=COLLECT_MINIMAL_MEDICAL_FACTS and dispatchAgent=RecordsAgent.',
-    '5. If the workflow is gathering diagnosis proof or supporting diagnosis documents, use suggestedStage=COLLECT_MEDICAL_INPUTS and dispatchAgent=RecordsAgent.',
-    '6. If recommendation work is next, use suggestedStage=RECOMMENDATION and dispatchAgent=RecommendationAgent.',
-    '7. If the user is ready for online consultation progression, use suggestedStage=ONLINE_CONSULT and dispatchAgent=ConsultAgent.',
-    '8. Do not use EXPLAIN_PROCESS before recommendation_selection_status is selected or skipped, unless the user is asking a real FAQ/resource detour.',
-    '9. EXPLAIN_PROCESS is the system-rendered process-overview stage. For normal progression into EXPLAIN_PROCESS, omit dispatchAgent and task.',
-    '10. Use FaqAgent inside EXPLAIN_PROCESS only for a real FAQ/resource detour, not for the normal process overview.',
+    'Allowed events for this turn:',
+    allowedEvents,
     '',
     'Conversation Summary Contract:',
     `owner=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.owner}`,
@@ -80,12 +51,6 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     `size_discipline=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.sizeDiscipline}`,
     `freshness=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.freshness}`,
     `persistence_strategy=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.persistenceStrategy}`,
-    '',
-    'Available domain reads:',
-    input.availableReadDomains.join(', ') || 'none',
-    '',
-    'Fetched domain read results:',
-    fetchedDomainReads,
     '',
     'Minimal context:',
     `current_stage=${input.currentStage}`,
@@ -104,4 +69,54 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     `supporting_documents_count=${supportingDocuments.length}`,
     `supporting_documents=${supportingDocumentsSummary}`,
   ].join('\n');
+}
+
+export function getAllowedSupervisorEvents(input: SupervisorGatewayInput): readonly SupervisorEventType[] {
+  const commonSemanticEvents: SupervisorEventType[] = [
+    'USER_ASKED_NEXT_STEP',
+    'USER_ASKED_FAQ',
+    'USER_ASKED_RISKY_MEDICAL_ADVICE',
+    'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+    'USER_AMBIGUOUS_REPLY',
+    'UNKNOWN_MESSAGE',
+  ];
+
+  const stageSpecificEvents: SupervisorEventType[] = (() => {
+    switch (input.currentStage) {
+      case 'COLLECT_MINIMAL_MEDICAL_FACTS':
+        return [
+          'USER_WANTS_TREATMENT_IN_CHINA',
+          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+          'USER_PROVIDED_MEDICAL_FACTS',
+        ];
+      case 'RECOMMENDATION':
+        return [
+          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_INTERESTED_IN_CONSULT',
+        ];
+      case 'EXPLAIN_PROCESS':
+        return [
+          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_INTERESTED_IN_CONSULT',
+        ];
+      case 'COLLECT_MEDICAL_INPUTS':
+        return [
+          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_INTERESTED_IN_CONSULT',
+        ];
+      case 'ONLINE_CONSULT':
+        return [
+          'USER_INTERESTED_IN_CONSULT',
+          'USER_PROVIDED_MEDICAL_FACTS',
+        ];
+      case 'HUMAN_HANDOFF':
+        return [
+          'USER_PROVIDED_MEDICAL_FACTS',
+        ];
+    }
+  })();
+
+  return [...new Set([...commonSemanticEvents, ...stageSpecificEvents])];
 }

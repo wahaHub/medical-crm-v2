@@ -1,4 +1,6 @@
 import type { AiChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
+import type { JourneyReducerOutput } from './journey-reducer.js';
+import type { NextActionExecution } from './next-action-resolver.js';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
   type ChatbotV3DispatchAgent,
@@ -13,6 +15,40 @@ import {
 } from './types.js';
 
 export class JourneyRuntimeAuthorityService {
+  decideFromReducer(input: {
+    current: JourneyRuntimeAuthorityInput['current'];
+    reduction: JourneyReducerOutput;
+    execution: NextActionExecution;
+  }): JourneyRuntimeAuthorityDecision {
+    const to = {
+      stage: input.reduction.primaryStage,
+      phase: 'active' as const,
+    };
+
+    return {
+      outcome: 'ALLOW',
+      action: deriveReducerAuthorityAction(input.current.stage, input.reduction.nextAction.type, to.stage),
+      from: cloneStage(input.current),
+      to,
+      dispatch: {
+        outcome: 'ALLOW',
+        agent: input.execution.agent,
+      },
+      write: {
+        authority: 'journey-runtime-authority',
+        stage: to,
+        journeyCurrentStage: to.stage,
+        journeyCurrentPhase: to.phase,
+        factsPatch: buildReducerAuthorityFactsPatch(input.reduction, input.execution),
+      },
+      reason: input.reduction.reasonCode,
+    };
+  }
+
+  /**
+   * Legacy compatibility path for tests and callers that still inject supervisors without extractEvent().
+   * The reducer runtime path should call reduceJourney() and decideFromReducer(), not this proposal validator.
+   */
   decide(input: JourneyRuntimeAuthorityInput): JourneyRuntimeAuthorityDecision {
     if (shouldEscalateToHuman(input)) {
       return allowDecision({
@@ -164,6 +200,44 @@ function allowDecision({
   };
 }
 
+function deriveReducerAuthorityAction(
+  currentStage: ChatJourneyStage,
+  nextActionType: JourneyReducerOutput['nextAction']['type'],
+  targetStage: ChatJourneyStage,
+): JourneyRuntimeAuthorityDecision['action'] {
+  if (nextActionType === 'CREATE_HANDOFF') {
+    return 'ESCALATE';
+  }
+
+  return currentStage === targetStage ? 'REPEAT' : 'ADVANCE';
+}
+
+function buildReducerAuthorityFactsPatch(
+  reduction: JourneyReducerOutput,
+  execution: NextActionExecution,
+): JourneyRuntimeAuthorityWrite['factsPatch'] {
+  const factsPatch: JourneyRuntimeAuthorityWrite['factsPatch'] = {};
+
+  if (reduction.factsPatch.intake?.minimalTriageStatus === 'submitted'
+    || reduction.factsPatch.intake?.minimalTriageStatus === 'skipped') {
+    factsPatch['records.minimal_triage.complete'] = true;
+  }
+
+  if (reduction.factsPatch.recommendation?.status === 'selected') {
+    factsPatch['recommendation.selected'] = true;
+  }
+
+  if (reduction.factsPatch.handoff?.active === true) {
+    factsPatch['handoff.active'] = true;
+  }
+
+  if (execution.isSystemRendered && reduction.nextAction.type === 'SHOW_PROCESS_OVERVIEW') {
+    factsPatch['process.explained'] = true;
+  }
+
+  return factsPatch;
+}
+
 function denyDecision(
   input: JourneyRuntimeAuthorityInput,
   reason: string,
@@ -289,14 +363,6 @@ function hasProcessExplained(facts: ChatbotV3Facts | undefined): boolean {
 
 function isSidePathIntent(intent: JourneyRuntimeAuthorityInput['proposal']['intent']): boolean {
   return intent === 'faq' || intent === 'resource';
-}
-
-function isExplicitRepeatExplainRequest(message: string | undefined): boolean {
-  if (!message) {
-    return false;
-  }
-
-  return /\b(?:again|repeat|another explanation|one more time)\b/i.test(message);
 }
 
 function hasAnyTruthyFact(facts: ChatbotV3Facts | undefined, keys: string[]): boolean {

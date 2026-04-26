@@ -91,6 +91,7 @@ normalize input
 -> SupervisorEvent
 -> JourneyReducer
 -> NextActionResolver
+-> ReadPlanner
 -> task builder or system renderer
 -> agent execution or system-rendered response
 -> response composer
@@ -140,6 +141,21 @@ The semantic layer can classify:
 The semantic layer outputs a narrow structured event contract.
 It does not output stage, agent, task, or write patches.
 
+Deterministic precedence must be explicit.
+When multiple deterministic signals appear in the same turn, Phase 1 uses this priority order:
+- explicit human request
+- explicit risky-medical or restricted-service signal if one is added deterministically later
+- structured frontend action
+- explicit next-step request
+- attachment-driven `DOCUMENTS_UPLOADED`
+
+Lower-priority deterministic events may not mask higher-priority overrides.
+
+The semantic extractor should also be stage-aware enough to reduce noise.
+Phase 1 may pass an `allowedEventsForStage(currentStage, facts)` set into the semantic extractor so the LLM is only choosing among events that are reasonable in the current workflow context.
+This does not give the LLM state-transition authority.
+It only narrows the event vocabulary for cleaner extraction.
+
 ## 7. Phase 1 supervisor event contract
 
 Phase 1 standardizes on this event shape:
@@ -161,10 +177,13 @@ type SupervisorEvent = {
     riskType?: string;
     redirectTarget?: string;
     rawText?: string;
-    highIntentSignal?: string;
   };
 };
 ```
+
+In Phase 1, `confidence` is non-authoritative.
+It is logged, surfaced in observability, and may later inform analytics or secondary heuristics.
+It does not directly override reducer behavior and does not create a second control path.
 
 The Phase 1 event set is:
 - `TRIAGE_SUBMITTED`
@@ -202,6 +221,21 @@ The semantic extractor must be constrained to the `SupervisorEvent` schema famil
 
 Prompt wording alone is not enough.
 API-level schema enforcement is part of the design.
+
+The semantic extractor should also receive a stage-aware allowed-event set.
+That means the LLM is not asked to choose from the entire universe of event types on every turn.
+Instead, the runtime should pass a narrower `allowedEventsForStage(...)` list based on:
+- current primary stage
+- whether the turn is already covered by deterministic extraction
+- current normalized facts where relevant
+
+If semantic schema validation fails:
+- do not let the turn crash
+- return a `fallback_unknown` event
+- continue reducer flow with `UNKNOWN_MESSAGE`
+- let reducer fall back to `CLARIFY_INTENT`
+
+An implementation may retry once with a smaller prompt or schema variant, but Phase 1 does not require retries as part of the architectural contract.
 
 ## 9. New control-plane truth model
 
@@ -268,6 +302,27 @@ type DomainFacts = {
   };
 };
 ```
+
+For natural-language medical fact extraction, the semantic supervisor may emit a candidate patch shape, but that candidate may not be written directly into `DomainFacts`.
+
+Recommended candidate shape:
+
+```ts
+type MedicalFactPatchCandidate = {
+  condition?: string;
+  diagnosis?: string;
+  diagnosisDate?: string;
+  priorTreatments?: string;
+  currentSymptoms?: string;
+  imagingFindings?: string;
+  pathologyStatus?: string;
+};
+```
+
+Phase 1 requires a whitelist/normalizer boundary:
+- semantic extraction may produce `metadata.extractedFacts`
+- reducer-side normalization must explicitly map only allowed keys
+- no raw LLM fact object may be merged directly into `DomainFacts`
 
 ### 9.3 `NextAction`
 This is the deterministic action contract produced by the reducer.
@@ -360,10 +415,18 @@ These do not automatically advance the primary stage.
   - else -> `OFFER_ONLINE_CONSULT`
 - `RECOMMENDATION_SKIPPED` -> `SHOW_PROCESS_OVERVIEW`
 
+`RECOMMENDATION_SKIPPED -> SHOW_PROCESS_OVERVIEW` is a deliberate Phase 1 compatibility rule.
+It preserves the current product contract and existing tested skip branch.
+Phase 2 may revisit this behavior if the product flow later needs a more explicit clarification branch.
+
 ### Facts-driven progression
 - `DOCUMENTS_UPLOADED`
   - always updates document facts first
-  - may lead to `REQUEST_MEDICAL_DOCUMENTS` or `OFFER_ONLINE_CONSULT` depending on current facts
+  - if recommendation is selected and process is already explained -> `OFFER_ONLINE_CONSULT`
+  - else if minimal triage is still `not_started` -> `COLLECT_MINIMAL_TRIAGE`
+  - else if recommendation status is `none` -> `GENERATE_RECOMMENDATION`
+  - else if recommendation status is `generated` -> `ASK_RECOMMENDATION_SELECTION`
+  - else -> `REQUEST_MEDICAL_DOCUMENTS`
 
 ### Semantic intent events
 - `USER_WANTS_TREATMENT_IN_CHINA`
@@ -371,6 +434,14 @@ These do not automatically advance the primary stage.
 - `USER_PROVIDED_MEDICAL_FACTS`
 
 These should generally route through a shared facts-driven helper such as `decideNextStepFromFacts(...)`.
+
+For `TRIAGE_SUBMITTED`, Phase 1 must preserve a normalized triage summary in the same control flow.
+That summary may come from:
+- structured action payload when available
+- runtime compaction of the current user message before reducer input is built
+
+But once reducer input is built, the reducer should consume that summary as normalized event/facts data.
+It should not reopen raw request parsing inside reducer logic.
 
 ### Consult interest
 - `USER_INTERESTED_IN_CONSULT`
@@ -478,6 +549,14 @@ function resolveAgent(action: NextAction): AgentName | null {
 `SHOW_PROCESS_OVERVIEW` should remain system-rendered in Phase 1.
 The process overview is fixed product guidance and does not need LLM generation.
 
+When `SHOW_PROCESS_OVERVIEW` is rendered successfully, the resulting facts patch must set:
+
+```ts
+process.explained = true
+```
+
+Otherwise the reducer will keep re-entering process explanation on later turns.
+
 ## 14. Compatibility strategy during migration
 
 Phase 1 still needs a compatibility layer because parts of runtime, composer, and persistence currently expect old shapes.
@@ -510,6 +589,10 @@ Key rule:
 
 Old runtime/composer surfaces may temporarily consume the projected view.
 They may not override reducer outputs.
+
+The old authority service may still exist as a code location during Phase 1, but only as a reducer-backed adapter shell.
+It may project or package reducer outputs for older runtime consumers.
+It may not remain a second independent decision engine.
 
 ## 15. Snapshot normalization and write-back rules
 
@@ -559,10 +642,31 @@ Phase 1 should not keep LLM-driven read-domain selection as a core control-plane
 
 Read planning should be deterministic from `NextAction` and event context whenever possible.
 
-Examples:
-- FAQ with a specific topic may need FAQ/domain reads
-- recommendation follow-up may require recommendation status context
-- consult offering may require consult status context
+Recommended structure:
+
+```ts
+type ReadPlan = {
+  domains: string[];
+  reasonCode: string;
+};
+```
+
+Read planning should be its own concrete runtime step:
+
+```text
+JourneyReducer -> NextActionResolver -> ReadPlanner -> TaskBuilder/SystemRenderer
+```
+
+Recommended first-pass mapping:
+
+| `NextAction` | Deterministic read plan |
+| --- | --- |
+| `ANSWER_FAQ` | FAQ knowledge read by `topic` and `subtopic` |
+| `REQUEST_MEDICAL_DOCUMENTS` | required-document guidance using current intake condition and document facts |
+| `GENERATE_RECOMMENDATION` | recommendation inputs derived from normalized records summary and hospital catalog |
+| `ASK_RECOMMENDATION_SELECTION` | current recommendation list / selected hospital context |
+| `OFFER_ONLINE_CONSULT` | consult config plus selected recommendation context |
+| `CREATE_HANDOFF` | lead/profile summary plus conversation summary |
 
 If read planning still needs a compatibility bridge, it should be a deterministic planner tied to reducer output, not a second LLM suggestion loop.
 
@@ -601,12 +705,22 @@ Log:
 - nextAction
 - nextStage
 - reasonCode
+- state diff:
+  - beforeStage
+  - afterStage
+  - factsPatch
 
 ### `next_action_resolver`
 Log:
 - nextAction
 - resolved agent
 - system-rendered yes/no
+
+### `side_path_summary`
+Log:
+- sidePath: true/false
+- sidePathType: `faq | safety | out_of_scope | clarification | none`
+- primaryStagePreserved: true/false
 
 This is a primary deliverable of Phase 1.
 The new architecture should be easier to debug than the old one.
@@ -618,10 +732,26 @@ Phase 1 should add explicit consistency checks between reducer truth, projected 
 Recommended invariants:
 
 ```ts
-assert(reducerOutput.nextStage === persistedSnapshot.journeyCurrentStage);
+assert(reducerOutput.nextStage === projectedPersistedSnapshot.journeyCurrentStage);
 assert(projectedView.projectedDecision.toStage === reducerOutput.nextStage);
 assert(projectedView.projectedProposal.suggestedStage === reducerOutput.nextStage);
 ```
+
+Here `projectedPersistedSnapshot` means the effective post-write snapshot view after reducer `factsPatch` and stage projection have been applied.
+The invariant must not compare reducer truth against stale pre-write storage.
+
+Additional stage-entry invariant:
+
+```ts
+assert(
+  reducerOutput.nextStage !== "EXPLAIN_PROCESS"
+  || reducerOutput.nextAction.type === "SHOW_PROCESS_OVERVIEW"
+);
+```
+
+This means:
+- only `SHOW_PROCESS_OVERVIEW` may move `primaryStage` to `EXPLAIN_PROCESS`
+- `ANSWER_FAQ(topic=process)` must preserve the current primary stage
 
 If these diverge:
 - emit an error-level log
@@ -643,7 +773,10 @@ This protects against compatibility projection accidentally becoming a second co
 ### Integration tests
 - `TRIAGE_SUBMITTED -> RECOMMENDATION`
 - `TRIAGE_SKIPPED -> RECOMMENDATION`
-- `RECOMMENDATION_SELECTED -> EXPLAIN_PROCESS`
+- `RECOMMENDATION_SELECTED` conditional progression:
+  - if `process.explained=false`, reducer first emits `SHOW_PROCESS_OVERVIEW`, and only that action advances the stage to `EXPLAIN_PROCESS`
+  - if `process.explained=true` and docs are missing, reducer emits `REQUEST_MEDICAL_DOCUMENTS`
+  - if `process.explained=true` and docs already exist, reducer emits `OFFER_ONLINE_CONSULT`
 - FAQ detour does not change primary stage
 - document upload updates facts without invalid stage jumps
 - human request always overrides

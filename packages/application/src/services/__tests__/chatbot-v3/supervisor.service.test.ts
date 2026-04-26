@@ -404,7 +404,7 @@ describe('SupervisorService', () => {
       suggestion: {
         intent: 'unknown',
         suggestedStage: 'EXPLAIN_PROCESS',
-        dispatchAgent: null as any,
+        dispatchAgent: null,
         reason: 'upstream classifier missed the workflow question',
       },
     });
@@ -1553,5 +1553,351 @@ describe('SupervisorService', () => {
     const rendered = renderSupervisorAgentRegistry();
     expect(rendered).toContain('Agent: FaqAgent');
     expect(rendered).toContain('Agent: HandoffAgent');
+  });
+});
+
+describe('SupervisorService event extraction', () => {
+  const eventInput: OrchestratorV3DecisionInput = {
+    currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    conversationSummary: 'The user just started.',
+    latestUserMessage: 'How much does treatment cost?',
+    intake: {
+      condition: 'lung cancer',
+      targetDestination: 'Shanghai',
+      language: 'en',
+      gender: 'female',
+    },
+    current: {
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    },
+    suggestion: {
+      intent: 'unknown',
+      suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      reason: 'event extraction test input',
+    },
+    availableReadDomains: ['records.status'],
+  };
+
+  it('extracts deterministic events before calling the semantic gateway', async () => {
+    let gatewayCalled = false;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => {
+        gatewayCalled = true;
+        return {
+          eventType: 'UNKNOWN_MESSAGE',
+          confidence: 0.1,
+          source: 'llm',
+        };
+      },
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'Please connect me with a human advisor.',
+    })).resolves.toEqual({
+      eventType: 'USER_REQUESTED_HUMAN',
+      confidence: 1,
+      source: 'deterministic',
+      metadata: {
+        rawText: 'Please connect me with a human advisor.',
+      },
+    });
+    expect(gatewayCalled).toBe(false);
+  });
+
+  it('keeps explicit human requests ahead of attachment extraction', async () => {
+    const supervisor = new SupervisorService();
+
+    await expect(supervisor.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'I attached my report and want to talk to a human.',
+      bootstrap: {
+        message: 'I attached my report and want to talk to a human.',
+        attachments: [{ fileName: 'report.pdf' }],
+      },
+    })).resolves.toEqual({
+      eventType: 'USER_REQUESTED_HUMAN',
+      confidence: 1,
+      source: 'deterministic',
+      metadata: {
+        rawText: 'I attached my report and want to talk to a human.',
+      },
+    });
+  });
+
+  it('extracts attachments before heuristic FAQ fallback when the semantic gateway is disabled', async () => {
+    const supervisor = new SupervisorService();
+
+    await expect(supervisor.extractEvent({
+      ...eventInput,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      latestUserMessage: 'What are your office hours? I attached the report.',
+      bootstrap: {
+        message: 'What are your office hours? I attached the report.',
+        attachments: [{ fileName: 'report.pdf' }],
+      },
+      suggestion: {
+        intent: 'unknown',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: 'attachment should win over faq heuristic',
+      },
+    })).resolves.toEqual({
+      eventType: 'DOCUMENTS_UPLOADED',
+      confidence: 1,
+      source: 'deterministic',
+      metadata: {
+        documentCount: 1,
+      },
+    });
+  });
+
+  it('keeps risky medical advice ahead of attachment extraction', async () => {
+    const supervisor = new SupervisorService();
+
+    await expect(supervisor.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'I attached labs, should I stop chemo?',
+      bootstrap: {
+        message: 'I attached labs, should I stop chemo?',
+        attachments: [{ fileName: 'labs.pdf' }],
+      },
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      source: 'deterministic',
+      metadata: {
+        rawText: 'I attached labs, should I stop chemo?',
+        riskType: 'medical_advice',
+      },
+    });
+  });
+
+  it('keeps restricted medical promises ahead of attachment extraction', async () => {
+    const supervisor = new SupervisorService();
+
+    await expect(supervisor.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'I attached records, can you guarantee she will be cured?',
+      bootstrap: {
+        message: 'I attached records, can you guarantee she will be cured?',
+        attachments: [{ fileName: 'records.pdf' }],
+      },
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+      source: 'deterministic',
+      metadata: {
+        rawText: 'I attached records, can you guarantee she will be cured?',
+        redirectTarget: 'medical_travel_support',
+      },
+    });
+  });
+
+  it('classifies clear risky medical advice as a safety redirect when the semantic gateway is disabled', async () => {
+    const supervisor = new SupervisorService();
+
+    await expect(supervisor.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'Should my wife start chemotherapy now?',
+    })).resolves.toEqual({
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      confidence: 0.9,
+      source: 'deterministic',
+      metadata: {
+        rawText: 'Should my wife start chemotherapy now?',
+        riskType: 'medical_advice',
+      },
+    });
+  });
+
+  it.each([
+    'Should my wife get chemotherapy now?',
+    'Should she undergo surgery now?',
+  ])('classifies risky treatment-decision wording as safety redirect: %s', async (latestUserMessage) => {
+    const supervisor = new SupervisorService();
+
+    await expect(supervisor.extractEvent({
+      ...eventInput,
+      latestUserMessage,
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      source: 'deterministic',
+      metadata: {
+        rawText: latestUserMessage,
+        riskType: 'medical_advice',
+      },
+    });
+  });
+
+  it('uses the semantic gateway when deterministic extraction has no event', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'USER_ASKED_FAQ',
+        confidence: 0.76,
+        source: 'llm',
+        metadata: {
+          topic: 'pricing',
+        },
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
+      eventType: 'USER_ASKED_FAQ',
+      confidence: 0.76,
+      source: 'llm',
+      metadata: {
+        topic: 'pricing',
+      },
+    });
+  });
+
+  it('short-circuits clear safety heuristics before the semantic gateway', async () => {
+    let gatewayCalled = false;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => {
+        gatewayCalled = true;
+        return {
+          eventType: 'USER_ASKED_FAQ',
+          confidence: 0.99,
+          source: 'llm',
+        };
+      },
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'Should my wife get chemotherapy now?',
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      source: 'deterministic',
+      metadata: {
+        rawText: 'Should my wife get chemotherapy now?',
+        riskType: 'medical_advice',
+      },
+    });
+    expect(gatewayCalled).toBe(false);
+  });
+
+  it('short-circuits clear restricted-service heuristics before the semantic gateway', async () => {
+    let gatewayCalled = false;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => {
+        gatewayCalled = true;
+        return {
+          eventType: 'USER_ASKED_FAQ',
+          confidence: 0.99,
+          source: 'llm',
+        };
+      },
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'Can you guarantee my wife will be cured?',
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+      source: 'deterministic',
+      metadata: {
+        rawText: 'Can you guarantee my wife will be cured?',
+        redirectTarget: 'medical_travel_support',
+      },
+    });
+    expect(gatewayCalled).toBe(false);
+  });
+
+  it('falls back to UNKNOWN_MESSAGE when semantic output is invalid', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        suggestedStage: 'RECOMMENDATION',
+        dispatchAgent: 'RecommendationAgent',
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
+      eventType: 'UNKNOWN_MESSAGE',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor semantic event extraction failed',
+      },
+    });
+  });
+
+  it('rejects deterministic-only events returned by the semantic gateway', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'RECOMMENDATION_SELECTED',
+        confidence: 0.8,
+        source: 'llm',
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      currentStage: 'RECOMMENDATION',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+    })).resolves.toEqual({
+      eventType: 'UNKNOWN_MESSAGE',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor semantic event extraction failed',
+      },
+    });
+  });
+
+  it('rejects human handoff events returned by the semantic gateway', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'USER_REQUESTED_HUMAN',
+        confidence: 0.8,
+        source: 'llm',
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
+      eventType: 'UNKNOWN_MESSAGE',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor semantic event extraction failed',
+      },
+    });
+  });
+
+  it('rejects non-llm sources returned by the semantic gateway', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'DOCUMENTS_UPLOADED',
+        confidence: 1,
+        source: 'deterministic',
+        metadata: {
+          documentCount: 1,
+        },
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
+      eventType: 'UNKNOWN_MESSAGE',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor semantic event extraction failed',
+      },
+    });
   });
 });

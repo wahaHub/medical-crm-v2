@@ -54,6 +54,7 @@ export type {
   ChatbotV3ConversationSummaryContract,
   ChatbotV3BootstrapSignals,
   ChatbotV3DispatchAgent,
+  ChatbotV3FaqResolution,
   ChatbotV3Facts,
   ChatbotV3GlobalPolicies,
   ChatbotV3HandoffSignals,
@@ -87,6 +88,45 @@ export type {
   SupervisorSuggestionSeed,
   SupervisorTask,
 } from './services/chatbot-v3/types.js';
+export type {
+  DomainFacts,
+  JourneyReduction,
+  JourneyState,
+  MedicalFactPatchCandidate,
+  NextAction,
+  ReducerReasonCode,
+  SupervisorEvent,
+  SupervisorEventMetadata,
+  SupervisorEventSource,
+  SupervisorEventType,
+} from './services/chatbot-v3/supervisor-event.types.js';
+export { SUPERVISOR_EVENT_TYPES } from './services/chatbot-v3/supervisor-event.types.js';
+export { normalizeFactsFromStatusSnapshot } from './services/chatbot-v3/domain-facts-normalizer.js';
+export { extractDeterministicEvent } from './services/chatbot-v3/deterministic-event-extractor.js';
+export {
+  applyFactsPatch,
+  buildReasonCode,
+  decideNextAction,
+  decideNextStepFromFacts,
+  deriveFactsPatch,
+  deriveNextStage,
+  normalizeFacts,
+  reduceJourney,
+} from './services/chatbot-v3/journey-reducer.js';
+export { resolveNextActionExecution } from './services/chatbot-v3/next-action-resolver.js';
+export { buildReadPlan } from './services/chatbot-v3/read-planner.js';
+export { projectLegacyCompatibilityView } from './services/chatbot-v3/legacy-compatibility-view.js';
+export type {
+  DomainFactsPatch,
+  JourneyReducerOutput,
+} from './services/chatbot-v3/journey-reducer.js';
+export type { NextActionExecution } from './services/chatbot-v3/next-action-resolver.js';
+export type { ReadPlan } from './services/chatbot-v3/read-planner.js';
+export type {
+  LegacyCompatibilityView,
+  LegacyCompatibilityViewInput,
+  ProjectedDecision,
+} from './services/chatbot-v3/legacy-compatibility-view.js';
 export type { ChatbotV3ReplayLineage } from '@medical-crm/validation';
 export {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,

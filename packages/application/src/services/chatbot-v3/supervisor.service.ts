@@ -17,11 +17,18 @@ import type {
   SupervisorTask,
 } from './types.js';
 import type { LlmNodeAdapter } from './llm-adapter.types.js';
+import type { SupervisorEvent } from './supervisor-event.types.js';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
   resolveChatbotV3ProposalDispatchAgent,
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
 } from './types.js';
+import {
+  SUPERVISOR_EVENT_TYPES,
+} from './supervisor-event.types.js';
+import {
+  extractDeterministicEvent,
+} from './deterministic-event-extractor.js';
 
 export type SupervisorSuggestionGateway = LlmNodeAdapter<SupervisorGatewayInput, unknown>;
 
@@ -42,6 +49,14 @@ const ORCHESTRATOR_INTENTS = [
   'unknown',
 ] as const satisfies readonly OrchestratorV3Intent[];
 const MAX_SUPERVISOR_READ_DOMAINS = 2;
+const SEMANTIC_FORBIDDEN_EVENT_TYPES = new Set<SupervisorEvent['eventType']>([
+  'TRIAGE_SUBMITTED',
+  'TRIAGE_SKIPPED',
+  'RECOMMENDATION_SELECTED',
+  'RECOMMENDATION_SKIPPED',
+  'DOCUMENTS_UPLOADED',
+  'USER_REQUESTED_HUMAN',
+]);
 
 const DIRECT_HUMAN_REQUEST_PATTERNS = [
   /\bneed (?:a |to talk to a |to speak to a )?(?:human|person|advisor|agent|operator|representative)\b/i,
@@ -54,6 +69,18 @@ const FAQ_QUESTION_PATTERNS = [
   /(?:^|\b)(?:what|when|where|which|who|why|how|can|could|do|does|did|is|are|am|was|were|should|would|will|may|might)\b/i,
   /\?/,
   /\b(?:can you|could you|would you|do you|does it|do we|is it|is that|are you|am i|should i|would it|what are|what is|how long|how much|how often|why is|where is|when is)\b/i,
+] as const;
+
+const RISKY_MEDICAL_ADVICE_PATTERNS = [
+  /\bshould (?:i|we|he|she|they|my|our|the patient)\b.*\b(?:start|stop|take|use|change|increase|decrease|skip|avoid)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|medicine|medication|drug|dose|dosage|treatment|therapy)\b/i,
+  /\bshould (?:i|we|he|she|they|my|our|the patient)\b.*\b(?:get|receive|undergo|have)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|medicine|medication|drug|dose|dosage|treatment|therapy)\b/i,
+  /\b(?:start|stop|take|use|change|increase|decrease|skip|avoid)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|medicine|medication|drug|dose|dosage|treatment|therapy)\b/i,
+  /\b(?:get|receive|undergo|have)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|treatment|therapy)\b.*\b(?:now|today|right away|immediately)\b/i,
+  /\b(?:diagnose|diagnosis|treat|treatment|prescribe|dosage|dose)\b.*\b(?:now|today|right away|immediately)\b/i,
+] as const;
+
+const RESTRICTED_MEDICAL_PROMISE_PATTERNS = [
+  /\b(?:guarantee|promise|ensure)\b.*\b(?:cure|cured|heal|healed|recover|recovered|survive|success)\b/i,
 ] as const;
 
 const WORKFLOW_QUESTION_PATTERNS = [
@@ -129,6 +156,67 @@ export class SupervisorService {
     }
   }
 
+  async extractEvent(input: OrchestratorV3DecisionInput): Promise<SupervisorEvent> {
+    const message = resolveLatestUserMessage(input) || input.bootstrap?.message;
+    const deterministicEvent = extractDeterministicEvent({
+      message,
+      userAction: input.userAction,
+      attachments: input.bootstrap?.attachments ?? [],
+    });
+
+    if (deterministicEvent?.eventType === 'USER_REQUESTED_HUMAN') {
+      this.lastRunMetadata = null;
+      return deterministicEvent;
+    }
+
+    const heuristicEvent = buildHeuristicSupervisorEvent(input);
+    if (
+      heuristicEvent.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
+      || heuristicEvent.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
+    ) {
+      this.lastRunMetadata = null;
+      return heuristicEvent;
+    }
+
+    if (deterministicEvent) {
+      this.lastRunMetadata = null;
+      return deterministicEvent;
+    }
+
+    if (heuristicEvent.eventType === 'USER_ASKED_FAQ' && !this.gateway) {
+      this.lastRunMetadata = null;
+      return heuristicEvent;
+    }
+
+    if (!this.gateway) {
+      this.lastRunMetadata = null;
+      return heuristicEvent;
+    }
+
+    const metadataBase = {
+      nodePromptVersion: this.gateway.promptVersion,
+      nodeModel: this.gateway.model,
+    } satisfies SupervisorLlmRunMetadata;
+
+    try {
+      const raw = await this.gateway.run(buildGatewayInput(input));
+      const event = sanitizeSemanticSupervisorEvent(raw);
+      this.lastRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: event.source === 'fallback_unknown',
+        schemaValidationFailed: event.source === 'fallback_unknown',
+      };
+      return event;
+    } catch {
+      this.lastRunMetadata = {
+        ...metadataBase,
+        fallbackUsed: true,
+        schemaValidationFailed: false,
+      };
+      return buildFallbackUnknownEvent('supervisor semantic event extraction failed');
+    }
+  }
+
   async requestDomainReads(input: OrchestratorV3DecisionInput): Promise<SupervisorReadHints> {
     if (!this.gateway) {
       return [];
@@ -145,6 +233,126 @@ export class SupervisorService {
   getLastLlmRunMetadata(): SupervisorLlmRunMetadata | null {
     return this.lastRunMetadata;
   }
+}
+
+function sanitizeSemanticSupervisorEvent(raw: unknown): SupervisorEvent {
+  const record = asRecord(raw);
+  const hasOnlyEventKeys = Object.keys(record).every((key) => key === 'eventType' || key === 'confidence' || key === 'source' || key === 'metadata');
+
+  if (
+    !hasOnlyEventKeys
+    || !isSupervisorEventType(record.eventType)
+    || typeof record.confidence !== 'number'
+    || !Number.isFinite(record.confidence)
+    || record.source !== 'llm'
+    || SEMANTIC_FORBIDDEN_EVENT_TYPES.has(record.eventType)
+    || (record.metadata !== undefined && !isSupervisorEventMetadata(record.metadata))
+  ) {
+    return buildFallbackUnknownEvent('supervisor semantic event extraction failed');
+  }
+
+  return {
+    eventType: record.eventType,
+    confidence: record.confidence,
+    source: record.source,
+    ...(record.metadata ? { metadata: record.metadata } : {}),
+  };
+}
+
+function buildFallbackUnknownEvent(rawText: string): SupervisorEvent {
+  return {
+    eventType: 'UNKNOWN_MESSAGE',
+    confidence: 0,
+    source: 'fallback_unknown',
+    metadata: { rawText },
+  };
+}
+
+function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): SupervisorEvent {
+  const rawText = resolveLatestUserMessage(input);
+  const metadata = rawText ? { rawText } : undefined;
+
+  if (looksLikeRiskyMedicalAdvice(rawText)) {
+    return {
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      confidence: 0.9,
+      source: 'deterministic',
+      metadata: {
+        ...(metadata ?? {}),
+        riskType: 'medical_advice',
+      },
+    };
+  }
+
+  if (looksLikeRestrictedMedicalPromise(rawText)) {
+    return {
+      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+      confidence: 0.9,
+      source: 'deterministic',
+      metadata: {
+        ...(metadata ?? {}),
+        redirectTarget: 'medical_travel_support',
+      },
+    };
+  }
+
+  if (looksLikeFaqQuestion(rawText)) {
+    return {
+      eventType: 'USER_ASKED_FAQ',
+      confidence: 0.75,
+      source: 'llm',
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  if (/\b(?:recommend|recommendation|hospital|hospitals|clinic|clinics|option|options)\b/i.test(rawText)) {
+    return {
+      eventType: 'USER_ASKED_NEXT_STEP',
+      confidence: 0.65,
+      source: 'llm',
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  const suggestion = heuristicSuggest(input);
+
+  if (suggestion.intent === 'handoff') {
+    return {
+      eventType: 'USER_REQUESTED_HUMAN',
+      confidence: 0.8,
+      source: 'deterministic',
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  if (suggestion.intent === 'faq' || suggestion.intent === 'resource') {
+    return {
+      eventType: 'USER_ASKED_FAQ',
+      confidence: 0.75,
+      source: 'llm',
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  if (suggestion.intent === 'consult') {
+    return {
+      eventType: 'USER_INTERESTED_IN_CONSULT',
+      confidence: 0.7,
+      source: 'llm',
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  if (suggestion.intent === 'progression') {
+    return {
+      eventType: 'USER_ASKED_NEXT_STEP',
+      confidence: 0.65,
+      source: 'llm',
+      ...(metadata ? { metadata } : {}),
+    };
+  }
+
+  return buildFallbackUnknownEvent(rawText || 'supervisor semantic event extraction failed');
 }
 
 export function sanitizeSuggestionOnly(
@@ -392,6 +600,59 @@ function isDispatchAgent(value: unknown): value is ChatbotV3DispatchAgent {
     || value === 'HandoffAgent';
 }
 
+function isSupervisorEventType(value: unknown): value is SupervisorEvent['eventType'] {
+  return typeof value === 'string' && (SUPERVISOR_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+function isSupervisorEventMetadata(value: unknown): value is NonNullable<SupervisorEvent['metadata']> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const metadata = value as Record<string, unknown>;
+  const allowedKeys = new Set([
+    'topic',
+    'subtopic',
+    'condition',
+    'destination',
+    'urgency',
+    'extractedFacts',
+    'selectedHospitalIds',
+    'documentCount',
+    'riskType',
+    'redirectTarget',
+    'rawText',
+  ]);
+
+  if (!Object.keys(metadata).every((key) => allowedKeys.has(key))) {
+    return false;
+  }
+
+  return isOptionalString(metadata.topic)
+    && isOptionalString(metadata.subtopic)
+    && isOptionalString(metadata.condition)
+    && isOptionalString(metadata.destination)
+    && (metadata.urgency === undefined || metadata.urgency === 'low' || metadata.urgency === 'medium' || metadata.urgency === 'high' || metadata.urgency === 'unknown')
+    && (metadata.extractedFacts === undefined || isPlainRecord(metadata.extractedFacts))
+    && (metadata.selectedHospitalIds === undefined || isStringArray(metadata.selectedHospitalIds))
+    && (metadata.documentCount === undefined || typeof metadata.documentCount === 'number')
+    && isOptionalString(metadata.riskType)
+    && isOptionalString(metadata.redirectTarget)
+    && isOptionalString(metadata.rawText);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
 function isSidePathIntent(
   intent: OrchestratorV3DecisionInput['suggestion']['intent'],
 ): boolean {
@@ -420,6 +681,14 @@ function looksLikeFaqQuestion(message: string): boolean {
   }
 
   return FAQ_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function looksLikeRiskyMedicalAdvice(message: string): boolean {
+  return RISKY_MEDICAL_ADVICE_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+function looksLikeRestrictedMedicalPromise(message: string): boolean {
+  return RESTRICTED_MEDICAL_PROMISE_PATTERNS.some((pattern) => pattern.test(message));
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

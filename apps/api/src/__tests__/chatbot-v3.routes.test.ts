@@ -770,7 +770,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
         minimalTriageStatus: 'pending',
         minimalTriageAnswersSummary: null,
         minimalTriageComplete: false,
-      } as any,
+      },
       facts: {
         'records.minimal_triage.complete': false,
       },
@@ -812,7 +812,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
             data: { snapshot: {} },
           })),
         },
-      } as any,
+      },
       agents: {
         FaqAgent: {
           execute: vi.fn(async () => ({
@@ -843,7 +843,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
       statusSnapshot: {
         recommendationGenerated: false,
         recommendationSelected: false,
-      } as any,
+      },
       facts: {
         'recommendation.generated': false,
         'recommendation.selected': false,
@@ -897,7 +897,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
         recommendationSelectionStatus: null,
         recommendationSelectedHospitalIds: null,
         recommendationSelected: false,
-      } as any,
+      },
       facts: {
         'recommendation.generated': false,
         'recommendation.selected': false,
@@ -943,7 +943,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
             data: { snapshot: {} },
           })),
         },
-      } as any,
+      },
       agents: {},
     });
 
@@ -965,7 +965,7 @@ describe('chatbot-v3 structured action runtime normalization', () => {
         recommendationSelectionStatus: 'pending',
         recommendationSelectedHospitalIds: [],
         recommendationSelected: null,
-      } as any,
+      },
       facts: {
         'recommendation.generated': true,
         'recommendation.selected': false,
@@ -1342,11 +1342,1226 @@ describe('chatbot-v3 records triage prompt', () => {
     expect(prompt).toContain('What is the main symptom, diagnosis, or medical problem right now?');
     expect(prompt).toContain('When did it start, how long has it been going on, and how severe is it?');
     expect(prompt).toContain('What tests, treatments, medicines, or diagnoses already exist?');
-    expect(prompt).toContain('ask again when answers are incomplete, unclear, or insufficient');
+    expect(prompt).toContain('When triage is incomplete, return exactly these keys');
   });
 });
 
 describe('chatbot-v3 runtime', () => {
+  it('uses reducer truth for TRIAGE_SUBMITTED to generate recommendation when supervisor exposes extractEvent', async () => {
+    const nodeEvents: Array<Record<string, unknown>> = [];
+    const nodeEventEmitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        nodeEvents.push(event as Record<string, unknown>);
+      },
+    });
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [{ hospitalId: 'hospital-reducer-1', name: 'Reducer Hospital' }],
+          recommendationTask: 'generate',
+        },
+      })),
+    };
+    const legacyAuthority = {
+      decide: vi.fn(() => {
+        throw new Error('legacy authority must not decide reducer path');
+      }),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'TRIAGE_SUBMITTED' as const,
+          confidence: 1,
+          source: 'deterministic' as const,
+        })),
+      },
+      journeyRuntimeAuthority: legacyAuthority,
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecommendationAgent: recommendationAgent,
+      },
+      nodeEventEmitter,
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-reducer-triage-1',
+      sessionId: 'session-reducer-triage-1',
+      turnId: 'turn-reducer-triage-1',
+      message: 'I have chest pain for three days, moderate severity, and a blood test.',
+      userAction: {
+        type: 'TRIAGE_SUBMITTED',
+      },
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: false,
+        recommendationSelectionStatus: null,
+        recommendationSelectedHospitalIds: null,
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    expect(legacyAuthority.decide).not.toHaveBeenCalled();
+    expect(result.suggestion).toMatchObject({
+      intent: 'progression',
+      suggestedStage: 'RECOMMENDATION',
+    });
+    expect(result.decision).toMatchObject({
+      from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+      to: { stage: 'RECOMMENDATION', phase: 'active' },
+      dispatchAgent: 'RecommendationAgent',
+    });
+    expect(result.journey).toEqual({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(recommendationAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'recommendation.generate',
+    }));
+    expect(nodeEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        node: 'EventExtractionSummary',
+        action: 'event_extraction_summary',
+        status: 'completed',
+        eventType: 'TRIAGE_SUBMITTED',
+        eventSource: 'deterministic',
+        confidence: 1,
+      }),
+      expect.objectContaining({
+        node: 'JourneyReducer',
+        action: 'state_diff',
+        status: 'completed',
+        eventType: 'TRIAGE_SUBMITTED',
+        nextAction: 'GENERATE_RECOMMENDATION',
+        reasonCode: 'triage_submitted_generate_recommendation',
+        stateDiff: expect.objectContaining({
+          beforeStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          afterStage: 'RECOMMENDATION',
+          factsPatch: expect.objectContaining({
+            intake: expect.objectContaining({
+              minimalTriageStatus: 'submitted',
+            }),
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        node: 'NextActionResolver',
+        action: 'resolve',
+        status: 'completed',
+        nextAction: 'GENERATE_RECOMMENDATION',
+      }),
+      expect.objectContaining({
+        node: 'Invariant',
+        action: 'projection_matches_reducer',
+        status: 'completed',
+      }),
+    ]));
+  });
+
+  it('does not persist handoff active when reducer handoff creation is not created', async () => {
+    const handoffAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          created: false,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_REQUESTED_HUMAN' as const,
+          confidence: 1,
+          source: 'deterministic' as const,
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        HandoffAgent: handoffAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-reducer-handoff-not-created-1',
+      sessionId: 'session-reducer-handoff-not-created-1',
+      turnId: 'turn-reducer-handoff-not-created-1',
+      message: 'I want a human advisor.',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        handoffActive: false,
+        handoffStatus: 'not_needed',
+      } as any,
+    });
+
+    expect(result.decision).toMatchObject({
+      action: 'HANDOFF',
+      to: { stage: 'HUMAN_HANDOFF', phase: 'active' },
+      dispatchAgent: 'HandoffAgent',
+    });
+    expect(result.writeIntents?.canonicalTruthPatch).not.toHaveProperty('handoffActive');
+    expect(result.writeIntents?.statusPatch ?? {}).not.toHaveProperty('journeyCurrentStage');
+  });
+
+  it('persists handoff active only after reducer handoff creation succeeds', async () => {
+    const handoffAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          created: true,
+          handoffId: 'ticket-reducer-1',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_REQUESTED_HUMAN' as const,
+          confidence: 1,
+          source: 'deterministic' as const,
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        HandoffAgent: handoffAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-reducer-handoff-created-1',
+      sessionId: 'session-reducer-handoff-created-1',
+      turnId: 'turn-reducer-handoff-created-1',
+      message: 'Please connect me with a human advisor.',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        handoffActive: false,
+        handoffStatus: 'not_needed',
+      } as any,
+    });
+
+    expect(result.writeIntents?.statusPatch).toEqual(expect.objectContaining({
+      journeyCurrentStage: 'HUMAN_HANDOFF',
+      handoffActive: true,
+      handoffStatus: 'requested',
+    }));
+    expect(result.writeIntents?.canonicalTruthPatch).not.toHaveProperty('handoffActive');
+  });
+
+  it('system-renders risky medical advice redirects without calling the FAQ agent', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'generic faq answer should not be used for medical advice',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE' as const,
+          confidence: 0.94,
+          source: 'llm' as const,
+          metadata: {
+            riskType: 'treatment_advice',
+          },
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-risky-medical-redirect-1',
+      sessionId: 'session-risky-medical-redirect-1',
+      turnId: 'turn-risky-medical-redirect-1',
+      message: 'Should my wife start chemotherapy now?',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+      },
+    });
+
+    const response = composeResponse({
+      body: {
+        sessionId: 'session-risky-medical-redirect-1',
+        message: 'Should my wife start chemotherapy now?',
+      },
+      result,
+      sessionStatusSnapshot: result.writeIntents?.statusPatch,
+    });
+
+    expect(faqAgent.execute).not.toHaveBeenCalled();
+    expect(result.decision.dispatchAgent).toBeNull();
+    expect(result.render).toEqual({
+      path: 'SAFE_MEDICAL_REDIRECT',
+    });
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    });
+    expect(response.messages[0]?.text).toContain('cannot provide specific medical advice');
+    expect(response.messages[0]?.text).toContain('arrange a doctor consultation');
+  });
+
+  it('system-renders out-of-scope redirects without calling the FAQ agent', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'generic faq answer should not be used for restricted service redirects',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE' as const,
+          confidence: 0.91,
+          source: 'llm' as const,
+          metadata: {
+            redirectTarget: 'medical_travel_support',
+          },
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-out-of-scope-redirect-1',
+      sessionId: 'session-out-of-scope-redirect-1',
+      turnId: 'turn-out-of-scope-redirect-1',
+      message: 'Can you guarantee the treatment will cure her?',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+      },
+    });
+
+    const response = composeResponse({
+      body: {
+        sessionId: 'session-out-of-scope-redirect-1',
+        message: 'Can you guarantee the treatment will cure her?',
+      },
+      result,
+      sessionStatusSnapshot: result.writeIntents?.statusPatch,
+    });
+
+    expect(faqAgent.execute).not.toHaveBeenCalled();
+    expect(result.decision.dispatchAgent).toBeNull();
+    expect(result.render).toEqual({
+      path: 'OUT_OF_SCOPE_REDIRECT',
+    });
+    expect(result.journey).toEqual({
+      stage: 'RECOMMENDATION',
+      phase: 'active',
+    });
+    expect(response.messages[0]?.text).toContain('Medora focuses on medical travel coordination');
+  });
+
+  it('persists reducer document uploads before offering online consult', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          uploaded: true,
+        },
+      })),
+    };
+    const consultAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          state: 'ready',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'DOCUMENTS_UPLOADED' as const,
+          confidence: 1,
+          source: 'deterministic' as const,
+          metadata: {
+            documentCount: 1,
+          },
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+        ConsultAgent: consultAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-reducer-upload-before-consult-1',
+      sessionId: 'session-reducer-upload-before-consult-1',
+      turnId: 'turn-reducer-upload-before-consult-1',
+      message: 'Here is the MRI report.',
+      attachments: [{
+        fileName: 'mri.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-reducer-upload-before-consult-1/mri.pdf',
+      }],
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.upload',
+      input: expect.objectContaining({
+        sessionId: 'session-reducer-upload-before-consult-1',
+        turnId: 'turn-reducer-upload-before-consult-1',
+        attachments: [expect.objectContaining({
+          fileName: 'mri.pdf',
+        })],
+      }),
+    }));
+    expect(consultAgent.execute).not.toHaveBeenCalled();
+    expect(result.decision.dispatchAgent).toBe('RecordsAgent');
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+  });
+
+  it('persists attachments when recommendation selection and upload arrive in the same turn', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          uploaded: true,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-select-and-upload-before-process-1',
+      sessionId: 'session-select-and-upload-before-process-1',
+      turnId: 'turn-select-and-upload-before-process-1',
+      message: 'I choose this hospital and uploaded MRI.',
+      userAction: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: 'hospital-1',
+      },
+      attachments: [{
+        fileName: 'mri.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-select-and-upload-before-process-1/mri.pdf',
+      }],
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'pending',
+        recommendationSelectedHospitalIds: [],
+        processExplained: false,
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': false,
+        'process.explained': false,
+      },
+    });
+
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.upload',
+      input: expect.objectContaining({
+        sessionId: 'session-select-and-upload-before-process-1',
+        turnId: 'turn-select-and-upload-before-process-1',
+        attachments: [expect.objectContaining({
+          fileName: 'mri.pdf',
+        })],
+      }),
+    }));
+    expect(result.writeIntents?.statusPatch).toEqual(expect.objectContaining({
+      recommendationSelectionStatus: 'selected',
+      recommendationSelectedHospitalIds: ['hospital-1'],
+      recommendationSelected: true,
+    }));
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+  });
+
+  it('uploads bootstrap-only attachments on the reducer document path', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          uploaded: true,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-bootstrap-only-upload-1',
+      sessionId: 'session-bootstrap-only-upload-1',
+      turnId: 'turn-bootstrap-only-upload-1',
+      message: 'Uploaded pathology report.',
+      bootstrap: {
+        message: 'Uploaded pathology report.',
+        attachments: [{
+          fileName: 'pathology.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot/session-bootstrap-only-upload-1/pathology.pdf',
+        }],
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageComplete: true,
+        docUploadStatus: 'submitted',
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.upload',
+      input: expect.objectContaining({
+        sessionId: 'session-bootstrap-only-upload-1',
+        attachments: [expect.objectContaining({
+          fileName: 'pathology.pdf',
+        })],
+      }),
+    }));
+    expect(result.writeIntents?.statusPatch).not.toEqual(expect.objectContaining({
+      docUploadStatus: 'none',
+    }));
+  });
+
+  it('persists bootstrap-only attachments while preserving minimal-triage routing', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          'records.minimal_triage.complete': false,
+          questions: [
+            'What is the main symptom, diagnosis, or medical problem right now?',
+          ],
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-bootstrap-upload-minimal-triage-1',
+      sessionId: 'session-bootstrap-upload-minimal-triage-1',
+      turnId: 'turn-bootstrap-upload-minimal-triage-1',
+      message: 'I uploaded the report.',
+      bootstrap: {
+        message: 'I uploaded the report.',
+        attachments: [{
+          fileName: 'initial-report.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot/session-bootstrap-upload-minimal-triage-1/initial-report.pdf',
+        }],
+      },
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: null,
+        minimalTriageComplete: false,
+        supportingDocuments: [],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.status',
+      input: {
+        sessionId: 'session-bootstrap-upload-minimal-triage-1',
+      },
+    }));
+    expect(recordsAgent.execute).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.upload',
+    }));
+    expect(result.writeIntents?.statusPatch).toEqual(expect.objectContaining({
+      docUploadStatus: 'SUBMITTED',
+      supportingDocuments: [
+        {
+          path: 'chatbot/session-bootstrap-upload-minimal-triage-1/initial-report.pdf',
+          name: 'initial-report.pdf',
+        },
+      ],
+    }));
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      phase: 'active',
+    });
+  });
+
+  it('uploads next-step attachment turns before offering consult', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          uploaded: true,
+        },
+      })),
+    };
+    const consultAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          state: 'ready',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+        ConsultAgent: consultAgent,
+      },
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-next-step-upload-before-consult-1',
+      sessionId: 'session-next-step-upload-before-consult-1',
+      turnId: 'turn-next-step-upload-before-consult-1',
+      message: 'What is the next step? I uploaded another MRI.',
+      attachments: [{
+        fileName: 'mri-follow-up.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot/session-next-step-upload-before-consult-1/mri-follow-up.pdf',
+      }],
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [{ storageKey: 'chatbot/session-next-step-upload-before-consult-1/existing.pdf' }],
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.selected': true,
+        'process.explained': true,
+      },
+    });
+
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.upload',
+      input: expect.objectContaining({
+        sessionId: 'session-next-step-upload-before-consult-1',
+        attachments: [expect.objectContaining({
+          fileName: 'mri-follow-up.pdf',
+        })],
+      }),
+    }));
+    expect(consultAgent.execute).not.toHaveBeenCalled();
+  });
+
+  it('system-renders no-gateway risky medical advice instead of falling back to FAQ', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'generic faq answer should not be used for risky advice',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: new SupervisorService(),
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-no-gateway-risky-medical-1',
+      sessionId: 'session-no-gateway-risky-medical-1',
+      turnId: 'turn-no-gateway-risky-medical-1',
+      message: 'Should my wife start chemotherapy now?',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        journeyCurrentPhase: 'active',
+      },
+    });
+
+    expect(faqAgent.execute).not.toHaveBeenCalled();
+    expect(result.decision.dispatchAgent).toBeNull();
+    expect(result.render).toEqual({
+      path: 'SAFE_MEDICAL_REDIRECT',
+    });
+  });
+
+  it.each([
+    {
+      name: 'shows process overview before requesting documents',
+      statusSnapshot: {
+        processExplained: false,
+        supportingDocuments: [],
+      },
+      expectedStage: 'EXPLAIN_PROCESS' as const,
+      expectedDispatchAgent: null,
+      expectedRenderPath: 'PROCESS_OVERVIEW' as const,
+      expectedStatusPatch: {
+        journeyCurrentStage: 'EXPLAIN_PROCESS',
+        processExplained: true,
+      },
+    },
+    {
+      name: 'requests medical documents once process is explained and docs are missing',
+      statusSnapshot: {
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      expectedStage: 'COLLECT_MEDICAL_INPUTS' as const,
+      expectedDispatchAgent: 'RecordsAgent' as const,
+      expectedRenderPath: 'STAGE_GUIDANCE' as const,
+      expectedStatusPatch: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+      },
+    },
+    {
+      name: 'offers online consult when process is explained and docs exist',
+      statusSnapshot: {
+        processExplained: true,
+        supportingDocuments: [{ name: 'MRI.pdf', path: 'chatbot/session/doc.pdf' }],
+      },
+      expectedStage: 'ONLINE_CONSULT' as const,
+      expectedDispatchAgent: 'ConsultAgent' as const,
+      expectedRenderPath: 'STAGE_GUIDANCE' as const,
+      expectedStatusPatch: {
+        journeyCurrentStage: 'ONLINE_CONSULT',
+      },
+    },
+  ])('uses reducer truth for RECOMMENDATION_SELECTED: $name', async ({
+    statusSnapshot,
+    expectedStage,
+    expectedDispatchAgent,
+    expectedRenderPath,
+    expectedStatusPatch,
+  }) => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          collectionPrompt: 'Please upload your medical documents.',
+        },
+      })),
+    };
+    const consultAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          state: 'ready',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'RECOMMENDATION_SELECTED' as const,
+          confidence: 1,
+          source: 'deterministic' as const,
+          metadata: {
+            selectedHospitalIds: ['hospital-1'],
+          },
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+        ConsultAgent: consultAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: `trace-reducer-selection-${expectedStage}`,
+      sessionId: `session-reducer-selection-${expectedStage}`,
+      turnId: `turn-reducer-selection-${expectedStage}`,
+      message: '',
+      userAction: {
+        type: 'RECOMMENDATION_SELECTED',
+        hospitalId: 'hospital-1',
+      },
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain summary.',
+        minimalTriageComplete: true,
+        recommendationGenerated: true,
+        recommendationSelectionStatus: 'pending',
+        recommendationSelectedHospitalIds: [],
+        recommendationSelected: false,
+        ...statusSnapshot,
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': true,
+        'recommendation.generated': true,
+        'recommendation.selected': false,
+        'process.explained': statusSnapshot.processExplained,
+      },
+    });
+
+    expect(result.journey).toEqual({
+      stage: expectedStage,
+      phase: 'active',
+    });
+    expect(result.decision.dispatchAgent).toBe(expectedDispatchAgent);
+    expect(result.render).toEqual({
+      path: expectedRenderPath,
+    });
+    expect(result.writeIntents?.statusPatch).toEqual(expect.objectContaining({
+      recommendationGenerated: true,
+      recommendationSelectionStatus: 'selected',
+      recommendationSelectedHospitalIds: ['hospital-1'],
+      recommendationSelected: true,
+      ...expectedStatusPatch,
+    }));
+  });
+
+  it('keeps primary stage stable during reducer-driven FAQ detours', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'Office hours are 9 AM to 6 PM.',
+          citedFaqIds: ['faq-hours-1'],
+          confidence: 'high',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => {
+          throw new Error('legacy suggestion must not decide reducer path');
+        }),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_ASKED_FAQ' as const,
+          confidence: 0.9,
+          source: 'llm' as const,
+          metadata: {
+            topic: 'process' as const,
+          },
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-reducer-faq-1',
+      sessionId: 'session-reducer-faq-1',
+      turnId: 'turn-reducer-faq-1',
+      message: 'What are your office hours?',
+      current: {
+        stage: 'COLLECT_MEDICAL_INPUTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain summary.',
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+    });
+
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(result.decision.dispatchAgent).toBe('FaqAgent');
+    expect(result.render).toEqual({
+      path: 'FAQ_ANSWER',
+    });
+    expect(result.writeIntents?.statusPatch?.journeyCurrentStage).toBeUndefined();
+    expect(result.writeIntents?.canonicalTruthPatch).not.toHaveProperty('processExplained');
+  });
+
+  it('answers USER_ASKED_NEXT_STEP from normalized facts instead of an LLM stage guess', async () => {
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          collectionPrompt: 'Please upload diagnosis proof before consult.',
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'consult' as const,
+          suggestedStage: 'ONLINE_CONSULT' as const,
+          reason: 'stale LLM stage guess that should be ignored',
+        })),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_ASKED_NEXT_STEP' as const,
+          confidence: 1,
+          source: 'deterministic' as const,
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-reducer-next-step-1',
+      sessionId: 'session-reducer-next-step-1',
+      turnId: 'turn-reducer-next-step-1',
+      message: 'What is the next step?',
+      current: {
+        stage: 'RECOMMENDATION',
+        phase: 'post',
+      },
+      statusSnapshot: {
+        journeyCurrentStage: 'RECOMMENDATION',
+        journeyCurrentPhase: 'post',
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Chest pain summary.',
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
+    });
+
+    expect(result.suggestion.suggestedStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(result.journey).toEqual({
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    });
+    expect(result.decision.dispatchAgent).toBe('RecordsAgent');
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.status',
+      meta: expect.objectContaining({
+        task: expect.objectContaining({
+          toStage: 'COLLECT_MEDICAL_INPUTS',
+          mode: 'medical_collection',
+        }),
+      }),
+    }));
+  });
+
   it('prefers the persisted journey snapshot over a stale caller current', () => {
     expect(deriveCurrentStageFromStatusSnapshot({
       journeyCurrentStage: 'RECOMMENDATION',
@@ -2843,14 +4058,12 @@ describe('chatbot-v3 runtime', () => {
     );
   });
 
-  it('preserves COLLECT_MEDICAL_INPUTS while dispatching a recovered faq detour with attachments', async () => {
-    const faqAgent = {
+  it('treats attachments as deterministic document events before FAQ-shaped text', async () => {
+    const recordsAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
         data: {
-          answer: 'We are open from 9 AM to 6 PM Monday through Saturday.',
-          citedFaqIds: ['faq-hours-1'],
-          confidence: 'high' as const,
+          uploaded: true,
         },
       })),
     };
@@ -2882,7 +4095,7 @@ describe('chatbot-v3 runtime', () => {
         },
       } as any,
       agents: {
-        FaqAgent: faqAgent,
+        RecordsAgent: recordsAgent,
       },
     });
 
@@ -2901,6 +4114,17 @@ describe('chatbot-v3 runtime', () => {
         stage: 'COLLECT_MEDICAL_INPUTS',
         phase: 'active',
       },
+      statusSnapshot: {
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+        minimalTriageStatus: 'skipped',
+        minimalTriageAnswersSummary: null,
+        minimalTriageComplete: true,
+        recommendationSelectionStatus: 'selected',
+        recommendationSelectedHospitalIds: ['hospital-1'],
+        processExplained: true,
+        supportingDocuments: [],
+      } as any,
       suggestion: {
         intent: 'progression',
         suggestedStage: 'COLLECT_MEDICAL_INPUTS',
@@ -2920,25 +4144,25 @@ describe('chatbot-v3 runtime', () => {
     });
 
     expect(result.suggestion).toMatchObject({
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
     });
     expect(result.decision).toMatchObject({
       action: 'STAY',
       from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
       to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      dispatchAgent: 'FaqAgent',
+      dispatchAgent: 'RecordsAgent',
     });
     expect(result.journey).toEqual({
       stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
-    expect(result.writeIntents).toEqual(expect.objectContaining({
-      canonicalTruthPatch: {},
-    }));
     expect(result.render).toEqual({
-      path: 'FAQ_ANSWER',
+      path: 'STAGE_GUIDANCE',
     });
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.upload',
+    }));
   });
 
   it('emits a canonical truth patch when the records worker completes minimal triage', async () => {
@@ -4092,7 +5316,7 @@ describe('chatbot-v3 runtime', () => {
     }));
   });
 
-  it('dispatches a recovered later-stage FAQ question to FaqAgent without overwriting the persisted primary stage', async () => {
+  it('prioritizes later-stage attachments over FAQ recovery without overwriting the persisted primary stage', async () => {
     const faqAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
@@ -4100,6 +5324,14 @@ describe('chatbot-v3 runtime', () => {
           answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
           citedFaqIds: ['faq-hours-1'],
           confidence: 'high' as const,
+        },
+      })),
+    };
+    const recordsAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          uploaded: true,
         },
       })),
     };
@@ -4155,6 +5387,7 @@ describe('chatbot-v3 runtime', () => {
       } as any,
       agents: {
         FaqAgent: faqAgent,
+        RecordsAgent: recordsAgent,
       },
     });
 
@@ -4196,19 +5429,15 @@ describe('chatbot-v3 runtime', () => {
     });
 
     expect(result.suggestion).toEqual(expect.objectContaining({
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
+      intent: 'progression',
+      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
     }));
-    expect(result.dispatchResult).toEqual({
-      status: 'ok',
-      data: {
-        answer: 'Our office hours are Monday to Friday, 9am to 6pm.',
-        citedFaqIds: ['faq-hours-1'],
-        confidence: 'high',
-      },
-    });
+    expect(faqAgent.execute).not.toHaveBeenCalled();
+    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'records.upload',
+    }));
     expect(result.render).toEqual({
-      path: 'FAQ_ANSWER',
+      path: 'STAGE_GUIDANCE',
     });
     const response = composeResponse({
       body: {
@@ -4894,12 +6123,12 @@ describe('chatbot-v3 runtime', () => {
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({
         node: 'Supervisor',
-        action: 'suggest',
+        action: 'extractEvent',
         status: 'completed',
         nodePromptVersion: 'supervisor-prompt-v1',
         nodeModel: 'gpt-4.1-mini',
-        fallbackUsed: false,
-        schemaValidationFailed: false,
+        fallbackUsed: true,
+        schemaValidationFailed: true,
       }),
       expect.objectContaining({
         node: 'Subagent',

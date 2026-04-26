@@ -1,9 +1,15 @@
 import type {
   LlmNodeAdapter,
+  SupervisorEvent,
+  SupervisorEventType,
   SupervisorGatewayInput,
 } from '@medical-crm/application';
 import {
+  SUPERVISOR_EVENT_TYPES,
+} from '@medical-crm/application';
+import {
   buildSupervisorPrompt,
+  getAllowedSupervisorEvents,
   SUPERVISOR_PROMPT_VERSION,
 } from './supervisor-prompt.js';
 import {
@@ -22,9 +28,38 @@ interface CreateChatbotV3SupervisorRouteAdapterOptions {
   reasoningEffort?: string;
 }
 
+function buildSupervisorEventResponseFormat(allowedEvents: readonly SupervisorEventType[]) {
+  return {
+    name: 'chatbot_v3_supervisor_event',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['eventType', 'confidence', 'source'],
+      properties: {
+        eventType: {
+          type: 'string',
+          enum: allowedEvents,
+        },
+        confidence: {
+          type: 'number',
+          minimum: 0,
+          maximum: 1,
+        },
+        source: {
+          type: 'string',
+          enum: ['llm'],
+        },
+      },
+    },
+  } as const;
+}
+
+const SUPERVISOR_EVENT_TOP_LEVEL_KEYS = new Set(['eventType', 'confidence', 'source']);
+
 export function createChatbotV3SupervisorRouteAdapter(
   options: CreateChatbotV3SupervisorRouteAdapterOptions = {},
-): LlmNodeAdapter<SupervisorGatewayInput, unknown> | undefined {
+): LlmNodeAdapter<SupervisorGatewayInput, SupervisorEvent> | undefined {
   const enabled = options.enabled ?? process.env['CHATBOT_V3_SUPERVISOR_LLM_ENABLED'] === 'true';
   const apiKey = options.apiKey?.trim() ?? process.env['OPENAI_API_KEY']?.trim() ?? '';
   const model = options.model?.trim() ?? process.env['CHATBOT_V3_SUPERVISOR_LLM_MODEL']?.trim() ?? 'gpt-4o-mini';
@@ -44,14 +79,18 @@ export function createChatbotV3SupervisorRouteAdapter(
   return {
     promptVersion: `${SUPERVISOR_PROMPT_VERSION}:openai`,
     model,
-    run: async (input) => runStructuredOpenAiPrompt({
-      apiKey,
-      model,
-      reasoningEffort,
-      fetchImpl,
-      timeoutMs,
-      prompt: buildSupervisorPrompt(input),
-    }),
+    run: async (input) => {
+      const allowedEvents = getAllowedSupervisorEvents(input);
+      return runStructuredOpenAiPrompt({
+        apiKey,
+        model,
+        reasoningEffort,
+        fetchImpl,
+        timeoutMs,
+        prompt: buildSupervisorPrompt(input),
+        allowedEvents,
+      });
+    },
   };
 }
 
@@ -62,7 +101,8 @@ async function runStructuredOpenAiPrompt(input: {
   fetchImpl: FetchLike;
   timeoutMs: number;
   prompt: string;
-}): Promise<unknown> {
+  allowedEvents: readonly SupervisorEventType[];
+}): Promise<SupervisorEvent> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
@@ -82,12 +122,13 @@ async function runStructuredOpenAiPrompt(input: {
           model: input.model,
           ...(input.reasoningEffort ? { reasoning_effort: input.reasoningEffort } : {}),
           response_format: {
-            type: 'json_object',
+            type: 'json_schema',
+            json_schema: buildSupervisorEventResponseFormat(input.allowedEvents),
           },
           messages: [
             {
               role: 'system',
-              content: 'Return a single JSON object only. Do not include markdown fences or commentary.',
+              content: 'Return one valid SupervisorEvent JSON object only.',
             },
             {
               role: 'user',
@@ -103,7 +144,46 @@ async function runStructuredOpenAiPrompt(input: {
     clearTimeout(timeout);
   }
 
-  return parseStructuredOpenAiJsonResponse(response, 'supervisor route llm');
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = await parseStructuredOpenAiJsonResponse(response, 'supervisor route llm');
+  } catch {
+    return buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');
+  }
+
+  return sanitizeSupervisorEvent(parsed);
+}
+
+function sanitizeSupervisorEvent(raw: Record<string, unknown>): SupervisorEvent {
+  const hasOnlyEventKeys = Object.keys(raw).every((key) => SUPERVISOR_EVENT_TOP_LEVEL_KEYS.has(key));
+  if (
+    !hasOnlyEventKeys
+    || !isSupervisorEventType(raw.eventType)
+    || typeof raw.confidence !== 'number'
+    || !Number.isFinite(raw.confidence)
+    || raw.source !== 'llm'
+  ) {
+    return buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');
+  }
+
+  return {
+    eventType: raw.eventType,
+    confidence: raw.confidence,
+    source: raw.source,
+  };
+}
+
+function isSupervisorEventType(value: unknown): value is SupervisorEvent['eventType'] {
+  return typeof value === 'string' && (SUPERVISOR_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+function buildFallbackUnknownEvent(rawText: string): SupervisorEvent {
+  return {
+    eventType: 'UNKNOWN_MESSAGE',
+    confidence: 0,
+    source: 'fallback_unknown',
+    metadata: { rawText },
+  };
 }
 
 function normalizeTimeoutMs(value: number): number {

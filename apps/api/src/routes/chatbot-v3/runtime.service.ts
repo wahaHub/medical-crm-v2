@@ -12,6 +12,7 @@ import {
   type ChatbotV3ReplayLineage,
   buildReadPlan,
   type MinimalIntakeSeed,
+  type NextAction,
   normalizeFactsFromStatusSnapshot,
   projectLegacyCompatibilityView,
   reduceJourney,
@@ -36,6 +37,7 @@ import type {
   RecordsWorkerTask,
   WorkerTask,
 } from './worker-task.js';
+import { resolveFaqTaskPolicy } from './worker-task.js';
 import type {
   ChatbotV3RuntimeNodeEventEmitter,
   ChatbotV3RuntimeNodeEventInput,
@@ -144,6 +146,7 @@ export interface ConversationOrchestratorV3Decision {
   action: 'STAY' | 'ADVANCE' | 'SKIP' | 'HANDOFF';
   from: ConversationOrchestratorV3StageRef;
   to: ConversationOrchestratorV3StageRef;
+  nextAction?: NextAction;
   dispatchAgent?: AgentName | null;
   dispatchSource: 'journey-runtime-authority';
   matchedRuleId?: string;
@@ -977,6 +980,7 @@ export class ConversationOrchestratorV3RuntimeService {
           : 'ADVANCE',
       from: cloneStageRef(current),
       to,
+      nextAction: reduction.nextAction,
       dispatchAgent: execution.agent,
       dispatchSource: 'journey-runtime-authority',
       matchedRuleId: reduction.reasonCode,
@@ -1968,6 +1972,7 @@ function buildWorkerTask(
       return {
         agent: 'FaqAgent',
         ...baseTask,
+        ...resolveFaqTaskPolicy(decision.nextAction),
       } satisfies FaqWorkerTask;
     case 'RecordsAgent':
       return {
@@ -2531,8 +2536,9 @@ function hasStructuredFaqAnswerData(
   const confidence = asString(data['confidence']);
   const citedFaqIds = asArray(data['citedFaqIds'])
     .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
+  const policyGrounded = data['policyGrounded'] === true;
 
-  return Boolean(answer && confidence !== 'low' && citedFaqIds.length > 0);
+  return Boolean(answer && confidence !== 'low' && (citedFaqIds.length > 0 || policyGrounded));
 }
 
 function resolveFaqResolution(

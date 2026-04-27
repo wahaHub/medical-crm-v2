@@ -12,6 +12,11 @@ export function buildFaqPlanPrompt(input: FaqPlanInput): string {
     `to_stage=${input.task.toStage}`,
     `intent=${input.task.intent ?? 'unknown'}`,
     `supervisor_reason=${input.task.supervisorReason ?? 'none'}`,
+    `response_mode=${input.task.responseMode ?? 'standard'}`,
+    `safety_risk_type=${input.task.safetyRiskType ?? 'none'}`,
+    `redirect_target=${input.task.redirectTarget ?? 'none'}`,
+    `business_scope=${input.task.businessScope?.join(', ') ?? 'none'}`,
+    `output_rules=${input.task.outputRules?.join(', ') ?? 'none'}`,
     `latest_user_message=${input.task.latestUserMessage}`,
   ].join('\n');
 }
@@ -25,6 +30,11 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
     `to_stage=${input.task.toStage}`,
     `intent=${input.task.intent ?? 'unknown'}`,
     `supervisor_reason=${input.task.supervisorReason ?? 'none'}`,
+    `response_mode=${input.task.responseMode ?? 'standard'}`,
+    `safety_risk_type=${input.task.safetyRiskType ?? 'none'}`,
+    `redirect_target=${input.task.redirectTarget ?? 'none'}`,
+    `business_scope=${input.task.businessScope?.join(', ') ?? 'none'}`,
+    `output_rules=${input.task.outputRules?.join(', ') ?? 'none'}`,
     `latest_user_message=${input.task.latestUserMessage}`,
     `plan_query=${input.plan.query}`,
     `plan_category=${input.plan.category ?? 'none'}`,

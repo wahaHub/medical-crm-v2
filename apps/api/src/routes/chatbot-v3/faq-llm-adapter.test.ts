@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FaqAgent } from './agents.js';
 import { FaqLlmAdapter } from './faq-llm-adapter.js';
+import { buildFaqAnswerPrompt, buildFaqPlanPrompt } from './faq-prompts.js';
 import { createToolGateway } from './tool-gateway.js';
-import type { FaqWorkerTask } from './worker-task.js';
+import { resolveFaqTaskPolicy, type FaqWorkerTask } from './worker-task.js';
 import {
   FAQ_ANSWER_EVAL_FIXTURES,
 } from './__fixtures__/degraded-path.fixtures.js';
@@ -113,6 +114,51 @@ describe('FaqLlmAdapter', () => {
       fallbackUsed: fixture.expectedMetadata.fallbackUsed,
       schemaValidationFailed: fixture.expectedMetadata.schemaValidationFailed,
     });
+  });
+
+  it('passes safety redirect task rules through FAQ prompts', () => {
+    const task: FaqWorkerTask = {
+      ...createFaqTask('能不能保证治好？'),
+      ...resolveFaqTaskPolicy({
+        type: 'SAFE_MEDICAL_REDIRECT',
+        riskType: 'guarantee_outcome',
+      }),
+    };
+
+    expect(buildFaqPlanPrompt({ task })).toContain('response_mode=safe_medical_redirect');
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'guarantee outcome', reason: 'safety redirect' },
+      matches: [],
+      details: [],
+    })).toContain('output_rules=do_not_diagnose, do_not_recommend_medication, do_not_guarantee_outcome, mention_emergency_care_when_urgent, ask_one_safe_next_step');
+  });
+
+  it('falls back with business-boundary redirect copy for out-of-scope tasks without FAQ matches', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('你们能不能帮我办美国绿卡？'),
+      ...resolveFaqTaskPolicy({
+        type: 'OUT_OF_SCOPE_REDIRECT',
+        redirectTarget: 'US green card',
+      }),
+    };
+
+    await expect(adapter.answer({
+      task,
+      plan: { query: 'US green card', reason: 'out of scope redirect' },
+      matches: [],
+      details: [],
+    })).resolves.toEqual({
+      answer: expect.stringContaining('Medora'),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    });
+    expect(task.outputRules).toEqual(expect.arrayContaining([
+      'do_not_claim_we_can_help_with_unsupported_service',
+      'preserve_primary_stage',
+    ]));
   });
 });
 

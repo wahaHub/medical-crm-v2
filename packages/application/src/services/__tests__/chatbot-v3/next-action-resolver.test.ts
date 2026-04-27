@@ -9,20 +9,20 @@ describe('resolveNextActionExecution', () => {
     expect(result.isSystemRendered).toBe(true);
   });
 
-  it('system-renders safety redirects instead of routing through generic FAQ', () => {
+  it('routes safety and out-of-scope redirects through FAQ-style responders with reducer authority preserved', () => {
     expect(resolveNextActionExecution({
       type: 'SAFE_MEDICAL_REDIRECT',
       riskType: 'treatment_advice',
     })).toEqual({
-      agent: null,
-      isSystemRendered: true,
+      agent: 'FaqAgent',
+      isSystemRendered: false,
     });
     expect(resolveNextActionExecution({
       type: 'OUT_OF_SCOPE_REDIRECT',
       redirectTarget: 'medical_travel_support',
     })).toEqual({
-      agent: null,
-      isSystemRendered: true,
+      agent: 'FaqAgent',
+      isSystemRendered: false,
     });
   });
 

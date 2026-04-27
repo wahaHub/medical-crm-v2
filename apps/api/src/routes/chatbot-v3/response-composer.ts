@@ -253,8 +253,9 @@ function readFaqAnswer(
   const citedFaqIds = asArray(data['citedFaqIds'])
     .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
   const confidence = asString(data['confidence']);
+  const policyGrounded = data['policyGrounded'] === true;
 
-  if (citedFaqIds.length === 0 || confidence === 'low') {
+  if ((!policyGrounded && citedFaqIds.length === 0) || confidence === 'low') {
     return null;
   }
 

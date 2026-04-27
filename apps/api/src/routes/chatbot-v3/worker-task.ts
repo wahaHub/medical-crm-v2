@@ -1,4 +1,5 @@
 import type { ChatJourneyStage } from '@medical-crm/domain';
+import type { NextAction } from '@medical-crm/application';
 
 export type WorkerTaskIntent =
   | 'faq'
@@ -20,6 +21,11 @@ export type RecommendationBasis =
   | 'INTAKE_ONLY_AFTER_TRIAGE_SKIP';
 
 export type RecordsWorkerMode = 'minimal_triage' | 'medical_collection';
+export type FaqResponseMode =
+  | 'standard'
+  | 'safe_medical_redirect'
+  | 'out_of_scope_redirect'
+  | 'rejection_or_hesitation';
 
 interface WorkerTaskBase<TAgent extends 'FaqAgent' | 'RecordsAgent' | 'RecommendationAgent'> {
   agent: TAgent;
@@ -30,7 +36,13 @@ interface WorkerTaskBase<TAgent extends 'FaqAgent' | 'RecordsAgent' | 'Recommend
   supervisorReason?: string;
 }
 
-export interface FaqWorkerTask extends WorkerTaskBase<'FaqAgent'> {}
+export interface FaqWorkerTask extends WorkerTaskBase<'FaqAgent'> {
+  responseMode?: FaqResponseMode;
+  safetyRiskType?: string;
+  redirectTarget?: string;
+  businessScope?: string[];
+  outputRules?: string[];
+}
 
 export interface RecordsWorkerTask extends WorkerTaskBase<'RecordsAgent'> {
   mode: RecordsWorkerMode;
@@ -80,4 +92,42 @@ export function createFallbackRecommendationWorkerTask(
     latestUserMessage,
     recommendationTask: 'generate',
   };
+}
+
+export function resolveFaqTaskPolicy(
+  nextAction: NextAction | undefined,
+): Pick<FaqWorkerTask, 'responseMode' | 'safetyRiskType' | 'redirectTarget' | 'businessScope' | 'outputRules'> {
+  switch (nextAction?.type) {
+    case 'SAFE_MEDICAL_REDIRECT':
+      return {
+        responseMode: 'safe_medical_redirect',
+        safetyRiskType: nextAction.riskType,
+        outputRules: [
+          'do_not_diagnose',
+          'do_not_recommend_medication',
+          'do_not_guarantee_outcome',
+          'mention_emergency_care_when_urgent',
+          'ask_one_safe_next_step',
+        ],
+      };
+    case 'OUT_OF_SCOPE_REDIRECT':
+      return {
+        responseMode: 'out_of_scope_redirect',
+        redirectTarget: nextAction.redirectTarget,
+        businessScope: [
+          'doctor matching in China',
+          'medical record preparation',
+          'online consultation',
+          'hospital coordination',
+          'travel support related to treatment',
+        ],
+        outputRules: [
+          'do_not_claim_we_can_help_with_unsupported_service',
+          'ask_one_relevant_next_step',
+          'preserve_primary_stage',
+        ],
+      };
+    default:
+      return {};
+  }
 }

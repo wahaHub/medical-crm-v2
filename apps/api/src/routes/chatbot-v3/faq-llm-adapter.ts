@@ -18,6 +18,7 @@ export type FaqAnswerResult = {
   answer: string;
   citedFaqIds: string[];
   confidence: 'high' | 'medium' | 'low';
+  policyGrounded?: boolean;
 };
 
 export interface FaqLlmRunMetadata {
@@ -96,6 +97,7 @@ export class FaqLlmAdapter {
       input.matches,
       input.details,
       input.task.latestUserMessage,
+      input.task,
     );
     const metadataBase = {
       nodePromptVersion: this.answerPromptVersion,
@@ -152,11 +154,17 @@ export function composeFallbackFaqAnswer(
   matches: FaqItemRecord[],
   details: FaqItemRecord[],
   latestUserMessage: string,
+  task?: FaqWorkerTask,
 ): FaqAnswerResult {
   const sourceItems = details.length > 0 ? details : matches;
   const citedFaqIds = dedupeFaqIds(sourceItems.map((item) => item.id)).slice(0, 3);
 
   if (sourceItems.length === 0) {
+    const redirectFallback = composeRedirectFallbackAnswer(task);
+    if (redirectFallback) {
+      return redirectFallback;
+    }
+
     return {
       answer: `I can help with that, but I could not find an exact FAQ answer yet for "${clampText(latestUserMessage, 120)}".`,
       citedFaqIds: [],
@@ -189,6 +197,45 @@ export function composeFallbackFaqAnswer(
     answer: `I can help with that. Here are the closest FAQ answers: ${summaries.join(' ')}`,
     citedFaqIds,
     confidence: 'medium',
+  };
+}
+
+function composeRedirectFallbackAnswer(task: FaqWorkerTask | undefined): FaqAnswerResult | null {
+  if (!task?.responseMode || task.responseMode === 'standard') {
+    return null;
+  }
+
+  if (task.responseMode === 'safe_medical_redirect') {
+    return {
+      answer: [
+        'I cannot diagnose, choose treatment, recommend medication, or guarantee an outcome here.',
+        'Medora can help arrange a records-based doctor or hospital review in China so the right clinical team can assess the case.',
+        'If symptoms are urgent or worsening, please seek local emergency care now. A safe next step is to share available records for review.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  if (task.responseMode === 'out_of_scope_redirect') {
+    return {
+      answer: [
+        'That request is outside Medora\'s current medical travel support scope.',
+        'Medora mainly helps international patients with doctor matching in China, medical record preparation, online consultation, hospital coordination, and treatment-related travel support.',
+        'If your goal is care in China, I can help explain the next medical step.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  return {
+    answer: 'That is completely okay. Medora can continue from the current step whenever you are ready, or I can explain the cost, records, or contact options more clearly.',
+    citedFaqIds: [],
+    confidence: 'medium',
+    policyGrounded: true,
   };
 }
 

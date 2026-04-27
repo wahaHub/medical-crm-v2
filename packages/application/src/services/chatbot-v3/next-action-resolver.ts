@@ -13,7 +13,7 @@ export function resolveNextActionExecution(action: NextAction): NextActionExecut
       return { agent: 'FaqAgent', isSystemRendered: false };
     case 'SAFE_MEDICAL_REDIRECT':
     case 'OUT_OF_SCOPE_REDIRECT':
-      return { agent: null, isSystemRendered: true };
+      return { agent: 'FaqAgent', isSystemRendered: false };
     case 'COLLECT_MINIMAL_TRIAGE':
     case 'REQUEST_MEDICAL_DOCUMENTS':
       return { agent: 'RecordsAgent', isSystemRendered: false };

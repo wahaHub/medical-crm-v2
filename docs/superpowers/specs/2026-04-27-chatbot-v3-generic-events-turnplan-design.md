@@ -231,22 +231,7 @@ For LLM semantic extraction, the strict schema should require:
 
 The adapter assigns `source='llm'`. The LLM must not output workflow state, stages, agents, write patches, tool calls, or old proposal fields.
 
-## Mapping From Current Semantic Events
-
-| Current event | New event shape |
-|---|---|
-| `USER_ASKED_NEXT_STEP` | `USER_ASKED_QUESTION`, `target=unknown`, `modifier=ask` |
-| `USER_ASKED_FAQ` | `USER_ASKED_QUESTION`, target inferred as `pricing/process/documents/travel/payment/hospital/hospital_selection/unknown`, `modifier=ask` |
-| `USER_WANTS_TREATMENT_IN_CHINA` | `USER_EXPRESSED_NEED`, `target=treatment`, `modifier=ask` |
-| `USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING` | `USER_EXPRESSED_NEED`, `target=recommendation`, `modifier=ask` or `revisit` |
-| `USER_PROVIDED_MEDICAL_FACTS` | `USER_PROVIDED_INFORMATION`, `target=medical_facts`, `modifier=provide` |
-| `USER_INTERESTED_IN_CONSULT` | `USER_EXPRESSED_NEED`, `target=consult`, `modifier=ask` |
-| `USER_REJECTED_OR_HESITATED` | `USER_RESPONDED_TO_REQUEST`, target inferred as `documents/contact/pricing/unknown`, `modifier=reject` or `hesitate` |
-| `USER_PROVIDED_CONTACT_INFO` | `USER_PROVIDED_INFORMATION`, `target=contact`, `modifier=provide` |
-| `USER_ASKED_RISKY_MEDICAL_ADVICE` | unchanged high-priority safety event |
-| `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` | unchanged high-priority out-of-scope event |
-| `USER_AMBIGUOUS_REPLY` | `USER_MESSAGE_UNCLEAR`, `target=unknown`, `modifier=unknown` |
-| `UNKNOWN_MESSAGE` | `USER_MESSAGE_UNCLEAR`, `target=unknown`, `modifier=unknown`, `source=fallback_unknown` when applicable |
+Old semantic event names are retired in Phase 1.1. Tests should cover the old user phrases, but assertions should use the new generic event taxonomy only.
 
 ## TurnPlan
 
@@ -310,21 +295,9 @@ type PrimaryAction =
     };
 ```
 
-`REVISIT` is intentionally not a `PrimaryAction`. It is a modifier. The reducer interprets `target=recommendation, modifier=revisit` into a concrete recommendation action.
+`REVISIT` is intentionally not a `PrimaryAction`. It is a modifier. The reducer interprets `target=recommendation, modifier=revisit` into a concrete recommendation plan.
 
-Legacy workflow actions translate into the generic action model during migration:
-
-| Legacy action | Generic primary action |
-|---|---|
-| `COLLECT_MINIMAL_TRIAGE` | `REQUEST_INFO`, `target=minimal_triage` |
-| `GENERATE_RECOMMENDATION` | `PRESENT_OPTIONS`, `target=hospital` |
-| `ASK_RECOMMENDATION_SELECTION` | `PRESENT_OPTIONS`, `target=hospital` |
-| `SHOW_PROCESS_OVERVIEW` | `ANSWER`, `target=process`, with `reasonCode=formal_process_overview` on the `TurnPlan` |
-| `REQUEST_MEDICAL_DOCUMENTS` | `REQUEST_INFO`, `target=documents` |
-| `OFFER_ONLINE_CONSULT` | `PRESENT_OPTIONS`, `target=consult` |
-| `CREATE_HANDOFF` | `ESCALATE`, `target=human` |
-
-`SHOW_PROCESS_OVERVIEW` should not survive as an action type, but its invariant survives: only a formal process overview plan may write `process.explained=true`. A normal process FAQ is `ANSWER`, `target=process` and must preserve the primary stage.
+Old workflow action names are retired in Phase 1.1. The invariant survives, not the old enum name: only a formal process overview plan may write `process.explained=true`. A normal process FAQ is `ANSWER`, `target=process` and must preserve the primary stage.
 
 ### FollowUpAction
 
@@ -347,10 +320,20 @@ type FollowUpAction =
       target: EventTarget;
       questionKey: string;
     }
+  | {
+      type: 'GO_DEEP';
+      target: EventTarget;
+      reasonCode:
+        | 'user_requested_more_detail'
+        | 'high_intent_followup'
+        | 'needs_domain_explanation';
+    }
   | { type: 'NONE' };
 ```
 
 `ASK_CHOICE` is intentionally not included. A choice prompt is a type of qualifying question and can be expressed through `ASK_QUALIFYING_QUESTION` plus `questionKey`.
+
+`GO_DEEP` means the reply should stay on the same topic and provide more depth instead of pushing the next workflow step. It is useful when the user asks for more details about a hospital, process, pricing rationale, risks, records, or consult mechanics.
 
 `RETURN_TO_MAIN_FLOW` is intentionally not included. It is too abstract and risks becoming a second reducer. Concrete next-step invites such as `documents`, `consult`, or `minimal_triage` express the intended main-flow return.
 
@@ -449,7 +432,8 @@ type AgentRole =
   | 'GeneralResponseAgent'
   | 'RecordsAgent'
   | 'RecommendationAgent'
-  | 'ConsultHandoffAgent';
+  | 'ConsultAgent'
+  | 'HandoffAgent';
 ```
 
 Initial mapping:
@@ -459,7 +443,8 @@ Initial mapping:
 | `GeneralResponseAgent` | `FaqAgent` |
 | `RecordsAgent` | `RecordsAgent` |
 | `RecommendationAgent` | `RecommendationAgent` |
-| `ConsultHandoffAgent` | `ConsultAgent` or `HandoffAgent`, selected by primary action |
+| `ConsultAgent` | `ConsultAgent` |
+| `HandoffAgent` | `HandoffAgent` |
 
 No physical agent rename is required for Phase 1.1.
 
@@ -469,14 +454,9 @@ Suggested mapping:
 
 - `REQUEST_INFO` with `minimal_triage`, `medical_facts`, or `documents` -> `RecordsAgent`
 - `PRESENT_OPTIONS`, `target=hospital` -> `RecommendationAgent`
-- `PRESENT_OPTIONS`, `target=consult` -> `ConsultHandoffAgent`
-- `ESCALATE`, `target=human` -> `ConsultHandoffAgent`
-- `ANSWER`, `ACKNOWLEDGE`, `HANDLE_RESPONSE`, `REDIRECT`, `CLARIFY` -> `GeneralResponseAgent`, unless the target strongly belongs to Records or Recommendation in a later implementation slice
-
-When a conceptual role maps to multiple physical agents, `primaryAction` chooses the concrete dispatch:
-
-- `ESCALATE`, `target=human` -> `HandoffAgent`
 - `PRESENT_OPTIONS`, `target=consult` -> `ConsultAgent`
+- `ESCALATE`, `target=human` -> `HandoffAgent`
+- `ANSWER`, `ACKNOWLEDGE`, `HANDLE_RESPONSE`, `REDIRECT`, `CLARIFY` -> `GeneralResponseAgent`, unless the target strongly belongs to Records or Recommendation in a later implementation slice
 
 ## Runtime Skill Loading
 
@@ -686,6 +666,9 @@ Examples:
 |---|---|
 | `ANSWER + pricing` | `load_pricing_factors`, `explain_pricing_uncertainty` |
 | `INVITE_NEXT_STEP + documents` | `load_records_requirement_data`, `explain_records_preparation` |
+| `GO_DEEP + hospital` | `search_hospital_candidates`, `explain_hospital_selection_logic`, `compare_recommendation_options` |
+| `GO_DEEP + process` | `load_process_policy`, `explain_medora_process` |
+| `GO_DEEP + pricing` | `load_pricing_factors`, `explain_pricing_uncertainty` |
 | `modifier=reject + target=pricing` | `handle_price_objection`, `low_friction_alternative_step` |
 | `modifier=reject + target=documents` | `handle_document_hesitation`, `low_friction_alternative_step` |
 | `modifier=hesitate + target=contact` | `handle_contact_hesitation`, `soft_human_handoff` |
@@ -820,7 +803,7 @@ Every reducer test should assert:
 Assert:
 
 - Generic response actions map to conceptual `GeneralResponseAgent` and physical `FaqAgent`.
-- Core workflow actions map to Records, Recommendation, Consult/Handoff as expected.
+- Core workflow actions map to Records, Recommendation, Consult, and Handoff as expected.
 - Pricing question plus document follow-up loads pricing-factor and records-requirement data loading skills.
 - Reject/hesitate loads the correct sales playbook and low-friction alternative skill.
 - Recommendation revisit loads revisit and hospital search skills.
@@ -846,18 +829,18 @@ Run multi-turn sessions:
 
 ## Migration Plan
 
-Phase 1.1 should be implemented in clear slices:
+Phase 1.1 should be implemented in clear direct-replacement slices:
 
 1. Add generic event types, target, and modifier to shared application types.
 2. Update semantic prompt and route adapter schema.
 3. Replace semantic event-specific reducer branches with generic handlers.
-4. Introduce `TurnPlan` while keeping a temporary compatibility projection to legacy `nextAction` where needed.
-5. Add AgentRole and resolver mapping while preserving physical agents.
+4. Replace single-action authority with `TurnPlan`.
+5. Add AgentRole and resolver mapping for GeneralResponse, Records, Recommendation, Consult, and Handoff.
 6. Add code-defined skill pack registry.
 7. Add SkillRouter and TaskBuilder fields.
 8. Update runtime/composer to support answer-then-advance.
 9. Rewrite tests from old semantic event names to generic taxonomy.
-10. Remove old semantic event names from prompt guide and allowed semantic events after tests pass.
+10. Remove old semantic event and action names from prompt guide, allowed semantic events, reducer outputs, and projection assertions.
 
 ## Open Questions
 

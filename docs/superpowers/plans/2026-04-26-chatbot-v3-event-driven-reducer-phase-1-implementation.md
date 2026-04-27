@@ -8,6 +8,18 @@
 
 **Tech Stack:** TypeScript, Vitest, OpenAI structured outputs / strict schema, existing `apps/api` chatbot-v3 runtime, existing `packages/application` chatbot-v3 control-plane services.
 
+## 2026-04-27 Implementation Alignment Notes
+
+This plan was originally written before the final Phase 1 implementation choices.
+Follow-up agents must treat these notes as authoritative when code and older plan examples differ:
+
+- `DOCUMENTS_UPLOADED` is side-effect-first. The upload turn should prioritize `RecordsAgent` / record side effects. It should not immediately jump to `OFFER_ONLINE_CONSULT`.
+- Phase 1 semantic OpenAI extraction is event-only. The strict route schema accepts `eventType`, `confidence`, and `source`; it does not accept semantic metadata yet.
+- Metadata in Phase 1 is deterministic/runtime-normalized only, for example attachment count or selected hospital IDs from structured actions.
+- `ReadPlan` is currently observability/planning only. It does not yet execute domain reads before task building.
+- Worker-agent fallbacks, especially `FaqAgent fallbackUsed:true/schemaValidationFailed:true`, are outside this plan's control-plane acceptance unless a later task explicitly targets worker schemas.
+- The implemented baseline observability nodes are `Supervisor`, `EventExtractionSummary`, `JourneyReducer`, `NextActionResolver`, and `Invariant`; separate deterministic/semantic extractor nodes are a follow-up improvement.
+
 ---
 
 ## File Structure
@@ -260,6 +272,19 @@ describe('extractDeterministicEvent', () => {
 
     expect(event).toBeNull();
   });
+
+  it.each([
+    '有人能联系我吗',
+    '可以加我微信吗',
+    '让你们顾问联系我',
+    'can your coordinator contact me',
+    'can someone from your team call me',
+  ])('maps soft handoff phrase %s to USER_REQUESTED_HUMAN', (message) => {
+    const event = extractDeterministicEvent({ message, attachments: [] });
+
+    expect(event?.eventType).toBe('USER_REQUESTED_HUMAN');
+    expect(event?.source).toBe('deterministic');
+  });
 });
 ```
 
@@ -283,6 +308,10 @@ Support:
 - explicit next-step request
 
 Do not classify FAQ in this layer.
+
+The explicit human request matcher should include soft handoff language, not only exact “human/agent” phrases:
+- Chinese: “人工”, “真人”, “电话联系我”, “联系我”, “有人联系我”, “加微信”, “微信”, “客服”, “工作人员”, “顾问联系我”
+- English: “human”, “agent”, “call me”, “contact me”, “coordinator”, “team contact”, “someone from your team”, “WhatsApp”, “WeChat”
 
 Deterministic precedence must be explicit in implementation and tests:
 - explicit human request wins over all other deterministic matches
@@ -358,7 +387,8 @@ Expected: FAIL because prompt and adapter still expect proposal output.
 Required implementation work:
 - replace proposal-shaped prompt with event-only prompt
 - add strict schema / structured outputs contract
-- include event metadata fields only where allowed
+- do not include semantic metadata fields in the Phase 1 OpenAI strict schema
+- keep metadata support only for deterministic/runtime-normalized events
 - pass stage-aware `allowedEventsForStage(...)` into the semantic extractor input so the LLM only chooses from the event subset that makes sense for the current workflow position
 - record `source`, schema pass/fail, llm failure metadata
 - return `fallback_unknown` event if semantic extraction fails
@@ -366,6 +396,8 @@ Required implementation work:
 - optionally retry once with a smaller prompt/schema variant, but only if that implementation stays narrow and deterministic
 - supervisor service becomes orchestrator for deterministic-first then semantic fallback
 - treat `confidence` as non-authoritative in Phase 1: log it, expose it to observability, but do not let it create a second decision path
+- prompt wording should distinguish the full event catalog from the per-turn allowed event list; the model may return only the per-turn allowed events
+- if the LLM returns metadata, reject the response or ignore metadata according to the sanitizer contract; do not let semantic metadata affect reducer facts in Phase 1
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -427,11 +459,11 @@ describe('reduceJourney', () => {
     const result = reduceJourney({
       state: { primaryStage: 'COLLECT_MEDICAL_INPUTS' },
       facts: /* fixture */,
-      event: { eventType: 'USER_ASKED_FAQ', confidence: 0.88, source: 'llm', metadata: { topic: 'pricing' } },
+      event: { eventType: 'USER_ASKED_FAQ', confidence: 0.88, source: 'llm' },
     });
 
     expect(result.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
-    expect(result.nextAction).toEqual({ type: 'ANSWER_FAQ', topic: 'pricing', subtopic: undefined });
+    expect(result.nextAction).toEqual({ type: 'ANSWER_FAQ', topic: undefined, subtopic: undefined });
   });
 });
 ```
@@ -475,12 +507,10 @@ Required explicit rules:
 - `RECOMMENDATION_SKIPPED` remains a Phase 1 compatibility path to `SHOW_PROCESS_OVERVIEW`
 - `DOCUMENTS_UPLOADED` must:
   - patch document facts first
-  - go to `OFFER_ONLINE_CONSULT` if recommendation is selected and process is explained
   - go to `COLLECT_MINIMAL_TRIAGE` if minimal triage is still `not_started`
-  - go to `GENERATE_RECOMMENDATION` if recommendation status is `none`
-  - go to `ASK_RECOMMENDATION_SELECTION` if recommendation status is `generated`
-  - otherwise go to `REQUEST_MEDICAL_DOCUMENTS`
-- `USER_PROVIDED_MEDICAL_FACTS` must pass through whitelist normalization before reducer facts are updated
+  - otherwise go to `REQUEST_MEDICAL_DOCUMENTS` for this turn, even if recommendation is selected and process is explained
+- a later facts-driven turn, usually `USER_ASKED_NEXT_STEP` after docs are persisted, may move from document collection to `OFFER_ONLINE_CONSULT`
+- `USER_PROVIDED_MEDICAL_FACTS` should not write detailed facts from semantic metadata in Phase 1 because the route strict schema does not allow semantic metadata; detailed fact extraction is Phase 2 unless the schema is deliberately expanded
 - `journey-runtime-authority.service.ts` must be reduced to a reducer-backed adapter shell if it remains in Phase 1; it may not continue as a second independent rule engine
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -574,12 +604,14 @@ Required rules:
 - redirect / clarify actions stay deterministic and explicitly mapped
 
 Read-planner requirements:
-- `ANSWER_FAQ` maps to FAQ knowledge reads by `topic` and `subtopic`
-- `REQUEST_MEDICAL_DOCUMENTS` maps to required-document guidance reads
-- `GENERATE_RECOMMENDATION` maps to recommendation input reads
-- `ASK_RECOMMENDATION_SELECTION` maps to recommendation selection context reads
-- `OFFER_ONLINE_CONSULT` maps to consult config plus selected recommendation context
-- `CREATE_HANDOFF` maps to lead/profile plus conversation-summary reads
+- Phase 1 maps `NextAction` to a deterministic `ReadPlan` for observability/planning.
+- The read plan does not yet execute a domain-read pipeline before task building.
+- `ANSWER_FAQ` maps to planned FAQ knowledge reads by `topic` and `subtopic` when available.
+- `REQUEST_MEDICAL_DOCUMENTS` maps to planned required-document guidance reads.
+- `GENERATE_RECOMMENDATION` maps to planned recommendation input reads.
+- `ASK_RECOMMENDATION_SELECTION` maps to planned recommendation selection context reads.
+- `OFFER_ONLINE_CONSULT` maps to planned consult config plus selected recommendation context.
+- `CREATE_HANDOFF` maps to planned lead/profile plus conversation-summary reads.
 
 Projection requirements:
 - expose `projectedProposal`
@@ -628,6 +660,9 @@ Add or update tests for:
 - `RECOMMENDATION_SKIPPED -> SHOW_PROCESS_OVERVIEW`
 - FAQ detour keeps primary stage stable
 - document upload updates facts without invalid stage jump
+- selected recommendation plus process explained plus fresh uploaded docs emits `REQUEST_MEDICAL_DOCUMENTS` on that upload turn
+- a later `USER_ASKED_NEXT_STEP` turn with persisted docs emits `OFFER_ONLINE_CONSULT`
+- structured action plus attachment precedence preserves structured-action facts/writeback while routing upload side effects through `DOCUMENTS_UPLOADED`
 - `USER_ASKED_NEXT_STEP` derives from facts, not LLM stage guess
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -682,12 +717,11 @@ git commit -m "refactor(chatbot-v3): route runtime through reducer-driven contro
 - [ ] **Step 1: Write the failing observability tests**
 
 Add assertions for node-event emission on:
-- `deterministic_event_extractor`
-- `semantic_event_extractor`
-- `event_extraction_summary`
-- `journey_reducer`
-- `next_action_resolver`
+- baseline implemented nodes: `Supervisor`, `EventExtractionSummary`, `JourneyReducer`, `NextActionResolver`, `Invariant`
+- fields on those nodes: `eventType`, `eventSource`, `fallbackUsed`, `schemaValidationFailed`, `nextAction`, `reasonCode`, `stateDiff`, `sidePathType`, `primaryStagePreserved`, and `replayLineage.matchedRuleId`
 - invariant mismatch logging when projection diverges from reducer truth
+
+Separate `deterministic_event_extractor` and `semantic_event_extractor` node names are a follow-up observability improvement, not a Phase 1 acceptance blocker.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -813,11 +847,22 @@ Expected: no control-plane drift, no FAQ stage pollution, and logs show `event -
 - [ ] **Step 3: Inspect production logs for reducer-era signals**
 
 Using the existing Lightsail workflow, confirm logs contain:
-- `deterministic_event_extractor`
-- `semantic_event_extractor`
-- `event_extraction_summary`
-- `journey_reducer`
-- `next_action_resolver`
+- `Supervisor`
+- `EventExtractionSummary`
+- `JourneyReducer`
+- `NextActionResolver`
+- `Invariant`
+
+Confirm these fields appear where relevant:
+- `eventType`
+- `eventSource`
+- `fallbackUsed`
+- `schemaValidationFailed`
+- `nextAction`
+- `reasonCode`
+- `stateDiff`
+- `sidePathType`
+- `primaryStagePreserved`
 
 Expected: no invariant mismatch errors in passing scenarios.
 

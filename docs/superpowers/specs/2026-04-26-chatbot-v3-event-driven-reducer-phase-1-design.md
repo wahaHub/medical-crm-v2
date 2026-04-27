@@ -1,8 +1,19 @@
 # Chatbot V3 Event-Driven Reducer Phase 1 Design
 
 Date: 2026-04-26
-Status: Proposed
+Status: Implemented with Phase 1 alignment notes on 2026-04-27
 Audience: Engineers and AI agents working on `chatbot-v3` control-plane refactoring
+
+## 0. 2026-04-27 implementation alignment notes
+
+The Phase 1 implementation deliberately chose the narrower, safer version of this design in a few places.
+These notes are part of the contract for follow-up agents:
+
+- `DOCUMENTS_UPLOADED` is a side-effect-first event. The upload turn must prioritize `RecordsAgent` / record side effects instead of immediately jumping to consult, even when facts would otherwise make consult eligible.
+- Semantic OpenAI extraction is event-only in Phase 1. The route adapter strict schema accepts `eventType`, `confidence`, and `source`; it does not accept semantic metadata yet.
+- Metadata in Phase 1 comes from deterministic or runtime-normalized paths, not from the semantic LLM route.
+- `ReadPlan` is currently an observability/planning artifact attached to reducer output. It is not yet a fully executed domain-read pipeline.
+- Worker-agent schema fallbacks, including `FaqAgent`, are outside the Phase 1 control-plane fix unless explicitly called out by a later task.
 
 ## 1. Why this refactor exists
 
@@ -121,6 +132,11 @@ Examples:
 - explicit human request phrases
 - explicit “what is next” style phrases
 
+Because `USER_REQUESTED_HUMAN` is deterministic-only in Phase 1, the deterministic pattern set should cover both hard and soft handoff language.
+Examples include:
+- Chinese: “人工”, “真人”, “电话联系我”, “联系我”, “有人联系我”, “加微信”, “微信”, “客服”, “工作人员”, “顾问联系我”
+- English: “human”, “agent”, “call me”, “contact me”, “coordinator”, “team contact”, “someone from your team”, “WhatsApp”, “WeChat”
+
 This layer does **not** try to classify FAQ.
 FAQ remains a semantic classification problem in Phase 1.
 
@@ -140,6 +156,10 @@ The semantic layer can classify:
 
 The semantic layer outputs a narrow structured event contract.
 It does not output stage, agent, task, or write patches.
+
+In the implemented Phase 1 route adapter, the semantic layer also does **not** output metadata.
+It classifies `eventType` and `confidence` only.
+FAQ topic extraction, medical fact extraction, `riskType`, `redirectTarget`, and richer ambiguous-reply metadata are Phase 2 work unless a later task explicitly expands the strict schema.
 
 Deterministic precedence must be explicit.
 When multiple deterministic signals appear in the same turn, Phase 1 uses this priority order:
@@ -181,6 +201,19 @@ type SupervisorEvent = {
 };
 ```
 
+Phase 1 supports this full type at the application boundary, but the implemented semantic OpenAI route intentionally uses a narrower strict schema:
+
+```ts
+type SemanticSupervisorEventV1 = {
+  eventType: SupervisorEventType;
+  confidence: number;
+  source: "llm";
+};
+```
+
+`metadata` remains valid for deterministic events and runtime-normalized structured actions, such as uploaded document counts or selected hospital IDs.
+The semantic route must reject or ignore LLM-supplied metadata until the schema is deliberately expanded with tests.
+
 In Phase 1, `confidence` is non-authoritative.
 It is logged, surfaced in observability, and may later inform analytics or secondary heuristics.
 It does not directly override reducer behavior and does not create a second control path.
@@ -214,10 +247,21 @@ Phase 1 requires strict structured output schema enforcement for the LLM semanti
 The semantic extractor must be constrained to the `SupervisorEvent` schema family, including:
 - strict enum for `eventType`
 - numeric `confidence`
+- `source`
 - no `suggestedStage`
 - no `dispatchAgent`
 - no `task`
 - no arbitrary extra top-level keys
+
+For the implemented Phase 1 OpenAI route, semantic metadata is intentionally excluded from the strict schema.
+This means:
+- `USER_ASKED_FAQ` may not include a semantic `topic`
+- `USER_PROVIDED_MEDICAL_FACTS` may not include semantic `extractedFacts`
+- `USER_ASKED_RISKY_MEDICAL_ADVICE` may not include semantic `riskType`
+- `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` may not include semantic `redirectTarget`
+
+Those enrichments are not control-plane blockers in Phase 1.
+They should be added later by expanding the schema and adding route-adapter, sanitizer, reducer, and runtime tests together.
 
 Prompt wording alone is not enough.
 API-level schema enforcement is part of the design.
@@ -303,7 +347,8 @@ type DomainFacts = {
 };
 ```
 
-For natural-language medical fact extraction, the semantic supervisor may emit a candidate patch shape, but that candidate may not be written directly into `DomainFacts`.
+For natural-language medical fact extraction, a future semantic supervisor may emit a candidate patch shape, but that candidate may not be written directly into `DomainFacts`.
+The implemented Phase 1 semantic route does not emit this metadata yet.
 
 Recommended candidate shape:
 
@@ -319,8 +364,8 @@ type MedicalFactPatchCandidate = {
 };
 ```
 
-Phase 1 requires a whitelist/normalizer boundary:
-- semantic extraction may produce `metadata.extractedFacts`
+When semantic metadata is added in a later phase, it must use a whitelist/normalizer boundary:
+- semantic extraction may produce `metadata.extractedFacts` only after the strict schema is expanded
 - reducer-side normalization must explicitly map only allowed keys
 - no raw LLM fact object may be merged directly into `DomainFacts`
 
@@ -421,12 +466,18 @@ Phase 2 may revisit this behavior if the product flow later needs a more explici
 
 ### Facts-driven progression
 - `DOCUMENTS_UPLOADED`
-  - always updates document facts first
-  - if recommendation is selected and process is already explained -> `OFFER_ONLINE_CONSULT`
-  - else if minimal triage is still `not_started` -> `COLLECT_MINIMAL_TRIAGE`
-  - else if recommendation status is `none` -> `GENERATE_RECOMMENDATION`
-  - else if recommendation status is `generated` -> `ASK_RECOMMENDATION_SELECTION`
-  - else -> `REQUEST_MEDICAL_DOCUMENTS`
+  - always patches record/document facts first
+  - this is a side-effect-first event
+  - if minimal triage is still `not_started` -> `COLLECT_MINIMAL_TRIAGE`
+  - otherwise -> `REQUEST_MEDICAL_DOCUMENTS` for this turn
+
+The upload turn should not immediately emit `OFFER_ONLINE_CONSULT`, even if recommendation is selected and process is explained.
+The reason is practical: the turn must let `RecordsAgent` / record tooling persist or reconcile upload state before consult progression depends on those facts.
+
+Later turns can move forward through `USER_ASKED_NEXT_STEP` or another facts-driven event after the document facts are persisted.
+For example:
+- turn 1: `DOCUMENTS_UPLOADED` with selected recommendation and explained process -> `REQUEST_MEDICAL_DOCUMENTS`, stage `COLLECT_MEDICAL_INPUTS`
+- turn 2: persisted docs count is now greater than zero, user asks next step -> `OFFER_ONLINE_CONSULT`, stage `ONLINE_CONSULT`
 
 ### Semantic intent events
 - `USER_WANTS_TREATMENT_IN_CHINA`
@@ -642,6 +693,17 @@ Phase 1 should not keep LLM-driven read-domain selection as a core control-plane
 
 Read planning should be deterministic from `NextAction` and event context whenever possible.
 
+In the implemented Phase 1 runtime, `ReadPlan` is observability/planning only.
+It records which domains the reducer-selected `NextAction` would need, but it does not yet drive a separate read-execution pipeline.
+Agents may still perform their existing internal reads/tools.
+Follow-up work can connect:
+
+```text
+NextAction -> ReadPlan -> execute reads -> AgentTask/SystemRenderer
+```
+
+without changing reducer ownership.
+
 Recommended structure:
 
 ```ts
@@ -651,7 +713,7 @@ type ReadPlan = {
 };
 ```
 
-Read planning should be its own concrete runtime step:
+The long-term target is for read planning to become its own concrete runtime step:
 
 ```text
 JourneyReducer -> NextActionResolver -> ReadPlanner -> TaskBuilder/SystemRenderer
@@ -676,14 +738,41 @@ Phase 1 must improve observability, not reduce it.
 
 Required observability nodes:
 
-### `deterministic_event_extractor`
+### Implemented baseline
+
+The implemented Phase 1 baseline emits:
+- `Supervisor`
+- `EventExtractionSummary`
+- `JourneyReducer`
+- `NextActionResolver`
+- `Invariant`
+- existing `Subagent` and `Tool` events
+
+These baseline events must include enough information to debug:
+- final `eventType`
+- `eventSource`
+- `fallbackUsed`
+- `schemaValidationFailed`
+- `nextAction`
+- `reasonCode`
+- `stateDiff`
+- `sidePath`
+- `sidePathType`
+- `primaryStagePreserved`
+- `replayLineage.matchedRuleId`
+
+### Future expanded observability
+
+The original target remains useful, but is not fully required for Phase 1 acceptance:
+
+#### `deterministic_event_extractor`
 Log:
 - matched or not
 - matched rule id
 - produced event
 - confidence
 
-### `semantic_event_extractor`
+#### `semantic_event_extractor`
 Log:
 - model
 - structured schema pass/fail
@@ -691,12 +780,12 @@ Log:
 - error metadata
 - produced event
 
-### `event_extraction_summary`
+#### `event_extraction_summary`
 Log:
 - final event
 - source: deterministic / llm / fallback_unknown
 
-### `journey_reducer`
+#### `journey_reducer`
 Log:
 - current stage
 - compact facts summary
@@ -710,7 +799,7 @@ Log:
   - afterStage
   - factsPatch
 
-### `next_action_resolver`
+#### `next_action_resolver`
 Log:
 - nextAction
 - resolved agent
@@ -779,10 +868,14 @@ This protects against compatibility projection accidentally becoming a second co
   - if `process.explained=true` and docs already exist, reducer emits `OFFER_ONLINE_CONSULT`
 - FAQ detour does not change primary stage
 - document upload updates facts without invalid stage jumps
+- selected recommendation plus explained process plus fresh document upload still emits `REQUEST_MEDICAL_DOCUMENTS` on the upload turn
+- a later `USER_ASKED_NEXT_STEP` turn with persisted docs can emit `OFFER_ONLINE_CONSULT`
 - human request always overrides
 - `USER_ASKED_NEXT_STEP` derives from facts, not LLM stage guessing
 - risky medical advice stays in redirect behavior
 - out-of-scope request does not pollute primary stage
+- semantic route rejects or ignores metadata in Phase 1 unless the strict schema is expanded
+- soft handoff phrases are covered by deterministic patterns, including variants such as “加微信”, “有人联系我”, “顾问联系我”, “coordinator contact me”, and “team call me”
 
 ### Live tests
 At minimum:

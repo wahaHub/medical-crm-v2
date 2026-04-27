@@ -419,6 +419,18 @@ Authority remains reducer-owned:
 
 `process.explained=true` should still only be written for a formal process overview plan, represented by `primaryAction={ type: 'ANSWER', target: 'process', mode: 'formal_overview' }`. It must not be written for normal process FAQ answers.
 
+Implementation must enforce this invariant:
+
+```ts
+if (factsPatch.process?.explained === true) {
+  assert(
+    turnPlan.primaryAction.type === 'ANSWER' &&
+      turnPlan.primaryAction.target === 'process' &&
+      turnPlan.primaryAction.mode === 'formal_overview',
+  );
+}
+```
+
 Document upload behavior remains:
 
 - Upload turn persists documents and stays with records handling.
@@ -575,11 +587,9 @@ The reducer still owns workflow truth. Skill loading only changes the agent's av
 
 ```ts
 type SkillKind =
-  | 'data_loader'
-  | 'search_strategy'
+  | 'retrieval_strategy'
   | 'extraction_strategy'
-  | 'normalization_strategy'
-  | 'handoff_payload_strategy'
+  | 'payload_strategy'
   | 'degradation_policy'
   | 'boundary_policy'
   | 'explanation_method'
@@ -639,7 +649,7 @@ Phase 1.1 uses a code-defined registry.
 type SkillPackId =
   // Boundary and degradation
   | 'clarify_ambiguous_reply'
-  | 'classify_service_scope_boundary'
+  | 'service_scope_boundary'
   | 'medical_safety_boundary'
   | 'safe_degradation_when_uncertain'
 
@@ -662,7 +672,7 @@ type SkillPackId =
 
   // Extraction / normalization / payload strategies
   | 'extract_medical_facts_candidate'
-  | 'derive_record_inventory_patch'
+  | 'derive_record_inventory_candidate'
   | 'extract_contact_info_candidate'
   | 'build_handoff_payload_context'
 
@@ -700,26 +710,26 @@ Initial skill inventory:
 | Skill | Kind | Purpose |
 |---|---|---|
 | `clarify_ambiguous_reply` | `degradation_policy` | Turn vague replies into a specific clarification without changing stage. |
-| `classify_service_scope_boundary` | `boundary_policy` | Decide whether a user topic is outside Medora's supported medical-travel workflow. |
+| `service_scope_boundary` | `boundary_policy` | Explain Medora's service boundary and redirect back to supported medical-travel workflows. |
 | `medical_safety_boundary` | `boundary_policy` | Respond without diagnosis, medication advice, treatment decisions, or outcome guarantees. |
 | `safe_degradation_when_uncertain` | `degradation_policy` | Use bounded language when data, policy, or intent confidence is low. |
-| `search_general_faq_by_category` | `search_strategy` | Retrieve admin FAQ entries for pricing, process, documents, payment, travel, consult, and service-scope questions. |
+| `search_general_faq_by_category` | `retrieval_strategy` | Retrieve admin FAQ entries for pricing, process, documents, payment, travel, consult, and service-scope questions. |
 | `answer_general_faq_from_admin_source` | `explanation_method` | Ground general FAQ answers in admin-maintained source content. |
-| `search_hospital_faq_by_category` | `search_strategy` | Retrieve hospital FAQ entries for specific hospitals, comparison, specialties, and international patient process. |
+| `search_hospital_faq_by_category` | `retrieval_strategy` | Retrieve hospital FAQ entries for specific hospitals, comparison, specialties, and international patient process. |
 | `answer_hospital_faq_from_admin_source` | `explanation_method` | Ground hospital-related FAQ answers in admin-maintained hospital content. |
-| `load_medora_service_scope` | `data_loader` | Load supported service categories and unsupported-service boundaries. |
-| `load_pricing_factors` | `data_loader` | Load pricing-factor data, not a fixed quote. |
-| `load_process_policy` | `data_loader` | Load approved process overview facts without writing `process.explained`. |
-| `load_travel_support_scope` | `data_loader` | Load travel-support boundaries related to treatment coordination. |
-| `load_payment_policy` | `data_loader` | Load payment-support boundaries and non-commitment language. |
-| `load_records_requirement_data` | `data_loader` | Load document requirement data for the relevant medical context. |
-| `search_hospital_candidates` | `search_strategy` | Search or retrieve hospital candidate context for recommendation work. |
-| `search_doctor_matching_context` | `search_strategy` | Search matching context for doctor/hospital questions. |
-| `load_consult_readiness_criteria` | `data_loader` | Load what makes a user ready for online consult. |
+| `load_medora_service_scope` | `retrieval_strategy` | Load supported service categories and unsupported-service boundaries. |
+| `load_pricing_factors` | `retrieval_strategy` | Load pricing-factor data, not a fixed quote. |
+| `load_process_policy` | `retrieval_strategy` | Load approved process overview facts without writing `process.explained`. |
+| `load_travel_support_scope` | `retrieval_strategy` | Load travel-support boundaries related to treatment coordination. |
+| `load_payment_policy` | `retrieval_strategy` | Load payment-support boundaries and non-commitment language. |
+| `load_records_requirement_data` | `retrieval_strategy` | Load document requirement data for the relevant medical context. |
+| `search_hospital_candidates` | `retrieval_strategy` | Search or retrieve hospital candidate context for recommendation work. |
+| `search_doctor_matching_context` | `retrieval_strategy` | Search matching context for doctor/hospital questions. |
+| `load_consult_readiness_criteria` | `retrieval_strategy` | Load what makes a user ready for online consult. |
 | `extract_medical_facts_candidate` | `extraction_strategy` | Extract candidate condition, treatment history, document availability, and other facts for runtime authority review. |
-| `derive_record_inventory_patch` | `normalization_strategy` | Convert uploaded-file context into a candidate record inventory patch. |
+| `derive_record_inventory_candidate` | `payload_strategy` | Convert uploaded-file context into a candidate record inventory payload. |
 | `extract_contact_info_candidate` | `extraction_strategy` | Normalize direct email, phone, WeChat, or other contact info into candidate contact fields. |
-| `build_handoff_payload_context` | `handoff_payload_strategy` | Build handoff payload context after reducer chooses handoff. |
+| `build_handoff_payload_context` | `payload_strategy` | Build handoff payload context after reducer chooses handoff. |
 | `explain_pricing_uncertainty` | `explanation_method` | Explain why pricing needs records, hospital, doctor, and plan context. |
 | `explain_medora_process` | `explanation_method` | Explain the service process as an FAQ without marking the formal process overview complete. |
 | `explain_records_preparation` | `explanation_method` | Explain how records are prepared and why they matter. |
@@ -731,7 +741,7 @@ Initial skill inventory:
 | `low_friction_alternative_step` | `sales_playbook` | Offer a smaller next step when the user resists the main one. |
 | `trust_building_for_medical_travel` | `sales_playbook` | Build trust around cross-border care coordination without overpromising. |
 | `soft_human_handoff` | `sales_playbook` | Invite a human coordinator when appropriate without making it the only path. |
-| `revisit_recommendation_step` | `search_strategy` | Re-enter an already visited recommendation step to adjust or regenerate options. |
+| `revisit_recommendation_step` | `retrieval_strategy` | Re-enter an already visited recommendation step to adjust or regenerate options. |
 | `compare_recommendation_options` | `explanation_method` | Help compare options without inventing unsupported claims. |
 | `explain_hospital_selection_logic` | `explanation_method` | Explain how hospital/doctor selection is reasoned from facts and constraints. |
 
@@ -779,14 +789,14 @@ Examples:
 | `modifier=reject + target=pricing` | `handle_price_objection`, `low_friction_alternative_step` |
 | `modifier=reject + target=documents` | `handle_document_hesitation`, `low_friction_alternative_step` |
 | `modifier=hesitate + target=contact` | `handle_contact_hesitation`, `soft_human_handoff` |
-| `target=documents` | `load_records_requirement_data`, `derive_record_inventory_patch` when files exist |
+| `target=documents` | `load_records_requirement_data`, `derive_record_inventory_candidate` when files exist |
 | `target=consult` | `load_consult_readiness_criteria`, `explain_online_consult` |
 | `USER_PROVIDED_INFORMATION + medical_facts` | `extract_medical_facts_candidate` |
 | `USER_PROVIDED_INFORMATION + contact` | `extract_contact_info_candidate`, `build_handoff_payload_context` |
 | `USER_ASKED_QUESTION + hospital` | `search_hospital_faq_by_category`, `answer_hospital_faq_from_admin_source`, `explain_hospital_selection_logic` |
 | `target=recommendation + modifier=revisit` | `revisit_recommendation_step`, `search_hospital_candidates`, `explain_hospital_selection_logic` |
 | safety redirect | `medical_safety_boundary`, `safe_degradation_when_uncertain` |
-| out-of-scope redirect | `classify_service_scope_boundary`, `load_medora_service_scope` |
+| out-of-scope redirect | `service_scope_boundary`, `load_medora_service_scope` |
 
 Default `maxSkillPacks` should be 6.
 

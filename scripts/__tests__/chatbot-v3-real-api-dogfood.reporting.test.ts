@@ -266,7 +266,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
         failedPhase: 'preflight',
         usableForControlPlaneJudgment: false,
         sessionId: null,
-        summary: 'preflight missing API key',
+        summary: 'preflight missing API key | retry later\ncheck env',
       }),
       makeFailureScenario({
         scenarioId: 'bootstrap_missing_session',
@@ -367,7 +367,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
   );
   assert.match(
     reportMarkdown,
-    /\| `preflight_environment_missing_key` \| `HARD_FAIL` \| `environment` \| `preflight` \| `false` \| _none_ \| preflight missing API key \|/,
+    /\| `preflight_environment_missing_key` \| `HARD_FAIL` \| `environment` \| `preflight` \| `false` \| _none_ \| preflight missing API key \\\| retry later<br>check env \|/,
   );
   assert.match(
     reportMarkdown,
@@ -375,10 +375,14 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
   );
   assert.match(
     reportMarkdown,
-    /python3 \/Users\/haowang\/Desktop\/claws\/medical-crm-v2\/scripts\/tail_journalctl\.py[\s\S]*sess_transport\|sess_http\|sess_control\|sess_agent\|widget-chat-session-123/,
+    /python3 '\/Users\/haowang\/Desktop\/claws\/medical-crm-v2\/\.worktrees\/phase1-event-reducer\/scripts\/tail_journalctl\.py'[\s\S]*sess_transport\|sess_http\|sess_control\|sess_agent\|widget-chat-session-123/,
   );
 
   assert.match(bugBacklogMarkdown, /\| Scenario \| Outcome \| Category \| Phase \| Summary \|/);
+  assert.match(
+    bugBacklogMarkdown,
+    /\| `preflight_environment_missing_key` \| `HARD_FAIL` \| `environment` \| `preflight` \| preflight missing API key \\\| retry later<br>check env \|/,
+  );
   assert.match(bugBacklogMarkdown, /\| `chat_transport_timeout` \| `HARD_FAIL` \| `chat_transport` \| `chat` \| timeout calling chat API \|/);
 
   const environmentTranscript = transcriptsJson.scenarioTranscripts.find(

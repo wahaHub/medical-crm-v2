@@ -289,10 +289,10 @@ Each row should show:
 - session id when available
 - summary
 
-The report should also print a quick command template for log collection when session ids exist:
+The report should also print a quick command template for log collection when session ids exist. The script path must be generated from the dogfood `workspaceRoot` so worktree runs point at the matching checkout:
 
 ```bash
-python3 /Users/haowang/Desktop/claws/medical-crm-v2/scripts/tail_journalctl.py \
+python3 '<WORKSPACE_ROOT>/scripts/tail_journalctl.py' \
   --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
   --since "20 minutes ago" \
   --lines 1200 | rg '<SESSION_ID>|chatbot-v3.node-event|JourneyReducer|NextActionResolver|fallbackUsed|schemaValidationFailed'

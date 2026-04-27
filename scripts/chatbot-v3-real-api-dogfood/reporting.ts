@@ -69,6 +69,16 @@ function redactStructuredText(value: string) {
   return redactSensitiveText(value);
 }
 
+function markdownTableCell(value: string) {
+  return redactSensitiveText(value)
+    .replace(/\r?\n/g, '<br>')
+    .replace(/\|/g, '\\|');
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 function sanitizeBootstrapResult(result: BootstrapSuccessResult) {
   return {
     scenarioId: result.scenarioId,
@@ -145,7 +155,7 @@ function renderScenarioRow(outcome: ScenarioOutcome) {
     scenarioPhaseLabel(outcome),
     `\`${String(outcome.usableForControlPlaneJudgment)}\``,
     scenarioSessionLabel(outcome),
-    redactSensitiveText(outcome.summary),
+    markdownTableCell(outcome.summary),
   ].join(' | ');
 }
 
@@ -191,15 +201,16 @@ function collectSessionIds(rollup: RunRollup) {
   );
 }
 
-function renderLightsailLogCommand(rollup: RunRollup) {
+function renderLightsailLogCommand(rollup: RunRollup, workspaceRoot: string) {
   const sessionIds = collectSessionIds(rollup);
   const sessionPattern = sessionIds.length > 0 ? `${sessionIds.map(redactSensitiveText).join('|')}|<SESSION_ID>` : '<SESSION_ID>';
+  const tailJournalctlPath = join(workspaceRoot, 'scripts', 'tail_journalctl.py');
 
   return [
     '## Quick Lightsail Log Command',
     '',
     '```bash',
-    'python3 /Users/haowang/Desktop/claws/medical-crm-v2/scripts/tail_journalctl.py \\',
+    `python3 ${shellQuote(tailJournalctlPath)} \\`,
     '  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \\',
     '  --since "20 minutes ago" \\',
     `  --lines 1200 | rg '${sessionPattern}|chatbot-v3.node-event|JourneyReducer|NextActionResolver|fallbackUsed|schemaValidationFailed'`,
@@ -212,7 +223,7 @@ function renderBugBacklogCategorySection(category: DogfoodFailureCategory, outco
 
   for (const scenarioOutcome of outcomes) {
     lines.push(
-      `| \`${scenarioOutcome.scenarioId}\` | \`${scenarioOutcome.outcome}\` | ${scenarioCategoryLabel(scenarioOutcome)} | ${scenarioPhaseLabel(scenarioOutcome)} | ${redactSensitiveText(scenarioOutcome.summary)} |`,
+      `| \`${scenarioOutcome.scenarioId}\` | \`${scenarioOutcome.outcome}\` | ${scenarioCategoryLabel(scenarioOutcome)} | ${scenarioPhaseLabel(scenarioOutcome)} | ${markdownTableCell(scenarioOutcome.summary)} |`,
     );
   }
 
@@ -220,10 +231,12 @@ function renderBugBacklogCategorySection(category: DogfoodFailureCategory, outco
 }
 
 function renderReportMarkdown({
+  workspaceRoot,
   config,
   bootstrapResults,
   rollup,
 }: {
+  workspaceRoot: string;
   config: DogfoodConfig;
   bootstrapResults: BootstrapSuccessResult[];
   rollup: RunRollup;
@@ -243,7 +256,7 @@ function renderReportMarkdown({
     '',
     renderScenarioSections(rollup),
     '',
-    renderLightsailLogCommand(rollup),
+    renderLightsailLogCommand(rollup, workspaceRoot),
     '',
   ].join('\n');
 }
@@ -345,7 +358,7 @@ export function writeDogfoodArtifacts({
   });
 
   const files: Array<[string, string]> = [
-    ['report.md', renderReportMarkdown({ config, bootstrapResults, rollup })],
+    ['report.md', renderReportMarkdown({ workspaceRoot, config, bootstrapResults, rollup })],
     ['transcripts.json', `${JSON.stringify(serializeTranscripts({ config, bootstrapResults, rollup }), null, 2)}\n`],
     ['bug-backlog.md', renderBugBacklogMarkdown({ config, bootstrapResults, rollup })],
     ['run-metadata.json', `${JSON.stringify(metadata, null, 2)}\n`],

@@ -414,7 +414,7 @@ Add tests that assert:
 - bootstrap and chat attempt summaries include `attempt`, `durationMs`, and `turnIndex`
 - the `Environment Failures` section is covered by at least one preflight/environment fixture
 - every serialized `SOFT_FAIL` / `HARD_FAIL` outcome includes failure category, failed phase, and control-plane usability
-- the quick Lightsail log command includes `/Users/haowang/Desktop/claws/medical-crm-v2/scripts/tail_journalctl.py` and session id placeholder/content
+- the quick Lightsail log command derives `<WORKSPACE_ROOT>/scripts/tail_journalctl.py` from `workspaceRoot` and includes session id placeholder/content
 - redaction still removes patient cookies and restore tokens
 
 Run:

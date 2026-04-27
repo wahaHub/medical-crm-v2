@@ -67,6 +67,8 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
       'USER_WANTS_TREATMENT_IN_CHINA',
       'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
       'USER_ASKED_FAQ',
+      'USER_REJECTED_OR_HESITATED',
+      'USER_PROVIDED_CONTACT_INFO',
       'UNKNOWN_MESSAGE',
     ]));
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('TRIAGE_SUBMITTED');

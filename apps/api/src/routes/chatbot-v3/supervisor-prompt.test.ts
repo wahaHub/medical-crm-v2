@@ -48,6 +48,8 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).not.toContain('USER_REQUESTED_HUMAN');
     expect(prompt).toContain('USER_WANTS_TREATMENT_IN_CHINA');
     expect(prompt).toContain('USER_ASKED_FAQ');
+    expect(prompt).toContain('USER_REJECTED_OR_HESITATED');
+    expect(prompt).toContain('USER_PROVIDED_CONTACT_INFO');
     expect(prompt).toContain('USER_ASKED_RISKY_MEDICAL_ADVICE');
     expect(prompt).toContain('UNKNOWN_MESSAGE');
   });
@@ -60,6 +62,8 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING: user asks to find, recommend, or compare doctors or hospitals');
     expect(prompt).toContain('USER_PROVIDED_MEDICAL_FACTS: user provides diagnosis, symptoms, treatment history, imaging/pathology, or document availability');
     expect(prompt).toContain('USER_ASKED_FAQ: user asks about process, price, documents, timeline, hospital selection, travel support, or Medora service details');
+    expect(prompt).toContain('USER_REJECTED_OR_HESITATED: user hesitates, declines, asks to think about it, objects to price, or refuses documents or contact details');
+    expect(prompt).toContain('USER_PROVIDED_CONTACT_INFO: user provides direct contact information such as phone, email, WeChat, WhatsApp, or another contact handle');
     expect(prompt).toContain('UNKNOWN_MESSAGE: no allowed event fits');
     expect(prompt).not.toContain('TRIAGE_SUBMITTED:');
     expect(prompt).not.toContain('DOCUMENTS_UPLOADED:');

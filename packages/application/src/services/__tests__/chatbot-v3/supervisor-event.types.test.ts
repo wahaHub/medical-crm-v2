@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SUPERVISOR_EVENT_TYPES,
+  getAllowedSupervisorEvents,
   type DomainFacts,
   type JourneyReduction,
   type JourneyState,
@@ -71,5 +72,19 @@ describe('supervisor-event.types', () => {
     ];
 
     expect(allowedMetadataKeys).not.toContain('highIntentSignal');
+  });
+
+  it('allows semantic rejection/hesitation and contact-info events across stages', () => {
+    expect(SUPERVISOR_EVENT_TYPES).toContain('USER_REJECTED_OR_HESITATED');
+    expect(SUPERVISOR_EVENT_TYPES).toContain('USER_PROVIDED_CONTACT_INFO');
+
+    expect(getAllowedSupervisorEvents({ currentStage: 'COLLECT_MEDICAL_INPUTS' })).toEqual(expect.arrayContaining([
+      'USER_REJECTED_OR_HESITATED',
+      'USER_PROVIDED_CONTACT_INFO',
+    ]));
+    expect(getAllowedSupervisorEvents({ currentStage: 'HUMAN_HANDOFF' })).toEqual(expect.arrayContaining([
+      'USER_REJECTED_OR_HESITATED',
+      'USER_PROVIDED_CONTACT_INFO',
+    ]));
   });
 });

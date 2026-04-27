@@ -203,4 +203,48 @@ describe('reduceJourney', () => {
     expect(result.factsPatch.handoff).toBeUndefined();
     expect(result.facts.handoff.active).toBe(false);
   });
+
+  it('downgrades user rejection or hesitation without moving the primary stage', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MEDICAL_INPUTS'),
+      facts: facts({
+        intake: { minimalTriageStatus: 'submitted' },
+        recommendation: { status: 'selected', selectedHospitalIds: ['h1'] },
+        process: { explained: true },
+      }),
+      event: {
+        eventType: 'USER_REJECTED_OR_HESITATED',
+        confidence: 0.9,
+        source: 'llm',
+      },
+    });
+
+    expect(result.nextAction).toEqual({ type: 'ANSWER_FAQ' });
+    expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(result.isSidePath).toBe(true);
+    expect(result.sidePathType).toBe('faq');
+    expect(result.primaryStagePreserved).toBe(true);
+    expect(result.factsPatch).toEqual({});
+  });
+
+  it('routes direct contact information to handoff without pre-marking handoff active', () => {
+    const result = reduceJourney({
+      state: state('RECOMMENDATION'),
+      facts: facts({
+        intake: { minimalTriageStatus: 'submitted' },
+        recommendation: { status: 'generated', selectedHospitalIds: [] },
+      }),
+      event: {
+        eventType: 'USER_PROVIDED_CONTACT_INFO',
+        confidence: 0.96,
+        source: 'llm',
+      },
+    });
+
+    expect(result.nextAction).toEqual({ type: 'CREATE_HANDOFF' });
+    expect(result.state.primaryStage).toBe('HUMAN_HANDOFF');
+    expect(result.factsPatch.handoff).toBeUndefined();
+    expect(result.facts.handoff.active).toBe(false);
+    expect(result.isSidePath).toBe(false);
+  });
 });

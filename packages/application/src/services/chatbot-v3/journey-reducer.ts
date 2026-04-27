@@ -150,7 +150,10 @@ export function decideNextAction(input: {
 
   switch (event.eventType) {
     case 'USER_REQUESTED_HUMAN':
+    case 'USER_PROVIDED_CONTACT_INFO':
       return { type: 'CREATE_HANDOFF' };
+    case 'USER_REJECTED_OR_HESITATED':
+      return { type: 'ANSWER_FAQ' };
     case 'USER_ASKED_RISKY_MEDICAL_ADVICE':
       return { type: 'SAFE_MEDICAL_REDIRECT', riskType: event.metadata?.riskType };
     case 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE':

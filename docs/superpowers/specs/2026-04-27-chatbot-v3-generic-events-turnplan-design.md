@@ -119,8 +119,10 @@ type EventTarget =
   | 'process'
   | 'travel'
   | 'payment'
+  | 'hospital'
   | 'hospital_selection'
   | 'medical_facts'
+  | 'contact'
   | 'human'
   | 'unknown';
 ```
@@ -128,8 +130,61 @@ type EventTarget =
 Notes:
 
 - `timeline` is intentionally not included. Timing questions map to `process`.
-- `contact` is intentionally not included as a follow-up target. Contact is information the user may provide, but the actionable follow-up is usually `human`.
-- If contact appears in the event taxonomy during implementation, it should be limited to `USER_PROVIDED_INFORMATION` compatibility. It should not become a next-step invite target.
+- `hospital` means the user asks or provides information about a specific hospital. `hospital_selection` means the selection/comparison process or criteria.
+- `contact` is included as an event target for direct contact information. It is intentionally not included as a follow-up invite target; the actionable follow-up is usually `human`.
+
+### Semantic Event Distinctions
+
+`USER_EXPRESSED_NEED`, `USER_PROVIDED_INFORMATION`, and `USER_RESPONDED_TO_REQUEST` are deliberately separate because they answer different questions.
+
+`USER_EXPRESSED_NEED` means the user is actively asking for a result, service, or goal. Typical language includes "我想", "帮我", "我要", "能不能安排", or "我需要". Examples:
+
+```ts
+// "帮我推荐医院"
+{ eventType: 'USER_EXPRESSED_NEED', target: 'recommendation', modifier: 'ask' }
+
+// "我想线上问诊"
+{ eventType: 'USER_EXPRESSED_NEED', target: 'consult', modifier: 'ask' }
+
+// "我想重新看看医院"
+{ eventType: 'USER_EXPRESSED_NEED', target: 'recommendation', modifier: 'revisit' }
+```
+
+`USER_PROVIDED_INFORMATION` means the user gives facts, records, preferences, or contact information. It may create or update facts, but the user is not primarily asking a new question or responding to the last CTA. Examples:
+
+```ts
+// "她去年做过手术，现在复发了"
+{ eventType: 'USER_PROVIDED_INFORMATION', target: 'medical_facts', modifier: 'provide' }
+
+// "目前只有 MRI，没有病理"
+{ eventType: 'USER_PROVIDED_INFORMATION', target: 'documents', modifier: 'provide' }
+
+// "我想去上海的医院"
+{ eventType: 'USER_PROVIDED_INFORMATION', target: 'hospital_selection', modifier: 'provide' }
+
+// "我的邮箱是 xxx"
+{ eventType: 'USER_PROVIDED_INFORMATION', target: 'contact', modifier: 'provide' }
+```
+
+`USER_RESPONDED_TO_REQUEST` means the user is replying to the previous assistant request, question, or CTA. This depends on `lastQuestion` or the previous `followUpAction`. Examples:
+
+```ts
+// Previous assistant asked for MRI/CT/pathology upload. User: "可以"
+{ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'documents', modifier: 'confirm' }
+
+// User: "我不想上传"
+{ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'documents', modifier: 'reject' }
+
+// User: "我先想想"
+{ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'documents', modifier: 'hesitate' }
+```
+
+Rule of thumb:
+
+- New goal -> `USER_EXPRESSED_NEED`.
+- New facts/preferences/contact -> `USER_PROVIDED_INFORMATION`.
+- Reply to the last assistant prompt -> `USER_RESPONDED_TO_REQUEST`.
+- If both provided facts and responded to a request apply, prefer `USER_RESPONDED_TO_REQUEST` only when the last prompt clearly asked for that information.
 
 ### Event Modifier
 
@@ -181,13 +236,13 @@ The adapter assigns `source='llm'`. The LLM must not output workflow state, stag
 | Current event | New event shape |
 |---|---|
 | `USER_ASKED_NEXT_STEP` | `USER_ASKED_QUESTION`, `target=unknown`, `modifier=ask` |
-| `USER_ASKED_FAQ` | `USER_ASKED_QUESTION`, target inferred as `pricing/process/documents/travel/payment/hospital_selection/unknown`, `modifier=ask` |
+| `USER_ASKED_FAQ` | `USER_ASKED_QUESTION`, target inferred as `pricing/process/documents/travel/payment/hospital/hospital_selection/unknown`, `modifier=ask` |
 | `USER_WANTS_TREATMENT_IN_CHINA` | `USER_EXPRESSED_NEED`, `target=treatment`, `modifier=ask` |
 | `USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING` | `USER_EXPRESSED_NEED`, `target=recommendation`, `modifier=ask` or `revisit` |
 | `USER_PROVIDED_MEDICAL_FACTS` | `USER_PROVIDED_INFORMATION`, `target=medical_facts`, `modifier=provide` |
 | `USER_INTERESTED_IN_CONSULT` | `USER_EXPRESSED_NEED`, `target=consult`, `modifier=ask` |
-| `USER_REJECTED_OR_HESITATED` | `USER_RESPONDED_TO_REQUEST`, target inferred as `documents/human/pricing/unknown`, `modifier=reject` or `hesitate` |
-| `USER_PROVIDED_CONTACT_INFO` | `USER_PROVIDED_INFORMATION`, `target=human`, `modifier=provide` |
+| `USER_REJECTED_OR_HESITATED` | `USER_RESPONDED_TO_REQUEST`, target inferred as `documents/contact/pricing/unknown`, `modifier=reject` or `hesitate` |
+| `USER_PROVIDED_CONTACT_INFO` | `USER_PROVIDED_INFORMATION`, `target=contact`, `modifier=provide` |
 | `USER_ASKED_RISKY_MEDICAL_ADVICE` | unchanged high-priority safety event |
 | `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` | unchanged high-priority out-of-scope event |
 | `USER_AMBIGUOUS_REPLY` | `USER_MESSAGE_UNCLEAR`, `target=unknown`, `modifier=unknown` |
@@ -212,20 +267,64 @@ type TurnPlan = {
 
 ```ts
 type PrimaryAction =
-  | { type: 'COLLECT_MINIMAL_TRIAGE' }
-  | { type: 'GENERATE_RECOMMENDATION' }
-  | { type: 'ASK_RECOMMENDATION_SELECTION' }
-  | { type: 'SHOW_PROCESS_OVERVIEW' }
-  | { type: 'REQUEST_MEDICAL_DOCUMENTS' }
-  | { type: 'OFFER_ONLINE_CONSULT' }
-  | { type: 'CREATE_HANDOFF' }
-  | { type: 'ANSWER_QUESTION'; target: EventTarget }
+  | { type: 'ANSWER'; target: EventTarget }
+  | { type: 'ACKNOWLEDGE'; target: EventTarget }
+  | {
+      type: 'CLARIFY';
+      target?: EventTarget;
+      reasonCode:
+        | 'ambiguous_message'
+        | 'missing_context'
+        | 'low_confidence'
+        | 'unclear_last_reply';
+    }
+  | {
+      type: 'REQUEST_INFO';
+      target:
+        | 'minimal_triage'
+        | 'medical_facts'
+        | 'documents'
+        | 'preference';
+      questionKey?: string;
+    }
+  | {
+      type: 'PRESENT_OPTIONS';
+      target:
+        | 'package'
+        | 'hospital'
+        | 'consult';
+    }
   | { type: 'HANDLE_RESPONSE'; target: EventTarget; modifier: EventModifier }
-  | { type: 'REDIRECT'; target: EventTarget; reason: 'out_of_scope' | 'safety' | 'unsupported' }
-  | { type: 'CLARIFY'; target?: EventTarget; reason: 'ambiguous' | 'unknown' | 'missing_context' };
+  | {
+      type: 'REDIRECT';
+      target: EventTarget;
+      reasonCode:
+        | 'out_of_scope'
+        | 'medical_safety'
+        | 'cannot_do';
+    }
+  | {
+      type: 'ESCALATE';
+      target: 'human';
+      reasonCode?: string;
+    };
 ```
 
 `REVISIT` is intentionally not a `PrimaryAction`. It is a modifier. The reducer interprets `target=recommendation, modifier=revisit` into a concrete recommendation action.
+
+Legacy workflow actions translate into the generic action model during migration:
+
+| Legacy action | Generic primary action |
+|---|---|
+| `COLLECT_MINIMAL_TRIAGE` | `REQUEST_INFO`, `target=minimal_triage` |
+| `GENERATE_RECOMMENDATION` | `PRESENT_OPTIONS`, `target=hospital` |
+| `ASK_RECOMMENDATION_SELECTION` | `PRESENT_OPTIONS`, `target=hospital` |
+| `SHOW_PROCESS_OVERVIEW` | `ANSWER`, `target=process`, with `reasonCode=formal_process_overview` on the `TurnPlan` |
+| `REQUEST_MEDICAL_DOCUMENTS` | `REQUEST_INFO`, `target=documents` |
+| `OFFER_ONLINE_CONSULT` | `PRESENT_OPTIONS`, `target=consult` |
+| `CREATE_HANDOFF` | `ESCALATE`, `target=human` |
+
+`SHOW_PROCESS_OVERVIEW` should not survive as an action type, but its invariant survives: only a formal process overview plan may write `process.explained=true`. A normal process FAQ is `ANSWER`, `target=process` and must preserve the primary stage.
 
 ### FollowUpAction
 
@@ -255,7 +354,7 @@ type FollowUpAction =
 
 `RETURN_TO_MAIN_FLOW` is intentionally not included. It is too abstract and risks becoming a second reducer. Concrete next-step invites such as `documents`, `consult`, or `minimal_triage` express the intended main-flow return.
 
-`INVITE_NEXT_STEP.target='contact'` is intentionally not included. Contact capture is already part of intake. If the user provides contact information later, the primary action should be `CREATE_HANDOFF` or the follow-up should invite `human`.
+`INVITE_NEXT_STEP.target='contact'` is intentionally not included. Contact capture is already part of intake. If the user provides contact information later, the primary action should be `ESCALATE`, `target=human`, or the follow-up should invite `human`.
 
 ## Reducer Design
 
@@ -294,7 +393,7 @@ Pricing question during records collection:
 
 ```ts
 {
-  primaryAction: { type: 'ANSWER_QUESTION', target: 'pricing' },
+  primaryAction: { type: 'ANSWER', target: 'pricing' },
   followUpAction: { type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'pricing_requires_records' },
   primaryStage: 'COLLECT_MEDICAL_INPUTS',
   factsPatch: {},
@@ -318,7 +417,7 @@ User provides contact information:
 
 ```ts
 {
-  primaryAction: { type: 'CREATE_HANDOFF' },
+  primaryAction: { type: 'ESCALATE', target: 'human', reasonCode: 'contact_info_provided' },
   followUpAction: { type: 'NONE' },
   primaryStage: 'HUMAN_HANDOFF',
   factsPatch: {},
@@ -334,7 +433,7 @@ Authority remains reducer-owned:
 - Agents never decide stage or writes.
 - Projection must mirror `TurnPlan.primaryStage` and `TurnPlan.primaryAction`.
 
-`process.explained=true` should still only be written for `SHOW_PROCESS_OVERVIEW`, not for process FAQ answers.
+`process.explained=true` should still only be written for a formal process overview plan, represented by `primaryAction={ type: 'ANSWER', target: 'process' }` plus `reasonCode='formal_process_overview'`. It must not be written for normal process FAQ answers.
 
 Document upload behavior remains:
 
@@ -368,16 +467,16 @@ No physical agent rename is required for Phase 1.1.
 
 Suggested mapping:
 
-- Core records actions -> `RecordsAgent`
-- Recommendation actions -> `RecommendationAgent`
-- Consult invite/status -> `ConsultHandoffAgent`
-- Handoff create -> `ConsultHandoffAgent`
-- Answer, response handling, redirect, clarify -> `GeneralResponseAgent`
+- `REQUEST_INFO` with `minimal_triage`, `medical_facts`, or `documents` -> `RecordsAgent`
+- `PRESENT_OPTIONS`, `target=hospital` -> `RecommendationAgent`
+- `PRESENT_OPTIONS`, `target=consult` -> `ConsultHandoffAgent`
+- `ESCALATE`, `target=human` -> `ConsultHandoffAgent`
+- `ANSWER`, `ACKNOWLEDGE`, `HANDLE_RESPONSE`, `REDIRECT`, `CLARIFY` -> `GeneralResponseAgent`, unless the target strongly belongs to Records or Recommendation in a later implementation slice
 
 When a conceptual role maps to multiple physical agents, `primaryAction` chooses the concrete dispatch:
 
-- `CREATE_HANDOFF` -> `HandoffAgent`
-- `OFFER_ONLINE_CONSULT` -> `ConsultAgent`
+- `ESCALATE`, `target=human` -> `HandoffAgent`
+- `PRESENT_OPTIONS`, `target=consult` -> `ConsultAgent`
 
 ## Runtime Skill Loading
 
@@ -585,15 +684,16 @@ Examples:
 
 | Signal | Runtime skill requests |
 |---|---|
-| `ANSWER_QUESTION + pricing` | `load_pricing_factors`, `explain_pricing_uncertainty` |
+| `ANSWER + pricing` | `load_pricing_factors`, `explain_pricing_uncertainty` |
 | `INVITE_NEXT_STEP + documents` | `load_records_requirement_data`, `explain_records_preparation` |
 | `modifier=reject + target=pricing` | `handle_price_objection`, `low_friction_alternative_step` |
 | `modifier=reject + target=documents` | `handle_document_hesitation`, `low_friction_alternative_step` |
-| `modifier=hesitate + target=human` | `handle_contact_hesitation`, `soft_human_handoff` |
+| `modifier=hesitate + target=contact` | `handle_contact_hesitation`, `soft_human_handoff` |
 | `target=documents` | `load_records_requirement_data`, `update_record_inventory` when files exist |
 | `target=consult` | `load_consult_readiness_criteria`, `explain_online_consult` |
 | `USER_PROVIDED_INFORMATION + medical_facts` | `extract_medical_facts_for_snapshot` |
-| `USER_PROVIDED_INFORMATION + human` | `update_contact_information`, `create_handoff_context` |
+| `USER_PROVIDED_INFORMATION + contact` | `update_contact_information`, `create_handoff_context` |
+| `USER_ASKED_QUESTION + hospital` | `search_hospital_candidates`, `explain_hospital_selection_logic` |
 | `target=recommendation + modifier=revisit` | `revisit_recommendation_step`, `search_hospital_candidates`, `explain_hospital_selection_logic` |
 | safety redirect | `medical_safety_boundary`, `safe_degradation_when_uncertain` |
 | out-of-scope redirect | `classify_service_scope_boundary`, `load_medora_service_scope` |
@@ -696,9 +796,9 @@ Cover:
 - `USER_EXPRESSED_NEED + treatment + ask`
 - `USER_EXPRESSED_NEED + recommendation + ask`
 - `USER_EXPRESSED_NEED + recommendation + revisit`
-- `USER_ASKED_QUESTION + pricing/process/documents/payment/travel`
+- `USER_ASKED_QUESTION + pricing/process/documents/payment/travel/hospital/hospital_selection`
 - `USER_PROVIDED_INFORMATION + medical_facts`
-- `USER_PROVIDED_INFORMATION + human + provide`
+- `USER_PROVIDED_INFORMATION + contact + provide`
 - `USER_RESPONDED_TO_REQUEST + documents + reject`
 - `USER_RESPONDED_TO_REQUEST + unknown + hesitate`
 - safety redirect
@@ -719,7 +819,7 @@ Every reducer test should assert:
 
 Assert:
 
-- General response actions map to conceptual `GeneralResponseAgent` and physical `FaqAgent`.
+- Generic response actions map to conceptual `GeneralResponseAgent` and physical `FaqAgent`.
 - Core workflow actions map to Records, Recommendation, Consult/Handoff as expected.
 - Pricing question plus document follow-up loads pricing-factor and records-requirement data loading skills.
 - Reject/hesitate loads the correct sales playbook and low-friction alternative skill.
@@ -761,9 +861,7 @@ Phase 1.1 should be implemented in clear slices:
 
 ## Open Questions
 
-1. Should direct contact information use `target=human` or reintroduce `target=contact` only for event classification?
-   - Current design prefers `target=human` to avoid follow-up contact capture ambiguity.
-2. Should recommendation revisit immediately regenerate recommendations or first ask a qualifying question?
+1. Should recommendation revisit immediately regenerate recommendations or first ask a qualifying question?
    - Current design leaves this to reducer policy and facts.
-3. Should `INVITE_NEXT_STEP(target=process)` ever write `process.explained=true`?
-   - Current answer: no. Only `SHOW_PROCESS_OVERVIEW` writes `process.explained=true`.
+2. Should `INVITE_NEXT_STEP(target=process)` ever write `process.explained=true`?
+   - Current answer: no. Only a formal process overview `TurnPlan.reasonCode='formal_process_overview'` writes `process.explained=true`.

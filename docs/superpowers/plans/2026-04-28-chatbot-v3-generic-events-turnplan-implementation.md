@@ -453,8 +453,10 @@ Expected schema:
 ```ts
 expect(schema.required).toEqual(['eventType', 'target', 'modifier', 'confidence']);
 expect(schema.properties.eventType.enum).toContain('USER_ASKED_QUESTION');
-expect(schema.properties.target.enum).toContain('pricing');
-expect(schema.properties.modifier.enum).toContain('ask');
+expect(schema.properties.target.type).toBe('string');
+expect(schema.properties.modifier.type).toBe('string');
+expect(schema.properties.target).not.toHaveProperty('enum');
+expect(schema.properties.modifier).not.toHaveProperty('enum');
 expect(schema.properties).not.toHaveProperty('source');
 expect(schema.properties).not.toHaveProperty('metadata');
 ```
@@ -529,11 +531,13 @@ Adapter should parse LLM output with:
 ```ts
 {
   eventType: semanticAllowedEvents,
-  target: allowedTargets,
-  modifier: allowedModifiers,
+  target: string,
+  modifier: string,
   confidence: number between 0 and 1
 }
 ```
+
+`target` and `modifier` must pass shape validation as strings, then the adapter allowlist-normalizes them. Do not put `target` or `modifier` behind JSON-schema enum validation, because invalid strings must normalize to `unknown` without retry/fallback.
 
 Adapter appends:
 
@@ -894,12 +898,21 @@ expect(buildSkillPolicy({
   'answer_hospital_faq_from_admin_source',
   'explain_hospital_selection_logic',
 ]));
-expect(buildSkillPolicy(contactProvided).requests.map(r => r.id)).toEqual(expect.arrayContaining([
+expect(buildSkillPolicy({
+  ...contactProvided,
+  agentRole: 'HandoffAgent',
+}).requests.map(r => r.id)).toEqual(expect.arrayContaining([
   'extract_contact_info_candidate',
   'build_handoff_payload_context',
 ]));
-expect(buildSkillPolicy(outOfScope).requests.map(r => r.id)).toContain('service_scope_boundary');
-expect(buildSkillPolicy(recordsUpload).requests.map(r => r.id)).toContain('derive_record_inventory_candidate');
+expect(buildSkillPolicy({
+  ...outOfScope,
+  agentRole: 'GeneralResponseAgent',
+}).requests.map(r => r.id)).toContain('service_scope_boundary');
+expect(buildSkillPolicy({
+  ...recordsUpload,
+  agentRole: 'RecordsAgent',
+}).requests.map(r => r.id)).toContain('derive_record_inventory_candidate');
 ```
 
 Add loader tests:

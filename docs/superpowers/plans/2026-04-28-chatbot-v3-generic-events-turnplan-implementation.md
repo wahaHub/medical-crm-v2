@@ -805,9 +805,13 @@ expect(resolveAgent({ event: consultNeed, turnPlan: consultPlan, facts }).physic
   .toBe('ConsultAgent');
 expect(resolveAgent({ event: consultQuestion, turnPlan: consultAnswerPlan, facts }).physicalAgent)
   .toBe('ConsultAgent');
+expect(resolveAgent({ event: consultQuestion, turnPlan: consultGoDeepPlan, facts }).physicalAgent)
+  .toBe('ConsultAgent');
 expect(resolveAgent({ event: pricingQuestion, turnPlan: faqPlan, facts }).physicalAgent)
   .toBe('FaqAgent');
 ```
+
+`consultGoDeepPlan` must include `followUpAction={ type: 'GO_DEEP', target: 'consult', reasonCode: 'user_requested_more_detail' }`.
 
 - [ ] **Step 2: Run failing resolver tests**
 
@@ -1195,6 +1199,7 @@ Add tests for:
 - docs uploaded -> `RecordsAgent`, `derive_record_inventory_candidate`, stage stays records
 - contact info -> `HandoffAgent`, handoff payload context
 - docs persisted + next step -> `ConsultAgent`
+- consult deep-dive follow-up -> `ConsultAgent`, `followUpAction.type=GO_DEEP`, `followUpAction.target=consult`
 
 Assertions should inspect debug/projection fields, not only text:
 
@@ -1438,6 +1443,7 @@ Add at least these sessions:
 7. Human/contact request -> contact info extracts candidate and escalates handoff.
 8. Schema failure fallback -> `USER_MESSAGE_UNCLEAR`, `CLARIFY`, next normal turn recovers.
 9. Recommendation revisit after hospital options: user says `上海的`, `更便宜的`, or `换一批`; assert `USER_EXPRESSED_NEED`, `target=recommendation`, `modifier=revisit`, `RecommendationAgent` ownership, hospital/recommendation read intents, no supervisor metadata, and revisit details passed through `latestUserMessage`, summary, facts, or retrieved context.
+10. Consult deep-dive: user asks for more detail about online consult; assert `USER_ASKED_QUESTION`, `target=consult`, `turnPlan.followUpAction.type=GO_DEEP`, `turnPlan.followUpAction.target=consult`, and `resolvedAgent.physicalAgent=ConsultAgent`.
 
 Each turn asserts:
 

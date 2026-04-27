@@ -12,7 +12,7 @@ This document specifies the Phase 1.1 control-plane refactor for chatbot-v3:
 - Replace the single `nextAction` reducer output with a `TurnPlan` that supports answer-then-advance behavior.
 - Keep deterministic frontend/system events stable.
 - Keep the current physical agents initially, while introducing clearer conceptual agent roles.
-- Use a code-defined skill pack registry for Phase 1.1.
+- Use a code-defined runtime skill capability registry for Phase 1.1.
 
 ## Problem
 
@@ -61,7 +61,7 @@ A single `ANSWER_FAQ` action cannot fully express that control-plane intent.
 4. Make reducer output a `TurnPlan`, not only one `nextAction`.
 5. Support answer-then-advance responses without letting agents decide workflow truth.
 6. Keep safety and out-of-scope as high-priority semantic events.
-7. Introduce skill packs through a deterministic code registry.
+7. Introduce runtime-loadable skill capabilities through a deterministic code registry.
 8. Keep Phase 1.1 implementable without building a skill CMS, DB-backed editor, or new physical agent fleet.
 
 ## Non-Goals
@@ -147,6 +147,7 @@ type EventModifier =
 Notes:
 
 - `refine` is not included. Recommendation refinement such as "换一批", "更便宜的", or "上海的" maps to `modifier='revisit'`, with details carried in metadata or agent context later.
+- `revisit` means the user is re-entering a step that has already happened and wants to adjust, redo, or reconsider that same step. Example: after recommendations have been shown, "还有别的医院吗？" is `target=recommendation`, `modifier=revisit`.
 - `restart` is not included in Phase 1.1. Restart-like turns should be handled by target plus modifier or by explicit deterministic user actions in a later phase.
 
 ### Supervisor Event Shape
@@ -378,46 +379,132 @@ When a conceptual role maps to multiple physical agents, `primaryAction` chooses
 - `CREATE_HANDOFF` -> `HandoffAgent`
 - `OFFER_ONLINE_CONSULT` -> `ConsultAgent`
 
+## Runtime Skill Loading
+
+The runtime should load skills dynamically per turn, but "skill" must mean a real capability package, not a flow shape or generic response constraint.
+
+Not skills:
+
+- `answer_then_advance`: this is `ResponseContract.structure`.
+- `ask_one_question`: this is `ResponseContract.askOneQuestion`.
+- `required_documents`: this is domain data or a retrieval result, not a skill by itself.
+- `INVITE_NEXT_STEP`: this is reducer output, not a skill.
+
+Skills are capabilities that tell an agent how to do a bounded class of work:
+
+- How to load or search business/domain data.
+- How to update derived data or propose write intents.
+- How to degrade when data is missing, uncertain, unsafe, or out of scope.
+- How to classify business boundaries.
+- How to explain a particular domain topic.
+- How to handle sales/customer-service moments such as hesitation, price objection, trust building, or soft handoff.
+
+The reducer still owns workflow truth. Skill loading only changes the agent's available instructions and data access strategy for composing the current reply.
+
+### Runtime Shape
+
+```ts
+type SkillKind =
+  | 'data_loader'
+  | 'search_strategy'
+  | 'write_strategy'
+  | 'degradation_policy'
+  | 'boundary_policy'
+  | 'explanation_method'
+  | 'sales_playbook';
+
+type SkillPack = {
+  id: SkillPackId;
+  kind: SkillKind;
+  title: string;
+  summary: string;
+  appliesTo: AgentRole[];
+  inputs?: string[];
+  outputs?: string[];
+  rules: string[];
+};
+
+type LoadedSkillPack = SkillPack & {
+  priority: number;
+  reason: string;
+};
+```
+
+Runtime selection has three deterministic steps:
+
+1. `SkillRouter` maps `event + TurnPlan + facts + AgentRole` to `SkillRequest[]`.
+2. `SkillLoader` resolves those requests from the code registry and optionally attaches small policy/data snippets from approved sources.
+3. `TaskBuilder` embeds `LoadedSkillPack[]` into `AgentTask`.
+
+The agent cannot request additional skills, change stages, or invent writes. If a needed skill is absent, the loader falls back to a safe degradation capability and emits observability.
+
+```ts
+type SkillRequest = {
+  id: SkillPackId;
+  priority: number;
+  reason: string;
+};
+```
+
+Priority order:
+
+1. Safety and scope boundary skills.
+2. Primary action skills.
+3. Follow-up action skills.
+4. Event target skills.
+5. Modifier skills.
+6. Agent-role defaults.
+
+The loader deduplicates by `id`, keeps the highest priority reason, and caps loaded skills at `maxSkillPacks=6` for Phase 1.1.
+
 ## Skill Pack Registry
 
 Phase 1.1 uses a code-defined registry.
 
 ```ts
 type SkillPackId =
-  | 'answer_then_advance'
-  | 'ask_one_question'
+  // Boundary and degradation
   | 'clarify_ambiguous_reply'
-  | 'service_scope_boundary'
+  | 'classify_service_scope_boundary'
   | 'medical_safety_boundary'
-  | 'pricing_explanation'
-  | 'cost_uncertainty_handling'
-  | 'process_explanation'
-  | 'travel_support'
-  | 'payment_support'
-  | 'objection_handling'
-  | 'low_friction_next_step'
-  | 'soft_redirect_to_main_flow'
-  | 'minimal_triage_collection'
-  | 'required_documents'
-  | 'records_upload_conversion'
-  | 'medical_records_summary'
-  | 'doctor_matching_process'
-  | 'hospital_recommendation'
-  | 'recommendation_comparison'
-  | 'revisit_previous_step'
-  | 'online_consultation'
-  | 'human_coordinator_handoff'
-  | 'privacy_and_records_handling'
-  | 'trust_building';
-```
+  | 'safe_degradation_when_uncertain'
 
-```ts
-type SkillPack = {
-  id: SkillPackId;
-  title: string;
-  summary: string;
-  rules: string[];
-};
+  // Data loading and search
+  | 'load_medora_service_scope'
+  | 'load_pricing_factors'
+  | 'load_process_policy'
+  | 'load_travel_support_scope'
+  | 'load_payment_policy'
+  | 'load_records_requirement_data'
+  | 'search_hospital_candidates'
+  | 'search_doctor_matching_context'
+  | 'load_consult_readiness_criteria'
+
+  // Write/update strategies
+  | 'extract_medical_facts_for_snapshot'
+  | 'update_record_inventory'
+  | 'update_contact_information'
+  | 'create_handoff_context'
+
+  // Explanation methods
+  | 'explain_pricing_uncertainty'
+  | 'explain_medora_process'
+  | 'explain_records_preparation'
+  | 'explain_online_consult'
+  | 'explain_travel_or_payment_scope'
+
+  // Sales/customer-service playbooks
+  | 'handle_price_objection'
+  | 'handle_document_hesitation'
+  | 'handle_contact_hesitation'
+  | 'low_friction_alternative_step'
+  | 'trust_building_for_medical_travel'
+  | 'soft_human_handoff'
+
+  // Recommendation behavior
+  | 'revisit_recommendation_step'
+  | 'compare_recommendation_options'
+  | 'explain_hospital_selection_logic';
 ```
 
 Registry location should be code-owned and testable, for example:
@@ -428,12 +515,48 @@ apps/api/src/routes/chatbot-v3/skill-packs.ts
 
 Phase 1.1 should not load skills from DB, CMS, or arbitrary markdown files.
 
+Initial skill inventory:
+
+| Skill | Kind | Purpose |
+|---|---|---|
+| `clarify_ambiguous_reply` | `degradation_policy` | Turn vague replies into a specific clarification without changing stage. |
+| `classify_service_scope_boundary` | `boundary_policy` | Decide whether a user topic is outside Medora's supported medical-travel workflow. |
+| `medical_safety_boundary` | `boundary_policy` | Respond without diagnosis, medication advice, treatment decisions, or outcome guarantees. |
+| `safe_degradation_when_uncertain` | `degradation_policy` | Use bounded language when data, policy, or intent confidence is low. |
+| `load_medora_service_scope` | `data_loader` | Load supported service categories and unsupported-service boundaries. |
+| `load_pricing_factors` | `data_loader` | Load pricing-factor data, not a fixed quote. |
+| `load_process_policy` | `data_loader` | Load approved process overview facts without writing `process.explained`. |
+| `load_travel_support_scope` | `data_loader` | Load travel-support boundaries related to treatment coordination. |
+| `load_payment_policy` | `data_loader` | Load payment-support boundaries and non-commitment language. |
+| `load_records_requirement_data` | `data_loader` | Load document requirement data for the relevant medical context. |
+| `search_hospital_candidates` | `search_strategy` | Search or retrieve hospital candidate context for recommendation work. |
+| `search_doctor_matching_context` | `search_strategy` | Search matching context for doctor/hospital questions. |
+| `load_consult_readiness_criteria` | `data_loader` | Load what makes a user ready for online consult. |
+| `extract_medical_facts_for_snapshot` | `write_strategy` | Extract condition, treatment history, document availability, and other facts for proposed writes. |
+| `update_record_inventory` | `write_strategy` | Convert uploaded-file context into record inventory write intent. |
+| `update_contact_information` | `write_strategy` | Normalize direct email, phone, WeChat, or other contact info into proposed contact write intent. |
+| `create_handoff_context` | `write_strategy` | Build the handoff payload context after reducer chooses handoff. |
+| `explain_pricing_uncertainty` | `explanation_method` | Explain why pricing needs records, hospital, doctor, and plan context. |
+| `explain_medora_process` | `explanation_method` | Explain the service process as an FAQ without marking the formal process overview complete. |
+| `explain_records_preparation` | `explanation_method` | Explain how records are prepared and why they matter. |
+| `explain_online_consult` | `explanation_method` | Explain online consultation purpose and readiness. |
+| `explain_travel_or_payment_scope` | `explanation_method` | Explain travel/payment support boundaries. |
+| `handle_price_objection` | `sales_playbook` | Acknowledge price concern and offer lower-friction next steps without pressure. |
+| `handle_document_hesitation` | `sales_playbook` | Handle refusal or hesitation around uploading records. |
+| `handle_contact_hesitation` | `sales_playbook` | Handle reluctance to leave contact information. |
+| `low_friction_alternative_step` | `sales_playbook` | Offer a smaller next step when the user resists the main one. |
+| `trust_building_for_medical_travel` | `sales_playbook` | Build trust around cross-border care coordination without overpromising. |
+| `soft_human_handoff` | `sales_playbook` | Invite a human coordinator when appropriate without making it the only path. |
+| `revisit_recommendation_step` | `search_strategy` | Re-enter an already visited recommendation step to adjust or regenerate options. |
+| `compare_recommendation_options` | `explanation_method` | Help compare options without inventing unsupported claims. |
+| `explain_hospital_selection_logic` | `explanation_method` | Explain how hospital/doctor selection is reasoned from facts and constraints. |
+
 ## SkillRouter
 
 ```ts
 type SkillPolicy = {
-  allowedSkillPacks: SkillPackId[];
-  maxSkillSnippets?: number;
+  requests: SkillRequest[];
+  maxSkillPacks?: number;
 };
 ```
 
@@ -451,24 +574,31 @@ function buildSkillPolicy(input: {
 
 It combines skills from:
 
+- `agentRole`
 - `primaryAction`
 - `followUpAction`
 - `event.target`
 - `event.modifier`
+- `facts`
 
 Examples:
 
-| Signal | Skill packs |
+| Signal | Runtime skill requests |
 |---|---|
-| `ANSWER_QUESTION + pricing` | `pricing_explanation`, `cost_uncertainty_handling`, `answer_then_advance` |
-| `INVITE_NEXT_STEP + documents` | `required_documents`, `records_upload_conversion` |
-| `modifier=reject` | `objection_handling`, `low_friction_next_step` |
-| `target=documents` | `required_documents`, `records_upload_conversion`, `medical_records_summary` |
-| `target=consult` | `online_consultation`, `trust_building` |
-| safety redirect | `medical_safety_boundary`, `ask_one_question` |
-| out-of-scope redirect | `service_scope_boundary`, `soft_redirect_to_main_flow` |
+| `ANSWER_QUESTION + pricing` | `load_pricing_factors`, `explain_pricing_uncertainty` |
+| `INVITE_NEXT_STEP + documents` | `load_records_requirement_data`, `explain_records_preparation` |
+| `modifier=reject + target=pricing` | `handle_price_objection`, `low_friction_alternative_step` |
+| `modifier=reject + target=documents` | `handle_document_hesitation`, `low_friction_alternative_step` |
+| `modifier=hesitate + target=human` | `handle_contact_hesitation`, `soft_human_handoff` |
+| `target=documents` | `load_records_requirement_data`, `update_record_inventory` when files exist |
+| `target=consult` | `load_consult_readiness_criteria`, `explain_online_consult` |
+| `USER_PROVIDED_INFORMATION + medical_facts` | `extract_medical_facts_for_snapshot` |
+| `USER_PROVIDED_INFORMATION + human` | `update_contact_information`, `create_handoff_context` |
+| `target=recommendation + modifier=revisit` | `revisit_recommendation_step`, `search_hospital_candidates`, `explain_hospital_selection_logic` |
+| safety redirect | `medical_safety_boundary`, `safe_degradation_when_uncertain` |
+| out-of-scope redirect | `classify_service_scope_boundary`, `load_medora_service_scope` |
 
-Default `maxSkillSnippets` should be 6.
+Default `maxSkillPacks` should be 6.
 
 ## AgentTask
 
@@ -482,8 +612,8 @@ type AgentTask = {
   conversationSummary: string;
   knownFacts: DomainFactsSummary;
   skillPolicy: SkillPolicy;
+  skills: LoadedSkillPack[];
   retrievedContext?: {
-    skillSnippets?: string[];
     knowledgeSnippets?: string[];
   };
   responseContract: ResponseContract;
@@ -512,9 +642,9 @@ User message
   -> AgentResolver
      conceptual agent role + physical dispatch agent
   -> SkillRouter
-     allowedSkillPacks
-  -> SkillRetriever
-     3-6 code-defined snippets
+     SkillRequest[]
+  -> SkillLoader
+     up to 6 code-defined skill capabilities
   -> TaskBuilder
      AgentTask + ResponseContract
   -> Agent
@@ -540,7 +670,7 @@ Reducer fallback:
 Skill loading fallback:
 
 - Missing skill id in registry -> omit it and emit observability warning.
-- Empty skill set -> add `answer_then_advance` or `clarify_ambiguous_reply` based on action.
+- Empty skill set -> add `safe_degradation_when_uncertain` or `clarify_ambiguous_reply` based on action.
 - Skill retrieval must not call LLM in Phase 1.1.
 
 Agent fallback:
@@ -585,14 +715,16 @@ Every reducer test should assert:
 - side-path preservation
 - reason code
 
-### Layer 3: AgentResolver / SkillRouter / TaskBuilder
+### Layer 3: AgentResolver / SkillRouter / SkillLoader / TaskBuilder
 
 Assert:
 
 - General response actions map to conceptual `GeneralResponseAgent` and physical `FaqAgent`.
 - Core workflow actions map to Records, Recommendation, Consult/Handoff as expected.
-- Pricing question plus document follow-up loads pricing and required-document skills.
-- Reject/hesitate loads objection handling and low-friction next step skills.
+- Pricing question plus document follow-up loads pricing-factor and records-requirement data loading skills.
+- Reject/hesitate loads the correct sales playbook and low-friction alternative skill.
+- Recommendation revisit loads revisit and hospital search skills.
+- Provided contact information loads contact update and handoff context skills.
 - Safety loads medical safety boundary.
 - Out-of-scope loads service scope boundary.
 - ResponseContract preserves primary stage for side paths.
@@ -635,4 +767,3 @@ Phase 1.1 should be implemented in clear slices:
    - Current design leaves this to reducer policy and facts.
 3. Should `INVITE_NEXT_STEP(target=process)` ever write `process.explained=true`?
    - Current answer: no. Only `SHOW_PROCESS_OVERVIEW` writes `process.explained=true`.
-

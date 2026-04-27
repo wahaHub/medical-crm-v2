@@ -127,6 +127,9 @@ export {
   reduceJourney,
 } from './services/chatbot-v3/journey-reducer.js';
 export { resolveNextActionExecution } from './services/chatbot-v3/next-action-resolver.js';
+export { resolveAgent } from './services/chatbot-v3/agent-resolver.js';
+export { loadSkillPacks } from './services/chatbot-v3/skill-loader.js';
+export { buildSkillPolicy } from './services/chatbot-v3/skill-router.js';
 export { buildReadPlan } from './services/chatbot-v3/read-planner.js';
 export { projectLegacyCompatibilityView } from './services/chatbot-v3/legacy-compatibility-view.js';
 export type {
@@ -134,6 +137,16 @@ export type {
   JourneyReducerOutput,
 } from './services/chatbot-v3/journey-reducer.js';
 export type { NextActionExecution } from './services/chatbot-v3/next-action-resolver.js';
+export type { AgentRole, PhysicalAgent, ResolvedAgent } from './services/chatbot-v3/agent-resolver.js';
+export type { LoadedSkillPolicy, LoadSkillPacksInput } from './services/chatbot-v3/skill-loader.js';
+export type { SkillPolicy } from './services/chatbot-v3/skill-router.js';
+export type {
+  LoadedSkillPack,
+  SkillKind,
+  SkillPackDefinition,
+  SkillPackId,
+  SkillRequest,
+} from './services/chatbot-v3/skill-packs.js';
 export type { ReadPlan } from './services/chatbot-v3/read-planner.js';
 export type {
   LegacyCompatibilityView,

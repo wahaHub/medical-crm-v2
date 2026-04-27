@@ -130,6 +130,7 @@ export { resolveNextActionExecution } from './services/chatbot-v3/next-action-re
 export { resolveAgent } from './services/chatbot-v3/agent-resolver.js';
 export { loadSkillPacks } from './services/chatbot-v3/skill-loader.js';
 export { buildSkillPolicy } from './services/chatbot-v3/skill-router.js';
+export { buildAgentTask } from './services/chatbot-v3/task-builder.js';
 export { buildReadPlan } from './services/chatbot-v3/read-planner.js';
 export { projectLegacyCompatibilityView } from './services/chatbot-v3/legacy-compatibility-view.js';
 export type {
@@ -140,6 +141,7 @@ export type { NextActionExecution } from './services/chatbot-v3/next-action-reso
 export type { AgentRole, PhysicalAgent, ResolvedAgent } from './services/chatbot-v3/agent-resolver.js';
 export type { LoadedSkillPolicy, LoadSkillPacksInput } from './services/chatbot-v3/skill-loader.js';
 export type { SkillPolicy } from './services/chatbot-v3/skill-router.js';
+export type { AgentTask, ResponseContract } from './services/chatbot-v3/task-builder.js';
 export type {
   LoadedSkillPack,
   SkillKind,

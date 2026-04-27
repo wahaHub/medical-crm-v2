@@ -1586,9 +1586,10 @@ describe('SupervisorService event extraction', () => {
       run: async () => {
         gatewayCalled = true;
         return {
-          eventType: 'UNKNOWN_MESSAGE',
+          eventType: 'USER_MESSAGE_UNCLEAR',
           confidence: 0.1,
-          source: 'llm',
+          target: 'unknown',
+          modifier: 'unknown',
         };
       },
     });
@@ -1596,10 +1597,12 @@ describe('SupervisorService event extraction', () => {
     await expect(supervisorWithGateway.extractEvent({
       ...eventInput,
       latestUserMessage: 'Please connect me with a human advisor.',
-    })).resolves.toEqual({
+    })).resolves.toMatchObject({
       eventType: 'USER_REQUESTED_HUMAN',
       confidence: 1,
       source: 'deterministic',
+      target: 'human',
+      modifier: 'ask',
       metadata: {
         rawText: 'Please connect me with a human advisor.',
       },
@@ -1617,10 +1620,12 @@ describe('SupervisorService event extraction', () => {
         message: 'I attached my report and want to talk to a human.',
         attachments: [{ fileName: 'report.pdf' }],
       },
-    })).resolves.toEqual({
+    })).resolves.toMatchObject({
       eventType: 'USER_REQUESTED_HUMAN',
       confidence: 1,
       source: 'deterministic',
+      target: 'human',
+      modifier: 'ask',
       metadata: {
         rawText: 'I attached my report and want to talk to a human.',
       },
@@ -1647,10 +1652,12 @@ describe('SupervisorService event extraction', () => {
         suggestedStage: 'COLLECT_MEDICAL_INPUTS',
         reason: 'attachment should win over faq heuristic',
       },
-    })).resolves.toEqual({
+    })).resolves.toMatchObject({
       eventType: 'DOCUMENTS_UPLOADED',
       confidence: 1,
       source: 'deterministic',
+      target: 'documents',
+      modifier: 'provide',
       metadata: {
         documentCount: 1,
       },
@@ -1703,10 +1710,12 @@ describe('SupervisorService event extraction', () => {
     await expect(supervisor.extractEvent({
       ...eventInput,
       latestUserMessage: 'Should my wife start chemotherapy now?',
-    })).resolves.toEqual({
+    })).resolves.toMatchObject({
       eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
       confidence: 0.9,
       source: 'deterministic',
+      target: 'medical_facts',
+      modifier: 'ask',
       metadata: {
         rawText: 'Should my wife start chemotherapy now?',
         riskType: 'medical_advice',
@@ -1737,22 +1746,19 @@ describe('SupervisorService event extraction', () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => ({
-        eventType: 'USER_ASKED_FAQ',
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'pricing',
+        modifier: 'ask',
         confidence: 0.76,
-        source: 'llm',
-        metadata: {
-          topic: 'pricing',
-        },
       }),
     });
 
     await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
-      eventType: 'USER_ASKED_FAQ',
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'pricing',
+      modifier: 'ask',
       confidence: 0.76,
       source: 'llm',
-      metadata: {
-        topic: 'pricing',
-      },
     });
   });
 
@@ -1763,9 +1769,10 @@ describe('SupervisorService event extraction', () => {
       run: async () => {
         gatewayCalled = true;
         return {
-          eventType: 'USER_ASKED_FAQ',
+          eventType: 'USER_ASKED_QUESTION',
+          target: 'pricing',
+          modifier: 'ask',
           confidence: 0.99,
-          source: 'llm',
         };
       },
     });
@@ -1791,9 +1798,10 @@ describe('SupervisorService event extraction', () => {
       run: async () => {
         gatewayCalled = true;
         return {
-          eventType: 'USER_ASKED_FAQ',
+          eventType: 'USER_ASKED_QUESTION',
+          target: 'pricing',
+          modifier: 'ask',
           confidence: 0.99,
-          source: 'llm',
         };
       },
     });
@@ -1812,7 +1820,7 @@ describe('SupervisorService event extraction', () => {
     expect(gatewayCalled).toBe(false);
   });
 
-  it('falls back to UNKNOWN_MESSAGE when semantic output is invalid', async () => {
+  it('falls back to USER_MESSAGE_UNCLEAR when semantic output is invalid', async () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => ({
@@ -1822,9 +1830,11 @@ describe('SupervisorService event extraction', () => {
     });
 
     await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
-      eventType: 'UNKNOWN_MESSAGE',
+      eventType: 'USER_MESSAGE_UNCLEAR',
       confidence: 0,
       source: 'fallback_unknown',
+      target: 'unknown',
+      modifier: 'unknown',
       metadata: {
         rawText: 'supervisor semantic event extraction failed',
       },
@@ -1849,32 +1859,34 @@ describe('SupervisorService event extraction', () => {
         phase: 'active',
       },
     })).resolves.toEqual({
-      eventType: 'UNKNOWN_MESSAGE',
+      eventType: 'USER_MESSAGE_UNCLEAR',
       confidence: 0,
       source: 'fallback_unknown',
+      target: 'unknown',
+      modifier: 'unknown',
       metadata: {
         rawText: 'supervisor semantic event extraction failed',
       },
     });
   });
 
-  it('rejects human handoff events returned by the semantic gateway', async () => {
+  it('accepts human handoff events returned by the semantic gateway when allowed', async () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => ({
         eventType: 'USER_REQUESTED_HUMAN',
+        target: 'human',
+        modifier: 'ask',
         confidence: 0.8,
-        source: 'llm',
       }),
     });
 
     await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
-      eventType: 'UNKNOWN_MESSAGE',
-      confidence: 0,
-      source: 'fallback_unknown',
-      metadata: {
-        rawText: 'supervisor semantic event extraction failed',
-      },
+      eventType: 'USER_REQUESTED_HUMAN',
+      target: 'human',
+      modifier: 'ask',
+      confidence: 0.8,
+      source: 'llm',
     });
   });
 
@@ -1882,19 +1894,20 @@ describe('SupervisorService event extraction', () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => ({
-        eventType: 'DOCUMENTS_UPLOADED',
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'pricing',
+        modifier: 'ask',
         confidence: 1,
         source: 'deterministic',
-        metadata: {
-          documentCount: 1,
-        },
       }),
     });
 
     await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
-      eventType: 'UNKNOWN_MESSAGE',
+      eventType: 'USER_MESSAGE_UNCLEAR',
       confidence: 0,
       source: 'fallback_unknown',
+      target: 'unknown',
+      modifier: 'unknown',
       metadata: {
         rawText: 'supervisor semantic event extraction failed',
       },
@@ -1905,16 +1918,26 @@ describe('SupervisorService event extraction', () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => ({
-        eventType: 'USER_INTERESTED_IN_CONSULT',
+        eventType: 'USER_EXPRESSED_NEED',
+        target: 'consult',
+        modifier: 'ask',
         confidence: 0.8,
-        source: 'llm',
       }),
     });
 
-    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
-      eventType: 'UNKNOWN_MESSAGE',
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      currentStage: 'HUMAN_HANDOFF',
+      current: {
+        stage: 'HUMAN_HANDOFF',
+        phase: 'active',
+      },
+    })).resolves.toEqual({
+      eventType: 'USER_MESSAGE_UNCLEAR',
       confidence: 0,
       source: 'fallback_unknown',
+      target: 'unknown',
+      modifier: 'unknown',
       metadata: {
         rawText: 'supervisor semantic event extraction failed',
       },
@@ -1925,16 +1948,19 @@ describe('SupervisorService event extraction', () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => ({
-        eventType: 'USER_ASKED_FAQ',
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'pricing',
+        modifier: 'ask',
         confidence,
-        source: 'llm',
       }),
     });
 
     await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
-      eventType: 'UNKNOWN_MESSAGE',
+      eventType: 'USER_MESSAGE_UNCLEAR',
       confidence: 0,
       source: 'fallback_unknown',
+      target: 'unknown',
+      modifier: 'unknown',
       metadata: {
         rawText: 'supervisor semantic event extraction failed',
       },

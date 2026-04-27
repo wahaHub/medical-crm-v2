@@ -2458,12 +2458,11 @@ describe('chatbot-v3 runtime', () => {
           throw new Error('legacy suggestion must not decide reducer path');
         }),
         extractEvent: vi.fn(async () => ({
-          eventType: 'USER_ASKED_FAQ' as const,
+          eventType: 'USER_ASKED_QUESTION' as const,
+          target: 'process' as const,
+          modifier: 'ask' as const,
           confidence: 0.9,
           source: 'llm' as const,
-          metadata: {
-            topic: 'process' as const,
-          },
         })),
       },
       journeyRuntimeAuthority: {

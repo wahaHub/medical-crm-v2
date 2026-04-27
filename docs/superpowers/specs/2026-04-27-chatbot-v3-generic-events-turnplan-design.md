@@ -559,7 +559,10 @@ if (
 
 if (
   (a.type === 'PRESENT_OPTIONS' && a.target === 'consult') ||
+  (a.type === 'ANSWER' && a.target === 'consult') ||
   (a.type === 'ACKNOWLEDGE' && event.target === 'consult') ||
+  (turnPlan.followUpAction?.type === 'GO_DEEP' &&
+    turnPlan.followUpAction.target === 'consult') ||
   (turnPlan.followUpAction?.type === 'INVITE_NEXT_STEP' &&
     turnPlan.followUpAction.target === 'consult')
 ) {

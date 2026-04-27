@@ -4,7 +4,7 @@
 
 **Goal:** Replace chatbot-v3's legacy semantic event and single-action reducer model with generic semantic events, `TurnPlan`, deterministic agent resolution, runtime skill loading, read planning, and stronger response contracts.
 
-**Architecture:** The application package owns control-plane truth: event types, reducer, `TurnPlan`, agent resolution, skill routing, read planning, and runtime authority. The API package adapts those decisions into existing physical agents, response composition, LLM schemas, tool reads, and persistence write-back. This is a direct replacement: old semantic event names and old workflow action names should not remain in prompts, reducer outputs, projection assertions, or new tests.
+**Architecture:** The application package owns control-plane truth: event types, reducer, `TurnPlan`, agent resolution, skill routing, read planning, and runtime authority. The API package bridges application-approved contracts into existing physical agents, LLM route schemas, tool execution, response rendering, and persistence write-back. It may translate `AgentTask` into worker-task adapter shapes and execute app-planned reads/writes, but it must not recreate app-owned decisions about agent routing, skill routing/loading, read planning, runtime authority, `ResponseContract`, or `TurnPlan`. This is a direct replacement: old semantic event names and old workflow action names should not remain in prompts, reducer outputs, projection assertions, or new tests.
 
 **Tech Stack:** TypeScript, pnpm workspaces, Vitest, `@medical-crm/application`, `@medical-crm/api`, chatbot-v3 route adapters and runtime service.
 
@@ -802,6 +802,8 @@ expect(resolveAgent({ event: documentsUploaded, turnPlan: recordsPlan, facts }).
 expect(resolveAgent({ event: hospitalQuestion, turnPlan: answerHospitalPlan, facts }).physicalAgent)
   .toBe('RecommendationAgent');
 expect(resolveAgent({ event: consultNeed, turnPlan: consultPlan, facts }).physicalAgent)
+  .toBe('ConsultAgent');
+expect(resolveAgent({ event: consultQuestion, turnPlan: consultAnswerPlan, facts }).physicalAgent)
   .toBe('ConsultAgent');
 expect(resolveAgent({ event: pricingQuestion, turnPlan: faqPlan, facts }).physicalAgent)
   .toBe('FaqAgent');

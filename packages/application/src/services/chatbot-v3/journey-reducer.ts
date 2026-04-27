@@ -153,7 +153,11 @@ export function decideNextAction(input: {
     case 'USER_PROVIDED_CONTACT_INFO':
       return { type: 'CREATE_HANDOFF' };
     case 'USER_REJECTED_OR_HESITATED':
-      return { type: 'ANSWER_FAQ' };
+      return {
+        type: 'ANSWER_FAQ',
+        topic: 'other',
+        subtopic: 'rejection_or_hesitation',
+      };
     case 'USER_ASKED_RISKY_MEDICAL_ADVICE':
       return { type: 'SAFE_MEDICAL_REDIRECT', riskType: event.metadata?.riskType };
     case 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE':

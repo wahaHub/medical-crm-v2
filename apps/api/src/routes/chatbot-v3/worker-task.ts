@@ -127,6 +127,19 @@ export function resolveFaqTaskPolicy(
           'preserve_primary_stage',
         ],
       };
+    case 'ANSWER_FAQ':
+      if (nextAction.subtopic !== 'rejection_or_hesitation') {
+        return {};
+      }
+
+      return {
+        responseMode: 'rejection_or_hesitation',
+        outputRules: [
+          'acknowledge_without_pressure',
+          'preserve_primary_stage',
+          'offer_one_lower_friction_next_step',
+        ],
+      };
     default:
       return {};
   }

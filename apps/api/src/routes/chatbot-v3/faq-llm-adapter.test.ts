@@ -160,6 +160,25 @@ describe('FaqLlmAdapter', () => {
       'preserve_primary_stage',
     ]));
   });
+
+  it('passes rejection and hesitation task rules through FAQ prompts', () => {
+    const task: FaqWorkerTask = {
+      ...createFaqTask('太贵了，我先考虑一下'),
+      ...resolveFaqTaskPolicy({
+        type: 'ANSWER_FAQ',
+        topic: 'other',
+        subtopic: 'rejection_or_hesitation',
+      }),
+    };
+
+    expect(buildFaqPlanPrompt({ task })).toContain('response_mode=rejection_or_hesitation');
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'hesitation', reason: 'rejection side path' },
+      matches: [],
+      details: [],
+    })).toContain('output_rules=acknowledge_without_pressure, preserve_primary_stage, offer_one_lower_friction_next_step');
+  });
 });
 
 describe('FaqAgent', () => {

@@ -219,7 +219,11 @@ describe('reduceJourney', () => {
       },
     });
 
-    expect(result.nextAction).toEqual({ type: 'ANSWER_FAQ' });
+    expect(result.nextAction).toEqual({
+      type: 'ANSWER_FAQ',
+      topic: 'other',
+      subtopic: 'rejection_or_hesitation',
+    });
     expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
     expect(result.isSidePath).toBe(true);
     expect(result.sidePathType).toBe('faq');

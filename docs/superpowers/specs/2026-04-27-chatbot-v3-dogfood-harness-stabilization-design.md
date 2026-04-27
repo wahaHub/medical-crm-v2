@@ -176,6 +176,7 @@ type DogfoodScenarioOutcome = {
 
 type DogfoodAttemptSummary = {
   phase: 'bootstrap' | 'chat';
+  turnIndex: number | null;
   attempt: number;
   durationMs: number;
   status?: number;
@@ -184,6 +185,10 @@ type DogfoodAttemptSummary = {
   retried: boolean;
 };
 ```
+
+`turnIndex` is `null` for bootstrap attempts and 0-based for chat attempts.
+
+`failureCategory` and `failedPhase` may be absent for `PASS`, but every `SOFT_FAIL` or `HARD_FAIL` outcome must include `failureCategory`, `failedPhase`, and `usableForControlPlaneJudgment`.
 
 The exact type names can differ, but the artifact must expose equivalent information.
 
@@ -300,6 +305,7 @@ The JSON transcript should preserve:
 - response body/bodyText
 - durationMs
 - attempt number
+- chat attempt turn index
 - failure category / phase
 - journey summary if present
 - runtime debug if present
@@ -309,13 +315,16 @@ Do not collapse transport errors into plain strings without structured kind.
 ## 11. Testing Requirements
 
 Add focused unit tests for:
+- preflight/API health failure is classified as `environment` with `failedPhase=preflight` and `usableForControlPlaneJudgment=false`
 - bootstrap timeout is retried and classified as `bootstrap`
 - bootstrap 4xx validation is not retried
 - missing `patient_session` / `patient_restore` produces `bootstrap` failure
 - chat timeout produces `chat_transport` with `usableForControlPlaneJudgment=false`
 - chat HTTP 500 produces `chat_http`
+- multi-turn chat attempts preserve 0-based `turnIndex`
 - HTTP 200 with wrong journey produces `control_plane`
 - HTTP 200 with expected journey but degraded answer/card produces `agent_or_composer`
+- every `SOFT_FAIL` / `HARD_FAIL` outcome includes failure category, failed phase, and control-plane usability
 - report groups failures into the new sections
 
 Tests should not require real network.

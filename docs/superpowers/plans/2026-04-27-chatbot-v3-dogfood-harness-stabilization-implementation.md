@@ -56,6 +56,7 @@ Do not modify:
 Add tests proving the evaluator can return a classified scenario outcome for:
 - `bootstrap` failure -> `HARD_FAIL`, `failedPhase='bootstrap'`, `usableForControlPlaneJudgment=false`
 - `agent_or_composer` failure -> `SOFT_FAIL`, `failedPhase='evaluation'`, `usableForControlPlaneJudgment=true`
+- non-PASS outcome without `failureCategory` / `failedPhase` is rejected or normalized before serialization
 
 Run:
 
@@ -87,6 +88,7 @@ export type DogfoodFailurePhase =
 
 export interface DogfoodAttemptSummary {
   phase: 'bootstrap' | 'chat';
+  turnIndex: number | null;
   attempt: number;
   durationMs: number;
   status?: number;
@@ -95,6 +97,8 @@ export interface DogfoodAttemptSummary {
   retried: boolean;
 }
 ```
+
+Use `turnIndex=null` for bootstrap attempts and 0-based `turnIndex` for chat attempts.
 
 Extend `ScenarioOutcome` with optional classification fields:
 
@@ -109,6 +113,8 @@ notes: string[];
 ```
 
 Keep existing fields `scenarioId`, `outcome`, `summary`, and `turns`.
+
+Add an invariant in the evaluator/tests: every `SOFT_FAIL` or `HARD_FAIL` must include `failureCategory`, `failedPhase`, and `usableForControlPlaneJudgment`. These fields may remain optional in TypeScript only to keep PASS/legacy objects ergonomic; they are mandatory for non-PASS outcomes.
 
 Also update `TurnTranscript` so JSON artifacts do not lose request-level evidence already captured by `ChatRunnerTurnTranscript`:
 
@@ -243,6 +249,7 @@ Add tests:
 - chat timeout produces a transcript with `responseStatus=0`, `chatAttempts[0].transportErrorKind='timeout'`, and `stoppedEarly=true`
 - chat HTTP 500 records status 500 in the attempt and does not look like transport failure
 - safe retry scenarios can opt into one same-turn retry for timeout/transport errors; mutating/default scenarios do not retry
+- multi-turn scenarios preserve 0-based `turnIndex` in each chat attempt, including a second-turn timeout/retry
 
 Run:
 
@@ -274,7 +281,7 @@ Rules:
 - default is `none`
 - `retry_once_if_safe` retries the same chat turn once only for `DogfoodHttpTransportError` kinds `timeout` and `transport_error`
 - HTTP 4xx/5xx responses are not same-turn retried
-- each attempt is recorded in `chatAttempts`
+- each attempt is recorded in `chatAttempts` with 0-based `turnIndex`
 - the failed attempt transcript should still preserve the final failed response if both attempts fail; do not duplicate visible turns if the retry succeeds
 
 Do not add exponential backoff or a new scenario DSL in this phase.
@@ -314,6 +321,7 @@ git -C /Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-event-reduc
 - [ ] **Step 1: Write failing classification tests**
 
 Add tests for pure classification helpers:
+- preflight/API health failure -> `failureCategory='environment'`, `failedPhase='preflight'`, `usableForControlPlaneJudgment=false`, `outcome='HARD_FAIL'`
 - `BootstrapFailureResult` -> `failureCategory='bootstrap'`, `failedPhase='bootstrap'`, `usableForControlPlaneJudgment=false`
 - chat response status `0` -> `chat_transport`, `failedPhase='chat'`, unusable
 - chat response status `500` -> `chat_http`, `failedPhase='chat'`, unusable
@@ -354,6 +362,7 @@ In `scripts/chatbot-v3-real-api-dogfood.ts`:
 - blocked bootstrap failures become classified `bootstrap` outcomes
 - allowed bootstrap failures become classified `bootstrap` outcomes
 - chat transport and chat HTTP failures get classified separately
+- API health/base URL preflight failures, when represented by the harness, become classified `environment` outcomes
 - existing happy-path/pass behavior remains
 - `sessionId` is copied from `widgetChatTargetSessionId` when available
 
@@ -401,7 +410,9 @@ Add tests that assert:
 - `transcripts.json` preserves `failureCategory`, `failedPhase`, `usableForControlPlaneJudgment`, `bootstrapAttempts`, `chatAttempts`, `sessionId`, `notes`
 - `transcripts.json.scenarioTranscripts[].turns[]` preserves request URL, request path, request payload, redacted request headers, response status, response body/bodyText, attempt number, and durationMs
 - transport-error turns retain structured `transportErrorKind` and are not collapsed into only a plain string
-- bootstrap and chat attempt summaries include `attempt` and `durationMs`
+- bootstrap and chat attempt summaries include `attempt`, `durationMs`, and `turnIndex`
+- the `Environment Failures` section is covered by at least one preflight/environment fixture
+- every serialized `SOFT_FAIL` / `HARD_FAIL` outcome includes failure category, failed phase, and control-plane usability
 - the quick Lightsail log command includes `/Users/haowang/Desktop/claws/medical-crm-v2/scripts/tail_journalctl.py` and session id placeholder/content
 - redaction still removes patient cookies and restore tokens
 

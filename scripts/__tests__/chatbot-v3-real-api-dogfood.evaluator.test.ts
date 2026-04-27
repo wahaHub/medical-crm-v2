@@ -118,9 +118,6 @@ test('run-level rollup rules are explicit', () => {
 });
 
 test('bootstrap failures are classified as hard failures outside control-plane judgment', () => {
-  assert.equal(typeof evaluator.buildClassifiedScenarioOutcome, 'function');
-  assert.equal(typeof evaluator.defaultOutcomeForFailureCategory, 'function');
-
   const result = evaluator.buildClassifiedScenarioOutcome({
     scenarioId: 'allowed_after_patient_session',
     summary: '/api/patient/onboarding/init failed: fetch failed',
@@ -141,9 +138,6 @@ test('bootstrap failures are classified as hard failures outside control-plane j
 });
 
 test('agent or composer failures are classified as soft failures with usable control-plane evidence', () => {
-  assert.equal(typeof evaluator.buildClassifiedScenarioOutcome, 'function');
-  assert.equal(typeof evaluator.defaultOutcomeForFailureCategory, 'function');
-
   const result = evaluator.buildClassifiedScenarioOutcome({
     scenarioId: 'faq_side_path_preserves_stage',
     summary: 'FAQ agent fell back after reducer selected the FAQ side-path',

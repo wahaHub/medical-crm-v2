@@ -50,9 +50,9 @@ export interface BootstrapResult {
 export interface TurnTranscript {
   scenarioId: DogfoodScenarioId;
   turnIndex: number;
-  requestUrl: string;
-  requestAttempt: number;
-  durationMs: number;
+  requestUrl?: string;
+  requestAttempt?: number;
+  durationMs?: number;
   transportErrorKind?: 'timeout' | 'transport_error';
   request: {
     method: string;

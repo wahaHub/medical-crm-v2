@@ -71,6 +71,8 @@ Create:
   Code-defined skill registry, `SkillKind`, `SkillPackId`, `SkillRequest`, `LoadedSkillPack`.
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/skill-router.ts`
   Deterministic mapping from event + turn plan + agent + facts to skill requests.
+- `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/skill-loader.ts`
+  Resolves skill requests into loaded code-defined skills, caps results, dedupes, emits warnings, and adds safe fallback skills without performing data reads.
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/task-builder.ts`
   Builds application-level `AgentTask` and `ResponseContract`.
 
@@ -83,6 +85,7 @@ Test:
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/journey-runtime-authority.service.test.ts`
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/agent-resolver.test.ts`
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/skill-router.test.ts`
+- `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/skill-loader.test.ts`
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/read-planner.test.ts`
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/task-builder.test.ts`
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/orchestrator-v3.service.test.ts`
@@ -508,11 +511,15 @@ Adapter appends:
 source: 'llm'
 ```
 
-Reject:
+Normalize:
+
+- invalid/unknown `target` -> `target: 'unknown'`
+- invalid/unknown `modifier` -> `modifier: 'unknown'`
+
+Reject and retry/fallback:
 
 - deterministic-only event type
 - old semantic event type
-- invalid target/modifier
 - confidence outside `[0, 1]`
 - `source`, `metadata`, `suggestedStage`, `dispatchAgent`, `task`, or any additional property
 
@@ -630,7 +637,7 @@ export type JourneyReducerOutput = {
 };
 ```
 
-Keep temporary `nextAction` only if required by compile, but mark it as deprecated and remove it by Chunk 7. New tests should not assert it.
+Do not include `nextAction` in `JourneyReducerOutput`. If compile-time compatibility is needed, add a separate legacy debug projection outside reducer authority, for example in `legacy-compatibility-view.ts`. That projection must not drive runtime decisions, projection assertions, stage changes, or write-back.
 
 - [ ] **Step 5: Map generic semantic events**
 
@@ -825,12 +832,14 @@ git add packages/application/src/services/chatbot-v3/agent-resolver.ts \
 git commit -m "feat(chatbot-v3): resolve agents from turn plans"
 ```
 
-### Task 8: Add code-defined skill registry and router
+### Task 8: Add code-defined skill registry, router, and loader
 
 **Files:**
 - Create: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/skill-packs.ts`
 - Create: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/skill-router.ts`
+- Create: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/skill-loader.ts`
 - Test: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/skill-router.test.ts`
+- Test: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/__tests__/chatbot-v3/skill-loader.test.ts`
 - Modify export: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/index.ts`
 
 - [ ] **Step 1: Write failing skill-router tests**
@@ -838,13 +847,19 @@ git commit -m "feat(chatbot-v3): resolve agents from turn plans"
 Assert:
 
 ```ts
-expect(buildSkillPolicy(pricingQuestion).requests.map(r => r.id)).toEqual(expect.arrayContaining([
+expect(buildSkillPolicy({
+  ...pricingQuestion,
+  agentRole: 'GeneralResponseAgent',
+}).requests.map(r => r.id)).toEqual(expect.arrayContaining([
   'search_general_faq_by_category',
   'answer_general_faq_from_admin_source',
   'load_pricing_factors',
   'explain_pricing_uncertainty',
 ]));
-expect(buildSkillPolicy(hospitalQuestion).requests.map(r => r.id)).toEqual(expect.arrayContaining([
+expect(buildSkillPolicy({
+  ...hospitalQuestion,
+  agentRole: 'RecommendationAgent',
+}).requests.map(r => r.id)).toEqual(expect.arrayContaining([
   'search_hospital_faq_by_category',
   'answer_hospital_faq_from_admin_source',
   'explain_hospital_selection_logic',
@@ -855,6 +870,23 @@ expect(buildSkillPolicy(contactProvided).requests.map(r => r.id)).toEqual(expect
 ]));
 expect(buildSkillPolicy(outOfScope).requests.map(r => r.id)).toContain('service_scope_boundary');
 expect(buildSkillPolicy(recordsUpload).requests.map(r => r.id)).toContain('derive_record_inventory_candidate');
+```
+
+Add loader tests:
+
+```ts
+const loaded = loadSkillPacks({
+  requests: [
+    { id: 'service_scope_boundary', priority: 100, reason: 'redirect' },
+    { id: 'service_scope_boundary', priority: 10, reason: 'duplicate' },
+  ],
+  maxSkillPacks: 1,
+});
+expect(loaded.skills.map(skill => skill.id)).toEqual(['service_scope_boundary']);
+expect(loaded.warnings).toEqual([]);
+
+expect(loadSkillPacks({ requests: [], maxSkillPacks: 6 }).skills.map(skill => skill.id))
+  .toContain('safe_degradation_when_uncertain');
 ```
 
 - [ ] **Step 2: Run failing skill tests**
@@ -891,7 +923,16 @@ Add all spec skill IDs, especially:
 
 - [ ] **Step 4: Implement `skill-router.ts`**
 
-`buildSkillPolicy()` returns deduped highest-priority requests:
+`buildSkillPolicy()` must accept the resolved conceptual role and return deduped highest-priority requests:
+
+```ts
+function buildSkillPolicy(input: {
+  event: SupervisorEvent;
+  turnPlan: TurnPlan;
+  agentRole: AgentRole;
+  facts: DomainFacts;
+}): SkillPolicy
+```
 
 ```ts
 export interface SkillPolicy {
@@ -902,22 +943,35 @@ export interface SkillPolicy {
 
 Default `maxSkillPacks` is `6`.
 
-- [ ] **Step 5: Run skill tests**
+- [ ] **Step 5: Implement `skill-loader.ts`**
+
+`loadSkillPacks(policy, registry)` should:
+
+- resolve code-defined skill packs by id
+- dedupe defensively by id and keep the highest-priority reason
+- apply `maxSkillPacks`
+- omit missing ids and return observability warnings
+- add `safe_degradation_when_uncertain` or `clarify_ambiguous_reply` fallback when the request set is empty
+- never call LLM, DB, CMS, or arbitrary markdown files
+
+- [ ] **Step 6: Run skill tests**
 
 ```bash
-pnpm --filter @medical-crm/application test -- src/services/__tests__/chatbot-v3/skill-router.test.ts
+pnpm --filter @medical-crm/application test -- src/services/__tests__/chatbot-v3/skill-router.test.ts src/services/__tests__/chatbot-v3/skill-loader.test.ts
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add packages/application/src/services/chatbot-v3/skill-packs.ts \
   packages/application/src/services/chatbot-v3/skill-router.ts \
+  packages/application/src/services/chatbot-v3/skill-loader.ts \
   packages/application/src/services/__tests__/chatbot-v3/skill-router.test.ts \
+  packages/application/src/services/__tests__/chatbot-v3/skill-loader.test.ts \
   packages/application/src/index.ts
-git commit -m "feat(chatbot-v3): route runtime skill packs"
+git commit -m "feat(chatbot-v3): load runtime skill packs"
 ```
 
 ### Task 9: Replace read planner with `ReadIntent[]`
@@ -1332,6 +1386,7 @@ Add at least these sessions:
 6. Risky medical request -> `REDIRECT + medical_safety`, stage preserved.
 7. Human/contact request -> contact info extracts candidate and escalates handoff.
 8. Schema failure fallback -> `USER_MESSAGE_UNCLEAR`, `CLARIFY`, next normal turn recovers.
+9. Recommendation revisit after hospital options: user says `上海的`, `更便宜的`, or `换一批`; assert `USER_EXPRESSED_NEED`, `target=recommendation`, `modifier=revisit`, `RecommendationAgent` ownership, hospital/recommendation read intents, no supervisor metadata, and revisit details passed through `latestUserMessage`, summary, facts, or retrieved context.
 
 Each turn asserts:
 

@@ -703,8 +703,10 @@ type SkillPackId =
 Registry location should be code-owned and testable, for example:
 
 ```ts
-apps/api/src/routes/chatbot-v3/skill-packs.ts
+packages/application/src/services/chatbot-v3/skill-packs.ts
 ```
+
+The application package owns skill registry, skill routing, skill loading, read planning, and control-plane invariants. The API package owns physical adapters, tool/data execution, and translating application tasks into existing agent calls.
 
 Phase 1.1 should not load skills from DB, CMS, or arbitrary markdown files.
 
@@ -765,6 +767,7 @@ SkillRouter is deterministic:
 function buildSkillPolicy(input: {
   event: SupervisorEvent;
   turnPlan: TurnPlan;
+  agentRole: AgentRole;
   facts: DomainFactsSummary;
 }): SkillPolicy
 ```
@@ -928,7 +931,7 @@ Supervisor route failures:
 
 - Invalid schema -> retry once -> `USER_MESSAGE_UNCLEAR`, `target=unknown`, `modifier=unknown`, `source=fallback_unknown`.
 - Deterministic-only event from LLM -> reject.
-- Unknown target/modifier -> sanitize to `unknown`.
+- Unknown target/modifier -> sanitize to `unknown`. Malformed schema, deterministic-only event type, old semantic event type, extra fields, or invalid confidence should retry once and then fall back if still invalid.
 
 Reducer fallback:
 

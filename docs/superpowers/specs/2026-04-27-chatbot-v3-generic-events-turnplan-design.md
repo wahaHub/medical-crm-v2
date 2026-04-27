@@ -116,6 +116,7 @@ type EventTarget =
   | 'documents'
   | 'consult'
   | 'pricing'
+  | 'next_step'
   | 'process'
   | 'travel'
   | 'payment'
@@ -130,6 +131,7 @@ type EventTarget =
 Notes:
 
 - `timeline` is intentionally not included. Timing questions map to `process`.
+- `next_step` means the user asks what they should do next in their current case. It is facts-driven and distinct from a general process FAQ.
 - `hospital` means the user asks or provides information about a specific hospital. `hospital_selection` means the selection/comparison process or criteria.
 - `contact` is included as an event target for direct contact information. It is intentionally not included as a follow-up invite target; the actionable follow-up is usually `human`.
 
@@ -184,6 +186,7 @@ Rule of thumb:
 - New goal -> `USER_EXPRESSED_NEED`.
 - New facts/preferences/contact -> `USER_PROVIDED_INFORMATION`.
 - Reply to the last assistant prompt -> `USER_RESPONDED_TO_REQUEST`.
+- Current-case "下一步呢 / what should I do next" -> `USER_ASKED_QUESTION`, `target=next_step`, `modifier=ask`.
 - If both provided facts and responded to a request apply, prefer `USER_RESPONDED_TO_REQUEST` only when the last prompt clearly asked for that information.
 
 ### Event Modifier
@@ -201,7 +204,7 @@ type EventModifier =
 
 Notes:
 
-- `refine` is not included. Recommendation refinement such as "换一批", "更便宜的", or "上海的" maps to `modifier='revisit'`, with details carried in metadata or agent context later.
+- `refine` is not included. Recommendation refinement such as "换一批", "更便宜的", or "上海的" maps to `modifier='revisit'`, with details carried through `latestUserMessage`, `conversationSummary`, facts, and retrieved context rather than supervisor metadata in Phase 1.1.
 - `revisit` means the user is re-entering a step that has already happened and wants to adjust, redo, or reconsider that same step. Example: after recommendations have been shown, "还有别的医院吗？" is `target=recommendation`, `modifier=revisit`.
 - `restart` is not included in Phase 1.1. Restart-like turns should be handled by target plus modifier or by explicit deterministic user actions in a later phase.
 
@@ -294,7 +297,7 @@ type PrimaryAction =
     };
 ```
 
-`REVISIT` is intentionally not a `PrimaryAction`. It is a modifier. The reducer interprets `target=recommendation, modifier=revisit` into a concrete recommendation plan.
+`REVISIT` is intentionally not a `PrimaryAction`. It is a modifier. The reducer interprets `target=recommendation, modifier=revisit` into a concrete recommendation plan. Phase 1.1 does not allow LLM metadata for refinement details such as "上海的" or "更便宜的"; the RecommendationAgent should use `latestUserMessage`, `conversationSummary`, facts, and retrieved context for those details.
 
 Old workflow action names are retired in Phase 1.1. The invariant survives, not the old enum name: only `ANSWER`, `target=process`, `mode=formal_overview` may write `process.explained=true`. A normal process FAQ is `ANSWER`, `target=process`, `mode=faq` and must preserve the primary stage.
 
@@ -779,6 +782,7 @@ Examples:
 
 | Signal | Runtime skill requests |
 |---|---|
+| `USER_ASKED_QUESTION + next_step` | facts-driven reducer policy; usually no skill unless the resolved step needs records, recommendation, consult, or handoff context |
 | `USER_ASKED_QUESTION + pricing/process/documents/payment/travel/consult` | `search_general_faq_by_category`, `answer_general_faq_from_admin_source` |
 | `USER_ASKED_QUESTION + hospital/hospital_selection` | `search_hospital_faq_by_category`, `answer_hospital_faq_from_admin_source`, `explain_hospital_selection_logic` |
 | `ANSWER + pricing` | `search_general_faq_by_category`, `load_pricing_factors`, `explain_pricing_uncertainty` |
@@ -961,7 +965,7 @@ Cover:
 - `USER_EXPRESSED_NEED + treatment + ask`
 - `USER_EXPRESSED_NEED + recommendation + ask`
 - `USER_EXPRESSED_NEED + recommendation + revisit`
-- `USER_ASKED_QUESTION + pricing/process/documents/payment/travel/hospital/hospital_selection`
+- `USER_ASKED_QUESTION + next_step/pricing/process/documents/payment/travel/hospital/hospital_selection`
 - `USER_PROVIDED_INFORMATION + medical_facts`
 - `USER_PROVIDED_INFORMATION + contact + provide`
 - `USER_RESPONDED_TO_REQUEST + documents + reject`

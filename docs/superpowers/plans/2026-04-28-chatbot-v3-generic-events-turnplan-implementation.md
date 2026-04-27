@@ -19,6 +19,13 @@
 - Current API runtime: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/runtime.service.ts`
 - Current worker tasks: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/worker-task.ts`
 
+## Design Decisions To Preserve
+
+- `USER_ASKED_NEXT_STEP` is retired as an event type, but the semantic signal is preserved as `USER_ASKED_QUESTION`, `target=next_step`, `modifier=ask`.
+- Recommendation revisit/refinement details such as "上海的", "更便宜的", or "换一批" are not structured into supervisor metadata in Phase 1.1. RecommendationAgent receives those details through `latestUserMessage`, `conversationSummary`, facts, and retrieved context.
+- `nextAction` may survive only as a legacy debug label during rollout. It must not participate in runtime decision-making, authority, stage projection, or write-back.
+- `contact` remains an event target, not an `INVITE_NEXT_STEP` target. Direct contact information still routes toward handoff/human behavior for Phase 1.1.
+
 ## File Structure
 
 Modify:
@@ -197,6 +204,7 @@ export type SupervisorEventTarget =
   | 'documents'
   | 'consult'
   | 'pricing'
+  | 'next_step'
   | 'process'
   | 'travel'
   | 'payment'
@@ -630,6 +638,7 @@ Reducer rules:
 
 - `USER_EXPRESSED_NEED + treatment/recommendation + ask` -> facts-driven next step.
 - `USER_EXPRESSED_NEED + recommendation + revisit` -> `PRESENT_OPTIONS`, `target=hospital`, `primaryStage=RECOMMENDATION`.
+- `USER_ASKED_QUESTION + next_step + ask` -> facts-driven next step. This replaces the retired `USER_ASKED_NEXT_STEP` event type.
 - `USER_ASKED_QUESTION + pricing/process/documents/payment/travel` -> `ANSWER`, `mode=faq`, stage preserved, likely `INVITE_NEXT_STEP` from facts.
 - `USER_ASKED_QUESTION + hospital/hospital_selection` -> `ANSWER`, `target=hospital` or `hospital_selection`, stage preserved or recommendation-owned.
 - `USER_PROVIDED_INFORMATION + medical_facts/documents/contact` -> facts patch candidate plus appropriate primary action.
@@ -1067,16 +1076,14 @@ git add packages/application/src/services/chatbot-v3/task-builder.ts \
 git commit -m "feat(chatbot-v3): build contracted agent tasks"
 ```
 
-### Task 11: Integrate `TurnPlan` runtime pipeline in API service
+### Task 11A: Integrate runtime control-plane dry run with mock agent output
 
 **Files:**
 - Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/runtime.service.ts`
-- Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/worker-task.ts`
-- Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/agents.ts`
 - Test: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/__tests__/chatbot-v3.routes.test.ts`
 - Test helper: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/__tests__/helpers/chatbot-v3-session-driver.ts`
 
-- [ ] **Step 1: Write failing runtime integration tests**
+- [ ] **Step 1: Write failing runtime dry-run tests**
 
 Add tests for:
 
@@ -1094,15 +1101,17 @@ expect(result.decision.resolvedAgent.physicalAgent).toBe('FaqAgent');
 expect(result.decision.readIntents).toContainEqual(expect.objectContaining({ type: 'GENERAL_FAQ' }));
 ```
 
-- [ ] **Step 2: Run failing runtime tests**
+Use mock agent executors that return fixed text/data. This task should prove the control-plane pipeline works before any existing physical-agent bridge is connected.
+
+- [ ] **Step 2: Run failing runtime dry-run tests**
 
 ```bash
 pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.routes.test.ts
 ```
 
-Expected: FAIL until API runtime consumes `TurnPlan`.
+Expected: FAIL until API runtime exposes the dry-run pipeline fields.
 
-- [ ] **Step 3: Update runtime pipeline**
+- [ ] **Step 3: Update runtime pipeline through task building**
 
 Runtime order:
 
@@ -1117,14 +1126,70 @@ NormalizeInput / SnapshotNormalizer
 -> ReadPlanner
 -> Tool/Data Executor
 -> TaskBuilder
--> Agent
+-> Mock Agent Executor
 -> Composer
 -> PersistenceWriter
 ```
 
 Use existing gateway operations for FAQ/hospital FAQ where possible. Do not give agents direct new tool authority; runtime executes planned reads and passes `retrievedContext`.
 
-- [ ] **Step 4: Update worker task bridge**
+- [ ] **Step 4: Expose debug fields for tests**
+
+Expose these in runtime debug/test-only surfaces:
+
+- event
+- turnPlan
+- authority decision
+- resolvedAgent
+- skill requests
+- loaded skill ids
+- read intents
+- response contract
+
+- [ ] **Step 5: Run dry-run runtime tests**
+
+```bash
+pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.routes.test.ts
+```
+
+Expected: PASS for mock-agent control-plane cases.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api/src/routes/chatbot-v3/runtime.service.ts \
+  apps/api/src/__tests__/chatbot-v3.routes.test.ts \
+  apps/api/src/__tests__/helpers/chatbot-v3-session-driver.ts
+git commit -m "feat(chatbot-v3): dry-run turn plan runtime pipeline"
+```
+
+### Task 11B: Bridge `AgentTask` into existing physical agents
+
+**Files:**
+- Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/runtime.service.ts`
+- Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/worker-task.ts`
+- Modify: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/agents.ts`
+- Test: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/__tests__/chatbot-v3.routes.test.ts`
+
+- [ ] **Step 1: Write failing physical-agent bridge tests**
+
+Use existing physical agents or focused mocks to assert:
+
+- `GeneralResponseAgent/FaqAgent` receives `ResponseContract`, FAQ snippets, and no stage/write authority.
+- `RecordsAgent` receives records task context for documents/medical facts.
+- `RecommendationAgent` receives `latestUserMessage` for revisit details such as "上海的" or "更便宜的"; these details must not come from supervisor metadata.
+- `ConsultAgent` handles consult option plans.
+- `HandoffAgent` handles contact/human escalation payload context.
+
+- [ ] **Step 2: Run failing bridge tests**
+
+```bash
+pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.routes.test.ts
+```
+
+Expected: FAIL until `AgentTask` is translated into existing worker tasks/actions.
+
+- [ ] **Step 3: Update worker task bridge**
 
 Keep existing physical agents working by translating `AgentTask` into current worker task shapes:
 
@@ -1136,7 +1201,11 @@ Keep existing physical agents working by translating `AgentTask` into current wo
 
 Do not let translated worker task change `TurnPlan`.
 
-- [ ] **Step 5: Run runtime tests**
+- [ ] **Step 4: Connect physical agents after dry-run pipeline**
+
+Replace the Task 11A mock executor path with the normal physical-agent executor path after `TaskBuilder`. Keep a test-only hook to avoid LLM calls in unit/integration tests.
+
+- [ ] **Step 5: Run bridge tests**
 
 ```bash
 pnpm --filter @medical-crm/api test -- src/__tests__/chatbot-v3.routes.test.ts
@@ -1152,7 +1221,7 @@ git add apps/api/src/routes/chatbot-v3/runtime.service.ts \
   apps/api/src/routes/chatbot-v3/agents.ts \
   apps/api/src/__tests__/chatbot-v3.routes.test.ts \
   apps/api/src/__tests__/helpers/chatbot-v3-session-driver.ts
-git commit -m "feat(chatbot-v3): run turn plan runtime pipeline"
+git commit -m "feat(chatbot-v3): bridge turn plans to agents"
 ```
 
 ### Task 12: Update response composer and FAQ prompt contracts
@@ -1170,9 +1239,11 @@ Assert:
 ```ts
 expect(composed.projectedDecision.primaryAction).toEqual(turnPlan.primaryAction);
 expect(composed.projectedDecision.primaryStage).toBe(turnPlan.primaryStage);
-expect(composed.projectedDecision.nextAction).toBeUndefined();
+expect(composed.projectedDecision.legacyNextActionLabel).toBeUndefined();
 expect(composed.text).toContain(/* weak keyword, e.g. 上传资料 or 在线咨询 */);
 ```
+
+If a legacy debug panel still needs a label, prefer `legacyNextActionLabel?: string`. It must not participate in runtime decision-making, authority, stage projection, or write-back.
 
 For process FAQ:
 
@@ -1204,7 +1275,7 @@ projectedDecision.primaryStage === turnPlan.primaryStage
 projectedDecision.primaryAction === turnPlan.primaryAction
 ```
 
-No second stage/action truth.
+No second stage/action truth. A legacy label can exist only as debug/read-only compatibility.
 
 - [ ] **Step 4: Update FAQ prompts**
 
@@ -1334,7 +1405,7 @@ git commit -m "test(chatbot-v3): cover generic turn plan sessions"
 Run:
 
 ```bash
-rg -n "USER_ASKED_FAQ|USER_ASKED_NEXT_STEP|USER_WANTS_TREATMENT_IN_CHINA|USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING|USER_PROVIDED_MEDICAL_FACTS|USER_INTERESTED_IN_CONSULT|USER_REJECTED_OR_HESITATED|USER_PROVIDED_CONTACT_INFO|USER_AMBIGUOUS_REPLY|UNKNOWN_MESSAGE|COLLECT_MINIMAL_TRIAGE|GENERATE_RECOMMENDATION|SHOW_PROCESS_OVERVIEW|REQUEST_MEDICAL_DOCUMENTS|OFFER_ONLINE_CONSULT|CREATE_HANDOFF|ANSWER_FAQ|CLARIFY_INTENT" packages/application/src apps/api/src
+rg -n "USER_ASKED_FAQ|USER_ASKED_NEXT_STEP|USER_WANTS_TREATMENT_IN_CHINA|USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING|USER_PROVIDED_MEDICAL_FACTS|USER_INTERESTED_IN_CONSULT|USER_REJECTED_OR_HESITATED|USER_PROVIDED_CONTACT_INFO|USER_AMBIGUOUS_REPLY|UNKNOWN_MESSAGE|COLLECT_MINIMAL_TRIAGE|GENERATE_RECOMMENDATION|SHOW_PROCESS_OVERVIEW|REQUEST_MEDICAL_DOCUMENTS|OFFER_ONLINE_CONSULT|CREATE_HANDOFF|ANSWER_FAQ|CLARIFY_INTENT|classify_service_scope_boundary|derive_record_inventory_patch|write_strategy" packages/application/src apps/api/src
 ```
 
 Expected: only migration comments or tests explicitly asserting absence should remain. Prefer zero runtime hits.

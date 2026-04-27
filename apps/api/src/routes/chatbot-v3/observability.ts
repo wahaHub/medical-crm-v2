@@ -49,6 +49,7 @@ export interface ChatbotV3RuntimeNodeEventInput {
   eventSource?: string;
   confidence?: number;
   nextAction?: string;
+  primaryAction?: unknown;
   reasonCode?: string;
   stateDiff?: {
     beforeStage?: string;
@@ -60,6 +61,8 @@ export interface ChatbotV3RuntimeNodeEventInput {
   primaryStagePreserved?: boolean;
   invariantName?: string;
   readPlan?: unknown;
+  resolvedAgent?: unknown;
+  skillWarnings?: string[];
 }
 
 export interface ChatbotV3RuntimeNodeEvent extends ChatbotV3RuntimeNodeEventInput {

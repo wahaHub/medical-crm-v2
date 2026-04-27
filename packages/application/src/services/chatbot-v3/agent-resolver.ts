@@ -60,24 +60,46 @@ export function resolveAgent(input: {
     || event.target === 'hospital_selection') {
     if (event.modifier === 'revisit'
       || action.type === 'PRESENT_OPTIONS'
-      || followUpAction?.target === 'recommendation') {
+      || isFollowUpAnyTarget(followUpAction, 'recommendation')) {
       return recommendation('recommendation_or_hospital_revisit');
     }
 
-    if (action.type === 'ANSWER' || followUpAction?.type === 'GO_DEEP') {
+    if (action.type === 'ANSWER' || isFollowUpType(followUpAction, 'GO_DEEP')) {
       return recommendation('hospital_or_selection_question');
     }
   }
 
   if ((action.type === 'PRESENT_OPTIONS' && action.target === 'consult')
-    || (action.type === 'ANSWER' && action.target === 'consult')
     || (action.type === 'ACKNOWLEDGE' && event.target === 'consult')
-    || (followUpAction?.type === 'GO_DEEP' && followUpAction.target === 'consult')
-    || (followUpAction?.type === 'INVITE_NEXT_STEP' && followUpAction.target === 'consult')) {
+    || isFollowUpTarget(followUpAction, 'INVITE_NEXT_STEP', 'consult')) {
     return consult('consult_followup_or_need');
   }
 
   return general('general_response_default');
+}
+
+function isFollowUpTarget(
+  followUpAction: TurnPlan['followUpAction'],
+  type: 'GO_DEEP' | 'INVITE_NEXT_STEP',
+  target: string,
+): boolean {
+  return followUpAction?.type === type && followUpAction.target === target;
+}
+
+function isFollowUpAnyTarget(
+  followUpAction: TurnPlan['followUpAction'],
+  target: string,
+): boolean {
+  return followUpAction?.type !== undefined
+    && followUpAction.type !== 'NONE'
+    && followUpAction.target === target;
+}
+
+function isFollowUpType(
+  followUpAction: TurnPlan['followUpAction'],
+  type: 'GO_DEEP' | 'INVITE_NEXT_STEP' | 'ASK_QUALIFYING_QUESTION',
+): boolean {
+  return followUpAction?.type === type;
 }
 
 function general(reasonCode: string): ResolvedAgent {

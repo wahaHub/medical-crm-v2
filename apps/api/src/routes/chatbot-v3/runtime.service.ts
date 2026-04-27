@@ -10,17 +10,25 @@ import {
   type ChatbotV3ConversationSummaryContract,
   type ChatbotV3FaqResolution,
   type ChatbotV3ReplayLineage,
+  buildAgentTask,
   buildReadPlan,
+  buildSkillPolicy,
+  loadSkillPacks,
   type MinimalIntakeSeed,
   type NextAction,
+  type PrimaryAction,
+  type ReadPlan,
   normalizeFactsFromStatusSnapshot,
   projectLegacyCompatibilityView,
   reduceJourney,
-  resolveNextActionExecution,
+  resolveAgent,
+  type AgentTask,
+  type ResolvedAgent,
   type SupervisorDecisionLineage,
   type SupervisorDomainReadResults,
   type SupervisorEvent,
   type SupervisorReadDomain,
+  type TurnPlan,
 } from '@medical-crm/application';
 import type { AgentAction, AgentName } from './agents.js';
 import { buildAssistantText, buildEffectiveStatusSnapshot } from './response-composer.js';
@@ -146,6 +154,16 @@ export interface ConversationOrchestratorV3Decision {
   action: 'STAY' | 'ADVANCE' | 'SKIP' | 'HANDOFF';
   from: ConversationOrchestratorV3StageRef;
   to: ConversationOrchestratorV3StageRef;
+  primaryAction?: PrimaryAction;
+  turnPlan?: TurnPlan;
+  resolvedAgent?: ResolvedAgent;
+  readPlan?: ReadPlan;
+  agentTask?: AgentTask;
+  skillWarnings?: string[];
+  /**
+   * Legacy debug/worker-bridge label. Runtime authority must use primaryAction
+   * and turnPlan as the control-plane truth.
+   */
   nextAction?: NextAction;
   dispatchAgent?: AgentName | null;
   dispatchSource: 'journey-runtime-authority';
@@ -680,8 +698,37 @@ export class ConversationOrchestratorV3RuntimeService {
       }),
       event,
     });
-    const execution = resolveNextActionExecution(reduction.nextAction);
-    const readPlan = buildReadPlan(reduction.nextAction);
+    const resolvedAgent = resolveAgent({
+      event,
+      turnPlan: reduction.turnPlan,
+      facts: reduction.facts,
+    });
+    const execution = resolveTurnPlanExecution(reduction.turnPlan, resolvedAgent);
+    const skillPolicy = buildSkillPolicy({
+      event,
+      turnPlan: reduction.turnPlan,
+      agentRole: resolvedAgent.conceptualRole,
+      facts: reduction.facts,
+    });
+    const loadedSkillPolicy = loadSkillPacks({
+      requests: skillPolicy.requests,
+      maxSkillSnippets: skillPolicy.maxSkillSnippets,
+    });
+    const readPlan = buildReadPlan({
+      event,
+      turnPlan: reduction.turnPlan,
+      loadedSkills: loadedSkillPolicy.skillPacks,
+    });
+    const agentTask = buildAgentTask({
+      event,
+      turnPlan: reduction.turnPlan,
+      resolvedAgent,
+      latestUserMessage: normalizedInput.message,
+      conversationSummary: normalizedInput.statusSnapshot?.conversationSummary ?? '',
+      knownFacts: reduction.facts,
+      loadedSkills: loadedSkillPolicy.skillPacks,
+      readPlan,
+    });
     const compatibilityView = projectLegacyCompatibilityView({
       currentStage: decisionInput.current.stage,
       reduction,
@@ -700,7 +747,7 @@ export class ConversationOrchestratorV3RuntimeService {
       eventType: event.eventType,
       eventSource: event.source,
       confidence: event.confidence,
-      nextAction: reduction.nextAction.type,
+      primaryAction: reduction.turnPlan.primaryAction,
       reasonCode: reduction.reasonCode,
       stateDiff,
       sidePath: reduction.isSidePath,
@@ -715,11 +762,13 @@ export class ConversationOrchestratorV3RuntimeService {
       action: 'resolve',
       status: 'completed',
       latencyMs: this.elapsedSince(reducerStartedAt),
-      nextAction: reduction.nextAction.type,
+      primaryAction: reduction.turnPlan.primaryAction,
       reasonCode: reduction.reasonCode,
       fromStage: decisionInput.current.stage,
       toStage: reduction.primaryStage,
       readPlan,
+      resolvedAgent,
+      skillWarnings: loadedSkillPolicy.warnings,
     });
     const projectionInvariantStatus = projectionMatchesReducer({
       compatibilityView,
@@ -732,7 +781,7 @@ export class ConversationOrchestratorV3RuntimeService {
       status: projectionInvariantStatus,
       latencyMs: this.elapsedSince(reducerStartedAt),
       invariantName: 'projection_matches_reducer',
-      nextAction: reduction.nextAction.type,
+      primaryAction: reduction.turnPlan.primaryAction,
       reasonCode: reduction.reasonCode,
       fromStage: decisionInput.current.stage,
       toStage: reduction.primaryStage,
@@ -747,6 +796,10 @@ export class ConversationOrchestratorV3RuntimeService {
       current: decisionInput.current,
       reduction,
       execution,
+      resolvedAgent,
+      readPlan,
+      agentTask,
+      skillWarnings: loadedSkillPolicy.warnings,
     });
     this.emitNodeEvent(normalizedInput, {
       node: 'JourneyRuntimeAuthority',
@@ -756,7 +809,7 @@ export class ConversationOrchestratorV3RuntimeService {
       eventType: event.eventType,
       eventSource: event.source,
       confidence: event.confidence,
-      nextAction: reduction.nextAction.type,
+      primaryAction: reduction.turnPlan.primaryAction,
       reasonCode: reduction.reasonCode,
       stateDiff,
       sidePath: reduction.isSidePath,
@@ -789,7 +842,7 @@ export class ConversationOrchestratorV3RuntimeService {
         },
         runtimeDebug,
         render: {
-          path: resolveReducerSystemRenderPath(reduction.nextAction.type, execution.isSystemRendered),
+          path: resolveReducerSystemRenderPath(reduction.turnPlan.primaryAction, execution.isSystemRendered),
         },
       } satisfies ConversationOrchestratorV3TurnResult;
       return this.finalizeTurnResult(
@@ -961,10 +1014,18 @@ export class ConversationOrchestratorV3RuntimeService {
     current,
     reduction,
     execution,
+    resolvedAgent,
+    readPlan,
+    agentTask,
+    skillWarnings,
   }: {
     current: ConversationOrchestratorV3StageRef;
     reduction: ReturnType<typeof reduceJourney>;
-    execution: ReturnType<typeof resolveNextActionExecution>;
+    execution: TurnPlanExecution;
+    resolvedAgent: ResolvedAgent;
+    readPlan: ReadPlan;
+    agentTask: AgentTask;
+    skillWarnings: string[];
   }): ConversationOrchestratorV3Decision {
     const to = {
       stage: reduction.primaryStage,
@@ -973,14 +1034,20 @@ export class ConversationOrchestratorV3RuntimeService {
     const factsPatch = buildReducerRuntimeFactsPatch(reduction, execution.isSystemRendered);
 
     return {
-      action: reduction.nextAction.type === 'CREATE_HANDOFF'
+      action: reduction.turnPlan.primaryAction.type === 'ESCALATE'
         ? 'HANDOFF'
         : current.stage === to.stage
           ? 'STAY'
           : 'ADVANCE',
       from: cloneStageRef(current),
       to,
-      nextAction: reduction.nextAction,
+      primaryAction: reduction.turnPlan.primaryAction,
+      turnPlan: reduction.turnPlan,
+      resolvedAgent,
+      readPlan,
+      agentTask,
+      skillWarnings,
+      nextAction: legacyNextActionFromPrimaryAction(reduction.turnPlan.primaryAction),
       dispatchAgent: execution.agent,
       dispatchSource: 'journey-runtime-authority',
       matchedRuleId: reduction.reasonCode,
@@ -2280,6 +2347,56 @@ function mergeStatusPatches(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+interface TurnPlanExecution {
+  agent: AgentName | null;
+  isSystemRendered: boolean;
+}
+
+function resolveTurnPlanExecution(
+  turnPlan: TurnPlan,
+  resolvedAgent: ResolvedAgent,
+): TurnPlanExecution {
+  const primaryAction = turnPlan.primaryAction;
+  if (primaryAction.type === 'ANSWER'
+    && primaryAction.target === 'process'
+    && primaryAction.mode === 'formal_overview') {
+    return { agent: null, isSystemRendered: true };
+  }
+
+  return {
+    agent: resolvedAgent.physicalAgent,
+    isSystemRendered: false,
+  };
+}
+
+function legacyNextActionFromPrimaryAction(action: PrimaryAction): NextAction {
+  switch (action.type) {
+    case 'REQUEST_INFO':
+      return action.target === 'minimal_triage'
+        ? { type: 'COLLECT_MINIMAL_TRIAGE' }
+        : { type: 'REQUEST_MEDICAL_DOCUMENTS' };
+    case 'PRESENT_OPTIONS':
+      return action.target === 'consult'
+        ? { type: 'OFFER_ONLINE_CONSULT' }
+        : { type: 'GENERATE_RECOMMENDATION' };
+    case 'ANSWER':
+      return action.mode === 'formal_overview'
+        ? { type: 'SHOW_PROCESS_OVERVIEW' }
+        : { type: 'ANSWER_FAQ' };
+    case 'REDIRECT':
+      return action.reasonCode === 'medical_safety'
+        ? { type: 'SAFE_MEDICAL_REDIRECT' }
+        : { type: 'OUT_OF_SCOPE_REDIRECT' };
+    case 'ESCALATE':
+      return { type: 'CREATE_HANDOFF' };
+    case 'CLARIFY':
+      return { type: 'CLARIFY_INTENT' };
+    case 'ACKNOWLEDGE':
+    case 'HANDLE_RESPONSE':
+      return { type: 'ANSWER_FAQ' };
+  }
+}
+
 function buildReducerRuntimeFactsPatch(
   reduction: ReturnType<typeof reduceJourney>,
   isSystemRendered: boolean,
@@ -2295,7 +2412,11 @@ function buildReducerRuntimeFactsPatch(
     factsPatch['recommendation.selected'] = true;
   }
 
-  if (isSystemRendered && reduction.nextAction.type === 'SHOW_PROCESS_OVERVIEW') {
+  const primaryAction = reduction.turnPlan.primaryAction;
+  if (isSystemRendered
+    && primaryAction.type === 'ANSWER'
+    && primaryAction.target === 'process'
+    && primaryAction.mode === 'formal_overview') {
     factsPatch['process.explained'] = true;
   }
 
@@ -2475,32 +2596,29 @@ function compactReplayLineage(
 }
 
 function resolveReducerSystemRenderPath(
-  nextActionType: string,
+  primaryAction: PrimaryAction,
   isSystemRendered: boolean,
 ): ConversationOrchestratorV3RenderState['path'] {
   if (!isSystemRendered) {
     return 'STAGE_GUIDANCE';
   }
 
-  switch (nextActionType) {
-    case 'SHOW_PROCESS_OVERVIEW':
-      return 'PROCESS_OVERVIEW';
-    case 'SAFE_MEDICAL_REDIRECT':
-      return 'SAFE_MEDICAL_REDIRECT';
-    case 'OUT_OF_SCOPE_REDIRECT':
-      return 'OUT_OF_SCOPE_REDIRECT';
-    default:
-      return 'STAGE_GUIDANCE';
+  if (primaryAction.type === 'ANSWER'
+    && primaryAction.target === 'process'
+    && primaryAction.mode === 'formal_overview') {
+    return 'PROCESS_OVERVIEW';
   }
+
+  return 'STAGE_GUIDANCE';
 }
 
 function projectionMatchesReducer(input: {
   compatibilityView: ReturnType<typeof projectLegacyCompatibilityView>;
   reduction: ReturnType<typeof reduceJourney>;
-  execution: ReturnType<typeof resolveNextActionExecution>;
+  execution: TurnPlanExecution;
 }): boolean {
   return input.compatibilityView.projectedDecision.toStage === input.reduction.primaryStage
-    && input.compatibilityView.projectedDecision.nextAction.type === input.reduction.nextAction.type
+    && input.compatibilityView.projectedDecision.primaryAction.type === input.reduction.turnPlan.primaryAction.type
     && input.compatibilityView.projectedDecision.dispatchAgent === input.execution.agent
     && input.compatibilityView.projectedDecision.isSystemRendered === input.execution.isSystemRendered
     && input.compatibilityView.projectedProposal.suggestedStage === input.reduction.primaryStage;

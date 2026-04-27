@@ -100,5 +100,5 @@ function resolveCategory(event: SupervisorEvent, turnPlan: TurnPlan): string {
     return event.target;
   }
   const action = turnPlan.primaryAction;
-  return 'target' in action ? action.target : 'unknown';
+  return 'target' in action && action.target ? action.target : 'unknown';
 }

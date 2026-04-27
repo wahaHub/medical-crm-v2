@@ -25,6 +25,8 @@ import {
 } from './types.js';
 import {
   getAllowedSupervisorEvents,
+  SUPERVISOR_EVENT_MODIFIERS,
+  SUPERVISOR_EVENT_TARGETS,
   SUPERVISOR_EVENT_TYPES,
 } from './supervisor-event.types.js';
 import {
@@ -56,7 +58,6 @@ const SEMANTIC_FORBIDDEN_EVENT_TYPES = new Set<SupervisorEvent['eventType']>([
   'RECOMMENDATION_SELECTED',
   'RECOMMENDATION_SKIPPED',
   'DOCUMENTS_UPLOADED',
-  'USER_REQUESTED_HUMAN',
 ]);
 
 const DIRECT_HUMAN_REQUEST_PATTERNS = [
@@ -184,7 +185,7 @@ export class SupervisorService {
       return deterministicEvent;
     }
 
-    if (heuristicEvent.eventType === 'USER_ASKED_FAQ' && !this.gateway) {
+    if (heuristicEvent.eventType === 'USER_ASKED_QUESTION' && !this.gateway) {
       this.lastRunMetadata = null;
       return heuristicEvent;
     }
@@ -242,7 +243,13 @@ function sanitizeSemanticSupervisorEvent(
   allowedEvents: readonly SupervisorEvent['eventType'][],
 ): SupervisorEvent {
   const record = asRecord(raw);
-  const hasOnlyEventKeys = Object.keys(record).every((key) => key === 'eventType' || key === 'confidence' || key === 'source' || key === 'metadata');
+  const hasOnlyEventKeys = Object.keys(record).every((key) => (
+    key === 'eventType'
+    || key === 'confidence'
+    || key === 'source'
+    || key === 'target'
+    || key === 'modifier'
+  ));
 
   if (
     !hasOnlyEventKeys
@@ -252,9 +259,8 @@ function sanitizeSemanticSupervisorEvent(
     || !Number.isFinite(record.confidence)
     || record.confidence < 0
     || record.confidence > 1
-    || record.source !== 'llm'
+    || (record.source !== undefined && record.source !== 'llm')
     || SEMANTIC_FORBIDDEN_EVENT_TYPES.has(record.eventType)
-    || (record.metadata !== undefined && !isSupervisorEventMetadata(record.metadata))
   ) {
     return buildFallbackUnknownEvent('supervisor semantic event extraction failed');
   }
@@ -262,16 +268,19 @@ function sanitizeSemanticSupervisorEvent(
   return {
     eventType: record.eventType,
     confidence: record.confidence,
-    source: record.source,
-    ...(record.metadata ? { metadata: record.metadata } : {}),
+    source: 'llm',
+    target: isSupervisorEventTarget(record.target) ? record.target : 'unknown',
+    modifier: isSupervisorEventModifier(record.modifier) ? record.modifier : 'unknown',
   };
 }
 
 function buildFallbackUnknownEvent(rawText: string): SupervisorEvent {
   return {
-    eventType: 'UNKNOWN_MESSAGE',
+    eventType: 'USER_MESSAGE_UNCLEAR',
     confidence: 0,
     source: 'fallback_unknown',
+    target: 'unknown',
+    modifier: 'unknown',
     metadata: { rawText },
   };
 }
@@ -285,6 +294,8 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
       eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
       confidence: 0.9,
       source: 'deterministic',
+      target: 'medical_facts',
+      modifier: 'ask',
       metadata: {
         ...(metadata ?? {}),
         riskType: 'medical_advice',
@@ -297,6 +308,8 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
       eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
       confidence: 0.9,
       source: 'deterministic',
+      target: 'unknown',
+      modifier: 'ask',
       metadata: {
         ...(metadata ?? {}),
         redirectTarget: 'medical_travel_support',
@@ -306,18 +319,24 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
 
   if (looksLikeFaqQuestion(rawText)) {
     return {
-      eventType: 'USER_ASKED_FAQ',
+      eventType: 'USER_ASKED_QUESTION',
       confidence: 0.75,
       source: 'llm',
+      target: inferQuestionTarget(rawText),
+      modifier: 'ask',
       ...(metadata ? { metadata } : {}),
     };
   }
 
   if (/\b(?:recommend|recommendation|hospital|hospitals|clinic|clinics|option|options)\b/i.test(rawText)) {
     return {
-      eventType: 'USER_ASKED_NEXT_STEP',
+      eventType: 'USER_EXPRESSED_NEED',
       confidence: 0.65,
       source: 'llm',
+      target: 'recommendation',
+      modifier: /\b(?:again|another|other|different|refresh|revisit|change|switch|换|重新|别的|其他)\b/i.test(rawText)
+        ? 'revisit'
+        : 'ask',
       ...(metadata ? { metadata } : {}),
     };
   }
@@ -329,33 +348,41 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
       eventType: 'USER_REQUESTED_HUMAN',
       confidence: 0.8,
       source: 'deterministic',
+      target: 'human',
+      modifier: 'ask',
       ...(metadata ? { metadata } : {}),
     };
   }
 
   if (suggestion.intent === 'faq' || suggestion.intent === 'resource') {
     return {
-      eventType: 'USER_ASKED_FAQ',
+      eventType: 'USER_ASKED_QUESTION',
       confidence: 0.75,
       source: 'llm',
+      target: inferQuestionTarget(rawText),
+      modifier: 'ask',
       ...(metadata ? { metadata } : {}),
     };
   }
 
   if (suggestion.intent === 'consult') {
     return {
-      eventType: 'USER_INTERESTED_IN_CONSULT',
+      eventType: 'USER_EXPRESSED_NEED',
       confidence: 0.7,
       source: 'llm',
+      target: 'consult',
+      modifier: 'ask',
       ...(metadata ? { metadata } : {}),
     };
   }
 
   if (suggestion.intent === 'progression') {
     return {
-      eventType: 'USER_ASKED_NEXT_STEP',
+      eventType: 'USER_ASKED_QUESTION',
       confidence: 0.65,
       source: 'llm',
+      target: 'next_step',
+      modifier: 'ask',
       ...(metadata ? { metadata } : {}),
     };
   }
@@ -612,53 +639,37 @@ function isSupervisorEventType(value: unknown): value is SupervisorEvent['eventT
   return typeof value === 'string' && (SUPERVISOR_EVENT_TYPES as readonly string[]).includes(value);
 }
 
-function isSupervisorEventMetadata(value: unknown): value is NonNullable<SupervisorEvent['metadata']> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false;
+function isSupervisorEventTarget(value: unknown): value is NonNullable<SupervisorEvent['target']> {
+  return typeof value === 'string' && (SUPERVISOR_EVENT_TARGETS as readonly string[]).includes(value);
+}
+
+function isSupervisorEventModifier(value: unknown): value is NonNullable<SupervisorEvent['modifier']> {
+  return typeof value === 'string' && (SUPERVISOR_EVENT_MODIFIERS as readonly string[]).includes(value);
+}
+
+function inferQuestionTarget(message: string): NonNullable<SupervisorEvent['target']> {
+  if (/\b(?:next step|what next|now what|do next|下一步|接下来|然后呢)\b/i.test(message)) {
+    return 'next_step';
   }
-
-  const metadata = value as Record<string, unknown>;
-  const allowedKeys = new Set([
-    'topic',
-    'subtopic',
-    'condition',
-    'destination',
-    'urgency',
-    'extractedFacts',
-    'selectedHospitalIds',
-    'documentCount',
-    'riskType',
-    'redirectTarget',
-    'rawText',
-  ]);
-
-  if (!Object.keys(metadata).every((key) => allowedKeys.has(key))) {
-    return false;
+  if (/\b(?:price|cost|fee|fees|expensive|cheap|payment|pay|多少钱|费用|价格|付款|付费|太贵)\b/i.test(message)) {
+    return /\b(?:payment|pay|付款|付费)\b/i.test(message) ? 'payment' : 'pricing';
   }
-
-  return isOptionalString(metadata.topic)
-    && isOptionalString(metadata.subtopic)
-    && isOptionalString(metadata.condition)
-    && isOptionalString(metadata.destination)
-    && (metadata.urgency === undefined || metadata.urgency === 'low' || metadata.urgency === 'medium' || metadata.urgency === 'high' || metadata.urgency === 'unknown')
-    && (metadata.extractedFacts === undefined || isPlainRecord(metadata.extractedFacts))
-    && (metadata.selectedHospitalIds === undefined || isStringArray(metadata.selectedHospitalIds))
-    && (metadata.documentCount === undefined || typeof metadata.documentCount === 'number')
-    && isOptionalString(metadata.riskType)
-    && isOptionalString(metadata.redirectTarget)
-    && isOptionalString(metadata.rawText);
-}
-
-function isOptionalString(value: unknown): boolean {
-  return value === undefined || typeof value === 'string';
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): boolean {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+  if (/\b(?:document|documents|record|records|mri|ct|pathology|report|资料|病历|报告|片子|病理)\b/i.test(message)) {
+    return 'documents';
+  }
+  if (/\b(?:hospital|doctor|clinic|specialist|医院|医生|专家)\b/i.test(message)) {
+    return 'hospital';
+  }
+  if (/\b(?:consult|consultation|appointment|call|问诊|会诊|咨询|预约)\b/i.test(message)) {
+    return 'consult';
+  }
+  if (/\b(?:travel|visa|flight|hotel|trip|签证|机票|酒店|赴华|行程)\b/i.test(message)) {
+    return 'travel';
+  }
+  if (/\b(?:process|timeline|how long|流程|多久|时间)\b/i.test(message)) {
+    return 'process';
+  }
+  return 'unknown';
 }
 
 function isSidePathIntent(

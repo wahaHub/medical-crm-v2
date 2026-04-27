@@ -1453,8 +1453,11 @@ describe('chatbot-v3 runtime', () => {
         action: 'state_diff',
         status: 'completed',
         eventType: 'TRIAGE_SUBMITTED',
-        nextAction: 'GENERATE_RECOMMENDATION',
-        reasonCode: 'triage_submitted_generate_recommendation',
+        primaryAction: {
+          type: 'PRESENT_OPTIONS',
+          target: 'hospital',
+        },
+        reasonCode: 'triage_submitted_present_options',
         stateDiff: expect.objectContaining({
           beforeStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
           afterStage: 'RECOMMENDATION',
@@ -1469,7 +1472,13 @@ describe('chatbot-v3 runtime', () => {
         node: 'NextActionResolver',
         action: 'resolve',
         status: 'completed',
-        nextAction: 'GENERATE_RECOMMENDATION',
+        primaryAction: {
+          type: 'PRESENT_OPTIONS',
+          target: 'hospital',
+        },
+        resolvedAgent: expect.objectContaining({
+          physicalAgent: 'RecommendationAgent',
+        }),
       }),
       expect.objectContaining({
         node: 'Invariant',
@@ -1609,12 +1618,14 @@ describe('chatbot-v3 runtime', () => {
     expect(result.writeIntents?.canonicalTruthPatch).not.toHaveProperty('handoffActive');
   });
 
-  it('system-renders risky medical advice redirects without calling the FAQ agent', async () => {
+  it('routes risky medical advice redirects through bounded FAQ response policy', async () => {
     const faqAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
         data: {
-          answer: 'generic faq answer should not be used for medical advice',
+          answer: 'I cannot provide specific medical advice. We can help prepare records to arrange a doctor consultation.',
+          confidence: 'high',
+          policyGrounded: true,
         },
       })),
     };
@@ -1675,10 +1686,17 @@ describe('chatbot-v3 runtime', () => {
       sessionStatusSnapshot: result.writeIntents?.statusPatch,
     });
 
-    expect(faqAgent.execute).not.toHaveBeenCalled();
-    expect(result.decision.dispatchAgent).toBeNull();
+    expect(faqAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'faq.answer',
+      meta: expect.objectContaining({
+        task: expect.objectContaining({
+          responseMode: 'safe_medical_redirect',
+        }),
+      }),
+    }));
+    expect(result.decision.dispatchAgent).toBe('FaqAgent');
     expect(result.render).toEqual({
-      path: 'SAFE_MEDICAL_REDIRECT',
+      path: 'FAQ_ANSWER',
     });
     expect(result.journey).toEqual({
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
@@ -1688,12 +1706,14 @@ describe('chatbot-v3 runtime', () => {
     expect(response.messages[0]?.text).toContain('arrange a doctor consultation');
   });
 
-  it('system-renders out-of-scope redirects without calling the FAQ agent', async () => {
+  it('routes out-of-scope redirects through bounded FAQ response policy', async () => {
     const faqAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
         data: {
-          answer: 'generic faq answer should not be used for restricted service redirects',
+          answer: 'Medora focuses on medical travel coordination, not guaranteed treatment outcomes.',
+          confidence: 'high',
+          policyGrounded: true,
         },
       })),
     };
@@ -1754,10 +1774,17 @@ describe('chatbot-v3 runtime', () => {
       sessionStatusSnapshot: result.writeIntents?.statusPatch,
     });
 
-    expect(faqAgent.execute).not.toHaveBeenCalled();
-    expect(result.decision.dispatchAgent).toBeNull();
+    expect(faqAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'faq.answer',
+      meta: expect.objectContaining({
+        task: expect.objectContaining({
+          responseMode: 'out_of_scope_redirect',
+        }),
+      }),
+    }));
+    expect(result.decision.dispatchAgent).toBe('FaqAgent');
     expect(result.render).toEqual({
-      path: 'OUT_OF_SCOPE_REDIRECT',
+      path: 'FAQ_ANSWER',
     });
     expect(result.journey).toEqual({
       stage: 'RECOMMENDATION',
@@ -2204,12 +2231,14 @@ describe('chatbot-v3 runtime', () => {
     expect(consultAgent.execute).not.toHaveBeenCalled();
   });
 
-  it('system-renders no-gateway risky medical advice instead of falling back to FAQ', async () => {
+  it('routes no-gateway risky medical advice through bounded FAQ policy', async () => {
     const faqAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
         data: {
-          answer: 'generic faq answer should not be used for risky advice',
+          answer: 'I cannot provide specific medical advice. We can help prepare records for a doctor review.',
+          confidence: 'high',
+          policyGrounded: true,
         },
       })),
     };
@@ -2249,10 +2278,17 @@ describe('chatbot-v3 runtime', () => {
       },
     });
 
-    expect(faqAgent.execute).not.toHaveBeenCalled();
-    expect(result.decision.dispatchAgent).toBeNull();
+    expect(faqAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'faq.answer',
+      meta: expect.objectContaining({
+        task: expect.objectContaining({
+          responseMode: 'safe_medical_redirect',
+        }),
+      }),
+    }));
+    expect(result.decision.dispatchAgent).toBe('FaqAgent');
     expect(result.render).toEqual({
-      path: 'SAFE_MEDICAL_REDIRECT',
+      path: 'FAQ_ANSWER',
     });
   });
 
@@ -2482,7 +2518,7 @@ describe('chatbot-v3 runtime', () => {
     expect(result.writeIntents?.canonicalTruthPatch).not.toHaveProperty('processExplained');
   });
 
-  it('answers USER_ASKED_NEXT_STEP from normalized facts instead of an LLM stage guess', async () => {
+  it('answers next-step questions from normalized facts instead of an LLM stage guess', async () => {
     const recordsAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
@@ -2500,9 +2536,11 @@ describe('chatbot-v3 runtime', () => {
           reason: 'stale LLM stage guess that should be ignored',
         })),
         extractEvent: vi.fn(async () => ({
-          eventType: 'USER_ASKED_NEXT_STEP' as const,
+          eventType: 'USER_ASKED_QUESTION' as const,
+          target: 'next_step' as const,
+          modifier: 'ask' as const,
           confidence: 1,
-          source: 'deterministic' as const,
+          source: 'llm' as const,
         })),
       },
       journeyRuntimeAuthority: {

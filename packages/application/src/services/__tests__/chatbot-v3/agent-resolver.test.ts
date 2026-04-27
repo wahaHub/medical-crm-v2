@@ -61,7 +61,7 @@ describe('resolveAgent', () => {
     }).physicalAgent).toBe('RecommendationAgent');
   });
 
-  it('routes consult options, answers, and consult deep dives to ConsultAgent', () => {
+  it('routes consult options to ConsultAgent while consult FAQ language stays with FaqAgent', () => {
     expect(resolveAgent({
       event: event({ eventType: 'USER_EXPRESSED_NEED', target: 'consult', modifier: 'ask' }),
       turnPlan: plan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'consult' }, primaryStage: 'ONLINE_CONSULT' }),
@@ -72,7 +72,7 @@ describe('resolveAgent', () => {
       event: event({ target: 'consult', modifier: 'ask' }),
       turnPlan: plan({ primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' } }),
       facts: facts(),
-    }).physicalAgent).toBe('ConsultAgent');
+    }).physicalAgent).toBe('FaqAgent');
 
     expect(resolveAgent({
       event: event({ target: 'consult', modifier: 'ask' }),
@@ -81,7 +81,7 @@ describe('resolveAgent', () => {
         followUpAction: { type: 'GO_DEEP', target: 'consult', reasonCode: 'user_requested_more_detail' },
       }),
       facts: facts(),
-    }).physicalAgent).toBe('ConsultAgent');
+    }).physicalAgent).toBe('FaqAgent');
   });
 
   it('defaults general FAQ and redirect language to FaqAgent', () => {

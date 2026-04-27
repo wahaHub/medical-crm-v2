@@ -35,7 +35,7 @@ function buildSupervisorEventResponseFormat(allowedEvents: readonly SupervisorEv
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['eventType', 'confidence', 'source'],
+      required: ['eventType', 'confidence'],
       properties: {
         eventType: {
           type: 'string',
@@ -46,16 +46,12 @@ function buildSupervisorEventResponseFormat(allowedEvents: readonly SupervisorEv
           minimum: 0,
           maximum: 1,
         },
-        source: {
-          type: 'string',
-          enum: ['llm'],
-        },
       },
     },
   } as const;
 }
 
-const SUPERVISOR_EVENT_TOP_LEVEL_KEYS = new Set(['eventType', 'confidence', 'source']);
+const SUPERVISOR_EVENT_TOP_LEVEL_KEYS = new Set(['eventType', 'confidence']);
 
 export function createChatbotV3SupervisorRouteAdapter(
   options: CreateChatbotV3SupervisorRouteAdapterOptions = {},
@@ -196,7 +192,6 @@ function sanitizeSupervisorEvent(
     || !Number.isFinite(raw.confidence)
     || raw.confidence < 0
     || raw.confidence > 1
-    || raw.source !== 'llm'
   ) {
     return buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');
   }
@@ -204,7 +199,7 @@ function sanitizeSupervisorEvent(
   return {
     eventType: raw.eventType,
     confidence: raw.confidence,
-    source: raw.source,
+    source: 'llm',
   };
 }
 

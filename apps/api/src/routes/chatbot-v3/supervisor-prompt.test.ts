@@ -25,10 +25,13 @@ describe('buildSupervisorPrompt', () => {
   it('requires exactly one SupervisorEvent object and forbids proposal fields', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 
-    expect(prompt).toContain('Return exactly one SupervisorEvent JSON object.');
-    expect(prompt).toContain('Required keys: eventType, confidence, source.');
-    expect(prompt).toContain('Do not include metadata in the current strict schema.');
-    expect(prompt).toContain('Do not return suggestedStage, dispatchAgent, task, intent, requestedReadDomains, or write patches.');
+    expect(prompt).toContain('Your only job is to classify the latest user message into one allowed eventType.');
+    expect(prompt).toContain('Return exactly one JSON object matching the provided schema.');
+    expect(prompt).toContain('Required keys: eventType, confidence.');
+    expect(prompt).not.toContain('source must be "llm"');
+    expect(prompt).not.toContain('Do not include metadata');
+    expect(prompt).not.toContain('Do not return suggestedStage');
+    expect(prompt).not.toContain('Do not decide workflow state');
     expect(prompt).not.toContain('Required output keys: intent, suggestedStage.');
     expect(prompt).not.toContain('Allowed dispatchAgent values');
     expect(prompt).not.toContain('Compact agent guide:');
@@ -60,9 +63,10 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('UNKNOWN_MESSAGE: no allowed event fits');
     expect(prompt).not.toContain('TRIAGE_SUBMITTED:');
     expect(prompt).not.toContain('DOCUMENTS_UPLOADED:');
+    expect(prompt).not.toContain('RECOMMENDATION_SELECTED:');
   });
 
-  it('includes an allowed-events section and compact minimal context', () => {
+  it('includes an allowed-events section and compact classifier context', () => {
     const prompt = buildSupervisorPrompt({
       ...baseInput,
       currentStage: 'COLLECT_MEDICAL_INPUTS',
@@ -90,10 +94,18 @@ describe('buildSupervisorPrompt', () => {
     expect(allowedTurnEvents).not.toContain('RECOMMENDATION_SKIPPED');
     expect(prompt).toContain('current_stage=COLLECT_MEDICAL_INPUTS');
     expect(prompt).toContain('latest_user_message=I uploaded another file.');
-    expect(prompt).toContain('recommendation_selection_status=selected');
+    expect(prompt).toContain('known_condition=lung cancer');
+    expect(prompt).toContain('known_destination=Shanghai');
+    expect(prompt).toContain('recommendation_status=selected');
+    expect(prompt).toContain('process_explained=true');
     expect(prompt).toContain('supporting_documents_count=2');
-    expect(prompt).toContain('report-a.pdf');
-    expect(prompt).toContain('report-b.pdf');
+    expect(prompt).not.toContain('Conversation Summary Contract:');
+    expect(prompt).not.toContain('owner=runtime');
+    expect(prompt).not.toContain('persistence_strategy=');
+    expect(prompt).not.toContain('selected_hospital_ids=');
+    expect(prompt).not.toContain('supporting_documents=');
+    expect(prompt).not.toContain('report-a.pdf');
+    expect(prompt).not.toContain('report-b.pdf');
     expect(prompt).not.toContain('uploads/report-a.pdf');
     expect(prompt).not.toContain('uploads/report-b.pdf');
   });

@@ -31,7 +31,6 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
             content: JSON.stringify({
               eventType: 'USER_ASKED_FAQ',
               confidence: 0.82,
-              source: 'llm',
             }),
           },
         }],
@@ -72,7 +71,8 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     ]));
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('TRIAGE_SUBMITTED');
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('RECOMMENDATION_SELECTED');
-    expect(payload.response_format.json_schema.schema.required).toEqual(['eventType', 'confidence', 'source']);
+    expect(payload.response_format.json_schema.schema.required).toEqual(['eventType', 'confidence']);
+    expect(payload.response_format.json_schema.schema.properties).not.toHaveProperty('source');
     expect(payload.response_format.json_schema.schema.properties).not.toHaveProperty('metadata');
   });
 
@@ -137,7 +137,6 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
               content: JSON.stringify({
                 eventType: 'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
                 confidence: 0.87,
-                source: 'llm',
               }),
             },
           }],
@@ -170,7 +169,6 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
               content: JSON.stringify({
                 eventType: 'TRIAGE_SUBMITTED',
                 confidence: 0.93,
-                source: 'llm',
               }),
             },
           }],
@@ -184,7 +182,6 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
               content: JSON.stringify({
                 eventType: 'USER_ASKED_NEXT_STEP',
                 confidence: 0.66,
-                source: 'llm',
               }),
             },
           }],
@@ -218,7 +215,6 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
               content: JSON.stringify({
                 eventType: 'USER_ASKED_FAQ',
                 confidence: 0.75,
-                source: 'llm',
               }),
             },
           }],

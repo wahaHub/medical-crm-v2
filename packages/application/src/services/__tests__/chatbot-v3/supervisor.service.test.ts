@@ -1900,4 +1900,44 @@ describe('SupervisorService event extraction', () => {
       },
     });
   });
+
+  it('rejects semantic events outside the current stage allowed set', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'USER_INTERESTED_IN_CONSULT',
+        confidence: 0.8,
+        source: 'llm',
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
+      eventType: 'UNKNOWN_MESSAGE',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor semantic event extraction failed',
+      },
+    });
+  });
+
+  it.each([2, -0.1])('rejects semantic confidence outside [0,1]: %s', async (confidence) => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'USER_ASKED_FAQ',
+        confidence,
+        source: 'llm',
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
+      eventType: 'UNKNOWN_MESSAGE',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor semantic event extraction failed',
+      },
+    });
+  });
 });

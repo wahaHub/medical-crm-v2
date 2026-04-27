@@ -24,6 +24,7 @@ import {
   SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
 } from './types.js';
 import {
+  getAllowedSupervisorEvents,
   SUPERVISOR_EVENT_TYPES,
 } from './supervisor-event.types.js';
 import {
@@ -199,8 +200,9 @@ export class SupervisorService {
     } satisfies SupervisorLlmRunMetadata;
 
     try {
-      const raw = await this.gateway.run(buildGatewayInput(input));
-      const event = sanitizeSemanticSupervisorEvent(raw);
+      const gatewayInput = buildGatewayInput(input);
+      const raw = await this.gateway.run(gatewayInput);
+      const event = sanitizeSemanticSupervisorEvent(raw, getAllowedSupervisorEvents(gatewayInput));
       this.lastRunMetadata = {
         ...metadataBase,
         fallbackUsed: event.source === 'fallback_unknown',
@@ -235,15 +237,21 @@ export class SupervisorService {
   }
 }
 
-function sanitizeSemanticSupervisorEvent(raw: unknown): SupervisorEvent {
+function sanitizeSemanticSupervisorEvent(
+  raw: unknown,
+  allowedEvents: readonly SupervisorEvent['eventType'][],
+): SupervisorEvent {
   const record = asRecord(raw);
   const hasOnlyEventKeys = Object.keys(record).every((key) => key === 'eventType' || key === 'confidence' || key === 'source' || key === 'metadata');
 
   if (
     !hasOnlyEventKeys
     || !isSupervisorEventType(record.eventType)
+    || !allowedEvents.includes(record.eventType)
     || typeof record.confidence !== 'number'
     || !Number.isFinite(record.confidence)
+    || record.confidence < 0
+    || record.confidence > 1
     || record.source !== 'llm'
     || SEMANTIC_FORBIDDEN_EVENT_TYPES.has(record.eventType)
     || (record.metadata !== undefined && !isSupervisorEventMetadata(record.metadata))

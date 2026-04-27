@@ -77,7 +77,7 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
   });
 
   it('returns fallback_unknown when the llm output violates the SupervisorEvent schema', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
+    const invalidResponse = {
       ok: true,
       json: async () => ({
         choices: [{
@@ -91,7 +91,10 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
           },
         }],
       }),
-    });
+    };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(invalidResponse)
+      .mockResolvedValueOnce(invalidResponse);
 
     const adapter = createChatbotV3SupervisorRouteAdapter({
       enabled: true,
@@ -108,6 +111,134 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
         rawText: 'supervisor route llm returned invalid SupervisorEvent schema',
       },
     });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries once before falling back when the first structured output is invalid', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                intent: 'progression',
+                suggestedStage: 'RECOMMENDATION',
+              }),
+            },
+          }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                eventType: 'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+                confidence: 0.87,
+                source: 'llm',
+              }),
+            },
+          }],
+        }),
+      });
+
+    const adapter = createChatbotV3SupervisorRouteAdapter({
+      enabled: true,
+      apiKey: 'test-openai-key',
+      fetchImpl: fetchImpl as typeof fetch,
+      model: 'gpt-5.1-mini',
+      reasoningEffort: 'none',
+    });
+
+    await expect(adapter?.run(gatewayInput)).resolves.toEqual({
+      eventType: 'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+      confidence: 0.87,
+      source: 'llm',
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries when the llm returns an eventType outside the per-turn allowed set', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                eventType: 'TRIAGE_SUBMITTED',
+                confidence: 0.93,
+                source: 'llm',
+              }),
+            },
+          }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                eventType: 'USER_ASKED_NEXT_STEP',
+                confidence: 0.66,
+                source: 'llm',
+              }),
+            },
+          }],
+        }),
+      });
+
+    const adapter = createChatbotV3SupervisorRouteAdapter({
+      enabled: true,
+      apiKey: 'test-openai-key',
+      fetchImpl: fetchImpl as typeof fetch,
+      model: 'gpt-5.1-mini',
+      reasoningEffort: 'none',
+    });
+
+    await expect(adapter?.run(gatewayInput)).resolves.toEqual({
+      eventType: 'USER_ASKED_NEXT_STEP',
+      confidence: 0.66,
+      source: 'llm',
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries once when the first request attempt rejects', async () => {
+    const fetchImpl = vi.fn()
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                eventType: 'USER_ASKED_FAQ',
+                confidence: 0.75,
+                source: 'llm',
+              }),
+            },
+          }],
+        }),
+      });
+
+    const adapter = createChatbotV3SupervisorRouteAdapter({
+      enabled: true,
+      apiKey: 'test-openai-key',
+      fetchImpl: fetchImpl as typeof fetch,
+      model: 'gpt-5.1-mini',
+      reasoningEffort: 'none',
+    });
+
+    await expect(adapter?.run(gatewayInput)).resolves.toEqual({
+      eventType: 'USER_ASKED_FAQ',
+      confidence: 0.75,
+      source: 'llm',
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('returns undefined when the supervisor llm route is disabled', () => {

@@ -55,6 +55,58 @@ export interface SupervisorEvent {
   metadata?: SupervisorEventMetadata;
 }
 
+export function getAllowedSupervisorEvents(input: {
+  currentStage: ChatJourneyStage;
+}): readonly SupervisorEventType[] {
+  const commonSemanticEvents: SupervisorEventType[] = [
+    'USER_ASKED_NEXT_STEP',
+    'USER_ASKED_FAQ',
+    'USER_ASKED_RISKY_MEDICAL_ADVICE',
+    'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+    'USER_AMBIGUOUS_REPLY',
+    'UNKNOWN_MESSAGE',
+  ];
+
+  const stageSpecificEvents: SupervisorEventType[] = (() => {
+    switch (input.currentStage) {
+      case 'COLLECT_MINIMAL_MEDICAL_FACTS':
+        return [
+          'USER_WANTS_TREATMENT_IN_CHINA',
+          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+          'USER_PROVIDED_MEDICAL_FACTS',
+        ];
+      case 'RECOMMENDATION':
+        return [
+          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_INTERESTED_IN_CONSULT',
+        ];
+      case 'EXPLAIN_PROCESS':
+        return [
+          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_INTERESTED_IN_CONSULT',
+        ];
+      case 'COLLECT_MEDICAL_INPUTS':
+        return [
+          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_INTERESTED_IN_CONSULT',
+        ];
+      case 'ONLINE_CONSULT':
+        return [
+          'USER_INTERESTED_IN_CONSULT',
+          'USER_PROVIDED_MEDICAL_FACTS',
+        ];
+      case 'HUMAN_HANDOFF':
+        return [
+          'USER_PROVIDED_MEDICAL_FACTS',
+        ];
+    }
+  })();
+
+  return [...new Set([...commonSemanticEvents, ...stageSpecificEvents])];
+}
+
 export interface JourneyState {
   primaryStage: ChatJourneyStage;
   lastQuestion?: {
@@ -141,5 +193,8 @@ export interface JourneyReduction {
   facts: DomainFacts;
   nextAction: NextAction;
   reasonCode: ReducerReasonCode;
+  isSidePath: boolean;
+  sidePathType: 'none' | 'faq' | 'safety' | 'out_of_scope' | 'clarification';
+  primaryStagePreserved: boolean;
   dispatchAgent?: ChatbotV3DispatchAgent | null;
 }

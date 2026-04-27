@@ -20,6 +20,9 @@ describe('projectLegacyCompatibilityView', () => {
         factsPatch: {},
         nextAction: { type: 'OFFER_ONLINE_CONSULT' },
         reasonCode: 'ready_for_online_consult',
+        isSidePath: false,
+        sidePathType: 'none',
+        primaryStagePreserved: false,
       },
       execution: {
         agent: 'ConsultAgent',

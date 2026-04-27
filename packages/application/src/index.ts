@@ -100,7 +100,10 @@ export type {
   SupervisorEventSource,
   SupervisorEventType,
 } from './services/chatbot-v3/supervisor-event.types.js';
-export { SUPERVISOR_EVENT_TYPES } from './services/chatbot-v3/supervisor-event.types.js';
+export {
+  getAllowedSupervisorEvents,
+  SUPERVISOR_EVENT_TYPES,
+} from './services/chatbot-v3/supervisor-event.types.js';
 export { normalizeFactsFromStatusSnapshot } from './services/chatbot-v3/domain-facts-normalizer.js';
 export { extractDeterministicEvent } from './services/chatbot-v3/deterministic-event-extractor.js';
 export {

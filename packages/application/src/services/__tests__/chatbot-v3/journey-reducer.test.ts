@@ -126,7 +126,23 @@ describe('reduceJourney', () => {
     expect(needsDocs.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
   });
 
-  it('routes uploaded documents to records collection before offering consult', () => {
+  it('keeps uploaded documents in records collection when process is not explained yet', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MEDICAL_INPUTS'),
+      facts: facts({
+        intake: { minimalTriageStatus: 'submitted' },
+        recommendation: { status: 'selected', selectedHospitalIds: ['h1'] },
+        process: { explained: false },
+      }),
+      event: event('DOCUMENTS_UPLOADED', { documentCount: 2 }),
+    });
+
+    expect(result.facts.records.supportingDocumentsCount).toBe(2);
+    expect(result.nextAction).toEqual({ type: 'REQUEST_MEDICAL_DOCUMENTS' });
+    expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
+  });
+
+  it('keeps document upload turns on the records action before a later consult offer', () => {
     const result = reduceJourney({
       state: state('COLLECT_MEDICAL_INPUTS'),
       facts: facts({
@@ -134,10 +150,10 @@ describe('reduceJourney', () => {
         recommendation: { status: 'selected', selectedHospitalIds: ['h1'] },
         process: { explained: true },
       }),
-      event: event('DOCUMENTS_UPLOADED', { documentCount: 2 }),
+      event: event('DOCUMENTS_UPLOADED', { documentCount: 1 }),
     });
 
-    expect(result.facts.records.supportingDocumentsCount).toBe(2);
+    expect(result.facts.records.supportingDocumentsCount).toBe(1);
     expect(result.nextAction).toEqual({ type: 'REQUEST_MEDICAL_DOCUMENTS' });
     expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
   });
@@ -154,6 +170,21 @@ describe('reduceJourney', () => {
 
     expect(result.nextAction.type).toBe('ANSWER_FAQ');
     expect(result.state.primaryStage).toBe('RECOMMENDATION');
+    expect(result.isSidePath).toBe(true);
+    expect(result.sidePathType).toBe('faq');
+    expect(result.primaryStagePreserved).toBe(true);
+  });
+
+  it('marks progression reductions as non-side-path', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MINIMAL_MEDICAL_FACTS'),
+      facts: facts(),
+      event: event('TRIAGE_SUBMITTED', { rawText: 'brain tumor, six months, no tests' }),
+    });
+
+    expect(result.isSidePath).toBe(false);
+    expect(result.sidePathType).toBe('none');
+    expect(result.primaryStagePreserved).toBe(false);
   });
 
   it('does not mark handoff active before runtime confirms ticket creation', () => {

@@ -43,6 +43,8 @@ export function reduceJourney(input: ReduceJourneyInput): JourneyReducerOutput {
     nextAction,
   });
   const reasonCode = buildReasonCode(input.event, nextAction);
+  const sidePathType = classifySidePath(nextAction);
+  const primaryStagePreserved = input.state.primaryStage === nextStage;
 
   return {
     state: {
@@ -54,6 +56,9 @@ export function reduceJourney(input: ReduceJourneyInput): JourneyReducerOutput {
     factsPatch,
     nextAction,
     reasonCode,
+    isSidePath: sidePathType !== 'none',
+    sidePathType,
+    primaryStagePreserved,
   };
 }
 
@@ -243,7 +248,25 @@ function decideNextActionAfterDocuments(facts: DomainFacts): NextAction {
   if (facts.intake.minimalTriageStatus === 'not_started') {
     return { type: 'COLLECT_MINIMAL_TRIAGE' };
   }
+  // A document-upload event has a required upload side effect. Keep this turn
+  // on RecordsAgent; the next turn can offer consult once the persisted
+  // supporting document is visible in DomainFacts.
   return { type: 'REQUEST_MEDICAL_DOCUMENTS' };
+}
+
+function classifySidePath(action: NextAction): JourneyReducerOutput['sidePathType'] {
+  switch (action.type) {
+    case 'ANSWER_FAQ':
+      return 'faq';
+    case 'SAFE_MEDICAL_REDIRECT':
+      return 'safety';
+    case 'OUT_OF_SCOPE_REDIRECT':
+      return 'out_of_scope';
+    case 'CLARIFY_INTENT':
+      return 'clarification';
+    default:
+      return 'none';
+  }
 }
 
 function resolveTriageSummary(event: SupervisorEvent, facts: DomainFacts): string | null {

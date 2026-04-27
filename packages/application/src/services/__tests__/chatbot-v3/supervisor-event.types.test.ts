@@ -38,6 +38,9 @@ describe('supervisor-event.types', () => {
       facts,
       nextAction: action,
       reasonCode: 'TRIAGE_SUBMITTED_RECOMMENDATION_READY',
+      isSidePath: false,
+      sidePathType: 'none',
+      primaryStagePreserved: false,
     };
 
     expect(SUPERVISOR_EVENT_TYPES).toContain('TRIAGE_SUBMITTED');

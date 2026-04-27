@@ -103,6 +103,35 @@ async function runStructuredOpenAiPrompt(input: {
   prompt: string;
   allowedEvents: readonly SupervisorEventType[];
 }): Promise<SupervisorEvent> {
+  const maxAttempts = 2;
+  let lastFallback = buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const event = await runStructuredOpenAiPromptAttempt(input);
+      if (event.source !== 'fallback_unknown') {
+        return event;
+      }
+      lastFallback = event;
+    } catch (error) {
+      lastFallback = buildFallbackUnknownEvent(
+        error instanceof Error ? error.message : 'supervisor route llm request failed',
+      );
+    }
+  }
+
+  return lastFallback;
+}
+
+async function runStructuredOpenAiPromptAttempt(input: {
+  apiKey: string;
+  model: string;
+  reasoningEffort?: string;
+  fetchImpl: FetchLike;
+  timeoutMs: number;
+  prompt: string;
+  allowedEvents: readonly SupervisorEventType[];
+}): Promise<SupervisorEvent> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
@@ -151,16 +180,22 @@ async function runStructuredOpenAiPrompt(input: {
     return buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');
   }
 
-  return sanitizeSupervisorEvent(parsed);
+  return sanitizeSupervisorEvent(parsed, input.allowedEvents);
 }
 
-function sanitizeSupervisorEvent(raw: Record<string, unknown>): SupervisorEvent {
+function sanitizeSupervisorEvent(
+  raw: Record<string, unknown>,
+  allowedEvents: readonly SupervisorEventType[],
+): SupervisorEvent {
   const hasOnlyEventKeys = Object.keys(raw).every((key) => SUPERVISOR_EVENT_TOP_LEVEL_KEYS.has(key));
   if (
     !hasOnlyEventKeys
     || !isSupervisorEventType(raw.eventType)
+    || !allowedEvents.includes(raw.eventType)
     || typeof raw.confidence !== 'number'
     || !Number.isFinite(raw.confidence)
+    || raw.confidence < 0
+    || raw.confidence > 1
     || raw.source !== 'llm'
   ) {
     return buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');

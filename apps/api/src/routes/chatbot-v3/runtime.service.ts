@@ -689,7 +689,6 @@ export class ConversationOrchestratorV3RuntimeService {
       afterStage: reduction.primaryStage,
       factsPatch: reduction.factsPatch,
     };
-    const sidePath = classifyReducerSidePath(reduction.nextAction.type);
     this.emitNodeEvent(normalizedInput, {
       node: 'JourneyReducer',
       action: 'state_diff',
@@ -701,9 +700,9 @@ export class ConversationOrchestratorV3RuntimeService {
       nextAction: reduction.nextAction.type,
       reasonCode: reduction.reasonCode,
       stateDiff,
-      sidePath: sidePath !== 'none',
-      sidePathType: sidePath,
-      primaryStagePreserved: decisionInput.current.stage === reduction.primaryStage,
+      sidePath: reduction.isSidePath,
+      sidePathType: reduction.sidePathType,
+      primaryStagePreserved: reduction.primaryStagePreserved,
       replayLineage: {
         matchedRuleId: reduction.reasonCode,
       },
@@ -757,9 +756,9 @@ export class ConversationOrchestratorV3RuntimeService {
       nextAction: reduction.nextAction.type,
       reasonCode: reduction.reasonCode,
       stateDiff,
-      sidePath: sidePath !== 'none',
-      sidePathType: sidePath,
-      primaryStagePreserved: decisionInput.current.stage === reduction.primaryStage,
+      sidePath: reduction.isSidePath,
+      sidePathType: reduction.sidePathType,
+      primaryStagePreserved: reduction.primaryStagePreserved,
       replayLineage: {
         matchedRuleId: reduction.reasonCode,
       },
@@ -2468,23 +2467,6 @@ function compactReplayLineage(
   } satisfies ChatbotV3ReplayLineage;
 
   return Object.keys(compact).length > 0 ? compact : undefined;
-}
-
-function classifyReducerSidePath(
-  nextActionType: string,
-): 'faq' | 'safety' | 'out_of_scope' | 'clarification' | 'none' {
-  switch (nextActionType) {
-    case 'ANSWER_FAQ':
-      return 'faq';
-    case 'SAFE_MEDICAL_REDIRECT':
-      return 'safety';
-    case 'OUT_OF_SCOPE_REDIRECT':
-      return 'out_of_scope';
-    case 'CLARIFY_INTENT':
-      return 'clarification';
-    default:
-      return 'none';
-  }
 }
 
 function resolveReducerSystemRenderPath(

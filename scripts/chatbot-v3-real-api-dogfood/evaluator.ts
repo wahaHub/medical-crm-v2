@@ -1,3 +1,11 @@
+import type {
+  DogfoodAttemptSummary,
+  DogfoodFailureCategory,
+  DogfoodFailurePhase,
+  ScenarioOutcome,
+  TurnTranscript,
+} from './types.ts';
+
 export type DogfoodAxisOutcome = 'PASS' | 'SOFT_FAIL' | 'HARD_FAIL';
 
 export interface DogfoodAxisEvaluation {
@@ -30,6 +38,20 @@ export interface DogfoodScenarioEvaluationOutcome {
 export interface DogfoodRunRollup {
   outcome: DogfoodAxisOutcome;
   scenarioOutcomes: DogfoodScenarioEvaluationOutcome[];
+}
+
+export interface BuildClassifiedScenarioOutcomeInput {
+  scenarioId: string;
+  outcome?: DogfoodAxisOutcome;
+  summary: string;
+  failureCategory?: DogfoodFailureCategory;
+  failedPhase?: DogfoodFailurePhase;
+  usableForControlPlaneJudgment?: boolean;
+  bootstrapAttempts?: DogfoodAttemptSummary[];
+  chatAttempts?: DogfoodAttemptSummary[];
+  sessionId?: string | null;
+  turns?: TurnTranscript[];
+  notes?: string[];
 }
 
 function normalizeAxisEvaluation(
@@ -88,6 +110,42 @@ export function evaluateScenarioOutcome(
     outcome: 'PASS',
     reason: 'all four axes passed',
     axisResults,
+  };
+}
+
+export function defaultOutcomeForFailureCategory(category: DogfoodFailureCategory): DogfoodAxisOutcome {
+  return category === 'agent_or_composer' ? 'SOFT_FAIL' : 'HARD_FAIL';
+}
+
+export function buildClassifiedScenarioOutcome(input: BuildClassifiedScenarioOutcomeInput): ScenarioOutcome {
+  const outcome = input.outcome ?? (input.failureCategory ? defaultOutcomeForFailureCategory(input.failureCategory) : 'PASS');
+
+  if (outcome !== 'PASS') {
+    if (!input.failureCategory) {
+      throw new Error('Dogfood non-PASS scenario outcomes require failureCategory before serialization.');
+    }
+
+    if (!input.failedPhase) {
+      throw new Error('Dogfood non-PASS scenario outcomes require failedPhase before serialization.');
+    }
+
+    if (typeof input.usableForControlPlaneJudgment !== 'boolean') {
+      throw new Error('Dogfood non-PASS scenario outcomes require usableForControlPlaneJudgment before serialization.');
+    }
+  }
+
+  return {
+    scenarioId: input.scenarioId,
+    outcome,
+    summary: input.summary,
+    ...(input.failureCategory ? { failureCategory: input.failureCategory } : {}),
+    ...(input.failedPhase ? { failedPhase: input.failedPhase } : {}),
+    usableForControlPlaneJudgment: input.usableForControlPlaneJudgment ?? outcome === 'PASS',
+    bootstrapAttempts: [...(input.bootstrapAttempts ?? [])],
+    chatAttempts: [...(input.chatAttempts ?? [])],
+    sessionId: input.sessionId ?? null,
+    turns: [...(input.turns ?? [])],
+    notes: [...(input.notes ?? [])],
   };
 }
 

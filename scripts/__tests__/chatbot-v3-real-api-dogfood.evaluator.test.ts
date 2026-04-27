@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  evaluateScenarioOutcome,
-  rollupRunOutcome,
-} from '../chatbot-v3-real-api-dogfood/evaluator.ts';
+import * as evaluator from '../chatbot-v3-real-api-dogfood/evaluator.ts';
+
+const { evaluateScenarioOutcome, rollupRunOutcome } = evaluator;
 
 function buildScenarioOutcome(
   scenarioId: string,
@@ -115,5 +114,72 @@ test('run-level rollup rules are explicit', () => {
       }),
     ]).outcome,
     'HARD_FAIL',
+  );
+});
+
+test('bootstrap failures are classified as hard failures outside control-plane judgment', () => {
+  assert.equal(typeof evaluator.buildClassifiedScenarioOutcome, 'function');
+  assert.equal(typeof evaluator.defaultOutcomeForFailureCategory, 'function');
+
+  const result = evaluator.buildClassifiedScenarioOutcome({
+    scenarioId: 'allowed_after_patient_session',
+    summary: '/api/patient/onboarding/init failed: fetch failed',
+    failureCategory: 'bootstrap',
+    failedPhase: 'bootstrap',
+    usableForControlPlaneJudgment: false,
+  });
+
+  assert.equal(evaluator.defaultOutcomeForFailureCategory('bootstrap'), 'HARD_FAIL');
+  assert.equal(result.outcome, 'HARD_FAIL');
+  assert.equal(result.failureCategory, 'bootstrap');
+  assert.equal(result.failedPhase, 'bootstrap');
+  assert.equal(result.usableForControlPlaneJudgment, false);
+  assert.deepEqual(result.bootstrapAttempts, []);
+  assert.deepEqual(result.chatAttempts, []);
+  assert.equal(result.sessionId, null);
+  assert.deepEqual(result.notes, []);
+});
+
+test('agent or composer failures are classified as soft failures with usable control-plane evidence', () => {
+  assert.equal(typeof evaluator.buildClassifiedScenarioOutcome, 'function');
+  assert.equal(typeof evaluator.defaultOutcomeForFailureCategory, 'function');
+
+  const result = evaluator.buildClassifiedScenarioOutcome({
+    scenarioId: 'faq_side_path_preserves_stage',
+    summary: 'FAQ agent fell back after reducer selected the FAQ side-path',
+    failureCategory: 'agent_or_composer',
+    failedPhase: 'evaluation',
+    usableForControlPlaneJudgment: true,
+  });
+
+  assert.equal(evaluator.defaultOutcomeForFailureCategory('agent_or_composer'), 'SOFT_FAIL');
+  assert.equal(result.outcome, 'SOFT_FAIL');
+  assert.equal(result.failureCategory, 'agent_or_composer');
+  assert.equal(result.failedPhase, 'evaluation');
+  assert.equal(result.usableForControlPlaneJudgment, true);
+});
+
+test('non-pass classified outcomes require failure category and failed phase before serialization', () => {
+  assert.throws(
+    () =>
+      evaluator.buildClassifiedScenarioOutcome({
+        scenarioId: 'missing_classification',
+        outcome: 'HARD_FAIL',
+        summary: 'classification was not supplied',
+        usableForControlPlaneJudgment: false,
+      }),
+    /failureCategory/,
+  );
+
+  assert.throws(
+    () =>
+      evaluator.buildClassifiedScenarioOutcome({
+        scenarioId: 'missing_phase',
+        outcome: 'SOFT_FAIL',
+        summary: 'phase was not supplied',
+        failureCategory: 'control_plane',
+        usableForControlPlaneJudgment: true,
+      }),
+    /failedPhase/,
   );
 });

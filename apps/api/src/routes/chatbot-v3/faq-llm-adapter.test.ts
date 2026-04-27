@@ -120,8 +120,7 @@ describe('FaqLlmAdapter', () => {
     const task: FaqWorkerTask = {
       ...createFaqTask('能不能保证治好？'),
       ...resolveFaqTaskPolicy({
-        type: 'SAFE_MEDICAL_REDIRECT',
-        riskType: 'guarantee_outcome',
+        primaryAction: { type: 'REDIRECT', target: 'medical_facts', reasonCode: 'medical_safety' },
       }),
     };
 
@@ -139,8 +138,7 @@ describe('FaqLlmAdapter', () => {
     const task: FaqWorkerTask = {
       ...createFaqTask('你们能不能帮我办美国绿卡？'),
       ...resolveFaqTaskPolicy({
-        type: 'OUT_OF_SCOPE_REDIRECT',
-        redirectTarget: 'US green card',
+        primaryAction: { type: 'REDIRECT', target: 'unknown', reasonCode: 'out_of_scope' },
       }),
     };
 
@@ -161,13 +159,47 @@ describe('FaqLlmAdapter', () => {
     ]));
   });
 
+  it('keeps redirect policy ahead of FAQ match fallback copy', async () => {
+    const adapter = new FaqLlmAdapter({
+      answer: {
+        promptVersion: 'faq-answer-invalid',
+        run: vi.fn(async () => ({
+          answer: 123,
+          citedFaqIds: [],
+          confidence: 'high',
+        })),
+      },
+    });
+    const task: FaqWorkerTask = {
+      ...createFaqTask('能不能保证治好？'),
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'medical_facts', reasonCode: 'medical_safety' },
+      }),
+    };
+
+    await expect(adapter.answer({
+      task,
+      plan: { query: 'guarantee outcome', reason: 'safety redirect' },
+      matches: [{
+        id: 'faq-normal-1',
+        question: 'Can you explain the service process?',
+        answer: 'First we collect records, then recommend hospitals.',
+        category: 'process',
+      }],
+      details: [],
+    })).resolves.toEqual({
+      answer: expect.stringContaining('cannot diagnose'),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    });
+  });
+
   it('passes rejection and hesitation task rules through FAQ prompts', () => {
     const task: FaqWorkerTask = {
       ...createFaqTask('太贵了，我先考虑一下'),
       ...resolveFaqTaskPolicy({
-        type: 'ANSWER_FAQ',
-        topic: 'other',
-        subtopic: 'rejection_or_hesitation',
+        primaryAction: { type: 'HANDLE_RESPONSE', target: 'pricing', modifier: 'hesitate' },
       }),
     };
 
@@ -178,6 +210,47 @@ describe('FaqLlmAdapter', () => {
       matches: [],
       details: [],
     })).toContain('output_rules=acknowledge_without_pressure, preserve_primary_stage, offer_one_lower_friction_next_step');
+  });
+
+  it('passes turn plan skill context through FAQ prompts', () => {
+    const task: FaqWorkerTask = {
+      ...createFaqTask('How long does online consultation usually take to schedule?'),
+      primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' },
+      followUpAction: {
+        type: 'GO_DEEP',
+        target: 'consult',
+        reasonCode: 'user_requested_more_detail',
+      },
+      allowedSkillPacks: [
+        'search_general_faq_by_category',
+        'answer_general_faq_from_admin_source',
+        'load_consult_readiness_criteria',
+      ],
+      readIntents: ['GENERAL_FAQ:consult', 'CONSULT_READINESS'],
+      responseContract: {
+        structure: 'answer_then_advance',
+        primaryMove: 'answer',
+        followUpMove: 'go_deep',
+        constraints: {
+          maxQuestions: 1,
+          preservePrimaryStage: false,
+          answerBeforeAsk: true,
+          avoidMultipleCTAs: true,
+          language: 'zh',
+          tone: 'warm_professional',
+        },
+        safetyRules: [],
+      },
+    };
+
+    expect(buildFaqPlanPrompt({ task })).toContain('allowed_skill_packs=search_general_faq_by_category, answer_general_faq_from_admin_source, load_consult_readiness_criteria');
+    expect(buildFaqPlanPrompt({ task })).toContain('read_intents=GENERAL_FAQ:consult, CONSULT_READINESS');
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'consult timing', reason: 'consult faq' },
+      matches: [],
+      details: [],
+    })).toContain('"followUpMove":"go_deep"');
   });
 });
 

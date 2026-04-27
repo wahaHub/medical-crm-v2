@@ -2032,6 +2032,15 @@ function buildWorkerTask(
     intent: suggestion.intent,
     supervisorReason: normalizeReason(suggestion.reason),
     latestUserMessage: input.message,
+    ...(decision.agentTask
+      ? {
+          primaryAction: decision.agentTask.primaryAction,
+          followUpAction: decision.agentTask.followUpAction,
+          allowedSkillPacks: decision.agentTask.skillPolicy.allowedSkillPacks,
+          readIntents: decision.agentTask.readPlan.readIntents.map(describeReadIntent),
+          responseContract: decision.agentTask.responseContract,
+        }
+      : {}),
   };
 
   switch (decision.dispatchAgent) {
@@ -2039,7 +2048,7 @@ function buildWorkerTask(
       return {
         agent: 'FaqAgent',
         ...baseTask,
-        ...resolveFaqTaskPolicy(decision.nextAction),
+        ...resolveFaqTaskPolicy(baseTask),
       } satisfies FaqWorkerTask;
     case 'RecordsAgent':
       return {
@@ -2060,6 +2069,16 @@ function buildWorkerTask(
         agent: 'FaqAgent',
         ...baseTask,
       } satisfies FaqWorkerTask;
+  }
+}
+
+function describeReadIntent(intent: ReadPlan['readIntents'][number]): string {
+  switch (intent.type) {
+    case 'GENERAL_FAQ':
+    case 'HOSPITAL_FAQ':
+      return `${intent.type}:${intent.category}`;
+    default:
+      return intent.type;
   }
 }
 

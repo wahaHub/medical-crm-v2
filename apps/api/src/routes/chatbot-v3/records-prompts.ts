@@ -52,6 +52,7 @@ export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string
     `from_stage=${task.fromStage}`,
     `to_stage=${task.toStage}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
+    ...buildTaskContextLines(task),
     `latest_user_message=${task.latestUserMessage}`,
     'output_contract=',
     'When triage is complete, return exactly:',
@@ -84,6 +85,7 @@ export function buildRecordsCollectionPrompt(task: RecordsWorkerTask): string {
     `from_stage=${task.fromStage}`,
     `to_stage=${task.toStage}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
+    ...buildTaskContextLines(task),
     `latest_user_message=${task.latestUserMessage}`,
     'output_contract=',
     'Return exactly these keys:',
@@ -91,6 +93,20 @@ export function buildRecordsCollectionPrompt(task: RecordsWorkerTask): string {
     '- "collectionPrompt": one string asking only for diagnosis proof / diagnosis certificate / supporting diagnosis document',
     'Never return any extra keys.',
   ].join('\n');
+}
+
+function buildTaskContextLines(task: RecordsWorkerTask): string[] {
+  return [
+    `primary_action=${stringifyTaskField(task.primaryAction)}`,
+    `follow_up_action=${stringifyTaskField(task.followUpAction)}`,
+    `allowed_skill_packs=${task.allowedSkillPacks?.join(', ') ?? 'none'}`,
+    `read_intents=${task.readIntents?.join(', ') ?? 'none'}`,
+    `response_contract=${stringifyTaskField(task.responseContract)}`,
+  ];
+}
+
+function stringifyTaskField(value: unknown): string {
+  return value === undefined ? 'none' : JSON.stringify(value);
 }
 
 export function buildRecordsMinimalTriageInitialFollowUp(): string {

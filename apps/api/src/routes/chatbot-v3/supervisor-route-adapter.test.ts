@@ -78,10 +78,14 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('TRIAGE_SUBMITTED');
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('RECOMMENDATION_SELECTED');
     expect(payload.response_format.json_schema.schema.required).toEqual(['eventType', 'target', 'modifier', 'confidence']);
-    expect(payload.response_format.json_schema.schema.properties.target.type).toBe('string');
-    expect(payload.response_format.json_schema.schema.properties.modifier.type).toBe('string');
-    expect(payload.response_format.json_schema.schema.properties.target).not.toHaveProperty('enum');
-    expect(payload.response_format.json_schema.schema.properties.modifier).not.toHaveProperty('enum');
+    expect(payload.response_format.json_schema.schema.properties.target).toEqual(expect.objectContaining({
+      type: 'string',
+      enum: expect.arrayContaining(['pricing', 'next_step', 'hospital', 'unknown']),
+    }));
+    expect(payload.response_format.json_schema.schema.properties.modifier).toEqual(expect.objectContaining({
+      type: 'string',
+      enum: expect.arrayContaining(['ask', 'provide', 'confirm', 'reject', 'hesitate', 'revisit', 'unknown']),
+    }));
     expect(payload.response_format.json_schema.schema.properties).not.toHaveProperty('source');
     expect(payload.response_format.json_schema.schema.properties).not.toHaveProperty('metadata');
   });
@@ -270,8 +274,8 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     })).toBeUndefined();
   });
 
-  it('normalizes invalid target and modifier strings without retrying', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
+  it('retries invalid target and modifier strings before falling back', async () => {
+    const invalidResponse = {
       ok: true,
       json: async () => ({
         choices: [{
@@ -285,7 +289,10 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
           },
         }],
       }),
-    });
+    };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(invalidResponse)
+      .mockResolvedValueOnce(invalidResponse);
 
     const adapter = createChatbotV3SupervisorRouteAdapter({
       enabled: true,
@@ -296,12 +303,15 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
-      eventType: 'USER_EXPRESSED_NEED',
+      eventType: 'USER_MESSAGE_UNCLEAR',
       target: 'unknown',
       modifier: 'unknown',
-      confidence: 0.8,
-      source: 'llm',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor route llm returned invalid SupervisorEvent schema',
+      },
     });
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

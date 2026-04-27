@@ -45,6 +45,38 @@ describe('RecordsLlmAdapter', () => {
     expect(prompt).toContain('Return exactly these keys:');
   });
 
+  it('passes turn plan skill context through records prompts', () => {
+    const prompt = buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'COLLECT_MEDICAL_INPUTS',
+      mode: 'medical_collection',
+      minimalTriageComplete: true,
+      primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
+      followUpAction: { type: 'NONE' },
+      allowedSkillPacks: ['load_records_requirement_data', 'derive_record_inventory_candidate'],
+      readIntents: ['RECORD_REQUIREMENTS'],
+      responseContract: {
+        structure: 'notice_only',
+        primaryMove: 'acknowledge',
+        followUpMove: 'none',
+        constraints: {
+          maxQuestions: 1,
+          preservePrimaryStage: false,
+          answerBeforeAsk: false,
+          avoidMultipleCTAs: true,
+          language: 'zh',
+          tone: 'warm_professional',
+        },
+        safetyRules: [],
+      },
+    }));
+
+    expect(prompt).toContain('primary_action={"type":"REQUEST_INFO","target":"documents"}');
+    expect(prompt).toContain('allowed_skill_packs=load_records_requirement_data, derive_record_inventory_candidate');
+    expect(prompt).toContain('read_intents=RECORD_REQUIREMENTS');
+    expect(prompt).toContain('"primaryMove":"acknowledge"');
+  });
+
   it('uses structured task metadata to choose collection mode without parsing string envelopes', async () => {
     const adapter = new RecordsLlmAdapter();
 

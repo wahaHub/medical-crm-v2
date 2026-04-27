@@ -255,6 +255,8 @@ function sanitizeSemanticSupervisorEvent(
     !hasOnlyEventKeys
     || !isSupervisorEventType(record.eventType)
     || !allowedEvents.includes(record.eventType)
+    || !isSupervisorEventTarget(record.target)
+    || !isSupervisorEventModifier(record.modifier)
     || typeof record.confidence !== 'number'
     || !Number.isFinite(record.confidence)
     || record.confidence < 0
@@ -269,8 +271,8 @@ function sanitizeSemanticSupervisorEvent(
     eventType: record.eventType,
     confidence: record.confidence,
     source: 'llm',
-    target: isSupervisorEventTarget(record.target) ? record.target : 'unknown',
-    modifier: isSupervisorEventModifier(record.modifier) ? record.modifier : 'unknown',
+    target: record.target,
+    modifier: record.modifier,
   };
 }
 

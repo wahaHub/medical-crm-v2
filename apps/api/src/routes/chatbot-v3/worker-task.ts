@@ -1,5 +1,9 @@
 import type { ChatJourneyStage } from '@medical-crm/domain';
-import type { NextAction } from '@medical-crm/application';
+import type {
+  FollowUpAction,
+  PrimaryAction,
+  ResponseContract,
+} from '@medical-crm/application';
 
 export type WorkerTaskIntent =
   | 'faq'
@@ -34,6 +38,11 @@ interface WorkerTaskBase<TAgent extends 'FaqAgent' | 'RecordsAgent' | 'Recommend
   latestUserMessage: string;
   intent?: WorkerTaskIntent;
   supervisorReason?: string;
+  primaryAction?: PrimaryAction;
+  followUpAction?: FollowUpAction;
+  allowedSkillPacks?: string[];
+  readIntents?: string[];
+  responseContract?: ResponseContract;
 }
 
 export interface FaqWorkerTask extends WorkerTaskBase<'FaqAgent'> {
@@ -95,13 +104,33 @@ export function createFallbackRecommendationWorkerTask(
 }
 
 export function resolveFaqTaskPolicy(
-  nextAction: NextAction | undefined,
+  task: Pick<FaqWorkerTask, 'primaryAction'> | undefined,
 ): Pick<FaqWorkerTask, 'responseMode' | 'safetyRiskType' | 'redirectTarget' | 'businessScope' | 'outputRules'> {
-  switch (nextAction?.type) {
-    case 'SAFE_MEDICAL_REDIRECT':
+  const action = task?.primaryAction;
+  switch (action?.type) {
+    case 'REDIRECT':
+      if (action.reasonCode !== 'medical_safety') {
+        return {
+          responseMode: 'out_of_scope_redirect',
+          redirectTarget: action.target,
+          businessScope: [
+            'doctor matching in China',
+            'medical record preparation',
+            'online consultation',
+            'hospital coordination',
+            'travel support related to treatment',
+          ],
+          outputRules: [
+            'do_not_claim_we_can_help_with_unsupported_service',
+            'ask_one_relevant_next_step',
+            'preserve_primary_stage',
+          ],
+        };
+      }
+
       return {
         responseMode: 'safe_medical_redirect',
-        safetyRiskType: nextAction.riskType,
+        safetyRiskType: action.target,
         outputRules: [
           'do_not_diagnose',
           'do_not_recommend_medication',
@@ -110,28 +139,10 @@ export function resolveFaqTaskPolicy(
           'ask_one_safe_next_step',
         ],
       };
-    case 'OUT_OF_SCOPE_REDIRECT':
-      return {
-        responseMode: 'out_of_scope_redirect',
-        redirectTarget: nextAction.redirectTarget,
-        businessScope: [
-          'doctor matching in China',
-          'medical record preparation',
-          'online consultation',
-          'hospital coordination',
-          'travel support related to treatment',
-        ],
-        outputRules: [
-          'do_not_claim_we_can_help_with_unsupported_service',
-          'ask_one_relevant_next_step',
-          'preserve_primary_stage',
-        ],
-      };
-    case 'ANSWER_FAQ':
-      if (nextAction.subtopic !== 'rejection_or_hesitation') {
+    case 'HANDLE_RESPONSE':
+      if (action.modifier !== 'reject' && action.modifier !== 'hesitate') {
         return {};
       }
-
       return {
         responseMode: 'rejection_or_hesitation',
         outputRules: [

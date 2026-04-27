@@ -5992,15 +5992,18 @@ describe('chatbot-v3 runtime', () => {
           suggestedStage: 'EXPLAIN_PROCESS' as const,
           reason: 'user is asking about consult timing',
         })),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_ASKED_QUESTION' as const,
+          target: 'consult' as const,
+          modifier: 'ask' as const,
+          confidence: 0.92,
+          source: 'llm' as const,
+        })),
       },
       journeyRuntimeAuthority: {
-        decide: vi.fn(() => ({
-          action: 'STAY' as const,
-          from: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
-          to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
-          dispatchAgent: 'FaqAgent' as const,
-          dispatchSource: 'journey-runtime-authority' as const,
-        })),
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
       },
       gateway: {
         status: {
@@ -6044,7 +6047,28 @@ describe('chatbot-v3 runtime', () => {
           toStage: 'EXPLAIN_PROCESS',
           latestUserMessage: 'How long does online consultation usually take to schedule?',
           intent: 'faq',
-          supervisorReason: 'user is asking about consult timing',
+          supervisorReason: 'user_asked_question_answer',
+          primaryAction: expect.objectContaining({
+            type: 'ANSWER',
+            target: 'consult',
+          }),
+          followUpAction: expect.objectContaining({
+            type: 'GO_DEEP',
+            target: 'consult',
+          }),
+          allowedSkillPacks: expect.arrayContaining([
+            'search_general_faq_by_category',
+            'answer_general_faq_from_admin_source',
+            'load_consult_readiness_criteria',
+          ]),
+          readIntents: expect.arrayContaining([
+            'GENERAL_FAQ:consult',
+            'CONSULT_READINESS',
+          ]),
+          responseContract: expect.objectContaining({
+            structure: 'answer_then_advance',
+            followUpMove: 'go_deep',
+          }),
         }),
       }),
     }));

@@ -47,9 +47,11 @@ function buildSupervisorEventResponseFormat(allowedEvents: readonly SupervisorEv
         },
         target: {
           type: 'string',
+          enum: SUPERVISOR_EVENT_TARGETS,
         },
         modifier: {
           type: 'string',
+          enum: SUPERVISOR_EVENT_MODIFIERS,
         },
         confidence: {
           type: 'number',
@@ -198,8 +200,8 @@ function sanitizeSupervisorEvent(
     !hasOnlyEventKeys
     || !isSupervisorEventType(raw.eventType)
     || !allowedEvents.includes(raw.eventType)
-    || typeof raw.target !== 'string'
-    || typeof raw.modifier !== 'string'
+    || !isSupervisorEventTarget(raw.target)
+    || !isSupervisorEventModifier(raw.modifier)
     || typeof raw.confidence !== 'number'
     || !Number.isFinite(raw.confidence)
     || raw.confidence < 0
@@ -210,8 +212,8 @@ function sanitizeSupervisorEvent(
 
   return {
     eventType: raw.eventType,
-    target: normalizeSupervisorEventTarget(raw.target),
-    modifier: normalizeSupervisorEventModifier(raw.modifier),
+    target: raw.target,
+    modifier: raw.modifier,
     confidence: raw.confidence,
     source: 'llm',
   };
@@ -232,16 +234,12 @@ function buildFallbackUnknownEvent(rawText: string): SupervisorEvent {
   };
 }
 
-function normalizeSupervisorEventTarget(value: string): SupervisorEventTarget {
-  return (SUPERVISOR_EVENT_TARGETS as readonly string[]).includes(value)
-    ? value as SupervisorEventTarget
-    : 'unknown';
+function isSupervisorEventTarget(value: unknown): value is SupervisorEventTarget {
+  return typeof value === 'string' && (SUPERVISOR_EVENT_TARGETS as readonly string[]).includes(value);
 }
 
-function normalizeSupervisorEventModifier(value: string): SupervisorEventModifier {
-  return (SUPERVISOR_EVENT_MODIFIERS as readonly string[]).includes(value)
-    ? value as SupervisorEventModifier
-    : 'unknown';
+function isSupervisorEventModifier(value: unknown): value is SupervisorEventModifier {
+  return typeof value === 'string' && (SUPERVISOR_EVENT_MODIFIERS as readonly string[]).includes(value);
 }
 
 function normalizeTimeoutMs(value: number): number {

@@ -156,15 +156,15 @@ export function composeFallbackFaqAnswer(
   latestUserMessage: string,
   task?: FaqWorkerTask,
 ): FaqAnswerResult {
+  const redirectFallback = composeRedirectFallbackAnswer(task);
+  if (redirectFallback) {
+    return redirectFallback;
+  }
+
   const sourceItems = details.length > 0 ? details : matches;
   const citedFaqIds = dedupeFaqIds(sourceItems.map((item) => item.id)).slice(0, 3);
 
   if (sourceItems.length === 0) {
-    const redirectFallback = composeRedirectFallbackAnswer(task);
-    if (redirectFallback) {
-      return redirectFallback;
-    }
-
     return {
       answer: `I can help with that, but I could not find an exact FAQ answer yet for "${clampText(latestUserMessage, 120)}".`,
       citedFaqIds: [],
@@ -283,6 +283,14 @@ function sanitizeFaqAnswerResult(
   schemaValidationFailed: boolean;
 } {
   const record = asRecord(raw);
+  if (fallback.policyGrounded === true) {
+    return {
+      answer: fallback,
+      fallbackUsed: true,
+      schemaValidationFailed: true,
+    };
+  }
+
   const normalizedAnswer = normalizeString(record.answer);
   const answer = normalizedAnswer ?? fallback.answer;
   const citedFaqIds = sanitizeFaqIds(record.citedFaqIds);

@@ -1914,6 +1914,29 @@ describe('SupervisorService event extraction', () => {
     });
   });
 
+  it('rejects invalid semantic target and modifier values', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'USER_EXPRESSED_NEED',
+        target: 'budget',
+        modifier: 'refine',
+        confidence: 0.8,
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
+      eventType: 'USER_MESSAGE_UNCLEAR',
+      confidence: 0,
+      source: 'fallback_unknown',
+      target: 'unknown',
+      modifier: 'unknown',
+      metadata: {
+        rawText: 'supervisor semantic event extraction failed',
+      },
+    });
+  });
+
   it('rejects semantic events outside the current stage allowed set', async () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',

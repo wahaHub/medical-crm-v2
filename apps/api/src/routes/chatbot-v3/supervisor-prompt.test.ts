@@ -34,16 +34,32 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).not.toContain('Compact agent guide:');
   });
 
-  it('lists the complete allowed SupervisorEvent eventType set', () => {
+  it('lists only the allowed semantic eventType values for the turn', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 
-    expect(prompt).toContain('Allowed eventType values:');
-    expect(prompt).toContain('TRIAGE_SUBMITTED');
-    expect(prompt).toContain('RECOMMENDATION_SELECTED');
-    expect(prompt).toContain('DOCUMENTS_UPLOADED');
+    expect(prompt).toContain('You may only return one of these allowed eventType values:');
+    expect(prompt).not.toContain('Allowed eventType values:');
+    expect(prompt).not.toContain('TRIAGE_SUBMITTED');
+    expect(prompt).not.toContain('RECOMMENDATION_SELECTED');
+    expect(prompt).not.toContain('DOCUMENTS_UPLOADED');
+    expect(prompt).not.toContain('USER_REQUESTED_HUMAN');
+    expect(prompt).toContain('USER_WANTS_TREATMENT_IN_CHINA');
     expect(prompt).toContain('USER_ASKED_FAQ');
     expect(prompt).toContain('USER_ASKED_RISKY_MEDICAL_ADVICE');
     expect(prompt).toContain('UNKNOWN_MESSAGE');
+  });
+
+  it('includes concise classification guidance for allowed semantic events', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('Classification guide:');
+    expect(prompt).toContain('USER_WANTS_TREATMENT_IN_CHINA: user wants treatment in China');
+    expect(prompt).toContain('USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING: user asks to find, recommend, or compare doctors or hospitals');
+    expect(prompt).toContain('USER_PROVIDED_MEDICAL_FACTS: user provides diagnosis, symptoms, treatment history, imaging/pathology, or document availability');
+    expect(prompt).toContain('USER_ASKED_FAQ: user asks about process, price, documents, timeline, hospital selection, travel support, or Medora service details');
+    expect(prompt).toContain('UNKNOWN_MESSAGE: no allowed event fits');
+    expect(prompt).not.toContain('TRIAGE_SUBMITTED:');
+    expect(prompt).not.toContain('DOCUMENTS_UPLOADED:');
   });
 
   it('includes an allowed-events section and compact minimal context', () => {
@@ -61,7 +77,7 @@ describe('buildSupervisorPrompt', () => {
       ],
     });
 
-    expect(prompt).toContain('Allowed events for this turn:');
+    expect(prompt).toContain('You may only return one of these allowed eventType values:');
     const allowedTurnEvents = getAllowedSupervisorEvents({
       ...baseInput,
       currentStage: 'COLLECT_MEDICAL_INPUTS',
@@ -78,6 +94,8 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('supporting_documents_count=2');
     expect(prompt).toContain('report-a.pdf');
     expect(prompt).toContain('report-b.pdf');
+    expect(prompt).not.toContain('uploads/report-a.pdf');
+    expect(prompt).not.toContain('uploads/report-b.pdf');
   });
 
   it('keeps structured frontend actions out of semantic allowed events', () => {

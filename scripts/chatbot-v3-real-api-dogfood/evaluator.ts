@@ -54,6 +54,28 @@ export interface BuildClassifiedScenarioOutcomeInput {
   notes?: string[];
 }
 
+interface BaseClassifiedFailureInput {
+  scenarioId: string;
+  summary: string;
+  bootstrapAttempts?: DogfoodAttemptSummary[];
+  chatAttempts?: DogfoodAttemptSummary[];
+  sessionId?: string | null;
+  turns?: TurnTranscript[];
+  notes?: string[];
+}
+
+export type EvaluationAxisInput = Pick<DogfoodAxisEvaluation, 'result' | 'reason'>;
+
+export interface ClassifyChatFailureOutcomeInput extends BaseClassifiedFailureInput {
+  status: number;
+}
+
+export interface ClassifyEvaluationOutcomeInput extends BaseClassifiedFailureInput {
+  journey: EvaluationAxisInput;
+  response: EvaluationAxisInput;
+  continuity: EvaluationAxisInput;
+}
+
 function normalizeAxisEvaluation(
   axis: DogfoodAxis,
   evaluation: DogfoodAxisEvaluation,
@@ -147,6 +169,79 @@ export function buildClassifiedScenarioOutcome(input: BuildClassifiedScenarioOut
     turns: [...(input.turns ?? [])],
     notes: [...(input.notes ?? [])],
   };
+}
+
+export function classifyEnvironmentFailureOutcome(input: BaseClassifiedFailureInput): ScenarioOutcome {
+  return buildClassifiedScenarioOutcome({
+    ...input,
+    failureCategory: 'environment',
+    failedPhase: 'preflight',
+    usableForControlPlaneJudgment: false,
+  });
+}
+
+export function classifyBootstrapFailureOutcome(input: BaseClassifiedFailureInput): ScenarioOutcome {
+  return buildClassifiedScenarioOutcome({
+    ...input,
+    failureCategory: 'bootstrap',
+    failedPhase: 'bootstrap',
+    usableForControlPlaneJudgment: false,
+  });
+}
+
+export function classifyChatFailureOutcome(input: ClassifyChatFailureOutcomeInput): ScenarioOutcome {
+  if (input.status === 0) {
+    return buildClassifiedScenarioOutcome({
+      ...input,
+      failureCategory: 'chat_transport',
+      failedPhase: 'chat',
+      usableForControlPlaneJudgment: false,
+    });
+  }
+
+  if (input.status >= 400) {
+    return buildClassifiedScenarioOutcome({
+      ...input,
+      failureCategory: 'chat_http',
+      failedPhase: 'chat',
+      usableForControlPlaneJudgment: false,
+    });
+  }
+
+  throw new Error(`Chat failure classification requires status 0 or >=400, got ${input.status}.`);
+}
+
+export function classifyEvaluationOutcome(input: ClassifyEvaluationOutcomeInput): ScenarioOutcome {
+  const evaluated = evaluateScenarioOutcome({
+    scenarioId: input.scenarioId,
+    accessDecision: { result: 'PASS' },
+    journey: input.journey,
+    response: input.response,
+    continuity: input.continuity,
+  });
+
+  if (evaluated.outcome === 'PASS') {
+    return buildClassifiedScenarioOutcome({
+      ...input,
+      outcome: 'PASS',
+      summary: evaluated.reason,
+    });
+  }
+
+  const hasControlPlaneFailure =
+    input.journey.result !== 'PASS' || input.continuity.result !== 'PASS';
+  const failureCategory: DogfoodFailureCategory = hasControlPlaneFailure
+    ? 'control_plane'
+    : 'agent_or_composer';
+
+  return buildClassifiedScenarioOutcome({
+    ...input,
+    outcome: failureCategory === 'agent_or_composer' ? 'SOFT_FAIL' : evaluated.outcome,
+    summary: input.summary || evaluated.reason,
+    failureCategory,
+    failedPhase: 'evaluation',
+    usableForControlPlaneJudgment: true,
+  });
 }
 
 export function rollupRunOutcome(

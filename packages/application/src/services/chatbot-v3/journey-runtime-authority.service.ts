@@ -27,7 +27,7 @@ export class JourneyRuntimeAuthorityService {
 
     return {
       outcome: 'ALLOW',
-      action: deriveReducerAuthorityAction(input.current.stage, input.reduction.nextAction.type, to.stage),
+      action: deriveReducerAuthorityAction(input.current.stage, input.reduction.turnPlan.primaryAction, to.stage),
       from: cloneStage(input.current),
       to,
       dispatch: {
@@ -202,10 +202,10 @@ function allowDecision({
 
 function deriveReducerAuthorityAction(
   currentStage: ChatJourneyStage,
-  nextActionType: JourneyReducerOutput['nextAction']['type'],
+  primaryAction: JourneyReducerOutput['turnPlan']['primaryAction'],
   targetStage: ChatJourneyStage,
 ): JourneyRuntimeAuthorityDecision['action'] {
-  if (nextActionType === 'CREATE_HANDOFF') {
+  if (primaryAction.type === 'ESCALATE') {
     return 'ESCALATE';
   }
 
@@ -231,7 +231,10 @@ function buildReducerAuthorityFactsPatch(
     factsPatch['handoff.active'] = true;
   }
 
-  if (execution.isSystemRendered && reduction.nextAction.type === 'SHOW_PROCESS_OVERVIEW') {
+  if (execution.isSystemRendered
+    && reduction.turnPlan.primaryAction.type === 'ANSWER'
+    && reduction.turnPlan.primaryAction.target === 'process'
+    && reduction.turnPlan.primaryAction.mode === 'formal_overview') {
     factsPatch['process.explained'] = true;
   }
 

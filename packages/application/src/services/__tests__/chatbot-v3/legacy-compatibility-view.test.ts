@@ -18,7 +18,12 @@ describe('projectLegacyCompatibilityView', () => {
           handoff: { active: false },
         },
         factsPatch: {},
-        nextAction: { type: 'OFFER_ONLINE_CONSULT' },
+        turnPlan: {
+          primaryAction: { type: 'PRESENT_OPTIONS', target: 'consult' },
+          primaryStage: 'ONLINE_CONSULT',
+          factsPatch: {},
+          reasonCode: 'ready_for_online_consult',
+        },
         reasonCode: 'ready_for_online_consult',
         isSidePath: false,
         sidePathType: 'none',
@@ -32,6 +37,8 @@ describe('projectLegacyCompatibilityView', () => {
 
     expect(projected.projectedDecision.fromStage).toBe('COLLECT_MEDICAL_INPUTS');
     expect(projected.projectedDecision.toStage).toBe('ONLINE_CONSULT');
+    expect(projected.projectedDecision.primaryAction).toEqual({ type: 'PRESENT_OPTIONS', target: 'consult' });
+    expect(projected.projectedDecision).not.toHaveProperty('nextAction');
     expect(projected.projectedProposal.suggestedStage).toBe('ONLINE_CONSULT');
     expect(projected.projectedProposal.dispatchAgent).toBe('ConsultAgent');
   });

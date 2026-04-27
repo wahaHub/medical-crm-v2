@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { JourneyRuntimeAuthorityService } from '../../chatbot-v3/journey-runtime-authority.service.js';
+import { reduceJourney } from '../../chatbot-v3/journey-reducer.js';
+import type { DomainFacts } from '../../chatbot-v3/supervisor-event.types.js';
 import {
   CHATBOT_V3_JOURNEY_STAGES,
   type JourneyRuntimeAuthorityInput,
@@ -7,6 +9,23 @@ import {
 
 describe('JourneyRuntimeAuthorityService', () => {
   const service = new JourneyRuntimeAuthorityService();
+
+  function facts(overrides: Partial<DomainFacts> = {}): DomainFacts {
+    return {
+      language: 'zh',
+      intake: { minimalTriageStatus: 'submitted', ...overrides.intake },
+      recommendation: { status: 'selected', selectedHospitalIds: ['h1'], ...overrides.recommendation },
+      process: { explained: false, ...overrides.process },
+      records: {
+        supportingDocumentsCount: 0,
+        availableDocumentTypes: [],
+        missingDocumentTypes: [],
+        ...overrides.records,
+      },
+      consult: { status: 'not_started', ...overrides.consult },
+      handoff: { active: false, ...overrides.handoff },
+    };
+  }
 
   function createInput(
     overrides: Partial<JourneyRuntimeAuthorityInput> = {},
@@ -29,6 +48,55 @@ describe('JourneyRuntimeAuthorityService', () => {
 
   it('starts the canonical journey order with minimal medical triage', () => {
     expect(CHATBOT_V3_JOURNEY_STAGES[0]).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+  });
+
+  it('writes process.explained only for a system-rendered formal process overview turn plan', () => {
+    const formalOverviewReduction = reduceJourney({
+      state: { primaryStage: 'RECOMMENDATION' },
+      facts: facts(),
+      event: {
+        eventType: 'RECOMMENDATION_SELECTED',
+        confidence: 1,
+        source: 'deterministic',
+        metadata: { selectedHospitalIds: ['h1'] },
+      },
+    });
+
+    const formalDecision = service.decideFromReducer({
+      current: { stage: 'RECOMMENDATION', phase: 'active' },
+      reduction: formalOverviewReduction,
+      execution: { agent: null, isSystemRendered: true },
+    });
+
+    expect(formalDecision.to.stage).toBe('EXPLAIN_PROCESS');
+    expect(formalDecision.write.factsPatch).toEqual({
+      'recommendation.selected': true,
+      'process.explained': true,
+    });
+
+    const processFaqReduction = reduceJourney({
+      state: { primaryStage: 'ONLINE_CONSULT' },
+      facts: facts({
+        process: { explained: true },
+        records: { supportingDocumentsCount: 1, availableDocumentTypes: [], missingDocumentTypes: [] },
+      }),
+      event: {
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'process',
+        modifier: 'ask',
+        confidence: 0.9,
+        source: 'llm',
+      },
+    });
+
+    const faqDecision = service.decideFromReducer({
+      current: { stage: 'ONLINE_CONSULT', phase: 'active' },
+      reduction: processFaqReduction,
+      execution: { agent: 'FaqAgent', isSystemRendered: false },
+    });
+
+    expect(faqDecision.to.stage).toBe('ONLINE_CONSULT');
+    expect(faqDecision.write.factsPatch).not.toHaveProperty('process.explained');
   });
 
   it('allows recommendation after minimal triage is complete', () => {

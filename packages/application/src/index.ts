@@ -94,6 +94,8 @@ export type {
   JourneyState,
   MedicalFactPatchCandidate,
   NextAction,
+  FollowUpAction,
+  PrimaryAction,
   ReducerReasonCode,
   SupervisorEvent,
   SupervisorEventMetadata,
@@ -102,6 +104,8 @@ export type {
   SupervisorEventTarget,
   SupervisorEventType,
   SemanticSupervisorEventType,
+  SidePathType,
+  TurnPlan,
 } from './services/chatbot-v3/supervisor-event.types.js';
 export {
   getAllowedSupervisorEvents,

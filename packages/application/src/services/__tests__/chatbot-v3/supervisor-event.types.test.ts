@@ -5,7 +5,7 @@ import {
   type DomainFacts,
   type JourneyReduction,
   type JourneyState,
-  type NextAction,
+  type PrimaryAction,
   type SupervisorEvent,
 } from '../../chatbot-v3/supervisor-event.types.js';
 
@@ -57,7 +57,7 @@ describe('supervisor-event.types', () => {
       },
     };
     const state: JourneyState = { primaryStage: 'COLLECT_MINIMAL_MEDICAL_FACTS' };
-    const action: NextAction = { type: 'GENERATE_RECOMMENDATION' };
+    const action: PrimaryAction = { type: 'PRESENT_OPTIONS', target: 'hospital' };
     const facts: DomainFacts = {
       language: 'zh',
       intake: { minimalTriageStatus: 'submitted' },
@@ -74,7 +74,12 @@ describe('supervisor-event.types', () => {
     const reduction: JourneyReduction = {
       state,
       facts,
-      nextAction: action,
+      turnPlan: {
+        primaryAction: action,
+        primaryStage: 'RECOMMENDATION',
+        factsPatch: {},
+        reasonCode: 'TRIAGE_SUBMITTED_RECOMMENDATION_READY',
+      },
       reasonCode: 'TRIAGE_SUBMITTED_RECOMMENDATION_READY',
       isSidePath: false,
       sidePathType: 'none',
@@ -84,12 +89,15 @@ describe('supervisor-event.types', () => {
     expect(SUPERVISOR_EVENT_TYPES).toContain('TRIAGE_SUBMITTED');
     expect(event.eventType).toBe('TRIAGE_SUBMITTED');
     expect(state.primaryStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
-    expect(action.type).toBe('GENERATE_RECOMMENDATION');
+    expect(action.type).toBe('PRESENT_OPTIONS');
     expect(facts.intake.minimalTriageStatus).toBe('submitted');
-    expect({ type: 'SHOW_PROCESS_OVERVIEW' } satisfies NextAction).toEqual({
-      type: 'SHOW_PROCESS_OVERVIEW',
+    expect({ type: 'ANSWER', target: 'process', mode: 'formal_overview' } satisfies PrimaryAction).toEqual({
+      type: 'ANSWER',
+      target: 'process',
+      mode: 'formal_overview',
     });
-    expect({ type: 'CREATE_HANDOFF' } satisfies NextAction).toEqual({ type: 'CREATE_HANDOFF' });
+    expect({ type: 'ESCALATE', target: 'human' } satisfies PrimaryAction).toEqual({ type: 'ESCALATE', target: 'human' });
+    expect(reduction.turnPlan.primaryAction).toEqual(action);
     expect(reduction.reasonCode).toBe('TRIAGE_SUBMITTED_RECOMMENDATION_READY');
   });
 

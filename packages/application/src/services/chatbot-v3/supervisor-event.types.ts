@@ -1,5 +1,4 @@
 import type { ChatJourneyStage } from '@medical-crm/domain';
-import type { ChatbotV3DispatchAgent } from './types.js';
 
 export const DETERMINISTIC_SUPERVISOR_EVENT_TYPES = [
   'TRIAGE_SUBMITTED',
@@ -214,6 +213,46 @@ export interface MedicalFactPatchCandidate {
   pathologyStatus?: string;
 }
 
+export type PrimaryAction =
+  | { type: 'ANSWER'; target: SupervisorEventTarget; mode?: 'faq' | 'formal_overview' }
+  | { type: 'ACKNOWLEDGE'; target: SupervisorEventTarget }
+  | {
+      type: 'CLARIFY';
+      target?: SupervisorEventTarget;
+      reasonCode: 'ambiguous_message' | 'missing_context' | 'low_confidence' | 'unclear_last_reply';
+    }
+  | { type: 'REQUEST_INFO'; target: 'minimal_triage' | 'medical_facts' | 'documents' | 'preference'; questionKey?: string }
+  | { type: 'PRESENT_OPTIONS'; target: 'hospital' | 'consult' }
+  | { type: 'HANDLE_RESPONSE'; target: SupervisorEventTarget; modifier: SupervisorEventModifier }
+  | { type: 'REDIRECT'; target: SupervisorEventTarget; reasonCode: 'out_of_scope' | 'medical_safety' | 'cannot_do' }
+  | { type: 'ESCALATE'; target: 'human'; reasonCode?: string };
+
+export type FollowUpAction =
+  | { type: 'INVITE_NEXT_STEP'; target: 'minimal_triage' | 'recommendation' | 'documents' | 'consult' | 'process' | 'human' | 'unknown'; reason?: string }
+  | { type: 'ASK_QUALIFYING_QUESTION'; target: SupervisorEventTarget; questionKey: string }
+  | {
+      type: 'GO_DEEP';
+      target: SupervisorEventTarget;
+      questionKey?: string;
+      topicKey?: string;
+      reasonCode: 'user_requested_more_detail' | 'high_intent_followup' | 'needs_domain_explanation';
+    }
+  | { type: 'NONE' };
+
+export type SidePathType = 'none' | 'faq' | 'safety' | 'out_of_scope' | 'clarification';
+
+export interface TurnPlan {
+  primaryAction: PrimaryAction;
+  followUpAction?: FollowUpAction;
+  primaryStage: ChatJourneyStage;
+  factsPatch: Record<string, unknown>;
+  reasonCode: ReducerReasonCode;
+  sidePath?: {
+    type: SidePathType;
+    primaryStagePreserved: boolean;
+  };
+}
+
 export type NextAction =
   | { type: 'COLLECT_MINIMAL_TRIAGE' }
   | { type: 'GENERATE_RECOMMENDATION' }
@@ -245,10 +284,9 @@ export type ReducerReasonCode =
 export interface JourneyReduction {
   state: JourneyState;
   facts: DomainFacts;
-  nextAction: NextAction;
+  turnPlan: TurnPlan;
   reasonCode: ReducerReasonCode;
   isSidePath: boolean;
-  sidePathType: 'none' | 'faq' | 'safety' | 'out_of_scope' | 'clarification';
+  sidePathType: SidePathType;
   primaryStagePreserved: boolean;
-  dispatchAgent?: ChatbotV3DispatchAgent | null;
 }

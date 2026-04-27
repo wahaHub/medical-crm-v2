@@ -5,8 +5,11 @@ import type {
   JourneyState,
   MedicalFactPatchCandidate,
   NextAction,
+  PrimaryAction,
   ReducerReasonCode,
+  SidePathType,
   SupervisorEvent,
+  TurnPlan,
 } from './supervisor-event.types.js';
 
 export interface ReduceJourneyInput {
@@ -33,18 +36,28 @@ export function reduceJourney(input: ReduceJourneyInput): JourneyReducerOutput {
   const normalizedFacts = normalizeFacts(input.facts);
   const factsPatch = deriveFactsPatch(input.event, normalizedFacts);
   const nextFacts = applyFactsPatch(normalizedFacts, factsPatch);
-  const nextAction = decideNextAction({
+  const primaryAction = decidePrimaryAction({
     state: input.state,
     facts: nextFacts,
     event: input.event,
   });
-  const nextStage = deriveNextStage({
+  const nextStage = derivePrimaryStage({
     currentStage: input.state.primaryStage,
-    nextAction,
+    primaryAction,
   });
-  const reasonCode = buildReasonCode(input.event, nextAction);
-  const sidePathType = classifySidePath(nextAction);
+  const reasonCode = buildReasonCode(input.event, primaryAction);
+  const sidePathType = classifySidePath(primaryAction);
   const primaryStagePreserved = input.state.primaryStage === nextStage;
+  const turnPlan: TurnPlan = {
+    primaryAction,
+    followUpAction: deriveFollowUpAction(primaryAction, nextFacts),
+    primaryStage: nextStage,
+    factsPatch,
+    reasonCode,
+    ...(sidePathType !== 'none'
+      ? { sidePath: { type: sidePathType, primaryStagePreserved } }
+      : {}),
+  };
 
   return {
     state: {
@@ -54,7 +67,7 @@ export function reduceJourney(input: ReduceJourneyInput): JourneyReducerOutput {
     primaryStage: nextStage,
     facts: nextFacts,
     factsPatch,
-    nextAction,
+    turnPlan,
     reasonCode,
     isSidePath: sidePathType !== 'none',
     sidePathType,
@@ -122,8 +135,11 @@ export function deriveFactsPatch(event: SupervisorEvent, facts: DomainFacts): Do
         },
       };
     }
-    case 'USER_PROVIDED_MEDICAL_FACTS':
-      return deriveMedicalFactsPatch(event);
+    case 'USER_PROVIDED_INFORMATION':
+      if (event.target === 'medical_facts') {
+        return deriveMedicalFactsPatch(event);
+      }
+      return {};
     default:
       return {};
   }
@@ -146,79 +162,119 @@ export function decideNextAction(input: {
   facts: DomainFacts;
   event: SupervisorEvent;
 }): NextAction {
+  return legacyNextActionFromPrimaryAction(decidePrimaryAction(input));
+}
+
+export function decidePrimaryAction(input: {
+  state: JourneyState;
+  facts: DomainFacts;
+  event: SupervisorEvent;
+}): PrimaryAction {
   const { event, facts } = input;
 
   switch (event.eventType) {
     case 'USER_REQUESTED_HUMAN':
-    case 'USER_PROVIDED_CONTACT_INFO':
-      return { type: 'CREATE_HANDOFF' };
-    case 'USER_REJECTED_OR_HESITATED':
-      return {
-        type: 'ANSWER_FAQ',
-        topic: 'other',
-        subtopic: 'rejection_or_hesitation',
-      };
+      return { type: 'ESCALATE', target: 'human', reasonCode: 'human_requested' };
     case 'USER_ASKED_RISKY_MEDICAL_ADVICE':
-      return { type: 'SAFE_MEDICAL_REDIRECT', riskType: event.metadata?.riskType };
+      return { type: 'REDIRECT', target: event.target ?? 'medical_facts', reasonCode: 'medical_safety' };
     case 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE':
-      return { type: 'OUT_OF_SCOPE_REDIRECT', redirectTarget: event.metadata?.redirectTarget };
-    case 'USER_ASKED_FAQ':
-      return {
-        type: 'ANSWER_FAQ',
-        topic: event.metadata?.topic,
-        subtopic: event.metadata?.subtopic,
-      };
+      return { type: 'REDIRECT', target: event.target ?? 'unknown', reasonCode: 'out_of_scope' };
+    case 'USER_ASKED_QUESTION':
+      if (event.target === 'next_step') {
+        return decideNextStepFromFacts(facts);
+      }
+      if (event.target === 'hospital' || event.target === 'hospital_selection') {
+        return { type: 'ANSWER', target: event.target, mode: 'faq' };
+      }
+      if (event.target && event.target !== 'unknown') {
+        return { type: 'ANSWER', target: event.target, mode: 'faq' };
+      }
+      return { type: 'CLARIFY', target: 'unknown', reasonCode: 'ambiguous_message' };
+    case 'USER_PROVIDED_INFORMATION':
+      if (event.target === 'contact') {
+        return { type: 'ESCALATE', target: 'human', reasonCode: 'contact_info_provided' };
+      }
+      return decideNextStepFromFacts(facts);
+    case 'USER_RESPONDED_TO_REQUEST':
+      if (event.modifier === 'reject' || event.modifier === 'hesitate') {
+        return { type: 'HANDLE_RESPONSE', target: event.target ?? 'unknown', modifier: event.modifier };
+      }
+      return decideNextStepFromFacts(facts);
     case 'TRIAGE_SUBMITTED':
     case 'TRIAGE_SKIPPED':
-      return { type: 'GENERATE_RECOMMENDATION' };
+      return { type: 'PRESENT_OPTIONS', target: 'hospital' };
     case 'RECOMMENDATION_SELECTED':
       if (!facts.process.explained) {
-        return { type: 'SHOW_PROCESS_OVERVIEW' };
+        return { type: 'ANSWER', target: 'process', mode: 'formal_overview' };
       }
       if (facts.records.supportingDocumentsCount === 0) {
-        return { type: 'REQUEST_MEDICAL_DOCUMENTS' };
+        return { type: 'REQUEST_INFO', target: 'documents' };
       }
-      return { type: 'OFFER_ONLINE_CONSULT' };
+      return { type: 'PRESENT_OPTIONS', target: 'consult' };
     case 'RECOMMENDATION_SKIPPED':
-      return { type: 'SHOW_PROCESS_OVERVIEW' };
+      return { type: 'ANSWER', target: 'process', mode: 'formal_overview' };
     case 'DOCUMENTS_UPLOADED':
-      return decideNextActionAfterDocuments(facts);
-    case 'USER_ASKED_NEXT_STEP':
-    case 'USER_WANTS_TREATMENT_IN_CHINA':
-    case 'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING':
-    case 'USER_PROVIDED_MEDICAL_FACTS':
+      return decidePrimaryActionAfterDocuments(facts);
+    case 'USER_EXPRESSED_NEED':
+      if (event.target === 'recommendation' && event.modifier === 'revisit') {
+        return { type: 'PRESENT_OPTIONS', target: 'hospital' };
+      }
+      if (event.target === 'consult') {
+        return facts.records.supportingDocumentsCount === 0
+          ? { type: 'REQUEST_INFO', target: 'documents' }
+          : { type: 'PRESENT_OPTIONS', target: 'consult' };
+      }
       return decideNextStepFromFacts(facts);
-    case 'USER_INTERESTED_IN_CONSULT':
-      return facts.records.supportingDocumentsCount === 0
-        ? { type: 'REQUEST_MEDICAL_DOCUMENTS' }
-        : { type: 'OFFER_ONLINE_CONSULT' };
-    case 'USER_AMBIGUOUS_REPLY':
-    case 'UNKNOWN_MESSAGE':
+    case 'USER_MESSAGE_UNCLEAR':
     default:
-      return { type: 'CLARIFY_INTENT' };
+      return { type: 'CLARIFY', target: 'unknown', reasonCode: 'ambiguous_message' };
   }
 }
 
-export function decideNextStepFromFacts(facts: DomainFacts): NextAction {
+export function decideNextStepFromFacts(facts: DomainFacts): PrimaryAction {
   if (facts.intake.minimalTriageStatus === 'not_started') {
-    return { type: 'COLLECT_MINIMAL_TRIAGE' };
+    return { type: 'REQUEST_INFO', target: 'minimal_triage' };
   }
   if (facts.recommendation.status === 'none') {
-    return { type: 'GENERATE_RECOMMENDATION' };
+    return { type: 'PRESENT_OPTIONS', target: 'hospital' };
   }
   if (facts.recommendation.status === 'generated') {
-    return { type: 'ASK_RECOMMENDATION_SELECTION' };
+    return { type: 'PRESENT_OPTIONS', target: 'hospital' };
   }
   if (facts.recommendation.status === 'selected' && !facts.process.explained) {
-    return { type: 'SHOW_PROCESS_OVERVIEW' };
+    return { type: 'ANSWER', target: 'process', mode: 'formal_overview' };
   }
   if (facts.records.supportingDocumentsCount === 0) {
-    return { type: 'REQUEST_MEDICAL_DOCUMENTS' };
+    return { type: 'REQUEST_INFO', target: 'documents' };
   }
   if (facts.consult.status === 'not_started') {
-    return { type: 'OFFER_ONLINE_CONSULT' };
+    return { type: 'PRESENT_OPTIONS', target: 'consult' };
   }
-  return { type: 'CLARIFY_INTENT' };
+  return { type: 'CLARIFY', target: 'unknown', reasonCode: 'missing_context' };
+}
+
+export function derivePrimaryStage(input: {
+  currentStage: ChatJourneyStage;
+  primaryAction: PrimaryAction;
+}): ChatJourneyStage {
+  switch (input.primaryAction.type) {
+    case 'ANSWER':
+      return input.primaryAction.mode === 'formal_overview' ? 'EXPLAIN_PROCESS' : input.currentStage;
+    case 'REDIRECT':
+    case 'CLARIFY':
+    case 'HANDLE_RESPONSE':
+    case 'ACKNOWLEDGE':
+      return input.currentStage;
+    case 'REQUEST_INFO':
+      if (input.primaryAction.target === 'minimal_triage') {
+        return 'COLLECT_MINIMAL_MEDICAL_FACTS';
+      }
+      return 'COLLECT_MEDICAL_INPUTS';
+    case 'PRESENT_OPTIONS':
+      return input.primaryAction.target === 'consult' ? 'ONLINE_CONSULT' : 'RECOMMENDATION';
+    case 'ESCALATE':
+      return 'HUMAN_HANDOFF';
+  }
 }
 
 export function deriveNextStage(input: {
@@ -247,32 +303,68 @@ export function deriveNextStage(input: {
   }
 }
 
-export function buildReasonCode(event: SupervisorEvent, action: NextAction): ReducerReasonCode {
+export function buildReasonCode(event: SupervisorEvent, action: PrimaryAction | NextAction): ReducerReasonCode {
   return `${event.eventType}_${action.type}`.toLowerCase() as ReducerReasonCode;
 }
 
-function decideNextActionAfterDocuments(facts: DomainFacts): NextAction {
+function decidePrimaryActionAfterDocuments(facts: DomainFacts): PrimaryAction {
   if (facts.intake.minimalTriageStatus === 'not_started') {
-    return { type: 'COLLECT_MINIMAL_TRIAGE' };
+    return { type: 'REQUEST_INFO', target: 'minimal_triage' };
   }
   // A document-upload event has a required upload side effect. Keep this turn
   // on RecordsAgent; the next turn can offer consult once the persisted
   // supporting document is visible in DomainFacts.
-  return { type: 'REQUEST_MEDICAL_DOCUMENTS' };
+  return { type: 'REQUEST_INFO', target: 'documents' };
 }
 
-function classifySidePath(action: NextAction): JourneyReducerOutput['sidePathType'] {
+function classifySidePath(action: PrimaryAction): SidePathType {
   switch (action.type) {
-    case 'ANSWER_FAQ':
-      return 'faq';
-    case 'SAFE_MEDICAL_REDIRECT':
-      return 'safety';
-    case 'OUT_OF_SCOPE_REDIRECT':
-      return 'out_of_scope';
-    case 'CLARIFY_INTENT':
+    case 'ANSWER':
+      return action.mode === 'formal_overview' ? 'none' : 'faq';
+    case 'REDIRECT':
+      return action.reasonCode === 'medical_safety' ? 'safety' : 'out_of_scope';
+    case 'CLARIFY':
       return 'clarification';
+    case 'HANDLE_RESPONSE':
+      return 'faq';
     default:
       return 'none';
+  }
+}
+
+function deriveFollowUpAction(action: PrimaryAction, facts: DomainFacts): TurnPlan['followUpAction'] {
+  if (action.type === 'ANSWER' && action.mode === 'faq') {
+    if (action.target === 'pricing' && facts.records.supportingDocumentsCount === 0) {
+      return { type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'pricing_requires_records' };
+    }
+    if (action.target === 'consult') {
+      return { type: 'GO_DEEP', target: 'consult', reasonCode: 'user_requested_more_detail' };
+    }
+  }
+  return { type: 'NONE' };
+}
+
+function legacyNextActionFromPrimaryAction(action: PrimaryAction): NextAction {
+  switch (action.type) {
+    case 'REQUEST_INFO':
+      return action.target === 'minimal_triage'
+        ? { type: 'COLLECT_MINIMAL_TRIAGE' }
+        : { type: 'REQUEST_MEDICAL_DOCUMENTS' };
+    case 'PRESENT_OPTIONS':
+      return action.target === 'consult' ? { type: 'OFFER_ONLINE_CONSULT' } : { type: 'GENERATE_RECOMMENDATION' };
+    case 'ANSWER':
+      return action.mode === 'formal_overview' ? { type: 'SHOW_PROCESS_OVERVIEW' } : { type: 'ANSWER_FAQ' };
+    case 'REDIRECT':
+      return action.reasonCode === 'medical_safety'
+        ? { type: 'SAFE_MEDICAL_REDIRECT' }
+        : { type: 'OUT_OF_SCOPE_REDIRECT' };
+    case 'ESCALATE':
+      return { type: 'CREATE_HANDOFF' };
+    case 'CLARIFY':
+      return { type: 'CLARIFY_INTENT' };
+    case 'ACKNOWLEDGE':
+    case 'HANDLE_RESPONSE':
+      return { type: 'ANSWER_FAQ' };
   }
 }
 

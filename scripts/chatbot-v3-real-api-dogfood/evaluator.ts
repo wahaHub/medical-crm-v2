@@ -2,6 +2,7 @@ import type {
   DogfoodAttemptSummary,
   DogfoodFailureCategory,
   DogfoodFailurePhase,
+  RunRollup,
   ScenarioOutcome,
   TurnTranscript,
 } from './types.ts';
@@ -247,6 +248,29 @@ export function classifyEvaluationOutcome(input: ClassifyEvaluationOutcomeInput)
 export function rollupRunOutcome(
   scenarioOutcomes: DogfoodScenarioEvaluationOutcome[],
 ): DogfoodRunRollup {
+  const hasHardFail = scenarioOutcomes.some((scenarioOutcome) => scenarioOutcome.outcome === 'HARD_FAIL');
+  if (hasHardFail) {
+    return {
+      outcome: 'HARD_FAIL',
+      scenarioOutcomes,
+    };
+  }
+
+  const hasSoftFail = scenarioOutcomes.some((scenarioOutcome) => scenarioOutcome.outcome === 'SOFT_FAIL');
+  if (hasSoftFail) {
+    return {
+      outcome: 'SOFT_FAIL',
+      scenarioOutcomes,
+    };
+  }
+
+  return {
+    outcome: 'PASS',
+    scenarioOutcomes,
+  };
+}
+
+export function buildClassifiedRunRollup(scenarioOutcomes: ScenarioOutcome[]): RunRollup {
   const hasHardFail = scenarioOutcomes.some((scenarioOutcome) => scenarioOutcome.outcome === 'HARD_FAIL');
   if (hasHardFail) {
     return {

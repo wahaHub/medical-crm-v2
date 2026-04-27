@@ -316,3 +316,34 @@ test('HTTP 200 with acceptable journey but degraded output classifies as usable 
   assert.equal(result.usableForControlPlaneJudgment, true);
   assert.equal(result.sessionId, 'sess_agent');
 });
+
+test('classified run rollup helper preserves full scenario outcomes for artifact publishing', () => {
+  const classified = evaluator.classifyBootstrapFailureOutcome({
+    scenarioId: 'allowed_after_patient_session',
+    summary: 'Bootstrap failed with HTTP 429.',
+    bootstrapAttempts: [
+      {
+        phase: 'bootstrap',
+        turnIndex: null,
+        attempt: 1,
+        durationMs: 8,
+        status: 429,
+        retried: false,
+      },
+    ],
+    sessionId: 'widget_session_from_bootstrap',
+    notes: ['status=429'],
+  });
+
+  const rollup = evaluator.buildClassifiedRunRollup([classified]);
+  const [published] = rollup.scenarioOutcomes;
+
+  assert.equal(rollup.outcome, 'HARD_FAIL');
+  assert.equal(published, classified);
+  assert.equal(published?.failureCategory, 'bootstrap');
+  assert.equal(published?.failedPhase, 'bootstrap');
+  assert.equal(published?.usableForControlPlaneJudgment, false);
+  assert.equal(published?.sessionId, 'widget_session_from_bootstrap');
+  assert.deepEqual(published?.bootstrapAttempts, classified.bootstrapAttempts);
+  assert.deepEqual(published?.notes, ['status=429']);
+});

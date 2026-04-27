@@ -13,11 +13,11 @@ import { parseDogfoodConfig } from './chatbot-v3-real-api-dogfood/config.ts';
 import { getScenarioById, V1_REQUIRED_SCENARIO_IDS } from './chatbot-v3-real-api-dogfood/scenarios.ts';
 import { runChatSession, type ChatRunnerResult } from './chatbot-v3-real-api-dogfood/chat-runner.ts';
 import {
+  buildClassifiedRunRollup,
   buildClassifiedScenarioOutcome,
   classifyBootstrapFailureOutcome,
   classifyChatFailureOutcome,
   classifyEvaluationOutcome,
-  rollupRunOutcome,
   type DogfoodAxisEvaluation,
 } from './chatbot-v3-real-api-dogfood/evaluator.ts';
 import { writeDogfoodArtifacts } from './chatbot-v3-real-api-dogfood/reporting.ts';
@@ -277,14 +277,7 @@ async function run() {
     scenarioOutcomes.push(evaluateAllowedScenario(scenario.id, bootstrap, null));
   }
 
-  const rollup: RunRollup = rollupRunOutcome(
-    scenarioOutcomes.map((scenarioOutcome) => ({
-      scenarioId: scenarioOutcome.scenarioId,
-      outcome: scenarioOutcome.outcome,
-      summary: scenarioOutcome.summary,
-      turns: scenarioOutcome.turns,
-    })),
-  );
+  const rollup: RunRollup = buildClassifiedRunRollup(scenarioOutcomes);
 
   const artifactDir = writeDogfoodArtifacts({
     workspaceRoot,

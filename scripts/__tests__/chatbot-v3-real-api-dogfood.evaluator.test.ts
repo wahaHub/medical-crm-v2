@@ -159,7 +159,7 @@ test('agent or composer failures are classified as soft failures with usable con
   assert.equal(result.usableForControlPlaneJudgment, true);
 });
 
-test('non-pass classified outcomes require failure category and failed phase before serialization', () => {
+test('non-pass classified outcomes require failure category, failed phase, and usability before serialization', () => {
   assert.throws(
     () =>
       evaluator.buildClassifiedScenarioOutcome({
@@ -181,5 +181,17 @@ test('non-pass classified outcomes require failure category and failed phase bef
         usableForControlPlaneJudgment: true,
       }),
     /failedPhase/,
+  );
+
+  assert.throws(
+    () =>
+      evaluator.buildClassifiedScenarioOutcome({
+        scenarioId: 'missing_usability',
+        outcome: 'HARD_FAIL',
+        summary: 'usability was not supplied',
+        failureCategory: 'chat_transport',
+        failedPhase: 'chat',
+      }),
+    /usableForControlPlaneJudgment/,
   );
 });

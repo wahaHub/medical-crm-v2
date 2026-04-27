@@ -1,4 +1,9 @@
-import type { SupervisorEvent, SupervisorEventType } from './supervisor-event.types.js';
+import type {
+  SupervisorEvent,
+  SupervisorEventModifier,
+  SupervisorEventTarget,
+  SupervisorEventType,
+} from './supervisor-event.types.js';
 
 const STRUCTURED_ACTION_EVENT_TYPES = new Set<SupervisorEventType>([
   'TRIAGE_SUBMITTED',
@@ -11,14 +16,6 @@ const HUMAN_REQUEST_PATTERNS = [
   /\b(?:human|person|agent|advisor|representative|specialist|staff)\b/i,
   /\b(?:talk|speak|chat|connect|transfer|handoff)\s+(?:to|with)\b/i,
   /真人|人工|客服|顾问|专员|人工服务|转人工/,
-];
-
-const NEXT_STEP_REQUEST_PATTERNS = [
-  /\b(?:what|whats|what's)\s+(?:is\s+)?(?:the\s+)?next\s+step\b/i,
-  /\bnext\s+steps?\b/i,
-  /\bwhat\s+(?:should|do)\s+i\s+do\s+next\b/i,
-  /\bhow\s+(?:do\s+we|should\s+we)\s+proceed\b/i,
-  /下一步|接下来|然后呢|怎么办|怎么继续/,
 ];
 
 export interface DeterministicEventExtractionInput {
@@ -41,21 +38,25 @@ export function extractDeterministicEvent(
   const message = input.message ?? '';
 
   if (isExplicitHumanRequest(message)) {
-    return buildEvent('USER_REQUESTED_HUMAN', { rawText: message });
+    return buildEvent('USER_REQUESTED_HUMAN', {
+      target: 'human',
+      modifier: 'ask',
+      metadata: { rawText: message },
+    });
   }
 
   const documentCount = input.attachments?.length ?? 0;
   if (documentCount > 0) {
-    return buildEvent('DOCUMENTS_UPLOADED', { documentCount });
+    return buildEvent('DOCUMENTS_UPLOADED', {
+      target: 'documents',
+      modifier: 'provide',
+      metadata: { documentCount },
+    });
   }
 
   const structuredActionEvent = extractStructuredActionEvent(input.userAction, message);
   if (structuredActionEvent) {
     return structuredActionEvent;
-  }
-
-  if (isExplicitNextStepRequest(message)) {
-    return buildEvent('USER_ASKED_NEXT_STEP', { rawText: message });
   }
 
   return null;
@@ -73,12 +74,19 @@ function extractStructuredActionEvent(
   if (actionType === 'RECOMMENDATION_SELECTED' && userAction) {
     const selectedHospitalIds = extractSelectedHospitalIds(userAction);
     return buildEvent(actionType, {
-      rawText,
-      ...(selectedHospitalIds.length > 0 ? { selectedHospitalIds } : {}),
+      target: 'recommendation',
+      modifier: 'confirm',
+      metadata: {
+        rawText,
+        ...(selectedHospitalIds.length > 0 ? { selectedHospitalIds } : {}),
+      },
     });
   }
 
-  return buildEvent(actionType, { rawText });
+  return buildEvent(actionType, {
+    ...getStructuredActionEventIntent(actionType),
+    metadata: { rawText },
+  });
 }
 
 function isStructuredActionEventType(value: unknown): value is SupervisorEventType {
@@ -103,21 +111,39 @@ function isExplicitHumanRequest(message: string): boolean {
   return hasHumanWord && hasRequestVerb;
 }
 
-function isExplicitNextStepRequest(message: string): boolean {
-  const normalized = message.trim();
-  return normalized.length > 0 && NEXT_STEP_REQUEST_PATTERNS.some((pattern) => pattern.test(normalized));
-}
-
 function buildEvent(
   eventType: SupervisorEventType,
-  metadata?: NonNullable<SupervisorEvent['metadata']>,
+  input: {
+    target?: SupervisorEventTarget;
+    modifier?: SupervisorEventModifier;
+    metadata?: NonNullable<SupervisorEvent['metadata']>;
+  } = {},
 ): SupervisorEvent {
-  const cleanMetadata = metadata && Object.keys(metadata).length > 0 ? metadata : undefined;
+  const cleanMetadata = input.metadata && Object.keys(input.metadata).length > 0 ? input.metadata : undefined;
 
   return {
     eventType,
     confidence: 1,
     source: 'deterministic',
+    ...(input.target ? { target: input.target } : {}),
+    ...(input.modifier ? { modifier: input.modifier } : {}),
     ...(cleanMetadata ? { metadata: cleanMetadata } : {}),
   };
+}
+
+function getStructuredActionEventIntent(
+  eventType: SupervisorEventType,
+): { target?: SupervisorEventTarget; modifier?: SupervisorEventModifier } {
+  switch (eventType) {
+    case 'TRIAGE_SUBMITTED':
+      return { target: 'medical_facts', modifier: 'provide' };
+    case 'TRIAGE_SKIPPED':
+      return { target: 'medical_facts', modifier: 'reject' };
+    case 'RECOMMENDATION_SELECTED':
+      return { target: 'recommendation', modifier: 'confirm' };
+    case 'RECOMMENDATION_SKIPPED':
+      return { target: 'recommendation', modifier: 'reject' };
+    default:
+      return {};
+  }
 }

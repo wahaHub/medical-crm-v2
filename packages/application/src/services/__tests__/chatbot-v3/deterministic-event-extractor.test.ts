@@ -44,6 +44,8 @@ describe('extractDeterministicEvent', () => {
 
     expect(event).toMatchObject({
       eventType: 'DOCUMENTS_UPLOADED',
+      target: 'documents',
+      modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
       metadata: { documentCount: 2 },
@@ -58,6 +60,8 @@ describe('extractDeterministicEvent', () => {
     });
 
     expect(event?.eventType).toBe('USER_REQUESTED_HUMAN');
+    expect(event?.target).toBe('human');
+    expect(event?.modifier).toBe('ask');
     expect(event?.source).toBe('deterministic');
   });
 
@@ -70,6 +74,8 @@ describe('extractDeterministicEvent', () => {
 
     expect(event).toMatchObject({
       eventType: 'DOCUMENTS_UPLOADED',
+      target: 'documents',
+      modifier: 'provide',
       metadata: { documentCount: 1 },
     });
   });
@@ -83,6 +89,8 @@ describe('extractDeterministicEvent', () => {
 
     expect(event).toMatchObject({
       eventType: 'DOCUMENTS_UPLOADED',
+      target: 'documents',
+      modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
       metadata: { documentCount: 1 },
@@ -97,6 +105,8 @@ describe('extractDeterministicEvent', () => {
 
     expect(event).toMatchObject({
       eventType: 'DOCUMENTS_UPLOADED',
+      target: 'documents',
+      modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
       metadata: { documentCount: 1 },
@@ -104,12 +114,21 @@ describe('extractDeterministicEvent', () => {
   });
 
   it('does not classify FAQ in the deterministic layer', () => {
-    const event = extractDeterministicEvent({
+    expect(extractDeterministicEvent({
       message: 'what are your prices?',
       attachments: [],
-    });
+    })).toBeNull();
+    expect(extractDeterministicEvent({
+      message: '流程是什么？',
+      attachments: [],
+    })).toBeNull();
+  });
 
-    expect(event).toBeNull();
+  it('leaves next-step text for the semantic layer', () => {
+    expect(extractDeterministicEvent({
+      message: '下一步呢？',
+      attachments: [],
+    })).toBeNull();
   });
 
   it('returns null when there are no deterministic signals', () => {

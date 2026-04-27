@@ -1,40 +1,71 @@
 import type { ChatJourneyStage } from '@medical-crm/domain';
 import type { ChatbotV3DispatchAgent } from './types.js';
 
-export const SUPERVISOR_EVENT_TYPES = [
+export const DETERMINISTIC_SUPERVISOR_EVENT_TYPES = [
   'TRIAGE_SUBMITTED',
   'TRIAGE_SKIPPED',
   'RECOMMENDATION_SELECTED',
   'RECOMMENDATION_SKIPPED',
   'DOCUMENTS_UPLOADED',
+] as const;
+
+export const SEMANTIC_SUPERVISOR_EVENT_TYPES = [
+  'USER_EXPRESSED_NEED',
+  'USER_ASKED_QUESTION',
+  'USER_PROVIDED_INFORMATION',
+  'USER_RESPONDED_TO_REQUEST',
   'USER_REQUESTED_HUMAN',
-  'USER_ASKED_NEXT_STEP',
-  'USER_ASKED_FAQ',
-  'USER_WANTS_TREATMENT_IN_CHINA',
-  'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
-  'USER_PROVIDED_MEDICAL_FACTS',
-  'USER_INTERESTED_IN_CONSULT',
-  'USER_REJECTED_OR_HESITATED',
-  'USER_PROVIDED_CONTACT_INFO',
   'USER_ASKED_RISKY_MEDICAL_ADVICE',
   'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
-  'USER_AMBIGUOUS_REPLY',
-  'UNKNOWN_MESSAGE',
+  'USER_MESSAGE_UNCLEAR',
+] as const;
+
+export const SUPERVISOR_EVENT_TYPES = [
+  ...DETERMINISTIC_SUPERVISOR_EVENT_TYPES,
+  ...SEMANTIC_SUPERVISOR_EVENT_TYPES,
 ] as const;
 
 export type SupervisorEventType = typeof SUPERVISOR_EVENT_TYPES[number];
+
+export type DeterministicSupervisorEventType = typeof DETERMINISTIC_SUPERVISOR_EVENT_TYPES[number];
+export type SemanticSupervisorEventType = typeof SEMANTIC_SUPERVISOR_EVENT_TYPES[number];
 
 export type SupervisorEventSource = 'deterministic' | 'llm' | 'fallback_unknown';
 export type FaqTopic =
   | 'pricing'
   | 'process'
-  | 'timeline'
   | 'hospital'
   | 'doctor'
   | 'records'
   | 'consult'
   | 'travel'
   | 'other';
+
+export type SupervisorEventTarget =
+  | 'treatment'
+  | 'recommendation'
+  | 'documents'
+  | 'consult'
+  | 'pricing'
+  | 'next_step'
+  | 'process'
+  | 'travel'
+  | 'payment'
+  | 'hospital'
+  | 'hospital_selection'
+  | 'medical_facts'
+  | 'contact'
+  | 'human'
+  | 'unknown';
+
+export type SupervisorEventModifier =
+  | 'ask'
+  | 'provide'
+  | 'confirm'
+  | 'reject'
+  | 'hesitate'
+  | 'revisit'
+  | 'unknown';
 
 export interface SupervisorEventMetadata {
   topic?: FaqTopic;
@@ -54,6 +85,8 @@ export interface SupervisorEvent {
   eventType: SupervisorEventType;
   confidence: number;
   source: SupervisorEventSource;
+  target?: SupervisorEventTarget;
+  modifier?: SupervisorEventModifier;
   metadata?: SupervisorEventMetadata;
 }
 
@@ -61,50 +94,39 @@ export function getAllowedSupervisorEvents(input: {
   currentStage: ChatJourneyStage;
 }): readonly SupervisorEventType[] {
   const commonSemanticEvents: SupervisorEventType[] = [
-    'USER_ASKED_NEXT_STEP',
-    'USER_ASKED_FAQ',
-    'USER_REJECTED_OR_HESITATED',
-    'USER_PROVIDED_CONTACT_INFO',
+    'USER_ASKED_QUESTION',
+    'USER_PROVIDED_INFORMATION',
+    'USER_RESPONDED_TO_REQUEST',
+    'USER_REQUESTED_HUMAN',
     'USER_ASKED_RISKY_MEDICAL_ADVICE',
     'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
-    'USER_AMBIGUOUS_REPLY',
-    'UNKNOWN_MESSAGE',
+    'USER_MESSAGE_UNCLEAR',
   ];
 
   const stageSpecificEvents: SupervisorEventType[] = (() => {
     switch (input.currentStage) {
       case 'COLLECT_MINIMAL_MEDICAL_FACTS':
         return [
-          'USER_WANTS_TREATMENT_IN_CHINA',
-          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
-          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_EXPRESSED_NEED',
         ];
       case 'RECOMMENDATION':
         return [
-          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
-          'USER_PROVIDED_MEDICAL_FACTS',
-          'USER_INTERESTED_IN_CONSULT',
+          'USER_EXPRESSED_NEED',
         ];
       case 'EXPLAIN_PROCESS':
         return [
-          'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
-          'USER_PROVIDED_MEDICAL_FACTS',
-          'USER_INTERESTED_IN_CONSULT',
+          'USER_EXPRESSED_NEED',
         ];
       case 'COLLECT_MEDICAL_INPUTS':
         return [
-          'USER_PROVIDED_MEDICAL_FACTS',
-          'USER_INTERESTED_IN_CONSULT',
+          'USER_EXPRESSED_NEED',
         ];
       case 'ONLINE_CONSULT':
         return [
-          'USER_INTERESTED_IN_CONSULT',
-          'USER_PROVIDED_MEDICAL_FACTS',
+          'USER_EXPRESSED_NEED',
         ];
       case 'HUMAN_HANDOFF':
-        return [
-          'USER_PROVIDED_MEDICAL_FACTS',
-        ];
+        return [];
     }
   })();
 

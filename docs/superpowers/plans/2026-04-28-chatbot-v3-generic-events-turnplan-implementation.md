@@ -679,8 +679,10 @@ Reducer rules:
 
 - `USER_EXPRESSED_NEED + treatment/recommendation + ask` -> facts-driven next step.
 - `USER_EXPRESSED_NEED + recommendation + revisit` -> `PRESENT_OPTIONS`, `target=hospital`, `primaryStage=RECOMMENDATION`.
+- `USER_EXPRESSED_NEED + consult + ask` -> `PRESENT_OPTIONS`, `target=consult`, `primaryStage=ONLINE_CONSULT` when consult is currently appropriate; otherwise facts-driven next step with a consult-oriented follow-up.
 - `USER_ASKED_QUESTION + next_step + ask` -> facts-driven next step. This replaces the retired `USER_ASKED_NEXT_STEP` event type.
 - `USER_ASKED_QUESTION + pricing/process/documents/payment/travel` -> `ANSWER`, `mode=faq`, stage preserved, likely `INVITE_NEXT_STEP` from facts.
+- `USER_ASKED_QUESTION + consult + ask` -> `ANSWER`, `target=consult`, `mode=faq`, stage preserved, with ConsultAgent ownership and likely `GO_DEEP` or `INVITE_NEXT_STEP target=consult` from facts.
 - `USER_ASKED_QUESTION + hospital/hospital_selection` -> `ANSWER`, `target=hospital` or `hospital_selection`, stage preserved or recommendation-owned.
 - `USER_PROVIDED_INFORMATION + medical_facts/documents/contact` -> facts patch candidate plus appropriate primary action.
 - `USER_RESPONDED_TO_REQUEST + reject/hesitate` -> `HANDLE_RESPONSE` and stage preserved.

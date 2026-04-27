@@ -225,12 +225,14 @@ For LLM semantic extraction, the strict schema should require:
 
 ```ts
 {
-  eventType: SemanticEventType;
-  target: EventTarget;
-  modifier: EventModifier;
+  eventType: SemanticEventType; // JSON-schema enum validated
+  target: string;
+  modifier: string;
   confidence: number;
 }
 ```
+
+The adapter allowlist-normalizes `target` and `modifier` to `EventTarget` and `EventModifier` after shape validation. Unknown or invalid `target`/`modifier` strings become `unknown` without retry/fallback. Invalid `eventType`, invalid shape, or forbidden extra fields trigger retry/fallback.
 
 The adapter assigns `source='llm'`. The LLM must not output workflow state, stages, agents, write patches, tool calls, or old proposal fields.
 
@@ -373,6 +375,11 @@ switch (event.eventType) {
     return clarifyPlan(event, facts, state);
 }
 ```
+
+Core semantic mappings:
+
+- `USER_EXPRESSED_NEED + consult + ask` should produce a consult-oriented plan. If facts show consult is currently appropriate, use `PRESENT_OPTIONS`, `target=consult`, `primaryStage=ONLINE_CONSULT`; otherwise keep the facts-driven primary stage and add a consult-oriented follow-up.
+- `USER_ASKED_QUESTION + consult + ask` should answer the consult question with `ANSWER`, `target=consult`, `mode=faq`, preserve the current primary stage, and use ConsultAgent ownership when the answer or follow-up is consult-specific.
 
 Example plans:
 

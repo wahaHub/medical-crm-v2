@@ -252,7 +252,7 @@ type TurnPlan = {
 
 ```ts
 type PrimaryAction =
-  | { type: 'ANSWER'; target: EventTarget }
+  | { type: 'ANSWER'; target: EventTarget; mode?: 'faq' | 'formal_overview' }
   | { type: 'ACKNOWLEDGE'; target: EventTarget }
   | {
       type: 'CLARIFY';
@@ -275,7 +275,6 @@ type PrimaryAction =
   | {
       type: 'PRESENT_OPTIONS';
       target:
-        | 'package'
         | 'hospital'
         | 'consult';
     }
@@ -297,7 +296,7 @@ type PrimaryAction =
 
 `REVISIT` is intentionally not a `PrimaryAction`. It is a modifier. The reducer interprets `target=recommendation, modifier=revisit` into a concrete recommendation plan.
 
-Old workflow action names are retired in Phase 1.1. The invariant survives, not the old enum name: only a formal process overview plan may write `process.explained=true`. A normal process FAQ is `ANSWER`, `target=process` and must preserve the primary stage.
+Old workflow action names are retired in Phase 1.1. The invariant survives, not the old enum name: only `ANSWER`, `target=process`, `mode=formal_overview` may write `process.explained=true`. A normal process FAQ is `ANSWER`, `target=process`, `mode=faq` and must preserve the primary stage.
 
 ### FollowUpAction
 
@@ -323,6 +322,8 @@ type FollowUpAction =
   | {
       type: 'GO_DEEP';
       target: EventTarget;
+      questionKey?: string;
+      topicKey?: string;
       reasonCode:
         | 'user_requested_more_detail'
         | 'high_intent_followup'
@@ -333,7 +334,7 @@ type FollowUpAction =
 
 `ASK_CHOICE` is intentionally not included. A choice prompt is a type of qualifying question and can be expressed through `ASK_QUALIFYING_QUESTION` plus `questionKey`.
 
-`GO_DEEP` means the reply should stay on the same topic and provide more depth instead of pushing the next workflow step. It is useful when the user asks for more details about a hospital, process, pricing rationale, risks, records, or consult mechanics.
+`GO_DEEP` means the reply should stay on the same topic and provide more depth instead of pushing the next workflow step. It is useful when the user asks for more details about a hospital, process, pricing rationale, risks, records, or consult mechanics. `topicKey` or `questionKey` should be provided when available so the agent does not interpret "go deeper" as unlimited elaboration.
 
 `RETURN_TO_MAIN_FLOW` is intentionally not included. It is too abstract and risks becoming a second reducer. Concrete next-step invites such as `documents`, `consult`, or `minimal_triage` express the intended main-flow return.
 
@@ -416,7 +417,7 @@ Authority remains reducer-owned:
 - Agents never decide stage or writes.
 - Projection must mirror `TurnPlan.primaryStage` and `TurnPlan.primaryAction`.
 
-`process.explained=true` should still only be written for a formal process overview plan, represented by `primaryAction={ type: 'ANSWER', target: 'process' }` plus `reasonCode='formal_process_overview'`. It must not be written for normal process FAQ answers.
+`process.explained=true` should still only be written for a formal process overview plan, represented by `primaryAction={ type: 'ANSWER', target: 'process', mode: 'formal_overview' }`. It must not be written for normal process FAQ answers.
 
 Document upload behavior remains:
 
@@ -450,13 +451,103 @@ No physical agent rename is required for Phase 1.1.
 
 ### AgentResolver
 
-Suggested mapping:
+Agent resolution must be deterministic and explainable. It should consider primary action, event target/modifier, follow-up action, safety events, and deterministic events. Do not route all `ANSWER` or FAQ-shaped turns to `GeneralResponseAgent` by default; hospital, records, recommendation, and consult ownership should win when the turn clearly belongs there.
 
-- `REQUEST_INFO` with `minimal_triage`, `medical_facts`, or `documents` -> `RecordsAgent`
-- `PRESENT_OPTIONS`, `target=hospital` -> `RecommendationAgent`
-- `PRESENT_OPTIONS`, `target=consult` -> `ConsultAgent`
-- `ESCALATE`, `target=human` -> `HandoffAgent`
-- `ANSWER`, `ACKNOWLEDGE`, `HANDLE_RESPONSE`, `REDIRECT`, `CLARIFY` -> `GeneralResponseAgent`, unless the target strongly belongs to Records or Recommendation in a later implementation slice
+```ts
+type PhysicalAgent =
+  | 'FaqAgent'
+  | 'RecordsAgent'
+  | 'RecommendationAgent'
+  | 'ConsultAgent'
+  | 'HandoffAgent';
+
+type ResolvedAgent = {
+  conceptualRole: AgentRole;
+  physicalAgent: PhysicalAgent;
+  reasonCode: string;
+};
+
+function resolveAgent(input: {
+  event: SupervisorEvent;
+  turnPlan: TurnPlan;
+  facts: DomainFactsSummary;
+}): ResolvedAgent
+```
+
+Resolution priority:
+
+1. Human escalation.
+2. Safety and out-of-scope redirects.
+3. Deterministic side-effect ownership, especially uploaded documents.
+4. Records ownership for minimal triage, medical facts, documents, and provided records information.
+5. Recommendation ownership for hospital options, recommendation revisit, specific hospital questions, and hospital-selection questions.
+6. Consult ownership for consult options, consult interest, and consult follow-up invites.
+7. General response fallback for broad FAQ, clarification, objection handling, and language-only responses.
+
+Suggested rules:
+
+```ts
+if (a.type === 'ESCALATE' && a.target === 'human') {
+  return handoff('primary_action_escalate_human');
+}
+
+if (a.type === 'REDIRECT') {
+  return general('bounded_redirect');
+}
+
+if (event.eventType === 'DOCUMENTS_UPLOADED') {
+  return records('documents_uploaded_side_effect_first');
+}
+
+if (
+  a.type === 'REQUEST_INFO' &&
+  ['minimal_triage', 'medical_facts', 'documents'].includes(a.target)
+) {
+  return records('request_info_records_owned_target');
+}
+
+if (
+  event.eventType === 'USER_PROVIDED_INFORMATION' &&
+  (event.target === 'medical_facts' || event.target === 'documents')
+) {
+  return records('provided_records_or_medical_facts');
+}
+
+if (a.type === 'PRESENT_OPTIONS' && a.target === 'hospital') {
+  return recommendation('present_hospital_options');
+}
+
+if (
+  event.target === 'recommendation' ||
+  event.target === 'hospital' ||
+  event.target === 'hospital_selection'
+) {
+  if (
+    event.modifier === 'revisit' ||
+    a.type === 'PRESENT_OPTIONS' ||
+    turnPlan.followUpAction?.target === 'recommendation'
+  ) {
+    return recommendation('recommendation_or_hospital_revisit');
+  }
+
+  if (a.type === 'ANSWER' || turnPlan.followUpAction?.type === 'GO_DEEP') {
+    return recommendation('hospital_or_selection_question');
+  }
+}
+
+if (
+  (a.type === 'PRESENT_OPTIONS' && a.target === 'consult') ||
+  (a.type === 'ACKNOWLEDGE' && event.target === 'consult') ||
+  (turnPlan.followUpAction?.type === 'INVITE_NEXT_STEP' &&
+    turnPlan.followUpAction.target === 'consult')
+) {
+  return consult('consult_followup_or_need');
+}
+
+return general('general_response_default');
+```
+
+`PRESENT_OPTIONS.target='package'` is intentionally not included. If Medora later introduces real packages, they should be added with an explicit resolver rule instead of being treated as a generic options target.
 
 ## Runtime Skill Loading
 
@@ -465,20 +556,20 @@ The runtime should load skills dynamically per turn, but "skill" must mean a rea
 Not skills:
 
 - `answer_then_advance`: this is `ResponseContract.structure`.
-- `ask_one_question`: this is `ResponseContract.askOneQuestion`.
+- `ask_one_question`: this is `ResponseContract.constraints.maxQuestions`.
 - `required_documents`: this is domain data or a retrieval result, not a skill by itself.
 - `INVITE_NEXT_STEP`: this is reducer output, not a skill.
 
 Skills are capabilities that tell an agent how to do a bounded class of work:
 
 - How to load or search business/domain data.
-- How to update derived data or propose write intents.
+- How to extract candidate fields, normalize payloads, or derive write candidates for runtime authority to review.
 - How to degrade when data is missing, uncertain, unsafe, or out of scope.
 - How to classify business boundaries.
 - How to explain a particular domain topic.
 - How to handle sales/customer-service moments such as hesitation, price objection, trust building, or soft handoff.
 
-The reducer still owns workflow truth. Skill loading only changes the agent's available instructions and data access strategy for composing the current reply.
+The reducer still owns workflow truth. Skill loading only changes the agent's available instructions and data access strategy for composing the current reply. Skill packs may propose candidate fields or payload context, but only reducer/runtime authority may apply `factsPatch`, write snapshots, create handoff records, or persist contact/record updates.
 
 ### Runtime Shape
 
@@ -486,7 +577,9 @@ The reducer still owns workflow truth. Skill loading only changes the agent's av
 type SkillKind =
   | 'data_loader'
   | 'search_strategy'
-  | 'write_strategy'
+  | 'extraction_strategy'
+  | 'normalization_strategy'
+  | 'handoff_payload_strategy'
   | 'degradation_policy'
   | 'boundary_policy'
   | 'explanation_method'
@@ -512,10 +605,12 @@ type LoadedSkillPack = SkillPack & {
 Runtime selection has three deterministic steps:
 
 1. `SkillRouter` maps `event + TurnPlan + facts + AgentRole` to `SkillRequest[]`.
-2. `SkillLoader` resolves those requests from the code registry and optionally attaches small policy/data snippets from approved sources.
+2. `SkillLoader` resolves skill definitions and static snippets from the code registry.
 3. `TaskBuilder` embeds `LoadedSkillPack[]` into `AgentTask`.
 
 The agent cannot request additional skills, change stages, or invent writes. If a needed skill is absent, the loader falls back to a safe degradation capability and emits observability.
+
+Actual FAQ, hospital, pricing, records, and policy reads are not performed by `SkillLoader`. `ReadPlanner` converts loaded skill requests into read intents, and `Tool/Data Executor` executes those reads before `TaskBuilder` assembles the final agent task.
 
 ```ts
 type SkillRequest = {
@@ -548,6 +643,12 @@ type SkillPackId =
   | 'medical_safety_boundary'
   | 'safe_degradation_when_uncertain'
 
+  // Admin FAQ / knowledge retrieval
+  | 'search_general_faq_by_category'
+  | 'answer_general_faq_from_admin_source'
+  | 'search_hospital_faq_by_category'
+  | 'answer_hospital_faq_from_admin_source'
+
   // Data loading and search
   | 'load_medora_service_scope'
   | 'load_pricing_factors'
@@ -559,11 +660,11 @@ type SkillPackId =
   | 'search_doctor_matching_context'
   | 'load_consult_readiness_criteria'
 
-  // Write/update strategies
-  | 'extract_medical_facts_for_snapshot'
-  | 'update_record_inventory'
-  | 'update_contact_information'
-  | 'create_handoff_context'
+  // Extraction / normalization / payload strategies
+  | 'extract_medical_facts_candidate'
+  | 'derive_record_inventory_patch'
+  | 'extract_contact_info_candidate'
+  | 'build_handoff_payload_context'
 
   // Explanation methods
   | 'explain_pricing_uncertainty'
@@ -602,6 +703,10 @@ Initial skill inventory:
 | `classify_service_scope_boundary` | `boundary_policy` | Decide whether a user topic is outside Medora's supported medical-travel workflow. |
 | `medical_safety_boundary` | `boundary_policy` | Respond without diagnosis, medication advice, treatment decisions, or outcome guarantees. |
 | `safe_degradation_when_uncertain` | `degradation_policy` | Use bounded language when data, policy, or intent confidence is low. |
+| `search_general_faq_by_category` | `search_strategy` | Retrieve admin FAQ entries for pricing, process, documents, payment, travel, consult, and service-scope questions. |
+| `answer_general_faq_from_admin_source` | `explanation_method` | Ground general FAQ answers in admin-maintained source content. |
+| `search_hospital_faq_by_category` | `search_strategy` | Retrieve hospital FAQ entries for specific hospitals, comparison, specialties, and international patient process. |
+| `answer_hospital_faq_from_admin_source` | `explanation_method` | Ground hospital-related FAQ answers in admin-maintained hospital content. |
 | `load_medora_service_scope` | `data_loader` | Load supported service categories and unsupported-service boundaries. |
 | `load_pricing_factors` | `data_loader` | Load pricing-factor data, not a fixed quote. |
 | `load_process_policy` | `data_loader` | Load approved process overview facts without writing `process.explained`. |
@@ -611,10 +716,10 @@ Initial skill inventory:
 | `search_hospital_candidates` | `search_strategy` | Search or retrieve hospital candidate context for recommendation work. |
 | `search_doctor_matching_context` | `search_strategy` | Search matching context for doctor/hospital questions. |
 | `load_consult_readiness_criteria` | `data_loader` | Load what makes a user ready for online consult. |
-| `extract_medical_facts_for_snapshot` | `write_strategy` | Extract condition, treatment history, document availability, and other facts for proposed writes. |
-| `update_record_inventory` | `write_strategy` | Convert uploaded-file context into record inventory write intent. |
-| `update_contact_information` | `write_strategy` | Normalize direct email, phone, WeChat, or other contact info into proposed contact write intent. |
-| `create_handoff_context` | `write_strategy` | Build the handoff payload context after reducer chooses handoff. |
+| `extract_medical_facts_candidate` | `extraction_strategy` | Extract candidate condition, treatment history, document availability, and other facts for runtime authority review. |
+| `derive_record_inventory_patch` | `normalization_strategy` | Convert uploaded-file context into a candidate record inventory patch. |
+| `extract_contact_info_candidate` | `extraction_strategy` | Normalize direct email, phone, WeChat, or other contact info into candidate contact fields. |
+| `build_handoff_payload_context` | `handoff_payload_strategy` | Build handoff payload context after reducer chooses handoff. |
 | `explain_pricing_uncertainty` | `explanation_method` | Explain why pricing needs records, hospital, doctor, and plan context. |
 | `explain_medora_process` | `explanation_method` | Explain the service process as an FAQ without marking the formal process overview complete. |
 | `explain_records_preparation` | `explanation_method` | Explain how records are prepared and why they matter. |
@@ -664,19 +769,21 @@ Examples:
 
 | Signal | Runtime skill requests |
 |---|---|
-| `ANSWER + pricing` | `load_pricing_factors`, `explain_pricing_uncertainty` |
+| `USER_ASKED_QUESTION + pricing/process/documents/payment/travel/consult` | `search_general_faq_by_category`, `answer_general_faq_from_admin_source` |
+| `USER_ASKED_QUESTION + hospital/hospital_selection` | `search_hospital_faq_by_category`, `answer_hospital_faq_from_admin_source`, `explain_hospital_selection_logic` |
+| `ANSWER + pricing` | `search_general_faq_by_category`, `load_pricing_factors`, `explain_pricing_uncertainty` |
 | `INVITE_NEXT_STEP + documents` | `load_records_requirement_data`, `explain_records_preparation` |
-| `GO_DEEP + hospital` | `search_hospital_candidates`, `explain_hospital_selection_logic`, `compare_recommendation_options` |
-| `GO_DEEP + process` | `load_process_policy`, `explain_medora_process` |
-| `GO_DEEP + pricing` | `load_pricing_factors`, `explain_pricing_uncertainty` |
+| `GO_DEEP + hospital` | `search_hospital_faq_by_category`, `search_hospital_candidates`, `explain_hospital_selection_logic`, `compare_recommendation_options` |
+| `GO_DEEP + process` | `search_general_faq_by_category`, `load_process_policy`, `explain_medora_process` |
+| `GO_DEEP + pricing` | `search_general_faq_by_category`, `load_pricing_factors`, `explain_pricing_uncertainty` |
 | `modifier=reject + target=pricing` | `handle_price_objection`, `low_friction_alternative_step` |
 | `modifier=reject + target=documents` | `handle_document_hesitation`, `low_friction_alternative_step` |
 | `modifier=hesitate + target=contact` | `handle_contact_hesitation`, `soft_human_handoff` |
-| `target=documents` | `load_records_requirement_data`, `update_record_inventory` when files exist |
+| `target=documents` | `load_records_requirement_data`, `derive_record_inventory_patch` when files exist |
 | `target=consult` | `load_consult_readiness_criteria`, `explain_online_consult` |
-| `USER_PROVIDED_INFORMATION + medical_facts` | `extract_medical_facts_for_snapshot` |
-| `USER_PROVIDED_INFORMATION + contact` | `update_contact_information`, `create_handoff_context` |
-| `USER_ASKED_QUESTION + hospital` | `search_hospital_candidates`, `explain_hospital_selection_logic` |
+| `USER_PROVIDED_INFORMATION + medical_facts` | `extract_medical_facts_candidate` |
+| `USER_PROVIDED_INFORMATION + contact` | `extract_contact_info_candidate`, `build_handoff_payload_context` |
+| `USER_ASKED_QUESTION + hospital` | `search_hospital_faq_by_category`, `answer_hospital_faq_from_admin_source`, `explain_hospital_selection_logic` |
 | `target=recommendation + modifier=revisit` | `revisit_recommendation_step`, `search_hospital_candidates`, `explain_hospital_selection_logic` |
 | safety redirect | `medical_safety_boundary`, `safe_degradation_when_uncertain` |
 | out-of-scope redirect | `classify_service_scope_boundary`, `load_medora_service_scope` |
@@ -697,7 +804,11 @@ type AgentTask = {
   skillPolicy: SkillPolicy;
   skills: LoadedSkillPack[];
   retrievedContext?: {
-    knowledgeSnippets?: string[];
+    generalFaqSnippets?: string[];
+    hospitalFaqSnippets?: string[];
+    hospitalCandidateSnippets?: string[];
+    policySnippets?: string[];
+    recordsRequirementSnippets?: string[];
   };
   responseContract: ResponseContract;
 };
@@ -705,36 +816,97 @@ type AgentTask = {
 
 ```ts
 type ResponseContract = {
-  structure: 'answer_then_advance' | 'clarify_only' | 'system_notice';
-  askOneQuestion: boolean;
-  preservePrimaryStage: boolean;
+  structure:
+    | 'answer_then_advance'
+    | 'acknowledge_then_advance'
+    | 'redirect_then_advance'
+    | 'clarify_only'
+    | 'notice_only';
+  primaryMove:
+    | 'answer'
+    | 'acknowledge'
+    | 'clarify'
+    | 'redirect'
+    | 'present_options'
+    | 'handle_objection'
+    | 'escalate';
+  followUpMove:
+    | 'invite_next_step'
+    | 'go_deep'
+    | 'ask_qualifying_question'
+    | 'none';
+  constraints: {
+    maxQuestions: 0 | 1 | 2;
+    preservePrimaryStage: boolean;
+    answerBeforeAsk: boolean;
+    avoidMultipleCTAs: boolean;
+    language: string;
+    tone: 'warm_professional' | 'calm_safety' | 'concise';
+  };
   safetyRules: string[];
+  forbiddenClaims?: string[];
 };
 ```
 
-The agent receives enough context to write naturally, but not enough authority to change stage, facts, or dispatch.
+The agent receives enough context to write naturally, but not enough authority to change stage, facts, or dispatch. `preservePrimaryStage` in `ResponseContract.constraints` is an output-language constraint: it tells the agent not to imply a stage change. It is not authority to decide or mutate stage.
+
+## Read Planning
+
+`ReadPlanner` is separate from `SkillLoader`.
+
+```ts
+type ReadIntent =
+  | { type: 'GENERAL_FAQ'; categories: EventTarget[] }
+  | { type: 'HOSPITAL_FAQ'; hospitalIds?: string[]; categories: EventTarget[] }
+  | { type: 'HOSPITAL_CANDIDATES'; condition?: string; preferences?: string[] }
+  | { type: 'RECORDS_REQUIREMENTS'; condition?: string }
+  | { type: 'PRICING_FACTORS'; condition?: string }
+  | { type: 'SERVICE_POLICY'; topics: EventTarget[] };
+
+function buildReadPlan(input: {
+  event: SupervisorEvent;
+  turnPlan: TurnPlan;
+  resolvedAgent: ResolvedAgent;
+  skills: LoadedSkillPack[];
+  facts: DomainFactsSummary;
+}): ReadIntent[]
+```
+
+`Tool/Data Executor` executes `ReadIntent[]` through approved data sources. The agent receives retrieved context, not direct tool authority.
 
 ## Data Flow
 
 ```text
 User message
+  -> NormalizeInput / SnapshotNormalizer
+     stable input, facts, stage, lastQuestion, attachments
   -> SupervisorEventExtractor
      eventType + target + modifier + confidence
   -> JourneyReducer
      TurnPlan(primaryAction, followUpAction, primaryStage, factsPatch)
+  -> Authority
+     validates reducer truth and prepares write-back contract
   -> AgentResolver
      conceptual agent role + physical dispatch agent
   -> SkillRouter
      SkillRequest[]
   -> SkillLoader
      up to 6 code-defined skill capabilities
+  -> ReadPlanner
+     read intents from event, facts, TurnPlan, agent, and skills
+  -> Tool/Data Executor
+     FAQ, hospital FAQ, records requirements, pricing factors, policy reads
   -> TaskBuilder
-     AgentTask + ResponseContract
+     AgentTask + LoadedSkills + retrievedContext + ResponseContract
   -> Agent
-     answer + follow-up text
+     structured answer + follow-up + cards
   -> Composer
      final response/cards/debug
+  -> PersistenceWriter
+     applies factsPatch and confirmed side effects
 ```
+
+Agent and composer output must not feed back into `primaryStage`, `primaryAction`, or `factsPatch`. If a tool result reveals missing or stale data, that becomes observability or a later-turn input, not a same-turn stage override.
 
 ## Error Handling
 
@@ -798,19 +970,23 @@ Every reducer test should assert:
 - side-path preservation
 - reason code
 
-### Layer 3: AgentResolver / SkillRouter / SkillLoader / TaskBuilder
+### Layer 3: AgentResolver / SkillRouter / SkillLoader / ReadPlanner / TaskBuilder
 
 Assert:
 
 - Generic response actions map to conceptual `GeneralResponseAgent` and physical `FaqAgent`.
 - Core workflow actions map to Records, Recommendation, Consult, and Handoff as expected.
 - Pricing question plus document follow-up loads pricing-factor and records-requirement data loading skills.
+- General FAQ questions load admin FAQ search and answer skills.
+- Hospital and hospital-selection questions load admin hospital FAQ search and answer skills.
+- ReadPlanner produces General FAQ, Hospital FAQ, records, pricing, and policy read intents without giving the agent direct tool authority.
 - Reject/hesitate loads the correct sales playbook and low-friction alternative skill.
 - Recommendation revisit loads revisit and hospital search skills.
-- Provided contact information loads contact update and handoff context skills.
+- Provided contact information loads contact extraction and handoff payload context skills.
 - Safety loads medical safety boundary.
 - Out-of-scope loads service scope boundary.
-- ResponseContract preserves primary stage for side paths.
+- ResponseContract primary/follow-up moves, constraints, safety rules, and forbidden claims match the TurnPlan.
+- ResponseContract preserves primary stage for side paths as an output-language constraint.
 
 ### Layer 4: Runtime Session Tests
 
@@ -837,14 +1013,16 @@ Phase 1.1 should be implemented in clear direct-replacement slices:
 4. Replace single-action authority with `TurnPlan`.
 5. Add AgentRole and resolver mapping for GeneralResponse, Records, Recommendation, Consult, and Handoff.
 6. Add code-defined skill pack registry.
-7. Add SkillRouter and TaskBuilder fields.
-8. Update runtime/composer to support answer-then-advance.
-9. Rewrite tests from old semantic event names to generic taxonomy.
-10. Remove old semantic event and action names from prompt guide, allowed semantic events, reducer outputs, and projection assertions.
+7. Add SkillRouter, SkillLoader, and ReadPlanner.
+8. Add Tool/Data Executor integration for admin general FAQ, admin hospital FAQ, records requirements, pricing factors, and policy reads.
+9. Add TaskBuilder fields and richer ResponseContract.
+10. Update runtime/composer to support answer-then-advance and go-deep follow-ups.
+11. Rewrite tests from old semantic event names to generic taxonomy.
+12. Remove old semantic event and action names from prompt guide, allowed semantic events, reducer outputs, and projection assertions.
 
 ## Open Questions
 
 1. Should recommendation revisit immediately regenerate recommendations or first ask a qualifying question?
    - Current design leaves this to reducer policy and facts.
 2. Should `INVITE_NEXT_STEP(target=process)` ever write `process.explained=true`?
-   - Current answer: no. Only a formal process overview `TurnPlan.reasonCode='formal_process_overview'` writes `process.explained=true`.
+   - Current answer: no. Only `primaryAction={ type: 'ANSWER', target: 'process', mode: 'formal_overview' }` writes `process.explained=true`.

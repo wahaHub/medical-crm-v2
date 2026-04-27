@@ -97,11 +97,17 @@ export type {
   ReducerReasonCode,
   SupervisorEvent,
   SupervisorEventMetadata,
+  SupervisorEventModifier,
   SupervisorEventSource,
+  SupervisorEventTarget,
   SupervisorEventType,
+  SemanticSupervisorEventType,
 } from './services/chatbot-v3/supervisor-event.types.js';
 export {
   getAllowedSupervisorEvents,
+  SEMANTIC_SUPERVISOR_EVENT_TYPES,
+  SUPERVISOR_EVENT_MODIFIERS,
+  SUPERVISOR_EVENT_TARGETS,
   SUPERVISOR_EVENT_TYPES,
 } from './services/chatbot-v3/supervisor-event.types.js';
 export { normalizeFactsFromStatusSnapshot } from './services/chatbot-v3/domain-facts-normalizer.js';

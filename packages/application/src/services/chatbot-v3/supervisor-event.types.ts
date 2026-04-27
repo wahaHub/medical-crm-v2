@@ -58,6 +58,24 @@ export type SupervisorEventTarget =
   | 'human'
   | 'unknown';
 
+export const SUPERVISOR_EVENT_TARGETS = [
+  'treatment',
+  'recommendation',
+  'documents',
+  'consult',
+  'pricing',
+  'next_step',
+  'process',
+  'travel',
+  'payment',
+  'hospital',
+  'hospital_selection',
+  'medical_facts',
+  'contact',
+  'human',
+  'unknown',
+] as const satisfies readonly SupervisorEventTarget[];
+
 export type SupervisorEventModifier =
   | 'ask'
   | 'provide'
@@ -66,6 +84,16 @@ export type SupervisorEventModifier =
   | 'hesitate'
   | 'revisit'
   | 'unknown';
+
+export const SUPERVISOR_EVENT_MODIFIERS = [
+  'ask',
+  'provide',
+  'confirm',
+  'reject',
+  'hesitate',
+  'revisit',
+  'unknown',
+] as const satisfies readonly SupervisorEventModifier[];
 
 export interface SupervisorEventMetadata {
   topic?: FaqTopic;

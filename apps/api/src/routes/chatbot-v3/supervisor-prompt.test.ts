@@ -25,9 +25,9 @@ describe('buildSupervisorPrompt', () => {
   it('requires exactly one SupervisorEvent object and forbids proposal fields', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 
-    expect(prompt).toContain('Your only job is to classify the latest user message into one allowed eventType.');
+    expect(prompt).toContain('Your only job is to classify the latest user message into one allowed eventType, target, and modifier.');
     expect(prompt).toContain('Return exactly one JSON object matching the provided schema.');
-    expect(prompt).toContain('Required keys: eventType, confidence.');
+    expect(prompt).toContain('Required keys: eventType, target, modifier, confidence.');
     expect(prompt).not.toContain('source must be "llm"');
     expect(prompt).not.toContain('Do not include metadata');
     expect(prompt).not.toContain('Do not return suggestedStage');
@@ -45,29 +45,29 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).not.toContain('TRIAGE_SUBMITTED');
     expect(prompt).not.toContain('RECOMMENDATION_SELECTED');
     expect(prompt).not.toContain('DOCUMENTS_UPLOADED');
-    expect(prompt).not.toContain('USER_REQUESTED_HUMAN');
-    expect(prompt).toContain('USER_WANTS_TREATMENT_IN_CHINA');
-    expect(prompt).toContain('USER_ASKED_FAQ');
-    expect(prompt).toContain('USER_REJECTED_OR_HESITATED');
-    expect(prompt).toContain('USER_PROVIDED_CONTACT_INFO');
+    expect(prompt).toContain('USER_EXPRESSED_NEED');
+    expect(prompt).toContain('USER_ASKED_QUESTION');
+    expect(prompt).toContain('USER_PROVIDED_INFORMATION');
+    expect(prompt).toContain('USER_RESPONDED_TO_REQUEST');
+    expect(prompt).toContain('USER_REQUESTED_HUMAN');
     expect(prompt).toContain('USER_ASKED_RISKY_MEDICAL_ADVICE');
-    expect(prompt).toContain('UNKNOWN_MESSAGE');
+    expect(prompt).toContain('USER_MESSAGE_UNCLEAR');
   });
 
   it('includes concise classification guidance for allowed semantic events', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 
     expect(prompt).toContain('Classification guide:');
-    expect(prompt).toContain('USER_WANTS_TREATMENT_IN_CHINA: user wants treatment in China');
-    expect(prompt).toContain('USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING: user asks to find, recommend, or compare doctors or hospitals');
-    expect(prompt).toContain('USER_PROVIDED_MEDICAL_FACTS: user provides diagnosis, symptoms, treatment history, imaging/pathology, or document availability');
-    expect(prompt).toContain('USER_ASKED_FAQ: user asks about process, price, documents, timeline, hospital selection, travel support, or Medora service details');
-    expect(prompt).toContain('USER_REJECTED_OR_HESITATED: user hesitates, declines, asks to think about it, objects to price, or refuses documents or contact details');
-    expect(prompt).toContain('USER_PROVIDED_CONTACT_INFO: user provides direct contact information such as phone, email, WeChat, WhatsApp, or another contact handle');
-    expect(prompt).toContain('UNKNOWN_MESSAGE: no allowed event fits');
+    expect(prompt).toContain('USER_EXPRESSED_NEED: user asks for a result, service, or goal');
+    expect(prompt).toContain('USER_PROVIDED_INFORMATION: user gives facts, preferences, records');
+    expect(prompt).toContain('USER_RESPONDED_TO_REQUEST: user replies to the previous assistant request');
+    expect(prompt).toContain('USER_ASKED_QUESTION: user asks a question about next step, process, pricing, documents, payment, travel, hospital, or consult');
+    expect(prompt).toContain('USER_MESSAGE_UNCLEAR: no allowed event fits');
     expect(prompt).not.toContain('TRIAGE_SUBMITTED:');
     expect(prompt).not.toContain('DOCUMENTS_UPLOADED:');
     expect(prompt).not.toContain('RECOMMENDATION_SELECTED:');
+    expect(prompt).not.toContain('USER_ASKED_FAQ:');
+    expect(prompt).not.toContain('USER_WANTS_TREATMENT_IN_CHINA:');
   });
 
   it('includes an allowed-events section and compact classifier context', () => {
@@ -90,14 +90,16 @@ describe('buildSupervisorPrompt', () => {
       ...baseInput,
       currentStage: 'COLLECT_MEDICAL_INPUTS',
     });
-    expect(allowedTurnEvents).toContain('USER_INTERESTED_IN_CONSULT');
-    expect(allowedTurnEvents).not.toContain('USER_REQUESTED_HUMAN');
+    expect(allowedTurnEvents).toContain('USER_EXPRESSED_NEED');
+    expect(allowedTurnEvents).toContain('USER_REQUESTED_HUMAN');
     expect(allowedTurnEvents).not.toContain('TRIAGE_SUBMITTED');
     expect(allowedTurnEvents).not.toContain('DOCUMENTS_UPLOADED');
     expect(allowedTurnEvents).not.toContain('RECOMMENDATION_SELECTED');
     expect(allowedTurnEvents).not.toContain('RECOMMENDATION_SKIPPED');
     expect(prompt).toContain('current_stage=COLLECT_MEDICAL_INPUTS');
     expect(prompt).toContain('latest_user_message=I uploaded another file.');
+    expect(prompt).toContain('last_question_type=');
+    expect(prompt).toContain('last_question_expected_answer_type=');
     expect(prompt).toContain('known_condition=lung cancer');
     expect(prompt).toContain('known_destination=Shanghai');
     expect(prompt).toContain('recommendation_status=selected');
@@ -125,7 +127,8 @@ describe('buildSupervisorPrompt', () => {
     expect(allowedRecommendationEvents).not.toContain('RECOMMENDATION_SELECTED');
     expect(allowedRecommendationEvents).not.toContain('RECOMMENDATION_SKIPPED');
     expect(allowedRecommendationEvents).not.toContain('DOCUMENTS_UPLOADED');
-    expect(allowedRecommendationEvents).not.toContain('USER_REQUESTED_HUMAN');
-    expect(allowedRecommendationEvents).toContain('USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING');
+    expect(allowedRecommendationEvents).toContain('USER_REQUESTED_HUMAN');
+    expect(allowedRecommendationEvents).toContain('USER_EXPRESSED_NEED');
+    expect(allowedRecommendationEvents).toContain('USER_ASKED_QUESTION');
   });
 });

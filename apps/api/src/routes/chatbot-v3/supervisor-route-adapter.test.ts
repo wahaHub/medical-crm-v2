@@ -29,7 +29,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
         choices: [{
           message: {
             content: JSON.stringify({
-              eventType: 'USER_ASKED_FAQ',
+              eventType: 'USER_ASKED_QUESTION',
+              target: 'pricing',
+              modifier: 'ask',
               confidence: 0.82,
             }),
           },
@@ -46,7 +48,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
-      eventType: 'USER_ASKED_FAQ',
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'pricing',
+      modifier: 'ask',
       confidence: 0.82,
       source: 'llm',
     });
@@ -64,16 +68,20 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
       }),
     }));
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).toEqual(expect.arrayContaining([
-      'USER_WANTS_TREATMENT_IN_CHINA',
-      'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
-      'USER_ASKED_FAQ',
-      'USER_REJECTED_OR_HESITATED',
-      'USER_PROVIDED_CONTACT_INFO',
-      'UNKNOWN_MESSAGE',
+      'USER_EXPRESSED_NEED',
+      'USER_ASKED_QUESTION',
+      'USER_PROVIDED_INFORMATION',
+      'USER_RESPONDED_TO_REQUEST',
+      'USER_REQUESTED_HUMAN',
+      'USER_MESSAGE_UNCLEAR',
     ]));
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('TRIAGE_SUBMITTED');
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('RECOMMENDATION_SELECTED');
-    expect(payload.response_format.json_schema.schema.required).toEqual(['eventType', 'confidence']);
+    expect(payload.response_format.json_schema.schema.required).toEqual(['eventType', 'target', 'modifier', 'confidence']);
+    expect(payload.response_format.json_schema.schema.properties.target.type).toBe('string');
+    expect(payload.response_format.json_schema.schema.properties.modifier.type).toBe('string');
+    expect(payload.response_format.json_schema.schema.properties.target).not.toHaveProperty('enum');
+    expect(payload.response_format.json_schema.schema.properties.modifier).not.toHaveProperty('enum');
     expect(payload.response_format.json_schema.schema.properties).not.toHaveProperty('source');
     expect(payload.response_format.json_schema.schema.properties).not.toHaveProperty('metadata');
   });
@@ -106,7 +114,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
-      eventType: 'UNKNOWN_MESSAGE',
+      eventType: 'USER_MESSAGE_UNCLEAR',
+      target: 'unknown',
+      modifier: 'unknown',
       confidence: 0,
       source: 'fallback_unknown',
       metadata: {
@@ -137,7 +147,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
           choices: [{
             message: {
               content: JSON.stringify({
-                eventType: 'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+                eventType: 'USER_EXPRESSED_NEED',
+                target: 'recommendation',
+                modifier: 'ask',
                 confidence: 0.87,
               }),
             },
@@ -154,7 +166,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
-      eventType: 'USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING',
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'recommendation',
+      modifier: 'ask',
       confidence: 0.87,
       source: 'llm',
     });
@@ -170,6 +184,8 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
             message: {
               content: JSON.stringify({
                 eventType: 'TRIAGE_SUBMITTED',
+                target: 'medical_facts',
+                modifier: 'provide',
                 confidence: 0.93,
               }),
             },
@@ -182,7 +198,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
           choices: [{
             message: {
               content: JSON.stringify({
-                eventType: 'USER_ASKED_NEXT_STEP',
+                eventType: 'USER_ASKED_QUESTION',
+                target: 'next_step',
+                modifier: 'ask',
                 confidence: 0.66,
               }),
             },
@@ -199,7 +217,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
-      eventType: 'USER_ASKED_NEXT_STEP',
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'next_step',
+      modifier: 'ask',
       confidence: 0.66,
       source: 'llm',
     });
@@ -215,7 +235,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
           choices: [{
             message: {
               content: JSON.stringify({
-                eventType: 'USER_ASKED_FAQ',
+                eventType: 'USER_ASKED_QUESTION',
+                target: 'pricing',
+                modifier: 'ask',
                 confidence: 0.75,
               }),
             },
@@ -232,7 +254,9 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
-      eventType: 'USER_ASKED_FAQ',
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'pricing',
+      modifier: 'ask',
       confidence: 0.75,
       source: 'llm',
     });
@@ -244,5 +268,40 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
       enabled: false,
       apiKey: 'test-openai-key',
     })).toBeUndefined();
+  });
+
+  it('normalizes invalid target and modifier strings without retrying', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              eventType: 'USER_EXPRESSED_NEED',
+              target: 'budget',
+              modifier: 'refine',
+              confidence: 0.8,
+            }),
+          },
+        }],
+      }),
+    });
+
+    const adapter = createChatbotV3SupervisorRouteAdapter({
+      enabled: true,
+      apiKey: 'test-openai-key',
+      fetchImpl: fetchImpl as typeof fetch,
+      model: 'gpt-5.1-mini',
+      reasoningEffort: 'none',
+    });
+
+    await expect(adapter?.run(gatewayInput)).resolves.toEqual({
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'unknown',
+      modifier: 'unknown',
+      confidence: 0.8,
+      source: 'llm',
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 });

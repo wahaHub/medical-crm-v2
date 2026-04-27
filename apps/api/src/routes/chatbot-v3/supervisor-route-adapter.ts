@@ -1,10 +1,14 @@
 import type {
   LlmNodeAdapter,
   SupervisorEvent,
+  SupervisorEventModifier,
+  SupervisorEventTarget,
   SupervisorEventType,
   SupervisorGatewayInput,
 } from '@medical-crm/application';
 import {
+  SUPERVISOR_EVENT_MODIFIERS,
+  SUPERVISOR_EVENT_TARGETS,
   SUPERVISOR_EVENT_TYPES,
 } from '@medical-crm/application';
 import {
@@ -35,11 +39,17 @@ function buildSupervisorEventResponseFormat(allowedEvents: readonly SupervisorEv
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['eventType', 'confidence'],
+      required: ['eventType', 'target', 'modifier', 'confidence'],
       properties: {
         eventType: {
           type: 'string',
           enum: allowedEvents,
+        },
+        target: {
+          type: 'string',
+        },
+        modifier: {
+          type: 'string',
         },
         confidence: {
           type: 'number',
@@ -51,7 +61,7 @@ function buildSupervisorEventResponseFormat(allowedEvents: readonly SupervisorEv
   } as const;
 }
 
-const SUPERVISOR_EVENT_TOP_LEVEL_KEYS = new Set(['eventType', 'confidence']);
+const SUPERVISOR_EVENT_TOP_LEVEL_KEYS = new Set(['eventType', 'target', 'modifier', 'confidence']);
 
 export function createChatbotV3SupervisorRouteAdapter(
   options: CreateChatbotV3SupervisorRouteAdapterOptions = {},
@@ -188,6 +198,8 @@ function sanitizeSupervisorEvent(
     !hasOnlyEventKeys
     || !isSupervisorEventType(raw.eventType)
     || !allowedEvents.includes(raw.eventType)
+    || typeof raw.target !== 'string'
+    || typeof raw.modifier !== 'string'
     || typeof raw.confidence !== 'number'
     || !Number.isFinite(raw.confidence)
     || raw.confidence < 0
@@ -198,6 +210,8 @@ function sanitizeSupervisorEvent(
 
   return {
     eventType: raw.eventType,
+    target: normalizeSupervisorEventTarget(raw.target),
+    modifier: normalizeSupervisorEventModifier(raw.modifier),
     confidence: raw.confidence,
     source: 'llm',
   };
@@ -209,11 +223,25 @@ function isSupervisorEventType(value: unknown): value is SupervisorEvent['eventT
 
 function buildFallbackUnknownEvent(rawText: string): SupervisorEvent {
   return {
-    eventType: 'UNKNOWN_MESSAGE',
+    eventType: 'USER_MESSAGE_UNCLEAR',
+    target: 'unknown',
+    modifier: 'unknown',
     confidence: 0,
     source: 'fallback_unknown',
     metadata: { rawText },
   };
+}
+
+function normalizeSupervisorEventTarget(value: string): SupervisorEventTarget {
+  return (SUPERVISOR_EVENT_TARGETS as readonly string[]).includes(value)
+    ? value as SupervisorEventTarget
+    : 'unknown';
+}
+
+function normalizeSupervisorEventModifier(value: string): SupervisorEventModifier {
+  return (SUPERVISOR_EVENT_MODIFIERS as readonly string[]).includes(value)
+    ? value as SupervisorEventModifier
+    : 'unknown';
 }
 
 function normalizeTimeoutMs(value: number): number {

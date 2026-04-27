@@ -53,7 +53,7 @@ Modify:
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/supervisor-route-adapter.ts`
   Updates strict schema to `eventType`, `target`, `modifier`, `confidence`.
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/worker-task.ts`
-  Adds `AgentTask`, `LoadedSkillPack`, richer `ResponseContract`, and maps it into existing worker tasks.
+  Imports application-owned `AgentTask`, `LoadedSkillPack`, and `ResponseContract`; defines only API physical adapter/worker-task translation shapes and maps application tasks into existing worker tasks.
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/runtime.service.ts`
   Integrates normalize -> event -> reducer -> authority -> resolver -> skills -> read planner -> executor -> task builder -> agent -> composer -> persistence write-back.
 - `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/apps/api/src/routes/chatbot-v3/response-composer.ts`
@@ -482,6 +482,36 @@ All should retry once and then fallback to:
   confidence: 0,
   source: 'fallback_unknown',
 }
+```
+
+Expected normalization without retry/fallback:
+
+```ts
+await expect(adapter?.run(outputting({
+  eventType: 'USER_ASKED_QUESTION',
+  target: 'budget',
+  modifier: 'ask',
+  confidence: 0.8,
+}))).resolves.toEqual({
+  eventType: 'USER_ASKED_QUESTION',
+  target: 'unknown',
+  modifier: 'ask',
+  confidence: 0.8,
+  source: 'llm',
+});
+
+await expect(adapter?.run(outputting({
+  eventType: 'USER_EXPRESSED_NEED',
+  target: 'recommendation',
+  modifier: 'refine',
+  confidence: 0.8,
+}))).resolves.toEqual({
+  eventType: 'USER_EXPRESSED_NEED',
+  target: 'recommendation',
+  modifier: 'unknown',
+  confidence: 0.8,
+  source: 'llm',
+});
 ```
 
 - [ ] **Step 2: Run failing adapter tests**
@@ -952,7 +982,9 @@ Default `maxSkillPacks` is `6`.
 - apply `maxSkillPacks`
 - omit missing ids and return observability warnings
 - add `safe_degradation_when_uncertain` or `clarify_ambiguous_reply` fallback when the request set is empty
-- never call LLM, DB, CMS, or arbitrary markdown files
+- never call LLM, DB, CMS, or perform filesystem reads of any kind
+- resolve only in-memory/code-imported registry entries from `skill-packs.ts`
+- do not load JSON, YAML, Markdown, local config files, or package-relative files at runtime
 
 - [ ] **Step 6: Run skill tests**
 
@@ -1254,6 +1286,8 @@ Keep existing physical agents working by translating `AgentTask` into current wo
 - `HandoffAgent` -> current handoff action
 
 Do not let translated worker task change `TurnPlan`.
+
+Do not redefine application-owned control-plane types in API. `worker-task.ts` may define physical task adapter types only, such as `FaqWorkerTask`, `RecordsWorkerTask`, `RecommendationWorkerTask`, or translation helpers.
 
 - [ ] **Step 4: Connect physical agents after dry-run pipeline**
 

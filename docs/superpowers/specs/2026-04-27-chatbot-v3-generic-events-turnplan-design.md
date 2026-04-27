@@ -618,12 +618,14 @@ type LoadedSkillPack = SkillPack & {
 Runtime selection has three deterministic steps:
 
 1. `SkillRouter` maps `event + TurnPlan + facts + AgentRole` to `SkillRequest[]`.
-2. `SkillLoader` resolves skill definitions and static snippets from the code registry.
+2. `SkillLoader` resolves skill definitions and static snippets from the in-memory/code-imported registry.
 3. `TaskBuilder` embeds `LoadedSkillPack[]` into `AgentTask`.
 
 The agent cannot request additional skills, change stages, or invent writes. If a needed skill is absent, the loader falls back to a safe degradation capability and emits observability.
 
 Actual FAQ, hospital, pricing, records, and policy reads are not performed by `SkillLoader`. `ReadPlanner` converts loaded skill requests into read intents, and `Tool/Data Executor` executes those reads before `TaskBuilder` assembles the final agent task.
+
+`SkillLoader` is pure registry resolution. It must have no `fs` dependency and must not load JSON, YAML, Markdown, local config files, package-relative files, DB rows, CMS content, or LLM output at runtime.
 
 ```ts
 type SkillRequest = {
@@ -708,7 +710,7 @@ packages/application/src/services/chatbot-v3/skill-packs.ts
 
 The application package owns skill registry, skill routing, skill loading, read planning, and control-plane invariants. The API package owns physical adapters, tool/data execution, and translating application tasks into existing agent calls.
 
-Phase 1.1 should not load skills from DB, CMS, or arbitrary markdown files.
+Phase 1.1 should not load skills from DB, CMS, filesystem files, or LLM output.
 
 Initial skill inventory:
 

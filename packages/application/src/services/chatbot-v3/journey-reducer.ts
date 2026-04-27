@@ -172,6 +172,10 @@ export function decidePrimaryAction(input: {
 }): PrimaryAction {
   const { event, facts } = input;
 
+  if (facts.handoff.active) {
+    return { type: 'ESCALATE', target: 'human', reasonCode: 'handoff_active' };
+  }
+
   switch (event.eventType) {
     case 'USER_REQUESTED_HUMAN':
       return { type: 'ESCALATE', target: 'human', reasonCode: 'human_requested' };

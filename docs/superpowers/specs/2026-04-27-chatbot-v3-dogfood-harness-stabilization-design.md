@@ -198,7 +198,9 @@ The exact type names can differ, but the artifact must expose equivalent informa
 
 Defaults:
 - timeout: `30_000ms`
-- max attempts: `2`
+- max attempts: `1`
+
+`POST /api/patient/onboarding/init` creates persistent patient/case/session state, so ambiguous transport retries are not safe by default without endpoint idempotency. A scenario may explicitly opt into `maxAttempts: 2` only when duplicate side effects are acceptable for that test or server-side idempotency exists.
 
 Retry only:
 - timeout
@@ -208,6 +210,7 @@ Do not retry:
 - expected blocked negative-control validation
 - HTTP 4xx validation errors
 - missing required local payload fields
+- default onboarding/session setup
 
 ### Chat
 

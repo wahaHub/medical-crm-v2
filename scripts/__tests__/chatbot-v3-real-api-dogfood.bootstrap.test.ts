@@ -378,6 +378,37 @@ test('bootstrap fetch failed is retried once and recorded as transport bootstrap
   );
 });
 
+test('bootstrap transport errors are not retried unless maxAttempts opts in', async () => {
+  let fetchCalls = 0;
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      throw new TypeError('fetch failed');
+    },
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'allowed_after_patient_session',
+    bootstrapMode: 'chat_allowed',
+    onboardingPayload: {
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+    },
+    timestamp: '2026-04-18T14-05-09Z',
+  });
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'transport_error');
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.attempts[0]?.retried, false);
+});
+
 test('bootstrap HTTP 400 and 429 responses are not retried and record status attempts', async () => {
   const makeClient = (status: 400 | 429) => {
     let fetchCalls = 0;

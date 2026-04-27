@@ -307,7 +307,7 @@ export async function bootstrapRealApiSession({
 
   const attempts: DogfoodAttemptSummary[] = [];
   const requestTimeoutMs = timeoutMs ?? 30_000;
-  const requestMaxAttempts = Math.max(1, Math.floor(maxAttempts ?? 2));
+  const requestMaxAttempts = Math.max(1, Math.floor(maxAttempts ?? 1));
 
   for (let attempt = 1; attempt <= requestMaxAttempts; attempt += 1) {
     const startedAt = Date.now();

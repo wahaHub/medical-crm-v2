@@ -172,6 +172,7 @@ git -C /Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-event-reduc
 Add tests:
 - bootstrap timeout is retried once, returns `bootstrapMode='bootstrap_failed'`, `failureKind='timeout'`, and two `attempts`
 - bootstrap `fetch failed` is retried once, classified as bootstrap, and records `transportErrorKind='transport_error'`
+- bootstrap transport errors are not retried by default unless `maxAttempts` explicitly opts in
 - bootstrap HTTP 400/429 is not retried and records one attempt with status
 - HTTP 200 missing `patient_session` records one attempt with status 200 and `failureKind='missing_allowed_evidence'`
 - HTTP 200 missing `patient_restore` records one attempt with status 200 and `failureKind='missing_allowed_evidence'`
@@ -201,11 +202,11 @@ Add options:
 
 ```ts
 timeoutMs?: number; // default 30_000
-maxAttempts?: number; // default 2
+maxAttempts?: number; // default 1; explicit opt-in required for bootstrap POST retries
 ```
 
 Retry only `DogfoodHttpTransportError` kinds `timeout` and `transport_error`.
-Do not retry HTTP responses, missing local payload fields, missing allowed evidence, or expected blocked validation.
+Do not retry by default because onboarding creates persistent patient/case/session state and is not idempotent without server support. Do not retry HTTP responses, missing local payload fields, missing allowed evidence, or expected blocked validation.
 
 - [ ] **Step 4: Preserve existing bootstrap semantics**
 

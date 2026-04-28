@@ -309,8 +309,8 @@ function isImageAttachment(attachment: ChatAttachment | null): boolean {
   return !!attachment?.type?.startsWith('image/');
 }
 
-function buildPdfPreviewUrl(url: string, fileName: string): string {
-  return `/api/documents/preview?url=${encodeURIComponent(url)}&fileName=${encodeURIComponent(fileName)}`;
+export function buildPdfPreviewUrl(url: string, _fileName: string): string {
+  return url;
 }
 
 function mapLocaleToTargetLanguage(locale?: string): string {
@@ -744,7 +744,7 @@ export function ChatPanel({
                 ) : isPdfAttachment(previewAttachment) && previewAttachment.url ? (
                   <PdfPreview
                     title={`${previewAttachment.name ?? 'Attachment'} original`}
-                    url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? 'document.pdf')}
+                    url={previewAttachment.url}
                     className="bg-slate-50"
                   />
                 ) : (

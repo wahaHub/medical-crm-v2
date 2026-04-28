@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractSafeMessageErrorDetail,
   formatAttachmentTypeForDisplay,
+  buildPdfPreviewUrl,
   formatConversationCategoryForDisplay,
   formatParticipantRoleForDisplay,
   formatUserFacingMessageError,
@@ -63,5 +64,12 @@ describe('messages view error formatting', () => {
     expect(formatAttachmentTypeForDisplay({ type: 'image/png' }, translate)).toBe('Image');
     expect(formatAttachmentTypeForDisplay({ type: 'application/vnd.ms-excel' }, translate)).toBe('File');
     expect(formatAttachmentTypeForDisplay({ type: undefined }, translate)).toBe('File');
+  });
+
+  it('uses the signed PDF attachment URL directly instead of the disabled legacy preview route', () => {
+    const signedUrl = 'https://signed.example.com/attachments/report.pdf?token=abc';
+
+    expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).toBe(signedUrl);
+    expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).not.toContain('/api/documents/preview');
   });
 });

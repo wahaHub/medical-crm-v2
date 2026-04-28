@@ -252,8 +252,8 @@ function isImageAttachment(attachment: ChatAttachment | null): boolean {
   return !!attachment?.type?.startsWith('image/');
 }
 
-function buildPdfPreviewUrl(url: string, fileName: string): string {
-  return `/api/documents/preview?url=${encodeURIComponent(url)}&fileName=${encodeURIComponent(fileName)}`;
+export function buildPdfPreviewUrl(url: string, _fileName: string): string {
+  return url;
 }
 
 function mapLocaleToTargetLanguage(locale?: string): string {
@@ -1106,7 +1106,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
                 ) : isPdfAttachment(previewAttachment) && previewAttachment.url ? (
                   <PdfPreview
                     title={`${previewAttachment.name ?? fallbackAttachmentLabel} ${tx('hospital.portal.messages.preview.originalLower', 'original')}`}
-                    url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? fallbackPreviewFileName)}
+                    url={previewAttachment.url}
                     className="bg-slate-50"
                     labels={previewPdfLabels}
                   />

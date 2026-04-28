@@ -133,7 +133,7 @@ vi.mock('next/cache', () => ({
 
 import { restoreConversationAi } from '../actions/message-actions';
 import * as messageActions from '../actions/message-actions';
-import { ChatPanel, ConversationAssistantControlSurface, MessagesCenter } from '../components/messages-center';
+import { buildPdfPreviewUrl, ChatPanel, ConversationAssistantControlSurface, MessagesCenter } from '../components/messages-center';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -300,6 +300,15 @@ describe('MessagesCenter', () => {
     );
 
     expect(screen.getByText('Hospital Thread')).toBeTruthy();
+  });
+});
+
+describe('message attachment PDF previews', () => {
+  it('uses the signed attachment URL directly instead of the disabled legacy preview route', () => {
+    const signedUrl = 'https://signed.example.com/attachments/report.pdf?token=abc';
+
+    expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).toBe(signedUrl);
+    expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).not.toContain('/api/documents/preview');
   });
 });
 

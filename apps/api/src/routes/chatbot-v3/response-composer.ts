@@ -504,6 +504,14 @@ function buildVisibleJourney(
   sessionStatusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   statusPatch: Partial<AiChatStatusSnapshot> | null | undefined,
 ): ConversationOrchestratorV3TurnResult['journey'] {
+  const effectiveStatusSnapshot = buildEffectiveStatusSnapshot(sessionStatusSnapshot, statusPatch);
+  if (hasActiveHandoffStatus(effectiveStatusSnapshot) || hasCrisisSafetySignal(effectiveStatusSnapshot)) {
+    return {
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    };
+  }
+
   const persistedJourneyStage = readJourneyStage(statusPatch)
     ?? readJourneyStage(sessionStatusSnapshot)
     ?? resultJourney.stage;

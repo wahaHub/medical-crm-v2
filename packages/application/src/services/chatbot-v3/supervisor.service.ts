@@ -1,4 +1,5 @@
 import type { ChatJourneyPhase, ChatJourneyStage } from '@medical-crm/domain';
+import { deriveCanonicalTruthFlagsFromStatusSnapshot } from '@medical-crm/domain';
 import type {
   ChatbotV3BootstrapOverride,
   ChatbotV3DispatchAgent,
@@ -34,6 +35,13 @@ import {
 } from './deterministic-event-extractor.js';
 
 export type SupervisorSuggestionGateway = LlmNodeAdapter<SupervisorGatewayInput, unknown>;
+interface SupervisorLlmMetadataGateway {
+  getLastLlmRunMetadata?(): Partial<SupervisorLlmRunMetadata> | null;
+  runWithLlmMetadata?(input: SupervisorGatewayInput): Promise<{
+    output: unknown;
+    llmRunMetadata?: Partial<SupervisorLlmRunMetadata> | null;
+  }>;
+}
 
 export type SupervisorSuggestion = SupervisorProposal;
 export interface SupervisorLlmRunMetadata {
@@ -41,6 +49,20 @@ export interface SupervisorLlmRunMetadata {
   nodeModel?: string;
   fallbackUsed?: boolean;
   schemaValidationFailed?: boolean;
+  llmFailurePhase?: 'request' | 'http_status' | 'response_json' | 'response_content';
+  llmErrorName?: string;
+  llmErrorMessage?: string;
+  llmHttpStatus?: number;
+  llmResponseContentLength?: number;
+  llmResponseContentStartsWithBrace?: boolean;
+}
+export interface SupervisorSuggestionWithMetadata {
+  suggestion: SupervisorSuggestion;
+  llmRunMetadata: SupervisorLlmRunMetadata | null;
+}
+export interface SupervisorEventWithMetadata {
+  event: SupervisorEvent;
+  llmRunMetadata: SupervisorLlmRunMetadata | null;
 }
 
 const ORCHESTRATOR_INTENTS = [
@@ -107,7 +129,7 @@ const EXPLICIT_PROGRESSION_PATTERNS = [
 export class SupervisorService {
   private lastRunMetadata: SupervisorLlmRunMetadata | null = null;
 
-  constructor(private readonly gateway?: SupervisorSuggestionGateway) {}
+  constructor(private readonly gateway?: SupervisorSuggestionGateway & SupervisorLlmMetadataGateway) {}
 
   deriveDecisionLineage(input: OrchestratorV3DecisionInput): SupervisorDecisionLineage | null {
     const bootstrapOverride = resolveBootstrapOverride(input);
@@ -115,6 +137,10 @@ export class SupervisorService {
   }
 
   async suggest(input: OrchestratorV3DecisionInput): Promise<SupervisorSuggestion> {
+    return (await this.suggestWithMetadata(input)).suggestion;
+  }
+
+  async suggestWithMetadata(input: OrchestratorV3DecisionInput): Promise<SupervisorSuggestionWithMetadata> {
     const bootstrapOverride = this.deriveDecisionLineage(input)?.bootstrapOverride;
     const bootstrapSuggestion = bootstrapOverride
       ? buildBootstrapOverrideSuggestion(bootstrapOverride)
@@ -123,7 +149,10 @@ export class SupervisorService {
 
     if (!this.gateway) {
       this.lastRunMetadata = null;
-      return bootstrapSuggestion ? buildProposal(bootstrapSuggestion, input) : fallback;
+      return {
+        suggestion: bootstrapSuggestion ? buildProposal(bootstrapSuggestion, input) : fallback,
+        llmRunMetadata: null,
+      };
     }
 
     const metadataBase = {
@@ -132,33 +161,47 @@ export class SupervisorService {
     } satisfies SupervisorLlmRunMetadata;
 
     try {
-      const raw = await this.gateway.run(buildGatewayInput(input));
+      const gatewayResult = await this.runGateway(buildGatewayInput(input));
+      const raw = gatewayResult.output;
       const sanitized = sanitizeSuggestion(raw, input, fallback);
-      if (bootstrapSuggestion) {
-        this.lastRunMetadata = {
-          ...metadataBase,
-          fallbackUsed: true,
-          schemaValidationFailed: false,
-        };
-        return buildProposal(bootstrapSuggestion, input);
-      }
-      this.lastRunMetadata = {
+      const llmRunMetadata = {
         ...metadataBase,
-        fallbackUsed: sanitized.fallbackUsed,
-        schemaValidationFailed: sanitized.schemaValidationFailed,
+        fallbackUsed: bootstrapSuggestion ? true : sanitized.fallbackUsed,
+        schemaValidationFailed: bootstrapSuggestion ? false : sanitized.schemaValidationFailed,
+        ...gatewayResult.llmRunMetadata,
       };
-      return sanitized.suggestion;
+      if (bootstrapSuggestion) {
+        this.lastRunMetadata = llmRunMetadata;
+        return {
+          suggestion: buildProposal(bootstrapSuggestion, input),
+          llmRunMetadata,
+        };
+      }
+      this.lastRunMetadata = llmRunMetadata;
+      return {
+        suggestion: sanitized.suggestion,
+        llmRunMetadata,
+      };
     } catch {
-      this.lastRunMetadata = {
+      const llmRunMetadata = {
         ...metadataBase,
         fallbackUsed: true,
         schemaValidationFailed: false,
+        ...this.readGatewayLlmFailureMetadata(),
       };
-      return bootstrapSuggestion ? buildProposal(bootstrapSuggestion, input) : fallback;
+      this.lastRunMetadata = llmRunMetadata;
+      return {
+        suggestion: bootstrapSuggestion ? buildProposal(bootstrapSuggestion, input) : fallback,
+        llmRunMetadata,
+      };
     }
   }
 
   async extractEvent(input: OrchestratorV3DecisionInput): Promise<SupervisorEvent> {
+    return (await this.extractEventWithMetadata(input)).event;
+  }
+
+  async extractEventWithMetadata(input: OrchestratorV3DecisionInput): Promise<SupervisorEventWithMetadata> {
     const message = resolveLatestUserMessage(input) || input.bootstrap?.message;
     const deterministicEvent = extractDeterministicEvent({
       message,
@@ -168,7 +211,7 @@ export class SupervisorService {
 
     if (deterministicEvent?.eventType === 'USER_REQUESTED_HUMAN') {
       this.lastRunMetadata = null;
-      return deterministicEvent;
+      return { event: deterministicEvent, llmRunMetadata: null };
     }
 
     const heuristicEvent = buildHeuristicSupervisorEvent(input);
@@ -177,22 +220,22 @@ export class SupervisorService {
       || heuristicEvent.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
     ) {
       this.lastRunMetadata = null;
-      return heuristicEvent;
+      return { event: heuristicEvent, llmRunMetadata: null };
     }
 
     if (deterministicEvent) {
       this.lastRunMetadata = null;
-      return deterministicEvent;
+      return { event: deterministicEvent, llmRunMetadata: null };
     }
 
     if (heuristicEvent.eventType === 'USER_ASKED_QUESTION' && !this.gateway) {
       this.lastRunMetadata = null;
-      return heuristicEvent;
+      return { event: heuristicEvent, llmRunMetadata: null };
     }
 
     if (!this.gateway) {
       this.lastRunMetadata = null;
-      return heuristicEvent;
+      return { event: heuristicEvent, llmRunMetadata: null };
     }
 
     const metadataBase = {
@@ -202,21 +245,29 @@ export class SupervisorService {
 
     try {
       const gatewayInput = buildGatewayInput(input);
-      const raw = await this.gateway.run(gatewayInput);
+      const gatewayResult = await this.runGateway(gatewayInput);
+      const raw = gatewayResult.output;
       const event = sanitizeSemanticSupervisorEvent(raw, getAllowedSupervisorEvents(gatewayInput));
-      this.lastRunMetadata = {
+      const llmRunMetadata = {
         ...metadataBase,
         fallbackUsed: event.source === 'fallback_unknown',
         schemaValidationFailed: event.source === 'fallback_unknown',
+        ...gatewayResult.llmRunMetadata,
       };
-      return event;
+      this.lastRunMetadata = llmRunMetadata;
+      return { event, llmRunMetadata };
     } catch {
-      this.lastRunMetadata = {
+      const llmRunMetadata = {
         ...metadataBase,
         fallbackUsed: true,
         schemaValidationFailed: false,
+        ...this.readGatewayLlmFailureMetadata(),
       };
-      return buildFallbackUnknownEvent('supervisor semantic event extraction failed');
+      this.lastRunMetadata = llmRunMetadata;
+      return {
+        event: buildFallbackUnknownEvent('supervisor semantic event extraction failed'),
+        llmRunMetadata,
+      };
     }
   }
 
@@ -236,6 +287,66 @@ export class SupervisorService {
   getLastLlmRunMetadata(): SupervisorLlmRunMetadata | null {
     return this.lastRunMetadata;
   }
+
+  private readGatewayLlmFailureMetadata(): Partial<SupervisorLlmRunMetadata> {
+    const metadata = this.gateway?.getLastLlmRunMetadata?.();
+    if (!metadata) {
+      return {};
+    }
+
+    return {
+      ...(metadata.llmFailurePhase ? { llmFailurePhase: metadata.llmFailurePhase } : {}),
+      ...(metadata.llmErrorName ? { llmErrorName: metadata.llmErrorName } : {}),
+      ...(metadata.llmErrorMessage ? { llmErrorMessage: metadata.llmErrorMessage } : {}),
+      ...(typeof metadata.llmHttpStatus === 'number' ? { llmHttpStatus: metadata.llmHttpStatus } : {}),
+      ...(typeof metadata.llmResponseContentLength === 'number'
+        ? { llmResponseContentLength: metadata.llmResponseContentLength }
+        : {}),
+      ...(typeof metadata.llmResponseContentStartsWithBrace === 'boolean'
+        ? { llmResponseContentStartsWithBrace: metadata.llmResponseContentStartsWithBrace }
+        : {}),
+    };
+  }
+
+  private async runGateway(input: SupervisorGatewayInput): Promise<{
+    output: unknown;
+    llmRunMetadata: Partial<SupervisorLlmRunMetadata>;
+  }> {
+    if (this.gateway?.runWithLlmMetadata) {
+      const result = await this.gateway.runWithLlmMetadata(input);
+      return {
+        output: result.output,
+        llmRunMetadata: filterSupervisorLlmFailureMetadata(result.llmRunMetadata),
+      };
+    }
+
+    const output = await this.gateway!.run(input);
+    return {
+      output,
+      llmRunMetadata: this.readGatewayLlmFailureMetadata(),
+    };
+  }
+}
+
+function filterSupervisorLlmFailureMetadata(
+  metadata: Partial<SupervisorLlmRunMetadata> | null | undefined,
+): Partial<SupervisorLlmRunMetadata> {
+  if (!metadata) {
+    return {};
+  }
+
+  return {
+    ...(metadata.llmFailurePhase ? { llmFailurePhase: metadata.llmFailurePhase } : {}),
+    ...(metadata.llmErrorName ? { llmErrorName: metadata.llmErrorName } : {}),
+    ...(metadata.llmErrorMessage ? { llmErrorMessage: metadata.llmErrorMessage } : {}),
+    ...(typeof metadata.llmHttpStatus === 'number' ? { llmHttpStatus: metadata.llmHttpStatus } : {}),
+    ...(typeof metadata.llmResponseContentLength === 'number'
+      ? { llmResponseContentLength: metadata.llmResponseContentLength }
+      : {}),
+    ...(typeof metadata.llmResponseContentStartsWithBrace === 'boolean'
+      ? { llmResponseContentStartsWithBrace: metadata.llmResponseContentStartsWithBrace }
+      : {}),
+  };
 }
 
 function sanitizeSemanticSupervisorEvent(
@@ -1130,19 +1241,19 @@ function isLaterStageBootstrapContext(
 function hasStructuredMinimalTriageComplete(
   input: OrchestratorV3DecisionInput,
 ): boolean {
-  const status = input.minimalTriageStatus ?? input.statusSnapshot?.minimalTriageStatus;
-  const answersSummary = input.minimalTriageAnswersSummary
-    ?? input.statusSnapshot?.minimalTriageAnswersSummary
-    ?? null;
-  if (status === 'skipped') {
-    return true;
-  }
+  const statusSnapshot = {
+    ...(input.statusSnapshot ?? {}),
+    ...(input.minimalTriageStatus != null
+      ? { minimalTriageStatus: input.minimalTriageStatus }
+      : {}),
+    ...(input.minimalTriageAnswersSummary !== undefined
+      ? { minimalTriageAnswersSummary: input.minimalTriageAnswersSummary }
+      : {}),
+  };
 
-  if (status === 'pending') {
-    return answersSummary !== null && answersSummary.trim().length > 0;
-  }
-
-  return false;
+  return deriveCanonicalTruthFlagsFromStatusSnapshot(statusSnapshot)[
+    'records.minimal_triage.complete'
+  ];
 }
 
 function isChatJourneyPhase(value: unknown): value is ChatJourneyPhase {

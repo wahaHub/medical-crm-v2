@@ -4,6 +4,7 @@ import type {
   ChatJourneyPhase,
   ChatJourneyStage,
 } from '@medical-crm/domain';
+import { deriveCanonicalTruthFlagsFromStatusSnapshot } from '@medical-crm/domain';
 import type { ChatbotV3ChatAction } from '@medical-crm/validation';
 import type { MinimalIntakeSeed } from './minimal-intake.types.js';
 
@@ -315,18 +316,9 @@ export function hasChatbotV3MinimalTriageComplete(input: {
   facts?: ChatbotV3Facts;
   statusSnapshot?: ChatbotV3StatusSnapshot | null;
 }): boolean {
-  const status = input.statusSnapshot?.minimalTriageStatus;
-  const answersSummary = input.statusSnapshot?.minimalTriageAnswersSummary ?? null;
-
-  if (status === 'skipped') {
-    return true;
-  }
-
-  if (status === 'pending') {
-    return answersSummary !== null && answersSummary.trim().length > 0;
-  }
-
-  return false;
+  return deriveCanonicalTruthFlagsFromStatusSnapshot(input.statusSnapshot)[
+    'records.minimal_triage.complete'
+  ];
 }
 
 export function hasChatbotV3RecommendationSelected(input: {

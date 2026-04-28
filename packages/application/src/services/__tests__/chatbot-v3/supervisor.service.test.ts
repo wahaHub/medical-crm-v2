@@ -195,25 +195,26 @@ describe('SupervisorService', () => {
     expect(result.reason).toBe('empty structured snapshots should stay on minimal triage');
   });
 
-  it('does not advance recommendation progression from minimalTriageComplete alone when structured triage status is absent', async () => {
+  it('honors raw legacy minimalTriageComplete truth when structured triage status is absent', async () => {
     const result = await supervisor.suggest({
       ...minimalInput,
       suggestion: {
         intent: 'progression',
         suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-        reason: 'minimal triage still needs structured state',
+        reason: 'legacy completion truth should allow recommendation',
       },
       facts: {
-        'records.minimal_triage.complete': true,
+        'records.minimal_triage.complete': false,
       },
       statusSnapshot: {
         minimalTriageComplete: true,
       },
     });
 
-    expect(result.suggestedStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
-    expect(result.dispatchAgent).toBe('RecordsAgent');
-    expect(result.reason).toBe('minimal triage still needs structured state');
+    expect(result.suggestedStage).toBe('RECOMMENDATION');
+    expect(result.dispatchAgent).toBe('RecommendationAgent');
+    expect(result.reason).toBe('minimal triage is complete and recommendation should begin');
+    expect(result.task?.necessaryFacts['records.minimal_triage.complete']).toBe(true);
   });
 
   it.each([
@@ -1839,6 +1840,46 @@ describe('SupervisorService event extraction', () => {
         rawText: 'supervisor semantic event extraction failed',
       },
     });
+  });
+
+  it('preserves gateway LLM failure metadata when semantic extraction falls back', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      model: 'gpt-4.1-mini',
+      run: async () => ({
+        eventType: 'USER_MESSAGE_UNCLEAR',
+        target: 'unknown',
+        modifier: 'unknown',
+        confidence: 0,
+        source: 'fallback_unknown',
+        metadata: {
+          rawText: 'supervisor route llm returned invalid SupervisorEvent schema',
+        },
+      }),
+      getLastLlmRunMetadata: () => ({
+        llmFailurePhase: 'response_content',
+        llmErrorName: 'NonJsonContentError',
+        llmErrorMessage: 'supervisor route llm returned non-json content',
+        llmResponseContentLength: 12,
+        llmResponseContentStartsWithBrace: false,
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toMatchObject({
+      eventType: 'USER_MESSAGE_UNCLEAR',
+      source: 'fallback_unknown',
+    });
+    expect(supervisorWithGateway.getLastLlmRunMetadata()).toEqual(expect.objectContaining({
+      nodePromptVersion: 'supervisor-prompt-v3-events',
+      nodeModel: 'gpt-4.1-mini',
+      fallbackUsed: true,
+      schemaValidationFailed: true,
+      llmFailurePhase: 'response_content',
+      llmErrorName: 'NonJsonContentError',
+      llmErrorMessage: 'supervisor route llm returned non-json content',
+      llmResponseContentLength: 12,
+      llmResponseContentStartsWithBrace: false,
+    }));
   });
 
   it('rejects deterministic-only events returned by the semantic gateway', async () => {

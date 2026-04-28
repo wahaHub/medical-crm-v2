@@ -5248,12 +5248,20 @@ describe('chatbot-v3 runtime', () => {
     }));
   });
 
-  it('does not progress to recommendation from minimalTriageComplete alone when structured triage state is absent', async () => {
+  it('progresses to recommendation from raw legacy minimalTriageComplete truth when structured triage state is absent', async () => {
     const recordsAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
         data: {
           collectionPrompt: 'Please answer the triage questions first.',
+        },
+      })),
+    };
+    const recommendationAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          recommendations: [],
         },
       })),
     };
@@ -5309,6 +5317,7 @@ describe('chatbot-v3 runtime', () => {
       } as any,
       agents: {
         RecordsAgent: recordsAgent,
+        RecommendationAgent: recommendationAgent,
       },
     });
 
@@ -5336,18 +5345,18 @@ describe('chatbot-v3 runtime', () => {
       },
     });
 
-    expect(result.suggestion.suggestedStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+    expect(result.suggestion.suggestedStage).toBe('RECOMMENDATION');
     expect(result.decision.to).toEqual({
-      stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(recordsAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'records.status',
+    expect(recordsAgent.execute).not.toHaveBeenCalled();
+    expect(recommendationAgent.execute).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'recommendation.generate',
       meta: expect.objectContaining({
         task: expect.objectContaining({
-          agent: 'RecordsAgent',
-          toStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-          minimalTriageComplete: true,
+          agent: 'RecommendationAgent',
+          toStage: 'RECOMMENDATION',
         }),
       }),
     }));
@@ -6201,6 +6210,251 @@ describe('chatbot-v3 runtime', () => {
         schemaValidationFailed: true,
       }),
     ]));
+  });
+
+  it('emits LLM failure metadata from Records worker runtime nodes', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const emitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        events.push(event as Record<string, unknown>);
+      },
+    });
+    const recordsAgent = new RecordsAgent(
+      createToolGateway({ handlers: {} }),
+      new RecordsLlmAdapter({
+        worker: {
+          promptVersion: 'records-worker-test',
+          model: 'gpt-4.1-mini',
+          run: vi.fn(async () => {
+            throw new Error('records route llm request failed before a usable response was returned');
+          }),
+        },
+      }),
+    );
+
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'progression' as const,
+          suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const,
+          reason: 'collect minimal triage facts',
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => ({
+          action: 'STAY' as const,
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS' as const, phase: 'active' as const },
+          dispatchAgent: 'RecordsAgent' as const,
+          dispatchSource: 'journey-runtime-authority' as const,
+        })),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        RecordsAgent: recordsAgent,
+      },
+      nodeEventEmitter: emitter,
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-records-llm-failure-observe-1',
+      sessionId: 'session-records-llm-failure-observe-1',
+      turnId: 'turn-records-llm-failure-observe-1',
+      message: 'I have chest pain and a CT report.',
+      current: {
+        stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        minimalTriageComplete: false,
+      } as any,
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    });
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        node: 'Subagent',
+        action: 'RecordsAgent',
+        status: 'completed',
+        nodePromptVersion: 'records-worker-test',
+        nodeModel: 'gpt-4.1-mini',
+        fallbackUsed: true,
+        schemaValidationFailed: false,
+        llmFailurePhase: 'request',
+        llmErrorName: 'Error',
+        llmErrorMessage: 'records route llm request failed before a usable response was returned',
+      }),
+    ]));
+  });
+
+  it('emits LLM failure metadata from Supervisor runtime nodes', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const emitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        events.push(event as Record<string, unknown>);
+      },
+    });
+    const supervisor = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      model: 'gpt-4.1-mini',
+      run: vi.fn(async () => ({
+        eventType: 'USER_MESSAGE_UNCLEAR',
+        target: 'unknown',
+        modifier: 'unknown',
+        confidence: 0,
+        source: 'fallback_unknown',
+        metadata: {
+          rawText: 'supervisor route llm returned invalid SupervisorEvent schema',
+        },
+      })),
+      getLastLlmRunMetadata: () => ({
+        llmFailurePhase: 'http_status',
+        llmErrorName: 'UpstreamHttpError',
+        llmErrorMessage: 'supervisor route llm request failed with status 500',
+        llmHttpStatus: 500,
+      }),
+    });
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor,
+      journeyRuntimeAuthority: new JourneyRuntimeAuthorityService(),
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+      nodeEventEmitter: emitter,
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-supervisor-llm-failure-observe-1',
+      sessionId: 'session-supervisor-llm-failure-observe-1',
+      turnId: 'turn-supervisor-llm-failure-observe-1',
+      message: 'Could you help me understand the next step?',
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        processExplained: false,
+      } as any,
+    });
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        node: 'Supervisor',
+        action: 'extractEvent',
+        status: 'completed',
+        nodePromptVersion: 'supervisor-prompt-v3-events',
+        nodeModel: 'gpt-4.1-mini',
+        fallbackUsed: true,
+        schemaValidationFailed: true,
+        llmFailurePhase: 'http_status',
+        llmErrorName: 'UpstreamHttpError',
+        llmErrorMessage: 'supervisor route llm request failed with status 500',
+        llmHttpStatus: 500,
+      }),
+    ]));
+  });
+
+  it('does not emit stale supervisor metadata when per-call metadata is explicitly null', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const emitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        events.push(event as Record<string, unknown>);
+      },
+    });
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_ASKED_QUESTION',
+          target: 'process',
+          modifier: 'ask',
+          confidence: 0.9,
+          source: 'llm',
+        })),
+        extractEventWithMetadata: vi.fn(async () => ({
+          event: {
+            eventType: 'USER_ASKED_QUESTION' as const,
+            target: 'process' as const,
+            modifier: 'ask' as const,
+            confidence: 0.9,
+            source: 'llm' as const,
+          },
+          llmRunMetadata: null,
+        })),
+        getLastLlmRunMetadata: () => ({
+          nodePromptVersion: 'stale-supervisor-prompt',
+          nodeModel: 'stale-model',
+          fallbackUsed: true,
+          schemaValidationFailed: true,
+          llmFailurePhase: 'http_status' as const,
+          llmErrorName: 'StaleUpstreamError',
+          llmErrorMessage: 'stale metadata from a previous turn',
+          llmHttpStatus: 502,
+        }),
+      },
+      journeyRuntimeAuthority: new JourneyRuntimeAuthorityService(),
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {},
+      nodeEventEmitter: emitter,
+    });
+
+    await runtime.handleTurn({
+      traceId: 'trace-supervisor-null-metadata-1',
+      sessionId: 'session-supervisor-null-metadata-1',
+      turnId: 'turn-supervisor-null-metadata-1',
+      message: 'Can you explain the process?',
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      statusSnapshot: {
+        processExplained: false,
+      } as any,
+    });
+
+    const supervisorCompleted = events.find((event) =>
+      event.node === 'Supervisor'
+      && event.action === 'extractEvent'
+      && event.status === 'completed'
+    );
+
+    expect(supervisorCompleted).toBeDefined();
+    expect(supervisorCompleted).not.toEqual(expect.objectContaining({
+      nodePromptVersion: 'stale-supervisor-prompt',
+    }));
+    expect(supervisorCompleted).not.toEqual(expect.objectContaining({
+      nodeModel: 'stale-model',
+    }));
+    expect(supervisorCompleted).not.toEqual(expect.objectContaining({
+      llmFailurePhase: 'http_status',
+    }));
+    expect(supervisorCompleted).not.toEqual(expect.objectContaining({
+      llmErrorName: 'StaleUpstreamError',
+    }));
   });
 });
 

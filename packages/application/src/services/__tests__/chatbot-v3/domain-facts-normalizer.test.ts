@@ -43,6 +43,16 @@ describe('normalizeFactsFromStatusSnapshot', () => {
     expect(facts.intake.minimalTriageSummary).toBeNull();
   });
 
+  it('honors raw legacy minimalTriageComplete truth when structured status is absent', () => {
+    const facts = normalizeFactsFromStatusSnapshot({
+      minimalTriageAnswersSummary: null,
+      minimalTriageComplete: true,
+    });
+
+    expect(facts.intake.minimalTriageStatus).toBe('submitted');
+    expect(facts.intake.minimalTriageSummary).toBeNull();
+  });
+
   it('honors legacy generated recommendation truth when structured selection status is absent', () => {
     const facts = normalizeFactsFromStatusSnapshot({
       recommendationGenerated: true,

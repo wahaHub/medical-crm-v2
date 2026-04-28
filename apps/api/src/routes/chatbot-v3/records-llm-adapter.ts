@@ -15,8 +15,10 @@ import type {
   RecordsWorkerMode,
   RecordsWorkerTask,
 } from './worker-task.js';
+import type { ChatbotV3LlmFailureMetadata } from './llm-route-error.js';
+import { summarizeChatbotV3LlmError } from './llm-route-error.js';
 
-export interface RecordsLlmRunMetadata {
+export interface RecordsLlmRunMetadata extends ChatbotV3LlmFailureMetadata {
   nodePromptVersion?: string;
   nodeModel?: string;
   fallbackUsed?: boolean;
@@ -72,11 +74,12 @@ export class RecordsLlmAdapter {
         schemaValidationFailed: sanitized.schemaValidationFailed,
       };
       return sanitized.result;
-    } catch {
+    } catch (error) {
       this.lastRunMetadata = {
         ...metadataBase,
         fallbackUsed: true,
         schemaValidationFailed: false,
+        ...summarizeChatbotV3LlmError(error),
       };
       return fallback;
     }

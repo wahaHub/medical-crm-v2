@@ -180,6 +180,17 @@ vi.mock('@medical-crm/application', async (importOriginal) => {
         return super.extractEvent(input);
       }
 
+      override async extractEventWithMetadata(input: OrchestratorV3DecisionInput) {
+        if (applicationOverrides.extractEvent) {
+          return {
+            event: await applicationOverrides.extractEvent(input),
+            llmRunMetadata: null,
+          };
+        }
+
+        return super.extractEventWithMetadata(input);
+      }
+
     },
     OrchestratorV3Service: class extends actual.OrchestratorV3Service {
       override decide(input: OrchestratorV3DecisionInput) {
@@ -3570,7 +3581,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
   });
 
-  it('keeps legacy requested handoff marked required while preserving the stale stored journey snapshot projection', async () => {
+  it('projects active legacy handoff over a stale stored journey snapshot', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
@@ -3622,7 +3633,7 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.journey).toMatchObject({
-      stage: 'EXPLAIN_PROCESS',
+      stage: 'HUMAN_HANDOFF',
       phase: 'active',
     });
     expect(body.handoff.required).toBe(true);

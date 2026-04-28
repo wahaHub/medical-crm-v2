@@ -1,6 +1,7 @@
 import type {
   ChatbotV3ReplayLineage,
 } from '@medical-crm/application';
+import type { ChatbotV3LlmFailureMetadata } from './llm-route-error.js';
 
 export interface ChatbotV3CorrelationContext {
   traceId: string;
@@ -26,7 +27,7 @@ export type ChatbotV3RuntimeNodeStatus =
   | 'failed'
   | 'timeout';
 
-export interface ChatbotV3RuntimeNodeEventInput {
+export interface ChatbotV3RuntimeNodeEventInput extends ChatbotV3LlmFailureMetadata {
   traceId: string;
   sessionId: string;
   turnId: string;

@@ -19,9 +19,17 @@ import {
 import {
   buildChatbotV3LlmRequestFailure,
   parseStructuredOpenAiJsonResponse,
+  summarizeChatbotV3LlmError,
 } from './llm-route-error.js';
+import type { ChatbotV3LlmFailureMetadata } from './llm-route-error.js';
 
 type FetchLike = typeof fetch;
+type SupervisorRouteAdapter = LlmNodeAdapter<SupervisorGatewayInput, SupervisorEvent> & {
+  runWithLlmMetadata(input: SupervisorGatewayInput): Promise<{
+    output: SupervisorEvent;
+    llmRunMetadata: ChatbotV3LlmFailureMetadata | null;
+  }>;
+};
 
 interface CreateChatbotV3SupervisorRouteAdapterOptions {
   enabled?: boolean;
@@ -67,7 +75,7 @@ const SUPERVISOR_EVENT_TOP_LEVEL_KEYS = new Set(['eventType', 'target', 'modifie
 
 export function createChatbotV3SupervisorRouteAdapter(
   options: CreateChatbotV3SupervisorRouteAdapterOptions = {},
-): LlmNodeAdapter<SupervisorGatewayInput, SupervisorEvent> | undefined {
+): SupervisorRouteAdapter | undefined {
   const enabled = options.enabled ?? process.env['CHATBOT_V3_SUPERVISOR_LLM_ENABLED'] === 'true';
   const apiKey = options.apiKey?.trim() ?? process.env['OPENAI_API_KEY']?.trim() ?? '';
   const model = options.model?.trim() ?? process.env['CHATBOT_V3_SUPERVISOR_LLM_MODEL']?.trim() ?? 'gpt-4o-mini';
@@ -88,18 +96,30 @@ export function createChatbotV3SupervisorRouteAdapter(
     promptVersion: `${SUPERVISOR_PROMPT_VERSION}:openai`,
     model,
     run: async (input) => {
-      const allowedEvents = getAllowedSupervisorEvents(input);
-      return runStructuredOpenAiPrompt({
-        apiKey,
-        model,
-        reasoningEffort,
-        fetchImpl,
-        timeoutMs,
-        prompt: buildSupervisorPrompt(input),
-        allowedEvents,
-      });
+      return (await runSupervisorRoute(input)).output;
     },
+    runWithLlmMetadata: runSupervisorRoute,
   };
+
+  async function runSupervisorRoute(input: SupervisorGatewayInput): Promise<{
+    output: SupervisorEvent;
+    llmRunMetadata: ChatbotV3LlmFailureMetadata | null;
+  }> {
+    const allowedEvents = getAllowedSupervisorEvents(input);
+    const result = await runStructuredOpenAiPrompt({
+      apiKey,
+      model,
+      reasoningEffort,
+      fetchImpl,
+      timeoutMs,
+      prompt: buildSupervisorPrompt(input),
+      allowedEvents,
+    });
+    return {
+      output: result.event,
+      llmRunMetadata: result.llmFailureMetadata,
+    };
+  }
 }
 
 async function runStructuredOpenAiPrompt(input: {
@@ -110,25 +130,34 @@ async function runStructuredOpenAiPrompt(input: {
   timeoutMs: number;
   prompt: string;
   allowedEvents: readonly SupervisorEventType[];
-}): Promise<SupervisorEvent> {
+}): Promise<{
+  event: SupervisorEvent;
+  llmFailureMetadata: ChatbotV3LlmFailureMetadata | null;
+}> {
   const maxAttempts = 2;
   let lastFallback = buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');
+  let lastLlmFailureMetadata: ChatbotV3LlmFailureMetadata | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
-      const event = await runStructuredOpenAiPromptAttempt(input);
-      if (event.source !== 'fallback_unknown') {
-        return event;
+      const result = await runStructuredOpenAiPromptAttempt(input);
+      if (result.event.source !== 'fallback_unknown') {
+        return result;
       }
-      lastFallback = event;
+      lastFallback = result.event;
+      lastLlmFailureMetadata = result.llmFailureMetadata;
     } catch (error) {
+      lastLlmFailureMetadata = summarizeChatbotV3LlmError(error);
       lastFallback = buildFallbackUnknownEvent(
         error instanceof Error ? error.message : 'supervisor route llm request failed',
       );
     }
   }
 
-  return lastFallback;
+  return {
+    event: lastFallback,
+    llmFailureMetadata: lastLlmFailureMetadata,
+  };
 }
 
 async function runStructuredOpenAiPromptAttempt(input: {
@@ -139,7 +168,10 @@ async function runStructuredOpenAiPromptAttempt(input: {
   timeoutMs: number;
   prompt: string;
   allowedEvents: readonly SupervisorEventType[];
-}): Promise<SupervisorEvent> {
+}): Promise<{
+  event: SupervisorEvent;
+  llmFailureMetadata: ChatbotV3LlmFailureMetadata | null;
+}> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
@@ -184,13 +216,23 @@ async function runStructuredOpenAiPromptAttempt(input: {
   let parsed: Record<string, unknown>;
   try {
     parsed = await parseStructuredOpenAiJsonResponse(response, 'supervisor route llm');
-  } catch {
-    return buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema');
+  } catch (error) {
+    return {
+      event: buildFallbackUnknownEvent('supervisor route llm returned invalid SupervisorEvent schema'),
+      llmFailureMetadata: summarizeChatbotV3LlmError(error),
+    };
   }
 
-  return sanitizeSupervisorEvent(parsed, input.allowedEvents);
+  return {
+    event: sanitizeSupervisorEvent(parsed, input.allowedEvents),
+    llmFailureMetadata: null,
+  };
 }
 
+/*
+ * Keep the OpenAI response schema and SupervisorEvent sanitizer authority-only.
+ * LLM transport/parsing failures are exposed through runWithLlmMetadata().
+ */
 function sanitizeSupervisorEvent(
   raw: Record<string, unknown>,
   allowedEvents: readonly SupervisorEventType[],

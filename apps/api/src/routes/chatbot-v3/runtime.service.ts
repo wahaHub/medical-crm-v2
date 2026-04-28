@@ -51,6 +51,7 @@ import type {
   ChatbotV3RuntimeNodeEventInput,
   ChatbotV3RuntimeNodeStatus,
 } from './observability.js';
+import type { ChatbotV3LlmFailureMetadata } from './llm-route-error.js';
 import type {
   StatusQueryOutput,
   ToolErrorCode,
@@ -233,7 +234,7 @@ interface ConversationOrchestratorV3NormalizedTurnInput extends ConversationOrch
   normalizedActionStatusPatch?: Partial<AiChatStatusSnapshot>;
 }
 
-export interface ConversationOrchestratorV3LlmNodeRunMetadata {
+export interface ConversationOrchestratorV3LlmNodeRunMetadata extends ChatbotV3LlmFailureMetadata {
   nodePromptVersion?: string;
   nodeModel?: string;
   fallbackUsed?: boolean;
@@ -246,7 +247,15 @@ export interface ConversationOrchestratorV3IdempotencyExecutor {
 
 export interface ConversationOrchestratorV3Supervisor {
   suggest(input: ConversationOrchestratorV3DecisionInput): Promise<ConversationOrchestratorV3Suggestion>;
+  suggestWithMetadata?(input: ConversationOrchestratorV3DecisionInput): Promise<{
+    suggestion: ConversationOrchestratorV3Suggestion;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }>;
   extractEvent?(input: ConversationOrchestratorV3DecisionInput): Promise<SupervisorEvent>;
+  extractEventWithMetadata?(input: ConversationOrchestratorV3DecisionInput): Promise<{
+    event: SupervisorEvent;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }>;
   requestDomainReads?(input: ConversationOrchestratorV3DecisionInput): Promise<readonly SupervisorReadDomain[]>;
   deriveDecisionLineage?(input: ConversationOrchestratorV3DecisionInput): SupervisorDecisionLineage | null;
   getLastLlmRunMetadata?(): ConversationOrchestratorV3LlmNodeRunMetadata | null;
@@ -361,7 +370,8 @@ export class ConversationOrchestratorV3RuntimeService {
       supervisorDecisionLineage = this.dependencies.supervisor.deriveDecisionLineage?.(
         supervisorSuggestInput,
       ) ?? null;
-      suggestion = await this.dependencies.supervisor.suggest(supervisorSuggestInput);
+      const supervisorSuggestionResult = await this.runSupervisorSuggest(supervisorSuggestInput);
+      suggestion = supervisorSuggestionResult.suggestion;
       supervisorReplayLineage = this.buildSupervisorReplayLineage(
         supervisorReadDomainCollection,
         supervisorDecisionLineage,
@@ -372,7 +382,7 @@ export class ConversationOrchestratorV3RuntimeService {
         status: 'completed',
         latencyMs: this.elapsedSince(supervisorStartedAt),
         ...(supervisorReplayLineage ? { replayLineage: supervisorReplayLineage } : {}),
-        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor, supervisorSuggestionResult.llmRunMetadata),
       });
     } catch (error) {
       const supervisorFailureReplayLineage = this.buildSupervisorReplayLineage(
@@ -649,7 +659,8 @@ export class ConversationOrchestratorV3RuntimeService {
 
     let event: SupervisorEvent;
     try {
-      event = await this.dependencies.supervisor.extractEvent!(supervisorInput);
+      const supervisorEventResult = await this.runSupervisorExtractEvent(supervisorInput);
+      event = supervisorEventResult.event;
       this.emitNodeEvent(normalizedInput, {
         node: 'Supervisor',
         action: 'extractEvent',
@@ -658,7 +669,7 @@ export class ConversationOrchestratorV3RuntimeService {
         eventType: event.eventType,
         eventSource: event.source,
         confidence: event.confidence,
-        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor, supervisorEventResult.llmRunMetadata),
       });
       this.emitNodeEvent(normalizedInput, {
         node: 'EventExtractionSummary',
@@ -668,7 +679,7 @@ export class ConversationOrchestratorV3RuntimeService {
         eventType: event.eventType,
         eventSource: event.source,
         confidence: event.confidence,
-        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor, supervisorEventResult.llmRunMetadata),
       });
     } catch (error) {
       this.emitNodeEvent(normalizedInput, {
@@ -1383,12 +1394,47 @@ export class ConversationOrchestratorV3RuntimeService {
     return Math.max(0, this.now() - startAt);
   }
 
+  private async runSupervisorSuggest(
+    input: ConversationOrchestratorV3DecisionInput,
+  ): Promise<{
+    suggestion: ConversationOrchestratorV3Suggestion;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }> {
+    if (this.dependencies.supervisor.suggestWithMetadata) {
+      return this.dependencies.supervisor.suggestWithMetadata(input);
+    }
+
+    return {
+      suggestion: await this.dependencies.supervisor.suggest(input),
+      llmRunMetadata: this.dependencies.supervisor.getLastLlmRunMetadata?.() ?? null,
+    };
+  }
+
+  private async runSupervisorExtractEvent(
+    input: ConversationOrchestratorV3DecisionInput,
+  ): Promise<{
+    event: SupervisorEvent;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }> {
+    if (this.dependencies.supervisor.extractEventWithMetadata) {
+      return this.dependencies.supervisor.extractEventWithMetadata(input);
+    }
+
+    return {
+      event: await this.dependencies.supervisor.extractEvent!(input),
+      llmRunMetadata: this.dependencies.supervisor.getLastLlmRunMetadata?.() ?? null,
+    };
+  }
+
   private resolveLlmNodeMetadata(
     node:
       | ConversationOrchestratorV3Supervisor
       | ConversationOrchestratorV3AgentExecutor,
+    overrideMetadata?: ConversationOrchestratorV3LlmNodeRunMetadata | null,
   ): ConversationOrchestratorV3LlmNodeRunMetadata {
-    const metadata = node.getLastLlmRunMetadata?.();
+    const metadata = overrideMetadata === undefined
+      ? node.getLastLlmRunMetadata?.()
+      : overrideMetadata;
     if (!metadata) {
       return {};
     }
@@ -1402,6 +1448,7 @@ export class ConversationOrchestratorV3RuntimeService {
       ...(typeof metadata.schemaValidationFailed === 'boolean'
         ? { schemaValidationFailed: metadata.schemaValidationFailed }
         : {}),
+      ...filterLlmFailureMetadata(metadata),
     };
   }
 
@@ -1410,6 +1457,25 @@ export class ConversationOrchestratorV3RuntimeService {
   ): Extract<ChatbotV3RuntimeNodeStatus, 'failed' | 'timeout'> {
     return code === 'TIMEOUT' ? 'timeout' : 'failed';
   }
+}
+
+function filterLlmFailureMetadata(
+  metadata: ChatbotV3LlmFailureMetadata,
+): ChatbotV3LlmFailureMetadata {
+  return {
+    ...(metadata.llmFailurePhase ? { llmFailurePhase: metadata.llmFailurePhase } : {}),
+    ...(metadata.llmErrorName ? { llmErrorName: metadata.llmErrorName } : {}),
+    ...(metadata.llmErrorMessage ? { llmErrorMessage: metadata.llmErrorMessage } : {}),
+    ...(typeof metadata.llmHttpStatus === 'number'
+      ? { llmHttpStatus: metadata.llmHttpStatus }
+      : {}),
+    ...(typeof metadata.llmResponseContentLength === 'number'
+      ? { llmResponseContentLength: metadata.llmResponseContentLength }
+      : {}),
+    ...(typeof metadata.llmResponseContentStartsWithBrace === 'boolean'
+      ? { llmResponseContentStartsWithBrace: metadata.llmResponseContentStartsWithBrace }
+      : {}),
+  };
 }
 
 function normalizeBootstrapSignals(

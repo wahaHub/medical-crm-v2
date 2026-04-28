@@ -87,6 +87,10 @@ function normalizeMinimalTriageStatus(
     return 'submitted';
   }
 
+  if (snapshot.minimalTriageComplete === true) {
+    return 'submitted';
+  }
+
   return 'not_started';
 }
 

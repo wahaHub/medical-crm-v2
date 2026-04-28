@@ -184,6 +184,30 @@ describe('JourneyRuntimeAuthorityService', () => {
     });
   });
 
+  it('honors raw legacy minimalTriageComplete truth when structured status is absent', () => {
+    const decision = service.decide(createInput({
+      proposal: {
+        intent: 'progression',
+        suggestedStage: 'RECOMMENDATION',
+        dispatchAgent: 'RecommendationAgent',
+        reason: 'legacy completion truth should allow recommendation',
+      },
+      statusSnapshot: {
+        minimalTriageComplete: true,
+      },
+      facts: {
+        'records.minimal_triage.complete': false,
+      },
+    }));
+
+    expect(decision.outcome).toBe('ALLOW');
+    expect(decision.action).toBe('ADVANCE');
+    expect(decision.dispatch).toEqual({
+      outcome: 'ALLOW',
+      agent: 'RecommendationAgent',
+    });
+  });
+
   it('normalizes mismatched proposal workers back to the canonical stage dispatch agent', () => {
     const decision = service.decide(createInput({
       proposal: {

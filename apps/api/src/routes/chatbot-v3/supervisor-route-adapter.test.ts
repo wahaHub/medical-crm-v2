@@ -117,7 +117,8 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
       model: 'gpt-4o-mini',
     });
 
-    await expect(adapter?.run(gatewayInput)).resolves.toEqual({
+    const result = await adapter?.runWithLlmMetadata(gatewayInput);
+    expect(result?.output).toEqual({
       eventType: 'USER_MESSAGE_UNCLEAR',
       target: 'unknown',
       modifier: 'unknown',
@@ -128,6 +129,56 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
       },
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves final response-content failure metadata on fallback', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'not json',
+            },
+          }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'still not json',
+            },
+          }],
+        }),
+      });
+
+    const adapter = createChatbotV3SupervisorRouteAdapter({
+      enabled: true,
+      apiKey: 'test-openai-key',
+      fetchImpl: fetchImpl as typeof fetch,
+      model: 'gpt-4o-mini',
+    });
+
+    const result = await adapter?.runWithLlmMetadata(gatewayInput);
+    expect(result?.output).toEqual({
+      eventType: 'USER_MESSAGE_UNCLEAR',
+      target: 'unknown',
+      modifier: 'unknown',
+      confidence: 0,
+      source: 'fallback_unknown',
+      metadata: {
+        rawText: 'supervisor route llm returned invalid SupervisorEvent schema',
+      },
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result?.llmRunMetadata).toEqual(expect.objectContaining({
+      llmFailurePhase: 'response_content',
+      llmErrorName: 'NonJsonContentError',
+      llmResponseContentLength: 'still not json'.length,
+      llmResponseContentStartsWithBrace: false,
+    }));
   });
 
   it('retries once before falling back when the first structured output is invalid', async () => {

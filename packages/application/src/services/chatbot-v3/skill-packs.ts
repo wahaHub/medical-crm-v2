@@ -153,6 +153,48 @@ export type LoadedSkillPack = SkillPackDefinition & {
 
 const appliesToAll: SkillSectionApplicability = {};
 
+function legacySkill(id: LegacySkillPackId, kind: SkillKind, description: string): LegacySkillPackDefinition {
+  return { id, kind, description };
+}
+
+export const LEGACY_SKILL_PACK_REGISTRY: Record<LegacySkillPackId, LegacySkillPackDefinition> = {
+  clarify_ambiguous_reply: legacySkill('clarify_ambiguous_reply', 'degradation_policy', 'Clarify vague replies without advancing the journey.'),
+  service_scope_boundary: legacySkill('service_scope_boundary', 'boundary_policy', 'Explain Medora service boundaries and redirect to supported medical travel workflows.'),
+  medical_safety_boundary: legacySkill('medical_safety_boundary', 'boundary_policy', 'Avoid diagnosis, treatment decisions, medication advice, and outcome guarantees.'),
+  safe_degradation_when_uncertain: legacySkill('safe_degradation_when_uncertain', 'degradation_policy', 'Use a conservative fallback when skill routing or data is incomplete.'),
+  search_general_faq_by_category: legacySkill('search_general_faq_by_category', 'retrieval_strategy', 'Plan retrieval from admin FAQ categories.'),
+  answer_general_faq_from_admin_source: legacySkill('answer_general_faq_from_admin_source', 'retrieval_strategy', 'Ground FAQ answers in admin-maintained general FAQ content.'),
+  search_hospital_faq_by_category: legacySkill('search_hospital_faq_by_category', 'retrieval_strategy', 'Plan retrieval from admin hospital FAQ categories.'),
+  answer_hospital_faq_from_admin_source: legacySkill('answer_hospital_faq_from_admin_source', 'retrieval_strategy', 'Ground hospital answers in admin-maintained hospital FAQ content.'),
+  load_medora_service_scope: legacySkill('load_medora_service_scope', 'retrieval_strategy', 'Load static Medora service scope guidance.'),
+  load_pricing_factors: legacySkill('load_pricing_factors', 'retrieval_strategy', 'Load pricing-factor guidance without quoting fixed prices.'),
+  load_process_policy: legacySkill('load_process_policy', 'retrieval_strategy', 'Load process policy and journey explanation guidance.'),
+  load_travel_support_scope: legacySkill('load_travel_support_scope', 'retrieval_strategy', 'Load travel support scope for treatment-related logistics.'),
+  load_payment_policy: legacySkill('load_payment_policy', 'retrieval_strategy', 'Load payment policy guidance.'),
+  load_records_requirement_data: legacySkill('load_records_requirement_data', 'retrieval_strategy', 'Load records and document requirement guidance.'),
+  search_hospital_candidates: legacySkill('search_hospital_candidates', 'retrieval_strategy', 'Plan hospital candidate search.'),
+  search_doctor_matching_context: legacySkill('search_doctor_matching_context', 'retrieval_strategy', 'Plan doctor matching context search.'),
+  load_consult_readiness_criteria: legacySkill('load_consult_readiness_criteria', 'retrieval_strategy', 'Load online consult readiness criteria.'),
+  extract_medical_facts_candidate: legacySkill('extract_medical_facts_candidate', 'extraction_strategy', 'Extract candidate medical facts for runtime-authority review.'),
+  derive_record_inventory_candidate: legacySkill('derive_record_inventory_candidate', 'extraction_strategy', 'Derive candidate record inventory from upload or message context.'),
+  extract_contact_info_candidate: legacySkill('extract_contact_info_candidate', 'extraction_strategy', 'Extract candidate phone, email, WeChat, or other contact handles.'),
+  build_handoff_payload_context: legacySkill('build_handoff_payload_context', 'payload_strategy', 'Build handoff payload context for runtime-controlled escalation.'),
+  explain_pricing_uncertainty: legacySkill('explain_pricing_uncertainty', 'explanation_method', 'Explain why pricing depends on records, hospital, and treatment plan.'),
+  explain_medora_process: legacySkill('explain_medora_process', 'explanation_method', 'Explain Medora process and next steps.'),
+  explain_records_preparation: legacySkill('explain_records_preparation', 'explanation_method', 'Explain medical record preparation and upload expectations.'),
+  explain_online_consult: legacySkill('explain_online_consult', 'explanation_method', 'Explain online consultation purpose and readiness.'),
+  explain_travel_or_payment_scope: legacySkill('explain_travel_or_payment_scope', 'explanation_method', 'Explain treatment-related travel or payment support scope.'),
+  handle_price_objection: legacySkill('handle_price_objection', 'sales_playbook', 'Handle price hesitation with a lower-friction records-first next step.'),
+  handle_document_hesitation: legacySkill('handle_document_hesitation', 'sales_playbook', 'Handle hesitation to upload records without pressure.'),
+  handle_contact_hesitation: legacySkill('handle_contact_hesitation', 'sales_playbook', 'Handle reluctance to leave contact information.'),
+  low_friction_alternative_step: legacySkill('low_friction_alternative_step', 'sales_playbook', 'Offer a smaller next step when the user hesitates.'),
+  trust_building_for_medical_travel: legacySkill('trust_building_for_medical_travel', 'sales_playbook', 'Build trust for international medical travel decisions.'),
+  soft_human_handoff: legacySkill('soft_human_handoff', 'sales_playbook', 'Offer human coordinator support without overpromising.'),
+  revisit_recommendation_step: legacySkill('revisit_recommendation_step', 'sales_playbook', 'Handle recommendation revisit requests.'),
+  compare_recommendation_options: legacySkill('compare_recommendation_options', 'explanation_method', 'Compare recommendation options.'),
+  explain_hospital_selection_logic: legacySkill('explain_hospital_selection_logic', 'explanation_method', 'Explain hospital selection logic.'),
+};
+
 export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
   pricing_skill: {
     id: 'pricing_skill',
@@ -440,4 +482,7 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
   },
 };
 
-export const SKILL_PACK_REGISTRY = DOMAIN_SKILL_REGISTRY as Record<SkillPackId, SkillPackDefinition>;
+export const SKILL_PACK_REGISTRY = {
+  ...LEGACY_SKILL_PACK_REGISTRY,
+  ...DOMAIN_SKILL_REGISTRY,
+} satisfies Record<SkillPackId, SkillPackDefinition>;

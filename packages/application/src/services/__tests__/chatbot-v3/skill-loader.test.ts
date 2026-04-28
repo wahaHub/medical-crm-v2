@@ -64,4 +64,44 @@ describe('loadSkillPacks', () => {
     ]);
     expect(loaded.warnings).toEqual([]);
   });
+
+  it('loads legacy skill ids with their legacy metadata for untouched consumers', () => {
+    const loaded = loadSkillPacks({
+      requests: [
+        { skillPackId: 'search_general_faq_by_category', reasonCode: 'faq' },
+      ],
+      maxSkillSnippets: 6,
+    });
+
+    expect(loaded.skillPacks).toEqual([
+      expect.objectContaining({
+        id: 'search_general_faq_by_category',
+        kind: 'retrieval_strategy',
+        description: expect.any(String),
+        reasonCodes: ['faq'],
+      }),
+    ]);
+    expect(loaded.skillPacks[0]?.description).not.toBe('');
+    expect(loaded.warnings).toEqual([]);
+  });
+
+  it('falls back from unknown ids to a valid legacy safe degradation skill', () => {
+    const loaded = loadSkillPacks({
+      requests: [
+        { skillPackId: 'missing_skill' as any, reasonCode: 'bad' },
+      ],
+      maxSkillSnippets: 6,
+    });
+
+    expect(loaded.skillPacks).toEqual([
+      expect.objectContaining({
+        id: 'safe_degradation_when_uncertain',
+        kind: 'degradation_policy',
+        description: expect.any(String),
+        reasonCodes: ['bad'],
+      }),
+    ]);
+    expect(loaded.skillPacks[0]?.description).not.toBe('');
+    expect(loaded.warnings).toContain('unknown skill pack: missing_skill');
+  });
 });

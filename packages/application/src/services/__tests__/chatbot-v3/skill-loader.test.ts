@@ -50,6 +50,36 @@ describe('SKILL_PACK_REGISTRY', () => {
 });
 
 describe('loadSkillPacks', () => {
+  it('loads domain skill request objects emitted by the router', () => {
+    const loaded = loadSkillPacks({
+      requests: [
+        {
+          skillId: 'pricing_skill',
+          role: 'primary',
+          reasonCode: 'answer_pricing_question',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'pricing',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+      maxSkillSnippets: 6,
+    });
+
+    expect(loaded.skillPacks).toEqual([
+      expect.objectContaining({
+        id: 'pricing_skill',
+        target: 'pricing',
+        description: expect.any(String),
+        reasonCodes: ['answer_pricing_question'],
+      }),
+    ]);
+    expect(loaded.skillPacks[0]).toHaveProperty('policySections');
+    expect(loaded.warnings).toEqual([]);
+  });
+
   it('loads code-defined domain skills from the in-memory registry only', () => {
     const loaded = loadSkillPacks({
       requests: [

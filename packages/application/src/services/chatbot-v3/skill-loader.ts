@@ -1,12 +1,13 @@
 import {
   SKILL_LOADER_REGISTRY,
+  type DomainSkillRequest,
   type LoadedSkillPack,
   type SkillPackId,
   type SkillRequest,
 } from './skill-packs.js';
 
 export interface LoadSkillPacksInput {
-  requests: readonly SkillRequest[];
+  requests: readonly (DomainSkillRequest | SkillRequest)[];
   maxSkillSnippets?: number;
 }
 
@@ -21,13 +22,14 @@ export function loadSkillPacks(input: LoadSkillPacksInput): LoadedSkillPolicy {
   const warnings: string[] = [];
 
   for (const request of input.requests) {
-    if (!Object.hasOwn(SKILL_LOADER_REGISTRY, request.skillPackId)) {
-      warnings.push(`unknown skill pack: ${request.skillPackId}`);
+    const skillPackId = 'skillId' in request ? request.skillId : request.skillPackId;
+    if (!Object.hasOwn(SKILL_LOADER_REGISTRY, skillPackId)) {
+      warnings.push(`unknown skill pack: ${skillPackId}`);
       addRequest(requestsBySkill, 'safe_degradation_when_uncertain', request.reasonCode);
       continue;
     }
 
-    addRequest(requestsBySkill, request.skillPackId, request.reasonCode);
+    addRequest(requestsBySkill, skillPackId, request.reasonCode);
   }
 
   const skillPacks = [...requestsBySkill.entries()]

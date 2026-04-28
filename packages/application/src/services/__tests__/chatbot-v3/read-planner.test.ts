@@ -49,6 +49,7 @@ describe('buildReadPlan', () => {
       role: 'primary',
       reasonCode: `${skillId}_loaded`,
       sectionIds: [],
+      readIntentTypes: [],
       policyText: [],
       retrievalGuidance: [],
       handlingGuidance: [],
@@ -199,6 +200,31 @@ describe('buildReadPlan', () => {
     ]));
   });
 
+  it('plans doctor matching context from structured recommendation read intent types without prose signals', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'recommendation' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'hospital' } }),
+      loadedSkillSections: [
+        loadedSection('hospital_recommendation_skill', {
+          sectionIds: ['recommendation_sources'],
+          retrievalGuidance: [
+            'Use approved recommendation candidates and hospital context before comparing options.',
+          ],
+          readIntentTypes: [
+            'HOSPITAL_CANDIDATES',
+            'HOSPITAL_FAQ',
+            'DOCTOR_MATCHING_CONTEXT',
+          ],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toContainEqual({
+      type: 'DOCTOR_MATCHING_CONTEXT',
+      reasonCode: 'hospital_recommendation_skill:recommendation_sources',
+    });
+  });
+
   it('plans consult readiness from loaded consult sections', () => {
     const plan = buildReadPlan({
       event: event({ target: 'consult' }),
@@ -258,6 +284,21 @@ describe('buildReadPlan', () => {
     expect(plan.readIntents).toEqual([
       { type: 'PRICING_FACTORS', reasonCode: 'pricing_skill:pricing_sources' },
       { type: 'GENERAL_FAQ', category: 'pricing', reasonCode: 'pricing_skill:pricing_sources' },
+    ]);
+  });
+
+  it('falls back to legacy loaded skills when loaded skill sections are empty', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'hospital' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'hospital' } }),
+      loadedSkillSections: [],
+      loadedSkills: [
+        skill('search_doctor_matching_context'),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'DOCTOR_MATCHING_CONTEXT', reasonCode: 'search_doctor_matching_context' },
     ]);
   });
 });

@@ -34,7 +34,7 @@ export function buildReadPlan(input: BuildReadPlanInput): ReadPlan {
     }
   };
 
-  if (input.loadedSkillSections !== undefined) {
+  if (input.loadedSkillSections !== undefined && input.loadedSkillSections.length > 0) {
     for (const section of input.loadedSkillSections) {
       addReadIntentsForLoadedSection(add, section, input);
     }
@@ -57,6 +57,14 @@ function addReadIntentsForLoadedSection(
 ) {
   const reasonCode = resolveSectionReasonCode(section);
   const hasSignal = (...needles: string[]) => sectionHasSignal(section, needles);
+  const readIntentTypes = section.readIntentTypes ?? [];
+
+  if (readIntentTypes.length > 0) {
+    for (const readIntentType of readIntentTypes) {
+      addReadIntentForType(add, readIntentType, reasonCode, input);
+    }
+    return;
+  }
 
   switch (section.skillId) {
     case 'pricing_skill':
@@ -121,6 +129,51 @@ function addReadIntentsForLoadedSection(
   }
 }
 
+function addReadIntentForType(
+  add: (intent: ReadIntent) => void,
+  readIntentType: ReadIntent['type'],
+  reasonCode: string,
+  input: { event: SupervisorEvent; turnPlan: TurnPlan },
+) {
+  switch (readIntentType) {
+    case 'GENERAL_FAQ':
+      add({ type: 'GENERAL_FAQ', category: resolveGeneralFaqCategory(input.event, input.turnPlan), reasonCode });
+      return;
+    case 'HOSPITAL_FAQ':
+      add({ type: 'HOSPITAL_FAQ', category: resolveHospitalFaqCategory(input.event, input.turnPlan), reasonCode });
+      return;
+    case 'RECORD_REQUIREMENTS':
+      add({ type: 'RECORD_REQUIREMENTS', reasonCode });
+      return;
+    case 'HOSPITAL_CANDIDATES':
+      add({ type: 'HOSPITAL_CANDIDATES', reasonCode });
+      return;
+    case 'DOCTOR_MATCHING_CONTEXT':
+      add({ type: 'DOCTOR_MATCHING_CONTEXT', reasonCode });
+      return;
+    case 'CONSULT_READINESS':
+      add({ type: 'CONSULT_READINESS', reasonCode });
+      return;
+    case 'SERVICE_SCOPE':
+      add({ type: 'SERVICE_SCOPE', reasonCode });
+      return;
+    case 'PRICING_FACTORS':
+      add({ type: 'PRICING_FACTORS', reasonCode });
+      return;
+    case 'PROCESS_POLICY':
+      add({ type: 'PROCESS_POLICY', reasonCode });
+      return;
+    case 'TRAVEL_SUPPORT_SCOPE':
+      add({ type: 'TRAVEL_SUPPORT_SCOPE', reasonCode });
+      return;
+    case 'PAYMENT_POLICY':
+      add({ type: 'PAYMENT_POLICY', reasonCode });
+      return;
+    default:
+      assertNeverReadIntentType(readIntentType);
+  }
+}
+
 function resolveSectionReasonCode(section: LoadedSkillSection): string {
   const sectionId = section.sectionIds.length > 0
     ? section.sectionIds.join('+')
@@ -139,6 +192,10 @@ function sectionHasSignal(section: LoadedSkillSection, needles: readonly string[
 
 function assertNeverDomainSkill(skillId: never): never {
   throw new Error(`Unhandled domain skill: ${String(skillId)}`);
+}
+
+function assertNeverReadIntentType(readIntentType: never): never {
+  throw new Error(`Unhandled read intent type: ${String(readIntentType)}`);
 }
 
 function addReadIntentForSkill(

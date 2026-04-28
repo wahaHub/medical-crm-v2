@@ -259,10 +259,17 @@ function loadSingleSkillSection(
       ...retrievalSections.map((section) => section.id),
       ...handlingSectionIds,
     ],
+    readIntentTypes: uniqueReadIntentTypes(
+      retrievalSections.flatMap((section) => section.readIntentTypes),
+    ),
     policyText: policySections.map((section) => section.text),
     retrievalGuidance: retrievalSections.map((section) => section.searchGuidance),
     handlingGuidance,
   };
+}
+
+function uniqueReadIntentTypes(readIntentTypes: readonly LoadedSkillSection['readIntentTypes'][number][]): LoadedSkillSection['readIntentTypes'] {
+  return [...new Set(readIntentTypes)];
 }
 
 function appliesToHints(

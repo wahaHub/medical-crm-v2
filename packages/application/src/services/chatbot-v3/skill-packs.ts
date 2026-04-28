@@ -90,6 +90,7 @@ export interface LoadedSkillSection {
   role: DomainSkillRequest['role'];
   reasonCode: string;
   sectionIds: string[];
+  readIntentTypes: ReadIntent['type'][];
   policyText: string[];
   retrievalGuidance: string[];
   handlingGuidance: string[];

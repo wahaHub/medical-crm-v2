@@ -253,6 +253,31 @@ describe('loadSkillSections', () => {
     ]);
   });
 
+  it('exposes structured read intent types from matching retrieval sections', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'hospital_recommendation_skill',
+          role: 'primary',
+          reasonCode: 'recommend_hospital',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'recommendation',
+            modifier: 'ask',
+            primaryActionType: 'PRESENT_OPTIONS',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections[0]?.sectionIds).toContain('recommendation_sources');
+    expect(loaded.skillSections[0]?.readIntentTypes).toEqual([
+      'HOSPITAL_CANDIDATES',
+      'HOSPITAL_FAQ',
+      'DOCTOR_MATCHING_CONTEXT',
+    ]);
+  });
+
   it('makes unknown domain skill fallback observable and uses clarification recovery for ambiguous unknowns', () => {
     const loaded = loadSkillSections({
       requests: [

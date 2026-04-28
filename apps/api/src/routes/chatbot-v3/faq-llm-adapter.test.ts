@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FaqAgent } from './agents.js';
 import { FaqLlmAdapter } from './faq-llm-adapter.js';
+import { buildFaqAnswerPrompt, buildFaqPlanPrompt } from './faq-prompts.js';
 import { createToolGateway } from './tool-gateway.js';
-import type { FaqWorkerTask } from './worker-task.js';
+import { resolveFaqTaskPolicy, type FaqWorkerTask } from './worker-task.js';
 import {
   FAQ_ANSWER_EVAL_FIXTURES,
 } from './__fixtures__/degraded-path.fixtures.js';
@@ -113,6 +114,143 @@ describe('FaqLlmAdapter', () => {
       fallbackUsed: fixture.expectedMetadata.fallbackUsed,
       schemaValidationFailed: fixture.expectedMetadata.schemaValidationFailed,
     });
+  });
+
+  it('passes safety redirect task rules through FAQ prompts', () => {
+    const task: FaqWorkerTask = {
+      ...createFaqTask('能不能保证治好？'),
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'medical_facts', reasonCode: 'medical_safety' },
+      }),
+    };
+
+    expect(buildFaqPlanPrompt({ task })).toContain('response_mode=safe_medical_redirect');
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'guarantee outcome', reason: 'safety redirect' },
+      matches: [],
+      details: [],
+    })).toContain('output_rules=do_not_diagnose, do_not_recommend_medication, do_not_guarantee_outcome, mention_emergency_care_when_urgent, ask_one_safe_next_step');
+  });
+
+  it('falls back with business-boundary redirect copy for out-of-scope tasks without FAQ matches', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('你们能不能帮我办美国绿卡？'),
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'unknown', reasonCode: 'out_of_scope' },
+      }),
+    };
+
+    await expect(adapter.answer({
+      task,
+      plan: { query: 'US green card', reason: 'out of scope redirect' },
+      matches: [],
+      details: [],
+    })).resolves.toEqual({
+      answer: expect.stringContaining('Medora'),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    });
+    expect(task.outputRules).toEqual(expect.arrayContaining([
+      'do_not_claim_we_can_help_with_unsupported_service',
+      'preserve_primary_stage',
+    ]));
+  });
+
+  it('keeps redirect policy ahead of FAQ match fallback copy', async () => {
+    const adapter = new FaqLlmAdapter({
+      answer: {
+        promptVersion: 'faq-answer-invalid',
+        run: vi.fn(async () => ({
+          answer: 123,
+          citedFaqIds: [],
+          confidence: 'high',
+        })),
+      },
+    });
+    const task: FaqWorkerTask = {
+      ...createFaqTask('能不能保证治好？'),
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'medical_facts', reasonCode: 'medical_safety' },
+      }),
+    };
+
+    await expect(adapter.answer({
+      task,
+      plan: { query: 'guarantee outcome', reason: 'safety redirect' },
+      matches: [{
+        id: 'faq-normal-1',
+        question: 'Can you explain the service process?',
+        answer: 'First we collect records, then recommend hospitals.',
+        category: 'process',
+      }],
+      details: [],
+    })).resolves.toEqual({
+      answer: expect.stringContaining('cannot diagnose'),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    });
+  });
+
+  it('passes rejection and hesitation task rules through FAQ prompts', () => {
+    const task: FaqWorkerTask = {
+      ...createFaqTask('太贵了，我先考虑一下'),
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'HANDLE_RESPONSE', target: 'pricing', modifier: 'hesitate' },
+      }),
+    };
+
+    expect(buildFaqPlanPrompt({ task })).toContain('response_mode=rejection_or_hesitation');
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'hesitation', reason: 'rejection side path' },
+      matches: [],
+      details: [],
+    })).toContain('output_rules=acknowledge_without_pressure, preserve_primary_stage, offer_one_lower_friction_next_step');
+  });
+
+  it('passes turn plan skill context through FAQ prompts', () => {
+    const task: FaqWorkerTask = {
+      ...createFaqTask('How long does online consultation usually take to schedule?'),
+      primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' },
+      followUpAction: {
+        type: 'GO_DEEP',
+        target: 'consult',
+        reasonCode: 'user_requested_more_detail',
+      },
+      allowedSkillPacks: [
+        'search_general_faq_by_category',
+        'answer_general_faq_from_admin_source',
+        'load_consult_readiness_criteria',
+      ],
+      readIntents: ['GENERAL_FAQ:consult', 'CONSULT_READINESS'],
+      responseContract: {
+        structure: 'answer_then_advance',
+        primaryMove: 'answer',
+        followUpMove: 'go_deep',
+        constraints: {
+          maxQuestions: 1,
+          preservePrimaryStage: false,
+          answerBeforeAsk: true,
+          avoidMultipleCTAs: true,
+          language: 'zh',
+          tone: 'warm_professional',
+        },
+        safetyRules: [],
+      },
+    };
+
+    expect(buildFaqPlanPrompt({ task })).toContain('allowed_skill_packs=search_general_faq_by_category, answer_general_faq_from_admin_source, load_consult_readiness_criteria');
+    expect(buildFaqPlanPrompt({ task })).toContain('read_intents=GENERAL_FAQ:consult, CONSULT_READINESS');
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'consult timing', reason: 'consult faq' },
+      matches: [],
+      details: [],
+    })).toContain('"followUpMove":"go_deep"');
   });
 });
 

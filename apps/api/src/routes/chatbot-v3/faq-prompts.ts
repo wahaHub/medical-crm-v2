@@ -12,6 +12,16 @@ export function buildFaqPlanPrompt(input: FaqPlanInput): string {
     `to_stage=${input.task.toStage}`,
     `intent=${input.task.intent ?? 'unknown'}`,
     `supervisor_reason=${input.task.supervisorReason ?? 'none'}`,
+    `response_mode=${input.task.responseMode ?? 'standard'}`,
+    `safety_risk_type=${input.task.safetyRiskType ?? 'none'}`,
+    `redirect_target=${input.task.redirectTarget ?? 'none'}`,
+    `business_scope=${input.task.businessScope?.join(', ') ?? 'none'}`,
+    `output_rules=${input.task.outputRules?.join(', ') ?? 'none'}`,
+    `primary_action=${stringifyTaskField(input.task.primaryAction)}`,
+    `follow_up_action=${stringifyTaskField(input.task.followUpAction)}`,
+    `allowed_skill_packs=${input.task.allowedSkillPacks?.join(', ') ?? 'none'}`,
+    `read_intents=${input.task.readIntents?.join(', ') ?? 'none'}`,
+    `response_contract=${stringifyTaskField(input.task.responseContract)}`,
     `latest_user_message=${input.task.latestUserMessage}`,
   ].join('\n');
 }
@@ -25,10 +35,24 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
     `to_stage=${input.task.toStage}`,
     `intent=${input.task.intent ?? 'unknown'}`,
     `supervisor_reason=${input.task.supervisorReason ?? 'none'}`,
+    `response_mode=${input.task.responseMode ?? 'standard'}`,
+    `safety_risk_type=${input.task.safetyRiskType ?? 'none'}`,
+    `redirect_target=${input.task.redirectTarget ?? 'none'}`,
+    `business_scope=${input.task.businessScope?.join(', ') ?? 'none'}`,
+    `output_rules=${input.task.outputRules?.join(', ') ?? 'none'}`,
+    `primary_action=${stringifyTaskField(input.task.primaryAction)}`,
+    `follow_up_action=${stringifyTaskField(input.task.followUpAction)}`,
+    `allowed_skill_packs=${input.task.allowedSkillPacks?.join(', ') ?? 'none'}`,
+    `read_intents=${input.task.readIntents?.join(', ') ?? 'none'}`,
+    `response_contract=${stringifyTaskField(input.task.responseContract)}`,
     `latest_user_message=${input.task.latestUserMessage}`,
     `plan_query=${input.plan.query}`,
     `plan_category=${input.plan.category ?? 'none'}`,
     `match_ids=${input.matches.map((match) => match.id).join(',') || 'none'}`,
     `detail_ids=${input.details.map((detail) => detail.id).join(',') || 'none'}`,
   ].join('\n');
+}
+
+function stringifyTaskField(value: unknown): string {
+  return value === undefined ? 'none' : JSON.stringify(value);
 }

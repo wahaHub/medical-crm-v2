@@ -8,19 +8,35 @@ import type {
 import {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
   type ChatbotV3ConversationSummaryContract,
+  type ChatbotV3FaqResolution,
   type ChatbotV3ReplayLineage,
+  buildAgentTask,
+  buildReadPlan,
+  buildSkillPolicy,
+  loadSkillPacks,
   type MinimalIntakeSeed,
+  type NextAction,
+  type PrimaryAction,
+  type ReadPlan,
+  normalizeFactsFromStatusSnapshot,
+  projectLegacyCompatibilityView,
+  reduceJourney,
+  resolveAgent,
+  type AgentTask,
+  type ResolvedAgent,
   type SupervisorDecisionLineage,
   type SupervisorDomainReadResults,
+  type SupervisorEvent,
   type SupervisorReadDomain,
+  type TurnPlan,
 } from '@medical-crm/application';
-import type { ChatbotV3FaqResolution } from '../../../../packages/application/src/services/chatbot-v3/types.js';
 import type { AgentAction, AgentName } from './agents.js';
 import { buildAssistantText, buildEffectiveStatusSnapshot } from './response-composer.js';
 import {
   AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP,
   deriveCanonicalTruthFlagsFromStatusSnapshot,
   deriveCanonicalTruthTruePatchFromStatusSnapshot,
+  normalizeSupportingDocuments,
 } from '@medical-crm/domain';
 import type {
   FaqWorkerTask,
@@ -29,11 +45,13 @@ import type {
   RecordsWorkerTask,
   WorkerTask,
 } from './worker-task.js';
+import { resolveFaqTaskPolicy } from './worker-task.js';
 import type {
   ChatbotV3RuntimeNodeEventEmitter,
   ChatbotV3RuntimeNodeEventInput,
   ChatbotV3RuntimeNodeStatus,
 } from './observability.js';
+import type { ChatbotV3LlmFailureMetadata } from './llm-route-error.js';
 import type {
   StatusQueryOutput,
   ToolErrorCode,
@@ -124,13 +142,30 @@ export interface ConversationOrchestratorV3WriteIntents {
 }
 
 export interface ConversationOrchestratorV3RenderState {
-  path: 'PROCESS_OVERVIEW' | 'FAQ_ANSWER' | 'FAQ_MISS' | 'STAGE_GUIDANCE';
+  path:
+    | 'PROCESS_OVERVIEW'
+    | 'FAQ_ANSWER'
+    | 'FAQ_MISS'
+    | 'SAFE_MEDICAL_REDIRECT'
+    | 'OUT_OF_SCOPE_REDIRECT'
+    | 'STAGE_GUIDANCE';
 }
 
 export interface ConversationOrchestratorV3Decision {
   action: 'STAY' | 'ADVANCE' | 'SKIP' | 'HANDOFF';
   from: ConversationOrchestratorV3StageRef;
   to: ConversationOrchestratorV3StageRef;
+  primaryAction?: PrimaryAction;
+  turnPlan?: TurnPlan;
+  resolvedAgent?: ResolvedAgent;
+  readPlan?: ReadPlan;
+  agentTask?: AgentTask;
+  skillWarnings?: string[];
+  /**
+   * Legacy debug/worker-bridge label. Runtime authority must use primaryAction
+   * and turnPlan as the control-plane truth.
+   */
+  nextAction?: NextAction;
   dispatchAgent?: AgentName | null;
   dispatchSource: 'journey-runtime-authority';
   matchedRuleId?: string;
@@ -199,7 +234,7 @@ interface ConversationOrchestratorV3NormalizedTurnInput extends ConversationOrch
   normalizedActionStatusPatch?: Partial<AiChatStatusSnapshot>;
 }
 
-export interface ConversationOrchestratorV3LlmNodeRunMetadata {
+export interface ConversationOrchestratorV3LlmNodeRunMetadata extends ChatbotV3LlmFailureMetadata {
   nodePromptVersion?: string;
   nodeModel?: string;
   fallbackUsed?: boolean;
@@ -212,6 +247,15 @@ export interface ConversationOrchestratorV3IdempotencyExecutor {
 
 export interface ConversationOrchestratorV3Supervisor {
   suggest(input: ConversationOrchestratorV3DecisionInput): Promise<ConversationOrchestratorV3Suggestion>;
+  suggestWithMetadata?(input: ConversationOrchestratorV3DecisionInput): Promise<{
+    suggestion: ConversationOrchestratorV3Suggestion;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }>;
+  extractEvent?(input: ConversationOrchestratorV3DecisionInput): Promise<SupervisorEvent>;
+  extractEventWithMetadata?(input: ConversationOrchestratorV3DecisionInput): Promise<{
+    event: SupervisorEvent;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }>;
   requestDomainReads?(input: ConversationOrchestratorV3DecisionInput): Promise<readonly SupervisorReadDomain[]>;
   deriveDecisionLineage?(input: ConversationOrchestratorV3DecisionInput): SupervisorDecisionLineage | null;
   getLastLlmRunMetadata?(): ConversationOrchestratorV3LlmNodeRunMetadata | null;
@@ -292,6 +336,17 @@ export class ConversationOrchestratorV3RuntimeService {
     const turnStartedAt = this.now();
     const supervisorInput = this.buildSupervisorInput(normalizedInput);
     const decisionInput = this.buildDecisionInput(normalizedInput);
+
+    if (this.dependencies.supervisor.extractEvent) {
+      return this.runReducerTurnPipeline({
+        normalizedInput,
+        supervisorInput,
+        decisionInput,
+        idempotencyKey,
+        turnStartedAt,
+      });
+    }
+
     this.emitNodeEvent(normalizedInput, {
       node: 'Supervisor',
       action: 'suggest',
@@ -315,7 +370,8 @@ export class ConversationOrchestratorV3RuntimeService {
       supervisorDecisionLineage = this.dependencies.supervisor.deriveDecisionLineage?.(
         supervisorSuggestInput,
       ) ?? null;
-      suggestion = await this.dependencies.supervisor.suggest(supervisorSuggestInput);
+      const supervisorSuggestionResult = await this.runSupervisorSuggest(supervisorSuggestInput);
+      suggestion = supervisorSuggestionResult.suggestion;
       supervisorReplayLineage = this.buildSupervisorReplayLineage(
         supervisorReadDomainCollection,
         supervisorDecisionLineage,
@@ -326,7 +382,7 @@ export class ConversationOrchestratorV3RuntimeService {
         status: 'completed',
         latencyMs: this.elapsedSince(supervisorStartedAt),
         ...(supervisorReplayLineage ? { replayLineage: supervisorReplayLineage } : {}),
-        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor, supervisorSuggestionResult.llmRunMetadata),
       });
     } catch (error) {
       const supervisorFailureReplayLineage = this.buildSupervisorReplayLineage(
@@ -580,6 +636,440 @@ export class ConversationOrchestratorV3RuntimeService {
     }
   }
 
+  private async runReducerTurnPipeline({
+    normalizedInput,
+    supervisorInput,
+    decisionInput,
+    idempotencyKey,
+    turnStartedAt,
+  }: {
+    normalizedInput: ConversationOrchestratorV3NormalizedTurnInput;
+    supervisorInput: ConversationOrchestratorV3DecisionInput;
+    decisionInput: ConversationOrchestratorV3DecisionInput;
+    idempotencyKey: string;
+    turnStartedAt: number;
+  }): Promise<ConversationOrchestratorV3TurnResult> {
+    this.emitNodeEvent(normalizedInput, {
+      node: 'Supervisor',
+      action: 'extractEvent',
+      status: 'started',
+      latencyMs: 0,
+    });
+    const supervisorStartedAt = this.now();
+
+    let event: SupervisorEvent;
+    try {
+      const supervisorEventResult = await this.runSupervisorExtractEvent(supervisorInput);
+      event = supervisorEventResult.event;
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Supervisor',
+        action: 'extractEvent',
+        status: 'completed',
+        latencyMs: this.elapsedSince(supervisorStartedAt),
+        eventType: event.eventType,
+        eventSource: event.source,
+        confidence: event.confidence,
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor, supervisorEventResult.llmRunMetadata),
+      });
+      this.emitNodeEvent(normalizedInput, {
+        node: 'EventExtractionSummary',
+        action: 'event_extraction_summary',
+        status: 'completed',
+        latencyMs: this.elapsedSince(supervisorStartedAt),
+        eventType: event.eventType,
+        eventSource: event.source,
+        confidence: event.confidence,
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor, supervisorEventResult.llmRunMetadata),
+      });
+    } catch (error) {
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Supervisor',
+        action: 'extractEvent',
+        status: 'failed',
+        latencyMs: this.elapsedSince(supervisorStartedAt),
+        errorCode: 'UNKNOWN',
+        ...this.resolveLlmNodeMetadata(this.dependencies.supervisor),
+      });
+      throw error;
+    }
+
+    this.emitNodeEvent(normalizedInput, {
+      node: 'JourneyRuntimeAuthority',
+      action: 'reduce',
+      status: 'started',
+      latencyMs: 0,
+    });
+    const reducerStartedAt = this.now();
+    const reduction = reduceJourney({
+      state: {
+        primaryStage: decisionInput.current.stage,
+      },
+      facts: normalizeFactsFromStatusSnapshot(normalizedInput.statusSnapshot, {
+        intake: normalizedInput.intake,
+      }),
+      event,
+    });
+    const resolvedAgent = resolveAgent({
+      event,
+      turnPlan: reduction.turnPlan,
+      facts: reduction.facts,
+    });
+    const execution = resolveTurnPlanExecution(reduction.turnPlan, resolvedAgent);
+    const skillPolicy = buildSkillPolicy({
+      event,
+      turnPlan: reduction.turnPlan,
+      agentRole: resolvedAgent.conceptualRole,
+      facts: reduction.facts,
+    });
+    const loadedSkillPolicy = loadSkillPacks({
+      requests: skillPolicy.requests,
+      maxSkillSnippets: skillPolicy.maxSkillSnippets,
+    });
+    const readPlan = buildReadPlan({
+      event,
+      turnPlan: reduction.turnPlan,
+      loadedSkills: loadedSkillPolicy.skillPacks,
+    });
+    const agentTask = buildAgentTask({
+      event,
+      turnPlan: reduction.turnPlan,
+      resolvedAgent,
+      latestUserMessage: normalizedInput.message,
+      conversationSummary: normalizedInput.statusSnapshot?.conversationSummary ?? '',
+      knownFacts: reduction.facts,
+      loadedSkills: loadedSkillPolicy.skillPacks,
+      readPlan,
+    });
+    const compatibilityView = projectLegacyCompatibilityView({
+      currentStage: decisionInput.current.stage,
+      reduction,
+      execution,
+    });
+    const stateDiff = {
+      beforeStage: decisionInput.current.stage,
+      afterStage: reduction.primaryStage,
+      factsPatch: reduction.factsPatch,
+    };
+    this.emitNodeEvent(normalizedInput, {
+      node: 'JourneyReducer',
+      action: 'state_diff',
+      status: 'completed',
+      latencyMs: this.elapsedSince(reducerStartedAt),
+      eventType: event.eventType,
+      eventSource: event.source,
+      confidence: event.confidence,
+      primaryAction: reduction.turnPlan.primaryAction,
+      reasonCode: reduction.reasonCode,
+      stateDiff,
+      sidePath: reduction.isSidePath,
+      sidePathType: reduction.sidePathType,
+      primaryStagePreserved: reduction.primaryStagePreserved,
+      replayLineage: {
+        matchedRuleId: reduction.reasonCode,
+      },
+    });
+    this.emitNodeEvent(normalizedInput, {
+      node: 'NextActionResolver',
+      action: 'resolve',
+      status: 'completed',
+      latencyMs: this.elapsedSince(reducerStartedAt),
+      primaryAction: reduction.turnPlan.primaryAction,
+      reasonCode: reduction.reasonCode,
+      fromStage: decisionInput.current.stage,
+      toStage: reduction.primaryStage,
+      readPlan,
+      resolvedAgent,
+      skillWarnings: loadedSkillPolicy.warnings,
+    });
+    const projectionInvariantStatus = projectionMatchesReducer({
+      compatibilityView,
+      reduction,
+      execution,
+    }) ? 'completed' : 'failed';
+    this.emitNodeEvent(normalizedInput, {
+      node: 'Invariant',
+      action: 'projection_matches_reducer',
+      status: projectionInvariantStatus,
+      latencyMs: this.elapsedSince(reducerStartedAt),
+      invariantName: 'projection_matches_reducer',
+      primaryAction: reduction.turnPlan.primaryAction,
+      reasonCode: reduction.reasonCode,
+      fromStage: decisionInput.current.stage,
+      toStage: reduction.primaryStage,
+      ...(projectionInvariantStatus === 'failed' ? { errorCode: 'UNKNOWN' } : {}),
+    });
+    const suggestion = {
+      intent: compatibilityView.projectedProposal.intent,
+      suggestedStage: compatibilityView.projectedProposal.suggestedStage,
+      reason: compatibilityView.projectedProposal.reason,
+    } satisfies ConversationOrchestratorV3Suggestion;
+    const decision = this.buildReducerDecision({
+      current: decisionInput.current,
+      reduction,
+      execution,
+      resolvedAgent,
+      readPlan,
+      agentTask,
+      skillWarnings: loadedSkillPolicy.warnings,
+    });
+    this.emitNodeEvent(normalizedInput, {
+      node: 'JourneyRuntimeAuthority',
+      action: 'reduce',
+      status: 'completed',
+      latencyMs: this.elapsedSince(reducerStartedAt),
+      eventType: event.eventType,
+      eventSource: event.source,
+      confidence: event.confidence,
+      primaryAction: reduction.turnPlan.primaryAction,
+      reasonCode: reduction.reasonCode,
+      stateDiff,
+      sidePath: reduction.isSidePath,
+      sidePathType: reduction.sidePathType,
+      primaryStagePreserved: reduction.primaryStagePreserved,
+      replayLineage: {
+        matchedRuleId: reduction.reasonCode,
+      },
+    });
+
+    const runtimeDebug = {
+      traceId: normalizedInput.traceId,
+      idempotencyKey,
+      lastDispatchSource: 'journey-runtime-authority',
+      replayLineage: {
+        matchedRuleId: reduction.reasonCode,
+      },
+    } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
+
+    if (!decision.dispatchAgent) {
+      const result = {
+        suggestion,
+        decision,
+        journey: decision.to,
+        dispatchResult: null,
+        fallbackStatus: null,
+        turnOutcome: {
+          status: 'ok',
+          recoverableErrorCode: null,
+        },
+        runtimeDebug,
+        render: {
+          path: resolveReducerSystemRenderPath(reduction.turnPlan.primaryAction, execution.isSystemRendered),
+        },
+      } satisfies ConversationOrchestratorV3TurnResult;
+      return this.finalizeTurnResult(
+        normalizedInput,
+        decision,
+        this.attachWriteIntents(result, normalizedInput, normalizedInput.statusSnapshot),
+        turnStartedAt,
+      );
+    }
+
+    const agent = this.dependencies.agents[decision.dispatchAgent];
+    if (!agent) {
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Subagent',
+        action: decision.dispatchAgent,
+        status: 'failed',
+        latencyMs: 0,
+        errorCode: 'UPSTREAM_UNAVAILABLE',
+      });
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Tool',
+        action: 'unknown_tool_for_agent',
+        status: 'failed',
+        latencyMs: 0,
+        errorCode: 'UPSTREAM_UNAVAILABLE',
+      });
+      const degraded = await this.buildDegradedResult({
+        input: normalizedInput,
+        suggestion,
+        decision,
+        dispatchResult: {
+          status: 'error',
+          code: 'UPSTREAM_UNAVAILABLE',
+          message: `${decision.dispatchAgent} is unavailable`,
+        },
+        runtimeDebug,
+      });
+      return this.finalizeTurnResult(normalizedInput, decision, degraded, turnStartedAt);
+    }
+
+    const dispatchAction = buildDispatchAction(normalizedInput, decision as ConversationOrchestratorV3Decision & {
+      dispatchAgent: AgentName;
+    }, suggestion);
+    this.emitNodeEvent(normalizedInput, {
+      node: 'Subagent',
+      action: decision.dispatchAgent,
+      status: 'started',
+      latencyMs: 0,
+    });
+    const subagentStartedAt = this.now();
+    this.emitNodeEvent(normalizedInput, {
+      node: 'Tool',
+      action: dispatchAction.type,
+      status: 'started',
+      latencyMs: 0,
+    });
+    const toolStartedAt = this.now();
+
+    try {
+      const dispatchResult = await agent.execute(dispatchAction);
+
+      if (dispatchResult.status === 'error') {
+        const status = this.mapErrorStatus(dispatchResult.code);
+        this.emitNodeEvent(normalizedInput, {
+          node: 'Tool',
+          action: dispatchAction.type,
+          status,
+          latencyMs: this.elapsedSince(toolStartedAt),
+          errorCode: dispatchResult.code,
+        });
+        this.emitNodeEvent(normalizedInput, {
+          node: 'Subagent',
+          action: decision.dispatchAgent,
+          status,
+          latencyMs: this.elapsedSince(subagentStartedAt),
+          errorCode: dispatchResult.code,
+          ...this.resolveLlmNodeMetadata(agent),
+        });
+        const degraded = await this.buildDegradedResult({
+          input: normalizedInput,
+          suggestion,
+          decision,
+          dispatchResult,
+          runtimeDebug,
+        });
+        return this.finalizeTurnResult(normalizedInput, decision, degraded, turnStartedAt);
+      }
+
+      const faqResolution = resolveFaqResolution(decision, dispatchResult);
+
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Tool',
+        action: dispatchAction.type,
+        status: 'completed',
+        latencyMs: this.elapsedSince(toolStartedAt),
+      });
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Subagent',
+        action: decision.dispatchAgent,
+        status: 'completed',
+        latencyMs: this.elapsedSince(subagentStartedAt),
+        ...this.resolveLlmNodeMetadata(agent),
+      });
+
+      const result = {
+        suggestion,
+        decision,
+        journey: decision.to,
+        dispatchResult,
+        ...(faqResolution ? { faqResolution } : {}),
+        fallbackStatus: null,
+        turnOutcome: {
+          status: 'ok',
+          recoverableErrorCode: null,
+        },
+        runtimeDebug,
+        render: deriveRenderState({
+          suggestion,
+          decision,
+          journey: decision.to,
+          dispatchResult,
+          ...(faqResolution ? { faqResolution } : {}),
+          fallbackStatus: null,
+          turnOutcome: {
+            status: 'ok',
+            recoverableErrorCode: null,
+          },
+          runtimeDebug,
+        } as ConversationOrchestratorV3TurnResult),
+      } satisfies ConversationOrchestratorV3TurnResult;
+      return this.finalizeTurnResult(
+        normalizedInput,
+        decision,
+        this.attachWriteIntents(result, normalizedInput, normalizedInput.statusSnapshot),
+        turnStartedAt,
+      );
+    } catch (error) {
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Tool',
+        action: dispatchAction.type,
+        status: 'failed',
+        latencyMs: this.elapsedSince(toolStartedAt),
+        errorCode: 'UNKNOWN',
+      });
+      this.emitNodeEvent(normalizedInput, {
+        node: 'Subagent',
+        action: decision.dispatchAgent,
+        status: 'failed',
+        latencyMs: this.elapsedSince(subagentStartedAt),
+        errorCode: 'UNKNOWN',
+        ...this.resolveLlmNodeMetadata(agent),
+      });
+      const degraded = await this.buildDegradedResult({
+        input: normalizedInput,
+        suggestion,
+        decision,
+        dispatchResult: {
+          status: 'error',
+          code: 'UNKNOWN',
+          message: error instanceof Error ? error.message : 'agent dispatch failed',
+        },
+        runtimeDebug,
+      });
+      return this.finalizeTurnResult(normalizedInput, decision, degraded, turnStartedAt);
+    }
+  }
+
+  private buildReducerDecision({
+    current,
+    reduction,
+    execution,
+    resolvedAgent,
+    readPlan,
+    agentTask,
+    skillWarnings,
+  }: {
+    current: ConversationOrchestratorV3StageRef;
+    reduction: ReturnType<typeof reduceJourney>;
+    execution: TurnPlanExecution;
+    resolvedAgent: ResolvedAgent;
+    readPlan: ReadPlan;
+    agentTask: AgentTask;
+    skillWarnings: string[];
+  }): ConversationOrchestratorV3Decision {
+    const to = {
+      stage: reduction.primaryStage,
+      phase: 'active' as const,
+    };
+    const factsPatch = buildReducerRuntimeFactsPatch(reduction, execution.isSystemRendered);
+
+    return {
+      action: reduction.turnPlan.primaryAction.type === 'ESCALATE'
+        ? 'HANDOFF'
+        : current.stage === to.stage
+          ? 'STAY'
+          : 'ADVANCE',
+      from: cloneStageRef(current),
+      to,
+      primaryAction: reduction.turnPlan.primaryAction,
+      turnPlan: reduction.turnPlan,
+      resolvedAgent,
+      readPlan,
+      agentTask,
+      skillWarnings,
+      nextAction: legacyNextActionFromPrimaryAction(reduction.turnPlan.primaryAction),
+      dispatchAgent: execution.agent,
+      dispatchSource: 'journey-runtime-authority',
+      matchedRuleId: reduction.reasonCode,
+      write: {
+        authority: 'journey-runtime-authority',
+        stage: to,
+        factsPatch,
+      },
+    };
+  }
+
   private buildDecisionInput(
     input: ConversationOrchestratorV3HandleTurnInput,
   ): ConversationOrchestratorV3DecisionInput {
@@ -608,7 +1098,7 @@ export class ConversationOrchestratorV3RuntimeService {
       statusSnapshot: input.statusSnapshot,
       facts: input.facts,
       handoff: input.handoff,
-      bootstrap: input.bootstrap,
+      bootstrap: normalizeBootstrapSignals(input),
     };
   }
 
@@ -628,16 +1118,22 @@ export class ConversationOrchestratorV3RuntimeService {
   ): ConversationOrchestratorV3TurnResult {
     const render = deriveRenderState(result);
     const stageEntryStatusPatch = deriveStageEntryStatusPatch(result, input, statusSnapshot);
+    const effectiveAttachmentStatusPatch = deriveEffectiveAttachmentStatusPatch(result, input, statusSnapshot);
     const recommendationPresentationStatusPatch = deriveRecommendationPresentationStatusPatch(
       result,
       input,
       statusSnapshot,
     );
+    const runtimeRenderedStatusPatch = deriveRuntimeRenderedStatusPatch(result);
+    const handoffStatusPatch = deriveHandoffStatusPatch(result);
     const journeyStatusPatch = deriveJourneyStatusPatch(input, result);
     const statusPatch = mergeStatusPatches(
       input.normalizedActionStatusPatch,
       stageEntryStatusPatch,
+      effectiveAttachmentStatusPatch,
       recommendationPresentationStatusPatch,
+      runtimeRenderedStatusPatch,
+      handoffStatusPatch,
       journeyStatusPatch,
     );
     const renderedResult = {
@@ -898,12 +1394,47 @@ export class ConversationOrchestratorV3RuntimeService {
     return Math.max(0, this.now() - startAt);
   }
 
+  private async runSupervisorSuggest(
+    input: ConversationOrchestratorV3DecisionInput,
+  ): Promise<{
+    suggestion: ConversationOrchestratorV3Suggestion;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }> {
+    if (this.dependencies.supervisor.suggestWithMetadata) {
+      return this.dependencies.supervisor.suggestWithMetadata(input);
+    }
+
+    return {
+      suggestion: await this.dependencies.supervisor.suggest(input),
+      llmRunMetadata: this.dependencies.supervisor.getLastLlmRunMetadata?.() ?? null,
+    };
+  }
+
+  private async runSupervisorExtractEvent(
+    input: ConversationOrchestratorV3DecisionInput,
+  ): Promise<{
+    event: SupervisorEvent;
+    llmRunMetadata: ConversationOrchestratorV3LlmNodeRunMetadata | null;
+  }> {
+    if (this.dependencies.supervisor.extractEventWithMetadata) {
+      return this.dependencies.supervisor.extractEventWithMetadata(input);
+    }
+
+    return {
+      event: await this.dependencies.supervisor.extractEvent!(input),
+      llmRunMetadata: this.dependencies.supervisor.getLastLlmRunMetadata?.() ?? null,
+    };
+  }
+
   private resolveLlmNodeMetadata(
     node:
       | ConversationOrchestratorV3Supervisor
       | ConversationOrchestratorV3AgentExecutor,
+    overrideMetadata?: ConversationOrchestratorV3LlmNodeRunMetadata | null,
   ): ConversationOrchestratorV3LlmNodeRunMetadata {
-    const metadata = node.getLastLlmRunMetadata?.();
+    const metadata = overrideMetadata === undefined
+      ? node.getLastLlmRunMetadata?.()
+      : overrideMetadata;
     if (!metadata) {
       return {};
     }
@@ -917,6 +1448,7 @@ export class ConversationOrchestratorV3RuntimeService {
       ...(typeof metadata.schemaValidationFailed === 'boolean'
         ? { schemaValidationFailed: metadata.schemaValidationFailed }
         : {}),
+      ...filterLlmFailureMetadata(metadata),
     };
   }
 
@@ -925,6 +1457,72 @@ export class ConversationOrchestratorV3RuntimeService {
   ): Extract<ChatbotV3RuntimeNodeStatus, 'failed' | 'timeout'> {
     return code === 'TIMEOUT' ? 'timeout' : 'failed';
   }
+}
+
+function filterLlmFailureMetadata(
+  metadata: ChatbotV3LlmFailureMetadata,
+): ChatbotV3LlmFailureMetadata {
+  return {
+    ...(metadata.llmFailurePhase ? { llmFailurePhase: metadata.llmFailurePhase } : {}),
+    ...(metadata.llmErrorName ? { llmErrorName: metadata.llmErrorName } : {}),
+    ...(metadata.llmErrorMessage ? { llmErrorMessage: metadata.llmErrorMessage } : {}),
+    ...(typeof metadata.llmHttpStatus === 'number'
+      ? { llmHttpStatus: metadata.llmHttpStatus }
+      : {}),
+    ...(typeof metadata.llmResponseContentLength === 'number'
+      ? { llmResponseContentLength: metadata.llmResponseContentLength }
+      : {}),
+    ...(typeof metadata.llmResponseContentStartsWithBrace === 'boolean'
+      ? { llmResponseContentStartsWithBrace: metadata.llmResponseContentStartsWithBrace }
+      : {}),
+  };
+}
+
+function normalizeBootstrapSignals(
+  input: ConversationOrchestratorV3HandleTurnInput,
+): ConversationOrchestratorV3BootstrapSignals | undefined {
+  const attachments = getTurnAttachments(input);
+
+  if (!input.bootstrap && attachments.length === 0) {
+    return undefined;
+  }
+
+  return {
+    message: input.bootstrap?.message ?? input.message,
+    ...(input.bootstrap?.canCreateHandoff !== undefined
+      ? { canCreateHandoff: input.bootstrap.canCreateHandoff }
+      : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
+}
+
+function getTurnAttachments(
+  input: Pick<ConversationOrchestratorV3HandleTurnInput, 'attachments' | 'bootstrap'>,
+): Array<Record<string, unknown>> {
+  const topLevelAttachments = input.attachments ?? [];
+  return topLevelAttachments.length > 0 ? topLevelAttachments : input.bootstrap?.attachments ?? [];
+}
+
+function readSupportingDocumentsFromAttachments(
+  attachments: Array<Record<string, unknown>>,
+): Array<{ path: string; name: string }> {
+  return attachments.flatMap((attachment) => {
+    const storageKey = typeof attachment['storageKey'] === 'string'
+      ? attachment['storageKey'].trim()
+      : '';
+    const fileName = typeof attachment['fileName'] === 'string'
+      ? attachment['fileName'].trim()
+      : '';
+
+    if (!storageKey || !fileName) {
+      return [];
+    }
+
+    return [{
+      path: storageKey,
+      name: fileName,
+    }];
+  });
 }
 
 const SUMMARY_STAGE_SNIPPET_MAX_LENGTH = 40;
@@ -1390,6 +1988,8 @@ function buildDispatchAction(
   },
   suggestion: ConversationOrchestratorV3Suggestion,
 ): AgentAction {
+  const turnAttachments = getTurnAttachments(input);
+
   switch (decision.dispatchAgent) {
     case 'FaqAgent':
       return {
@@ -1408,7 +2008,7 @@ function buildDispatchAction(
       };
     case 'RecordsAgent':
       if (
-        (input.attachments?.length ?? 0) > 0
+        turnAttachments.length > 0
         && decision.to.stage !== 'COLLECT_MINIMAL_MEDICAL_FACTS'
       ) {
         return {
@@ -1417,7 +2017,7 @@ function buildDispatchAction(
             sessionId: input.sessionId,
             site: input.site,
             turnId: input.turnId,
-            attachments: input.attachments,
+            attachments: turnAttachments,
           },
         };
       }
@@ -1498,6 +2098,15 @@ function buildWorkerTask(
     intent: suggestion.intent,
     supervisorReason: normalizeReason(suggestion.reason),
     latestUserMessage: input.message,
+    ...(decision.agentTask
+      ? {
+          primaryAction: decision.agentTask.primaryAction,
+          followUpAction: decision.agentTask.followUpAction,
+          allowedSkillPacks: decision.agentTask.skillPolicy.allowedSkillPacks,
+          readIntents: decision.agentTask.readPlan.readIntents.map(describeReadIntent),
+          responseContract: decision.agentTask.responseContract,
+        }
+      : {}),
   };
 
   switch (decision.dispatchAgent) {
@@ -1505,6 +2114,7 @@ function buildWorkerTask(
       return {
         agent: 'FaqAgent',
         ...baseTask,
+        ...resolveFaqTaskPolicy(baseTask),
       } satisfies FaqWorkerTask;
     case 'RecordsAgent':
       return {
@@ -1525,6 +2135,16 @@ function buildWorkerTask(
         agent: 'FaqAgent',
         ...baseTask,
       } satisfies FaqWorkerTask;
+  }
+}
+
+function describeReadIntent(intent: ReadPlan['readIntents'][number]): string {
+  switch (intent.type) {
+    case 'GENERAL_FAQ':
+    case 'HOSPITAL_FAQ':
+      return `${intent.type}:${intent.category}`;
+    default:
+      return intent.type;
   }
 }
 
@@ -1617,7 +2237,7 @@ function deriveStageEntryStatusPatch(
 ): Partial<AiChatStatusSnapshot> | undefined {
   const isEnteringDiagnosisProofStage = result.decision.to.stage === 'COLLECT_MEDICAL_INPUTS'
     && result.decision.from.stage !== 'COLLECT_MEDICAL_INPUTS';
-  const hasFreshUploadOnThisTurn = (input.attachments?.length ?? 0) > 0
+  const hasFreshUploadOnThisTurn = getTurnAttachments(input).length > 0
     && result.decision.dispatchAgent === 'RecordsAgent';
 
   if (!isEnteringDiagnosisProofStage || hasFreshUploadOnThisTurn) {
@@ -1630,6 +2250,30 @@ function deriveStageEntryStatusPatch(
 
   return {
     docUploadStatus: 'none',
+  };
+}
+
+function deriveEffectiveAttachmentStatusPatch(
+  result: ConversationOrchestratorV3TurnResult,
+  input: ConversationOrchestratorV3NormalizedTurnInput,
+  statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+): Partial<AiChatStatusSnapshot> | undefined {
+  const attachments = getTurnAttachments(input);
+
+  if (
+    attachments.length === 0
+    || result.decision.dispatchAgent !== 'RecordsAgent'
+    || result.journey.stage !== 'COLLECT_MINIMAL_MEDICAL_FACTS'
+  ) {
+    return undefined;
+  }
+
+  return {
+    docUploadStatus: 'SUBMITTED',
+    supportingDocuments: normalizeSupportingDocuments([
+      ...(statusSnapshot?.supportingDocuments ?? []),
+      ...readSupportingDocumentsFromAttachments(attachments),
+    ]),
   };
 }
 
@@ -1667,6 +2311,35 @@ function deriveRecommendationPresentationStatusPatch(
   };
 }
 
+function deriveRuntimeRenderedStatusPatch(
+  result: ConversationOrchestratorV3TurnResult,
+): Partial<AiChatStatusSnapshot> | undefined {
+  if (result.turnOutcome.status !== 'ok' || result.render.path !== 'PROCESS_OVERVIEW') {
+    return undefined;
+  }
+
+  return {
+    processExplained: true,
+  };
+}
+
+function deriveHandoffStatusPatch(
+  result: ConversationOrchestratorV3TurnResult,
+): Partial<AiChatStatusSnapshot> | undefined {
+  if (result.turnOutcome.status !== 'ok' || result.decision.dispatchAgent !== 'HandoffAgent') {
+    return undefined;
+  }
+
+  if (!hasCreatedHandoff(result)) {
+    return undefined;
+  }
+
+  return {
+    handoffStatus: 'requested',
+    handoffActive: true,
+  };
+}
+
 function deriveJourneyStatusPatch(
   input: ConversationOrchestratorV3NormalizedTurnInput,
   result: ConversationOrchestratorV3TurnResult,
@@ -1676,6 +2349,10 @@ function deriveJourneyStatusPatch(
   }
 
   if (result.decision.dispatchAgent === 'FaqAgent') {
+    return undefined;
+  }
+
+  if (result.decision.dispatchAgent === 'HandoffAgent' && !hasCreatedHandoff(result)) {
     return undefined;
   }
 
@@ -1755,6 +2432,82 @@ function mergeStatusPatches(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+interface TurnPlanExecution {
+  agent: AgentName | null;
+  isSystemRendered: boolean;
+}
+
+function resolveTurnPlanExecution(
+  turnPlan: TurnPlan,
+  resolvedAgent: ResolvedAgent,
+): TurnPlanExecution {
+  const primaryAction = turnPlan.primaryAction;
+  if (primaryAction.type === 'ANSWER'
+    && primaryAction.target === 'process'
+    && primaryAction.mode === 'formal_overview') {
+    return { agent: null, isSystemRendered: true };
+  }
+
+  return {
+    agent: resolvedAgent.physicalAgent,
+    isSystemRendered: false,
+  };
+}
+
+function legacyNextActionFromPrimaryAction(action: PrimaryAction): NextAction {
+  switch (action.type) {
+    case 'REQUEST_INFO':
+      return action.target === 'minimal_triage'
+        ? { type: 'COLLECT_MINIMAL_TRIAGE' }
+        : { type: 'REQUEST_MEDICAL_DOCUMENTS' };
+    case 'PRESENT_OPTIONS':
+      return action.target === 'consult'
+        ? { type: 'OFFER_ONLINE_CONSULT' }
+        : { type: 'GENERATE_RECOMMENDATION' };
+    case 'ANSWER':
+      return action.mode === 'formal_overview'
+        ? { type: 'SHOW_PROCESS_OVERVIEW' }
+        : { type: 'ANSWER_FAQ' };
+    case 'REDIRECT':
+      return action.reasonCode === 'medical_safety'
+        ? { type: 'SAFE_MEDICAL_REDIRECT' }
+        : { type: 'OUT_OF_SCOPE_REDIRECT' };
+    case 'ESCALATE':
+      return { type: 'CREATE_HANDOFF' };
+    case 'CLARIFY':
+      return { type: 'CLARIFY_INTENT' };
+    case 'ACKNOWLEDGE':
+    case 'HANDLE_RESPONSE':
+      return { type: 'ANSWER_FAQ' };
+  }
+}
+
+function buildReducerRuntimeFactsPatch(
+  reduction: ReturnType<typeof reduceJourney>,
+  isSystemRendered: boolean,
+): Partial<Record<string, boolean>> {
+  const factsPatch: Partial<Record<string, boolean>> = {};
+
+  if (reduction.factsPatch.intake?.minimalTriageStatus === 'submitted'
+    || reduction.factsPatch.intake?.minimalTriageStatus === 'skipped') {
+    factsPatch['records.minimal_triage.complete'] = true;
+  }
+
+  if (reduction.factsPatch.recommendation?.status === 'selected') {
+    factsPatch['recommendation.selected'] = true;
+  }
+
+  const primaryAction = reduction.turnPlan.primaryAction;
+  if (isSystemRendered
+    && primaryAction.type === 'ANSWER'
+    && primaryAction.target === 'process'
+    && primaryAction.mode === 'formal_overview') {
+    factsPatch['process.explained'] = true;
+  }
+
+  return factsPatch;
+}
+
 function cloneStageRef(
   stageRef: ConversationOrchestratorV3StageRef,
 ): ConversationOrchestratorV3StageRef {
@@ -1818,6 +2571,10 @@ function deriveCanonicalTruthPatch(
       continue;
     }
 
+    if (canonicalKey === 'handoff.active' && !hasCreatedHandoff(result)) {
+      continue;
+    }
+
     const fieldName = AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP[
       canonicalKey as keyof typeof AI_CHAT_STATUS_SNAPSHOT_CANONICAL_TRUTH_MAP
     ];
@@ -1847,6 +2604,14 @@ function deriveCanonicalTruthPatch(
   return patch;
 }
 
+function hasCreatedHandoff(result: ConversationOrchestratorV3TurnResult): boolean {
+  if (result.dispatchResult?.status !== 'ok') {
+    return false;
+  }
+
+  return asRecord(result.dispatchResult.data)['created'] === true;
+}
+
 function deriveRenderState(
   result: ConversationOrchestratorV3TurnResult,
 ) {
@@ -1854,6 +2619,17 @@ function deriveRenderState(
     return {
       path: 'STAGE_GUIDANCE',
     } satisfies ConversationOrchestratorV3RenderState;
+  }
+
+  if (
+    result.decision.dispatchAgent === null
+    && (
+      result.render.path === 'PROCESS_OVERVIEW'
+      || result.render.path === 'SAFE_MEDICAL_REDIRECT'
+      || result.render.path === 'OUT_OF_SCOPE_REDIRECT'
+    )
+  ) {
+    return result.render;
   }
 
   if (result.decision.dispatchAgent === 'FaqAgent') {
@@ -1904,6 +2680,35 @@ function compactReplayLineage(
   return Object.keys(compact).length > 0 ? compact : undefined;
 }
 
+function resolveReducerSystemRenderPath(
+  primaryAction: PrimaryAction,
+  isSystemRendered: boolean,
+): ConversationOrchestratorV3RenderState['path'] {
+  if (!isSystemRendered) {
+    return 'STAGE_GUIDANCE';
+  }
+
+  if (primaryAction.type === 'ANSWER'
+    && primaryAction.target === 'process'
+    && primaryAction.mode === 'formal_overview') {
+    return 'PROCESS_OVERVIEW';
+  }
+
+  return 'STAGE_GUIDANCE';
+}
+
+function projectionMatchesReducer(input: {
+  compatibilityView: ReturnType<typeof projectLegacyCompatibilityView>;
+  reduction: ReturnType<typeof reduceJourney>;
+  execution: TurnPlanExecution;
+}): boolean {
+  return input.compatibilityView.projectedDecision.toStage === input.reduction.primaryStage
+    && input.compatibilityView.projectedDecision.primaryAction.type === input.reduction.turnPlan.primaryAction.type
+    && input.compatibilityView.projectedDecision.dispatchAgent === input.execution.agent
+    && input.compatibilityView.projectedDecision.isSystemRendered === input.execution.isSystemRendered
+    && input.compatibilityView.projectedProposal.suggestedStage === input.reduction.primaryStage;
+}
+
 function isDeniedSemanticHandoff(
   result: ConversationOrchestratorV3TurnResult,
 ): boolean {
@@ -1934,8 +2739,9 @@ function hasStructuredFaqAnswerData(
   const confidence = asString(data['confidence']);
   const citedFaqIds = asArray(data['citedFaqIds'])
     .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
+  const policyGrounded = data['policyGrounded'] === true;
 
-  return Boolean(answer && confidence !== 'low' && citedFaqIds.length > 0);
+  return Boolean(answer && confidence !== 'low' && (citedFaqIds.length > 0 || policyGrounded));
 }
 
 function resolveFaqResolution(

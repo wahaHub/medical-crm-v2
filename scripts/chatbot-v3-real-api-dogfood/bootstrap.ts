@@ -1,4 +1,4 @@
-import { type BootstrapMode } from './types.ts';
+import { type BootstrapMode, type DogfoodAttemptSummary } from './types.ts';
 import {
   type CookieJar,
   type DogfoodHttpClient,
@@ -22,6 +22,7 @@ export interface BootstrapBaseResult {
   patientRestore: string | null;
   widgetChatTargetSessionId: string | null;
   redactedCookies: string[];
+  attempts: DogfoodAttemptSummary[];
 }
 
 export interface BootstrapSuccessResult extends BootstrapBaseResult {
@@ -51,6 +52,7 @@ export interface BootstrapRealApiSessionOptions {
   onboardingPayload?: AllowedBootstrapPayload;
   blockedProbePayload?: Record<string, unknown>;
   timeoutMs?: number;
+  maxAttempts?: number;
 }
 
 function requireAllowedPayload(onboardingPayload: AllowedBootstrapPayload | undefined) {
@@ -88,7 +90,10 @@ function buildBaseResult({
   client,
   scenarioId,
   timestamp,
-}: Pick<BootstrapRealApiSessionOptions, 'client' | 'scenarioId' | 'timestamp'>): BootstrapBaseResult {
+  attempts,
+}: Pick<BootstrapRealApiSessionOptions, 'client' | 'scenarioId' | 'timestamp'> & {
+  attempts: DogfoodAttemptSummary[];
+}): BootstrapBaseResult {
   return {
     scenarioId,
     baseUrl: client.baseUrl,
@@ -98,6 +103,7 @@ function buildBaseResult({
     patientRestore: null,
     widgetChatTargetSessionId: null,
     redactedCookies: client.cookieJar.getRedactedCookies(),
+    attempts,
   };
 }
 
@@ -156,18 +162,20 @@ function classifyTransportError({
   scenarioId,
   timestamp,
   error,
+  attempts,
 }: {
   client: DogfoodHttpClient;
   scenarioId: string;
   timestamp: string;
   error: unknown;
+  attempts: DogfoodAttemptSummary[];
 }): BootstrapFailureResult {
   const failureKind = error instanceof DogfoodHttpTransportError ? error.kind : 'transport_error';
   const message =
     error instanceof Error ? error.message : `Request failed: ${String(error)}`;
 
   return {
-    ...buildBaseResult({ client, scenarioId, timestamp }),
+    ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
     bootstrapMode: 'bootstrap_failed',
     failureKind,
     message,
@@ -180,6 +188,7 @@ function classifyResponse({
   timestamp,
   response,
   bootstrapMode,
+  attempts,
 }: {
   client: DogfoodHttpClient;
   scenarioId: string;
@@ -190,13 +199,14 @@ function classifyResponse({
     bodyText: string | null;
   };
   bootstrapMode: BootstrapMode;
+  attempts: DogfoodAttemptSummary[];
 }): BootstrapOutcome {
   const allowedEvidence = isAllowedEvidence(response.body, client.cookieJar);
 
   if (bootstrapMode === 'chat_allowed') {
     if (response.status === 401 || response.status === 403) {
       return {
-        ...buildBaseResult({ client, scenarioId, timestamp }),
+        ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
         bootstrapMode: 'bootstrap_failed',
         failureKind: 'http_status',
         status: response.status,
@@ -208,7 +218,7 @@ function classifyResponse({
 
     if (response.status !== 200) {
       return {
-        ...buildBaseResult({ client, scenarioId, timestamp }),
+        ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
         bootstrapMode: 'bootstrap_failed',
         failureKind: 'http_status',
         status: response.status,
@@ -220,7 +230,7 @@ function classifyResponse({
 
     if (!allowedEvidence) {
       return {
-        ...buildBaseResult({ client, scenarioId, timestamp }),
+        ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
         bootstrapMode: 'bootstrap_failed',
         failureKind: 'missing_allowed_evidence',
         status: response.status,
@@ -231,7 +241,7 @@ function classifyResponse({
     }
 
     return {
-      ...buildBaseResult({ client, scenarioId, timestamp }),
+      ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
       bootstrapMode: 'chat_allowed',
       patientSession: allowedEvidence.patientSession,
       patientRestore: allowedEvidence.patientRestore,
@@ -242,7 +252,7 @@ function classifyResponse({
 
   if (response.status !== 200 && !(response.status === 400 && hasBlockedPrereqSignal(response.body))) {
     return {
-      ...buildBaseResult({ client, scenarioId, timestamp }),
+      ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
       bootstrapMode: 'bootstrap_failed',
       failureKind: 'http_status',
       status: response.status,
@@ -254,7 +264,7 @@ function classifyResponse({
 
   if (allowedEvidence) {
     return {
-      ...buildBaseResult({ client, scenarioId, timestamp }),
+      ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
       bootstrapMode: 'bootstrap_failed',
       failureKind: 'missing_allowed_evidence',
       status: response.status,
@@ -265,10 +275,17 @@ function classifyResponse({
   }
 
   return {
-    ...buildBaseResult({ client, scenarioId, timestamp }),
+    ...buildBaseResult({ client, scenarioId, timestamp, attempts }),
     bootstrapMode: 'blocked_expected',
     redactedCookies: client.cookieJar.getRedactedCookies(),
   };
+}
+
+function isRetriableBootstrapError(error: unknown) {
+  return (
+    error instanceof DogfoodHttpTransportError &&
+    (error.kind === 'timeout' || error.kind === 'transport_error')
+  );
 }
 
 export async function bootstrapRealApiSession({
@@ -279,6 +296,7 @@ export async function bootstrapRealApiSession({
   onboardingPayload,
   blockedProbePayload,
   timeoutMs,
+  maxAttempts,
 }: BootstrapRealApiSessionOptions): Promise<BootstrapOutcome> {
   const payload =
     bootstrapMode === 'chat_allowed'
@@ -287,30 +305,66 @@ export async function bootstrapRealApiSession({
           email: 'blocked-probe@example.com',
         };
 
-  try {
-    const exchange = await client.request({
-      method: 'POST',
-      path: '/api/patient/onboarding/init',
-      body: payload,
-      timeoutMs,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+  const attempts: DogfoodAttemptSummary[] = [];
+  const requestTimeoutMs = timeoutMs ?? 30_000;
+  const requestMaxAttempts = Math.max(1, Math.floor(maxAttempts ?? 1));
 
-    return classifyResponse({
-      client,
-      scenarioId,
-      timestamp,
-      response: exchange.response,
-      bootstrapMode,
-    });
-  } catch (error) {
-    return classifyTransportError({
-      client,
-      scenarioId,
-      timestamp,
-      error,
-    });
+  for (let attempt = 1; attempt <= requestMaxAttempts; attempt += 1) {
+    const startedAt = Date.now();
+
+    try {
+      const exchange = await client.request({
+        method: 'POST',
+        path: '/api/patient/onboarding/init',
+        body: payload,
+        timeoutMs: requestTimeoutMs,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      attempts.push({
+        phase: 'bootstrap',
+        turnIndex: null,
+        attempt,
+        durationMs: Date.now() - startedAt,
+        status: exchange.response.status,
+        retried: false,
+      });
+
+      return classifyResponse({
+        client,
+        scenarioId,
+        timestamp,
+        response: exchange.response,
+        bootstrapMode,
+        attempts,
+      });
+    } catch (error) {
+      const shouldRetry = isRetriableBootstrapError(error) && attempt < requestMaxAttempts;
+      attempts.push({
+        phase: 'bootstrap',
+        turnIndex: null,
+        attempt,
+        durationMs: Date.now() - startedAt,
+        transportErrorKind: error instanceof DogfoodHttpTransportError ? error.kind : 'transport_error',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        retried: shouldRetry,
+      });
+
+      if (shouldRetry) {
+        continue;
+      }
+
+      return classifyTransportError({
+        client,
+        scenarioId,
+        timestamp,
+        error,
+        attempts,
+      });
+    }
   }
+
+  throw new Error('Bootstrap retry loop exited unexpectedly.');
 }

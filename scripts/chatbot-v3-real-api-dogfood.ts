@@ -12,7 +12,14 @@ import { createDogfoodHttpClient } from './chatbot-v3-real-api-dogfood/http-clie
 import { parseDogfoodConfig } from './chatbot-v3-real-api-dogfood/config.ts';
 import { getScenarioById, V1_REQUIRED_SCENARIO_IDS } from './chatbot-v3-real-api-dogfood/scenarios.ts';
 import { runChatSession, type ChatRunnerResult } from './chatbot-v3-real-api-dogfood/chat-runner.ts';
-import { evaluateScenarioOutcome, rollupRunOutcome, type DogfoodAxisEvaluation } from './chatbot-v3-real-api-dogfood/evaluator.ts';
+import {
+  buildClassifiedRunRollup,
+  buildClassifiedScenarioOutcome,
+  classifyBootstrapFailureOutcome,
+  classifyChatFailureOutcome,
+  classifyEvaluationOutcome,
+  type DogfoodAxisEvaluation,
+} from './chatbot-v3-real-api-dogfood/evaluator.ts';
 import { writeDogfoodArtifacts } from './chatbot-v3-real-api-dogfood/reporting.ts';
 import type { RunRollup, ScenarioOutcome, TurnTranscript } from './chatbot-v3-real-api-dogfood/types.ts';
 
@@ -37,10 +44,23 @@ function buildScenarioTurns(scenarioId: string) {
   }
 }
 
-function toTurnTranscript(scenarioId: string, turnIndex: number, result: ChatRunnerResult['turns'][number]): TurnTranscript {
+function toTurnTranscript(
+  scenarioId: string,
+  turnIndex: number,
+  result: ChatRunnerResult['turns'][number],
+  chatResult: ChatRunnerResult,
+): TurnTranscript {
+  const finalAttempt = chatResult.chatAttempts
+    .filter((attempt) => attempt.turnIndex === turnIndex)
+    .at(-1);
+
   return {
     scenarioId,
     turnIndex,
+    requestUrl: result.requestUrl,
+    requestAttempt: finalAttempt?.attempt ?? 1,
+    durationMs: finalAttempt?.durationMs ?? 0,
+    ...(finalAttempt?.transportErrorKind ? { transportErrorKind: finalAttempt.transportErrorKind } : {}),
     request: {
       method: 'POST',
       path: '/api/v3/chatbot/chat',
@@ -95,69 +115,111 @@ export function buildAllowedOnboardingPayload({
 
 function evaluateBlockedScenario(bootstrap: BootstrapOutcome): ScenarioOutcome {
   if (bootstrap.bootstrapMode === 'bootstrap_failed') {
-    return {
+    return classifyBootstrapFailureOutcome({
       scenarioId: bootstrap.scenarioId,
-      outcome: 'HARD_FAIL',
       summary: bootstrap.message,
-      turns: [],
-    };
+      bootstrapAttempts: bootstrap.attempts,
+      sessionId: bootstrap.widgetChatTargetSessionId,
+      notes: [
+        `failureKind=${bootstrap.failureKind}`,
+        ...(typeof bootstrap.status === 'number' ? [`status=${bootstrap.status}`] : []),
+      ],
+    });
   }
 
   if (bootstrap.bootstrapMode !== 'blocked_expected') {
-    return {
+    return classifyBootstrapFailureOutcome({
       scenarioId: bootstrap.scenarioId,
-      outcome: 'HARD_FAIL',
       summary: 'Blocked-path scenario unexpectedly established chat eligibility.',
-      turns: [],
-    };
+      bootstrapAttempts: bootstrap.attempts,
+      sessionId: bootstrap.widgetChatTargetSessionId,
+    });
   }
 
-  return {
+  return buildClassifiedScenarioOutcome({
     scenarioId: bootstrap.scenarioId,
-    outcome: 'PASS',
     summary: 'all four axes passed',
-    turns: [],
-  };
+    bootstrapAttempts: bootstrap.attempts,
+    sessionId: bootstrap.widgetChatTargetSessionId,
+  });
 }
 
 function evaluateAllowedScenario(
   scenarioId: string,
-  bootstrap: BootstrapSuccessResult,
+  bootstrap: BootstrapOutcome,
   chatResult: ChatRunnerResult | null,
 ): ScenarioOutcome {
-  if (!chatResult) {
-    return {
+  if (bootstrap.bootstrapMode === 'bootstrap_failed') {
+    return classifyBootstrapFailureOutcome({
       scenarioId,
-      outcome: 'HARD_FAIL',
-      summary: 'Chat runner did not execute for an allowed-path scenario.',
-      turns: [],
-    };
+      summary: bootstrap.message,
+      bootstrapAttempts: bootstrap.attempts,
+      sessionId: bootstrap.widgetChatTargetSessionId,
+      notes: [
+        `failureKind=${bootstrap.failureKind}`,
+        ...(typeof bootstrap.status === 'number' ? [`status=${bootstrap.status}`] : []),
+      ],
+    });
   }
 
-  const turnTranscripts = chatResult.turns.map((turn, index) => toTurnTranscript(scenarioId, index, turn));
-  const hadHardFailure = turnTranscripts.some((turn) => turn.response.status >= 400 || turn.response.status === 0);
+  if (!chatResult) {
+    return classifyChatFailureOutcome({
+      scenarioId,
+      status: 0,
+      summary: 'Chat runner did not execute for an allowed-path scenario.',
+      bootstrapAttempts: bootstrap.attempts,
+      sessionId: bootstrap.widgetChatTargetSessionId,
+    });
+  }
+
+  const turnTranscripts = chatResult.turns.map((turn, index) => toTurnTranscript(scenarioId, index, turn, chatResult));
+  const firstHardFailure = turnTranscripts.find((turn) => turn.response.status >= 400 || turn.response.status === 0);
+
+  if (firstHardFailure) {
+    return classifyChatFailureOutcome({
+      scenarioId,
+      status: firstHardFailure.response.status,
+      summary:
+        firstHardFailure.response.status === 0
+          ? 'Chat turn failed before receiving an HTTP response.'
+          : `Chat turn failed with HTTP ${firstHardFailure.response.status}.`,
+      bootstrapAttempts: bootstrap.attempts,
+      chatAttempts: chatResult.chatAttempts,
+      sessionId: bootstrap.widgetChatTargetSessionId,
+      turns: turnTranscripts,
+    });
+  }
+
   const accessDecision = buildAxis(
     bootstrap.bootstrapMode === 'chat_allowed' ? 'PASS' : 'HARD_FAIL',
     'chat was not allowed after patient bootstrap',
   );
-  const journey = buildAxis(hadHardFailure ? 'HARD_FAIL' : 'PASS', hadHardFailure ? 'chat turn failed before the expected journey completed' : undefined);
-  const response = buildAxis(hadHardFailure ? 'HARD_FAIL' : 'PASS', hadHardFailure ? 'response status indicated a hard failure' : undefined);
+  const journey = buildAxis('PASS');
+  const response = buildAxis('PASS');
   const continuity = buildAxis(chatResult.stoppedEarly ? 'HARD_FAIL' : 'PASS', chatResult.stoppedEarly ? 'conversation stopped early' : undefined);
 
-  const evaluated = evaluateScenarioOutcome({
+  if (accessDecision.result !== 'PASS') {
+    return classifyBootstrapFailureOutcome({
+      scenarioId,
+      summary: accessDecision.reason ?? 'chat was not allowed after patient bootstrap',
+      bootstrapAttempts: bootstrap.attempts,
+      chatAttempts: chatResult.chatAttempts,
+      sessionId: bootstrap.widgetChatTargetSessionId,
+      turns: turnTranscripts,
+    });
+  }
+
+  return classifyEvaluationOutcome({
     scenarioId,
-    accessDecision,
+    summary: 'all four axes passed',
     journey,
     response,
     continuity,
-  });
-
-  return {
-    scenarioId,
-    outcome: evaluated.outcome,
-    summary: evaluated.reason,
+    bootstrapAttempts: bootstrap.attempts,
+    chatAttempts: chatResult.chatAttempts,
+    sessionId: bootstrap.widgetChatTargetSessionId,
     turns: turnTranscripts,
-  };
+  });
 }
 
 async function run() {
@@ -191,6 +253,11 @@ async function run() {
         : {}),
     });
 
+    if (scenario.bootstrapMode === 'blocked_expected') {
+      scenarioOutcomes.push(evaluateBlockedScenario(bootstrap));
+      continue;
+    }
+
     if (bootstrap.bootstrapMode === 'chat_allowed') {
       bootstrapResults.push(bootstrap);
       const chatResult = await runChatSession({
@@ -207,17 +274,10 @@ async function run() {
       continue;
     }
 
-    scenarioOutcomes.push(evaluateBlockedScenario(bootstrap));
+    scenarioOutcomes.push(evaluateAllowedScenario(scenario.id, bootstrap, null));
   }
 
-  const rollup: RunRollup = rollupRunOutcome(
-    scenarioOutcomes.map((scenarioOutcome) => ({
-      scenarioId: scenarioOutcome.scenarioId,
-      outcome: scenarioOutcome.outcome,
-      summary: scenarioOutcome.summary,
-      turns: scenarioOutcome.turns,
-    })),
-  );
+  const rollup: RunRollup = buildClassifiedRunRollup(scenarioOutcomes);
 
   const artifactDir = writeDogfoodArtifacts({
     workspaceRoot,

@@ -1249,6 +1249,39 @@ describe('ResponseComposer', () => {
     expect(response.messages[0]?.text).toContain('Online consultations are usually arranged within 24 hours.');
   });
 
+  it('renders policy-grounded redirect answers even without FAQ citations', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: '你们能不能帮我办美国绿卡？',
+      }),
+      result: createResult({
+        render: {
+          path: 'FAQ_ANSWER',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            answer: 'That request is outside Medora scope, but I can help with care in China.',
+            citedFaqIds: [],
+            confidence: 'medium',
+            policyGrounded: true,
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('outside Medora scope');
+    expect(response.messages[0]?.text).not.toContain('could not find a reliable FAQ answer');
+  });
+
   it('uses faq-specific degraded guidance for faq failures', () => {
     const fixture = getDegradedFixture('faq-degraded-timeout');
 

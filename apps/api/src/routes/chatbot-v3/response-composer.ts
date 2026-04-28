@@ -24,6 +24,8 @@ export interface ResponseComposerInput {
 }
 
 export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, then you can upload supporting documents, and after that we can move toward online consult.';
+export const SAFE_MEDICAL_REDIRECT_TEXT = 'Medora can help with hospital or doctor matching and care coordination, but we cannot provide specific medical advice here. A licensed doctor should advise on diagnosis or treatment. Would you like us to help arrange a doctor consultation?';
+export const OUT_OF_SCOPE_REDIRECT_TEXT = 'Medora focuses on medical travel coordination, hospital and doctor matching, records collection, and consult setup. I can redirect this back to the care path or connect you with our team if needed.';
 const FAQ_DEGRADED_TEXT = 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.';
 const FAQ_MISS_TEXT = 'I could not find a reliable FAQ answer right now, but your current stage is still saved. You can continue the current step or ask for a human if needed.';
 const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
@@ -100,6 +102,14 @@ export function buildAssistantText(
 
   if (result.render.path === 'PROCESS_OVERVIEW') {
     return PROCESS_OVERVIEW_TEXT;
+  }
+
+  if (result.render.path === 'SAFE_MEDICAL_REDIRECT') {
+    return SAFE_MEDICAL_REDIRECT_TEXT;
+  }
+
+  if (result.render.path === 'OUT_OF_SCOPE_REDIRECT') {
+    return OUT_OF_SCOPE_REDIRECT_TEXT;
   }
 
   const recordsAssistantText = readRecordsAssistantText(result);
@@ -243,8 +253,9 @@ function readFaqAnswer(
   const citedFaqIds = asArray(data['citedFaqIds'])
     .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
   const confidence = asString(data['confidence']);
+  const policyGrounded = data['policyGrounded'] === true;
 
-  if (citedFaqIds.length === 0 || confidence === 'low') {
+  if ((!policyGrounded && citedFaqIds.length === 0) || confidence === 'low') {
     return null;
   }
 
@@ -493,6 +504,14 @@ function buildVisibleJourney(
   sessionStatusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   statusPatch: Partial<AiChatStatusSnapshot> | null | undefined,
 ): ConversationOrchestratorV3TurnResult['journey'] {
+  const effectiveStatusSnapshot = buildEffectiveStatusSnapshot(sessionStatusSnapshot, statusPatch);
+  if (hasActiveHandoffStatus(effectiveStatusSnapshot) || hasCrisisSafetySignal(effectiveStatusSnapshot)) {
+    return {
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    };
+  }
+
   const persistedJourneyStage = readJourneyStage(statusPatch)
     ?? readJourneyStage(sessionStatusSnapshot)
     ?? resultJourney.stage;

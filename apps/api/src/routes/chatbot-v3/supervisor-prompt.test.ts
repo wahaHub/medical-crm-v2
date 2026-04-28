@@ -70,6 +70,22 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).not.toContain('USER_WANTS_TREATMENT_IN_CHINA:');
   });
 
+  it('defines supported service scope instead of enumerating out-of-scope examples', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('USER_ASKED_RISKY_MEDICAL_ADVICE: user asks for diagnosis, treatment decision, medication advice, urgent medical judgment, or outcome guarantee.');
+    expect(prompt).toContain('USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE: user asks Medora to perform a service that is not part of the supported medical-travel coordination workflows listed below.');
+    expect(prompt).toContain('Medora supported service scope:');
+    expect(prompt).toContain('understanding the patient\'s condition, destination, timing, preferences, and contact details.');
+    expect(prompt).toContain('collecting or explaining needed medical records and supporting documents.');
+    expect(prompt).toContain('matching the patient with hospitals, doctors, packages, or treatment-path options.');
+    expect(prompt).toContain('arranging or preparing records-based review, online consults, appointments, or human coordinator handoff for the medical-travel case.');
+    expect(prompt).toContain('Classify requests for a service outside that supported scope as USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE.');
+    expect(prompt).toContain('Classify guarantee/promise/ensure outcome wording as USER_ASKED_RISKY_MEDICAL_ADVICE, not USER_EXPRESSED_NEED.');
+    expect(prompt).not.toContain('green card');
+    expect(prompt).not.toContain('immigration');
+  });
+
   it('includes an allowed-events section and compact classifier context', () => {
     const prompt = buildSupervisorPrompt({
       ...baseInput,

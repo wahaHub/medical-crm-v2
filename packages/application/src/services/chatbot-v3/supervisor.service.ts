@@ -101,11 +101,24 @@ const RISKY_MEDICAL_ADVICE_PATTERNS = [
   /\b(?:start|stop|take|use|change|increase|decrease|skip|avoid)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|medicine|medication|drug|dose|dosage|treatment|therapy)\b/i,
   /\b(?:get|receive|undergo|have)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|treatment|therapy)\b.*\b(?:now|today|right away|immediately)\b/i,
   /\b(?:diagnose|diagnosis|treat|treatment|prescribe|dosage|dose)\b.*\b(?:now|today|right away|immediately)\b/i,
+  /\b(?:guarantee|guaranteed|promise|ensure|assure)\b.*\b(?:cure|cured|heal|healed|healing|recover|recovered|recovery|survive|survives|survival|success|succeeds|outcome|recurrence|disappear|disappears|disappeared)\b/i,
+  /\b(?:cure|cured|heal|healed|healing|recover|recovered|recovery|survive|survives|survival|success|succeeds|outcome|recurrence|disappear|disappears|disappeared)\b.*\b(?:guarantee|guaranteed|promise|ensure|assure)\b/i,
+  /(?:保证|承诺|确保).*(?:治好|治愈|痊愈|康复|存活|成功|不复发)/,
+  /(?:治好|治愈|痊愈|康复|存活|成功|不复发).*(?:保证|承诺|确保)/,
 ] as const;
 
-const RESTRICTED_MEDICAL_PROMISE_PATTERNS = [
-  /\b(?:guarantee|promise|ensure)\b.*\b(?:cure|cured|heal|healed|recover|recovered|survive|success)\b/i,
+const OUT_OF_SCOPE_OR_RESTRICTED_SERVICE_PATTERNS = [
+  /\b(?:can you|could you|would you|will you|do you|does medora|can medora|could medora|would medora|your team)\s+(?:help me\s+)?(?:apply for|obtain|file|process|handle|arrange)\b.{0,80}\b(?:green card|permanent residence|permanent residency|immigration application|immigrant visa|citizenship|naturalization|asylum|work permit|employment visa)\b/i,
+  /\b(?:help me|need (?:you|medora) to)\s+(?:apply for|obtain|file|process|handle|arrange)\b.{0,80}\b(?:green card|permanent residence|permanent residency|immigration application|immigrant visa|citizenship|naturalization|asylum|work permit|employment visa)\b/i,
+  /\b(?:can you|could you|would you|will you|do you|does medora|can medora|could medora|would medora|your team)\s+(?:help me\s+)?(?:handle|provide|arrange|file|buy|rent|register|draft|find|apply for)\b.{0,80}\b(?:lawyer|legal advice|lawsuit|court case|contract dispute|tax filing|investment|loan|mortgage|real estate|apartment|housing|school admission|job placement|find (?:me )?a job|get (?:me )?a job|employment contract)\b/i,
+  /\b(?:help me|need (?:you|medora) to)\s+(?:handle|provide|arrange|file|buy|rent|register|draft|find|apply for)\b.{0,80}\b(?:lawyer|legal advice|lawsuit|court case|contract dispute|tax filing|investment|loan|mortgage|real estate|apartment|housing|school admission|job placement|find (?:me )?a job|get (?:me )?a job|employment contract)\b/i,
+  /\b(?:find me a job|help me find a job|get me a job|help me get a job)\b/i,
+  /(?:你们能|你们可以|你们会|可以帮我|能帮我|帮我|请帮我)[^，。！？?]{0,40}(?:办理|处理|申请|安排|提供|办)[^，。！？?]{0,40}(?:绿卡|移民|永久居留|入籍|庇护|工签|工作签证|法律咨询|律师|诉讼|贷款|房贷|买房|租房|入学)/,
+  /(?:你们能|你们可以|你们会|可以帮我|能帮我|帮我|请帮我)[^，。！？?]{0,40}(?:租房|买房)/,
+  /(?:你们能|你们可以|你们会|可以帮我|能帮我|帮我|请帮我)[^，。！？?]{0,40}找工作/,
 ] as const;
+
+const TREATMENT_TRAVEL_HOUSING_CONTEXT_PATTERN = /(?:\b(?:housing|apartment|rent)\b.*\b(?:hospital|treatment|medical|appointment)\b|\b(?:hospital|treatment|medical|appointment)\b.*\b(?:housing|apartment|rent)\b|(?:租房|住房|住宿|公寓).*(?:医院|治疗|看病|就医|预约)|(?:医院|治疗|看病|就医|预约).*(?:租房|住房|住宿|公寓))/i;
 
 const WORKFLOW_QUESTION_PATTERNS = [
   /\bwhat (?:should|do) i do (?:next|now|from here)\b/i,
@@ -416,7 +429,7 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
     };
   }
 
-  if (looksLikeRestrictedMedicalPromise(rawText)) {
+  if (looksLikeOutOfScopeOrRestrictedService(rawText)) {
     return {
       eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
       confidence: 0.9,
@@ -819,8 +832,12 @@ function looksLikeRiskyMedicalAdvice(message: string): boolean {
   return RISKY_MEDICAL_ADVICE_PATTERNS.some((pattern) => pattern.test(message));
 }
 
-function looksLikeRestrictedMedicalPromise(message: string): boolean {
-  return RESTRICTED_MEDICAL_PROMISE_PATTERNS.some((pattern) => pattern.test(message));
+function looksLikeOutOfScopeOrRestrictedService(message: string): boolean {
+  if (TREATMENT_TRAVEL_HOUSING_CONTEXT_PATTERN.test(message)) {
+    return false;
+  }
+
+  return OUT_OF_SCOPE_OR_RESTRICTED_SERVICE_PATTERNS.some((pattern) => pattern.test(message));
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

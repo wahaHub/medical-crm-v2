@@ -1685,7 +1685,7 @@ describe('SupervisorService event extraction', () => {
     });
   });
 
-  it('keeps restricted medical promises ahead of attachment extraction', async () => {
+  it('keeps outcome guarantees on the medical-safety path ahead of attachment extraction', async () => {
     const supervisor = new SupervisorService();
 
     await expect(supervisor.extractEvent({
@@ -1696,11 +1696,11 @@ describe('SupervisorService event extraction', () => {
         attachments: [{ fileName: 'records.pdf' }],
       },
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
       source: 'deterministic',
       metadata: {
         rawText: 'I attached records, can you guarantee she will be cured?',
-        redirectTarget: 'medical_travel_support',
+        riskType: 'medical_advice',
       },
     });
   });
@@ -1792,7 +1792,7 @@ describe('SupervisorService event extraction', () => {
     expect(gatewayCalled).toBe(false);
   });
 
-  it('short-circuits clear restricted-service heuristics before the semantic gateway', async () => {
+  it('short-circuits clear outcome-guarantee heuristics before the semantic gateway as medical safety', async () => {
     let gatewayCalled = false;
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
@@ -1811,14 +1811,146 @@ describe('SupervisorService event extraction', () => {
       ...eventInput,
       latestUserMessage: 'Can you guarantee my wife will be cured?',
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
       source: 'deterministic',
       metadata: {
         rawText: 'Can you guarantee my wife will be cured?',
+        riskType: 'medical_advice',
+      },
+    });
+    expect(gatewayCalled).toBe(false);
+  });
+
+  it.each([
+    'Guarantee the cancer will be cured.',
+    'Ensure my mother survives.',
+    'Promise a complete cure.',
+    'I need guaranteed healing.',
+    '你们能保证治好吗？',
+    'Can you ensure the tumor disappears?',
+    'Guarantee that I recover.',
+    'Promise that chemo succeeds.',
+    'Ensure no recurrence.',
+    'Guarantee success before I pay.',
+  ])('short-circuits outcome guarantee wording before the semantic gateway as medical safety: %s', async (latestUserMessage) => {
+    let gatewayCalled = false;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => {
+        gatewayCalled = true;
+        return {
+          eventType: 'USER_EXPRESSED_NEED',
+          target: 'treatment',
+          modifier: 'ask',
+          confidence: 0.99,
+        };
+      },
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      latestUserMessage,
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      source: 'deterministic',
+      target: 'medical_facts',
+      modifier: 'ask',
+      metadata: {
+        rawText: latestUserMessage,
+        riskType: 'medical_advice',
+      },
+    });
+    expect(gatewayCalled).toBe(false);
+  });
+
+  it.each([
+    'Can you help me apply for a US green card?',
+    '你们能帮我办绿卡么？',
+    'Can your team handle my immigration application?',
+    'Can you provide legal advice for a court case?',
+    'Can you help me find a job in China?',
+    'Can you rent an apartment in China?',
+    '能帮我在中国租房吗？',
+  ])('short-circuits true out-of-scope service requests before the semantic gateway: %s', async (latestUserMessage) => {
+    let gatewayCalled = false;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => {
+        gatewayCalled = true;
+        return {
+          eventType: 'USER_EXPRESSED_NEED',
+          target: 'unknown',
+          modifier: 'ask',
+          confidence: 0.99,
+        };
+      },
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      latestUserMessage,
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+      source: 'deterministic',
+      target: 'unknown',
+      modifier: 'ask',
+      metadata: {
+        rawText: latestUserMessage,
         redirectTarget: 'medical_travel_support',
       },
     });
     expect(gatewayCalled).toBe(false);
+  });
+
+  it.each([
+    'Can you do a good job finding a hospital for my father?',
+    'The doctor did a good job, can I get a second opinion?',
+    'I have a pending immigration application, does that affect treatment travel?',
+    'Will my visa status affect scheduling treatment in China?',
+    'Do you need my work permit for the hospital appointment documents?',
+    'Does Medora need my immigrant visa status to schedule treatment travel?',
+    'Can you get my work permit from the documents I uploaded for the hospital appointment?',
+    'Can you help me find my job records in the documents for treatment travel?',
+    'Can you help me understand whether my immigrant visa affects treatment travel?',
+    'Can you help me confirm whether my work permit is needed for hospital documents?',
+    'Do I need to apply for a work permit before treatment travel?',
+    'Should I file my immigrant visa documents before the hospital appointment?',
+    'I need housing near the hospital during treatment travel.',
+    'Can you help me get my green card records from the documents I uploaded for the hospital appointment?',
+    'Can you arrange housing near the hospital during treatment travel?',
+    '我有绿卡申请在处理中，会影响去中国看病的安排吗？',
+    '我在申请绿卡，会影响去中国看病的安排吗？',
+    '我正在办理工签，会影响去中国看病的安排吗？',
+    '我能不能申请绿卡，会影响去中国看病的安排吗？',
+    '能帮我从上传材料里找一下绿卡记录用于医院预约吗？',
+    '可以帮我确认绿卡是否需要作为医院预约文件吗？',
+    '能帮我看看工签材料里有没有医院需要的身份证明吗？',
+    '能帮我安排去中国治疗期间医院附近租房吗？',
+  ])('does not treat normal medical coordination wording as out-of-scope: %s', async (latestUserMessage) => {
+    let gatewayCalled = false;
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => {
+        gatewayCalled = true;
+        return {
+          eventType: 'USER_ASKED_QUESTION',
+          target: 'treatment',
+          modifier: 'ask',
+          confidence: 0.92,
+        };
+      },
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      latestUserMessage,
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_QUESTION',
+      source: 'llm',
+      target: 'treatment',
+      modifier: 'ask',
+    });
+    expect(gatewayCalled).toBe(true);
   });
 
   it('falls back to USER_MESSAGE_UNCLEAR when semantic output is invalid', async () => {

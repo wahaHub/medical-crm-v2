@@ -8,6 +8,15 @@ import { buildAdminNewTicketEmail } from './admin-new-ticket-email.template.js';
 import { buildPatientNewMessageEmail } from './patient-new-message-email.template.js';
 import { fetchWithEmailTimeout } from './email-delivery.utils.js';
 
+const PATIENT_NOTIFICATION_FROM = 'Medora Care Team <customer@medicaltourismchina.health>';
+
+function formatPatientReplyTo(replyTo: string | null | undefined): string | undefined {
+  const trimmed = replyTo?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.includes('<')) return trimmed;
+  return `Medora Reply <${trimmed}>`;
+}
+
 function getResendConfig() {
   const apiKey = process.env['RESEND_API_KEY'];
   if (!apiKey) return null;
@@ -181,9 +190,13 @@ export class ResendEmailService implements IEmailService {
     messagePreview: string;
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void> {
     const content = buildPatientNewMessageEmail(params);
-    await this.sendRaw(params.to, content.subject, content.html, content.text);
+    await this.sendRaw(params.to, content.subject, content.html, content.text, {
+      from: PATIENT_NOTIFICATION_FROM,
+      replyTo: formatPatientReplyTo(params.replyTo),
+    });
   }
 
   async sendPatientCaseUpdateAlert(params: {
@@ -194,6 +207,7 @@ export class ResendEmailService implements IEmailService {
     bodyLines?: string[];
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void> {
     const content = buildPatientNewMessageEmail({
       ...params,
@@ -205,10 +219,22 @@ export class ResendEmailService implements IEmailService {
       primaryActionLabel: 'Review case update',
       speaker: 'Medora case update',
     });
-    await this.sendRaw(params.to, content.subject, content.html, content.text);
+    await this.sendRaw(params.to, content.subject, content.html, content.text, {
+      from: PATIENT_NOTIFICATION_FROM,
+      replyTo: formatPatientReplyTo(params.replyTo),
+    });
   }
 
-  private async sendRaw(to: string, subject: string, html: string, text: string): Promise<void> {
+  private async sendRaw(
+    to: string,
+    subject: string,
+    html: string,
+    text: string,
+    options?: {
+      from?: string;
+      replyTo?: string;
+    },
+  ): Promise<void> {
     const response = await fetchWithEmailTimeout('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -216,11 +242,12 @@ export class ResendEmailService implements IEmailService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: this.from,
+        from: options?.from ?? this.from,
         to: [to],
         subject,
         html,
         text,
+        ...(options?.replyTo ? { reply_to: options.replyTo } : {}),
       }),
     });
 

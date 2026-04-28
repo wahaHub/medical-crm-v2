@@ -51,6 +51,7 @@ export interface IEmailService {
     messagePreview: string;
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void>;
   sendPatientCaseUpdateAlert(params: {
     to: string;
@@ -60,5 +61,6 @@ export interface IEmailService {
     bodyLines?: string[];
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void>;
 }

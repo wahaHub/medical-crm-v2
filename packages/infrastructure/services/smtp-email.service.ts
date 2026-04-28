@@ -8,6 +8,15 @@ import { buildAdminNewMessageEmail } from './admin-new-message-email.template.js
 import { buildAdminNewTicketEmail } from './admin-new-ticket-email.template.js';
 import { buildPatientNewMessageEmail } from './patient-new-message-email.template.js';
 
+const PATIENT_NOTIFICATION_FROM = 'Medora Care Team <customer@medicaltourismchina.health>';
+
+function formatPatientReplyTo(replyTo: string | null | undefined): string | undefined {
+  const trimmed = replyTo?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.includes('<')) return trimmed;
+  return `Medora Reply <${trimmed}>`;
+}
+
 function readSmtpConfig() {
   const host = process.env['SMTP_HOST'] ?? process.env['AWS_SES_SMTP_HOST'];
   const user = process.env['SMTP_USER'] ?? process.env['AWS_SES_SMTP_USER'];
@@ -166,9 +175,13 @@ export class SmtpEmailService implements IEmailService {
     messagePreview: string;
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void> {
     const content = buildPatientNewMessageEmail(params);
-    await this.sendRaw(params.to, content.subject, content.text, content.html);
+    await this.sendRaw(params.to, content.subject, content.text, content.html, {
+      from: PATIENT_NOTIFICATION_FROM,
+      replyTo: formatPatientReplyTo(params.replyTo),
+    });
   }
 
   async sendPatientCaseUpdateAlert(params: {
@@ -179,6 +192,7 @@ export class SmtpEmailService implements IEmailService {
     bodyLines?: string[];
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void> {
     const content = buildPatientNewMessageEmail({
       ...params,
@@ -190,16 +204,29 @@ export class SmtpEmailService implements IEmailService {
       primaryActionLabel: 'Review case update',
       speaker: 'Medora case update',
     });
-    await this.sendRaw(params.to, content.subject, content.text, content.html);
+    await this.sendRaw(params.to, content.subject, content.text, content.html, {
+      from: PATIENT_NOTIFICATION_FROM,
+      replyTo: formatPatientReplyTo(params.replyTo),
+    });
   }
 
-  private async sendRaw(to: string, subject: string, text: string, html: string): Promise<void> {
+  private async sendRaw(
+    to: string,
+    subject: string,
+    text: string,
+    html: string,
+    options?: {
+      from?: string;
+      replyTo?: string;
+    },
+  ): Promise<void> {
     await this.transporter.sendMail({
-      from: this.from,
+      from: options?.from ?? this.from,
       to,
       subject,
       text,
       html,
+      ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
     });
   }
 }

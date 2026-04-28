@@ -155,6 +155,7 @@ export class NotificationEmailService {
     messagePreview: string;
     site: PatientSite;
     isPatientOnline: boolean;
+    replyTo?: string | null;
   }): Promise<void> {
     if (input.isPatientOnline) {
       return;
@@ -175,6 +176,7 @@ export class NotificationEmailService {
         messagePreview: truncatePreview(input.messagePreview),
         dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
         locale: patient.preferredLanguage ?? null,
+        replyTo: input.replyTo ?? null,
       }),
     });
   }
@@ -187,6 +189,7 @@ export class NotificationEmailService {
     messagePreview: string;
     bodyLines?: string[];
     dedupeKey?: string;
+    replyTo?: string | null;
   }): Promise<void> {
     const patient = await this.recipientRepo.findRecipientById(input.patientId);
     if (!patient || patient.role !== 'PATIENT' || !patient.email) {
@@ -205,6 +208,7 @@ export class NotificationEmailService {
         bodyLines: input.bodyLines?.filter((line) => line.trim().length > 0),
         dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
         locale: patient.preferredLanguage ?? null,
+        replyTo: input.replyTo ?? null,
       }),
     });
   }

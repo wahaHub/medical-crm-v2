@@ -36,7 +36,7 @@ export function buildPatientNewMessageEmail(params: {
     },
     footerLines: [
       'This email was sent automatically by Medora Health.',
-      'Please do not reply directly to this message.',
+      'You can reply directly to this email. Your message and attachments will be added to your Medora case.',
     ],
     fallbackLink: params.dashboardLink,
   });

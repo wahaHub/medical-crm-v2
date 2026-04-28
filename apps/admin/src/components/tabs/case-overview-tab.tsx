@@ -42,6 +42,14 @@ function formatFileSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getDocumentPreviewHref(caseId: string, doc: DocumentItem): string | undefined {
+  if (doc.id.startsWith('message-attachment:')) {
+    return doc.downloadUrl;
+  }
+
+  return `/api/cases/${caseId}/documents/${doc.id}/preview`;
+}
+
 function InfoRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="space-y-0.5">
@@ -811,18 +819,22 @@ function DocumentsCard({ caseId }: { caseId: string }) {
     {
       key: 'actions',
       header: '',
-      render: (row) => (
-        <div className="flex items-center gap-1">
-          {row.downloadUrl && (
-            <>
+      render: (row) => {
+        const previewHref = getDocumentPreviewHref(caseId, row);
+
+        return (
+          <div className="flex items-center gap-1">
+            {previewHref && (
               <a
-                href={row.downloadUrl}
+                href={previewHref}
                 target="_blank"
                 rel="noreferrer"
                 className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
               >
                 <Eye size={14} />
               </a>
+            )}
+            {row.downloadUrl && (
               <a
                 href={row.downloadUrl}
                 download={row.fileName}
@@ -830,17 +842,17 @@ function DocumentsCard({ caseId }: { caseId: string }) {
               >
                 <Download size={14} />
               </a>
-            </>
-          )}
-          <button
-            onClick={() => handleDelete(row.id)}
-            disabled={isPending}
-            className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      ),
+            )}
+            <button
+              onClick={() => handleDelete(row.id)}
+              disabled={isPending}
+              className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 

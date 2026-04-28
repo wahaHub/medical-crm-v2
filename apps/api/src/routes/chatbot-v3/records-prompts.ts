@@ -142,6 +142,10 @@ function formatReadIntents(readIntents: RecordsWorkerTask['readIntents']): strin
   }
 
   return readIntents.map((intent) => {
+    if (typeof intent === 'string') {
+      return intent;
+    }
+
     const stableIntent = {
       type: intent.type,
       ...('category' in intent ? { category: intent.category } : {}),

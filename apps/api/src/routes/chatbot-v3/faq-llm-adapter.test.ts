@@ -240,6 +240,28 @@ describe('FaqLlmAdapter', () => {
     expect(answerPrompt).not.toContain('primary_stage=undefined');
   });
 
+  it('renders legacy string read intents in FAQ prompts', () => {
+    const task = {
+      ...createFaqTask('How does the process work?'),
+      readIntents: ['GENERAL_FAQ'] as unknown as FaqWorkerTask['readIntents'],
+    };
+
+    expect(() => buildFaqPlanPrompt({ task })).not.toThrow();
+    expect(buildFaqPlanPrompt({ task })).toContain('read_intents=GENERAL_FAQ');
+    expect(() => buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'process', reason: 'legacy read intent compatibility' },
+      matches: [],
+      details: [],
+    })).not.toThrow();
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'process', reason: 'legacy read intent compatibility' },
+      matches: [],
+      details: [],
+    })).toContain('read_intents=GENERAL_FAQ');
+  });
+
   it('passes turn plan skill context through FAQ prompts', () => {
     const task: FaqWorkerTask = {
       ...createFaqTask('How long does online consultation usually take to schedule?'),

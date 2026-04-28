@@ -73,6 +73,14 @@ describe('RecordsLlmAdapter', () => {
     expect(collectionPrompt).not.toContain('primary_stage=undefined');
   });
 
+  it('renders legacy string read intents in records prompts', () => {
+    const prompt = buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
+      readIntents: ['RECORD_REQUIREMENTS'] as unknown as RecordsWorkerTask['readIntents'],
+    }));
+
+    expect(prompt).toContain('read_intents=RECORD_REQUIREMENTS');
+  });
+
   it('passes turn plan skill context through records prompts', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
       currentStage: 'COLLECT_MEDICAL_INPUTS',

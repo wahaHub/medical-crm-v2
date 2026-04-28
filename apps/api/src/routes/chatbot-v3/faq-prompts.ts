@@ -91,6 +91,10 @@ function formatReadIntents(readIntents: FaqWorkerTask['readIntents']): string {
   }
 
   return readIntents.map((intent) => {
+    if (typeof intent === 'string') {
+      return intent;
+    }
+
     const stableIntent = {
       type: intent.type,
       ...('category' in intent ? { category: intent.category } : {}),

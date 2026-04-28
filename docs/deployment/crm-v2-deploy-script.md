@@ -94,3 +94,40 @@ Verified on `2026-04-06` against branch `feature/phase-2bc`:
   - Confirmed local and public health endpoint success:
     - `http://127.0.0.1:3001/health`
     - `https://crmapi.medicaltourismchina.health/health`
+
+## Production log tail helper
+
+For repeated Lightsail debugging, use:
+
+```bash
+cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --follow
+```
+
+Useful variants:
+
+```bash
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --since 15
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --since 30 \
+  --grep chatbot-v3
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --service medora-ai-sync-outbox.service \
+  --priority err
+```
+
+Defaults:
+
+- remote host: `44.253.141.97`
+- remote user: `ubuntu`
+- service: `medora-crm-v2-api`
+
+`Ctrl+C` stops the local ssh session; no remote cleanup step is required.

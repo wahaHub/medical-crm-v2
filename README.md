@@ -45,6 +45,7 @@ Default local URLs after boot:
 The verified deployment entrypoint is:
 
 - [scripts/deploy_v2.py](scripts/deploy_v2.py)
+- [scripts/tail_journalctl.py](scripts/tail_journalctl.py)
 
 ### What it does
 
@@ -115,6 +116,35 @@ python3 scripts/deploy_v2.py \
   --ssh-key "$SSH_KEY_PATH"
 ```
 
+### Production log tail
+
+When you need to debug the API on Lightsail, use:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --follow
+```
+
+Common variants:
+
+```bash
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --since 15
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --since 30 \
+  --grep chatbot-v3
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --service medora-ai-sync-outbox.service \
+  --priority err
+```
+
 ### Prerequisites
 
 - `vercel` CLI is installed and already logged in
@@ -129,6 +159,7 @@ python3 scripts/deploy_v2.py \
 - If that branch is not the current checked-out branch, the script creates a temporary git worktree
 - The script expects a clean worktree unless `--allow-dirty` is passed
 - During Next.js builds you may still see `Dynamic server usage` warnings in Vercel logs for authenticated pages; these did not block production deployment in the verified run
+- `tail_journalctl.py` defaults to `44.253.141.97`, `ubuntu`, and `medora-crm-v2-api`, but all three can be overridden per run
 
 ## Dify API Key Rotation
 

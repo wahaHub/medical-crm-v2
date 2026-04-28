@@ -24,6 +24,9 @@ const docIdParamSchema = z.object({
   docId: z.string().uuid(),
 });
 
+const notifyDocumentTypes = ['INVITATION', 'DIAGNOSIS', 'QUOTE'] as const;
+type NotifyDocumentType = typeof notifyDocumentTypes[number];
+
 const translateDocumentSchema = z.object({
   inputPath: z.string().min(1).optional(),
   sourceUrl: z.string().url().optional(),
@@ -105,6 +108,46 @@ async function collectOutputFiles(rootDir: string, baseDir = rootDir): Promise<A
     }));
 
   return files.flat().sort((a, b) => a.fileName.localeCompare(b.fileName));
+}
+
+function isNotifyDocumentType(value: string): value is NotifyDocumentType {
+  return notifyDocumentTypes.includes(value as NotifyDocumentType);
+}
+
+function buildDocumentNotificationCopy(documentType: NotifyDocumentType): {
+  subject: string;
+  messagePreview: string;
+} {
+  if (documentType === 'DIAGNOSIS') {
+    return {
+      subject: 'Your diagnosis document is available',
+      messagePreview: 'Your hospital uploaded a diagnosis document for your case.',
+    };
+  }
+
+  if (documentType === 'QUOTE') {
+    return {
+      subject: 'Your treatment quote is available',
+      messagePreview: 'Your hospital uploaded a treatment quote for your case.',
+    };
+  }
+
+  return {
+    subject: 'Your invitation letter is available',
+    messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
+  };
+}
+
+async function readNotifyDocumentBody(request: Request): Promise<{ hospitalId?: string }> {
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return {};
+  }
+
+  const body = await request.json().catch(() => ({})) as { hospitalId?: unknown };
+  return typeof body.hospitalId === 'string' && body.hospitalId.trim()
+    ? { hospitalId: body.hospitalId.trim() }
+    : {};
 }
 
 async function runBabelDocTranslation(input: z.infer<typeof translateDocumentSchema>) {
@@ -255,38 +298,60 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
   const { caseId, docId } = c.req.valid('param');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
+  const body = await readNotifyDocumentBody(c.req.raw);
 
-  if (actor.role !== 'HOSPITAL') {
-    return c.json({ error: 'Only hospital users can notify patients about uploaded case documents' }, 403);
+  if (actor.role !== 'HOSPITAL' && actor.role !== 'ADMIN') {
+    return c.json({ error: 'Only admins and hospital users can notify patients about uploaded case documents' }, 403);
+  }
+
+  if (actor.role === 'HOSPITAL' && !actor.hospitalId) {
+    return c.json({ error: 'Hospital user is missing hospital context' }, 403);
   }
 
   const caseEntity = await svc.caseRepo.findById(caseId);
   if (!caseEntity) {
     return c.json({ error: 'Case not found' }, 404);
   }
-  await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
+  if (actor.role === 'HOSPITAL') {
+    await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
+  }
 
   const doc = await svc.documentRepo.findById(docId);
   if (!doc || doc.caseId !== caseId || doc.status === 'DELETED') {
     return c.json({ error: 'Document not found' }, 404);
   }
 
-  if (doc.documentType !== 'INVITATION') {
+  if (!isNotifyDocumentType(doc.documentType)) {
     return c.body(null, 204);
   }
 
   try {
     const patient = await svc.patientRepo.findById(caseEntity.patientId);
+    const explicitHospitalId = actor.role === 'ADMIN' ? body.hospitalId : undefined;
+    const hospitalId = actor.role === 'HOSPITAL' ? actor.hospitalId : explicitHospitalId ?? null;
+    const channel = hospitalId ? 'HOSPITAL_PATIENT' : 'ADMIN_PATIENT';
+    const conversation = await svc.createConversation.execute({
+      category: channel,
+      caseId,
+      ...(hospitalId ? { hospitalId } : {}),
+    }, actor);
+    const copy = buildDocumentNotificationCopy(doc.documentType);
+
     await svc.notifyPatientOfCaseUpdate.execute({
       caseId,
       patientId: caseEntity.patientId,
       site: patient?.site ?? 'china',
-      subject: 'Your invitation letter is available',
-      messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
+      subject: copy.subject,
+      messagePreview: copy.messagePreview,
       dedupeKey: `document:${docId}`,
+      conversationId: conversation.id,
+      channel,
+      hospitalId,
+      sourceKind: 'document',
+      sourceId: docId,
     });
   } catch (error) {
-    console.warn('Failed to notify patient about an invitation document:', error);
+    console.warn('Failed to notify patient about a case document:', error);
   }
 
   return c.body(null, 204);

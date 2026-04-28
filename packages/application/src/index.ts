@@ -230,6 +230,11 @@ export type { ProcessMessageTasksResult } from './use-cases/messages/process-mes
 
 // Use Cases — Notifications
 export { NotificationEmailService } from './use-cases/notifications/notification-email.service.js';
+export { CreateEmailReplyTokenUseCase } from './use-cases/notifications/create-email-reply-token.use-case.js';
+export type {
+  CreateEmailReplyTokenInput,
+  CreateEmailReplyTokenResult,
+} from './use-cases/notifications/create-email-reply-token.use-case.js';
 
 // Use Cases — AI Sync
 export { BootstrapAiSyncUseCase } from './use-cases/ai-sync/bootstrap-ai-sync.use-case.js';

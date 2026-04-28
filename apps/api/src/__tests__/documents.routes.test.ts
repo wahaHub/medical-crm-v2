@@ -23,6 +23,7 @@ const mockServices = {
   caseRepo: { findById: vi.fn() },
   documentRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
+  createConversation: { execute: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
   chcRepo: { findByCaseAndHospital: vi.fn() },
 };
@@ -93,6 +94,12 @@ describe('Documents routes', () => {
       caseId: CASE_UUID,
       documentType: 'INVITATION',
       status: 'ACTIVE',
+    });
+    mockServices.createConversation.execute.mockResolvedValue({
+      id: 'conversation-1',
+      caseId: CASE_UUID,
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
     });
     mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue(null);
   });
@@ -201,6 +208,11 @@ describe('Documents routes', () => {
       });
 
       expect(res.status).toBe(204);
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: CASE_UUID,
+        hospitalId: 'hospital-1',
+      }, expect.anything());
       expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith({
         caseId: CASE_UUID,
         patientId: 'patient-1',
@@ -208,7 +220,105 @@ describe('Documents routes', () => {
         subject: 'Your invitation letter is available',
         messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
         dedupeKey: `document:${DOC_UUID}`,
+        conversationId: 'conversation-1',
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
       });
+    });
+
+    it.each([
+      ['INVITATION', 'Your invitation letter is available'],
+      ['DIAGNOSIS', 'Your diagnosis document is available'],
+      ['QUOTE', 'Your treatment quote is available'],
+    ])('routes hospital %s notifications to the hospital-patient conversation', async (documentType, subject) => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.documentRepo.findById.mockResolvedValue({
+        id: DOC_UUID,
+        caseId: CASE_UUID,
+        documentType,
+        status: 'ACTIVE',
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: CASE_UUID,
+        hospitalId: 'hospital-1',
+      }, expect.anything());
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
+        subject,
+        conversationId: 'conversation-1',
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+      }));
+    });
+
+    it('routes admin document notifications to the admin-patient conversation by default', async () => {
+      mockServices.createConversation.execute.mockResolvedValue({
+        id: 'admin-conversation-1',
+        caseId: CASE_UUID,
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'ADMIN_PATIENT',
+        caseId: CASE_UUID,
+      }, expect.anything());
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
+        conversationId: 'admin-conversation-1',
+        channel: 'ADMIN_PATIENT',
+        hospitalId: null,
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+      }));
+    });
+
+    it('routes admin document notifications to a hospital conversation when hospitalId is explicit', async () => {
+      mockServices.createConversation.execute.mockResolvedValue({
+        id: 'hospital-conversation-1',
+        caseId: CASE_UUID,
+        category: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-2',
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: 'hospital-2' }),
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: CASE_UUID,
+        hospitalId: 'hospital-2',
+      }, expect.anything());
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
+        conversationId: 'hospital-conversation-1',
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-2',
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+      }));
     });
 
     it('returns 204 even if invitation notification delivery fails', async () => {

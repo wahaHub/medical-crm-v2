@@ -271,6 +271,10 @@ describe('Message routes', () => {
         messagePreview: 'Admin reply',
         site: 'beauty',
         isPatientOnline: false,
+        channel: 'ADMIN_PATIENT',
+        hospitalId: null,
+        sourceKind: 'message',
+        sourceId: VALID_MSG_ID,
       });
     });
 
@@ -307,6 +311,10 @@ describe('Message routes', () => {
         messagePreview: 'Hospital reply',
         site: 'beauty',
         isPatientOnline: false,
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        sourceKind: 'message',
+        sourceId: VALID_MSG_ID,
       });
     });
 
@@ -377,6 +385,10 @@ describe('Message routes', () => {
         messagePreview: 'Admin reply',
         site: 'beauty',
         isPatientOnline: true,
+        channel: 'ADMIN_PATIENT',
+        hospitalId: null,
+        sourceKind: 'message',
+        sourceId: VALID_MSG_ID,
       });
     });
   });

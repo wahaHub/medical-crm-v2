@@ -208,6 +208,7 @@ import {
   UpdateProfileUseCase,
   ChangePasswordUseCase,
   NotificationEmailService,
+  CreateEmailReplyTokenUseCase,
   TranslationTaskService,
   ProcessTranslationTasksUseCase,
   RetryTranslationUseCase,
@@ -238,6 +239,7 @@ import {
   DrizzleUserEmailLookupRepository,
   DrizzleNotificationRecipientRepository,
   DrizzleEmailNotificationCooldownRepository,
+  DrizzleEmailReplyTokenRepository,
   DrizzleConversationRepository,
   DrizzleMessageRepository,
   DrizzleMessageTaskRepository,
@@ -527,6 +529,10 @@ interface AppServices {
       messagePreview: string;
       site: import('@medical-crm/domain').PatientSite;
       isPatientOnline: boolean;
+      channel?: import('@medical-crm/domain').EmailReplyChannel;
+      hospitalId?: string | null;
+      sourceKind?: string;
+      sourceId?: string | null;
     }): Promise<void>;
   };
   notifyPatientOfCaseUpdate: {
@@ -536,7 +542,13 @@ interface AppServices {
       site: import('@medical-crm/domain').PatientSite;
       subject: string;
       messagePreview: string;
+      bodyLines?: string[];
       dedupeKey?: string;
+      conversationId?: string | null;
+      channel?: import('@medical-crm/domain').EmailReplyChannel;
+      hospitalId?: string | null;
+      sourceKind?: string;
+      sourceId?: string | null;
     }): Promise<void>;
   };
   sendPatientLoginLink: SendPatientLoginLinkUseCase;
@@ -978,10 +990,13 @@ export function getServices(): AppServices {
         });
       },
     };
+    const emailReplyTokenRepo = new DrizzleEmailReplyTokenRepository(crmDb);
+    const createEmailReplyToken = new CreateEmailReplyTokenUseCase(emailReplyTokenRepo);
     const notificationEmailService = new NotificationEmailService(
       notificationRecipientRepo,
       emailNotificationCooldownRepo,
       emailService,
+      { createEmailReplyToken },
     );
 
     const chcRepo = new DrizzleCHCRepository(crmDb);

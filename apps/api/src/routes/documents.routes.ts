@@ -141,11 +141,14 @@ function buildDocumentNotificationCopy(documentType: NotifyDocumentType): {
   };
 }
 
-function sanitizeContentDispositionFileName(fileName: string): string {
+function buildContentDispositionHeader(fileName: string): string {
   const sanitized = fileName
-    .replace(/[\x00-\x1F\x7F"\\\/]/g, '_')
+    .replace(/[^\x20-\x7E]|[\x00-\x1F\x7F"\\\/]/g, '_')
     .trim();
-  return sanitized || 'document';
+  const fallback = sanitized || 'document';
+  const encoded = encodeURIComponent(fileName)
+    .replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
 async function readNotifyDocumentBody(request: Request): Promise<
@@ -520,13 +523,12 @@ app.openapi(getDocumentPreviewRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
   const preview = await svc.getDocumentPreview.execute(caseId, docId, actor);
-  const fileName = sanitizeContentDispositionFileName(preview.fileName);
 
   return new Response(preview.body, {
     status: 200,
     headers: {
       'Content-Type': preview.contentType,
-      'Content-Disposition': `inline; filename="${fileName}"`,
+      'Content-Disposition': buildContentDispositionHeader(preview.fileName),
       'Cache-Control': 'private, no-store',
     },
   });

@@ -482,7 +482,8 @@ describe('Documents routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe('application/pdf');
-      expect(res.headers.get('content-disposition')).toBe('inline; filename="report.pdf"');
+      expect(res.headers.get('content-disposition')).toContain('filename="report.pdf"');
+      expect(res.headers.get('content-disposition')).toContain("filename*=UTF-8''report.pdf");
       expect(res.headers.get('cache-control')).toBe('private, no-store');
       expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([37, 80, 68, 70]));
       expect(mockServices.getDocumentPreview.execute).toHaveBeenCalledWith(
@@ -490,6 +491,21 @@ describe('Documents routes', () => {
         DOC_UUID,
         expect.objectContaining({ role: 'ADMIN', userId: 'u-1' }),
       );
+    });
+
+    it('uses an ASCII fallback and RFC 5987 filename for non-ASCII preview filenames', async () => {
+      mockServices.getDocumentPreview.execute.mockResolvedValue({
+        body: new Uint8Array([37, 80, 68, 70]),
+        contentType: 'application/pdf',
+        fileName: '报告.pdf',
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(200);
+      const contentDisposition = res.headers.get('content-disposition') ?? '';
+      expect(contentDisposition).toContain('filename="__.pdf"');
+      expect(contentDisposition).toContain("filename*=UTF-8''%E6%8A%A5%E5%91%8A.pdf");
     });
 
     it('allows a hospital to preview only when the hospital has case access', async () => {

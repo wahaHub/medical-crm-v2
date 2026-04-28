@@ -1,5 +1,5 @@
 import type { ICaseRepository, IDocumentRepository, IStorageService, ICHCRepository } from '@medical-crm/domain';
-import { NotFoundError } from '@medical-crm/utils';
+import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
 
@@ -32,6 +32,8 @@ export class GetDocumentPreviewUseCase {
     }
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
+    } else if (actor.role !== 'ADMIN') {
+      throw new ForbiddenError('Only admins and hospital users can preview case documents');
     }
 
     const signedUrl = await this.storageService.getSignedUrl(doc.storageKey);

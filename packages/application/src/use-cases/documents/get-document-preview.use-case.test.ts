@@ -26,6 +26,13 @@ const hospitalActor: Actor = {
   hospitalId: OTHER_HOSPITAL_ID,
 };
 
+const patientActor: Actor = {
+  role: 'PATIENT',
+  userId: 'patient-1',
+  email: 'patient@test.com',
+  hospitalId: null,
+};
+
 describe('GetDocumentPreviewUseCase', () => {
   let documentRepo: IDocumentRepository;
   let caseRepo: ICaseRepository;
@@ -92,6 +99,13 @@ describe('GetDocumentPreviewUseCase', () => {
     await expect(useCase.execute(CASE_ID, DOC_ID, hospitalActor)).rejects.toBeInstanceOf(ForbiddenError);
 
     expect(chcRepo.findByCaseAndHospital).toHaveBeenCalledWith(CASE_ID, OTHER_HOSPITAL_ID);
+    expect(storageService.getSignedUrl).not.toHaveBeenCalled();
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('rejects patient actors and does not fetch a signed URL', async () => {
+    await expect(useCase.execute(CASE_ID, DOC_ID, patientActor)).rejects.toBeInstanceOf(ForbiddenError);
+
     expect(storageService.getSignedUrl).not.toHaveBeenCalled();
     expect(fetchFn).not.toHaveBeenCalled();
   });

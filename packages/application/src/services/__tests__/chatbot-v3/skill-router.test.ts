@@ -48,8 +48,8 @@ describe('buildSkillPolicy', () => {
       turnPlan: plan({}),
       agentRole: 'GeneralResponseAgent',
     })).toMatchObject([
-      { skillId: 'pricing_skill', role: 'primary' },
-      { skillId: 'documents_skill', role: 'auxiliary' },
+      { skillId: 'pricing_skill', role: 'primary', sectionHints: { target: 'pricing' } },
+      { skillId: 'documents_skill', role: 'auxiliary', sectionHints: { target: 'documents' } },
     ]);
   });
 
@@ -133,6 +133,51 @@ describe('buildSkillPolicy', () => {
     })[0]).toMatchObject({
       skillId: 'process_skill',
       role: 'primary',
+    });
+  });
+
+  it('uses the primary action target for section hints when the event target is unknown', () => {
+    expect(requests({
+      event: event({ target: 'unknown' }),
+      turnPlan: plan({
+        primaryAction: { type: 'ANSWER', target: 'pricing', mode: 'faq' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })[0]).toMatchObject({
+      skillId: 'pricing_skill',
+      role: 'primary',
+      sectionHints: { target: 'pricing' },
+    });
+  });
+
+  it('routes minimal triage requests to documents with medical facts section hints', () => {
+    expect(requests({
+      event: event({ target: 'unknown' }),
+      turnPlan: plan({
+        primaryAction: { type: 'REQUEST_INFO', target: 'minimal_triage' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })[0]).toMatchObject({
+      skillId: 'documents_skill',
+      role: 'primary',
+      sectionHints: { target: 'medical_facts' },
+    });
+  });
+
+  it('routes preference requests to hospital recommendation with recommendation section hints', () => {
+    expect(requests({
+      event: event({ target: 'unknown' }),
+      turnPlan: plan({
+        primaryAction: { type: 'REQUEST_INFO', target: 'preference' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })[0]).toMatchObject({
+      skillId: 'hospital_recommendation_skill',
+      role: 'primary',
+      sectionHints: { target: 'recommendation' },
     });
   });
 

@@ -1,5 +1,5 @@
 import type { AgentRole } from './agent-resolver.js';
-import type { DomainFacts, SupervisorEvent, TurnPlan } from './supervisor-event.types.js';
+import type { DomainFacts, SupervisorEvent, SupervisorEventTarget, TurnPlan } from './supervisor-event.types.js';
 import type { DomainSkillId, DomainSkillRequest } from './skill-packs.js';
 
 export interface SkillPolicy {
@@ -15,21 +15,21 @@ export function buildSkillPolicy(input: {
 }): SkillPolicy {
   const requests: DomainSkillRequest[] = [];
   const add = (
-    skillId: DomainSkillId,
+    route: SkillRoute,
     role: DomainSkillRequest['role'],
     reasonCode: string,
   ) => {
-    if (requests.length >= 2 || requests.some((request) => request.skillId === skillId)) {
+    if (requests.length >= 2 || requests.some((request) => request.skillId === route.skillId)) {
       return;
     }
 
     requests.push({
-      skillId,
+      skillId: route.skillId,
       role,
       reasonCode,
       sectionHints: {
         eventType: input.event.eventType,
-        target: input.event.target ?? 'unknown',
+        target: route.sectionTarget,
         modifier: input.event.modifier ?? 'unknown',
         primaryActionType: input.turnPlan.primaryAction.type,
         ...(input.turnPlan.followUpAction && input.turnPlan.followUpAction.type !== 'NONE'
@@ -39,12 +39,12 @@ export function buildSkillPolicy(input: {
     });
   };
 
-  add(primarySkillFor(input), 'primary', reasonCodeForPrimaryAction(input.turnPlan));
+  add(primaryRouteFor(input), 'primary', reasonCodeForPrimaryAction(input.turnPlan));
 
   const followUpAction = input.turnPlan.followUpAction;
-  const auxiliarySkill = skillForFollowUpAction(followUpAction);
-  if (auxiliarySkill && followUpAction) {
-    add(auxiliarySkill, 'auxiliary', reasonCodeForFollowUpAction(followUpAction));
+  const auxiliaryRoute = routeForFollowUpAction(followUpAction);
+  if (auxiliaryRoute && followUpAction) {
+    add(auxiliaryRoute, 'auxiliary', reasonCodeForFollowUpAction(followUpAction));
   }
 
   return {
@@ -53,66 +53,81 @@ export function buildSkillPolicy(input: {
   };
 }
 
-function primarySkillFor(input: {
+interface SkillRoute {
+  skillId: DomainSkillId;
+  sectionTarget: SupervisorEventTarget;
+}
+
+function primaryRouteFor(input: {
   event: SupervisorEvent;
   turnPlan: TurnPlan;
   agentRole: AgentRole;
   facts: DomainFacts;
-}): DomainSkillId {
+}): SkillRoute {
   if (
     input.event.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
     || input.event.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
     || input.turnPlan.primaryAction.type === 'REDIRECT'
   ) {
-    return 'safety_scope_skill';
+    return { skillId: 'safety_scope_skill', sectionTarget: input.event.target ?? 'unknown' };
   }
 
   if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
-    return 'clarification_recovery_skill';
+    return { skillId: 'clarification_recovery_skill', sectionTarget: input.event.target ?? 'unknown' };
   }
 
   if (input.turnPlan.primaryAction.type === 'ESCALATE' || input.event.eventType === 'USER_REQUESTED_HUMAN') {
-    return 'human_handoff_skill';
+    return { skillId: 'human_handoff_skill', sectionTarget: 'human' };
   }
 
   const actionTarget = 'target' in input.turnPlan.primaryAction
     ? input.turnPlan.primaryAction.target
     : undefined;
-  return skillForTarget(actionTarget ?? input.event.target);
+  return routeForTarget(actionTarget ?? input.event.target);
 }
 
-function skillForFollowUpAction(followUpAction: TurnPlan['followUpAction']): DomainSkillId | null {
+function routeForFollowUpAction(followUpAction: TurnPlan['followUpAction']): SkillRoute | null {
   if (!followUpAction || followUpAction.type === 'NONE') {
     return null;
   }
 
-  return skillForTarget(followUpAction.target);
+  return routeForTarget(followUpAction.target);
 }
 
-function skillForTarget(target: string | undefined): DomainSkillId {
+function routeForTarget(target: string | undefined): SkillRoute {
   switch (target) {
     case 'pricing':
-      return 'pricing_skill';
+      return { skillId: 'pricing_skill', sectionTarget: 'pricing' };
     case 'documents':
+      return { skillId: 'documents_skill', sectionTarget: 'documents' };
     case 'medical_facts':
-      return 'documents_skill';
+    case 'minimal_triage':
+      return { skillId: 'documents_skill', sectionTarget: 'medical_facts' };
     case 'process':
+      return { skillId: 'process_skill', sectionTarget: 'process' };
     case 'next_step':
+      return { skillId: 'process_skill', sectionTarget: 'next_step' };
     case 'travel':
+      return { skillId: 'process_skill', sectionTarget: 'travel' };
     case 'payment':
-      return 'process_skill';
+      return { skillId: 'process_skill', sectionTarget: 'payment' };
     case 'recommendation':
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'recommendation' };
+    case 'preference':
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'recommendation' };
     case 'hospital':
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'hospital' };
     case 'hospital_selection':
-      return 'hospital_recommendation_skill';
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'hospital_selection' };
     case 'consult':
-      return 'consult_skill';
+      return { skillId: 'consult_skill', sectionTarget: 'consult' };
     case 'human':
+      return { skillId: 'human_handoff_skill', sectionTarget: 'human' };
     case 'contact':
-      return 'human_handoff_skill';
+      return { skillId: 'human_handoff_skill', sectionTarget: 'contact' };
     case 'unknown':
     default:
-      return 'clarification_recovery_skill';
+      return { skillId: 'clarification_recovery_skill', sectionTarget: 'unknown' };
   }
 }
 

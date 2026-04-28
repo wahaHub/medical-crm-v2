@@ -281,6 +281,41 @@ describe('loadSkillSections', () => {
     ]);
   });
 
+  it('uses clarification fallback with warnings for unknown skills missing section hints', () => {
+    const missingHintsRequest = {
+      skillId: 'missing_skill',
+      role: 'primary',
+      reasonCode: 'missing_hints_unknown',
+    } as never;
+    const nullHintsRequest = {
+      skillId: 'missing_skill',
+      role: 'auxiliary',
+      reasonCode: 'null_hints_unknown',
+      sectionHints: null,
+    } as never;
+
+    const loaded = loadSkillSections({
+      requests: [missingHintsRequest, nullHintsRequest],
+    });
+
+    expect(loaded.warnings).toContainEqual(expect.stringContaining('malformed sectionHints'));
+    expect(loaded.warnings).toContainEqual(expect.stringContaining('unknown skill'));
+    expect(loaded.warnings).toContainEqual(expect.stringContaining('clarification_recovery_skill'));
+    expect(loaded.skillSections).toHaveLength(2);
+    expect(loaded.skillSections).toEqual([
+      expect.objectContaining({
+        skillId: 'clarification_recovery_skill',
+        role: 'primary',
+        reasonCode: 'missing_hints_unknown',
+      }),
+      expect.objectContaining({
+        skillId: 'clarification_recovery_skill',
+        role: 'auxiliary',
+        reasonCode: 'null_hints_unknown',
+      }),
+    ]);
+  });
+
   it('caps loaded skill sections at two', () => {
     const loaded = loadSkillSections({
       requests: [
@@ -304,5 +339,29 @@ describe('loadSkillSections', () => {
       'pricing_skill',
       'documents_skill',
     ]);
+  });
+
+  it('loads zero skill sections for a negative section budget', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        pricingRequest,
+        documentsAuxiliaryRequest,
+        {
+          skillId: 'process_skill',
+          role: 'auxiliary',
+          reasonCode: 'process_detour',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'process',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+      maxSkillSections: -1,
+    });
+
+    expect(loaded.skillSections).toEqual([]);
+    expect(loaded.warnings).toEqual([]);
   });
 });

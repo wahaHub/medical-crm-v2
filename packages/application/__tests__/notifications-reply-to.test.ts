@@ -150,4 +150,57 @@ describe('NotificationEmailService reply-to routing', () => {
       status: 'ACTIVE',
     }));
   });
+
+  it('does not resolve a case-update conversation when cooldown suppresses the email', async () => {
+    vi.mocked(cooldownRepo.tryAcquireSlot).mockResolvedValueOnce(false);
+    const resolveConversationId = vi.fn().mockResolvedValue('conv-1');
+
+    await service.notifyPatientOfCaseUpdate({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      site: 'china',
+      subject: 'Your care plan is ready',
+      messagePreview: 'Review your latest plan.',
+      channel: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
+      sourceKind: 'document',
+      sourceId: 'document-1',
+      resolveConversationId,
+    });
+
+    expect(resolveConversationId).not.toHaveBeenCalled();
+    expect(replyTokenRepo.save).not.toHaveBeenCalled();
+    expect(emailService.sendPatientCaseUpdateAlert).not.toHaveBeenCalled();
+  });
+
+  it('resolves a case-update conversation only when an email is attempted', async () => {
+    const resolveConversationId = vi.fn().mockResolvedValue('conv-1');
+
+    await service.notifyPatientOfCaseUpdate({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      site: 'china',
+      subject: 'Your care plan is ready',
+      messagePreview: 'Review your latest plan.',
+      channel: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
+      sourceKind: 'document',
+      sourceId: 'document-1',
+      resolveConversationId,
+    });
+
+    expect(resolveConversationId).toHaveBeenCalledOnce();
+    expect(replyTokenRepo.save).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-1',
+      channel: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
+      sourceKind: 'document',
+      sourceId: 'document-1',
+    }));
+    expect(emailService.sendPatientCaseUpdateAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{64}@medicaltourismchina\.health>$/),
+      }),
+    );
+  });
 });

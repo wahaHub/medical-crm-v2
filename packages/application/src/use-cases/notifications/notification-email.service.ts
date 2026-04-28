@@ -15,6 +15,7 @@ const ADMIN_ACTIVITY_NOTIFICATION_KIND = 'admin-patient-activity';
 
 type ReplyTokenInput = {
   conversationId?: string | null;
+  resolveConversationId?: (() => Promise<string | null>) | null;
   caseId: string;
   patientId: string;
   patientEmail: string;
@@ -177,6 +178,7 @@ export class NotificationEmailService {
     hospitalId?: string | null;
     sourceKind?: string;
     sourceId?: string | null;
+    resolveConversationId?: (() => Promise<string | null>) | null;
   }): Promise<void> {
     if (input.isPatientOnline) {
       return;
@@ -229,6 +231,7 @@ export class NotificationEmailService {
     hospitalId?: string | null;
     sourceKind?: string;
     sourceId?: string | null;
+    resolveConversationId?: (() => Promise<string | null>) | null;
   }): Promise<void> {
     const patient = await this.recipientRepo.findRecipientById(input.patientId);
     if (!patient || patient.role !== 'PATIENT' || !patient.email) {
@@ -242,6 +245,7 @@ export class NotificationEmailService {
       send: async () => {
         const replyTo = input.replyTo ?? await this.buildReplyTo({
           conversationId: input.conversationId ?? null,
+          resolveConversationId: input.resolveConversationId ?? null,
           caseId: input.caseId,
           patientId: input.patientId,
           patientEmail: patient.email,
@@ -266,12 +270,17 @@ export class NotificationEmailService {
   }
 
   private async buildReplyTo(input: ReplyTokenInput): Promise<string | null> {
-    if (!this.createEmailReplyToken || !input.conversationId || !input.channel) {
+    if (!this.createEmailReplyToken || !input.channel) {
+      return null;
+    }
+
+    const conversationId = input.conversationId ?? await input.resolveConversationId?.() ?? null;
+    if (!conversationId) {
       return null;
     }
 
     const result = await this.createEmailReplyToken.execute({
-      conversationId: input.conversationId,
+      conversationId,
       caseId: input.caseId,
       patientId: input.patientId,
       patientEmail: input.patientEmail,

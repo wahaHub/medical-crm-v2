@@ -533,6 +533,7 @@ interface AppServices {
       hospitalId?: string | null;
       sourceKind?: string;
       sourceId?: string | null;
+      resolveConversationId?: (() => Promise<string | null>) | null;
     }): Promise<void>;
   };
   notifyPatientOfCaseUpdate: {
@@ -549,6 +550,7 @@ interface AppServices {
       hospitalId?: string | null;
       sourceKind?: string;
       sourceId?: string | null;
+      resolveConversationId?: (() => Promise<string | null>) | null;
     }): Promise<void>;
   };
   sendPatientLoginLink: SendPatientLoginLinkUseCase;

@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { assertHospitalCaseAccess, toActor } from '@medical-crm/application';
+import { assertHospitalCaseAccess, hasHospitalCaseAccess, toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import { uploadDocumentSchema } from '@medical-crm/validation';
 import { ValidationError } from '@medical-crm/utils';
@@ -26,6 +26,9 @@ const docIdParamSchema = z.object({
 
 const notifyDocumentTypes = ['INVITATION', 'DIAGNOSIS', 'QUOTE'] as const;
 type NotifyDocumentType = typeof notifyDocumentTypes[number];
+const notifyDocumentBodySchema = z.object({
+  hospitalId: z.string().uuid().optional(),
+}).strict();
 
 const translateDocumentSchema = z.object({
   inputPath: z.string().min(1).optional(),
@@ -138,16 +141,21 @@ function buildDocumentNotificationCopy(documentType: NotifyDocumentType): {
   };
 }
 
-async function readNotifyDocumentBody(request: Request): Promise<{ hospitalId?: string }> {
+async function readNotifyDocumentBody(request: Request): Promise<
+  { ok: true; hospitalId?: string } | { ok: false; error: string }
+> {
   const contentType = request.headers.get('content-type') ?? '';
   if (!contentType.toLowerCase().includes('application/json')) {
-    return {};
+    return { ok: true };
   }
 
-  const body = await request.json().catch(() => ({})) as { hospitalId?: unknown };
-  return typeof body.hospitalId === 'string' && body.hospitalId.trim()
-    ? { hospitalId: body.hospitalId.trim() }
-    : {};
+  const rawBody = await request.json().catch(() => null);
+  const parsed = notifyDocumentBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return { ok: false, error: 'Invalid document notification request body' };
+  }
+
+  return parsed.data.hospitalId ? { ok: true, hospitalId: parsed.data.hospitalId } : { ok: true };
 }
 
 async function runBabelDocTranslation(input: z.infer<typeof translateDocumentSchema>) {
@@ -299,6 +307,9 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
   const body = await readNotifyDocumentBody(c.req.raw);
+  if (!body.ok) {
+    return c.json({ error: body.error }, 400);
+  }
 
   if (actor.role !== 'HOSPITAL' && actor.role !== 'ADMIN') {
     return c.json({ error: 'Only admins and hospital users can notify patients about uploaded case documents' }, 403);
@@ -328,13 +339,20 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
   try {
     const patient = await svc.patientRepo.findById(caseEntity.patientId);
     const explicitHospitalId = actor.role === 'ADMIN' ? body.hospitalId : undefined;
+    if (explicitHospitalId) {
+      const hospital = await svc.hospitalRepo.findById(explicitHospitalId);
+      if (!hospital) {
+        return c.json({ error: 'Hospital not found' }, 404);
+      }
+
+      const hasAccess = await hasHospitalCaseAccess(caseEntity, explicitHospitalId, svc.chcRepo);
+      if (!hasAccess) {
+        return c.json({ error: 'Hospital is not associated with this case' }, 403);
+      }
+    }
+
     const hospitalId = actor.role === 'HOSPITAL' ? actor.hospitalId : explicitHospitalId ?? null;
     const channel = hospitalId ? 'HOSPITAL_PATIENT' : 'ADMIN_PATIENT';
-    const conversation = await svc.createConversation.execute({
-      category: channel,
-      caseId,
-      ...(hospitalId ? { hospitalId } : {}),
-    }, actor);
     const copy = buildDocumentNotificationCopy(doc.documentType);
 
     await svc.notifyPatientOfCaseUpdate.execute({
@@ -344,11 +362,18 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
       subject: copy.subject,
       messagePreview: copy.messagePreview,
       dedupeKey: `document:${docId}`,
-      conversationId: conversation.id,
       channel,
       hospitalId,
       sourceKind: 'document',
       sourceId: docId,
+      resolveConversationId: async () => {
+        const conversation = await svc.createConversation.execute({
+          category: channel,
+          caseId,
+          ...(hospitalId ? { hospitalId } : {}),
+        }, actor);
+        return conversation.id;
+      },
     });
   } catch (error) {
     console.warn('Failed to notify patient about a case document:', error);

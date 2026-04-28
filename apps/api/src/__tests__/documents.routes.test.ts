@@ -23,6 +23,7 @@ const mockServices = {
   caseRepo: { findById: vi.fn() },
   documentRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
+  hospitalRepo: { findById: vi.fn() },
   createConversation: { execute: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
   chcRepo: { findByCaseAndHospital: vi.fn() },
@@ -60,6 +61,8 @@ app.route('/', documentRoutes);
 
 const CASE_UUID = '00000000-0000-0000-0000-000000000001';
 const DOC_UUID = '00000000-0000-0000-0000-000000000002';
+const ASSOCIATED_HOSPITAL_UUID = '10000000-0000-0000-0000-000000000002';
+const UNRELATED_HOSPITAL_UUID = '10000000-0000-0000-0000-000000000099';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -100,6 +103,10 @@ describe('Documents routes', () => {
       caseId: CASE_UUID,
       category: 'HOSPITAL_PATIENT',
       hospitalId: 'hospital-1',
+    });
+    mockServices.hospitalRepo.findById.mockResolvedValue({
+      id: ASSOCIATED_HOSPITAL_UUID,
+      name: 'Associated Hospital',
     });
     mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue(null);
   });
@@ -208,24 +215,28 @@ describe('Documents routes', () => {
       });
 
       expect(res.status).toBe(204);
-      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
-        category: 'HOSPITAL_PATIENT',
-        caseId: CASE_UUID,
-        hospitalId: 'hospital-1',
-      }, expect.anything());
-      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith({
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
         caseId: CASE_UUID,
         patientId: 'patient-1',
         site: 'beauty',
         subject: 'Your invitation letter is available',
         messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
         dedupeKey: `document:${DOC_UUID}`,
-        conversationId: 'conversation-1',
         channel: 'HOSPITAL_PATIENT',
         hospitalId: 'hospital-1',
         sourceKind: 'document',
         sourceId: DOC_UUID,
-      });
+        resolveConversationId: expect.any(Function),
+      }));
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: CASE_UUID,
+        hospitalId: 'hospital-1',
+      }, expect.anything());
     });
 
     it.each([
@@ -251,18 +262,14 @@ describe('Documents routes', () => {
       });
 
       expect(res.status).toBe(204);
-      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
-        category: 'HOSPITAL_PATIENT',
-        caseId: CASE_UUID,
-        hospitalId: 'hospital-1',
-      }, expect.anything());
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
       expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
         subject,
-        conversationId: 'conversation-1',
         channel: 'HOSPITAL_PATIENT',
         hospitalId: 'hospital-1',
         sourceKind: 'document',
         sourceId: DOC_UUID,
+        resolveConversationId: expect.any(Function),
       }));
     });
 
@@ -279,46 +286,93 @@ describe('Documents routes', () => {
       });
 
       expect(res.status).toBe(204);
-      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
-        category: 'ADMIN_PATIENT',
-        caseId: CASE_UUID,
-      }, expect.anything());
       expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
-        conversationId: 'admin-conversation-1',
         channel: 'ADMIN_PATIENT',
         hospitalId: null,
         sourceKind: 'document',
         sourceId: DOC_UUID,
+        resolveConversationId: expect.any(Function),
       }));
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'ADMIN_PATIENT',
+        caseId: CASE_UUID,
+      }, expect.anything());
     });
 
-    it('routes admin document notifications to a hospital conversation when hospitalId is explicit', async () => {
-      mockServices.createConversation.execute.mockResolvedValue({
-        id: 'hospital-conversation-1',
-        caseId: CASE_UUID,
-        category: 'HOSPITAL_PATIENT',
-        hospitalId: 'hospital-2',
-      });
-
+    it('rejects invalid explicit hospitalId format for admin document notifications', async () => {
       const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hospitalId: 'hospital-2' }),
       });
 
+      expect(res.status).toBe(400);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).not.toHaveBeenCalled();
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
+    });
+
+    it('rejects unrelated explicit hospital routing for admin document notifications', async () => {
+      mockServices.hospitalRepo.findById.mockResolvedValue({
+        id: UNRELATED_HOSPITAL_UUID,
+        name: 'Unrelated Hospital',
+      });
+      mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue(null);
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: UNRELATED_HOSPITAL_UUID }),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).not.toHaveBeenCalled();
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
+    });
+
+    it('routes admin document notifications to an associated hospital conversation when hospitalId is explicit', async () => {
+      mockServices.createConversation.execute.mockResolvedValue({
+        id: 'hospital-conversation-1',
+        caseId: CASE_UUID,
+        category: 'HOSPITAL_PATIENT',
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+      });
+      mockServices.hospitalRepo.findById.mockResolvedValue({
+        id: ASSOCIATED_HOSPITAL_UUID,
+        name: 'Associated Hospital',
+      });
+      mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue({
+        id: 'chc-1',
+        caseId: CASE_UUID,
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+        subStatus: 'DISTRIBUTED',
+        removedAt: null,
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: ASSOCIATED_HOSPITAL_UUID }),
+      });
+
       expect(res.status).toBe(204);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+        resolveConversationId: expect.any(Function),
+      }));
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
       expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
         category: 'HOSPITAL_PATIENT',
         caseId: CASE_UUID,
-        hospitalId: 'hospital-2',
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
       }, expect.anything());
-      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
-        conversationId: 'hospital-conversation-1',
-        channel: 'HOSPITAL_PATIENT',
-        hospitalId: 'hospital-2',
-        sourceKind: 'document',
-        sourceId: DOC_UUID,
-      }));
     });
 
     it('returns 204 even if invitation notification delivery fails', async () => {

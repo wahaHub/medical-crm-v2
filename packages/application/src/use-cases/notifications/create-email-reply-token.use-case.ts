@@ -33,14 +33,6 @@ export class CreateEmailReplyTokenUseCase {
     }
 
     const now = new Date();
-    await this.repo.findReusable({
-      conversationId: input.conversationId,
-      patientId: input.patientId,
-      sourceKind: input.sourceKind,
-      sourceId: input.sourceId ?? null,
-      now,
-    });
-
     const rawToken = generateReplyToken();
     const expiresAt = new Date(now.getTime() + REPLY_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
     const entity = new EmailReplyToken({

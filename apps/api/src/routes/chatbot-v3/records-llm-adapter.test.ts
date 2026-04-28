@@ -12,8 +12,8 @@ function createRecordsTask(
 ): RecordsWorkerTask {
   return {
     agent: 'RecordsAgent',
-    fromStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-    toStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    primaryStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
     latestUserMessage,
     mode: 'minimal_triage',
     minimalTriageComplete: false,
@@ -33,8 +33,8 @@ describe('RecordsLlmAdapter', () => {
 
   it('frames medical collection mode as diagnosis-proof upload guidance instead of a generic records interview', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
-      fromStage: 'COLLECT_MEDICAL_INPUTS',
-      toStage: 'COLLECT_MEDICAL_INPUTS',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      primaryStage: 'COLLECT_MEDICAL_INPUTS',
       mode: 'medical_collection',
       minimalTriageComplete: true,
     }));
@@ -47,14 +47,16 @@ describe('RecordsLlmAdapter', () => {
 
   it('passes turn plan skill context through records prompts', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
-      fromStage: 'COLLECT_MEDICAL_INPUTS',
-      toStage: 'COLLECT_MEDICAL_INPUTS',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      primaryStage: 'COLLECT_MEDICAL_INPUTS',
       mode: 'medical_collection',
       minimalTriageComplete: true,
       primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
       followUpAction: { type: 'NONE' },
       allowedSkillPacks: ['load_records_requirement_data', 'derive_record_inventory_candidate'],
-      readIntents: ['RECORD_REQUIREMENTS'],
+      readIntents: [
+        { type: 'RECORD_REQUIREMENTS', reasonCode: 'collect_documents' },
+      ],
       responseContract: {
         structure: 'notice_only',
         primaryMove: 'acknowledge',
@@ -72,8 +74,13 @@ describe('RecordsLlmAdapter', () => {
     }));
 
     expect(prompt).toContain('primary_action={"type":"REQUEST_INFO","target":"documents"}');
+    expect(prompt).toContain('current_stage=COLLECT_MEDICAL_INPUTS');
+    expect(prompt).toContain('primary_stage=COLLECT_MEDICAL_INPUTS');
+    expect(prompt).not.toContain('from_stage=undefined');
+    expect(prompt).not.toContain('to_stage=undefined');
     expect(prompt).toContain('allowed_skill_packs=load_records_requirement_data, derive_record_inventory_candidate');
-    expect(prompt).toContain('read_intents=RECORD_REQUIREMENTS');
+    expect(prompt).toContain('read_intents={"type":"RECORD_REQUIREMENTS","reasonCode":"collect_documents"}');
+    expect(prompt).not.toContain('[object Object]');
     expect(prompt).toContain('"primaryMove":"acknowledge"');
   });
 
@@ -83,8 +90,8 @@ describe('RecordsLlmAdapter', () => {
     await expect(adapter.runStatus({
       task: {
         agent: 'RecordsAgent',
-        fromStage: 'COLLECT_MEDICAL_INPUTS',
-        toStage: 'COLLECT_MEDICAL_INPUTS',
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        primaryStage: 'COLLECT_MEDICAL_INPUTS',
         latestUserMessage: 'I can upload more reports.',
         mode: 'medical_collection',
         minimalTriageComplete: true,
@@ -167,8 +174,8 @@ describe('RecordsLlmAdapter', () => {
 
     await expect(adapter.runStatus({
       task: createRecordsTask('I can upload more reports.', {
-        fromStage: 'COLLECT_MEDICAL_INPUTS',
-        toStage: 'COLLECT_MEDICAL_INPUTS',
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        primaryStage: 'COLLECT_MEDICAL_INPUTS',
         mode: 'medical_collection',
         minimalTriageComplete: true,
       }),
@@ -196,8 +203,8 @@ describe('RecordsLlmAdapter', () => {
 
     await expect(adapter.runStatus({
       task: createRecordsTask('I can upload more reports.', {
-        fromStage: 'COLLECT_MEDICAL_INPUTS',
-        toStage: 'COLLECT_MEDICAL_INPUTS',
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        primaryStage: 'COLLECT_MEDICAL_INPUTS',
         mode: 'medical_collection',
         minimalTriageComplete: false,
       }),
@@ -225,8 +232,8 @@ describe('RecordsLlmAdapter', () => {
 
     await expect(adapter.runStatus({
       task: createRecordsTask('I can upload more reports.', {
-        fromStage: 'COLLECT_MEDICAL_INPUTS',
-        toStage: 'COLLECT_MEDICAL_INPUTS',
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        primaryStage: 'COLLECT_MEDICAL_INPUTS',
         mode: 'medical_collection',
         minimalTriageComplete: true,
       }),
@@ -254,8 +261,8 @@ describe('RecordsLlmAdapter', () => {
 
     await expect(adapter.runStatus({
       task: createRecordsTask('I can upload more reports.', {
-        fromStage: 'COLLECT_MEDICAL_INPUTS',
-        toStage: 'COLLECT_MEDICAL_INPUTS',
+        currentStage: 'COLLECT_MEDICAL_INPUTS',
+        primaryStage: 'COLLECT_MEDICAL_INPUTS',
         mode: 'medical_collection',
         minimalTriageComplete: true,
       }),

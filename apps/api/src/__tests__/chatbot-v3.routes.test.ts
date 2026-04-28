@@ -6069,7 +6069,15 @@ describe('chatbot-v3 runtime', () => {
             expect.objectContaining({ type: 'GENERAL_FAQ', category: 'consult' }),
             expect.objectContaining({ type: 'CONSULT_READINESS' }),
           ]),
-          retrievedContext: [],
+          retrievedContext: expect.arrayContaining([
+            expect.objectContaining({
+              readIntentId: expect.any(String),
+              readIntent: expect.objectContaining({
+                type: expect.any(String),
+              }),
+              snippets: [],
+            }),
+          ]),
           responseContract: expect.objectContaining({
             structure: 'answer_then_advance',
             followUpMove: 'go_deep',
@@ -6127,7 +6135,7 @@ describe('chatbot-v3 runtime', () => {
       },
     });
 
-    await runtime.handleTurn({
+    const result = await runtime.handleTurn({
       traceId: 'trace-faq-pricing-skill-section-1',
       sessionId: 'session-faq-pricing-skill-section-1',
       site: 'china',
@@ -6167,13 +6175,31 @@ describe('chatbot-v3 runtime', () => {
     }));
     expect(task?.fromStage).toBeUndefined();
     expect(task?.toStage).toBeUndefined();
-    if (task?.retrievedContext?.[0]) {
-      expect(task.retrievedContext[0]).toEqual(expect.objectContaining({
+    expect(task?.retrievedContext).toHaveLength(task?.readIntents?.length ?? 0);
+    task?.retrievedContext?.forEach((entry: unknown, index: number) => {
+      expect(entry).toEqual(expect.objectContaining({
+        readIntentId: `read-${index}`,
         readIntent: expect.objectContaining({
           type: expect.any(String),
         }),
+        snippets: [],
       }));
-    }
+    });
+    expect(result.runtimeDebug).toMatchObject({
+      selectedDomainSkills: expect.arrayContaining(['pricing_skill']),
+      loadedSkillSections: expect.arrayContaining([
+        expect.objectContaining({
+          skillId: 'pricing_skill',
+          sectionIds: expect.any(Array),
+        }),
+      ]),
+      readIntents: task?.readIntents,
+      retrievedContextCount: task?.readIntents?.length,
+      responseContract: expect.objectContaining({
+        primaryMove: 'answer',
+      }),
+    });
+    expect((result.runtimeDebug as any).retrievedContext).toEqual(task?.retrievedContext);
   });
 
   it('emits llm observability metadata from supervisor and FAQ worker runtime nodes', async () => {

@@ -215,6 +215,12 @@ export interface ConversationOrchestratorV3TurnResult {
     idempotencyKey: string;
     lastDispatchSource?: 'journey-runtime-authority';
     replayLineage?: ChatbotV3ReplayLineage;
+    selectedDomainSkills?: string[];
+    loadedSkillSections?: AgentTask['loadedSkillSections'];
+    readIntents?: AgentTask['readIntents'];
+    retrievedContext?: AgentTask['retrievedContext'];
+    retrievedContextCount?: number;
+    responseContract?: AgentTask['responseContract'];
   };
   render: ConversationOrchestratorV3RenderState;
 }
@@ -442,6 +448,7 @@ export class ConversationOrchestratorV3RuntimeService {
       idempotencyKey,
       lastDispatchSource: 'journey-runtime-authority',
       ...(replayLineage ? { replayLineage } : {}),
+      ...projectRuntimeDebugAgentTaskEvidence(decision.agentTask),
     } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
 
     if (!decision.dispatchAgent) {
@@ -830,6 +837,7 @@ export class ConversationOrchestratorV3RuntimeService {
       replayLineage: {
         matchedRuleId: reduction.reasonCode,
       },
+      ...projectRuntimeDebugAgentTaskEvidence(agentTask),
     } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
 
     if (!decision.dispatchAgent) {
@@ -2078,8 +2086,28 @@ function buildWorkerTask(
 }
 
 function buildRetrievedContextEntries(readPlan: ReadPlan): RetrievedContextEntry[] {
-  void readPlan;
-  return [];
+  return readPlan.readIntents.map((readIntent, index) => ({
+    readIntentId: `read-${index}`,
+    readIntent,
+    snippets: [],
+  }));
+}
+
+function projectRuntimeDebugAgentTaskEvidence(
+  agentTask: AgentTask | undefined,
+): Partial<ConversationOrchestratorV3TurnResult['runtimeDebug']> {
+  if (!agentTask) {
+    return {};
+  }
+
+  return {
+    selectedDomainSkills: agentTask.loadedSkillSections.map((section) => section.skillId),
+    loadedSkillSections: agentTask.loadedSkillSections,
+    readIntents: agentTask.readIntents,
+    retrievedContext: agentTask.retrievedContext,
+    retrievedContextCount: agentTask.retrievedContext.length,
+    responseContract: agentTask.responseContract,
+  };
 }
 
 function resolveRecordsMinimalTriageComplete(

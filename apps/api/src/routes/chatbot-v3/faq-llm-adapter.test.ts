@@ -11,8 +11,8 @@ import {
 function createFaqTask(latestUserMessage: string): FaqWorkerTask {
   return {
     agent: 'FaqAgent',
-    fromStage: 'EXPLAIN_PROCESS',
-    toStage: 'EXPLAIN_PROCESS',
+    currentStage: 'EXPLAIN_PROCESS',
+    primaryStage: 'EXPLAIN_PROCESS',
     latestUserMessage,
     intent: 'faq',
     supervisorReason: 'user is asking an faq question',
@@ -226,7 +226,10 @@ describe('FaqLlmAdapter', () => {
         'answer_general_faq_from_admin_source',
         'load_consult_readiness_criteria',
       ],
-      readIntents: ['GENERAL_FAQ:consult', 'CONSULT_READINESS'],
+      readIntents: [
+        { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'answer_consult_faq' },
+        { type: 'CONSULT_READINESS', reasonCode: 'go_deep_consult' },
+      ],
       responseContract: {
         structure: 'answer_then_advance',
         primaryMove: 'answer',
@@ -244,13 +247,24 @@ describe('FaqLlmAdapter', () => {
     };
 
     expect(buildFaqPlanPrompt({ task })).toContain('allowed_skill_packs=search_general_faq_by_category, answer_general_faq_from_admin_source, load_consult_readiness_criteria');
-    expect(buildFaqPlanPrompt({ task })).toContain('read_intents=GENERAL_FAQ:consult, CONSULT_READINESS');
+    expect(buildFaqPlanPrompt({ task })).toContain('current_stage=EXPLAIN_PROCESS');
+    expect(buildFaqPlanPrompt({ task })).toContain('primary_stage=EXPLAIN_PROCESS');
+    expect(buildFaqPlanPrompt({ task })).not.toContain('from_stage=undefined');
+    expect(buildFaqPlanPrompt({ task })).not.toContain('to_stage=undefined');
+    expect(buildFaqPlanPrompt({ task })).not.toContain('[object Object]');
+    expect(buildFaqPlanPrompt({ task })).toContain('read_intents={"type":"GENERAL_FAQ","category":"consult","reasonCode":"answer_consult_faq"}, {"type":"CONSULT_READINESS","reasonCode":"go_deep_consult"}');
     expect(buildFaqAnswerPrompt({
       task,
       plan: { query: 'consult timing', reason: 'consult faq' },
       matches: [],
       details: [],
     })).toContain('"followUpMove":"go_deep"');
+    expect(buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'consult timing', reason: 'consult faq' },
+      matches: [],
+      details: [],
+    })).not.toContain('[object Object]');
   });
 });
 

@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EmailReplyToken, InboundEmailEvent } from '@medical-crm/domain';
+import { Conversation, EmailReplyToken, InboundEmailEvent, Message } from '@medical-crm/domain';
 import type {
   ICaseRepository,
   IConversationRepository,
   IEmailReplyTokenRepository,
   IInboundEmailEventRepository,
+  IMessageRepository,
+  IMessageTaskQueue,
   IPatientRepository,
+  ITranslationService,
+  IUserRepository,
+  TransactionRunner,
 } from '@medical-crm/domain';
+import { SendMessageUseCase } from '../src/use-cases/messages/send-message.use-case.js';
 import {
   ProcessInboundEmailUseCase,
   type InboundAttachmentSource,
@@ -219,6 +225,95 @@ describe('ProcessInboundEmailUseCase', () => {
       },
       expect.objectContaining({ role: 'PATIENT' }),
     );
+  });
+
+  it('inbound attachment completes PROCESSED with createdMessageId when post-persist enqueue fails', async () => {
+    const conversation = makeConversation();
+    conversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const messageRepo: IMessageRepository = {
+      findById: vi.fn(),
+      findByConversationId: vi.fn(),
+      findPendingReview: vi.fn(),
+      save: vi.fn(async (entity: Message) => entity),
+      delete: vi.fn(),
+    };
+    const translationService: ITranslationService = {
+      translate: vi.fn().mockResolvedValue('translated text'),
+      summarizeMessage: vi.fn(),
+    };
+    const messageTaskQueue: IMessageTaskQueue = {
+      enqueueTranslation: vi.fn().mockResolvedValue(undefined),
+      enqueueSummarization: vi.fn().mockRejectedValueOnce(new Error('summarization queue down')),
+      pullPending: vi.fn(),
+      markProcessing: vi.fn(),
+      markCompleted: vi.fn(),
+      markFailed: vi.fn(),
+    };
+    const userRepo: IUserRepository = {
+      create: vi.fn(),
+      findPreferredLanguage: vi.fn().mockResolvedValue('zh'),
+      listAdminEmails: vi.fn(),
+    };
+    const txRunner: TransactionRunner = {
+      run: vi.fn(async (fn) => fn({})),
+    };
+    const realSendMessage = new SendMessageUseCase(
+      conversationRepo,
+      messageRepo,
+      translationService,
+      messageTaskQueue,
+      patientRepo,
+      userRepo,
+      caseRepo,
+      txRunner,
+    );
+
+    sendMessage = {
+      execute: vi.fn(realSendMessage.execute.bind(realSendMessage)),
+    };
+    useCase = new ProcessInboundEmailUseCase({
+      replyTokenRepo,
+      inboundEventRepo,
+      conversationRepo,
+      caseRepo,
+      patientRepo,
+      mediaUpload,
+      attachmentSource,
+      attachmentUploader,
+      sendMessage,
+      now: () => NOW,
+    });
+
+    const result = await useCase.execute(makeInboundEmail({
+      to: [buildPreferredReplyAddress(token)],
+      text: 'Attached.',
+      attachments: [{
+        providerAttachmentId: 'att-1',
+        fileName: 'scan.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 4,
+      }],
+    }));
+
+    expect(result).toEqual({
+      status: 'PROCESSED',
+      duplicate: false,
+      createdMessageId: expect.any(String),
+    });
+    expect(messageRepo.save).toHaveBeenCalledOnce();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'PROCESSED',
+      createdMessageId: result.createdMessageId,
+      error: null,
+    }));
+    expect(sendMessage.execute).toHaveBeenCalledOnce();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[SendMessageUseCase] Failed to enqueue post-persist attachment tasks:',
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
   });
 
   it('processed claimed event creates no second message', async () => {
@@ -669,6 +764,26 @@ function makeInboundEvent(
     createdMessageId: null,
     createdAt: NOW,
     updatedAt: NOW,
+    ...overrides,
+  });
+}
+
+function makeConversation(
+  overrides: Partial<ConstructorParameters<typeof Conversation>[0]> = {},
+): Conversation {
+  return new Conversation({
+    id: 'conv-1',
+    caseId: 'case-1',
+    category: 'ADMIN_PATIENT',
+    title: 'Treatment plan',
+    hospitalId: null,
+    lastMessageId: null,
+    lastMessageAt: null,
+    lastMessagePreview: null,
+    lastSenderId: null,
+    createdAt: new Date('2026-04-27T12:00:00Z'),
+    updatedAt: new Date('2026-04-27T12:00:00Z'),
+    assistantMode: 'AI_ACTIVE',
     ...overrides,
   });
 }

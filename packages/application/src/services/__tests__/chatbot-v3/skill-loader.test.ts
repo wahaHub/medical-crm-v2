@@ -316,6 +316,45 @@ describe('loadSkillSections', () => {
     ]);
   });
 
+  it('uses clarification fallback with warnings for known skills missing section hints', () => {
+    const missingHintsRequest = {
+      skillId: 'pricing_skill',
+      role: 'primary',
+      reasonCode: 'missing_hints_known',
+    } as never;
+    const nullHintsRequest = {
+      skillId: 'pricing_skill',
+      role: 'auxiliary',
+      reasonCode: 'null_hints_known',
+      sectionHints: null,
+    } as never;
+
+    const loaded = loadSkillSections({
+      requests: [missingHintsRequest, nullHintsRequest],
+    });
+
+    expect(loaded.warnings).toContainEqual(expect.stringContaining('malformed sectionHints'));
+    expect(loaded.warnings).toContainEqual(expect.stringContaining('clarification_recovery_skill'));
+    expect(loaded.skillSections).toHaveLength(2);
+    expect(loaded.skillSections).toEqual([
+      expect.objectContaining({
+        skillId: 'clarification_recovery_skill',
+        role: 'primary',
+        reasonCode: 'missing_hints_known',
+      }),
+      expect.objectContaining({
+        skillId: 'clarification_recovery_skill',
+        role: 'auxiliary',
+        reasonCode: 'null_hints_known',
+      }),
+    ]);
+    for (const section of loaded.skillSections) {
+      expect(section.sectionIds.length).toBeGreaterThan(0);
+      expect(section.policyText.join('\n')).not.toBe('');
+      expect(section.handlingGuidance.join('\n')).not.toBe('');
+    }
+  });
+
   it('caps loaded skill sections at two', () => {
     const loaded = loadSkillSections({
       requests: [

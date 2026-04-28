@@ -36,6 +36,11 @@ export interface LoadedSkillSectionsPolicy {
   warnings: string[];
 }
 
+interface NormalizedDomainSkillRequest {
+  request: DomainSkillRequest;
+  usedFallbackDefaults: boolean;
+}
+
 const DEFAULT_CLARIFICATION_SECTION_HINTS: DomainSkillRequest['sectionHints'] = {
   eventType: 'USER_MESSAGE_UNCLEAR',
   target: 'unknown',
@@ -92,13 +97,22 @@ export function loadSkillSections(input: LoadSkillSectionsInput): LoadedSkillSec
   const warnings: string[] = [];
 
   const skillSections = input.requests.slice(0, maxSkillSections).map((request) => {
-    const normalizedRequest = normalizeDomainSkillRequest(request, warnings);
+    const normalized = normalizeDomainSkillRequest(request, warnings);
+    const normalizedRequest = normalized.request;
     const skillId = resolveDomainSkillId(normalizedRequest, warnings);
-    const resolvedRequest = skillId === request.skillId
+    const fallbackSkillId = normalized.usedFallbackDefaults && skillId === normalizedRequest.skillId
+      ? resolveFallbackSkillId(normalizedRequest)
+      : skillId;
+    if (fallbackSkillId !== skillId) {
+      warnings.push(
+        `malformed sectionHints for ${String(request.skillId)}; falling back to ${fallbackSkillId}`,
+      );
+    }
+    const resolvedRequest = fallbackSkillId === request.skillId
       ? normalizedRequest
-      : { ...normalizedRequest, skillId };
+      : { ...normalizedRequest, skillId: fallbackSkillId };
 
-    return loadSingleSkillSection(DOMAIN_SKILL_REGISTRY[skillId], resolvedRequest);
+    return loadSingleSkillSection(DOMAIN_SKILL_REGISTRY[fallbackSkillId], resolvedRequest);
   });
 
   return { skillSections, warnings };
@@ -129,9 +143,7 @@ function resolveDomainSkillId(request: DomainSkillRequest, warnings: string[]): 
     return request.skillId;
   }
 
-  const fallbackSkillId = shouldUseSafetyFallback(request)
-    ? 'safety_scope_skill'
-    : 'clarification_recovery_skill';
+  const fallbackSkillId = resolveFallbackSkillId(request);
   warnings.push(`unknown skill: ${String(request.skillId)}; falling back to ${fallbackSkillId}`);
   return fallbackSkillId;
 }
@@ -139,11 +151,14 @@ function resolveDomainSkillId(request: DomainSkillRequest, warnings: string[]): 
 function normalizeDomainSkillRequest(
   request: DomainSkillRequest,
   warnings: string[],
-): DomainSkillRequest {
+): NormalizedDomainSkillRequest {
   const hints = request.sectionHints;
   if (!isRecord(hints)) {
     warnings.push(`malformed sectionHints for ${String(request.skillId)}; using clarification-safe defaults`);
-    return { ...request, sectionHints: DEFAULT_CLARIFICATION_SECTION_HINTS };
+    return {
+      request: { ...request, sectionHints: DEFAULT_CLARIFICATION_SECTION_HINTS },
+      usedFallbackDefaults: true,
+    };
   }
 
   const normalizedHints: DomainSkillRequest['sectionHints'] = {
@@ -169,9 +184,16 @@ function normalizeDomainSkillRequest(
     || normalizedHints.followUpActionType !== hints.followUpActionType
   ) {
     warnings.push(`malformed sectionHints for ${String(request.skillId)}; using clarification-safe defaults`);
+    return {
+      request: { ...request, sectionHints: normalizedHints },
+      usedFallbackDefaults: true,
+    };
   }
 
-  return { ...request, sectionHints: normalizedHints };
+  return {
+    request: { ...request, sectionHints: normalizedHints },
+    usedFallbackDefaults: false,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -205,6 +227,12 @@ function shouldUseSafetyFallback(request: DomainSkillRequest): boolean {
   return hints?.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
     || hints?.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
     || hints?.primaryActionType === 'REDIRECT';
+}
+
+function resolveFallbackSkillId(request: DomainSkillRequest): DomainSkillId {
+  return shouldUseSafetyFallback(request)
+    ? 'safety_scope_skill'
+    : 'clarification_recovery_skill';
 }
 
 function loadSingleSkillSection(

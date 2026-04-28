@@ -19,7 +19,7 @@ export interface SkillBehaviorCheck {
   id: string;
   skillId: LoadedSkillSection['skillId'];
   sectionHint: DomainSkillRequest['sectionHints'];
-  evaluator: 'deterministic';
+  evaluator: 'deterministic' | 'llm_judge';
   severity: ResponseQualitySeverity;
   result: ResponseQualityResult;
   reason?: string;
@@ -37,7 +37,7 @@ export interface MinimalContractCheckOptions {
 
 type MinimalResponseContract = Pick<ResponseContract, 'forbiddenClaims'> & {
   constraints: Pick<ResponseContract['constraints'], 'maxQuestions' | 'avoidMultipleCTAs'>
-    & Partial<Pick<ResponseContract['constraints'], 'answerBeforeAsk'>>;
+    & Partial<Pick<ResponseContract['constraints'], 'answerBeforeAsk' | 'preservePrimaryStage'>>;
 };
 
 export function checkMinimalContract(
@@ -94,7 +94,7 @@ export function checkMinimalContract(
     }
   }
 
-  if (options.preservePrimaryStage && hasStageMutationLanguage(responseText)) {
+  if ((responseContract.constraints.preservePrimaryStage ?? options.preservePrimaryStage) && hasStageMutationLanguage(responseText)) {
     checks.push({
       id: 'preserve_stage_language',
       evaluator: 'deterministic',
@@ -336,7 +336,11 @@ function countCtaAsks(responseText: string): number {
     }
   }
 
-  return distinctSpans.length;
+  return distinctSpans.reduce((count, span) => {
+    const spanText = normalized.slice(span.start, span.end);
+    const actionCount = (spanText.match(/\b(upload|send|share|book|schedule|call|contact|complete|provide|answer)\b/g) ?? []).length;
+    return count + Math.max(1, actionCount);
+  }, 0);
 }
 
 function startsWithAsk(responseText: string): boolean {
@@ -363,6 +367,7 @@ function hasUnsupportedFixedPrice(responseText: string): boolean {
 
   return /\bfixed\s+price\b/.test(normalized)
     || /\bguaranteed\s+(fixed\s+)?price\b/.test(normalized)
+    || /\bwill\s+cost\s+[$\uFFE5]\s?\d[\d,]*(?:\.\d+)?/.test(normalized)
     || /[$\uFFE5]\s?\d[\d,]*(?:\.\d+)?/.test(normalized) && /\b(guaranteed|fixed|flat|package)\b/.test(normalized);
 }
 
@@ -394,13 +399,13 @@ function pressuresDocumentUpload(responseText: string): boolean {
 }
 
 function hasDiagnosisClaim(responseText: string): boolean {
-  return /\b(this|that|it)\s+is\s+(pneumonia|cancer|diabetes|stroke|infection|tumou?r|heart attack)\b/.test(normalize(responseText))
-    || /\byou\s+have\s+(pneumonia|cancer|diabetes|stroke|infection|tumou?r|a heart attack)\b/.test(normalize(responseText));
+  return /\b(this|that|it)\s+is\s+(pneumonia|cancer|diabetes|stroke|infection|tumou?r|heart attack|lymphoma)\b/.test(normalize(responseText))
+    || /\byou\s+have\s+(pneumonia|cancer|diabetes|stroke|infection|tumou?r|a heart attack|lymphoma)\b/.test(normalize(responseText));
 }
 
 function hasMedicationRecommendation(responseText: string): boolean {
   const normalized = stripMedicationSafetyDisclaimers(normalize(responseText));
-  return /\b(take|start|use|increase|stop)\s+(antibiotics?|insulin|aspirin|ibuprofen|steroids?|opioids?|painkillers?|medication|medicine)\b/.test(normalized);
+  return /\b(take|start|use|increase|stop)\s+(antibiotics?|insulin|aspirin|ibuprofen|steroids?|opioids?|painkillers?|medication|medicine|chemotherapy|chemo)\b/.test(normalized);
 }
 
 function hasOutcomeGuarantee(responseText: string): boolean {

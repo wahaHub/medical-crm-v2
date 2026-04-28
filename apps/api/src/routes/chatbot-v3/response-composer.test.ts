@@ -22,6 +22,9 @@ import {
   checkMinimalContract,
   checkSkillBehavior,
 } from './response-quality-checker.js';
+import type {
+  SkillBehaviorCheck,
+} from './response-quality-checker.js';
 
 function getDegradedFixture(
   id: string,
@@ -1704,6 +1707,25 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
+  it('fails multiple_ctas for two CTA verbs in one sentence', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now and book a consult today.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'multiple_ctas',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
   it('uses observed severity instead of info for passing deterministic contract checks', () => {
     const checks = checkMinimalContract(
       'We can explain the process and review your details first.',
@@ -1753,6 +1775,44 @@ describe('ResponseQualityChecker', () => {
       result: 'fail',
       severity: 'hard',
     }));
+  });
+
+  it('uses the response contract preservePrimaryStage constraint for preserve-stage language', () => {
+    const checks = checkMinimalContract(
+      'I answered your pricing question and moved you to the recommendation stage.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+          preservePrimaryStage: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'preserve_stage_language',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('allows llm_judge skill behavior evaluators in the result type', () => {
+    const check: SkillBehaviorCheck = {
+      id: 'llm-reviewed-boundary',
+      skillId: 'safety_scope_skill',
+      sectionHint: {
+        eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+        target: 'unknown',
+        modifier: 'ask',
+        primaryActionType: 'REDIRECT',
+      },
+      evaluator: 'llm_judge',
+      severity: 'soft',
+      result: 'warn',
+    };
+
+    expect(check.evaluator).toBe('llm_judge');
   });
 
   it('fails forbidden claims when the response contains a forbidden phrase', () => {
@@ -1843,6 +1903,33 @@ describe('ResponseQualityChecker', () => {
       sectionHint: pricingSectionHint,
     }));
     expect(unsafeChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails pricing when the response states an unsupported fixed dollar price', () => {
+    const checks = checkSkillBehavior(
+      'The treatment will cost $10,000.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
       id: 'pricing_unsupported_fixed_price',
       result: 'fail',
       severity: 'hard',
@@ -2202,5 +2289,34 @@ describe('ResponseQualityChecker', () => {
       result: 'fail',
       severity: 'hard',
     }));
+  });
+
+  it('fails safety checks for direct lymphoma diagnosis and chemotherapy instruction', () => {
+    const checks = checkSkillBehavior(
+      'You have lymphoma. Start chemotherapy.',
+      [{
+        skillId: 'safety_scope_skill',
+        role: 'primary',
+        reasonCode: 'medical_safety',
+        sectionIds: ['safe_medical_boundary'],
+        readIntentTypes: [],
+        policyText: ['Do not diagnose, recommend medication, or guarantee outcomes.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Redirect to licensed medical advice.'],
+      }],
+    );
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'safety_scope_diagnosis',
+        result: 'fail',
+        severity: 'hard',
+      }),
+      expect.objectContaining({
+        id: 'safety_scope_medication',
+        result: 'fail',
+        severity: 'hard',
+      }),
+    ]));
   });
 });

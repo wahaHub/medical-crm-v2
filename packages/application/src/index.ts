@@ -5,6 +5,21 @@ export { toActor } from './types/actor.js';
 // Services
 export { TranslationTaskService } from './services/translation-task.service.js';
 export {
+  ALTERNATE_REPLY_DOMAIN,
+  EmailReplyTokenService,
+  PREFERRED_REPLY_DOMAIN,
+  buildPreferredReplyAddress,
+  generateReplyToken,
+  hashReplyToken,
+  isValidReplyToken,
+  parseReplyAddress,
+} from './services/email-reply-token.service.js';
+export type {
+  ParsedReplyAddress,
+  ReplyAddressType,
+  ReplyTokenGenerationResult,
+} from './services/email-reply-token.service.js';
+export {
   AiSyncTaskService,
   buildFaqEntityKey,
   buildPackageEntityKey,

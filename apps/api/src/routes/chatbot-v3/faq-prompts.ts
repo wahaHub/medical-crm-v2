@@ -9,8 +9,8 @@ export function buildFaqPlanPrompt(input: FaqPlanInput): string {
     `version=${FAQ_PLAN_PROMPT_VERSION}`,
     'role=FAQ planner',
     'instructions=Infer the most likely faq query and optional category from the structured worker task.',
-    `current_stage=${input.task.currentStage}`,
-    `primary_stage=${input.task.primaryStage}`,
+    `current_stage=${renderCurrentStage(input.task)}`,
+    `primary_stage=${renderPrimaryStage(input.task)}`,
     `intent=${input.task.intent ?? 'unknown'}`,
     `supervisor_reason=${input.task.supervisorReason ?? 'none'}`,
     `response_mode=${input.task.responseMode ?? 'standard'}`,
@@ -32,8 +32,8 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
     `version=${FAQ_ANSWER_PROMPT_VERSION}`,
     'role=FAQ answer worker',
     'instructions=Answer using only the retrieved faq matches. Cite ids that support the answer.',
-    `current_stage=${input.task.currentStage}`,
-    `primary_stage=${input.task.primaryStage}`,
+    `current_stage=${renderCurrentStage(input.task)}`,
+    `primary_stage=${renderPrimaryStage(input.task)}`,
     `intent=${input.task.intent ?? 'unknown'}`,
     `supervisor_reason=${input.task.supervisorReason ?? 'none'}`,
     `response_mode=${input.task.responseMode ?? 'standard'}`,
@@ -56,6 +56,14 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
 
 function stringifyTaskField(value: unknown): string {
   return value === undefined ? 'none' : JSON.stringify(value);
+}
+
+function renderCurrentStage(task: FaqWorkerTask): string {
+  return task.currentStage ?? (task as { fromStage?: string }).fromStage ?? 'unknown';
+}
+
+function renderPrimaryStage(task: FaqWorkerTask): string {
+  return task.primaryStage ?? (task as { toStage?: string }).toStage ?? 'unknown';
 }
 
 function formatLoadedSkillSections(

@@ -49,8 +49,8 @@ export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string
     'role=records minimal triage worker',
     'instructions=Return only the exact structured JSON fields required below. Do not add any extra keys, explanations, nested objects, or alternative field names.',
     'We already have the submitted intake, so this step is only the 3-question follow-up needed to refine recommendation.',
-    `current_stage=${task.currentStage}`,
-    `primary_stage=${task.primaryStage}`,
+    `current_stage=${renderCurrentStage(task)}`,
+    `primary_stage=${renderPrimaryStage(task)}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
     ...buildTaskContextLines(task),
     `latest_user_message=${task.latestUserMessage}`,
@@ -82,8 +82,8 @@ export function buildRecordsCollectionPrompt(task: RecordsWorkerTask): string {
     'role=diagnosis proof upload worker',
     'instructions=Return only the exact structured JSON fields required below. Do not add any extra keys or explanations.',
     'Ask only for diagnosis proof, a diagnosis certificate, or another supporting diagnosis document for this stage. Do not reopen generic symptom, medication, pathology, scan, or treatment-history interviews. Preserve records.minimal_triage.complete.',
-    `current_stage=${task.currentStage}`,
-    `primary_stage=${task.primaryStage}`,
+    `current_stage=${renderCurrentStage(task)}`,
+    `primary_stage=${renderPrimaryStage(task)}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
     ...buildTaskContextLines(task),
     `latest_user_message=${task.latestUserMessage}`,
@@ -107,6 +107,14 @@ function buildTaskContextLines(task: RecordsWorkerTask): string[] {
 
 function stringifyTaskField(value: unknown): string {
   return value === undefined ? 'none' : JSON.stringify(value);
+}
+
+function renderCurrentStage(task: RecordsWorkerTask): string {
+  return task.currentStage ?? (task as { fromStage?: string }).fromStage ?? 'unknown';
+}
+
+function renderPrimaryStage(task: RecordsWorkerTask): string {
+  return task.primaryStage ?? (task as { toStage?: string }).toStage ?? 'unknown';
 }
 
 function formatLoadedSkillSections(

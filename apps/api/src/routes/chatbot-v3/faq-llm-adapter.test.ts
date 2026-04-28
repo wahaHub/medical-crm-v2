@@ -212,6 +212,34 @@ describe('FaqLlmAdapter', () => {
     })).toContain('output_rules=acknowledge_without_pressure, preserve_primary_stage, offer_one_lower_friction_next_step');
   });
 
+  it('renders legacy-shaped stage labels without undefined values in FAQ prompts', () => {
+    const task = {
+      agent: 'FaqAgent',
+      fromStage: 'EXPLAIN_PROCESS',
+      toStage: 'COLLECT_MEDICAL_INPUTS',
+      latestUserMessage: 'How does the process work?',
+      intent: 'faq',
+      supervisorReason: 'legacy route-adapter fixture',
+    } as unknown as FaqWorkerTask;
+
+    const planPrompt = buildFaqPlanPrompt({ task });
+    const answerPrompt = buildFaqAnswerPrompt({
+      task,
+      plan: { query: 'process', reason: 'legacy stage compatibility' },
+      matches: [],
+      details: [],
+    });
+
+    expect(planPrompt).toContain('current_stage=EXPLAIN_PROCESS');
+    expect(planPrompt).toContain('primary_stage=COLLECT_MEDICAL_INPUTS');
+    expect(planPrompt).not.toContain('current_stage=undefined');
+    expect(planPrompt).not.toContain('primary_stage=undefined');
+    expect(answerPrompt).toContain('current_stage=EXPLAIN_PROCESS');
+    expect(answerPrompt).toContain('primary_stage=COLLECT_MEDICAL_INPUTS');
+    expect(answerPrompt).not.toContain('current_stage=undefined');
+    expect(answerPrompt).not.toContain('primary_stage=undefined');
+  });
+
   it('passes turn plan skill context through FAQ prompts', () => {
     const task: FaqWorkerTask = {
       ...createFaqTask('How long does online consultation usually take to schedule?'),

@@ -45,6 +45,34 @@ describe('RecordsLlmAdapter', () => {
     expect(prompt).toContain('Return exactly these keys:');
   });
 
+  it('renders legacy-shaped stage labels without undefined values in records prompts', () => {
+    const minimalTriagePrompt = buildRecordsWorkerPrompt({
+      agent: 'RecordsAgent',
+      fromStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      toStage: 'COLLECT_MEDICAL_INPUTS',
+      latestUserMessage: 'I already submitted the intake.',
+      mode: 'minimal_triage',
+      minimalTriageComplete: false,
+    } as unknown as RecordsWorkerTask);
+    const collectionPrompt = buildRecordsWorkerPrompt({
+      agent: 'RecordsAgent',
+      fromStage: 'COLLECT_MEDICAL_INPUTS',
+      toStage: 'SELECT_HOSPITAL',
+      latestUserMessage: 'I can upload diagnosis proof.',
+      mode: 'medical_collection',
+      minimalTriageComplete: true,
+    } as unknown as RecordsWorkerTask);
+
+    expect(minimalTriagePrompt).toContain('current_stage=COLLECT_MINIMAL_MEDICAL_FACTS');
+    expect(minimalTriagePrompt).toContain('primary_stage=COLLECT_MEDICAL_INPUTS');
+    expect(minimalTriagePrompt).not.toContain('current_stage=undefined');
+    expect(minimalTriagePrompt).not.toContain('primary_stage=undefined');
+    expect(collectionPrompt).toContain('current_stage=COLLECT_MEDICAL_INPUTS');
+    expect(collectionPrompt).toContain('primary_stage=SELECT_HOSPITAL');
+    expect(collectionPrompt).not.toContain('current_stage=undefined');
+    expect(collectionPrompt).not.toContain('primary_stage=undefined');
+  });
+
   it('passes turn plan skill context through records prompts', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask('I can upload more reports.', {
       currentStage: 'COLLECT_MEDICAL_INPUTS',

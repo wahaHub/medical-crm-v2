@@ -60,8 +60,12 @@ export class ResendInboundService {
   private readonly fetchImpl: FetchImpl;
 
   constructor(config: ResendInboundConfig = {}) {
-    this.apiKey = config.apiKey;
-    this.webhookSecret = config.webhookSecret;
+    this.apiKey = config.apiKey === undefined
+      ? normalizeSecret(process.env['RESEND_API_KEY'])
+      : normalizeSecret(config.apiKey);
+    this.webhookSecret = config.webhookSecret === undefined
+      ? normalizeSecret(process.env['RESEND_WEBHOOK_SECRET'])
+      : normalizeSecret(config.webhookSecret);
     this.fetchImpl = config.fetchImpl ?? fetch;
   }
 
@@ -178,6 +182,10 @@ export class ResendInboundService {
     }
     return this.webhookSecret;
   }
+}
+
+function normalizeSecret(value: string | undefined): string | undefined {
+  return value?.trim();
 }
 
 function normalizeIncomingHeaders(headers: Headers | Record<string, string>): Record<string, string> {

@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Webhook } from 'svix';
 import { ResendInboundService } from '../resend-inbound.service.js';
 
 const webhookSecret = 'whsec_dGVzdF9yZXNlbmRfd2ViaG9va19zZWNyZXQ=';
 const apiKey = 're_test_api_key';
+const originalResendApiKey = process.env['RESEND_API_KEY'];
+const originalResendWebhookSecret = process.env['RESEND_WEBHOOK_SECRET'];
 
 function signedWebhook(input: {
   payload: unknown;
@@ -55,6 +57,27 @@ function emailReceivedPayload(emailId = 'email_received_123') {
 }
 
 describe('ResendInboundService', () => {
+  beforeEach(() => {
+    delete process.env['RESEND_API_KEY'];
+    delete process.env['RESEND_WEBHOOK_SECRET'];
+  });
+
+  afterEach(() => {
+    if (originalResendApiKey === undefined) {
+      delete process.env['RESEND_API_KEY'];
+    } else {
+      process.env['RESEND_API_KEY'] = originalResendApiKey;
+    }
+
+    if (originalResendWebhookSecret === undefined) {
+      delete process.env['RESEND_WEBHOOK_SECRET'];
+    } else {
+      process.env['RESEND_WEBHOOK_SECRET'] = originalResendWebhookSecret;
+    }
+
+    vi.unstubAllGlobals();
+  });
+
   it('verifies Svix headers, extracts ids, retrieves full email, and normalizes content', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>().mockResolvedValue(
       jsonResponse({
@@ -242,6 +265,52 @@ describe('ResendInboundService', () => {
         providerAttachmentId: 'att_123',
       }),
     ).rejects.toThrow(/RESEND_API_KEY/);
+  });
+
+  it('uses RESEND_API_KEY and RESEND_WEBHOOK_SECRET env defaults when config values are undefined', async () => {
+    process.env['RESEND_API_KEY'] = apiKey;
+    process.env['RESEND_WEBHOOK_SECRET'] = webhookSecret;
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>().mockResolvedValue(
+      jsonResponse({
+        id: 'email_received_123',
+        from: 'patient@example.com',
+        to: ['reply@example.com'],
+        subject: 'Env defaults',
+        text: 'Configured through env.',
+        html: null,
+        headers: {},
+        attachments: [],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const webhook = signedWebhook({ payload: emailReceivedPayload() });
+    const service = new ResendInboundService();
+
+    const normalized = await service.verifyAndNormalizeWebhook(webhook);
+
+    expect(normalized?.providerMessageId).toBe('email_received_123');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.resend.com/emails/receiving/email_received_123',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${apiKey}`,
+        }),
+      }),
+    );
+  });
+
+  it('keeps explicit empty config values as missing instead of falling back to env', async () => {
+    process.env['RESEND_API_KEY'] = apiKey;
+    process.env['RESEND_WEBHOOK_SECRET'] = webhookSecret;
+    const webhook = signedWebhook({ payload: emailReceivedPayload() });
+
+    await expect(
+      new ResendInboundService({ apiKey: '', webhookSecret }).verifyAndNormalizeWebhook(webhook),
+    ).rejects.toThrow(/RESEND_API_KEY/);
+
+    await expect(
+      new ResendInboundService({ apiKey, webhookSecret: '' }).verifyAndNormalizeWebhook(webhook),
+    ).rejects.toThrow(/RESEND_WEBHOOK_SECRET/);
   });
 
   it('throws readable errors for failed Resend API responses', async () => {

@@ -33,6 +33,10 @@ export function buildRecommendationWorkerPrompt(input: RecommendationPromptInput
     'Do not invent hospitals, scores, rankings, or medical facts.',
     'Do not mutate or mention records, consult, or handoff state.',
     'If explanation is needed, keep it to one short sentence.',
+    `current_stage=${renderCurrentStage(input.task)}`,
+    `primary_stage=${renderPrimaryStage(input.task)}`,
+    `loaded_skill_sections=${formatLoadedSkillSections(input.task.loadedSkillSections)}`,
+    `read_intents=${formatReadIntents(input.task.readIntents)}`,
     ...buildRecommendationBasisPromptLines(input.task),
     'Output schema:',
     '{"recommendations":[{"hospitalId":"string","name":"string","reason":"string"}],"explanation":"optional short string"}',
@@ -83,6 +87,52 @@ function buildRecommendationBasisPromptLines(
   }
 
   return [];
+}
+
+function renderCurrentStage(task: RecommendationWorkerTask): string {
+  return task.currentStage ?? (task as { fromStage?: string }).fromStage ?? 'unknown';
+}
+
+function renderPrimaryStage(task: RecommendationWorkerTask): string {
+  return task.primaryStage ?? (task as { toStage?: string }).toStage ?? 'unknown';
+}
+
+function formatLoadedSkillSections(
+  sections: RecommendationWorkerTask['loadedSkillSections'],
+): string {
+  if (!sections || sections.length === 0) {
+    return 'none';
+  }
+
+  return JSON.stringify(sections.map((section) => ({
+    skillId: section.skillId,
+    role: section.role,
+    reasonCode: section.reasonCode,
+    sectionIds: section.sectionIds,
+    policyText: section.policyText,
+    retrievalGuidance: section.retrievalGuidance,
+    handlingGuidance: section.handlingGuidance,
+    ...(section.readIntentTypes.length > 0 ? { readIntentTypes: section.readIntentTypes } : {}),
+  })));
+}
+
+function formatReadIntents(readIntents: RecommendationWorkerTask['readIntents']): string {
+  if (!readIntents || readIntents.length === 0) {
+    return 'none';
+  }
+
+  return readIntents.map((intent) => {
+    if (typeof intent === 'string') {
+      return intent;
+    }
+
+    const stableIntent = {
+      type: intent.type,
+      ...('category' in intent ? { category: intent.category } : {}),
+      reasonCode: intent.reasonCode,
+    };
+    return JSON.stringify(stableIntent);
+  }).join(', ');
 }
 
 function sanitizeCompactRecommendation(value: Record<string, unknown>): CompactRecommendation | null {

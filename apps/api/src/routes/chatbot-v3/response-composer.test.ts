@@ -15,6 +15,10 @@ import { buildConversationSummaryPatch } from './runtime.service.js';
 import {
   DEGRADED_PATH_FIXTURES,
 } from './__fixtures__/degraded-path.fixtures.js';
+import {
+  checkMinimalContract,
+  checkSkillBehavior,
+} from './response-quality-checker.js';
 
 function getDegradedFixture(
   id: string,
@@ -1557,5 +1561,149 @@ describe('ResponseComposer', () => {
     for (const omitted of fixture.expected.assistantTextOmits ?? []) {
       expect(response.messages[0]?.text).not.toContain(omitted);
     }
+  });
+});
+
+describe('ResponseQualityChecker', () => {
+  it('fails max_questions when the response has more questions than the contract allows', () => {
+    const checks = checkMinimalContract(
+      'What diagnosis are you considering? When did symptoms start?',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: false,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'max_questions',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails multiple_ctas when the contract forbids multiple CTA-ish asks', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now. Also book a consult today so we can continue.',
+      {
+        constraints: {
+          maxQuestions: 2,
+          avoidMultipleCTAs: true,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'multiple_ctas',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails forbidden claims when the response contains a forbidden phrase', () => {
+    const checks = checkMinimalContract(
+      'We guarantee a cure after this process.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: ['guarantee a cure'],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'forbidden_claim',
+      result: 'fail',
+      severity: 'hard',
+      reason: expect.stringContaining('guarantee a cure'),
+    }));
+  });
+
+  it('fails hard for pricing_skill when the response gives an unsupported fixed price', () => {
+    const checks = checkSkillBehavior(
+      'The package is a $10,000 guaranteed fixed price.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      skillId: 'pricing_skill',
+      sectionHint: expect.objectContaining({
+        skillId: 'pricing_skill',
+        sectionIds: ['pricing_uncertainty'],
+      }),
+      evaluator: 'deterministic',
+      severity: 'hard',
+      result: 'fail',
+    }));
+  });
+
+  it('fails hard for documents_skill rejection or hesitation handling when the response pressures upload', () => {
+    const checks = checkSkillBehavior(
+      'I understand your concern, but you must upload now before we can help.',
+      [{
+        skillId: 'documents_skill',
+        role: 'primary',
+        reasonCode: 'handle_document_hesitation',
+        sectionIds: ['documents_reject_hesitate'],
+        readIntentTypes: ['RECORD_REQUIREMENTS'],
+        policyText: ['Do not pressure the user after rejection or hesitation.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Acknowledge without pressure and offer a lower-friction next step.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'documents_pressure_after_rejection',
+      skillId: 'documents_skill',
+      evaluator: 'deterministic',
+      severity: 'hard',
+      result: 'fail',
+    }));
+  });
+
+  it('fails hard for safety_scope_skill when the response diagnoses, recommends medication, or guarantees outcomes', () => {
+    const checks = checkSkillBehavior(
+      'This is pneumonia. Take antibiotics and we guarantee full recovery.',
+      [{
+        skillId: 'safety_scope_skill',
+        role: 'primary',
+        reasonCode: 'medical_safety',
+        sectionIds: ['safe_medical_boundary'],
+        readIntentTypes: [],
+        policyText: ['Do not diagnose, recommend medication, or guarantee outcomes.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Redirect to licensed medical advice.'],
+      }],
+    );
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'safety_scope_diagnosis',
+        skillId: 'safety_scope_skill',
+        evaluator: 'deterministic',
+        severity: 'hard',
+        result: 'fail',
+      }),
+      expect.objectContaining({
+        id: 'safety_scope_medication',
+        result: 'fail',
+      }),
+      expect.objectContaining({
+        id: 'safety_scope_guarantee',
+        result: 'fail',
+      }),
+    ]));
   });
 });

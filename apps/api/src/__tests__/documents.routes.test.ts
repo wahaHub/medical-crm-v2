@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DomainError, ForbiddenError, NotFoundError, mapErrorToStatus } from '@medical-crm/utils';
 
 // ---------------------------------------------------------------------------
 // Mock the composition root — must be declared before importing routes
@@ -16,6 +17,7 @@ const mockServices = {
   getCaseStats: { execute: vi.fn() },
   uploadDocument: { execute: vi.fn() },
   listDocuments: { execute: vi.fn() },
+  getDocumentPreview: { execute: vi.fn() },
   deleteDocument: { execute: vi.fn() },
   mediaUpload: { createUploadIntent: vi.fn() },
   getCaseProgress: { execute: vi.fn() },
@@ -55,6 +57,19 @@ app.use('/api/v2/*', async (c, next) => {
 
 app.route('/', documentRoutes);
 
+app.onError((err, c) => {
+  if (err instanceof DomainError) {
+    const status = mapErrorToStatus(err.code);
+    return c.json({ error: err.message, code: err.code }, status as 400 | 401 | 403 | 404 | 500);
+  }
+  if (err instanceof Error && 'code' in err) {
+    const code = String((err as Error & { code: unknown }).code);
+    const status = mapErrorToStatus(code);
+    return c.json({ error: err.message, code }, status as 400 | 401 | 403 | 404 | 500);
+  }
+  return c.json({ error: 'Internal server error' }, 500);
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -71,6 +86,7 @@ const UNRELATED_HOSPITAL_UUID = '10000000-0000-0000-0000-000000000099';
 describe('Documents routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServices.getDocumentPreview.execute.mockReset();
     currentSession = {
       userId: 'u-1',
       email: 'admin@test.com',
@@ -92,6 +108,11 @@ describe('Documents routes', () => {
         documentType: 'INVITATION',
       },
     ]);
+    mockServices.getDocumentPreview.execute.mockResolvedValue({
+      body: new Uint8Array([37, 80, 68, 70]),
+      contentType: 'application/pdf',
+      fileName: 'report.pdf',
+    });
     mockServices.documentRepo.findById.mockResolvedValue({
       id: DOC_UUID,
       caseId: CASE_UUID,
@@ -449,6 +470,99 @@ describe('Documents routes', () => {
     it('rejects invalid caseId param', async () => {
       const res = await app.request('/api/v2/cases/bad-id/documents');
       expect(res.status).toBe(400);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /api/v2/cases/:caseId/documents/:docId/preview — preview document
+  // -----------------------------------------------------------------------
+  describe('GET /api/v2/cases/:caseId/documents/:docId/preview', () => {
+    it('allows an admin to preview a document in a case', async () => {
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('application/pdf');
+      expect(res.headers.get('content-disposition')).toBe('inline; filename="report.pdf"');
+      expect(res.headers.get('cache-control')).toBe('private, no-store');
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([37, 80, 68, 70]));
+      expect(mockServices.getDocumentPreview.execute).toHaveBeenCalledWith(
+        CASE_UUID,
+        DOC_UUID,
+        expect.objectContaining({ role: 'ADMIN', userId: 'u-1' }),
+      );
+    });
+
+    it('allows a hospital to preview only when the hospital has case access', async () => {
+      currentSession = {
+        userId: 'hospital-user-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+      };
+
+      const allowed = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+      expect(allowed.status).toBe(200);
+      expect(mockServices.getDocumentPreview.execute).toHaveBeenLastCalledWith(
+        CASE_UUID,
+        DOC_UUID,
+        expect.objectContaining({ role: 'HOSPITAL', hospitalId: ASSOCIATED_HOSPITAL_UUID }),
+      );
+
+      mockServices.getDocumentPreview.execute.mockReset();
+      mockServices.getDocumentPreview.execute.mockImplementation(async () => {
+        throw new ForbiddenError('Access denied to this case');
+      });
+      currentSession = {
+        userId: 'hospital-user-2',
+        email: 'unrelated@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: UNRELATED_HOSPITAL_UUID,
+      };
+
+      const denied = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toEqual({ error: 'Access denied to this case', code: 'FORBIDDEN' });
+    });
+
+    it('returns 404 when the document does not belong to the case', async () => {
+      mockServices.getDocumentPreview.execute.mockReset();
+      mockServices.getDocumentPreview.execute.mockImplementation(async () => {
+        throw new NotFoundError(`Document ${DOC_UUID} not found`);
+      });
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: `Document ${DOC_UUID} not found`, code: 'NOT_FOUND' });
+    });
+
+    it('returns 404 when the document is deleted', async () => {
+      mockServices.getDocumentPreview.execute.mockReset();
+      mockServices.getDocumentPreview.execute.mockImplementation(async () => {
+        throw new NotFoundError(`Document ${DOC_UUID} not found`);
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: `Document ${DOC_UUID} not found`, code: 'NOT_FOUND' });
+    });
+
+    it('does not accept an arbitrary url query parameter or fetch arbitrary URLs', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const res = await app.request(
+        `/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview?url=https%3A%2F%2Fevil.example%2Ffile.pdf`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(mockServices.getDocumentPreview.execute).toHaveBeenCalledWith(
+        CASE_UUID,
+        DOC_UUID,
+        expect.objectContaining({ role: 'ADMIN' }),
+      );
+      expect(mockServices.getDocumentPreview.execute.mock.calls.at(-1)).toHaveLength(3);
+      fetchSpy.mockRestore();
     });
   });
 

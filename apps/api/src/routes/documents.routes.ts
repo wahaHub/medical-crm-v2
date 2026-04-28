@@ -141,6 +141,13 @@ function buildDocumentNotificationCopy(documentType: NotifyDocumentType): {
   };
 }
 
+function sanitizeContentDispositionFileName(fileName: string): string {
+  const sanitized = fileName
+    .replace(/[\x00-\x1F\x7F"\\\/]/g, '_')
+    .trim();
+  return sanitized || 'document';
+}
+
 async function readNotifyDocumentBody(request: Request): Promise<
   { ok: true; hospitalId?: string } | { ok: false; error: string }
 > {
@@ -494,6 +501,35 @@ app.openapi(listDocumentsRoute, async (c) => {
   const svc = getServices();
   const result = await svc.listDocuments.execute(caseId, actor);
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 2a. GET /api/v2/cases/:caseId/documents/:docId/preview — GetDocumentPreview
+// ---------------------------------------------------------------------------
+const getDocumentPreviewRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/cases/{caseId}/documents/{docId}/preview',
+  request: {
+    params: docIdParamSchema,
+  },
+  responses: { 200: { description: 'Document preview bytes' } },
+});
+
+app.openapi(getDocumentPreviewRoute, async (c) => {
+  const { caseId, docId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const preview = await svc.getDocumentPreview.execute(caseId, docId, actor);
+  const fileName = sanitizeContentDispositionFileName(preview.fileName);
+
+  return new Response(preview.body, {
+    status: 200,
+    headers: {
+      'Content-Type': preview.contentType,
+      'Content-Disposition': `inline; filename="${fileName}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------

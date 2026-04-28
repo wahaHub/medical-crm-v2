@@ -31,6 +31,7 @@ import {
   GetCaseStatsUseCase,
   UploadDocumentUseCase,
   ListDocumentsUseCase,
+  GetDocumentPreviewUseCase,
   DeleteDocumentUseCase,
   GetCaseProgressUseCase,
   AddCaseProgressUseCase,
@@ -346,6 +347,7 @@ interface AppServices {
   getCaseStats: GetCaseStatsUseCase;
   uploadDocument: UploadDocumentUseCase;
   listDocuments: ListDocumentsUseCase;
+  getDocumentPreview: GetDocumentPreviewUseCase;
   deleteDocument: DeleteDocumentUseCase;
   getCaseProgress: GetCaseProgressUseCase;
   addCaseProgress: AddCaseProgressUseCase;
@@ -1101,6 +1103,7 @@ export function getServices(): AppServices {
       getCaseStats: new GetCaseStatsUseCase(caseRepo),
       uploadDocument: new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, chcRepo),
       listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, routedStorageService, chcRepo),
+      getDocumentPreview: new GetDocumentPreviewUseCase(documentRepo, caseRepo, routedStorageService, chcRepo),
       deleteDocument: new DeleteDocumentUseCase(documentRepo, caseRepo, chcRepo),
       getCaseProgress: new GetCaseProgressUseCase(progressRepo, caseRepo, chcRepo),
       addCaseProgress: new AddCaseProgressUseCase(progressRepo, caseRepo, chcRepo),

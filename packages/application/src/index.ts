@@ -182,6 +182,7 @@ export { GetCaseStatsUseCase } from './use-cases/cases/get-case-stats.use-case.j
 export { UploadDocumentUseCase } from './use-cases/documents/upload-document.use-case.js';
 export type { UploadDocumentInput } from './use-cases/documents/upload-document.use-case.js';
 export { ListDocumentsUseCase } from './use-cases/documents/list-documents.use-case.js';
+export { GetDocumentPreviewUseCase } from './use-cases/documents/get-document-preview.use-case.js';
 export { DeleteDocumentUseCase } from './use-cases/documents/delete-document.use-case.js';
 
 // Use Cases — Progress

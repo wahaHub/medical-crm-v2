@@ -37,59 +37,113 @@ function plan(overrides: Partial<TurnPlan>): TurnPlan {
   };
 }
 
-function skillIds(input: { event: SupervisorEvent; turnPlan: TurnPlan; agentRole: AgentRole }) {
-  return buildSkillPolicy({ ...input, facts: facts() }).requests.map((request) => request.skillPackId);
+function requests(input: { event: SupervisorEvent; turnPlan: TurnPlan; agentRole: AgentRole }) {
+  return buildSkillPolicy({ ...input, facts: facts() }).requests;
 }
 
 describe('buildSkillPolicy', () => {
-  it('selects admin FAQ and pricing skills for pricing questions', () => {
-    expect(skillIds({
+  it('routes pricing answers with document next steps to primary and auxiliary domain skills', () => {
+    expect(requests({
       event: event({ target: 'pricing' }),
       turnPlan: plan({}),
       agentRole: 'GeneralResponseAgent',
-    })).toEqual(expect.arrayContaining([
-      'search_general_faq_by_category',
-      'answer_general_faq_from_admin_source',
-      'explain_pricing_uncertainty',
-      'explain_records_preparation',
-    ]));
+    })).toMatchObject([
+      { skillId: 'pricing_skill', role: 'primary' },
+      { skillId: 'documents_skill', role: 'auxiliary' },
+    ]);
   });
 
-  it('selects records skills for documents and uploaded records', () => {
-    expect(skillIds({
-      event: event({ eventType: 'DOCUMENTS_UPLOADED', target: 'documents', modifier: 'provide', source: 'deterministic' }),
-      turnPlan: plan({ primaryAction: { type: 'REQUEST_INFO', target: 'documents' } }),
-      agentRole: 'RecordsAgent',
-    })).toEqual(expect.arrayContaining([
-      'load_records_requirement_data',
-      'derive_record_inventory_candidate',
-      'explain_records_preparation',
-    ]));
-  });
-
-  it('selects consult skills for consult-owned deep dives', () => {
-    expect(skillIds({
-      event: event({ target: 'consult' }),
+  it('routes document rejection to documents as the primary domain skill', () => {
+    expect(requests({
+      event: event({ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'documents', modifier: 'reject' }),
       turnPlan: plan({
-        primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' },
-        followUpAction: { type: 'GO_DEEP', target: 'consult', reasonCode: 'user_requested_more_detail' },
+        primaryAction: { type: 'HANDLE_RESPONSE', target: 'documents', modifier: 'reject' },
+        followUpAction: { type: 'NONE' },
       }),
-      agentRole: 'ConsultAgent',
-    })).toEqual(expect.arrayContaining([
-      'load_consult_readiness_criteria',
-      'explain_online_consult',
-    ]));
+      agentRole: 'RecordsAgent',
+    })).toMatchObject([
+      { skillId: 'documents_skill', role: 'primary' },
+    ]);
   });
 
-  it('selects handoff payload skills for contact or human handoff', () => {
-    expect(skillIds({
+  it('routes next-step questions during records collection to process with documents auxiliary', () => {
+    expect(requests({
+      event: event({ target: 'next_step' }),
+      turnPlan: plan({
+        primaryAction: { type: 'ANSWER', target: 'next_step', mode: 'faq' },
+        followUpAction: { type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'resume_records' },
+      }),
+      agentRole: 'RecordsAgent',
+    })).toMatchObject([
+      { skillId: 'process_skill', role: 'primary' },
+      { skillId: 'documents_skill', role: 'auxiliary' },
+    ]);
+  });
+
+  it('routes out-of-scope redirects to the safety scope domain skill', () => {
+    expect(requests({
+      event: event({ eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE', target: 'unknown' }),
+      turnPlan: plan({
+        primaryAction: { type: 'REDIRECT', target: 'unknown', reasonCode: 'out_of_scope' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })[0]).toMatchObject({
+      skillId: 'safety_scope_skill',
+      role: 'primary',
+    });
+  });
+
+  it('routes provided contact information to human handoff as the primary domain skill', () => {
+    expect(requests({
       event: event({ eventType: 'USER_PROVIDED_INFORMATION', target: 'contact', modifier: 'provide' }),
-      turnPlan: plan({ primaryAction: { type: 'ESCALATE', target: 'human', reasonCode: 'contact_info_provided' } }),
+      turnPlan: plan({
+        primaryAction: { type: 'ACKNOWLEDGE', target: 'contact' },
+        followUpAction: { type: 'NONE' },
+      }),
       agentRole: 'HandoffAgent',
-    })).toEqual(expect.arrayContaining([
-      'extract_contact_info_candidate',
-      'build_handoff_payload_context',
-      'soft_human_handoff',
-    ]));
+    })[0]).toMatchObject({
+      skillId: 'human_handoff_skill',
+      role: 'primary',
+    });
+  });
+
+  it('routes recommendation revisits to the hospital recommendation domain skill', () => {
+    expect(requests({
+      event: event({ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'recommendation', modifier: 'revisit' }),
+      turnPlan: plan({
+        primaryAction: { type: 'HANDLE_RESPONSE', target: 'recommendation', modifier: 'revisit' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'RecommendationAgent',
+    })[0]).toMatchObject({
+      skillId: 'hospital_recommendation_skill',
+      role: 'primary',
+    });
+  });
+
+  it('routes travel questions to the process domain skill', () => {
+    expect(requests({
+      event: event({ target: 'travel' }),
+      turnPlan: plan({
+        primaryAction: { type: 'ANSWER', target: 'travel', mode: 'faq' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })[0]).toMatchObject({
+      skillId: 'process_skill',
+      role: 'primary',
+    });
+  });
+
+  it('deduplicates primary and auxiliary collisions and caps requests at two', () => {
+    expect(requests({
+      event: event({ target: 'pricing' }),
+      turnPlan: plan({
+        primaryAction: { type: 'ANSWER', target: 'pricing', mode: 'faq' },
+        followUpAction: { type: 'GO_DEEP', target: 'pricing', reasonCode: 'user_requested_more_detail' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })).toHaveLength(1);
   });
 });

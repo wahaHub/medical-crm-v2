@@ -49,6 +49,11 @@ interface ResendAttachmentMetadata {
   download_url?: unknown;
 }
 
+interface CachedResendAttachmentMetadata {
+  id?: string;
+  size?: number;
+}
+
 interface ResendReceivedEmail {
   message_id?: string | null;
   from?: unknown;
@@ -64,7 +69,7 @@ export class ResendInboundService {
   private readonly apiKey?: string;
   private readonly webhookSecret?: string;
   private readonly fetchImpl: FetchImpl;
-  private readonly attachmentMetadataCache = new Map<string, ResendAttachmentMetadata>();
+  private readonly attachmentMetadataCache = new Map<string, CachedResendAttachmentMetadata>();
 
   constructor(config: ResendInboundConfig = {}) {
     this.apiKey = config.apiKey === undefined
@@ -121,7 +126,7 @@ export class ResendInboundService {
       throw new Error(`Unsupported inbound email provider: ${input.provider}`);
     }
 
-    const metadata = await this.retrieveAttachmentMetadata(
+    const metadata = await this.retrieveFreshAttachmentMetadata(
       input.providerMessageId,
       input.providerAttachmentId,
     );
@@ -168,7 +173,7 @@ export class ResendInboundService {
   private async retrieveAttachmentMetadataForEmail(
     emailId: string,
     attachments: ResendAttachment[] | undefined,
-  ): Promise<Map<string, ResendAttachmentMetadata>> {
+  ): Promise<Map<string, CachedResendAttachmentMetadata>> {
     const attachmentsWithIds = attachments?.filter(
       (attachment): attachment is ResendAttachment & { id: string } => Boolean(attachment.id),
     ) ?? [];
@@ -186,11 +191,28 @@ export class ResendInboundService {
   private async retrieveAttachmentMetadata(
     emailId: string,
     attachmentId: string,
-  ): Promise<ResendAttachmentMetadata> {
+  ): Promise<CachedResendAttachmentMetadata> {
     const cacheKey = attachmentMetadataCacheKey(emailId, attachmentId);
     const cached = this.attachmentMetadataCache.get(cacheKey);
     if (cached) return cached;
 
+    const metadata = await this.fetchAttachmentMetadata(emailId, attachmentId);
+    return this.cacheAttachmentMetadata(cacheKey, metadata);
+  }
+
+  private async retrieveFreshAttachmentMetadata(
+    emailId: string,
+    attachmentId: string,
+  ): Promise<ResendAttachmentMetadata> {
+    const metadata = await this.fetchAttachmentMetadata(emailId, attachmentId);
+    this.cacheAttachmentMetadata(attachmentMetadataCacheKey(emailId, attachmentId), metadata);
+    return metadata;
+  }
+
+  private async fetchAttachmentMetadata(
+    emailId: string,
+    attachmentId: string,
+  ): Promise<ResendAttachmentMetadata> {
     const apiKey = this.requireApiKey();
     const response = await this.fetchImpl(
       `${RESEND_RECEIVING_API_BASE}/${encodeURIComponent(emailId)}/attachments/${encodeURIComponent(attachmentId)}`,
@@ -206,9 +228,19 @@ export class ResendInboundService {
       throw await buildResendError('Resend retrieve attachment metadata failed', response);
     }
 
-    const metadata = await response.json() as ResendAttachmentMetadata;
-    this.attachmentMetadataCache.set(cacheKey, metadata);
-    return metadata;
+    return await response.json() as ResendAttachmentMetadata;
+  }
+
+  private cacheAttachmentMetadata(
+    cacheKey: string,
+    metadata: ResendAttachmentMetadata,
+  ): CachedResendAttachmentMetadata {
+    const cached = {
+      id: metadata.id,
+      size: metadata.size,
+    };
+    this.attachmentMetadataCache.set(cacheKey, cached);
+    return cached;
   }
 
   private requireApiKey(): string {
@@ -281,7 +313,7 @@ function extractAuth(headers: Record<string, string>): NormalizedInboundEmail['a
 
 function normalizeAttachments(
   attachments: ResendAttachment[] | undefined,
-  metadataById: Map<string, ResendAttachmentMetadata>,
+  metadataById: Map<string, CachedResendAttachmentMetadata>,
 ): NormalizedInboundEmail['attachments'] {
   if (!attachments) return [];
 

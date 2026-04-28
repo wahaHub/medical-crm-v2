@@ -260,7 +260,7 @@ describe('ResendInboundService', () => {
     expect(result).toEqual(bytes);
   });
 
-  it('reuses attachment metadata hydrated during webhook normalization when fetching bytes', async () => {
+  it('hydrates attachment size during webhook normalization but refreshes metadata before fetching bytes', async () => {
     const bytes = new Uint8Array([5, 6, 7, 8]);
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
       .mockResolvedValueOnce(jsonResponse({
@@ -282,7 +282,14 @@ describe('ResendInboundService', () => {
       .mockResolvedValueOnce(jsonResponse({
         id: 'att_123',
         size: 4096,
-        download_url: 'https://download.resend.test/att_123',
+        download_url: 'https://download.resend.test/expired-att_123',
+        expires_at: '2024-01-01T00:00:00.000Z',
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: 'att_123',
+        size: 4096,
+        download_url: 'https://download.resend.test/fresh-att_123',
+        expires_at: '2999-01-01T00:00:00.000Z',
       }))
       .mockResolvedValueOnce(new Response(bytes));
     const service = new ResendInboundService({ apiKey, webhookSecret, fetchImpl: fetchMock });
@@ -296,10 +303,20 @@ describe('ResendInboundService', () => {
     });
 
     expect(normalized?.attachments[0]?.fileSize).toBe(4096);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://download.resend.test/att_123',
+      'https://api.resend.com/emails/receiving/email_received_123/attachments/att_123',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${apiKey}`,
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      'https://download.resend.test/fresh-att_123',
       expect.not.objectContaining({
         headers: expect.objectContaining({
           Authorization: expect.any(String),

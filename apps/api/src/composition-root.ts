@@ -641,6 +641,7 @@ interface AppServices {
 }
 
 let _services: AppServices | null = null;
+let _resendInboundVerifier: ResendInboundService | null = null;
 
 function resolveKeycloakAdminBaseUrl(): string {
   const configuredBaseUrl = process.env['KEYCLOAK_URL']?.trim();
@@ -664,6 +665,13 @@ function resolveKeycloakAdminBaseUrl(): string {
 }
 
 /** Wire all infrastructure adapters, repositories, and use cases. Lazy singleton. */
+export function getResendInboundVerifier(): ResendInboundService {
+  if (!_resendInboundVerifier) {
+    _resendInboundVerifier = new ResendInboundService();
+  }
+  return _resendInboundVerifier;
+}
+
 export function getServices(): AppServices {
   if (!_services) {
     const crmDb = getCrmDb();
@@ -1000,7 +1008,7 @@ export function getServices(): AppServices {
     };
     const emailReplyTokenRepo = new DrizzleEmailReplyTokenRepository(crmDb);
     const inboundEventRepo = new DrizzleInboundEmailEventRepository(crmDb);
-    const resendInboundService = new ResendInboundService();
+    const resendInboundService = getResendInboundVerifier();
     const createEmailReplyToken = new CreateEmailReplyTokenUseCase(emailReplyTokenRepo);
     const notificationEmailService = new NotificationEmailService(
       notificationRecipientRepo,

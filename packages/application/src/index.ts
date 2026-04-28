@@ -19,6 +19,8 @@ export type {
   ReplyAddressType,
   ReplyTokenGenerationResult,
 } from './services/email-reply-token.service.js';
+export { parseEmailReplyBody } from './services/email-reply-body-parser.js';
+export type { EmailReplyBodyInput } from './services/email-reply-body-parser.js';
 export {
   AiSyncTaskService,
   buildFaqEntityKey,
@@ -235,6 +237,19 @@ export type {
   CreateEmailReplyTokenInput,
   CreateEmailReplyTokenResult,
 } from './use-cases/notifications/create-email-reply-token.use-case.js';
+
+// Use Cases — Inbound Email
+export { ProcessInboundEmailUseCase } from './use-cases/inbound/process-inbound-email.use-case.js';
+export type {
+  InboundAttachmentSource,
+  InboundAttachmentUploader,
+  InboundMediaUploadService,
+  InboundSendMessageUseCase,
+  NormalizedInboundAttachmentInput,
+  NormalizedInboundEmailInput,
+  ProcessInboundEmailResult,
+  ProcessInboundEmailUseCaseDeps,
+} from './use-cases/inbound/process-inbound-email.use-case.js';
 
 // Use Cases — AI Sync
 export { BootstrapAiSyncUseCase } from './use-cases/ai-sync/bootstrap-ai-sync.use-case.js';

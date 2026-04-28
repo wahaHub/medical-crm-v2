@@ -1,6 +1,6 @@
 import type { ResolvedAgent } from './agent-resolver.js';
-import type { ReadPlan } from './read-planner.js';
-import type { LoadedSkillPack } from './skill-packs.js';
+import type { ReadIntent, ReadPlan } from './read-planner.js';
+import type { LoadedSkillSection } from './skill-packs.js';
 import type { DomainFacts, SupervisorEvent, TurnPlan } from './supervisor-event.types.js';
 
 export interface ResponseContract {
@@ -13,61 +13,58 @@ export interface ResponseContract {
     answerBeforeAsk: boolean;
     avoidMultipleCTAs: boolean;
     language: string;
-    tone: 'warm_professional' | 'calm_safety' | 'concise';
   };
   safetyRules: string[];
   forbiddenClaims?: string[];
+}
+
+export interface RetrievedContextEntry {
+  readIntentId: string;
+  readIntent: ReadIntent;
+  snippets: Array<{ text: string; source?: string; score?: number }>;
 }
 
 export interface AgentTask {
   event: SupervisorEvent;
   primaryAction: TurnPlan['primaryAction'];
   followUpAction?: TurnPlan['followUpAction'];
+  currentStage: TurnPlan['primaryStage'];
   primaryStage: TurnPlan['primaryStage'];
   latestUserMessage: string;
   conversationSummary: string;
   knownFacts: DomainFacts;
   resolvedAgent: ResolvedAgent;
-  skillPolicy: {
-    allowedSkillPacks: string[];
-    maxSkillSnippets: number;
-  };
-  loadedSkills: LoadedSkillPack[];
-  readPlan: ReadPlan;
-  retrievedContext?: {
-    skillSnippets?: string[];
-    knowledgeSnippets?: string[];
-  };
+  loadedSkillSections: LoadedSkillSection[];
+  readIntents: ReadIntent[];
+  retrievedContext: RetrievedContextEntry[];
   responseContract: ResponseContract;
 }
 
 export function buildAgentTask(input: {
   event: SupervisorEvent;
   turnPlan: TurnPlan;
+  currentStage: TurnPlan['primaryStage'];
   resolvedAgent: ResolvedAgent;
   latestUserMessage: string;
   conversationSummary: string;
   knownFacts: DomainFacts;
-  loadedSkills: LoadedSkillPack[];
+  loadedSkillSections: LoadedSkillSection[];
   readPlan: ReadPlan;
-  retrievedContext?: AgentTask['retrievedContext'];
+  retrievedContext: RetrievedContextEntry[];
 }): AgentTask {
   return {
     event: input.event,
     primaryAction: input.turnPlan.primaryAction,
     followUpAction: input.turnPlan.followUpAction,
+    currentStage: input.currentStage,
     primaryStage: input.turnPlan.primaryStage,
     latestUserMessage: input.latestUserMessage,
     conversationSummary: input.conversationSummary,
     knownFacts: input.knownFacts,
     resolvedAgent: input.resolvedAgent,
-    skillPolicy: {
-      allowedSkillPacks: input.loadedSkills.map((skill) => skill.id),
-      maxSkillSnippets: input.loadedSkills.length,
-    },
-    loadedSkills: input.loadedSkills,
-    readPlan: input.readPlan,
-    ...(input.retrievedContext ? { retrievedContext: input.retrievedContext } : {}),
+    loadedSkillSections: input.loadedSkillSections,
+    readIntents: input.readPlan.readIntents,
+    retrievedContext: input.retrievedContext,
     responseContract: buildResponseContract(input.turnPlan, input.knownFacts),
   };
 }
@@ -95,7 +92,6 @@ function buildResponseContract(turnPlan: TurnPlan, facts: DomainFacts): Response
       facts,
       preservePrimaryStage: true,
       safetyRules,
-      tone: primaryAction.reasonCode === 'medical_safety' ? 'calm_safety' : 'warm_professional',
     });
   }
 
@@ -156,7 +152,6 @@ function contract(input: {
   forbiddenClaims?: string[];
   answerBeforeAsk?: boolean;
   maxQuestions?: 0 | 1 | 2;
-  tone?: ResponseContract['constraints']['tone'];
 }): ResponseContract {
   return {
     structure: input.structure,
@@ -168,7 +163,6 @@ function contract(input: {
       answerBeforeAsk: input.answerBeforeAsk ?? false,
       avoidMultipleCTAs: true,
       language: input.facts.language ?? 'zh',
-      tone: input.tone ?? 'warm_professional',
     },
     safetyRules: input.safetyRules ?? [],
     ...(input.forbiddenClaims ? { forbiddenClaims: input.forbiddenClaims } : {}),

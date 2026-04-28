@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildAgentTask } from '../../chatbot-v3/task-builder.js';
 import type { ResolvedAgent } from '../../chatbot-v3/agent-resolver.js';
+import type { ReadPlan } from '../../chatbot-v3/read-planner.js';
+import type { LoadedSkillSection } from '../../chatbot-v3/skill-packs.js';
 import type { DomainFacts, SupervisorEvent, TurnPlan } from '../../chatbot-v3/supervisor-event.types.js';
 
 const facts: DomainFacts = {
@@ -36,32 +38,75 @@ const resolvedAgent: ResolvedAgent = {
   reasonCode: 'general_response_default',
 };
 
+const loadedSkillSections: LoadedSkillSection[] = [{
+  skillId: 'pricing_skill',
+  role: 'primary',
+  reasonCode: 'pricing_question',
+  sectionIds: ['pricing_sources', 'pricing_response_policy'],
+  readIntentTypes: ['PRICING_FACTORS', 'GENERAL_FAQ'],
+  policyText: ['Never quote fixed prices without records.'],
+  retrievalGuidance: ['Use pricing factors before explaining estimated costs.'],
+  handlingGuidance: ['Explain why records are needed before inviting upload.'],
+}];
+
+const readPlan: ReadPlan = {
+  reasonCode: 'pricing_question',
+  readIntents: [
+    { type: 'PRICING_FACTORS', reasonCode: 'pricing_skill:pricing_sources' },
+    { type: 'GENERAL_FAQ', category: 'pricing', reasonCode: 'pricing_skill:pricing_sources' },
+  ],
+};
+
 describe('buildAgentTask', () => {
-  it('builds a contracted answer-then-advance task with known facts and loaded skills', () => {
+  it('builds a skill-section task with stage context and ReadIntent-aligned retrieval', () => {
+    const pricingIntent = readPlan.readIntents[0]!;
+    const faqIntent = readPlan.readIntents[1]!;
     const task = buildAgentTask({
       event,
       turnPlan,
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
       resolvedAgent,
       latestUserMessage: '大概多少钱？',
       conversationSummary: 'User selected a hospital and needs records guidance.',
       knownFacts: facts,
-      loadedSkills: [{
-        id: 'explain_pricing_uncertainty',
-        kind: 'explanation_method',
-        description: 'pricing',
-        reasonCodes: ['pricing_question'],
-      }],
-      readPlan: {
-        reasonCode: 'pricing_question',
-        readIntents: [{ type: 'GENERAL_FAQ', category: 'pricing', reasonCode: 'search_general_faq_by_category' }],
-      },
-      retrievedContext: {
-        knowledgeSnippets: ['Pricing depends on records and hospital plan.'],
-      },
+      loadedSkillSections,
+      readPlan,
+      retrievedContext: [
+        {
+          readIntentId: 'read-0',
+          readIntent: pricingIntent,
+          snippets: [{ text: 'Pricing depends on records and hospital plan.', source: 'pricing_policy', score: 0.91 }],
+        },
+        {
+          readIntentId: 'read-1',
+          readIntent: faqIntent,
+          snippets: [{ text: 'Final quotes require case review.', source: 'faq:pricing' }],
+        },
+      ],
     });
 
+    expect(task.currentStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(task.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(task).not.toHaveProperty('fromStage');
+    expect(task).not.toHaveProperty('toStage');
     expect(task.primaryAction).toEqual({ type: 'ANSWER', target: 'pricing', mode: 'faq' });
     expect(task.followUpAction).toEqual({ type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'pricing_requires_records' });
+    expect(task.loadedSkillSections).toEqual(loadedSkillSections);
+    expect(task.loadedSkillSections[0]?.readIntentTypes).toEqual(['PRICING_FACTORS', 'GENERAL_FAQ']);
+    expect(task.readIntents).toBe(readPlan.readIntents);
+    expect(task.retrievedContext).toEqual([
+      {
+        readIntentId: 'read-0',
+        readIntent: pricingIntent,
+        snippets: [{ text: 'Pricing depends on records and hospital plan.', source: 'pricing_policy', score: 0.91 }],
+      },
+      {
+        readIntentId: 'read-1',
+        readIntent: faqIntent,
+        snippets: [{ text: 'Final quotes require case review.', source: 'faq:pricing' }],
+      },
+    ]);
+    expect(task.retrievedContext[0]?.readIntent).toBe(pricingIntent);
     expect(task.responseContract.structure).toBe('answer_then_advance');
     expect(task.responseContract.primaryMove).toBe('answer');
     expect(task.responseContract.followUpMove).toBe('invite_next_step');
@@ -72,8 +117,9 @@ describe('buildAgentTask', () => {
       avoidMultipleCTAs: true,
       language: 'zh',
     });
-    expect(task.skillPolicy.allowedSkillPacks).toEqual(['explain_pricing_uncertainty']);
-    expect(task.retrievedContext?.knowledgeSnippets).toEqual(['Pricing depends on records and hospital plan.']);
+    expect(task.responseContract.constraints).not.toHaveProperty('tone');
+    expect(task).not.toHaveProperty('loadedSkills');
+    expect(task).not.toHaveProperty('skillPolicy');
   });
 
   it('builds strict redirect contracts for safety actions', () => {
@@ -87,16 +133,23 @@ describe('buildAgentTask', () => {
         reasonCode: 'safety_redirect',
         sidePath: { type: 'safety', primaryStagePreserved: true },
       },
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
       resolvedAgent,
       latestUserMessage: '能保证治好吗？',
       conversationSummary: '',
       knownFacts: facts,
-      loadedSkills: [],
+      loadedSkillSections: [],
       readPlan: { reasonCode: 'safety_redirect', readIntents: [] },
+      retrievedContext: [],
     });
 
     expect(task.responseContract.structure).toBe('redirect_then_advance');
     expect(task.responseContract.primaryMove).toBe('redirect');
+    expect(task.currentStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(task.loadedSkillSections).toEqual([]);
+    expect(task.readIntents).toEqual([]);
+    expect(task.retrievedContext).toEqual([]);
+    expect(task.responseContract.constraints).not.toHaveProperty('tone');
     expect(task.responseContract.safetyRules).toEqual(expect.arrayContaining([
       'do_not_diagnose',
       'do_not_recommend_medication',

@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { loadSkillPacks } from '../../chatbot-v3/skill-loader.js';
 import { DOMAIN_SKILL_REGISTRY, SKILL_PACK_REGISTRY } from '../../chatbot-v3/skill-packs.js';
+import type { LoadedSkillPack } from '../../chatbot-v3/skill-packs.js';
+
+const legacyShapedDomainSkill = {
+  id: 'pricing_skill' as const,
+  kind: 'retrieval_strategy' as const,
+  description: 'pricing',
+  reasonCodes: ['pricing'],
+};
+
+// @ts-expect-error Domain ids must not be assignable through legacy-shaped variables.
+const invalidDomainLoadedSkillFromVariable: LoadedSkillPack = legacyShapedDomainSkill;
 
 describe('DOMAIN_SKILL_REGISTRY', () => {
   it('contains exactly the Phase 1.2 domain skills', () => {

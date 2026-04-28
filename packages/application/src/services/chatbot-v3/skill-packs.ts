@@ -147,11 +147,7 @@ export interface SkillRequest {
   reasonCode: string;
 }
 
-export type LoadedSkillPack = (
-  | DomainSkillPack
-  | LegacySkillPackDefinition
-  | { id: SkillPackId; kind: SkillKind; description: string }
-) & {
+export type LoadedSkillPack = SkillPackDefinition & {
   reasonCodes: string[];
 };
 

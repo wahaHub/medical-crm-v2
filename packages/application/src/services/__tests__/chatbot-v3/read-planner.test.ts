@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildReadPlan } from '../../chatbot-v3/read-planner.js';
 import type { SupervisorEvent, TurnPlan } from '../../chatbot-v3/supervisor-event.types.js';
-import type { LoadedSkillPack, SkillPackId } from '../../chatbot-v3/skill-packs.js';
+import type { LegacySkillPackId, LoadedSkillPack } from '../../chatbot-v3/skill-packs.js';
 
 describe('buildReadPlan', () => {
   function event(overrides: Partial<SupervisorEvent>): SupervisorEvent {
@@ -26,7 +26,7 @@ describe('buildReadPlan', () => {
     };
   }
 
-  function skill(id: SkillPackId): LoadedSkillPack {
+  function skill(id: LegacySkillPackId): LoadedSkillPack {
     return {
       id,
       kind: 'retrieval_strategy',

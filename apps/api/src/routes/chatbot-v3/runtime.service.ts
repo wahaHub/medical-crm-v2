@@ -13,11 +13,12 @@ import {
   buildAgentTask,
   buildReadPlan,
   buildSkillPolicy,
-  loadSkillPacks,
+  loadSkillSections,
   type MinimalIntakeSeed,
   type NextAction,
   type PrimaryAction,
   type ReadPlan,
+  type RetrievedContextEntry,
   normalizeFactsFromStatusSnapshot,
   projectLegacyCompatibilityView,
   reduceJourney,
@@ -710,24 +711,26 @@ export class ConversationOrchestratorV3RuntimeService {
       agentRole: resolvedAgent.conceptualRole,
       facts: reduction.facts,
     });
-    const loadedSkillPolicy = loadSkillPacks({
+    const loadedSkillPolicy = loadSkillSections({
       requests: skillPolicy.requests,
-      maxSkillSnippets: skillPolicy.maxSkillSnippets,
     });
     const readPlan = buildReadPlan({
       event,
       turnPlan: reduction.turnPlan,
-      loadedSkills: loadedSkillPolicy.skillPacks,
+      loadedSkillSections: loadedSkillPolicy.skillSections,
     });
+    const retrievedContext = buildRetrievedContextEntries(readPlan);
     const agentTask = buildAgentTask({
       event,
       turnPlan: reduction.turnPlan,
+      currentStage: decisionInput.current.stage,
       resolvedAgent,
       latestUserMessage: normalizedInput.message,
       conversationSummary: normalizedInput.statusSnapshot?.conversationSummary ?? '',
       knownFacts: reduction.facts,
-      loadedSkills: loadedSkillPolicy.skillPacks,
+      loadedSkillSections: loadedSkillPolicy.skillSections,
       readPlan,
+      retrievedContext,
     });
     const compatibilityView = projectLegacyCompatibilityView({
       currentStage: decisionInput.current.stage,
@@ -2027,8 +2030,8 @@ function buildWorkerTask(
   suggestion: ConversationOrchestratorV3Suggestion,
 ): WorkerTask {
   const baseTask = {
-    fromStage: decision.from.stage,
-    toStage: decision.to.stage,
+    currentStage: decision.agentTask?.currentStage ?? decision.from.stage,
+    primaryStage: decision.agentTask?.primaryStage ?? decision.to.stage,
     intent: suggestion.intent,
     supervisorReason: normalizeReason(suggestion.reason),
     latestUserMessage: input.message,
@@ -2036,8 +2039,10 @@ function buildWorkerTask(
       ? {
           primaryAction: decision.agentTask.primaryAction,
           followUpAction: decision.agentTask.followUpAction,
-          allowedSkillPacks: decision.agentTask.skillPolicy.allowedSkillPacks,
-          readIntents: decision.agentTask.readPlan.readIntents.map(describeReadIntent),
+          selectedDomainSkills: decision.agentTask.loadedSkillSections.map((section) => section.skillId),
+          loadedSkillSections: decision.agentTask.loadedSkillSections,
+          readIntents: decision.agentTask.readIntents,
+          retrievedContext: decision.agentTask.retrievedContext,
           responseContract: decision.agentTask.responseContract,
         }
       : {}),
@@ -2072,14 +2077,9 @@ function buildWorkerTask(
   }
 }
 
-function describeReadIntent(intent: ReadPlan['readIntents'][number]): string {
-  switch (intent.type) {
-    case 'GENERAL_FAQ':
-    case 'HOSPITAL_FAQ':
-      return `${intent.type}:${intent.category}`;
-    default:
-      return intent.type;
-  }
+function buildRetrievedContextEntries(readPlan: ReadPlan): RetrievedContextEntry[] {
+  void readPlan;
+  return [];
 }
 
 function resolveRecordsMinimalTriageComplete(

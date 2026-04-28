@@ -1,8 +1,11 @@
 import type { ChatJourneyStage } from '@medical-crm/domain';
 import type {
   FollowUpAction,
+  LoadedSkillSection,
   PrimaryAction,
+  ReadIntent,
   ResponseContract,
+  RetrievedContextEntry,
 } from '@medical-crm/application';
 
 export type WorkerTaskIntent =
@@ -33,15 +36,24 @@ export type FaqResponseMode =
 
 interface WorkerTaskBase<TAgent extends 'FaqAgent' | 'RecordsAgent' | 'RecommendationAgent'> {
   agent: TAgent;
-  fromStage: ChatJourneyStage;
-  toStage: ChatJourneyStage;
+  currentStage: ChatJourneyStage;
+  primaryStage: ChatJourneyStage;
   latestUserMessage: string;
   intent?: WorkerTaskIntent;
   supervisorReason?: string;
   primaryAction?: PrimaryAction;
   followUpAction?: FollowUpAction;
+  selectedDomainSkills?: string[];
+  loadedSkillSections?: LoadedSkillSection[];
+  retrievedContext?: RetrievedContextEntry[];
+  /**
+   * Transitional prompt compatibility fields. Runtime bridge tasks should use
+   * currentStage/primaryStage and loadedSkillSections/readIntents instead.
+   */
+  fromStage?: ChatJourneyStage;
+  toStage?: ChatJourneyStage;
   allowedSkillPacks?: string[];
-  readIntents?: string[];
+  readIntents?: ReadIntent[];
   responseContract?: ResponseContract;
 }
 
@@ -72,9 +84,12 @@ export type WorkerTask =
 export function createFallbackFaqWorkerTask(latestUserMessage: string): FaqWorkerTask {
   return {
     agent: 'FaqAgent',
-    fromStage: 'EXPLAIN_PROCESS',
-    toStage: 'EXPLAIN_PROCESS',
+    currentStage: 'EXPLAIN_PROCESS',
+    primaryStage: 'EXPLAIN_PROCESS',
     latestUserMessage,
+    loadedSkillSections: [],
+    readIntents: [],
+    retrievedContext: [],
   };
 }
 
@@ -83,11 +98,14 @@ export function createFallbackRecordsWorkerTask(
 ): RecordsWorkerTask {
   return {
     agent: 'RecordsAgent',
-    fromStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
-    toStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+    primaryStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
     latestUserMessage,
     mode: 'minimal_triage',
     minimalTriageComplete: false,
+    loadedSkillSections: [],
+    readIntents: [],
+    retrievedContext: [],
   };
 }
 
@@ -96,10 +114,13 @@ export function createFallbackRecommendationWorkerTask(
 ): RecommendationWorkerTask {
   return {
     agent: 'RecommendationAgent',
-    fromStage: 'RECOMMENDATION',
-    toStage: 'RECOMMENDATION',
+    currentStage: 'RECOMMENDATION',
+    primaryStage: 'RECOMMENDATION',
     latestUserMessage,
     recommendationTask: 'generate',
+    loadedSkillSections: [],
+    readIntents: [],
+    retrievedContext: [],
   };
 }
 

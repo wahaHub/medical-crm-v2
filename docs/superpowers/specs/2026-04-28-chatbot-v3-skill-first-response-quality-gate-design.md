@@ -78,13 +78,14 @@ type MinimalResponseContract = {
     answerBeforeAsk: boolean;
     avoidMultipleCTAs: boolean;
     language: string;
-    tone: 'warm_professional' | 'calm_safety' | 'concise';
   };
   forbiddenClaims: string[];
 };
 ```
 
 It must not specify detailed pricing talk tracks, records-objection handling, recommendation-comparison logic, handoff reassurance copy, or FAQ return strategy. Those belong to domain skills.
+
+Tone and service style are also skill or agent-prompt concerns. `language` may remain in the contract because it is a runtime output requirement, but the contract must not encode domain strategy through tone labels such as safety, sales, or reassurance.
 
 ## Domain Skill Model
 
@@ -115,13 +116,21 @@ type DomainSkillPack = {
     | 'safety_scope'
     | 'clarification';
   description: string;
-  policy: string;
+  policySections: Array<{
+    id: string;
+    appliesTo: SkillSectionApplicability;
+    text: string;
+  }>;
   retrieval: {
-    readIntents: ReadIntent['type'][];
-    searchGuidance: string;
+    sections: Array<{
+      id: string;
+      appliesTo: SkillSectionApplicability;
+      readIntentTypes: ReadIntent['type'][];
+      searchGuidance: string;
+    }>;
   };
   handling: Partial<Record<
-    SemanticSupervisorEventType,
+    SupervisorEventType,
     Partial<Record<SupervisorEventModifier, string>>
   >>;
   futureCms?: {
@@ -129,9 +138,19 @@ type DomainSkillPack = {
     owner: 'clinical' | 'ops' | 'growth' | 'engineering';
   };
 };
+
+type SkillSectionApplicability = {
+  eventTypes?: SupervisorEventType[];
+  targets?: SupervisorEventTarget[];
+  modifiers?: SupervisorEventModifier[];
+  primaryActionTypes?: PrimaryAction['type'][];
+  followUpActionTypes?: FollowUpAction['type'][];
+};
 ```
 
 Do not add heavy fields such as `examples`, `requiredBehaviors`, or `forbiddenBehaviors` in this phase. They make each skill too much like a mini prompt spec and duplicate the contract and agent prompt.
+
+The skill shape is still intentionally small, but it must be sectionable. `policySections` and `retrieval.sections` give `SkillLoader` deterministic material to trim. A single monolithic `policy` string is not acceptable because it would force either whole-skill prompt loading or heuristic trimming.
 
 ### Skill Size Budget
 
@@ -292,7 +311,8 @@ type LoadedSkillSection = {
   skillId: DomainSkillId;
   role: 'primary' | 'auxiliary';
   reasonCode: string;
-  policySummary: string;
+  sectionIds: string[];
+  policyText: string[];
   retrievalGuidance: string[];
   handlingGuidance: string[];
 };
@@ -308,7 +328,7 @@ documents_skill + modifier=reject
   -> records requirement retrieval guidance
 ```
 
-Unknown or malformed skill ids should fall back to `clarification_recovery_skill` or `safety_scope_skill` depending on the primary action and event.
+Unknown or malformed skill ids should fall back to `clarification_recovery_skill` or `safety_scope_skill` depending on the primary action and event. The fallback should be observable in debug output.
 
 ## ReadPlanner
 
@@ -372,9 +392,13 @@ Use:
 
 ```ts
 type RetrievedContextEntry = {
-  readIntentType: ReadIntent['type'];
-  reasonCode: string;
-  snippets: string[];
+  readIntentId: string;
+  readIntent: ReadIntent;
+  snippets: Array<{
+    text: string;
+    source?: string;
+    score?: number;
+  }>;
 };
 
 type WorkerTaskBase = {
@@ -400,7 +424,9 @@ Semantics:
 - `primaryStage` is the authority-approved stage after the reducer.
 - Agents may use both fields for wording only.
 - Agents must not decide or imply a different stage.
-- `retrievedContext` must align directly with `readIntents`; do not invent separate snippet categories such as `knowledgeSnippets`, `policySnippets`, or `recordsRequirementSnippets`.
+- `retrievedContext` must embed the original `ReadIntent`, not only the read intent type. This preserves parameters such as FAQ category, reason code, hospital id, query, or locale when those exist.
+- `readIntentId` must be stable within the turn so tests and dogfood can prove that `GENERAL_FAQ(category=pricing)` produced the matching snippets.
+- Do not invent separate snippet categories such as `knowledgeSnippets`, `policySnippets`, or `recordsRequirementSnippets`.
 
 ## Physical Agent Integration
 
@@ -472,13 +498,33 @@ Do not check business talk tracks here.
 
 Use `selectedDomainSkills` and `sectionHints` to evaluate whether the selected skill behavior appeared in the response.
 
+Each check should be explicit:
+
+```ts
+type SkillBehaviorCheck = {
+  id: string;
+  skillId: DomainSkillId;
+  sectionHint: DomainSkillRequest['sectionHints'];
+  evaluator: 'deterministic' | 'llm_judge';
+  severity: 'hard' | 'soft' | 'observed';
+  result: 'pass' | 'fail' | 'warn';
+  reason?: string;
+};
+```
+
+Severity semantics:
+
+- `hard`: fails the required quality gate. Use only for behavior that protects safety, scope, stage integrity, or materially prevents misleading output.
+- `soft`: produces a response-quality soft failure. Use for missing helpfulness or weak business handling that does not break safety or control-plane truth.
+- `observed`: records evidence without failing the gate. Use for new or unstable checks while the scenario is being calibrated.
+
 Examples:
 
-- `pricing_skill`: explains uncertainty based on records, hospital, or treatment plan; avoids fixed unsupported prices; gives a low-burden next step.
-- `documents_skill + reject/hesitate`: does not pressure the user; offers a lower-friction alternative.
-- `safety_scope_skill`: avoids diagnosis, medication advice, treatment decisions, and guarantees; redirects to supported safe next steps.
-- `hospital_recommendation_skill`: uses candidate or known context; does not invent hospitals or guarantees.
-- `human_handoff_skill`: confirms handoff or contact capture; does not repeat unnecessary information requests or promise unsupported outcomes.
+- `pricing_skill`: unsupported fixed prices are `hard`; missing a low-burden next step is `soft`.
+- `documents_skill + reject/hesitate`: pressuring the user after rejection is `hard`; failing to offer an alternative is `soft`.
+- `safety_scope_skill`: diagnosis, medication advice, treatment decisions, or guarantees are `hard`; missing a supported next-step redirect is `soft`.
+- `hospital_recommendation_skill`: inventing hospitals or guarantees is `hard`; weak comparison detail is `soft`.
+- `human_handoff_skill`: unsupported clinical promises are `hard`; repetitive information requests are `soft`.
 
 Skill behavior checks can be deterministic where possible, but should remain tied to the selected skill rather than becoming a new global response contract.
 

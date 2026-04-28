@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   extractSafeMessageErrorDetail,
   formatAttachmentTypeForDisplay,
@@ -6,7 +6,12 @@ import {
   formatConversationCategoryForDisplay,
   formatParticipantRoleForDisplay,
   formatUserFacingMessageError,
+  translatePdfForPreview,
 } from '../components/messages-view';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('messages view error formatting', () => {
   it('hides backend-ish errors but preserves safe user-facing detail', () => {
@@ -71,5 +76,42 @@ describe('messages view error formatting', () => {
 
     expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).toBe(signedUrl);
     expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).not.toContain('/api/documents/preview');
+  });
+
+  it('requests PDF translation by authorized attachment identifiers instead of signed source URLs', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      inputFileName: 'report.pdf',
+      outputDir: '/tmp/babeldoc-1',
+      outputFiles: [{ fileName: 'report.zh.pdf', path: '/tmp/babeldoc-1/report.zh.pdf' }],
+      stdout: '',
+      stderr: '',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })));
+
+    await translatePdfForPreview({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      storageKey: 'crm/dev/messages/conversation-1/asset-1/report.pdf',
+      fileName: 'report.pdf',
+      targetLanguage: 'zh',
+    }, 'Failed to translate PDF');
+
+    expect(fetch).toHaveBeenCalledWith('/api/documents/translate', expect.objectContaining({
+      method: 'POST',
+    }));
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body).toMatchObject({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      storageKey: 'crm/dev/messages/conversation-1/asset-1/report.pdf',
+      fileName: 'report.pdf',
+      targetLanguage: 'zh',
+      outputMode: 'mono',
+    });
+    expect(body).not.toHaveProperty('sourceUrl');
+    expect(JSON.stringify(body)).not.toContain('https://signed.example.com');
   });
 });

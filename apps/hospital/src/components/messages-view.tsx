@@ -83,6 +83,10 @@ interface TranslationResult {
   stderr: string;
 }
 
+type PreviewChatAttachment = ChatAttachment & {
+  messageId?: string;
+};
+
 type AttachmentTranslationStatus = 'idle' | 'translating' | 'ready' | 'failed';
 
 interface AttachmentTranslationState {
@@ -239,6 +243,7 @@ function mapApiMessages(
       url: attachment.url ?? attachment.storageKey,
       size: attachment.size ?? attachment.fileSize,
       storageKey: attachment.storageKey,
+      messageId: m.id,
     })),
     aiSummary: m.aiSummary ?? null,
   }));
@@ -270,10 +275,14 @@ function mapLocaleToTargetLanguage(locale?: string): string {
   return 'en';
 }
 
-async function translatePdfForPreview(
-  sourceUrl: string,
-  fileName: string,
-  targetLanguage: string,
+export async function translatePdfForPreview(
+  input: {
+    conversationId: string;
+    messageId: string;
+    storageKey: string;
+    fileName: string;
+    targetLanguage: string;
+  },
   loadErrorFallback: string,
 ): Promise<TranslationResult> {
   const res = await fetch('/api/documents/translate', {
@@ -281,9 +290,11 @@ async function translatePdfForPreview(
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      sourceUrl,
-      fileName,
-      targetLanguage,
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      storageKey: input.storageKey,
+      fileName: input.fileName,
+      targetLanguage: input.targetLanguage,
       outputMode: 'mono',
     }),
   });
@@ -585,13 +596,14 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
   }, [t]);
 
   const handleOpenAttachment = useCallback(async (attachment: ChatAttachment) => {
+    const previewAttachment = attachment as PreviewChatAttachment;
     const requestId = previewRequestRef.current + 1;
     previewRequestRef.current = requestId;
     setPreviewAttachment(attachment);
     setTranslatedPreviewUrl(null);
     setTranslationError(null);
 
-    if (!isPdfAttachment(attachment) || !attachment.url) {
+    if (!selectedId || !isPdfAttachment(attachment) || !attachment.url || !previewAttachment.storageKey || !previewAttachment.messageId) {
       return;
     }
 
@@ -627,13 +639,17 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
     console.debug('[messages.preview] translation start', {
       fileName: attachment.name,
       targetLanguage,
-      url: attachment.url,
+      storageKey: previewAttachment.storageKey,
     });
     try {
       const result = await translatePdfForPreview(
-        attachment.url,
-        attachment.name ?? fallbackPreviewFileName,
-        targetLanguage,
+        {
+          conversationId: selectedId,
+          messageId: previewAttachment.messageId,
+          storageKey: previewAttachment.storageKey,
+          fileName: attachment.name ?? fallbackPreviewFileName,
+          targetLanguage,
+        },
         tx('hospital.portal.messages.preview.translateRequestFailed', 'Failed to translate PDF'),
       );
       const translatedPdf = pickTranslatedPdf(result);
@@ -692,7 +708,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
         setIsTranslatingPreview(false);
       }
     }
-  }, [attachmentTranslations, fallbackPreviewFileName, portalLanguage, tx, user.preferredLanguage]);
+  }, [attachmentTranslations, fallbackPreviewFileName, portalLanguage, selectedId, tx, user.preferredLanguage]);
 
   const handleCloseAttachmentPreview = useCallback(() => {
     previewRequestRef.current += 1;

@@ -2273,6 +2273,8 @@ describe('ResponseQualityChecker', () => {
     );
     const unsafeStopChecks = checkSkillBehavior('Stop medication now.', [section]);
     const unsafeTakeChecks = checkSkillBehavior('Take antibiotics today.', [section]);
+    const unsafeAdviceWrapperChecks = checkSkillBehavior('I recommend starting chemotherapy.', [section]);
+    const unsafeShouldTakeChecks = checkSkillBehavior('You should take antibiotics.', [section]);
 
     expect(safeChecks).toContainEqual(expect.objectContaining({
       id: 'safety_scope_medication',
@@ -2285,6 +2287,16 @@ describe('ResponseQualityChecker', () => {
       severity: 'hard',
     }));
     expect(unsafeTakeChecks).toContainEqual(expect.objectContaining({
+      id: 'safety_scope_medication',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(unsafeAdviceWrapperChecks).toContainEqual(expect.objectContaining({
+      id: 'safety_scope_medication',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(unsafeShouldTakeChecks).toContainEqual(expect.objectContaining({
       id: 'safety_scope_medication',
       result: 'fail',
       severity: 'hard',

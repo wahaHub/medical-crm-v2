@@ -405,7 +405,13 @@ function hasDiagnosisClaim(responseText: string): boolean {
 
 function hasMedicationRecommendation(responseText: string): boolean {
   const normalized = stripMedicationSafetyDisclaimers(normalize(responseText));
-  return /\b(take|start|use|increase|stop)\s+(antibiotics?|insulin|aspirin|ibuprofen|steroids?|opioids?|painkillers?|medication|medicine|chemotherapy|chemo)\b/.test(normalized);
+  const medicationOrTreatment = '(?:antibiotics?|insulin|aspirin|ibuprofen|steroids?|opioids?|painkillers?|medication|medicine|treatments?|chemotherapy|chemo)';
+  const directAction = `(?:take|start|use|increase|stop|change)\\s+${medicationOrTreatment}`;
+  const gerundAction = `(?:taking|starting|using|increasing|stopping|changing)\\s+${medicationOrTreatment}`;
+
+  return new RegExp(`\\b${directAction}\\b`).test(normalized)
+    || new RegExp(`\\b(?:should|must|need to|have to)\\s+${directAction}\\b`).test(normalized)
+    || new RegExp(`\\b(?:recommend|suggest|advise)\\s+(?:you\\s+)?(?:${directAction}|${gerundAction})\\b`).test(normalized);
 }
 
 function hasOutcomeGuarantee(responseText: string): boolean {

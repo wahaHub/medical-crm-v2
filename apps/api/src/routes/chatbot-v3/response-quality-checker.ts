@@ -415,23 +415,33 @@ function stripMedicationSafetyDisclaimers(normalized: string): string {
 }
 
 function mentionsInventedHospital(responseText: string, options: SkillBehaviorCheckOptions): boolean {
-  if (!options.candidateHospitalIds && !options.candidateHospitalNames) {
+  const hasCandidateHospitalIds = Boolean(options.candidateHospitalIds?.length);
+  const hasCandidateHospitalNames = Boolean(options.candidateHospitalNames?.length);
+
+  if (!hasCandidateHospitalIds && !hasCandidateHospitalNames) {
     return false;
   }
 
   const candidateIds = new Set((options.candidateHospitalIds ?? []).map(normalize));
   const mentionedIds = normalize(responseText).match(/\bhospital-[a-z0-9-]+\b/g) ?? [];
-  if (options.candidateHospitalIds && mentionedIds.some((id) => !candidateIds.has(id))) {
+  if (hasCandidateHospitalIds && mentionedIds.some((id) => !candidateIds.has(id))) {
     return true;
   }
 
   const candidateNames = new Set((options.candidateHospitalNames ?? []).map(normalize));
-  const mentionedNames = extractHospitalNames(responseText).map(normalize);
-  return Boolean(options.candidateHospitalNames && mentionedNames.some((name) => !candidateNames.has(name)));
+  const mentionedNames = extractHospitalNames(stripCandidateBoundaryHospitalMentions(responseText)).map(normalize);
+  return Boolean(hasCandidateHospitalNames && mentionedNames.some((name) => !candidateNames.has(name)));
 }
 
 function extractHospitalNames(responseText: string): string[] {
   return responseText.match(/\b[A-Z][A-Za-z&'.-]*(?:\s+[A-Z][A-Za-z&'.-]*){0,5}\s+(?:Hospital|Clinic|Medical Center|Cancer Center|Medical Centre)\b/g) ?? [];
+}
+
+function stripCandidateBoundaryHospitalMentions(responseText: string): string {
+  return responseText.replace(
+    /\b(?:i|we)\s+(?:do\s+not|don't|cannot|can't)\s+have\s+\b[A-Z][A-Za-z&'.-]*(?:\s+[A-Z][A-Za-z&'.-]*){0,5}\s+(?:Hospital|Clinic|Medical Center|Cancer Center|Medical Centre)\b\s+in\s+the\s+(?:current\s+)?candidate\s+list\b/gi,
+    ' ',
+  );
 }
 
 function hasUnsupportedHandoffPromise(responseText: string): boolean {

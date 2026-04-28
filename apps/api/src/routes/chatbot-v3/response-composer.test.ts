@@ -1906,6 +1906,33 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
+  it('allows fixed-price boundary language before doctors review records', () => {
+    const checks = checkSkillBehavior(
+      'We cannot provide a fixed price before doctors review your records.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
   it('fails pricing when a disclaimer is followed by a guaranteed fixed price', () => {
     const checks = checkSkillBehavior(
       'We cannot give a fixed price before review. After that, the package is a $10,000 guaranteed fixed price.',
@@ -2031,6 +2058,58 @@ describe('ResponseQualityChecker', () => {
         retrievalGuidance: [],
         handlingGuidance: ['Present only available candidate hospitals.'],
       }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('skips hospital invention checks when candidate metadata arrays are empty', () => {
+    const checks = checkSkillBehavior(
+      'I recommend Cleveland Clinic as the best option for you.',
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+      {
+        candidateHospitalIds: [],
+        candidateHospitalNames: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows boundary text about hospitals missing from the current candidate list', () => {
+    const checks = checkSkillBehavior(
+      "I don't have Cleveland Clinic in the current candidate list.",
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+      {
+        candidateHospitalIds: ['hospital-1'],
+        candidateHospitalNames: ['Shanghai Chest Hospital'],
+      },
     );
 
     expect(checks).toContainEqual(expect.objectContaining({

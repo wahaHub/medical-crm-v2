@@ -22,6 +22,7 @@
     "./storage/s3": "./storage/s3-storage.adapter.ts",
     "./storage/registry": "./storage/storage-adapter-registry.ts",
     "./storage/routed": "./storage/routed-storage.service.ts",
+    "./storage/server-side-upload": "./storage/server-side-upload.service.ts",
     "./services": "./services/index.ts"
   },
   "scripts": {

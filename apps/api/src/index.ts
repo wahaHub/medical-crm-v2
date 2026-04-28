@@ -6,6 +6,7 @@ import { authMiddleware } from '@medical-crm/infrastructure/auth';
 import { isTransientDatabaseError } from '@medical-crm/infrastructure/database/retry';
 import routes from './routes/index.js';
 import internalRoutes from './routes/internal.routes.js';
+import resendInboundRoutes from './routes/resend-inbound.routes.js';
 import { registerHospitalUserSchema } from '@medical-crm/validation';
 import { getServices } from './composition-root.js';
 
@@ -59,6 +60,9 @@ app.route('/', chatbotV3PublicRoutes);
 
 // Internal: worker endpoint (X-Internal-Secret header auth, not Keycloak)
 app.route('/', internalRoutes);
+
+// Public: Resend inbound email webhook (Svix signature auth, not Keycloak)
+app.route('/api/webhooks/resend', resendInboundRoutes);
 
 // --- Auth middleware for everything else under /api/v2/* ---
 app.use('/api/v2/*', authMiddleware, perUserRateLimiter);

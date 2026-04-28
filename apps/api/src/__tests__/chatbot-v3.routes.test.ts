@@ -19,6 +19,7 @@ import {
 } from '../routes/chatbot-v3.routes.js';
 import {
   buildConversationSummaryPatch,
+  buildRetrievedContextEntries,
   ConversationOrchestratorV3RuntimeService,
   InvalidChatbotV3ActionError,
   deriveCurrentStageFromStatusSnapshot,
@@ -6178,11 +6179,17 @@ describe('chatbot-v3 runtime', () => {
     expect(task?.retrievedContext).toHaveLength(task?.readIntents?.length ?? 0);
     task?.retrievedContext?.forEach((entry: unknown, index: number) => {
       expect(entry).toEqual(expect.objectContaining({
-        readIntentId: `read-${index}`,
+        readIntentId: expect.stringMatching(/^read-[a-z0-9]+$/),
         readIntent: expect.objectContaining({
           type: expect.any(String),
         }),
         snippets: [],
+      }));
+      expect(entry).toEqual(expect.objectContaining({
+        readIntentId: buildRetrievedContextEntries({
+          reasonCode: 'pricing_question',
+          readIntents: [task.readIntents[index]],
+        })[0]?.readIntentId,
       }));
     });
     expect(result.runtimeDebug).toMatchObject({
@@ -6650,6 +6657,32 @@ describe('chatbot-v3 public route validation', () => {
         ],
       } as any,
     )).toEqual({});
+  });
+});
+
+describe('chatbot-v3 retrieved context ids', () => {
+  it('derives readIntentId from intent content instead of position', () => {
+    const pricingIntent = {
+      type: 'GENERAL_FAQ' as const,
+      category: 'pricing',
+      reasonCode: 'pricing_skill:pricing_sources',
+    };
+    const withoutPreceding = buildRetrievedContextEntries({
+      reasonCode: 'pricing_question',
+      readIntents: [
+        pricingIntent,
+      ],
+    });
+    const withPreceding = buildRetrievedContextEntries({
+      reasonCode: 'pricing_question',
+      readIntents: [
+        { type: 'PRICING_FACTORS' as const, reasonCode: 'pricing_skill:pricing_sources' },
+        pricingIntent,
+      ],
+    });
+
+    expect(withoutPreceding[0]?.readIntentId).toBe(withPreceding[1]?.readIntentId);
+    expect(withPreceding[1]?.readIntentId).not.toBe('read-1');
   });
 });
 

@@ -226,6 +226,16 @@ describe('FaqLlmAdapter', () => {
         'answer_general_faq_from_admin_source',
         'load_consult_readiness_criteria',
       ],
+      loadedSkillSections: [{
+        skillId: 'consult_skill',
+        role: 'primary',
+        reasonCode: 'answer_consult_faq',
+        sectionIds: ['consult_readiness', 'consult_sources'],
+        readIntentTypes: ['CONSULT_READINESS', 'GENERAL_FAQ'],
+        policyText: ['Explain what is needed before doctor review and which records help readiness.'],
+        retrievalGuidance: ['Use consult readiness first; use consult FAQ for direct policy questions.'],
+        handlingGuidance: ['Explain the consult step and invite the next readiness action.'],
+      }],
       readIntents: [
         { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'answer_consult_faq' },
         { type: 'CONSULT_READINESS', reasonCode: 'go_deep_consult' },
@@ -246,19 +256,29 @@ describe('FaqLlmAdapter', () => {
       },
     };
 
-    expect(buildFaqPlanPrompt({ task })).toContain('allowed_skill_packs=search_general_faq_by_category, answer_general_faq_from_admin_source, load_consult_readiness_criteria');
+    const planPrompt = buildFaqPlanPrompt({ task });
+    expect(planPrompt).toContain('loaded_skill_sections=');
+    expect(planPrompt).toContain('consult_readiness');
+    expect(planPrompt).toContain('Explain what is needed before doctor review and which records help readiness.');
+    expect(planPrompt).toContain('Use consult readiness first; use consult FAQ for direct policy questions.');
+    expect(planPrompt).toContain('Explain the consult step and invite the next readiness action.');
+    expect(planPrompt).toContain('"readIntentTypes":["CONSULT_READINESS","GENERAL_FAQ"]');
+    expect(planPrompt).not.toContain('allowed_skill_packs=');
     expect(buildFaqPlanPrompt({ task })).toContain('current_stage=EXPLAIN_PROCESS');
     expect(buildFaqPlanPrompt({ task })).toContain('primary_stage=EXPLAIN_PROCESS');
     expect(buildFaqPlanPrompt({ task })).not.toContain('from_stage=undefined');
     expect(buildFaqPlanPrompt({ task })).not.toContain('to_stage=undefined');
     expect(buildFaqPlanPrompt({ task })).not.toContain('[object Object]');
     expect(buildFaqPlanPrompt({ task })).toContain('read_intents={"type":"GENERAL_FAQ","category":"consult","reasonCode":"answer_consult_faq"}, {"type":"CONSULT_READINESS","reasonCode":"go_deep_consult"}');
-    expect(buildFaqAnswerPrompt({
+    const answerPrompt = buildFaqAnswerPrompt({
       task,
       plan: { query: 'consult timing', reason: 'consult faq' },
       matches: [],
       details: [],
-    })).toContain('"followUpMove":"go_deep"');
+    });
+    expect(answerPrompt).toContain('loaded_skill_sections=');
+    expect(answerPrompt).not.toContain('allowed_skill_packs=');
+    expect(answerPrompt).toContain('"followUpMove":"go_deep"');
     expect(buildFaqAnswerPrompt({
       task,
       plan: { query: 'consult timing', reason: 'consult faq' },

@@ -20,7 +20,7 @@ export function buildFaqPlanPrompt(input: FaqPlanInput): string {
     `output_rules=${input.task.outputRules?.join(', ') ?? 'none'}`,
     `primary_action=${stringifyTaskField(input.task.primaryAction)}`,
     `follow_up_action=${stringifyTaskField(input.task.followUpAction)}`,
-    `allowed_skill_packs=${input.task.allowedSkillPacks?.join(', ') ?? 'none'}`,
+    `loaded_skill_sections=${formatLoadedSkillSections(input.task.loadedSkillSections)}`,
     `read_intents=${formatReadIntents(input.task.readIntents)}`,
     `response_contract=${stringifyTaskField(input.task.responseContract)}`,
     `latest_user_message=${input.task.latestUserMessage}`,
@@ -43,7 +43,7 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
     `output_rules=${input.task.outputRules?.join(', ') ?? 'none'}`,
     `primary_action=${stringifyTaskField(input.task.primaryAction)}`,
     `follow_up_action=${stringifyTaskField(input.task.followUpAction)}`,
-    `allowed_skill_packs=${input.task.allowedSkillPacks?.join(', ') ?? 'none'}`,
+    `loaded_skill_sections=${formatLoadedSkillSections(input.task.loadedSkillSections)}`,
     `read_intents=${formatReadIntents(input.task.readIntents)}`,
     `response_contract=${stringifyTaskField(input.task.responseContract)}`,
     `latest_user_message=${input.task.latestUserMessage}`,
@@ -56,6 +56,25 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
 
 function stringifyTaskField(value: unknown): string {
   return value === undefined ? 'none' : JSON.stringify(value);
+}
+
+function formatLoadedSkillSections(
+  sections: FaqWorkerTask['loadedSkillSections'],
+): string {
+  if (!sections || sections.length === 0) {
+    return 'none';
+  }
+
+  return JSON.stringify(sections.map((section) => ({
+    skillId: section.skillId,
+    role: section.role,
+    reasonCode: section.reasonCode,
+    sectionIds: section.sectionIds,
+    policyText: section.policyText,
+    retrievalGuidance: section.retrievalGuidance,
+    handlingGuidance: section.handlingGuidance,
+    ...(section.readIntentTypes.length > 0 ? { readIntentTypes: section.readIntentTypes } : {}),
+  })));
 }
 
 function formatReadIntents(readIntents: FaqWorkerTask['readIntents']): string {

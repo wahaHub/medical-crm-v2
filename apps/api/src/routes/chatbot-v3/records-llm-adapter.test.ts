@@ -54,6 +54,16 @@ describe('RecordsLlmAdapter', () => {
       primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
       followUpAction: { type: 'NONE' },
       allowedSkillPacks: ['load_records_requirement_data', 'derive_record_inventory_candidate'],
+      loadedSkillSections: [{
+        skillId: 'documents_skill',
+        role: 'primary',
+        reasonCode: 'collect_documents',
+        sectionIds: ['documents_request_scope', 'document_requirements'],
+        readIntentTypes: ['RECORD_REQUIREMENTS'],
+        policyText: ['Ask only for useful records or facts at the current stage; do not pressure the user.'],
+        retrievalGuidance: ['Use record requirements to name the next useful document set.'],
+        handlingGuidance: ['Acknowledge the upload and explain the next review step.'],
+      }],
       readIntents: [
         { type: 'RECORD_REQUIREMENTS', reasonCode: 'collect_documents' },
       ],
@@ -78,7 +88,13 @@ describe('RecordsLlmAdapter', () => {
     expect(prompt).toContain('primary_stage=COLLECT_MEDICAL_INPUTS');
     expect(prompt).not.toContain('from_stage=undefined');
     expect(prompt).not.toContain('to_stage=undefined');
-    expect(prompt).toContain('allowed_skill_packs=load_records_requirement_data, derive_record_inventory_candidate');
+    expect(prompt).toContain('loaded_skill_sections=');
+    expect(prompt).toContain('documents_request_scope');
+    expect(prompt).toContain('Ask only for useful records or facts at the current stage; do not pressure the user.');
+    expect(prompt).toContain('Use record requirements to name the next useful document set.');
+    expect(prompt).toContain('Acknowledge the upload and explain the next review step.');
+    expect(prompt).toContain('"readIntentTypes":["RECORD_REQUIREMENTS"]');
+    expect(prompt).not.toContain('allowed_skill_packs=');
     expect(prompt).toContain('read_intents={"type":"RECORD_REQUIREMENTS","reasonCode":"collect_documents"}');
     expect(prompt).not.toContain('[object Object]');
     expect(prompt).toContain('"primaryMove":"acknowledge"');

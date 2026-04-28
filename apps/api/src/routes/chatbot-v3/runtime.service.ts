@@ -2085,12 +2085,40 @@ function buildWorkerTask(
   }
 }
 
-function buildRetrievedContextEntries(readPlan: ReadPlan): RetrievedContextEntry[] {
-  return readPlan.readIntents.map((readIntent, index) => ({
-    readIntentId: `read-${index}`,
+export function buildRetrievedContextEntries(readPlan: ReadPlan): RetrievedContextEntry[] {
+  return readPlan.readIntents.map((readIntent) => ({
+    readIntentId: buildReadIntentId(readIntent),
     readIntent,
     snippets: [],
   }));
+}
+
+function buildReadIntentId(readIntent: ReadPlan['readIntents'][number]): string {
+  return `read-${hashString(stableStringify(readIntent))}`;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function hashString(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function projectRuntimeDebugAgentTaskEvidence(

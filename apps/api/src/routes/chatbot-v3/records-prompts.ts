@@ -99,7 +99,7 @@ function buildTaskContextLines(task: RecordsWorkerTask): string[] {
   return [
     `primary_action=${stringifyTaskField(task.primaryAction)}`,
     `follow_up_action=${stringifyTaskField(task.followUpAction)}`,
-    `allowed_skill_packs=${task.allowedSkillPacks?.join(', ') ?? 'none'}`,
+    `loaded_skill_sections=${formatLoadedSkillSections(task.loadedSkillSections)}`,
     `read_intents=${formatReadIntents(task.readIntents)}`,
     `response_contract=${stringifyTaskField(task.responseContract)}`,
   ];
@@ -107,6 +107,25 @@ function buildTaskContextLines(task: RecordsWorkerTask): string[] {
 
 function stringifyTaskField(value: unknown): string {
   return value === undefined ? 'none' : JSON.stringify(value);
+}
+
+function formatLoadedSkillSections(
+  sections: RecordsWorkerTask['loadedSkillSections'],
+): string {
+  if (!sections || sections.length === 0) {
+    return 'none';
+  }
+
+  return JSON.stringify(sections.map((section) => ({
+    skillId: section.skillId,
+    role: section.role,
+    reasonCode: section.reasonCode,
+    sectionIds: section.sectionIds,
+    policyText: section.policyText,
+    retrievalGuidance: section.retrievalGuidance,
+    handlingGuidance: section.handlingGuidance,
+    ...(section.readIntentTypes.length > 0 ? { readIntentTypes: section.readIntentTypes } : {}),
+  })));
 }
 
 function formatReadIntents(readIntents: RecordsWorkerTask['readIntents']): string {

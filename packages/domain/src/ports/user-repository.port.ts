@@ -38,6 +38,8 @@ export interface IUserRepository {
   create(input: CreateUserInput): Promise<{ id: string }>;
   findPreferredLanguage(hospitalId: string): Promise<string | null>;
   findById(id: string): Promise<UserProfile | null>;
+  findByEmail(email: string): Promise<UserProfile | null>;
   update(id: string, input: UpdateUserProfileInput): Promise<void>;
   listAdminEmails(): Promise<string[]>;
+  listHospitalEmails(hospitalId: string): Promise<string[]>;
 }

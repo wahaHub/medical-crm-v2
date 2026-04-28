@@ -1,4 +1,4 @@
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, sql } from 'drizzle-orm';
 import type { IUserRepository, CreateUserInput, UserProfile, UpdateUserProfileInput, NotificationPreferences } from '@medical-crm/domain';
 import { ConflictError } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
@@ -107,6 +107,38 @@ export class DrizzleUserRepository implements IUserRepository {
     };
   }
 
+  async findByEmail(email: string): Promise<UserProfile | null> {
+    const rows = await this.db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        phone: users.phone,
+        patientSite: users.patientSite,
+        preferredLanguage: users.preferredLanguage,
+        hospitalId: users.hospitalId,
+        notificationSettings: users.notificationSettings,
+      })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`)
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    const row = rows[0]!;
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      phone: row.phone ?? null,
+      patientSite: row.patientSite ?? null,
+      preferredLanguage: row.preferredLanguage,
+      hospitalId: row.hospitalId ?? null,
+      notificationSettings: (row.notificationSettings as NotificationPreferences | null) ?? null,
+    };
+  }
+
   async update(id: string, input: UpdateUserProfileInput): Promise<void> {
     const updateFields: Partial<typeof users.$inferInsert> = {
       updatedAt: new Date().toISOString(),
@@ -126,6 +158,16 @@ export class DrizzleUserRepository implements IUserRepository {
       .select({ email: users.email })
       .from(users)
       .where(eq(users.role, 'ADMIN'))
+      .orderBy(asc(users.email));
+
+    return rows.map((row) => row.email);
+  }
+
+  async listHospitalEmails(hospitalId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ email: users.email })
+      .from(users)
+      .where(and(eq(users.role, 'HOSPITAL'), eq(users.hospitalId, hospitalId)))
       .orderBy(asc(users.email));
 
     return rows.map((row) => row.email);

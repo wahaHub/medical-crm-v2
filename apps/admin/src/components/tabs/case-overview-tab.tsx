@@ -10,6 +10,7 @@ import { addHospitalToCase, removeHospitalContact, requestQuotesForHospitalConta
 import { useHospitals } from '@/queries/use-hospitals';
 import { useHospitalNameMap } from '@/queries/use-hospital-names';
 import { deriveSelectedHospitals, type HospitalContactLike } from '@/lib/case-selected-hospitals';
+import { formatDateTime } from '@/lib/date-format';
 import {
   deriveHospitalAssignmentRows,
   diffHospitalSelections,
@@ -86,7 +87,7 @@ function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
         <InfoRow label="Primary Diagnosis" value={caseData.primaryDiagnosis} />
         <InfoRow label="Risk Level" value={caseData.riskLevel} />
         <InfoRow label="Case Number" value={caseData.caseNumber} />
-        <InfoRow label="Created" value={caseData.createdAt ? new Date(caseData.createdAt).toLocaleDateString() : undefined} />
+        <InfoRow label="Created" value={caseData.createdAt ? formatDateTime(caseData.createdAt) : undefined} />
       </dl>
     </Card>
   );

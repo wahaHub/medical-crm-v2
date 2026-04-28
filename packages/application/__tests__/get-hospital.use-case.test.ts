@@ -59,8 +59,10 @@ describe('GetHospitalUseCase', () => {
       create: vi.fn(),
       findPreferredLanguage: vi.fn().mockResolvedValue('zh'),
       findById: vi.fn(),
+      findByEmail: vi.fn(),
       update: vi.fn(),
       listAdminEmails: vi.fn(),
+      listHospitalEmails: vi.fn(),
     };
     mockMaterialsRepo = {
       getHospitalInfo: vi.fn().mockResolvedValue({

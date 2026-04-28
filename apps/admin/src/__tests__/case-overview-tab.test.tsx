@@ -224,6 +224,27 @@ describe('CaseOverviewTab hospital assignment context', () => {
     expect(markup).toContain('type="checkbox"');
   });
 
+  it('renders the case creation time, not only the date', () => {
+    const markup = renderToStaticMarkup(
+      <CaseOverviewTab
+        caseData={{
+          id: 'case-1',
+          caseNumber: 'CASE-2026-1001',
+          patientName: 'Jane Doe',
+          status: 'ACTIVE',
+          assignmentStatus: 'UNASSIGNED',
+          treatmentStage: null,
+          patientSite: 'china',
+          hospitalType: 'REGULAR',
+          createdAt: '2026-04-03T08:45:30',
+        } as never}
+      />,
+    );
+
+    expect(markup).toContain('Created');
+    expect(markup).toContain('8:45');
+  });
+
   it('keeps existing hospital cleanup available when the case hospital type cannot be determined', () => {
     const markup = renderToStaticMarkup(
       <CaseOverviewTab

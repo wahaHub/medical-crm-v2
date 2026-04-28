@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { changePassword, updatePreferences } from '@/actions/settings-actions';
+import { changePassword, inviteHospitalEmail, listHospitalEmails, updatePreferences } from '@/actions/settings-actions';
 import { useAuth } from '@/lib/auth-context';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import { HOSPITAL_LANGUAGE_OPTIONS } from '@/lib/hospital-language-options';
@@ -20,6 +20,7 @@ const SAFE_USER_ERROR_PATTERNS = [
   /^add\b/i,
   /^remove\b/i,
   /^set\b/i,
+  /^this\b/i,
   /\brequired\b/i,
   /\binvalid\b/i,
   /\bmissing\b/i,
@@ -46,10 +47,22 @@ const UNSAFE_USER_ERROR_PATTERNS = [
 ];
 
 function getErrorDetail(err: unknown): string | null {
-  if (!(err instanceof Error)) return null;
+  let rawDetail: string | null = null;
 
-  const rawDetail = err.message.trim();
-  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    typeof err === 'object'
+    && err !== null
+    && 'body' in err
+    && typeof (err as { body?: { error?: unknown } }).body?.error === 'string'
+  ) {
+    rawDetail = (err as { body: { error: string } }).body.error;
+  } else if (err instanceof Error) {
+    rawDetail = err.message;
+  }
+
+  if (!rawDetail) return null;
+
+  const detail = rawDetail.trim().replace(/\s+/g, ' ');
   if (
     !detail
     || /[\r\n]/.test(rawDetail)
@@ -82,6 +95,196 @@ function FeedbackBanner({ feedback }: { feedback: FeedbackState }) {
       }`}
     >
       {feedback.message}
+    </div>
+  );
+}
+
+function AccountEmailsSection() {
+  const { locale, t } = useHospitalI18n();
+  const [emails, setEmails] = useState<string[]>([]);
+  const [newEmail, setNewEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackState>(null);
+  const [inviteResult, setInviteResult] = useState<{
+    email: string;
+    registrationUrl: string;
+    expiresAt: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    listHospitalEmails()
+      .then((result) => {
+        if (isMounted) setEmails(result.emails);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        const fallback = t(
+          'hospital.settings.accountEmails.feedback.loadFailed',
+          undefined,
+          'Failed to load account emails.',
+        );
+        setFeedback({ type: 'error', message: formatUserFacingError(err, t, fallback) });
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [locale]);
+
+  const handleInvite = async () => {
+    const normalizedEmail = newEmail.trim().toLowerCase();
+    setFeedback(null);
+    setInviteResult(null);
+
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      setFeedback({
+        type: 'error',
+        message: t(
+          'hospital.settings.accountEmails.feedback.invalidEmail',
+          undefined,
+          'Please enter a valid email address.',
+        ),
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const result = await inviteHospitalEmail(normalizedEmail);
+      setNewEmail('');
+      setInviteResult({
+        email: normalizedEmail,
+        registrationUrl: result.registrationUrl,
+        expiresAt: result.expiresAt,
+      });
+      setFeedback({
+        type: 'success',
+        message: t(
+          'hospital.settings.accountEmails.feedback.invited',
+          undefined,
+          'Registration invitation created.',
+        ),
+      });
+    } catch (err) {
+      const fallback = t(
+        'hospital.settings.accountEmails.feedback.inviteFailed',
+        undefined,
+        'Failed to send registration invitation.',
+      );
+      setFeedback({ type: 'error', message: formatUserFacingError(err, t, fallback) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded-[1.5rem] border border-slate-100 bg-white p-8 shadow-sm">
+      <h2 className="mb-1 text-lg font-semibold text-slate-800">
+        {t('hospital.settings.accountEmails.title', undefined, 'Account Emails')}
+      </h2>
+      <p className="mb-6 text-sm text-slate-500">
+        {t(
+          'hospital.settings.accountEmails.description',
+          undefined,
+          'Invite additional email addresses to log in to this hospital account.',
+        )}
+      </p>
+
+      <FeedbackBanner feedback={feedback} />
+
+      {inviteResult ? (
+        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <p className="font-semibold">
+            {t(
+              'hospital.settings.accountEmails.inviteLinkTitle',
+              undefined,
+              'Registration link ready',
+            )}
+          </p>
+          <p className="mt-1 text-emerald-700">
+            {t(
+              'hospital.settings.accountEmails.inviteLinkDescription',
+              { email: inviteResult.email },
+              'Share this link with {email} if the email does not arrive.',
+            )}
+          </p>
+          <a
+            className="mt-2 block break-all font-medium underline"
+            href={inviteResult.registrationUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {inviteResult.registrationUrl}
+          </a>
+          <p className="mt-2 text-xs text-emerald-700">
+            {t(
+              'hospital.settings.accountEmails.inviteExpiresAt',
+              { expiresAt: new Intl.DateTimeFormat(locale, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              }).format(new Date(inviteResult.expiresAt)) },
+              'Expires at {expiresAt}',
+            )}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        {loading
+          ? t('hospital.settings.accountEmails.loading', undefined, 'Loading account emails...')
+          : t(
+              'hospital.settings.accountEmails.count',
+              { count: emails.length },
+              '{count} email address(es) can access this hospital account',
+            )}
+      </div>
+
+      {!loading && emails.length > 0 ? (
+        <div className="mb-6 space-y-2">
+          {emails.map((email) => (
+            <div
+              key={email}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700"
+            >
+              {email}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="flex max-w-xl flex-col gap-3 sm:flex-row">
+        <input
+          type="email"
+          value={newEmail}
+          onChange={(event) => setNewEmail(event.target.value)}
+          placeholder={t(
+            'hospital.settings.accountEmails.emailPlaceholder',
+            undefined,
+            'new-user@hospital.com',
+          )}
+          className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          disabled={saving}
+        />
+        <button
+          type="button"
+          onClick={handleInvite}
+          disabled={saving}
+          className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-200/50 transition-colors hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {saving
+            ? t('hospital.common.actions.saving', undefined, 'Saving...')
+            : t('hospital.settings.accountEmails.invite', undefined, 'Invite Email')}
+        </button>
+      </div>
     </div>
   );
 }
@@ -508,6 +711,7 @@ function NotificationsSection() {
 export function SettingsView() {
   return (
     <div className="space-y-6">
+      <AccountEmailsSection />
       <PasswordSection />
       <LanguageSection />
       <NotificationsSection />

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GenerateRegistrationTokenUseCase } from '../src/use-cases/hospitals/generate-registration-token.use-case.js';
-import type { IHospitalManagementRepository, IRegistrationTokenRepository } from '@medical-crm/domain';
+import type {
+  IHospitalManagementRepository,
+  IKeycloakAdminService,
+  IRegistrationTokenRepository,
+  IUserRepository,
+} from '@medical-crm/domain';
 import { Hospital } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
@@ -8,6 +13,8 @@ describe('GenerateRegistrationTokenUseCase', () => {
   let useCase: GenerateRegistrationTokenUseCase;
   let mockHospitalRepo: IHospitalManagementRepository;
   let mockTokenRepo: IRegistrationTokenRepository;
+  let mockUserRepo: IUserRepository;
+  let mockKeycloakAdmin: IKeycloakAdminService;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -20,7 +27,7 @@ describe('GenerateRegistrationTokenUseCase', () => {
     userId: 'hospital-1',
     email: 'hospital@test.com',
     role: 'HOSPITAL',
-    hospitalId: 'h-1',
+    hospitalId: 'hosp-1',
   };
 
   const patientActor: Actor = {
@@ -61,19 +68,53 @@ describe('GenerateRegistrationTokenUseCase', () => {
       save: vi.fn().mockImplementation((token) => Promise.resolve(token)),
     };
 
-    useCase = new GenerateRegistrationTokenUseCase(mockHospitalRepo, mockTokenRepo, null);
+    mockUserRepo = {
+      create: vi.fn(),
+      findPreferredLanguage: vi.fn(),
+      findById: vi.fn(),
+      findByEmail: vi.fn().mockResolvedValue(null),
+      update: vi.fn(),
+      listAdminEmails: vi.fn(),
+      listHospitalEmails: vi.fn(),
+    };
+
+    mockKeycloakAdmin = {
+      createUser: vi.fn(),
+      setPassword: vi.fn(),
+      assignRole: vi.fn(),
+      deleteUser: vi.fn(),
+      checkUsernameExists: vi.fn(),
+      checkEmailExists: vi.fn().mockResolvedValue(false),
+      updateUserEmail: vi.fn(),
+      verifyPassword: vi.fn(),
+    };
+
+    useCase = new GenerateRegistrationTokenUseCase(
+      mockHospitalRepo,
+      mockTokenRepo,
+      null,
+      mockUserRepo,
+      mockKeycloakAdmin,
+    );
   });
 
-  it('throws ForbiddenError for HOSPITAL actor', async () => {
+  it('allows a HOSPITAL actor to generate a token for its own hospital', async () => {
+    const result = await useCase.execute('hosp-1', 'user@test.com', hospitalActor);
+
+    expect(result).toHaveProperty('token');
+    expect(mockTokenRepo.save).toHaveBeenCalledOnce();
+  });
+
+  it('throws ForbiddenError for a HOSPITAL actor generating a token for another hospital', async () => {
     await expect(
-      useCase.execute('hosp-1', 'user@test.com', hospitalActor),
-    ).rejects.toThrow('Only admins can generate tokens');
+      useCase.execute('other-hospital', 'user@test.com', hospitalActor),
+    ).rejects.toThrow('Only admins or the hospital itself can generate tokens');
   });
 
   it('throws ForbiddenError for PATIENT actor', async () => {
     await expect(
       useCase.execute('hosp-1', 'user@test.com', patientActor),
-    ).rejects.toThrow('Only admins can generate tokens');
+    ).rejects.toThrow('Only admins or the hospital itself can generate tokens');
   });
 
   it('throws NotFoundError when hospital does not exist', async () => {
@@ -127,5 +168,100 @@ describe('GenerateRegistrationTokenUseCase', () => {
     const savedToken = (mockTokenRepo.save as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
     expect(savedToken.hospitalId).toBe('hosp-1');
     expect(savedToken.email).toBe('registration@test.com');
+  });
+
+  it('normalizes email before checking and saving the token', async () => {
+    await useCase.execute('hosp-1', ' Registration@Test.COM ', adminActor);
+
+    expect(mockUserRepo.findByEmail).toHaveBeenCalledWith('registration@test.com');
+    expect(mockKeycloakAdmin.checkEmailExists).toHaveBeenCalledWith('registration@test.com');
+    const savedToken = (mockTokenRepo.save as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(savedToken.email).toBe('registration@test.com');
+  });
+
+  it('rejects an email that is already registered as a patient', async () => {
+    (mockUserRepo.findByEmail as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'patient-1',
+      email: 'patient@test.com',
+      name: 'Patient',
+      role: 'PATIENT',
+      phone: null,
+      patientSite: 'china',
+      preferredLanguage: 'zh',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+
+    await expect(
+      useCase.execute('hosp-1', 'patient@test.com', hospitalActor),
+    ).rejects.toThrow('This email is already registered as a patient.');
+    expect(mockTokenRepo.save).not.toHaveBeenCalled();
+    expect(mockKeycloakAdmin.checkEmailExists).not.toHaveBeenCalled();
+  });
+
+  it('rejects an email that is already registered as an admin', async () => {
+    (mockUserRepo.findByEmail as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'admin-1',
+      email: 'admin@test.com',
+      name: 'Admin',
+      role: 'ADMIN',
+      phone: null,
+      patientSite: null,
+      preferredLanguage: 'en',
+      hospitalId: null,
+      notificationSettings: null,
+    });
+
+    await expect(
+      useCase.execute('hosp-1', 'admin@test.com', hospitalActor),
+    ).rejects.toThrow('This email is already registered as an admin.');
+    expect(mockTokenRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an email that is already registered for this hospital', async () => {
+    (mockUserRepo.findByEmail as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'hospital-user-1',
+      email: 'owner@test.com',
+      name: 'Hospital',
+      role: 'HOSPITAL',
+      phone: null,
+      patientSite: null,
+      preferredLanguage: 'zh',
+      hospitalId: 'hosp-1',
+      notificationSettings: null,
+    });
+
+    await expect(
+      useCase.execute('hosp-1', 'owner@test.com', hospitalActor),
+    ).rejects.toThrow('This email is already registered for this hospital.');
+    expect(mockTokenRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an email that is already registered for another hospital', async () => {
+    (mockUserRepo.findByEmail as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'hospital-user-2',
+      email: 'other@test.com',
+      name: 'Other Hospital',
+      role: 'HOSPITAL',
+      phone: null,
+      patientSite: null,
+      preferredLanguage: 'zh',
+      hospitalId: 'other-hospital',
+      notificationSettings: null,
+    });
+
+    await expect(
+      useCase.execute('hosp-1', 'other@test.com', hospitalActor),
+    ).rejects.toThrow('This email is already registered for another hospital.');
+    expect(mockTokenRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects an email that already exists in Keycloak', async () => {
+    (mockKeycloakAdmin.checkEmailExists as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    await expect(
+      useCase.execute('hosp-1', 'keycloak@test.com', hospitalActor),
+    ).rejects.toThrow('This email is already registered.');
+    expect(mockTokenRepo.save).not.toHaveBeenCalled();
   });
 });

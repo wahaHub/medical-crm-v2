@@ -50,6 +50,7 @@ import {
   getLocalizedCountryLabel,
   getLocalizedLanguageLabel,
 } from '@/lib/hospital-display';
+import { formatDateTime } from '@/lib/date-format';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import type {
   HospitalCaseDetail,
@@ -581,6 +582,11 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
               <span className="flex items-center gap-1.5">
                 <FileText size={14} />{' '}
                 {t('hospital.cases.detail.header.documentsCount', { count: caseDetail.documents.length }, '{count} Docs')}
+              </span>
+              <span className="w-1 h-1 bg-slate-300 rounded-full" />
+              <span className="flex items-center gap-1.5">
+                {t('hospital.cases.detail.header.createdAt', undefined, 'Created')}{' '}
+                {formatDateTime(caseDetail.createdAt, locale)}
               </span>
               {caseDetail.totalMessages > 0 && (
                 <>

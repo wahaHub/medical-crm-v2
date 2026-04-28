@@ -26,11 +26,13 @@ describe('ListAdminEmailsUseCase', () => {
       create: vi.fn(),
       findPreferredLanguage: vi.fn(),
       findById: vi.fn(),
+      findByEmail: vi.fn(),
       update: vi.fn(),
       listAdminEmails: vi.fn().mockResolvedValue([
         'alpha@medicaltourismchina.health',
         'zeta@medicaltourismchina.health',
       ]),
+      listHospitalEmails: vi.fn(),
     } as IUserRepository;
 
     useCase = new ListAdminEmailsUseCase(mockUserRepo);

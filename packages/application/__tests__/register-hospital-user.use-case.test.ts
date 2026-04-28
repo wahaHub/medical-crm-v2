@@ -79,7 +79,11 @@ describe('RegisterHospitalUserUseCase', () => {
     mockUserRepo = {
       create: vi.fn().mockResolvedValue({ id: 'crm-user-id-1' }),
       findPreferredLanguage: vi.fn(),
+      findById: vi.fn(),
+      findByEmail: vi.fn(),
+      update: vi.fn(),
       listAdminEmails: vi.fn(),
+      listHospitalEmails: vi.fn(),
     };
 
     useCase = new RegisterHospitalUserUseCase(

@@ -100,6 +100,15 @@ export type ProcessInboundEmailResult =
       createdMessageId?: string | null;
     };
 
+type ProcessedCompletionInput = Parameters<IInboundEmailEventRepository['complete']>[0] & {
+  status: 'PROCESSED';
+  createdMessageId: string | null;
+};
+
+interface ProcessingState {
+  processedCompletionInput?: ProcessedCompletionInput;
+}
+
 export class ProcessInboundEmailUseCase {
   private readonly replyTokenRepo: IEmailReplyTokenRepository;
   private readonly inboundEventRepo: IInboundEmailEventRepository;
@@ -129,6 +138,27 @@ export class ProcessInboundEmailUseCase {
     const claim = await this.inboundEventRepo.claim(toClaimInput(input));
 
     if (claim.alreadyClaimed) {
+      if (claim.event.status === 'FAILED' && claim.event.createdMessageId) {
+        await this.inboundEventRepo.complete({
+          id: claim.event.id,
+          status: 'PROCESSED',
+          replyTokenId: claim.event.replyTokenId,
+          conversationId: claim.event.conversationId,
+          caseId: claim.event.caseId,
+          fromEmail: claim.event.fromEmail ?? input.fromEmail,
+          subject: claim.event.subject ?? input.subject,
+          createdMessageId: claim.event.createdMessageId,
+          error: null,
+        });
+
+        return {
+          status: 'PROCESSED',
+          duplicate: true,
+          eventId: claim.event.id,
+          createdMessageId: claim.event.createdMessageId,
+        };
+      }
+
       if (claim.event.status !== 'FAILED') {
         return {
           status: claim.event.status,
@@ -139,16 +169,27 @@ export class ProcessInboundEmailUseCase {
       }
     }
 
+    const state: ProcessingState = {};
     try {
-      return await this.processClaimedEvent(claim.event.id, input);
+      return await this.processClaimedEvent(claim.event.id, input, state);
     } catch (error) {
-      await this.inboundEventRepo.complete({
-        id: claim.event.id,
-        status: 'FAILED',
-        fromEmail: input.fromEmail,
-        subject: input.subject,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      if (state.processedCompletionInput?.createdMessageId) {
+        await this.inboundEventRepo.complete({
+          ...state.processedCompletionInput,
+          error: errorMessage,
+        });
+      } else {
+        await this.inboundEventRepo.complete({
+          id: claim.event.id,
+          status: 'FAILED',
+          fromEmail: input.fromEmail,
+          subject: input.subject,
+          error: errorMessage,
+        });
+      }
+
       throw error;
     }
   }
@@ -156,6 +197,7 @@ export class ProcessInboundEmailUseCase {
   private async processClaimedEvent(
     eventId: string,
     input: NormalizedInboundEmailInput,
+    state: ProcessingState,
   ): Promise<ProcessInboundEmailResult> {
     const parsedAddress = input.to
       .map((address) => parseReplyAddress(address))
@@ -260,8 +302,7 @@ export class ProcessInboundEmailUseCase {
     );
     const createdMessageId = extractCreatedMessageId(sendResult);
 
-    await this.replyTokenRepo.markUsed(token.id, this.now());
-    await this.inboundEventRepo.complete({
+    state.processedCompletionInput = {
       id: eventId,
       status: 'PROCESSED',
       replyTokenId: token.id,
@@ -271,7 +312,15 @@ export class ProcessInboundEmailUseCase {
       subject: input.subject,
       createdMessageId,
       error: null,
-    });
+    };
+
+    await this.inboundEventRepo.complete(state.processedCompletionInput);
+
+    try {
+      await this.replyTokenRepo.markUsed(token.id, this.now());
+    } catch {
+      // Token usage is audit metadata; the inbound event is already safely marked processed.
+    }
 
     return {
       status: 'PROCESSED',

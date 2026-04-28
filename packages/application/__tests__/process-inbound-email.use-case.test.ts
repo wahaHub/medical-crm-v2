@@ -260,6 +260,70 @@ describe('ProcessInboundEmailUseCase', () => {
     }));
   });
 
+  it('failed claimed event with createdMessageId does not send again', async () => {
+    vi.mocked(inboundEventRepo.claim).mockResolvedValueOnce({
+      event: makeInboundEvent({
+        status: 'FAILED',
+        createdMessageId: 'message-1',
+        error: 'failed after message creation',
+      }),
+      alreadyClaimed: true,
+    });
+
+    const result = await useCase.execute(email);
+
+    expect(result).toEqual({
+      status: 'PROCESSED',
+      duplicate: true,
+      eventId: 'event-1',
+      createdMessageId: 'message-1',
+    });
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'event-1',
+      status: 'PROCESSED',
+      createdMessageId: 'message-1',
+    }));
+  });
+
+  it('markUsed failure after sendMessage leaves event PROCESSED and does not rethrow', async () => {
+    vi.mocked(replyTokenRepo.markUsed).mockRejectedValueOnce(new Error('token update failed'));
+
+    const result = await useCase.execute(email);
+
+    expect(result).toEqual({
+      status: 'PROCESSED',
+      duplicate: false,
+      createdMessageId: 'message-1',
+    });
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'PROCESSED',
+      createdMessageId: 'message-1',
+      error: null,
+    }));
+    expect(inboundEventRepo.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it('complete failure after sendMessage repairs to PROCESSED instead of FAILED when catch completion succeeds', async () => {
+    vi.mocked(inboundEventRepo.complete)
+      .mockRejectedValueOnce(new Error('processed completion failed'))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(useCase.execute(email)).rejects.toThrow('processed completion failed');
+
+    expect(sendMessage.execute).toHaveBeenCalledOnce();
+    expect(inboundEventRepo.complete).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      status: 'PROCESSED',
+      createdMessageId: 'message-1',
+      error: null,
+    }));
+    expect(inboundEventRepo.complete).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      status: 'PROCESSED',
+      createdMessageId: 'message-1',
+      error: 'processed completion failed',
+    }));
+  });
+
   it('processing claimed event is treated as in-progress without side effects', async () => {
     vi.mocked(inboundEventRepo.claim).mockResolvedValueOnce({
       event: makeInboundEvent({ status: 'PROCESSING' }),

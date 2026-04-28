@@ -328,7 +328,7 @@ describe('message attachment PDF previews', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       inputFileName: 'report.pdf',
       outputDir: '/tmp/babeldoc-1',
-      outputFiles: [{ fileName: 'report.zh.pdf', path: '/tmp/babeldoc-1/report.zh.pdf' }],
+      outputFiles: [{ fileName: 'report.zh.pdf', id: 'translated-file-1', url: '/api/v2/documents/translate/file?id=translated-file-1' }],
       stdout: '',
       stderr: '',
     }), {
@@ -382,6 +382,9 @@ describe('message attachment PDF previews', () => {
     });
     expect(body).not.toHaveProperty('sourceUrl');
     expect(JSON.stringify(body)).not.toContain('https://signed.example.com');
+    await waitFor(() => {
+      expect(document.body.textContent).not.toContain('/tmp/babeldoc-1/report.zh.pdf');
+    });
   });
 });
 

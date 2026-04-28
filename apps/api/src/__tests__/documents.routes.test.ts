@@ -112,6 +112,7 @@ const UNRELATED_HOSPITAL_UUID = '10000000-0000-0000-0000-000000000099';
 const CONVERSATION_ID = 'conversation-1';
 const MESSAGE_ID = 'message-1';
 const PDF_STORAGE_KEY = 'crm/dev/messages/conversation-1/asset-1/report.pdf';
+const TRANSLATED_FILE_ID_PATTERN = /^[0-9a-f-]{36}$/i;
 
 function mockSuccessfulBabelDocRun() {
   vi.stubEnv('OPENAI_API_KEY', 'test-key');
@@ -604,10 +605,167 @@ describe('Documents routes', () => {
       });
 
       expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json).not.toHaveProperty('outputDir');
+      expect(json.outputFiles[0]).toMatchObject({
+        fileName: 'report.zh.pdf',
+        id: expect.stringMatching(TRANSLATED_FILE_ID_PATTERN),
+        url: expect.stringContaining('/api/v2/documents/translate/file?id='),
+      });
+      expect(json.outputFiles[0]).not.toHaveProperty('path');
       expect(mockServices.getConversation.execute).toHaveBeenCalledWith(CONVERSATION_ID, expect.anything());
       expect(mockServices.storage.getSignedUrl).toHaveBeenCalledWith(PDF_STORAGE_KEY);
       expect(fetch).toHaveBeenCalledWith('https://signed.example.com/report.pdf?token=abc');
       expect(mockWriteFile).toHaveBeenCalledWith('/tmp/pdftranslate-source-1/report.pdf', expect.any(Buffer));
+    });
+
+    it('rejects unsafe attachment filenames before writing the downloaded PDF', async () => {
+      vi.stubEnv('OPENAI_API_KEY', 'test-key');
+      mockServices.messageRepo.findById.mockResolvedValueOnce({
+        id: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        attachments: [{
+          fileName: '../owned.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          storageKey: PDF_STORAGE_KEY,
+        }],
+      });
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'safe-request.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining('Invalid PDF source filename'),
+      });
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it('rejects unsafe request filenames when attachment metadata has no filename', async () => {
+      vi.stubEnv('OPENAI_API_KEY', 'test-key');
+      mockServices.messageRepo.findById.mockResolvedValueOnce({
+        id: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        attachments: [{
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          storageKey: PDF_STORAGE_KEY,
+        }],
+      });
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: '../owned.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining('Invalid PDF source filename'),
+      });
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it('does not emit debug translate logs', async () => {
+      mockSuccessfulBabelDocRun();
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(infoSpy).not.toHaveBeenCalledWith(expect.stringContaining('[debug][documents.translate]'), expect.anything());
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining('[debug][documents.translate]'), expect.anything());
+    });
+  });
+
+  describe('GET /api/v2/documents/translate/file', () => {
+    it('rejects legacy absolute temp path download capability', async () => {
+      const res = await app.request('/api/v2/documents/translate/file?path=/tmp/babeldoc-1/report.zh.pdf');
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining('id is required'),
+      });
+      expect(mockReadFile).not.toHaveBeenCalledWith('/tmp/babeldoc-1/report.zh.pdf');
+    });
+
+    it('streams an opaque translated file id only for the creating actor', async () => {
+      mockSuccessfulBabelDocRun();
+      mockReadFile.mockResolvedValueOnce(new Uint8Array([37, 80, 68, 70]));
+      const translateRes = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+      const translated = await translateRes.json();
+      const fileId = translated.outputFiles[0].id;
+
+      const downloadRes = await app.request(`/api/v2/documents/translate/file?id=${encodeURIComponent(fileId)}`);
+
+      expect(downloadRes.status).toBe(200);
+      expect(downloadRes.headers.get('content-type')).toBe('application/pdf');
+      expect(mockReadFile).toHaveBeenCalledWith('/tmp/babeldoc-1/report.zh.pdf');
+    });
+
+    it('rejects another actor for an opaque translated file id', async () => {
+      mockSuccessfulBabelDocRun();
+      const translateRes = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+      const translated = await translateRes.json();
+      const fileId = translated.outputFiles[0].id;
+      currentSession = {
+        userId: 'other-admin',
+        email: 'other-admin@test.com',
+        roles: ['ADMIN'],
+        hospitalId: null,
+      };
+
+      const downloadRes = await app.request(`/api/v2/documents/translate/file?id=${encodeURIComponent(fileId)}`);
+
+      expect(downloadRes.status).toBe(403);
+      expect(mockReadFile).not.toHaveBeenCalledWith('/tmp/babeldoc-1/report.zh.pdf');
     });
   });
 

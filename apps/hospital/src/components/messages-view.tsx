@@ -72,12 +72,12 @@ interface ApiMessage {
 
 interface TranslationOutputFile {
   fileName: string;
-  path: string;
+  id: string;
+  url: string;
 }
 
 interface TranslationResult {
   inputFileName: string;
-  outputDir: string;
   outputFiles: TranslationOutputFile[];
   stdout: string;
   stderr: string;
@@ -659,7 +659,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
           'Translated PDF output was not found',
         ));
       }
-      const translatedUrl = `/api/documents/translate/file?path=${encodeURIComponent(translatedPdf.path)}`;
+      const translatedUrl = `/api/documents/translate/file?id=${encodeURIComponent(translatedPdf.id)}`;
       if (previewRequestRef.current !== requestId) {
         return;
       }
@@ -676,7 +676,7 @@ export function MessagesView({ initialConversations, initialConversationId }: Me
       console.debug('[messages.preview] translation ready', {
         fileName: attachment.name,
         targetLanguage,
-        translatedPath: translatedPdf.path,
+        translatedFileId: translatedPdf.id,
       });
     } catch (error) {
       const message = formatUserFacingMessageError(

@@ -74,12 +74,12 @@ interface ApiConversation {
 
 interface TranslationOutputFile {
   fileName: string;
-  path: string;
+  id: string;
+  url: string;
 }
 
 interface TranslationResult {
   inputFileName: string;
-  outputDir: string;
   outputFiles: TranslationOutputFile[];
   stdout: string;
   stderr: string;
@@ -638,7 +638,7 @@ export function ChatPanel({
       if (!translatedPdf) {
         throw new Error('Translated PDF output was not found');
       }
-      const translatedUrl = `/api/documents/translate/file?path=${encodeURIComponent(translatedPdf.path)}`;
+      const translatedUrl = `/api/documents/translate/file?id=${encodeURIComponent(translatedPdf.id)}`;
       if (previewRequestRef.current !== requestId) {
         return;
       }

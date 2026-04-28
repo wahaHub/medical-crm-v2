@@ -1,7 +1,12 @@
 import {
+  DOMAIN_SKILL_REGISTRY,
   SKILL_LOADER_REGISTRY,
   type DomainSkillRequest,
+  type DomainSkillId,
+  type DomainSkillPack,
+  type LoadedSkillSection,
   type LoadedSkillPack,
+  type SkillSectionApplicability,
   type SkillPackId,
   type SkillRequest,
 } from './skill-packs.js';
@@ -13,6 +18,16 @@ export interface LoadSkillPacksInput {
 
 export interface LoadedSkillPolicy {
   skillPacks: LoadedSkillPack[];
+  warnings: string[];
+}
+
+export interface LoadSkillSectionsInput {
+  requests: readonly DomainSkillRequest[];
+  maxSkillSections?: number;
+}
+
+export interface LoadedSkillSectionsPolicy {
+  skillSections: LoadedSkillSection[];
   warnings: string[];
 }
 
@@ -42,6 +57,22 @@ export function loadSkillPacks(input: LoadSkillPacksInput): LoadedSkillPolicy {
   return { skillPacks, warnings };
 }
 
+export function loadSkillSections(input: LoadSkillSectionsInput): LoadedSkillSectionsPolicy {
+  const maxSkillSections = Math.min(input.maxSkillSections ?? 2, 2);
+  const warnings: string[] = [];
+
+  const skillSections = input.requests.slice(0, maxSkillSections).map((request) => {
+    const skillId = resolveDomainSkillId(request, warnings);
+    const resolvedRequest = skillId === request.skillId
+      ? request
+      : { ...request, skillId };
+
+    return loadSingleSkillSection(DOMAIN_SKILL_REGISTRY[skillId], resolvedRequest);
+  });
+
+  return { skillSections, warnings };
+}
+
 function addRequest(
   requestsBySkill: Map<SkillPackId, string[]>,
   skillPackId: SkillPackId,
@@ -52,4 +83,76 @@ function addRequest(
     reasonCodes.push(reasonCode);
   }
   requestsBySkill.set(skillPackId, reasonCodes);
+}
+
+function resolveDomainSkillId(request: DomainSkillRequest, warnings: string[]): DomainSkillId {
+  if (Object.hasOwn(DOMAIN_SKILL_REGISTRY, request.skillId)) {
+    return request.skillId;
+  }
+
+  const fallbackSkillId = shouldUseSafetyFallback(request)
+    ? 'safety_scope_skill'
+    : 'clarification_recovery_skill';
+  warnings.push(`unknown skill: ${String(request.skillId)}; falling back to ${fallbackSkillId}`);
+  return fallbackSkillId;
+}
+
+function shouldUseSafetyFallback(request: DomainSkillRequest): boolean {
+  const hints = request.sectionHints;
+  return hints?.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
+    || hints?.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
+    || hints?.primaryActionType === 'REDIRECT';
+}
+
+function loadSingleSkillSection(
+  skill: DomainSkillPack,
+  request: DomainSkillRequest,
+): LoadedSkillSection {
+  const policySections = skill.policySections.filter((section) => (
+    appliesToHints(section.appliesTo, request.sectionHints)
+  ));
+  const retrievalSections = skill.retrieval.sections.filter((section) => (
+    appliesToHints(section.appliesTo, request.sectionHints)
+  ));
+  const handlingGuidance = loadHandlingGuidance(skill, request);
+  const handlingSectionIds = handlingGuidance.length > 0 && request.sectionHints.modifier !== 'ask'
+    ? [`${request.sectionHints.eventType}.${request.sectionHints.modifier}`]
+    : [];
+
+  return {
+    skillId: skill.id,
+    role: request.role,
+    reasonCode: request.reasonCode,
+    sectionIds: [
+      ...policySections.map((section) => section.id),
+      ...retrievalSections.map((section) => section.id),
+      ...handlingSectionIds,
+    ],
+    policyText: policySections.map((section) => section.text),
+    retrievalGuidance: retrievalSections.map((section) => section.searchGuidance),
+    handlingGuidance,
+  };
+}
+
+function appliesToHints(
+  appliesTo: SkillSectionApplicability,
+  hints: DomainSkillRequest['sectionHints'],
+): boolean {
+  return matchesOptional(appliesTo.eventTypes, hints.eventType)
+    && matchesOptional(appliesTo.targets, hints.target)
+    && matchesOptional(appliesTo.modifiers, hints.modifier)
+    && matchesOptional(appliesTo.primaryActionTypes, hints.primaryActionType)
+    && matchesOptional(appliesTo.followUpActionTypes, hints.followUpActionType);
+}
+
+function matchesOptional<T>(allowed: readonly T[] | undefined, value: T | undefined): boolean {
+  return allowed === undefined || (value !== undefined && allowed.includes(value));
+}
+
+function loadHandlingGuidance(
+  skill: DomainSkillPack,
+  request: DomainSkillRequest,
+): string[] {
+  const guidance = skill.handling[request.sectionHints.eventType]?.[request.sectionHints.modifier];
+  return guidance === undefined ? [] : [guidance];
 }

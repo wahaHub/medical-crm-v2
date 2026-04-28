@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { loadSkillPacks } from '../../chatbot-v3/skill-loader.js';
+import { loadSkillPacks, loadSkillSections } from '../../chatbot-v3/skill-loader.js';
 import { DOMAIN_SKILL_REGISTRY, SKILL_PACK_REGISTRY } from '../../chatbot-v3/skill-packs.js';
-import type { LoadedSkillPack } from '../../chatbot-v3/skill-packs.js';
+import type { DomainSkillRequest, LoadedSkillPack } from '../../chatbot-v3/skill-packs.js';
 
 const legacyShapedDomainSkill = {
   id: 'pricing_skill' as const,
@@ -161,5 +161,148 @@ describe('loadSkillPacks', () => {
     ]);
     expect(loaded.skillPacks[0]?.description).not.toBe('');
     expect(loaded.warnings).toContain('unknown skill pack: missing_skill');
+  });
+});
+
+describe('loadSkillSections', () => {
+  const pricingRequest: DomainSkillRequest = {
+    skillId: 'pricing_skill',
+    role: 'primary',
+    reasonCode: 'answer_pricing_question',
+    sectionHints: {
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'pricing',
+      modifier: 'ask',
+      primaryActionType: 'ANSWER',
+    },
+  };
+
+  const documentsAuxiliaryRequest: DomainSkillRequest = {
+    skillId: 'documents_skill',
+    role: 'auxiliary',
+    reasonCode: 'pricing_requires_records',
+    sectionHints: {
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'documents',
+      modifier: 'ask',
+      primaryActionType: 'ANSWER',
+      followUpActionType: 'INVITE_NEXT_STEP',
+    },
+  };
+
+  it('loads two requested domain skill sections while trimming pricing to matching sections', () => {
+    const loaded = loadSkillSections({
+      requests: [pricingRequest, documentsAuxiliaryRequest],
+    });
+
+    expect(loaded.skillSections).toHaveLength(2);
+    expect(loaded.warnings).toEqual([]);
+    expect(loaded.skillSections[0]).toMatchObject({
+      skillId: 'pricing_skill',
+      role: 'primary',
+      reasonCode: 'answer_pricing_question',
+    });
+    expect(loaded.skillSections[0]?.sectionIds.length).toBeGreaterThan(0);
+    expect(loaded.skillSections[0]?.sectionIds.length).toBeLessThan(
+      DOMAIN_SKILL_REGISTRY.pricing_skill.policySections.length + 1,
+    );
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('pricing');
+    expect(loaded.skillSections[0]?.retrievalGuidance).toEqual([
+      expect.stringContaining('pricing factors'),
+    ]);
+    expect(loaded.skillSections[0]?.handlingGuidance).toEqual([
+      expect.stringContaining('pricing question'),
+    ]);
+    expect(loaded.skillSections[1]).toMatchObject({
+      skillId: 'documents_skill',
+      role: 'auxiliary',
+      reasonCode: 'pricing_requires_records',
+    });
+  });
+
+  it('selects document rejection handling from section hints', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'documents_skill',
+          role: 'primary',
+          reasonCode: 'documents_rejected',
+          sectionHints: {
+            eventType: 'USER_RESPONDED_TO_REQUEST',
+            target: 'documents',
+            modifier: 'reject',
+            primaryActionType: 'HANDLE_RESPONSE',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'documents_request_scope',
+      'documents_lower_friction',
+      'document_requirements',
+      'USER_RESPONDED_TO_REQUEST.reject',
+    ]));
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('alternatives');
+    expect(loaded.skillSections[0]?.retrievalGuidance).toEqual([
+      expect.stringContaining('record requirements'),
+    ]);
+    expect(loaded.skillSections[0]?.handlingGuidance).toEqual([
+      expect.stringContaining('Respect the choice'),
+    ]);
+  });
+
+  it('makes unknown domain skill fallback observable and uses clarification recovery for ambiguous unknowns', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'missing_skill',
+          role: 'primary',
+          reasonCode: 'ambiguous_unknown',
+          sectionHints: {
+            eventType: 'USER_MESSAGE_UNCLEAR',
+            target: 'unknown',
+            modifier: 'unknown',
+            primaryActionType: 'ASK',
+          },
+        } as never,
+      ],
+    });
+
+    expect(loaded.warnings).toContainEqual(expect.stringContaining('unknown skill'));
+    expect(loaded.warnings).toContainEqual(expect.stringContaining('clarification_recovery_skill'));
+    expect(loaded.skillSections).toEqual([
+      expect.objectContaining({
+        skillId: 'clarification_recovery_skill',
+        role: 'primary',
+        reasonCode: 'ambiguous_unknown',
+      }),
+    ]);
+  });
+
+  it('caps loaded skill sections at two', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        pricingRequest,
+        documentsAuxiliaryRequest,
+        {
+          skillId: 'process_skill',
+          role: 'auxiliary',
+          reasonCode: 'process_detour',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'process',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections.map((section) => section.skillId)).toEqual([
+      'pricing_skill',
+      'documents_skill',
+    ]);
   });
 });

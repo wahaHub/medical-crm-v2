@@ -27,29 +27,30 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
     const db = (tx as CrmDb | undefined) ?? this.db;
     const now = new Date().toISOString();
 
-    try {
-      const rows = await db
-        .insert(inboundEmailEvents)
-        .values({
-          id: generateId(),
-          provider: input.provider,
-          providerEventId: input.providerEventId ?? null,
-          providerMessageId: input.providerMessageId ?? null,
-          status: 'PROCESSING',
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
+    const rows = await db
+      .insert(inboundEmailEvents)
+      .values({
+        id: generateId(),
+        provider: input.provider,
+        providerEventId: input.providerEventId ?? null,
+        providerMessageId: input.providerMessageId ?? null,
+        status: 'PROCESSING',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
+      .returning();
 
+    if (rows[0]) {
       return { event: this.rowToEntity(rows[0]!), alreadyClaimed: false };
-    } catch (error) {
-      if (!this.isUniqueConflict(error)) throw error;
-
-      const existing = await this.findClaimed(input, db);
-      if (!existing) throw error;
-
-      return { event: existing, alreadyClaimed: true };
     }
+
+    const existing = await this.findClaimed(input, db);
+    if (!existing) {
+      throw new Error('Inbound email claim conflict could not be resolved');
+    }
+
+    return { event: existing, alreadyClaimed: true };
   }
 
   async complete(input: {
@@ -84,18 +85,20 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
   }
 
   private async findClaimed(input: InboundEmailClaimInput, db: CrmDb): Promise<InboundEmailEvent | null> {
+    let eventIdMatch: InboundEmailEvent | null = null;
+    let messageIdMatch: InboundEmailEvent | null = null;
+
     if (input.providerEventId) {
-      const event = await this.findClaimedByIdentifier(
+      eventIdMatch = await this.findClaimedByIdentifier(
         db,
         input.provider,
         inboundEmailEvents.providerEventId,
         input.providerEventId,
       );
-      if (event) return event;
     }
 
     if (input.providerMessageId) {
-      return this.findClaimedByIdentifier(
+      messageIdMatch = await this.findClaimedByIdentifier(
         db,
         input.provider,
         inboundEmailEvents.providerMessageId,
@@ -103,7 +106,11 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
       );
     }
 
-    return null;
+    if (eventIdMatch && messageIdMatch && eventIdMatch.id !== messageIdMatch.id) {
+      throw new Error('Inbound email provider identifiers resolve to different events');
+    }
+
+    return eventIdMatch ?? messageIdMatch;
   }
 
   private async findClaimedByIdentifier(
@@ -119,14 +126,6 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
       .limit(1);
 
     return rows[0] ? this.rowToEntity(rows[0]) : null;
-  }
-
-  private isUniqueConflict(error: unknown): boolean {
-    return Boolean(
-      error &&
-        typeof error === 'object' &&
-        ('code' in error && error.code === '23505'),
-    );
   }
 
   private rowToEntity(row: InboundEmailEventRow): InboundEmailEvent {

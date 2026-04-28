@@ -49,6 +49,28 @@ function makeFakeDb(rows: EventRow[]) {
       return {
         values(values: Partial<EventRow>) {
           return {
+            onConflictDoNothing() {
+              return {
+                returning: async () => {
+                  if (
+                    values.providerEventId &&
+                    rows.some((row) => row.provider === values.provider && row.providerEventId === values.providerEventId)
+                  ) {
+                    return [];
+                  }
+                  if (
+                    values.providerMessageId &&
+                    rows.some((row) => row.provider === values.provider && row.providerMessageId === values.providerMessageId)
+                  ) {
+                    return [];
+                  }
+
+                  const row = makeEventRow(values);
+                  rows.push(row);
+                  return [row];
+                },
+              };
+            },
             returning: async () => {
               if (
                 values.providerEventId &&
@@ -66,22 +88,7 @@ function makeFakeDb(rows: EventRow[]) {
                   code: '23505',
                 });
               }
-              const row: EventRow = {
-                id: values.id ?? crypto.randomUUID(),
-                provider: values.provider ?? 'resend',
-                providerEventId: values.providerEventId ?? null,
-                providerMessageId: values.providerMessageId ?? null,
-                replyTokenId: values.replyTokenId ?? null,
-                conversationId: values.conversationId ?? null,
-                caseId: values.caseId ?? null,
-                fromEmail: values.fromEmail ?? null,
-                subject: values.subject ?? null,
-                status: values.status ?? 'PROCESSING',
-                error: values.error ?? null,
-                createdMessageId: values.createdMessageId ?? null,
-                createdAt: values.createdAt ?? '2026-04-28T10:00:00.000Z',
-                updatedAt: values.updatedAt ?? '2026-04-28T10:00:00.000Z',
-              };
+              const row = makeEventRow(values);
               rows.push(row);
               return [row];
             },
@@ -104,6 +111,25 @@ function makeFakeDb(rows: EventRow[]) {
   };
 
   return db as unknown as CrmDb;
+}
+
+function makeEventRow(values: Partial<EventRow>): EventRow {
+  return {
+    id: values.id ?? crypto.randomUUID(),
+    provider: values.provider ?? 'resend',
+    providerEventId: values.providerEventId ?? null,
+    providerMessageId: values.providerMessageId ?? null,
+    replyTokenId: values.replyTokenId ?? null,
+    conversationId: values.conversationId ?? null,
+    caseId: values.caseId ?? null,
+    fromEmail: values.fromEmail ?? null,
+    subject: values.subject ?? null,
+    status: values.status ?? 'PROCESSING',
+    error: values.error ?? null,
+    createdMessageId: values.createdMessageId ?? null,
+    createdAt: values.createdAt ?? '2026-04-28T10:00:00.000Z',
+    updatedAt: values.updatedAt ?? '2026-04-28T10:00:00.000Z',
+  };
 }
 
 function filterRows(rows: EventRow[], condition: unknown): EventRow[] {
@@ -183,6 +209,57 @@ describe('DrizzleInboundEmailEventRepository', () => {
     expect(duplicate.alreadyClaimed).toBe(true);
     expect(duplicate.event.id).toBe(first.event.id);
     expect(rows).toHaveLength(1);
+  });
+
+  it('claim returns alreadyClaimed true for duplicate provider message id', async () => {
+    const first = await repository.claim({
+      provider: 'resend',
+      providerMessageId: 'msg-1',
+    });
+    const duplicate = await repository.claim({
+      provider: 'resend',
+      providerMessageId: 'msg-1',
+    });
+
+    expect(duplicate.alreadyClaimed).toBe(true);
+    expect(duplicate.event.id).toBe(first.event.id);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('claim returns alreadyClaimed true when both duplicate identifiers resolve to the same row', async () => {
+    const first = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+    const duplicate = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+
+    expect(duplicate.alreadyClaimed).toBe(true);
+    expect(duplicate.event.id).toBe(first.event.id);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('claim throws when duplicate identifiers resolve to different rows', async () => {
+    await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+    });
+    await repository.claim({
+      provider: 'resend',
+      providerMessageId: 'msg-1',
+    });
+
+    await expect(repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    })).rejects.toThrow('Inbound email provider identifiers resolve to different events');
+
+    expect(rows).toHaveLength(2);
   });
 
   it('complete persists audit and routing fields', async () => {

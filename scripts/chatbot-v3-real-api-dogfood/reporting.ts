@@ -144,15 +144,26 @@ function scenarioQualityGateLabel(scenarioId: string) {
 }
 
 function getScenarioDebugPayload(outcome: ScenarioOutcome) {
+  let lastDebugPayload: {
+    selectedDomainSkills?: unknown;
+    loadedSkillSections?: unknown;
+    readIntents?: unknown;
+    retrievedContext?: unknown;
+    responseContract?: unknown;
+    minimalContractChecks?: unknown;
+    skillBehaviorChecks?: unknown;
+    llmJudgeSummary?: unknown;
+  } | null = null;
+
   for (let index = outcome.turns.length - 1; index >= 0; index -= 1) {
     const body = outcome.turns[index]?.response.body;
     if (!body || typeof body !== 'object') {
       continue;
     }
 
-    const debug = (body as { debug?: unknown }).debug;
+    const debug = (body as { runtimeDebug?: unknown }).runtimeDebug;
     if (debug && typeof debug === 'object') {
-      return debug as {
+      const typedDebug = debug as {
         selectedDomainSkills?: unknown;
         loadedSkillSections?: unknown;
         readIntents?: unknown;
@@ -162,14 +173,79 @@ function getScenarioDebugPayload(outcome: ScenarioOutcome) {
         skillBehaviorChecks?: unknown;
         llmJudgeSummary?: unknown;
       };
+      lastDebugPayload = typedDebug;
+      if (hasFailingQualityEvidence(typedDebug)) {
+        return typedDebug;
+      }
     }
   }
 
-  return null;
+  return lastDebugPayload;
 }
 
 function arrayValue(value: unknown) {
   return Array.isArray(value) ? value : [];
+}
+
+function hasFailingQualityEvidence(debug: {
+  minimalContractChecks?: unknown;
+  skillBehaviorChecks?: unknown;
+  llmJudgeSummary?: unknown;
+}) {
+  const checkArrays = [debug.minimalContractChecks, debug.skillBehaviorChecks];
+  for (const checks of checkArrays) {
+    if (!Array.isArray(checks)) {
+      continue;
+    }
+
+    if (checks.some((check) =>
+      check
+      && typeof check === 'object'
+      && (check as { result?: unknown }).result === 'fail',
+    )) {
+      return true;
+    }
+  }
+
+  const llmJudgeSummary = debug.llmJudgeSummary;
+  if (llmJudgeSummary && typeof llmJudgeSummary === 'object') {
+    const status = (llmJudgeSummary as { status?: unknown }).status;
+    return status === 'warn' || status === 'fail';
+  }
+
+  return false;
+}
+
+function normalizeQualityEvidenceChecks(checks: unknown): QualityEvidenceCheck[] {
+  if (!Array.isArray(checks)) {
+    return [];
+  }
+
+  return checks.flatMap((check): QualityEvidenceCheck[] => {
+    if (!check || typeof check !== 'object') {
+      return [];
+    }
+
+    const label = typeof (check as { label?: unknown }).label === 'string'
+      ? String((check as { label?: unknown }).label)
+      : typeof (check as { id?: unknown }).id === 'string'
+        ? String((check as { id?: unknown }).id)
+        : 'unknown';
+    const details = typeof (check as { details?: unknown }).details === 'string'
+      ? String((check as { details?: unknown }).details)
+      : typeof (check as { reason?: unknown }).reason === 'string' && String((check as { reason?: unknown }).reason).trim()
+        ? String((check as { reason?: unknown }).reason)
+        : `result=${String((check as { result?: unknown }).result ?? 'unknown')}`;
+    const passed = typeof (check as { passed?: unknown }).passed === 'boolean'
+      ? Boolean((check as { passed?: unknown }).passed)
+      : (check as { result?: unknown }).result === 'pass';
+
+    return [{
+      label,
+      passed,
+      details,
+    }];
+  });
 }
 
 function extractQualityEvidence(outcome: ScenarioOutcome): QualityEvidenceSummary | null {
@@ -201,7 +277,7 @@ function extractQualityEvidence(outcome: ScenarioOutcome): QualityEvidenceSummar
   }
 
   const minimalContractChecks = Array.isArray(debug.minimalContractChecks)
-    ? redactDeep(debug.minimalContractChecks) as QualityEvidenceCheck[]
+    ? redactDeep(normalizeQualityEvidenceChecks(debug.minimalContractChecks)) as QualityEvidenceCheck[]
     : [
         {
           label: 'structure',
@@ -221,7 +297,7 @@ function extractQualityEvidence(outcome: ScenarioOutcome): QualityEvidenceSummar
       ];
 
   const skillBehaviorChecks = Array.isArray(debug.skillBehaviorChecks)
-    ? redactDeep(debug.skillBehaviorChecks) as QualityEvidenceCheck[]
+    ? redactDeep(normalizeQualityEvidenceChecks(debug.skillBehaviorChecks)) as QualityEvidenceCheck[]
     : [
         {
           label: 'selectedDomainSkills',

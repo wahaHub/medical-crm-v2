@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as evaluator from '../chatbot-v3-real-api-dogfood/evaluator.ts';
+import { buildScenarioTurns } from '../chatbot-v3-real-api-dogfood.ts';
+import {
+  DOGFOOD_SCENARIO_IDS,
+  QUALITY_GATE_EXECUTED_SCENARIO_IDS,
+} from '../chatbot-v3-real-api-dogfood/scenarios.ts';
+import type { TurnTranscript } from '../chatbot-v3-real-api-dogfood/types.ts';
 
 const { evaluateScenarioOutcome, rollupRunOutcome } = evaluator;
 
@@ -21,6 +27,31 @@ function buildScenarioOutcome(
     response: overrides.response ?? { result: 'PASS' },
     continuity: overrides.continuity ?? { result: 'PASS' },
   });
+}
+
+function buildTurnTranscript(overrides: Partial<TurnTranscript['response']> & {
+  body?: unknown;
+  bodyText?: string | null;
+} = {}): TurnTranscript {
+  return {
+    scenarioId: 'triage_to_recommendation',
+    turnIndex: 0,
+    request: {
+      method: 'POST',
+      path: '/api/v3/chatbot/chat',
+      body: { sessionId: 'sess_runtime', message: 'Hello' },
+      headers: {},
+    },
+    response: {
+      status: overrides.status ?? 200,
+      body: overrides.body ?? {
+        messages: [{ role: 'assistant', text: 'Hello there.' }],
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+      },
+      bodyText: overrides.bodyText ?? null,
+      headers: overrides.headers ?? {},
+    },
+  };
 }
 
 test('scenario returns PASS when all four axes pass', () => {
@@ -151,6 +182,44 @@ test('response quality failures are classified as soft failures with usable cont
   assert.equal(result.failureCategory, 'response_quality');
   assert.equal(result.failedPhase, 'evaluation');
   assert.equal(result.usableForControlPlaneJudgment, true);
+});
+
+test('quality gate execution filter includes observed scenarios and excludes local-only scenarios', () => {
+  assert.deepEqual(QUALITY_GATE_EXECUTED_SCENARIO_IDS, [
+    'blocked_without_prereq',
+    'allowed_after_patient_session',
+    'intake_to_triage_opening',
+    'triage_to_recommendation',
+    'recommendation_selected_to_consult',
+    'faq_detour_no_progression',
+    'handoff_denied_returns_to_current_step',
+    'recommendation_to_explain',
+    'direct_human_request_to_handoff',
+    'recommendation_revisit_compare',
+    'repeat_explain',
+  ]);
+  assert.ok(DOGFOOD_SCENARIO_IDS.includes('degraded_then_retry'));
+  assert.ok(!QUALITY_GATE_EXECUTED_SCENARIO_IDS.includes('degraded_then_retry'));
+});
+
+test('quality-gated observed scenarios have explicit turn scripts', () => {
+  assert.deepEqual(buildScenarioTurns('recommendation_to_explain'), [
+    { message: 'Please explain the process first.' },
+    { message: 'What should I do next?' },
+  ]);
+  assert.deepEqual(buildScenarioTurns('direct_human_request_to_handoff'), [
+    { message: 'Need a human now' },
+    { message: 'Any update from the human team?' },
+  ]);
+  assert.deepEqual(buildScenarioTurns('recommendation_revisit_compare'), [
+    { message: 'Compare the hospitals for me.' },
+    { message: 'Compare them again and explain the differences.' },
+    { message: 'Show me the hospital options again.' },
+  ]);
+  assert.deepEqual(buildScenarioTurns('repeat_explain'), [
+    { message: 'Please explain the process again.' },
+    { message: 'What should I do next?' },
+  ]);
 });
 
 test('non-pass classified outcomes require failure category, failed phase, and usability before serialization', () => {
@@ -315,6 +384,142 @@ test('HTTP 200 with acceptable journey but degraded output classifies as usable 
   assert.equal(result.failedPhase, 'evaluation');
   assert.equal(result.usableForControlPlaneJudgment, true);
   assert.equal(result.sessionId, 'sess_agent');
+});
+
+test('response quality category is soft-only even when the response axis is provided as hard fail', () => {
+  const result = evaluator.classifyEvaluationOutcome({
+    scenarioId: 'recommendation_selected_to_consult',
+    summary: 'llm judge failed the wording',
+    journey: { result: 'PASS' },
+    response: { result: 'HARD_FAIL', reason: 'llm judge failed the wording' },
+    responseFailureCategory: 'response_quality',
+    continuity: { result: 'PASS' },
+    sessionId: 'sess_llm_judge',
+  });
+
+  assert.equal(result.outcome, 'SOFT_FAIL');
+  assert.equal(result.failureCategory, 'response_quality');
+});
+
+test('runtime response evaluator classifies deterministic minimal contract failures as agent contract hard failures', () => {
+  const evaluated = evaluator.evaluateResponseQualityFromRuntime([
+    buildTurnTranscript({
+      body: {
+        messages: [{ role: 'assistant', text: 'Can you share the report?' }],
+        runtimeDebug: {
+          responseContract: {
+            constraints: {
+              maxQuestions: 0,
+              avoidMultipleCTAs: false,
+            },
+            forbiddenClaims: [],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(evaluated, {
+    response: {
+      result: 'HARD_FAIL',
+      reason: 'Found 1 questions; maximum is 0.',
+    },
+    failureCategory: 'agent_contract',
+  });
+});
+
+test('runtime response evaluator classifies deterministic skill behavior failures as hard skill behavior failures', () => {
+  const evaluated = evaluator.evaluateResponseQualityFromRuntime([
+    buildTurnTranscript({
+      body: {
+        messages: [{ role: 'assistant', text: 'The fixed price is $5000.' }],
+        runtimeDebug: {
+          loadedSkillSections: [{
+            skillId: 'pricing_skill',
+            sectionIds: ['overview'],
+            reasonCode: 'pricing_summary',
+            handlingGuidance: [],
+            policyText: [],
+          }],
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(evaluated, {
+    response: {
+      result: 'HARD_FAIL',
+      reason: 'Response appears to promise a guaranteed or fixed total price.',
+    },
+    failureCategory: 'skill_behavior',
+  });
+});
+
+test('runtime response evaluator sends llm judge failures to the soft response quality bucket', () => {
+  const evaluated = evaluator.evaluateResponseQualityFromRuntime([
+    buildTurnTranscript({
+      body: {
+        messages: [{ role: 'assistant', text: 'Here is the answer.' }],
+        runtimeDebug: {
+          llmJudgeSummary: {
+            status: 'fail',
+            summary: 'Too terse for the scenario.',
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(evaluated, {
+    response: {
+      result: 'SOFT_FAIL',
+      reason: 'LLM judge fail: Too terse for the scenario.',
+    },
+    failureCategory: 'response_quality',
+  });
+});
+
+test('runtime response evaluator preserves an earlier hard deterministic failure across later clean turns', () => {
+  const evaluated = evaluator.evaluateResponseQualityFromRuntime([
+    buildTurnTranscript({
+      body: {
+        messages: [{ role: 'assistant', text: 'Can you share the report?' }],
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        runtimeDebug: {
+          responseContract: {
+            constraints: {
+              maxQuestions: 0,
+              avoidMultipleCTAs: false,
+            },
+            forbiddenClaims: [],
+          },
+        },
+      },
+    }),
+    buildTurnTranscript({
+      body: {
+        messages: [{ role: 'assistant', text: 'Here is the answer.' }],
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        runtimeDebug: {
+          responseContract: {
+            constraints: {
+              maxQuestions: 2,
+              avoidMultipleCTAs: false,
+            },
+            forbiddenClaims: [],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(evaluated, {
+    response: {
+      result: 'HARD_FAIL',
+      reason: 'Found 1 questions; maximum is 0.',
+    },
+    failureCategory: 'agent_contract',
+  });
 });
 
 test('deterministic contract failures classify as hard agent contract failures', () => {

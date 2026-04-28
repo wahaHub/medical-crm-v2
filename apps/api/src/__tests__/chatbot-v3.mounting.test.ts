@@ -1208,6 +1208,40 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.runtimeDebug).toBeUndefined();
   });
 
+  it('exposes runtimeDebug in production when the dogfood debug header is present', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET = 'dogfood-test-secret';
+    const app = await loadApp();
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+        'x-request-id': 'trace-prod-dogfood-1',
+        'x-chatbot-v3-dogfood-debug': 'dogfood-test-secret',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.runtimeDebug).toMatchObject({
+      traceId: 'trace-prod-dogfood-1',
+      idempotencyKey: expect.any(String),
+      minimalContractChecks: expect.any(Array),
+      skillBehaviorChecks: expect.any(Array),
+      llmJudgeSummary: {
+        status: 'not_run',
+        summary: 'LLM judge not enabled for this run.',
+      },
+    });
+    delete process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET;
+  });
+
   it('returns 404 when the session does not exist', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
 

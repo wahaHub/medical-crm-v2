@@ -61,12 +61,15 @@ test('fails with a clear message when a required shell file is missing', () => {
 });
 
 test('task 9 dogfood sources expose quality gate, failure categories, and report evidence hooks', () => {
+  const runnerSource = readFileSync(resolve(REPO_ROOT, 'scripts/chatbot-v3-real-api-dogfood.ts'), 'utf8');
   const scenariosSource = readFileSync(resolve(REPO_ROOT, 'scripts/chatbot-v3-real-api-dogfood/scenarios.ts'), 'utf8');
   const evaluatorSource = readFileSync(resolve(REPO_ROOT, 'scripts/chatbot-v3-real-api-dogfood/evaluator.ts'), 'utf8');
   const reportingSource = readFileSync(resolve(REPO_ROOT, 'scripts/chatbot-v3-real-api-dogfood/reporting.ts'), 'utf8');
 
   assert.match(scenariosSource, /qualityGate/);
   assert.match(scenariosSource, /local_only/);
+  assert.match(scenariosSource, /QUALITY_GATE_EXECUTED_SCENARIO_IDS/);
+  assert.match(runnerSource, /QUALITY_GATE_EXECUTED_SCENARIO_IDS/);
 
   for (const category of [
     'skill_routing',

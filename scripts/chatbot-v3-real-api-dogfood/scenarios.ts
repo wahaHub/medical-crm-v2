@@ -358,6 +358,10 @@ export const V1_DEFERRED_SCENARIO_IDS = DOGFOOD_SCENARIOS.filter(
   (scenario) => scenario.v1Status === 'deferred',
 ).map((scenario) => scenario.id);
 
+export const QUALITY_GATE_EXECUTED_SCENARIO_IDS = DOGFOOD_SCENARIOS.filter(
+  (scenario) => scenario.qualityGate === 'required' || scenario.qualityGate === 'observed',
+).map((scenario) => scenario.id);
+
 export function getScenarioById(scenarioId: DogfoodScenarioId) {
   const scenario = DOGFOOD_SCENARIOS.find((entry) => entry.id === scenarioId);
   if (!scenario) {

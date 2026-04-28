@@ -71,7 +71,7 @@ function makeScenarioOutcome(overrides: Partial<ScenarioOutcome> = {}): Scenario
           status: 200,
           body: {
             messages: [{ role: 'assistant', text: 'Welcome' }],
-            debug: {
+            runtimeDebug: {
               selectedDomainSkills: ['pricing', 'faq'],
               loadedSkillSections: [
                 { skillId: 'pricing', sectionKey: 'overview' },
@@ -176,7 +176,7 @@ function makeFailureScenario({
             : {
                 ok: true,
                 failureCategory,
-                debug: {
+                runtimeDebug: {
                   selectedDomainSkills: ['pricing'],
                   loadedSkillSections: [{ skillId: 'pricing', sectionKey: 'overview' }],
                   readIntents: [{ type: 'PRICING_FACTORS' }],

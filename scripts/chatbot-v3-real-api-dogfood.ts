@@ -10,7 +10,10 @@ import {
 } from './chatbot-v3-real-api-dogfood/bootstrap.ts';
 import { createDogfoodHttpClient } from './chatbot-v3-real-api-dogfood/http-client.ts';
 import { parseDogfoodConfig } from './chatbot-v3-real-api-dogfood/config.ts';
-import { getScenarioById, V1_REQUIRED_SCENARIO_IDS } from './chatbot-v3-real-api-dogfood/scenarios.ts';
+import {
+  getScenarioById,
+  QUALITY_GATE_EXECUTED_SCENARIO_IDS,
+} from './chatbot-v3-real-api-dogfood/scenarios.ts';
 import { runChatSession, type ChatRunnerResult } from './chatbot-v3-real-api-dogfood/chat-runner.ts';
 import {
   buildClassifiedRunRollup,
@@ -18,12 +21,13 @@ import {
   classifyBootstrapFailureOutcome,
   classifyChatFailureOutcome,
   classifyEvaluationOutcome,
+  evaluateResponseQualityFromRuntime,
   type DogfoodAxisEvaluation,
 } from './chatbot-v3-real-api-dogfood/evaluator.ts';
 import { writeDogfoodArtifacts } from './chatbot-v3-real-api-dogfood/reporting.ts';
 import type { RunRollup, ScenarioOutcome, TurnTranscript } from './chatbot-v3-real-api-dogfood/types.ts';
 
-function buildScenarioTurns(scenarioId: string) {
+export function buildScenarioTurns(scenarioId: string) {
   switch (scenarioId) {
     case 'blocked_without_prereq':
       return [];
@@ -39,6 +43,18 @@ function buildScenarioTurns(scenarioId: string) {
       return [{ message: 'What are your hours?' }, { message: 'What is your pricing?' }];
     case 'handoff_denied_returns_to_current_step':
       return [{ message: 'I want a human.' }, { message: 'Okay, continue the current step.' }];
+    case 'recommendation_to_explain':
+      return [{ message: 'Please explain the process first.' }, { message: 'What should I do next?' }];
+    case 'direct_human_request_to_handoff':
+      return [{ message: 'Need a human now' }, { message: 'Any update from the human team?' }];
+    case 'recommendation_revisit_compare':
+      return [
+        { message: 'Compare the hospitals for me.' },
+        { message: 'Compare them again and explain the differences.' },
+        { message: 'Show me the hospital options again.' },
+      ];
+    case 'repeat_explain':
+      return [{ message: 'Please explain the process again.' }, { message: 'What should I do next?' }];
     default:
       return [{ message: 'Hello' }];
   }
@@ -61,6 +77,7 @@ function toTurnTranscript(
     requestAttempt: finalAttempt?.attempt ?? 1,
     durationMs: finalAttempt?.durationMs ?? 0,
     ...(finalAttempt?.transportErrorKind ? { transportErrorKind: finalAttempt.transportErrorKind } : {}),
+    journeySummary: result.journeySummary,
     request: {
       method: 'POST',
       path: '/api/v3/chatbot/chat',
@@ -78,6 +95,21 @@ function toTurnTranscript(
 
 function buildAxis(result: 'PASS' | 'SOFT_FAIL' | 'HARD_FAIL', reason?: string): DogfoodAxisEvaluation {
   return result === 'PASS' ? { result } : { result, reason };
+}
+
+function evaluateJourneyFromRuntime(turnTranscripts: TurnTranscript[]): DogfoodAxisEvaluation {
+  const missingJourneyTurn = turnTranscripts.find(
+    (turn) => turn.response.status > 0 && turn.response.status < 400 && !turn.journeySummary,
+  );
+
+  if (!missingJourneyTurn) {
+    return buildAxis('PASS');
+  }
+
+  return buildAxis(
+    'HARD_FAIL',
+    `journey summary missing from successful chat response on turn ${missingJourneyTurn.turnIndex + 1}`,
+  );
 }
 
 function slugifyEmailPart(value: string) {
@@ -194,8 +226,8 @@ function evaluateAllowedScenario(
     bootstrap.bootstrapMode === 'chat_allowed' ? 'PASS' : 'HARD_FAIL',
     'chat was not allowed after patient bootstrap',
   );
-  const journey = buildAxis('PASS');
-  const response = buildAxis('PASS');
+  const journey = evaluateJourneyFromRuntime(turnTranscripts);
+  const responseEvaluation = evaluateResponseQualityFromRuntime(turnTranscripts);
   const continuity = buildAxis(chatResult.stoppedEarly ? 'HARD_FAIL' : 'PASS', chatResult.stoppedEarly ? 'conversation stopped early' : undefined);
 
   if (accessDecision.result !== 'PASS') {
@@ -211,9 +243,16 @@ function evaluateAllowedScenario(
 
   return classifyEvaluationOutcome({
     scenarioId,
-    summary: 'all four axes passed',
+    summary:
+      journey.result === 'PASS' && responseEvaluation.response.result === 'PASS' && continuity.result === 'PASS'
+        ? 'all four axes passed'
+        : journey.reason
+          ?? continuity.reason
+          ?? responseEvaluation.response.reason
+          ?? 'scenario evaluation failed',
     journey,
-    response,
+    response: responseEvaluation.response,
+    responseFailureCategory: responseEvaluation.failureCategory,
     continuity,
     bootstrapAttempts: bootstrap.attempts,
     chatAttempts: chatResult.chatAttempts,
@@ -234,7 +273,7 @@ async function run() {
   const bootstrapResults: BootstrapSuccessResult[] = [];
   const scenarioOutcomes: ScenarioOutcome[] = [];
 
-  for (const scenarioId of V1_REQUIRED_SCENARIO_IDS) {
+  for (const scenarioId of QUALITY_GATE_EXECUTED_SCENARIO_IDS) {
     const scenario = getScenarioById(scenarioId);
     const bootstrap = await bootstrapRealApiSession({
       client,

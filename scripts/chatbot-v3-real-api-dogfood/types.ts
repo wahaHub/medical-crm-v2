@@ -57,6 +57,10 @@ export interface TurnTranscript {
   requestAttempt?: number;
   durationMs?: number;
   transportErrorKind?: 'timeout' | 'transport_error';
+  journeySummary?: {
+    stage: string;
+    phase: string;
+  } | null;
   request: {
     method: string;
     path: string;

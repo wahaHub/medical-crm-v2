@@ -142,6 +142,10 @@ function buildRedactedChatRequestHeaders(client: DogfoodHttpClient) {
     'x-medora-site': client.site,
   };
 
+  if (process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET?.trim()) {
+    headers['x-chatbot-v3-dogfood-debug'] = '<redacted>';
+  }
+
   if (client.cookieJar.getRedactedCookies().length > 0) {
     headers.cookie = '<redacted>';
   }
@@ -162,6 +166,7 @@ export async function runChatSession({
   const transcripts: ChatRunnerTurnTranscript[] = [];
   const chatAttempts: DogfoodAttemptSummary[] = [];
   let stoppedEarly = false;
+  const dogfoodDebugSecret = process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET?.trim();
 
   for (const [turnIndex, turn] of turns.entries()) {
     const requestPayload = {
@@ -179,6 +184,13 @@ export async function runChatSession({
         const exchange = await client.request({
           method: 'POST',
           path: '/api/v3/chatbot/chat',
+          ...(dogfoodDebugSecret
+            ? {
+                headers: {
+                  'x-chatbot-v3-dogfood-debug': dogfoodDebugSecret,
+                },
+              }
+            : {}),
           body: requestPayload,
           timeoutMs: requestTimeoutMs ?? 60_000,
         });

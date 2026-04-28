@@ -11,7 +11,7 @@ const REPLY_MARKERS = [
 ];
 
 export function parseEmailReplyBody(input: EmailReplyBodyInput): string {
-  const body = input.text ?? stripHtml(input.html ?? '');
+  const body = input.text?.trim() ? input.text : stripHtml(input.html ?? '');
   return stripQuotedReply(body).trim();
 }
 

@@ -62,7 +62,12 @@ describe('ProcessInboundEmailUseCase', () => {
       complete: vi.fn().mockResolvedValue(undefined),
     };
     conversationRepo = {
-      findById: vi.fn().mockResolvedValue({ id: 'conv-1', caseId: 'case-1' }),
+      findById: vi.fn().mockResolvedValue({
+        id: 'conv-1',
+        caseId: 'case-1',
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+      }),
       findMany: vi.fn(),
       findByPatientId: vi.fn(),
       findOrCreateAdminPatientConversation: vi.fn(),
@@ -178,6 +183,9 @@ describe('ProcessInboundEmailUseCase', () => {
     const result = await useCase.execute(email);
 
     expect(result.status).toBe('PROCESSED');
+    expect(mediaUpload.createUploadIntent).toHaveBeenCalledBefore(
+      vi.mocked(attachmentSource.getAttachmentBytes),
+    );
     expect(attachmentSource.getAttachmentBytes).toHaveBeenCalledWith({
       provider: 'resend',
       providerMessageId: 'msg-1',
@@ -213,7 +221,7 @@ describe('ProcessInboundEmailUseCase', () => {
     );
   });
 
-  it('duplicate claimed event creates no second message', async () => {
+  it('processed claimed event creates no second message', async () => {
     vi.mocked(inboundEventRepo.claim).mockResolvedValueOnce({
       event: makeInboundEvent({ status: 'PROCESSED', createdMessageId: 'message-1' }),
       alreadyClaimed: true,
@@ -222,10 +230,67 @@ describe('ProcessInboundEmailUseCase', () => {
     const result = await useCase.execute(email);
 
     expect(result).toEqual({
-      status: 'DUPLICATE',
+      status: 'PROCESSED',
+      duplicate: true,
+      eventId: 'event-1',
+      createdMessageId: 'message-1',
+    });
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).not.toHaveBeenCalled();
+  });
+
+  it('failed claimed event retries processing with the same event id', async () => {
+    vi.mocked(inboundEventRepo.claim).mockResolvedValueOnce({
+      event: makeInboundEvent({ status: 'FAILED', error: 'temporary upload failure' }),
+      alreadyClaimed: true,
+    });
+
+    const result = await useCase.execute(email);
+
+    expect(result).toEqual({
+      status: 'PROCESSED',
+      duplicate: false,
+      createdMessageId: 'message-1',
+    });
+    expect(sendMessage.execute).toHaveBeenCalledOnce();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'event-1',
+      status: 'PROCESSED',
+      createdMessageId: 'message-1',
+    }));
+  });
+
+  it('processing claimed event is treated as in-progress without side effects', async () => {
+    vi.mocked(inboundEventRepo.claim).mockResolvedValueOnce({
+      event: makeInboundEvent({ status: 'PROCESSING' }),
+      alreadyClaimed: true,
+    });
+
+    const result = await useCase.execute(email);
+
+    expect(result).toEqual({
+      status: 'PROCESSING',
       duplicate: true,
       eventId: 'event-1',
     });
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).not.toHaveBeenCalled();
+  });
+
+  it('terminal invalid claimed event creates no side effects', async () => {
+    vi.mocked(inboundEventRepo.claim).mockResolvedValueOnce({
+      event: makeInboundEvent({ status: 'TOKEN_NOT_FOUND' }),
+      alreadyClaimed: true,
+    });
+
+    const result = await useCase.execute(email);
+
+    expect(result).toEqual({
+      status: 'TOKEN_NOT_FOUND',
+      duplicate: true,
+      eventId: 'event-1',
+    });
+    expect(replyTokenRepo.findByTokenHash).not.toHaveBeenCalled();
     expect(sendMessage.execute).not.toHaveBeenCalled();
     expect(inboundEventRepo.complete).not.toHaveBeenCalled();
   });
@@ -306,6 +371,31 @@ describe('ProcessInboundEmailUseCase', () => {
     }
   });
 
+  it('absent and neutral auth values do not fail authentication', async () => {
+    for (const auth of [
+      null,
+      {},
+      { spf: 'neutral', dkim: null, dmarc: undefined },
+    ]) {
+      vi.clearAllMocks();
+      vi.mocked(inboundEventRepo.claim).mockResolvedValue({
+        event: makeInboundEvent(),
+        alreadyClaimed: false,
+      });
+
+      const result = await useCase.execute(makeInboundEmail({
+        to: [buildPreferredReplyAddress(token)],
+        auth,
+      }));
+
+      expect(result.status).toBe('PROCESSED');
+      expect(sendMessage.execute).toHaveBeenCalledOnce();
+      expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'PROCESSED',
+      }));
+    }
+  });
+
   it('empty cleaned body and no attachments records EMPTY_REPLY', async () => {
     email = makeInboundEmail({
       to: [buildPreferredReplyAddress(token)],
@@ -324,6 +414,139 @@ describe('ProcessInboundEmailUseCase', () => {
       conversationId: 'conv-1',
       caseId: 'case-1',
     }));
+  });
+
+  it('falls back to stripped html when text is blank', async () => {
+    const result = await useCase.execute(makeInboundEmail({
+      to: [buildPreferredReplyAddress(token)],
+      text: '',
+      html: '<p>Hello from <strong>HTML</strong>.</p><p>On Tue, Admin wrote:</p><p>old</p>',
+    }));
+
+    expect(result.status).toBe('PROCESSED');
+    expect(sendMessage.execute).toHaveBeenCalledWith(
+      'conv-1',
+      expect.objectContaining({
+        content: 'Hello from HTML.',
+        messageType: 'TEXT',
+      }),
+      expect.objectContaining({ role: 'PATIENT' }),
+    );
+  });
+
+  it('case patient mismatch records CONVERSATION_INVALID', async () => {
+    vi.mocked(caseRepo.findById).mockResolvedValueOnce({ id: 'case-1', patientId: 'other-patient' } as any);
+
+    const result = await useCase.execute(email);
+
+    expect(result.status).toBe('CONVERSATION_INVALID');
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'CONVERSATION_INVALID',
+      replyTokenId: 'reply-token-1',
+      conversationId: 'conv-1',
+      caseId: 'case-1',
+    }));
+  });
+
+  it('channel mismatch records CONVERSATION_INVALID', async () => {
+    vi.mocked(conversationRepo.findById).mockResolvedValueOnce({
+      id: 'conv-1',
+      caseId: 'case-1',
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
+    } as any);
+
+    const result = await useCase.execute(email);
+
+    expect(result.status).toBe('CONVERSATION_INVALID');
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'CONVERSATION_INVALID',
+    }));
+  });
+
+  it('hospital mismatch records CONVERSATION_INVALID for hospital-patient tokens', async () => {
+    vi.mocked(replyTokenRepo.findByTokenHash).mockResolvedValueOnce(makeReplyToken({
+      tokenHash: hashReplyToken(token),
+      channel: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
+    }));
+    vi.mocked(conversationRepo.findById).mockResolvedValueOnce({
+      id: 'conv-1',
+      caseId: 'case-1',
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-2',
+    } as any);
+
+    const result = await useCase.execute(email);
+
+    expect(result.status).toBe('CONVERSATION_INVALID');
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'CONVERSATION_INVALID',
+      replyTokenId: 'reply-token-1',
+    }));
+  });
+
+  it('attachment size mismatch completes FAILED without upload or send', async () => {
+    vi.mocked(attachmentSource.getAttachmentBytes).mockResolvedValueOnce(new Uint8Array([1, 2]));
+
+    const result = await useCase.execute(makeInboundEmail({
+      to: [buildPreferredReplyAddress(token)],
+      attachments: [{
+        providerAttachmentId: 'att-1',
+        fileName: 'scan.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 4,
+      }],
+    }));
+
+    expect(result.status).toBe('FAILED');
+    expect(mediaUpload.createUploadIntent).toHaveBeenCalledBefore(
+      vi.mocked(attachmentSource.getAttachmentBytes),
+    );
+    expect(attachmentUploader.uploadBytes).not.toHaveBeenCalled();
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'FAILED',
+      error: 'Inbound attachment size mismatch for scan.pdf: expected 4 bytes, received 2 bytes',
+    }));
+  });
+
+  it('attachments without providerMessageId complete FAILED without downloading', async () => {
+    const result = await useCase.execute(makeInboundEmail({
+      to: [buildPreferredReplyAddress(token)],
+      providerEventId: 'evt-1',
+      providerMessageId: null,
+      attachments: [{
+        providerAttachmentId: 'att-1',
+        fileName: 'scan.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 4,
+      }],
+    }));
+
+    expect(result.status).toBe('FAILED');
+    expect(attachmentSource.getAttachmentBytes).not.toHaveBeenCalled();
+    expect(attachmentUploader.uploadBytes).not.toHaveBeenCalled();
+    expect(sendMessage.execute).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'FAILED',
+      error: 'Inbound email with attachments is missing providerMessageId',
+    }));
+  });
+
+  it('missing provider identifiers fail before claim', async () => {
+    await expect(useCase.execute(makeInboundEmail({
+      to: [buildPreferredReplyAddress(token)],
+      providerEventId: null,
+      providerMessageId: null,
+    }))).rejects.toThrow('Inbound email is missing providerEventId and providerMessageId');
+
+    expect(inboundEventRepo.claim).not.toHaveBeenCalled();
+    expect(inboundEventRepo.complete).not.toHaveBeenCalled();
+    expect(sendMessage.execute).not.toHaveBeenCalled();
   });
 });
 

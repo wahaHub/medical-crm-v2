@@ -94,9 +94,10 @@ export type ProcessInboundEmailResult =
       createdMessageId?: string | null;
     }
   | {
-      status: 'DUPLICATE';
+      status: InboundEmailStatus;
       duplicate: true;
       eventId: string;
+      createdMessageId?: string | null;
     };
 
 export class ProcessInboundEmailUseCase {
@@ -128,11 +129,14 @@ export class ProcessInboundEmailUseCase {
     const claim = await this.inboundEventRepo.claim(toClaimInput(input));
 
     if (claim.alreadyClaimed) {
-      return {
-        status: 'DUPLICATE',
-        duplicate: true,
-        eventId: claim.event.id,
-      };
+      if (claim.event.status !== 'FAILED') {
+        return {
+          status: claim.event.status,
+          duplicate: true,
+          eventId: claim.event.id,
+          ...(claim.event.createdMessageId ? { createdMessageId: claim.event.createdMessageId } : {}),
+        };
+      }
     }
 
     try {
@@ -197,8 +201,11 @@ export class ProcessInboundEmailUseCase {
       !conversation ||
       conversation.id !== token.conversationId ||
       conversation.caseId !== token.caseId ||
+      conversation.category !== token.channel ||
+      (token.channel === 'HOSPITAL_PATIENT' && conversation.hospitalId !== token.hospitalId) ||
       !caseEntity ||
       caseEntity.id !== token.caseId ||
+      caseEntity.patientId !== token.patientId ||
       !patient ||
       patient.id !== token.patientId
     ) {
@@ -227,7 +234,16 @@ export class ProcessInboundEmailUseCase {
       });
     }
 
-    const attachments = await this.uploadAttachments(input, token.conversationId);
+    const attachmentUpload = await this.uploadAttachments(input, token.conversationId);
+    if ('error' in attachmentUpload) {
+      return await this.completeHandled(eventId, 'FAILED', input, {
+        replyTokenId: token.id,
+        conversationId: token.conversationId,
+        caseId: token.caseId,
+        error: attachmentUpload.error,
+      });
+    }
+    const attachments = attachmentUpload.attachments;
     const sendResult = await this.sendMessage.execute(
       token.conversationId,
       {
@@ -267,15 +283,10 @@ export class ProcessInboundEmailUseCase {
   private async uploadAttachments(
     input: NormalizedInboundEmailInput,
     conversationId: string,
-  ): Promise<Attachment[]> {
+  ): Promise<{ attachments: Attachment[] } | { error: string }> {
     const uploaded: Attachment[] = [];
 
     for (const attachment of input.attachments) {
-      const bytes = await this.attachmentSource.getAttachmentBytes({
-        provider: input.provider,
-        providerMessageId: input.providerMessageId!,
-        providerAttachmentId: attachment.providerAttachmentId,
-      });
       const intent = await this.mediaUpload.createUploadIntent({
         policyId: 'message_attachment',
         ownerType: 'conversation',
@@ -284,6 +295,18 @@ export class ProcessInboundEmailUseCase {
         fileSize: attachment.fileSize,
         mimeType: attachment.mimeType,
       });
+      const bytes = await this.attachmentSource.getAttachmentBytes({
+        provider: input.provider,
+        providerMessageId: input.providerMessageId!,
+        providerAttachmentId: attachment.providerAttachmentId,
+      });
+
+      if (bytes.byteLength !== attachment.fileSize) {
+        return {
+          error: `Inbound attachment size mismatch for ${attachment.fileName}: expected ${attachment.fileSize} bytes, received ${bytes.byteLength} bytes`,
+        };
+      }
+
       await this.attachmentUploader.uploadBytes({
         uploadUrl: intent.uploadUrl,
         bytes,
@@ -293,7 +316,7 @@ export class ProcessInboundEmailUseCase {
       uploaded.push(intent.asset);
     }
 
-    return uploaded;
+    return { attachments: uploaded };
   }
 
   private async completeHandled(

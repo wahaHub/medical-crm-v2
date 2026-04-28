@@ -14,7 +14,8 @@ describe('EmailReplyTokenService', () => {
 
     const result = service.createReplyToken();
 
-    expect(result.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(result.token).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.token).toBe(result.token.toLowerCase());
     expect(result.tokenHash).toBe(hashReplyToken(result.token));
     expect(result.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(result.tokenHash).not.toContain(result.token);
@@ -27,6 +28,17 @@ describe('EmailReplyTokenService', () => {
     expect(buildPreferredReplyAddress(token)).toBe(
       `reply+${token}@medicaltourismchina.health`,
     );
+  });
+
+  it('parses a lowercased recipient and hashes the generated token', () => {
+    const token = generateReplyToken();
+    const lowercasedRecipient = `reply+${token}@medicaltourismchina.health`.toLowerCase();
+
+    expect(parseReplyAddress(lowercasedRecipient)).toEqual({
+      token,
+      tokenHash: hashReplyToken(token),
+      addressType: 'preferred',
+    });
   });
 
   it('parses preferred and alternate inbound reply addresses', () => {
@@ -44,14 +56,46 @@ describe('EmailReplyTokenService', () => {
     });
   });
 
+  it('parses display-name mailbox format and bracketed bare addresses', () => {
+    const token = generateReplyToken();
+
+    expect(parseReplyAddress(`Patient <reply+${token}@medicaltourismchina.health>`)).toEqual({
+      token,
+      tokenHash: hashReplyToken(token),
+      addressType: 'preferred',
+    });
+    expect(parseReplyAddress(`<${token}@reply.medicaltourismchina.health>`)).toEqual({
+      token,
+      tokenHash: hashReplyToken(token),
+      addressType: 'alternate',
+    });
+  });
+
+  it('parses uppercase domain and preferred prefix casing', () => {
+    const token = generateReplyToken();
+
+    expect(parseReplyAddress(`Reply+${token}@MEDICALTOURISMCHINA.HEALTH`)).toEqual({
+      token,
+      tokenHash: hashReplyToken(token),
+      addressType: 'preferred',
+    });
+    expect(parseReplyAddress(`${token}@REPLY.MEDICALTOURISMCHINA.HEALTH`)).toEqual({
+      token,
+      tokenHash: hashReplyToken(token),
+      addressType: 'alternate',
+    });
+  });
+
   it('rejects malformed tokens', () => {
     const malformedAddresses = [
       'reply+short@medicaltourismchina.health',
-      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=@medicaltourismchina.health',
-      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!@medicaltourismchina.health',
-      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@medicaltourismchina.health',
-      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com',
-      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@reply.medicaltourismchina.health',
+      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@medicaltourismchina.health',
+      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@medicaltourismchina.health',
+      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=@medicaltourismchina.health',
+      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!@medicaltourismchina.health',
+      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA@medicaltourismchina.health',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com',
+      'reply+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@reply.medicaltourismchina.health',
     ];
 
     for (const address of malformedAddresses) {
@@ -62,7 +106,7 @@ describe('EmailReplyTokenService', () => {
 
 describe('hashReplyToken', () => {
   it('returns the SHA-256 hex digest for the token', () => {
-    const token = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO12';
+    const token = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
     expect(hashReplyToken(token)).toBe(
       createHash('sha256').update(token).digest('hex'),

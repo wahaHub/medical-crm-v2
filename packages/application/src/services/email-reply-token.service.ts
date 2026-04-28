@@ -3,8 +3,8 @@ import { createHash, randomBytes } from 'node:crypto';
 export const PREFERRED_REPLY_DOMAIN = 'medicaltourismchina.health';
 export const ALTERNATE_REPLY_DOMAIN = `reply.${PREFERRED_REPLY_DOMAIN}`;
 
-const GENERATED_REPLY_TOKEN_LENGTH = 43;
-const REPLY_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const GENERATED_REPLY_TOKEN_LENGTH = 64;
+const REPLY_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
 
 export type ReplyAddressType = 'preferred' | 'alternate';
 
@@ -21,7 +21,7 @@ export interface ParsedReplyAddress {
 }
 
 export function generateReplyToken(): string {
-  return randomBytes(32).toString('base64url');
+  return randomBytes(32).toString('hex');
 }
 
 export function hashReplyToken(token: string): string {
@@ -88,6 +88,13 @@ function parsePreferredLocalPart(localPart: string): string | null {
 
 function normalizeAddress(address: string): string {
   const trimmed = address.trim();
+
+  const mailboxMatch = trimmed.match(/<([^<>\s]+@[^<>\s]+)>/);
+  const mailboxAddress = mailboxMatch?.[1];
+  if (mailboxAddress) {
+    return mailboxAddress.trim();
+  }
+
   if (trimmed.startsWith('<') && trimmed.endsWith('>')) {
     return trimmed.slice(1, -1).trim();
   }

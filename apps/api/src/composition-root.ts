@@ -204,6 +204,7 @@ import {
   DeleteEmailTemplateUseCase,
   GetProfileUseCase,
   ListAdminEmailsUseCase,
+  ListHospitalEmailsUseCase,
   UpdateProfileUseCase,
   ChangePasswordUseCase,
   NotificationEmailService,
@@ -581,6 +582,7 @@ interface AppServices {
   // use cases — user settings
   getProfile: GetProfileUseCase;
   listAdminEmails: ListAdminEmailsUseCase;
+  listHospitalEmails: ListHospitalEmailsUseCase;
   updateProfile: UpdateProfileUseCase;
   changePassword: ChangePasswordUseCase;
 
@@ -1260,6 +1262,7 @@ export function getServices(): AppServices {
 
       getProfile: new GetProfileUseCase(userRepo),
       listAdminEmails: new ListAdminEmailsUseCase(userRepo),
+      listHospitalEmails: new ListHospitalEmailsUseCase(userRepo),
       updateProfile: new UpdateProfileUseCase(userRepo, keycloakAdmin),
       changePassword: new ChangePasswordUseCase(
         keycloakAdmin,

@@ -40,4 +40,5 @@ export interface IUserRepository {
   findById(id: string): Promise<UserProfile | null>;
   update(id: string, input: UpdateUserProfileInput): Promise<void>;
   listAdminEmails(): Promise<string[]>;
+  listHospitalEmails(hospitalId: string): Promise<string[]>;
 }

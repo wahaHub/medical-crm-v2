@@ -11,7 +11,10 @@ export class GenerateRegistrationTokenUseCase {
   ) {}
 
   async execute(hospitalId: string, email: string, actor: Actor): Promise<{ token: string; expiresAt: string }> {
-    if (actor.role !== 'ADMIN') throw new ForbiddenError('Only admins can generate tokens');
+    const canGenerate =
+      actor.role === 'ADMIN'
+      || (actor.role === 'HOSPITAL' && actor.hospitalId === hospitalId);
+    if (!canGenerate) throw new ForbiddenError('Only admins or the hospital itself can generate tokens');
 
     const hospital = await this.hospitalRepo.findFullById(hospitalId);
     if (!hospital) throw new NotFoundError('Hospital not found');

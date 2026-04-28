@@ -20,7 +20,7 @@ describe('GenerateRegistrationTokenUseCase', () => {
     userId: 'hospital-1',
     email: 'hospital@test.com',
     role: 'HOSPITAL',
-    hospitalId: 'h-1',
+    hospitalId: 'hosp-1',
   };
 
   const patientActor: Actor = {
@@ -64,16 +64,23 @@ describe('GenerateRegistrationTokenUseCase', () => {
     useCase = new GenerateRegistrationTokenUseCase(mockHospitalRepo, mockTokenRepo, null);
   });
 
-  it('throws ForbiddenError for HOSPITAL actor', async () => {
+  it('allows a HOSPITAL actor to generate a token for its own hospital', async () => {
+    const result = await useCase.execute('hosp-1', 'user@test.com', hospitalActor);
+
+    expect(result).toHaveProperty('token');
+    expect(mockTokenRepo.save).toHaveBeenCalledOnce();
+  });
+
+  it('throws ForbiddenError for a HOSPITAL actor generating a token for another hospital', async () => {
     await expect(
-      useCase.execute('hosp-1', 'user@test.com', hospitalActor),
-    ).rejects.toThrow('Only admins can generate tokens');
+      useCase.execute('other-hospital', 'user@test.com', hospitalActor),
+    ).rejects.toThrow('Only admins or the hospital itself can generate tokens');
   });
 
   it('throws ForbiddenError for PATIENT actor', async () => {
     await expect(
       useCase.execute('hosp-1', 'user@test.com', patientActor),
-    ).rejects.toThrow('Only admins can generate tokens');
+    ).rejects.toThrow('Only admins or the hospital itself can generate tokens');
   });
 
   it('throws NotFoundError when hospital does not exist', async () => {

@@ -2397,6 +2397,7 @@
         "backToCases": "返回病例列表",
         "header": {
           "documentsCount": "{count} 份文档",
+          "createdAt": "创建时间",
           "messagesCount": "{count} 条消息"
         },
         "tabs": {
@@ -3497,6 +3498,23 @@
       "page": {
         "title": "设置",
         "description": "管理您的账户和通知偏好"
+      },
+      "accountEmails": {
+        "title": "账户邮箱",
+        "description": "邀请更多邮箱登录同一个医院账户。",
+        "loading": "正在加载账户邮箱...",
+        "count": "{count} 个邮箱可访问此医院账户",
+        "emailPlaceholder": "new-user@hospital.com",
+        "invite": "邀请邮箱",
+        "inviteLinkTitle": "注册链接已生成",
+        "inviteLinkDescription": "如果 {email} 没有收到邮件，可以直接分享此链接。",
+        "inviteExpiresAt": "过期时间：{expiresAt}",
+        "feedback": {
+          "loadFailed": "加载账户邮箱失败。",
+          "invalidEmail": "请输入有效的邮箱地址。",
+          "invited": "注册链接邀请已创建。",
+          "inviteFailed": "发送注册链接邀请失败。"
+        }
       },
       "password": {
         "title": "密码",

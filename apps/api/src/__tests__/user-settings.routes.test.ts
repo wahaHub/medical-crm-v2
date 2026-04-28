@@ -5,6 +5,8 @@ const mockServices = {
   updateProfile: { execute: vi.fn() },
   changePassword: { execute: vi.fn() },
   listAdminEmails: { execute: vi.fn() },
+  listHospitalEmails: { execute: vi.fn() },
+  generateRegistrationToken: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -75,6 +77,69 @@ describe('user settings routes', () => {
         expect.objectContaining({
           userId: 'admin-1',
           role: 'ADMIN',
+        }),
+      );
+    });
+  });
+
+  describe('GET /api/v2/hospital/settings/hospital-emails', () => {
+    it('returns the emails attached to the current hospital account', async () => {
+      currentSession = {
+        userId: 'hospital-user-1',
+        email: 'owner@hospital.test',
+        roles: ['HOSPITAL'],
+        hospitalId: '11111111-1111-1111-1111-111111111111',
+      };
+      mockServices.listHospitalEmails.execute.mockResolvedValue([
+        'owner@hospital.test',
+        'assistant@hospital.test',
+      ]);
+
+      const res = await app.request('/api/v2/hospital/settings/hospital-emails');
+
+      expect(res.status).toBe(200);
+      await expect(res.json()).resolves.toEqual({
+        emails: ['owner@hospital.test', 'assistant@hospital.test'],
+      });
+      expect(mockServices.listHospitalEmails.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'HOSPITAL',
+          hospitalId: '11111111-1111-1111-1111-111111111111',
+        }),
+      );
+    });
+  });
+
+  describe('POST /api/v2/hospital/settings/hospital-emails/invitations', () => {
+    it('creates a registration invite for the current hospital', async () => {
+      currentSession = {
+        userId: 'hospital-user-1',
+        email: 'owner@hospital.test',
+        roles: ['HOSPITAL'],
+        hospitalId: '11111111-1111-1111-1111-111111111111',
+      };
+      mockServices.generateRegistrationToken.execute.mockResolvedValue({
+        token: 'token-1',
+        expiresAt: '2026-04-06T08:45:30.000Z',
+      });
+
+      const res = await app.request('/api/v2/hospital/settings/hospital-emails/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'assistant@hospital.test' }),
+      });
+
+      expect(res.status).toBe(201);
+      await expect(res.json()).resolves.toEqual({
+        token: 'token-1',
+        expiresAt: '2026-04-06T08:45:30.000Z',
+      });
+      expect(mockServices.generateRegistrationToken.execute).toHaveBeenCalledWith(
+        '11111111-1111-1111-1111-111111111111',
+        'assistant@hospital.test',
+        expect.objectContaining({
+          role: 'HOSPITAL',
+          hospitalId: '11111111-1111-1111-1111-111111111111',
         }),
       );
     });

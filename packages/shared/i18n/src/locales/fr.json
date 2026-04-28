@@ -2246,6 +2246,7 @@
         "backToCases": "Back to Case List",
         "header": {
           "documentsCount": "{count} docs",
+          "createdAt": "Created",
           "messagesCount": "{count} messages"
         },
         "tabs": {
@@ -2729,6 +2730,23 @@
       "page": {
         "title": "Settings",
         "description": "Manage your account and notification preferences"
+      },
+      "accountEmails": {
+        "title": "Account Emails",
+        "description": "Invite additional email addresses to log in to this hospital account.",
+        "loading": "Loading account emails...",
+        "count": "{count} email address(es) can access this hospital account",
+        "emailPlaceholder": "new-user@hospital.com",
+        "invite": "Invite Email",
+        "inviteLinkTitle": "Registration link ready",
+        "inviteLinkDescription": "Share this link with {email} if the email does not arrive.",
+        "inviteExpiresAt": "Expires at {expiresAt}",
+        "feedback": {
+          "loadFailed": "Failed to load account emails.",
+          "invalidEmail": "Please enter a valid email address.",
+          "invited": "Registration invitation created.",
+          "inviteFailed": "Failed to send registration invitation."
+        }
       },
       "password": {
         "title": "Password",

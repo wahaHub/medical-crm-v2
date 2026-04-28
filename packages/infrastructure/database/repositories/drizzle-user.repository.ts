@@ -130,4 +130,14 @@ export class DrizzleUserRepository implements IUserRepository {
 
     return rows.map((row) => row.email);
   }
+
+  async listHospitalEmails(hospitalId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ email: users.email })
+      .from(users)
+      .where(and(eq(users.role, 'HOSPITAL'), eq(users.hospitalId, hospitalId)))
+      .orderBy(asc(users.email));
+
+    return rows.map((row) => row.email);
+  }
 }

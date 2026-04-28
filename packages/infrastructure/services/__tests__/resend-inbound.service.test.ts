@@ -79,8 +79,8 @@ describe('ResendInboundService', () => {
   });
 
   it('verifies Svix headers, extracts ids, retrieves full email, and normalizes content', async () => {
-    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>().mockResolvedValue(
-      jsonResponse({
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValueOnce(jsonResponse({
         id: 'email_received_123',
         message_id: '<rfc-message-id@example.com>',
         from: 'Patient One <patient@example.com>',
@@ -99,11 +99,15 @@ describe('ResendInboundService', () => {
             id: 'att_123',
             filename: 'scan.pdf',
             content_type: 'application/pdf',
-            size: 4096,
+            content_disposition: 'attachment',
           },
         ],
-      }),
-    );
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: 'att_123',
+        size: 4096,
+        download_url: 'https://download.resend.test/att_123',
+      }));
     const service = new ResendInboundService({
       apiKey,
       webhookSecret,
@@ -118,6 +122,15 @@ describe('ResendInboundService', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.resend.com/emails/receiving/email_received_123',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${apiKey}`,
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.resend.com/emails/receiving/email_received_123/attachments/att_123',
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
@@ -247,6 +260,55 @@ describe('ResendInboundService', () => {
     expect(result).toEqual(bytes);
   });
 
+  it('reuses attachment metadata hydrated during webhook normalization when fetching bytes', async () => {
+    const bytes = new Uint8Array([5, 6, 7, 8]);
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValueOnce(jsonResponse({
+        id: 'email_received_123',
+        from: 'patient@example.com',
+        to: ['reply@example.com'],
+        subject: 'Cached metadata',
+        text: 'See attached.',
+        html: null,
+        headers: {},
+        attachments: [
+          {
+            id: 'att_123',
+            filename: 'scan.pdf',
+            content_type: 'application/pdf',
+          },
+        ],
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: 'att_123',
+        size: 4096,
+        download_url: 'https://download.resend.test/att_123',
+      }))
+      .mockResolvedValueOnce(new Response(bytes));
+    const service = new ResendInboundService({ apiKey, webhookSecret, fetchImpl: fetchMock });
+    const webhook = signedWebhook({ payload: emailReceivedPayload() });
+
+    const normalized = await service.verifyAndNormalizeWebhook(webhook);
+    const result = await service.getAttachmentBytes({
+      provider: 'resend',
+      providerMessageId: 'email_received_123',
+      providerAttachmentId: 'att_123',
+    });
+
+    expect(normalized?.attachments[0]?.fileSize).toBe(4096);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://download.resend.test/att_123',
+      expect.not.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: expect.any(String),
+        }),
+      }),
+    );
+    expect(result).toEqual(bytes);
+  });
+
   it('maps missing webhook secret and api key to clear configuration errors', async () => {
     const webhook = signedWebhook({ payload: emailReceivedPayload() });
 
@@ -321,7 +383,7 @@ describe('ResendInboundService', () => {
     const webhook = signedWebhook({ payload: emailReceivedPayload() });
 
     await expect(service.verifyAndNormalizeWebhook(webhook)).rejects.toThrow(
-      'Resend retrieve received email failed: 502',
+      'Resend retrieve received email failed: 502 {"error":"Nope"}',
     );
   });
 });

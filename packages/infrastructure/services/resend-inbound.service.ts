@@ -43,6 +43,12 @@ interface ResendAttachment {
   size?: number;
 }
 
+interface ResendAttachmentMetadata {
+  id?: string;
+  size?: number;
+  download_url?: unknown;
+}
+
 interface ResendReceivedEmail {
   message_id?: string | null;
   from?: unknown;
@@ -58,6 +64,7 @@ export class ResendInboundService {
   private readonly apiKey?: string;
   private readonly webhookSecret?: string;
   private readonly fetchImpl: FetchImpl;
+  private readonly attachmentMetadataCache = new Map<string, ResendAttachmentMetadata>();
 
   constructor(config: ResendInboundConfig = {}) {
     this.apiKey = config.apiKey === undefined
@@ -88,6 +95,7 @@ export class ResendInboundService {
 
     const email = await this.retrieveReceivedEmail(emailId);
     const headers = normalizeEmailHeaders(email.headers);
+    const attachmentMetadataById = await this.retrieveAttachmentMetadataForEmail(emailId, email.attachments);
 
     return {
       provider: 'resend',
@@ -100,7 +108,7 @@ export class ResendInboundService {
       html: email.html ?? null,
       headers,
       auth: extractAuth(headers),
-      attachments: normalizeAttachments(email.attachments),
+      attachments: normalizeAttachments(email.attachments, attachmentMetadataById),
     };
   }
 
@@ -113,29 +121,17 @@ export class ResendInboundService {
       throw new Error(`Unsupported inbound email provider: ${input.provider}`);
     }
 
-    const apiKey = this.requireApiKey();
-    const metadataResponse = await this.fetchImpl(
-      `${RESEND_RECEIVING_API_BASE}/${encodeURIComponent(input.providerMessageId)}/attachments/${encodeURIComponent(input.providerAttachmentId)}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      },
+    const metadata = await this.retrieveAttachmentMetadata(
+      input.providerMessageId,
+      input.providerAttachmentId,
     );
-
-    if (!metadataResponse.ok) {
-      throw new Error(`Resend retrieve attachment metadata failed: ${metadataResponse.status}`);
-    }
-
-    const metadata = await metadataResponse.json() as { download_url?: unknown };
     if (typeof metadata.download_url !== 'string' || !metadata.download_url) {
       throw new Error('Resend attachment metadata missing download_url');
     }
 
     const downloadResponse = await this.fetchImpl(metadata.download_url, { method: 'GET' });
     if (!downloadResponse.ok) {
-      throw new Error(`Resend attachment download failed: ${downloadResponse.status}`);
+      throw await buildResendError('Resend attachment download failed', downloadResponse);
     }
 
     return new Uint8Array(await downloadResponse.arrayBuffer());
@@ -163,10 +159,56 @@ export class ResendInboundService {
     });
 
     if (!response.ok) {
-      throw new Error(`Resend retrieve received email failed: ${response.status}`);
+      throw await buildResendError('Resend retrieve received email failed', response);
     }
 
     return await response.json() as ResendReceivedEmail;
+  }
+
+  private async retrieveAttachmentMetadataForEmail(
+    emailId: string,
+    attachments: ResendAttachment[] | undefined,
+  ): Promise<Map<string, ResendAttachmentMetadata>> {
+    const attachmentsWithIds = attachments?.filter(
+      (attachment): attachment is ResendAttachment & { id: string } => Boolean(attachment.id),
+    ) ?? [];
+
+    const entries = await Promise.all(
+      attachmentsWithIds.map(async (attachment) => [
+        attachment.id,
+        await this.retrieveAttachmentMetadata(emailId, attachment.id),
+      ] as const),
+    );
+
+    return new Map(entries);
+  }
+
+  private async retrieveAttachmentMetadata(
+    emailId: string,
+    attachmentId: string,
+  ): Promise<ResendAttachmentMetadata> {
+    const cacheKey = attachmentMetadataCacheKey(emailId, attachmentId);
+    const cached = this.attachmentMetadataCache.get(cacheKey);
+    if (cached) return cached;
+
+    const apiKey = this.requireApiKey();
+    const response = await this.fetchImpl(
+      `${RESEND_RECEIVING_API_BASE}/${encodeURIComponent(emailId)}/attachments/${encodeURIComponent(attachmentId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw await buildResendError('Resend retrieve attachment metadata failed', response);
+    }
+
+    const metadata = await response.json() as ResendAttachmentMetadata;
+    this.attachmentMetadataCache.set(cacheKey, metadata);
+    return metadata;
   }
 
   private requireApiKey(): string {
@@ -186,6 +228,15 @@ export class ResendInboundService {
 
 function normalizeSecret(value: string | undefined): string | undefined {
   return value?.trim();
+}
+
+function attachmentMetadataCacheKey(emailId: string, attachmentId: string): string {
+  return `${emailId}/${attachmentId}`;
+}
+
+async function buildResendError(message: string, response: Response): Promise<Error> {
+  const details = await response.text().catch(() => '');
+  return new Error(`${message}: ${response.status}${details ? ` ${details}` : ''}`);
 }
 
 function normalizeIncomingHeaders(headers: Headers | Record<string, string>): Record<string, string> {
@@ -228,15 +279,26 @@ function extractAuth(headers: Record<string, string>): NormalizedInboundEmail['a
   };
 }
 
-function normalizeAttachments(attachments: ResendAttachment[] | undefined): NormalizedInboundEmail['attachments'] {
+function normalizeAttachments(
+  attachments: ResendAttachment[] | undefined,
+  metadataById: Map<string, ResendAttachmentMetadata>,
+): NormalizedInboundEmail['attachments'] {
   if (!attachments) return [];
 
-  return attachments.map((attachment) => ({
-    providerAttachmentId: attachment.id ?? '',
-    fileName: attachment.filename ?? '',
-    mimeType: attachment.content_type ?? 'application/octet-stream',
-    fileSize: typeof attachment.size === 'number' ? attachment.size : 0,
-  }));
+  return attachments.map((attachment) => {
+    const metadata = attachment.id ? metadataById.get(attachment.id) : undefined;
+
+    return {
+      providerAttachmentId: attachment.id ?? '',
+      fileName: attachment.filename ?? '',
+      mimeType: attachment.content_type ?? 'application/octet-stream',
+      fileSize: typeof metadata?.size === 'number'
+        ? metadata.size
+        : typeof attachment.size === 'number'
+          ? attachment.size
+          : 0,
+    };
+  });
 }
 
 function parseRecipientList(value: unknown): string[] {

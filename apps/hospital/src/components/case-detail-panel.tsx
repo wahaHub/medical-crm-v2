@@ -726,6 +726,14 @@ function formatFileSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getDocumentPreviewHref(caseId: string, doc: HospitalCaseDetail['documents'][number]): string | undefined {
+  if (doc.id.startsWith('message-attachment:')) {
+    return doc.downloadUrl;
+  }
+
+  return `/api/cases/${caseId}/documents/${doc.id}/preview`;
+}
+
 export function formatDocumentGroupLabel(type: string, t: TranslationFn): string {
   const fallbackLabel = t('hospital.cases.detail.documents.groups.otherDocuments', undefined, 'Other Documents');
   const groupLabels: Record<string, string> = {
@@ -740,7 +748,7 @@ export function formatDocumentGroupLabel(type: string, t: TranslationFn): string
   return groupLabels[type] ?? fallbackLabel;
 }
 
-function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
+export function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const { locale, t } = useHospitalI18n();
   const docs = caseDetail.documents;
   const groups: Record<string, typeof docs> = {};
@@ -766,36 +774,40 @@ function DocumentsTab({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
             <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs">{typeDocs.length}</span>
           </h3>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {typeDocs.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-indigo-100 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><FileText size={20} /></div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-800 truncate max-w-[200px]">
-                      {doc.fileName ?? t('hospital.cases.detail.documents.unnamed', undefined, 'Unnamed')}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                      {doc.createdAt && <span>{new Intl.DateTimeFormat(locale).format(new Date(doc.createdAt))}</span>}
-                      {doc.fileSize != null && doc.fileSize > 0 && <><span>-</span><span>{formatFileSize(doc.fileSize)}</span></>}
-                      {doc.language && (
-                        <>
-                          <span>-</span>
-                          <span>{getLocalizedLanguageLabel(doc.language, locale, t)}</span>
-                        </>
-                      )}
+            {typeDocs.map((doc) => {
+              const previewHref = getDocumentPreviewHref(caseDetail.id, doc);
+
+              return (
+                <div key={doc.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-indigo-100 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600"><FileText size={20} /></div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800 truncate max-w-[200px]">
+                        {doc.fileName ?? t('hospital.cases.detail.documents.unnamed', undefined, 'Unnamed')}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                        {doc.createdAt && <span>{new Intl.DateTimeFormat(locale).format(new Date(doc.createdAt))}</span>}
+                        {doc.fileSize != null && doc.fileSize > 0 && <><span>-</span><span>{formatFileSize(doc.fileSize)}</span></>}
+                        {doc.language && (
+                          <>
+                            <span>-</span>
+                            <span>{getLocalizedLanguageLabel(doc.language, locale, t)}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  {doc.downloadUrl && (
-                    <>
-                      <a href={doc.downloadUrl} target="_blank" rel="noreferrer" className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"><Eye size={16} /></a>
+                  <div className="flex items-center gap-1">
+                    {previewHref && (
+                      <a href={previewHref} target="_blank" rel="noreferrer" className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"><Eye size={16} /></a>
+                    )}
+                    {doc.downloadUrl && (
                       <a href={doc.downloadUrl} download={doc.fileName} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"><Download size={16} /></a>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}

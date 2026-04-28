@@ -16,6 +16,7 @@ const mockServices = {
   rejectQuote: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
+  createConversation: { execute: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
 };
 
@@ -90,6 +91,12 @@ describe('Quotes routes', () => {
     mockServices.patientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       site: 'beauty',
+    });
+    mockServices.createConversation.execute.mockResolvedValue({
+      id: 'conversation-1',
+      caseId: VALID_UUID,
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: VALID_UUID_2,
     });
   });
 
@@ -267,7 +274,20 @@ describe('Quotes routes', () => {
         subject: 'Your treatment quote is ready',
         messagePreview: 'Your hospital sent a treatment quote with one or more quoted items.',
         dedupeKey: `quote:${VALID_UUID}`,
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: VALID_UUID_2,
+        sourceKind: 'quote',
+        sourceId: VALID_UUID,
+        resolveConversationId: expect.any(Function),
       });
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: VALID_UUID,
+        hospitalId: VALID_UUID_2,
+      }, expect.anything());
     });
 
     it('still returns 200 when quote notification delivery fails', async () => {

@@ -22,6 +22,7 @@
     "./storage/s3": "./storage/s3-storage.adapter.ts",
     "./storage/registry": "./storage/storage-adapter-registry.ts",
     "./storage/routed": "./storage/routed-storage.service.ts",
+    "./storage/server-side-upload": "./storage/server-side-upload.service.ts",
     "./services": "./services/index.ts"
   },
   "scripts": {
@@ -45,7 +46,8 @@
     "jose": "^6.0.0",
     "nodemailer": "^8.0.3",
     "openai": "^6.29.0",
-    "postgres": "^3.4.0"
+    "postgres": "^3.4.0",
+    "svix": "^1.92.2"
   },
   "devDependencies": {
     "@types/nodemailer": "^7.0.11",

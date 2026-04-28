@@ -15,6 +15,7 @@ const mockServices = {
   mediaUpload: { createUploadIntent: vi.fn() },
   caseRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
+  createConversation: { execute: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
 };
 
@@ -74,6 +75,12 @@ describe('Consultation routes', () => {
       id: 'patient-1',
       site: 'beauty',
     });
+    mockServices.createConversation.execute.mockResolvedValue({
+      id: 'conversation-1',
+      caseId: VALID_UUID,
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: VALID_UUID_2,
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -130,7 +137,20 @@ describe('Consultation routes', () => {
         subject: 'Your consultation has been scheduled',
         messagePreview: 'Your hospital scheduled a consultation and added the appointment to your case.',
         dedupeKey: `consultation:${VALID_UUID}`,
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        sourceKind: 'consultation',
+        sourceId: VALID_UUID,
+        resolveConversationId: expect.any(Function),
       });
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: VALID_UUID,
+        hospitalId: 'hospital-1',
+      }, expect.anything());
     });
 
     it('still returns 201 when consultation notification delivery fails', async () => {

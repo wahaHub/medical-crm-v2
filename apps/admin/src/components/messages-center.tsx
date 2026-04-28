@@ -74,16 +74,20 @@ interface ApiConversation {
 
 interface TranslationOutputFile {
   fileName: string;
-  path: string;
+  id: string;
+  url: string;
 }
 
 interface TranslationResult {
   inputFileName: string;
-  outputDir: string;
   outputFiles: TranslationOutputFile[];
   stdout: string;
   stderr: string;
 }
+
+type PreviewChatAttachment = ChatAttachment & {
+  messageId?: string;
+};
 
 type AttachmentTranslationStatus = 'idle' | 'translating' | 'ready' | 'failed';
 
@@ -164,6 +168,7 @@ function mapApiMessages(messages: ApiMessage[]): ChatMessage[] {
         url: attachment.url ?? attachment.storageKey,
         size: attachment.size ?? attachment.fileSize,
         storageKey: attachment.storageKey,
+        messageId: m.id,
       })),
     }));
 }
@@ -309,8 +314,8 @@ function isImageAttachment(attachment: ChatAttachment | null): boolean {
   return !!attachment?.type?.startsWith('image/');
 }
 
-function buildPdfPreviewUrl(url: string, fileName: string): string {
-  return `/api/documents/preview?url=${encodeURIComponent(url)}&fileName=${encodeURIComponent(fileName)}`;
+export function buildPdfPreviewUrl(url: string, _fileName: string): string {
+  return url;
 }
 
 function mapLocaleToTargetLanguage(locale?: string): string {
@@ -327,15 +332,23 @@ function mapLocaleToTargetLanguage(locale?: string): string {
   return 'en';
 }
 
-async function translatePdfForPreview(sourceUrl: string, fileName: string, targetLanguage: string): Promise<TranslationResult> {
+async function translatePdfForPreview(input: {
+  conversationId: string;
+  messageId: string;
+  storageKey: string;
+  fileName: string;
+  targetLanguage: string;
+}): Promise<TranslationResult> {
   const res = await fetch('/api/documents/translate', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      sourceUrl,
-      fileName,
-      targetLanguage,
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      storageKey: input.storageKey,
+      fileName: input.fileName,
+      targetLanguage: input.targetLanguage,
       outputMode: 'mono',
     }),
   });
@@ -573,13 +586,14 @@ export function ChatPanel({
   }, [user.preferredLanguage]);
 
   const handleOpenAttachment = useCallback(async (attachment: ChatAttachment) => {
+    const previewAttachment = attachment as PreviewChatAttachment;
     const requestId = previewRequestRef.current + 1;
     previewRequestRef.current = requestId;
     setPreviewAttachment(attachment);
     setTranslatedPreviewUrl(null);
     setTranslationError(null);
 
-    if (!isPdfAttachment(attachment) || !attachment.url) {
+    if (!isPdfAttachment(attachment) || !attachment.url || !previewAttachment.storageKey || !previewAttachment.messageId) {
       return;
     }
 
@@ -613,16 +627,18 @@ export function ChatPanel({
     }));
 
     try {
-      const result = await translatePdfForPreview(
-        attachment.url,
-        attachment.name ?? 'document.pdf',
+      const result = await translatePdfForPreview({
+        conversationId,
+        messageId: previewAttachment.messageId,
+        storageKey: previewAttachment.storageKey,
+        fileName: attachment.name ?? 'document.pdf',
         targetLanguage,
-      );
+      });
       const translatedPdf = pickTranslatedPdf(result);
       if (!translatedPdf) {
         throw new Error('Translated PDF output was not found');
       }
-      const translatedUrl = `/api/documents/translate/file?path=${encodeURIComponent(translatedPdf.path)}`;
+      const translatedUrl = `/api/documents/translate/file?id=${encodeURIComponent(translatedPdf.id)}`;
       if (previewRequestRef.current !== requestId) {
         return;
       }
@@ -744,7 +760,7 @@ export function ChatPanel({
                 ) : isPdfAttachment(previewAttachment) && previewAttachment.url ? (
                   <PdfPreview
                     title={`${previewAttachment.name ?? 'Attachment'} original`}
-                    url={buildPdfPreviewUrl(previewAttachment.url, previewAttachment.name ?? 'document.pdf')}
+                    url={previewAttachment.url}
                     className="bg-slate-50"
                   />
                 ) : (

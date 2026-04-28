@@ -7,5 +7,7 @@ export type { HospitalTypeResolver } from './routing-materials.repository.js';
 export { StubEmailService } from './stub-email.service.js';
 export { SmtpEmailService } from './smtp-email.service.js';
 export { ResendEmailService } from './resend-email.service.js';
+export { ResendInboundService } from './resend-inbound.service.js';
+export type { NormalizedInboundEmail } from './resend-inbound.service.js';
 export { TranslationWritebackService } from './translation-writeback.service.js';
 export { DifyApiClientService } from './dify-api-client.service.js';

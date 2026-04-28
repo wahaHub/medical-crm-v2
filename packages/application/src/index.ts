@@ -5,6 +5,23 @@ export { toActor } from './types/actor.js';
 // Services
 export { TranslationTaskService } from './services/translation-task.service.js';
 export {
+  ALTERNATE_REPLY_DOMAIN,
+  EmailReplyTokenService,
+  PREFERRED_REPLY_DOMAIN,
+  buildPreferredReplyAddress,
+  generateReplyToken,
+  hashReplyToken,
+  isValidReplyToken,
+  parseReplyAddress,
+} from './services/email-reply-token.service.js';
+export type {
+  ParsedReplyAddress,
+  ReplyAddressType,
+  ReplyTokenGenerationResult,
+} from './services/email-reply-token.service.js';
+export { parseEmailReplyBody } from './services/email-reply-body-parser.js';
+export type { EmailReplyBodyInput } from './services/email-reply-body-parser.js';
+export {
   AiSyncTaskService,
   buildFaqEntityKey,
   buildPackageEntityKey,
@@ -165,6 +182,7 @@ export { GetCaseStatsUseCase } from './use-cases/cases/get-case-stats.use-case.j
 export { UploadDocumentUseCase } from './use-cases/documents/upload-document.use-case.js';
 export type { UploadDocumentInput } from './use-cases/documents/upload-document.use-case.js';
 export { ListDocumentsUseCase } from './use-cases/documents/list-documents.use-case.js';
+export { GetDocumentPreviewUseCase } from './use-cases/documents/get-document-preview.use-case.js';
 export { DeleteDocumentUseCase } from './use-cases/documents/delete-document.use-case.js';
 
 // Use Cases — Progress
@@ -215,6 +233,24 @@ export type { ProcessMessageTasksResult } from './use-cases/messages/process-mes
 
 // Use Cases — Notifications
 export { NotificationEmailService } from './use-cases/notifications/notification-email.service.js';
+export { CreateEmailReplyTokenUseCase } from './use-cases/notifications/create-email-reply-token.use-case.js';
+export type {
+  CreateEmailReplyTokenInput,
+  CreateEmailReplyTokenResult,
+} from './use-cases/notifications/create-email-reply-token.use-case.js';
+
+// Use Cases — Inbound Email
+export { ProcessInboundEmailUseCase } from './use-cases/inbound/process-inbound-email.use-case.js';
+export type {
+  InboundAttachmentSource,
+  InboundAttachmentUploader,
+  InboundMediaUploadService,
+  InboundSendMessageUseCase,
+  NormalizedInboundAttachmentInput,
+  NormalizedInboundEmailInput,
+  ProcessInboundEmailResult,
+  ProcessInboundEmailUseCaseDeps,
+} from './use-cases/inbound/process-inbound-email.use-case.js';
 
 // Use Cases — AI Sync
 export { BootstrapAiSyncUseCase } from './use-cases/ai-sync/bootstrap-ai-sync.use-case.js';

@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreignKey, uuid, jsonb, boolean, bigint, unique, pgPolicy, pgEnum, numeric } from "drizzle-orm/pg-core"
+import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreignKey, uuid, jsonb, boolean, bigint, unique, pgPolicy, pgEnum, numeric, check } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const aiSummaryStatus = pgEnum("AISummaryStatus", ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'])
@@ -121,6 +121,20 @@ export const emailNotificationCooldowns = pgTable("email_notification_cooldowns"
 			name: "email_notification_cooldowns_recipient_id_fkey"
 		}).onUpdate("cascade").onDelete("cascade"),
 ]);
+
+export const emailReplyChannel = pgEnum("EmailReplyChannel", ['ADMIN_PATIENT', 'HOSPITAL_PATIENT'])
+export const emailReplyTokenStatus = pgEnum("EmailReplyTokenStatus", ['ACTIVE', 'REVOKED'])
+export const inboundEmailStatus = pgEnum("InboundEmailStatus", [
+	'PROCESSING',
+	'PROCESSED',
+	'TOKEN_NOT_FOUND',
+	'TOKEN_EXPIRED',
+	'SENDER_MISMATCH',
+	'EMAIL_AUTH_FAILED',
+	'CONVERSATION_INVALID',
+	'EMPTY_REPLY',
+	'FAILED',
+])
 
 export const cases = pgTable("cases", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
@@ -327,6 +341,89 @@ export const messages = pgTable("messages", {
 			foreignColumns: [users.id],
 			name: "messages_sender_id_fkey"
 		}).onUpdate("cascade").onDelete("restrict"),
+]);
+
+export const emailReplyTokens = pgTable("email_reply_tokens", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	tokenHash: varchar("token_hash", { length: 128 }).notNull(),
+	conversationId: uuid("conversation_id").notNull(),
+	caseId: uuid("case_id").notNull(),
+	patientId: uuid("patient_id").notNull(),
+	patientEmail: varchar("patient_email", { length: 255 }).notNull(),
+	channel: emailReplyChannel().notNull(),
+	hospitalId: uuid("hospital_id"),
+	sourceKind: varchar("source_kind", { length: 80 }).notNull(),
+	sourceId: varchar("source_id", { length: 120 }),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }).notNull(),
+	status: emailReplyTokenStatus().default('ACTIVE').notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	lastUsedAt: timestamp("last_used_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	uniqueIndex("email_reply_tokens_token_hash_key").using("btree", table.tokenHash.asc().nullsLast().op("text_ops")),
+	index("email_reply_tokens_conversation_idx").using("btree", table.conversationId.asc().nullsLast().op("uuid_ops")),
+	index("email_reply_tokens_case_patient_idx").using("btree", table.caseId.asc().nullsLast().op("uuid_ops"), table.patientId.asc().nullsLast().op("uuid_ops")),
+	index("email_reply_tokens_source_idx").using("btree", table.sourceKind.asc().nullsLast().op("text_ops"), table.sourceId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.conversationId],
+			foreignColumns: [conversations.id],
+			name: "email_reply_tokens_conversation_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.caseId],
+			foreignColumns: [cases.id],
+			name: "email_reply_tokens_case_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.patientId],
+			foreignColumns: [users.id],
+			name: "email_reply_tokens_patient_id_fkey"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.hospitalId],
+			foreignColumns: [hospitals.id],
+			name: "email_reply_tokens_hospital_id_fkey"
+		}).onDelete("cascade"),
+	check("email_reply_tokens_hospital_required", sql`${table.channel} <> 'HOSPITAL_PATIENT' OR ${table.hospitalId} IS NOT NULL`),
+]);
+
+export const inboundEmailEvents = pgTable("inbound_email_events", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	provider: varchar({ length: 40 }).notNull(),
+	providerEventId: varchar("provider_event_id", { length: 160 }),
+	providerMessageId: varchar("provider_message_id", { length: 160 }),
+	replyTokenId: uuid("reply_token_id"),
+	conversationId: uuid("conversation_id"),
+	caseId: uuid("case_id"),
+	fromEmail: varchar("from_email", { length: 255 }),
+	subject: text(),
+	status: inboundEmailStatus().default('PROCESSING').notNull(),
+	error: text(),
+	createdMessageId: uuid("created_message_id"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("inbound_email_events_provider_event_key").using("btree", table.provider.asc().nullsLast().op("text_ops"), table.providerEventId.asc().nullsLast().op("text_ops")).where(sql`${table.providerEventId} IS NOT NULL`),
+	uniqueIndex("inbound_email_events_provider_message_key").using("btree", table.provider.asc().nullsLast().op("text_ops"), table.providerMessageId.asc().nullsLast().op("text_ops")).where(sql`${table.providerMessageId} IS NOT NULL`),
+	foreignKey({
+			columns: [table.replyTokenId],
+			foreignColumns: [emailReplyTokens.id],
+			name: "inbound_email_events_reply_token_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.conversationId],
+			foreignColumns: [conversations.id],
+			name: "inbound_email_events_conversation_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.caseId],
+			foreignColumns: [cases.id],
+			name: "inbound_email_events_case_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.createdMessageId],
+			foreignColumns: [messages.id],
+			name: "inbound_email_events_created_message_id_fkey"
+		}).onDelete("set null"),
 ]);
 
 export const consultations = pgTable("consultations", {

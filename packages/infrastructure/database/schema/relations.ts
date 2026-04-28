@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones, questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations, serviceCatalogItems, quoteTemplates, bookingRequests, bookingRequestHospitals } from "./schema";
+import { hospitals, cases, users, documents, auditLogs, caseProgress, conversations, messages, emailReplyTokens, inboundEmailEvents, consultations, consultationTranscripts, hospitalRegistrationTokens, caseHospitalContacts, quotes, caseEvents, supportTickets, supportTicketReplies, packages, orders, caseJourneys, journeyMilestones, questionCollectorTemplates, questionCollectorResponses, questionCollectorCustomizations, serviceCatalogItems, quoteTemplates, bookingRequests, bookingRequestHospitals } from "./schema";
 
 export const casesRelations = relations(cases, ({one, many}) => ({
 	hospital: one(hospitals, {
@@ -14,12 +14,15 @@ export const casesRelations = relations(cases, ({one, many}) => ({
 	caseProgresses: many(caseProgress),
 	consultations: many(consultations),
 	conversations: many(conversations),
+	emailReplyTokens: many(emailReplyTokens),
+	inboundEmailEvents: many(inboundEmailEvents),
 	caseEvents: many(caseEvents),
 }));
 
 export const hospitalsRelations = relations(hospitals, ({many}) => ({
 	cases: many(cases),
 	users: many(users),
+	emailReplyTokens: many(emailReplyTokens),
 	hospitalRegistrationTokens: many(hospitalRegistrationTokens),
 }));
 
@@ -34,6 +37,7 @@ export const usersRelations = relations(users, ({one, many}) => ({
 	messages: many(messages),
 	consultations: many(consultations),
 	conversations: many(conversations),
+	emailReplyTokens: many(emailReplyTokens),
 }));
 
 export const documentsRelations = relations(documents, ({one, many}) => ({
@@ -82,6 +86,7 @@ export const messagesRelations = relations(messages, ({one, many}) => ({
 	conversations: many(conversations, {
 		relationName: "conversations_lastMessageId_messages_id"
 	}),
+	inboundEmailEvents: many(inboundEmailEvents),
 }));
 
 export const conversationsRelations = relations(conversations, ({one, many}) => ({
@@ -100,6 +105,47 @@ export const conversationsRelations = relations(conversations, ({one, many}) => 
 	user: one(users, {
 		fields: [conversations.lastSenderId],
 		references: [users.id]
+	}),
+	emailReplyTokens: many(emailReplyTokens),
+	inboundEmailEvents: many(inboundEmailEvents),
+}));
+
+export const emailReplyTokensRelations = relations(emailReplyTokens, ({one, many}) => ({
+	conversation: one(conversations, {
+		fields: [emailReplyTokens.conversationId],
+		references: [conversations.id]
+	}),
+	case: one(cases, {
+		fields: [emailReplyTokens.caseId],
+		references: [cases.id]
+	}),
+	patient: one(users, {
+		fields: [emailReplyTokens.patientId],
+		references: [users.id]
+	}),
+	hospital: one(hospitals, {
+		fields: [emailReplyTokens.hospitalId],
+		references: [hospitals.id]
+	}),
+	inboundEmailEvents: many(inboundEmailEvents),
+}));
+
+export const inboundEmailEventsRelations = relations(inboundEmailEvents, ({one}) => ({
+	replyToken: one(emailReplyTokens, {
+		fields: [inboundEmailEvents.replyTokenId],
+		references: [emailReplyTokens.id]
+	}),
+	conversation: one(conversations, {
+		fields: [inboundEmailEvents.conversationId],
+		references: [conversations.id]
+	}),
+	case: one(cases, {
+		fields: [inboundEmailEvents.caseId],
+		references: [cases.id]
+	}),
+	createdMessage: one(messages, {
+		fields: [inboundEmailEvents.createdMessageId],
+		references: [messages.id]
 	}),
 }));
 

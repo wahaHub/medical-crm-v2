@@ -150,6 +150,7 @@ export type { AgentTask, ResponseContract, RetrievedContextEntry } from './servi
 export type {
   LoadedSkillPack,
   LoadedSkillSection,
+  DomainSkillRequest,
   SkillKind,
   SkillPackDefinition,
   SkillPackId,

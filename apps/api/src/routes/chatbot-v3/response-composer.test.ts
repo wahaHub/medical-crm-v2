@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  DomainSkillRequest,
+} from '@medical-crm/application';
+import type {
   ChatbotV3ChatRequest,
 } from '@medical-crm/validation';
 import type {
@@ -1572,6 +1575,40 @@ describe('ResponseQualityChecker', () => {
     primaryActionType: 'ANSWER',
   } as const;
 
+  it('accepts and preserves follow-up action types from real domain skill section hints', () => {
+    const sectionHint: DomainSkillRequest['sectionHints'] = {
+      eventType: 'USER_RESPONDED_TO_REQUEST',
+      target: 'documents',
+      modifier: 'confirm',
+      primaryActionType: 'HANDLE_RESPONSE',
+      followUpActionType: 'REQUEST_RECORDS',
+    };
+
+    const checks = checkSkillBehavior(
+      'Thanks, we can use those records to prepare the next step.',
+      [{
+        skillId: 'documents_skill',
+        role: 'auxiliary',
+        reasonCode: 'documents_uploaded',
+        sectionIds: ['documents_uploaded'],
+        readIntentTypes: ['RECORD_REQUIREMENTS'],
+        policyText: ['Acknowledge records without pressure.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+      {
+        sectionHints: {
+          documents_skill: sectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'documents_pressure_after_rejection',
+      sectionHint,
+    }));
+  });
+
   it('fails max_questions when the response has more questions than the contract allows', () => {
     const checks = checkMinimalContract(
       'What diagnosis are you considering? When did symptoms start?',
@@ -1590,6 +1627,46 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
+  it('fails answer_before_ask when the response starts with a CTA before answering', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now. Pricing depends on diagnosis, hospital, and treatment plan.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          answerBeforeAsk: true,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'answer_before_ask',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('passes answer_before_ask when the response answers before asking', () => {
+    const checks = checkMinimalContract(
+      'Pricing depends on diagnosis, hospital, and treatment plan. Please upload your records now.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          answerBeforeAsk: true,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'answer_before_ask',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
   it('fails multiple_ctas when the contract forbids multiple CTA-ish asks', () => {
     const checks = checkMinimalContract(
       'Please upload your records now. Also book a consult today so we can continue.',
@@ -1605,6 +1682,25 @@ describe('ResponseQualityChecker', () => {
       id: 'multiple_ctas',
       result: 'fail',
       severity: 'hard',
+    }));
+  });
+
+  it('passes multiple_ctas for one overlapping CTA when the contract forbids multiple asks', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'multiple_ctas',
+      result: 'pass',
+      severity: 'observed',
     }));
   });
 
@@ -1747,6 +1843,33 @@ describe('ResponseQualityChecker', () => {
       sectionHint: pricingSectionHint,
     }));
     expect(unsafeChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails pricing when a disclaimer is followed by a guaranteed fixed price', () => {
+    const checks = checkSkillBehavior(
+      'We cannot give a fixed price before review. After that, the package is a $10,000 guaranteed fixed price.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
       id: 'pricing_unsupported_fixed_price',
       result: 'fail',
       severity: 'hard',

@@ -1,30 +1,18 @@
 import type {
   LoadedSkillSection,
-  PrimaryAction,
   ResponseContract,
-  SupervisorEventModifier,
-  SupervisorEventTarget,
-  SupervisorEventType,
+  DomainSkillRequest,
 } from '@medical-crm/application';
 
 export type ResponseQualityResult = 'pass' | 'warn' | 'fail';
 export type ResponseQualitySeverity = 'hard' | 'soft' | 'observed';
 
 export interface MinimalContractCheck {
-  id: 'max_questions' | 'multiple_ctas' | 'forbidden_claim' | 'preserve_stage_language';
+  id: 'max_questions' | 'answer_before_ask' | 'multiple_ctas' | 'forbidden_claim' | 'preserve_stage_language';
   evaluator: 'deterministic';
   severity: ResponseQualitySeverity;
   result: ResponseQualityResult;
   reason?: string;
-}
-
-interface DomainSkillRequest {
-  sectionHints: {
-    eventType: SupervisorEventType;
-    target: SupervisorEventTarget;
-    modifier: SupervisorEventModifier;
-    primaryActionType: PrimaryAction['type'];
-  };
 }
 
 export interface SkillBehaviorCheck {
@@ -48,7 +36,8 @@ export interface MinimalContractCheckOptions {
 }
 
 type MinimalResponseContract = Pick<ResponseContract, 'forbiddenClaims'> & {
-  constraints: Pick<ResponseContract['constraints'], 'maxQuestions' | 'avoidMultipleCTAs'>;
+  constraints: Pick<ResponseContract['constraints'], 'maxQuestions' | 'avoidMultipleCTAs'>
+    & Partial<Pick<ResponseContract['constraints'], 'answerBeforeAsk'>>;
 };
 
 export function checkMinimalContract(
@@ -68,6 +57,19 @@ export function checkMinimalContract(
       ? { reason: `Found ${questionCount} questions; maximum is ${responseContract.constraints.maxQuestions}.` }
       : {}),
   });
+
+  if (responseContract.constraints.answerBeforeAsk) {
+    const asksBeforeAnswer = startsWithAsk(responseText);
+    checks.push({
+      id: 'answer_before_ask',
+      evaluator: 'deterministic',
+      severity: asksBeforeAnswer ? 'hard' : 'observed',
+      result: asksBeforeAnswer ? 'fail' : 'pass',
+      ...(asksBeforeAnswer
+        ? { reason: 'Response appears to ask for an action before giving the answer.' }
+        : {}),
+    });
+  }
 
   const ctaCount = countCtaAsks(responseText);
   checks.push({
@@ -315,13 +317,33 @@ function countQuestions(responseText: string): number {
 function countCtaAsks(responseText: string): number {
   const normalized = normalize(responseText);
   const ctaPatterns = [
-    /\bplease\s+(upload|send|share|book|schedule|call|contact|complete|provide|answer)\b/g,
+    /\bplease\s+(upload|send|share|book|schedule|call|contact|complete|provide|answer)\b[^.!?]*/g,
     /\b(upload|send|share|book|schedule|call|contact|complete|provide|answer)\b[^.!?]{0,40}\b(now|today|next|when you can)\b/g,
-    /\bwould you like to\b/g,
-    /\bcan you\s+(upload|send|share|book|schedule|complete|provide|answer)\b/g,
+    /\bwould you like to\b[^.!?]*/g,
+    /\bcan you\s+(upload|send|share|book|schedule|complete|provide|answer)\b[^.!?]*/g,
   ];
 
-  return ctaPatterns.reduce((count, pattern) => count + (normalized.match(pattern) ?? []).length, 0);
+  const spans = ctaPatterns.flatMap((pattern) => [...normalized.matchAll(pattern)].map((match) => ({
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  })));
+
+  const distinctSpans: typeof spans = [];
+  for (const span of spans.sort((a, b) => a.start - b.start || b.end - a.end)) {
+    const overlapsExisting = distinctSpans.some((existing) => span.start < existing.end && span.end > existing.start);
+    if (!overlapsExisting) {
+      distinctSpans.push(span);
+    }
+  }
+
+  return distinctSpans.length;
+}
+
+function startsWithAsk(responseText: string): boolean {
+  const firstSentence = normalize(responseText).split(/[.!?\uFF01\uFF1F]/u)[0] ?? '';
+  return /^please\s+(upload|send|share|book|schedule|call|contact|complete|provide|answer)\b/.test(firstSentence)
+    || /^(upload|send|share|book|schedule|call|contact|complete|provide|answer)\b[^.!?]{0,40}\b(now|today|next|when you can)\b/.test(firstSentence)
+    || /^(would you like to|can you|could you|please tell me|what|when|where|which|who|how)\b/.test(firstSentence);
 }
 
 function containsPhrase(responseText: string, phrase: string): boolean {
@@ -337,19 +359,17 @@ function hasStageMutationLanguage(responseText: string): boolean {
 }
 
 function hasUnsupportedFixedPrice(responseText: string): boolean {
-  const normalized = normalize(responseText);
-  if (hasPricingUncertaintyDisclaimer(normalized)) {
-    return false;
-  }
+  const normalized = stripPricingUncertaintyDisclaimers(normalize(responseText));
 
   return /\bfixed\s+price\b/.test(normalized)
     || /\bguaranteed\s+(fixed\s+)?price\b/.test(normalized)
     || /[$\uFFE5]\s?\d[\d,]*(?:\.\d+)?/.test(normalized) && /\b(guaranteed|fixed|flat|package)\b/.test(normalized);
 }
 
-function hasPricingUncertaintyDisclaimer(normalized: string): boolean {
-  return /\b(cannot|can not|can't|unable to|not able to)\s+(give|provide|quote|promise)\s+(a\s+)?fixed\s+price\s+before\s+(review|assessment|evaluation)\b/.test(normalized)
-    || /\b(no|not)\s+(fixed|guaranteed)\s+price\s+(before|until)\s+(review|assessment|evaluation)\b/.test(normalized);
+function stripPricingUncertaintyDisclaimers(normalized: string): string {
+  return normalized
+    .replace(/\b(cannot|can not|can't|unable to|not able to)\s+(give|provide|quote|promise)\s+(a\s+)?fixed\s+price\s+before\s+(review|assessment|evaluation)\b/g, ' ')
+    .replace(/\b(no|not)\s+(fixed|guaranteed)\s+price\s+(before|until)\s+(review|assessment|evaluation)\b/g, ' ');
 }
 
 function isRejectionOrHesitationSection(section: LoadedSkillSection): boolean {

@@ -83,7 +83,10 @@ function primaryRouteFor(input: {
   const actionTarget = 'target' in input.turnPlan.primaryAction
     ? input.turnPlan.primaryAction.target
     : undefined;
-  return routeForTarget(actionTarget ?? input.event.target);
+  const primaryTarget = input.event.target && input.event.target !== 'unknown'
+    ? input.event.target
+    : actionTarget;
+  return routeForTarget(primaryTarget);
 }
 
 function routeForFollowUpAction(followUpAction: TurnPlan['followUpAction']): SkillRoute | null {

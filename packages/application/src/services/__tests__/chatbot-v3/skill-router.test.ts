@@ -151,6 +151,21 @@ describe('buildSkillPolicy', () => {
     });
   });
 
+  it('prefers a known event target over the primary action target for primary routing', () => {
+    expect(requests({
+      event: event({ target: 'pricing' }),
+      turnPlan: plan({
+        primaryAction: { type: 'ANSWER', target: 'documents', mode: 'faq' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })[0]).toMatchObject({
+      skillId: 'pricing_skill',
+      role: 'primary',
+      sectionHints: { target: 'pricing' },
+    });
+  });
+
   it('routes minimal triage requests to documents with medical facts section hints', () => {
     expect(requests({
       event: event({ target: 'unknown' }),

@@ -71,6 +71,27 @@ function makeScenarioOutcome(overrides: Partial<ScenarioOutcome> = {}): Scenario
           status: 200,
           body: {
             messages: [{ role: 'assistant', text: 'Welcome' }],
+            debug: {
+              selectedDomainSkills: ['pricing', 'faq'],
+              loadedSkillSections: [
+                { skillId: 'pricing', sectionKey: 'overview' },
+                { skillId: 'faq', sectionKey: 'aftercare' },
+              ],
+              readIntents: [
+                { type: 'PRICING_FACTORS' },
+                { type: 'GENERAL_FAQ' },
+              ],
+              retrievedContext: [
+                { sourceType: 'skill_section', readIntent: { type: 'PRICING_FACTORS' } },
+                { sourceType: 'faq_entry', readIntent: { type: 'GENERAL_FAQ' } },
+                { sourceType: 'faq_entry', readIntent: { type: 'GENERAL_FAQ' } },
+              ],
+              responseContract: {
+                structure: 'answer_then_advance',
+                primaryMove: 'answer',
+                followUpMove: 'invite_next_step',
+              },
+            },
           },
           bodyText: null,
           headers: {
@@ -101,7 +122,7 @@ function makeFailureScenario({
   sessionId: string | null;
   summary: string;
 }): ScenarioOutcome {
-  const transportErrorKind = failureCategory === 'chat_transport' ? 'timeout' : undefined;
+  const transportErrorKind = failureCategory === 'transport' ? 'timeout' : undefined;
 
   return makeScenarioOutcome({
     scenarioId,
@@ -126,7 +147,7 @@ function makeFailureScenario({
         turnIndex: 0,
         attempt: 2,
         durationMs: 222,
-        ...(transportErrorKind ? { transportErrorKind } : { status: failureCategory === 'chat_http' ? 500 : 200 }),
+        ...(transportErrorKind ? { transportErrorKind } : { status: failureCategory === 'transport' ? 500 : 200 }),
         retried: false,
       },
     ],
@@ -149,8 +170,24 @@ function makeFailureScenario({
           },
         },
         response: {
-          status: transportErrorKind ? 0 : failureCategory === 'chat_http' ? 500 : 200,
-          body: { ok: !transportErrorKind, failureCategory },
+          status: transportErrorKind ? 0 : failureCategory === 'transport' ? 500 : 200,
+          body: transportErrorKind
+            ? { ok: false, failureCategory }
+            : {
+                ok: true,
+                failureCategory,
+                debug: {
+                  selectedDomainSkills: ['pricing'],
+                  loadedSkillSections: [{ skillId: 'pricing', sectionKey: 'overview' }],
+                  readIntents: [{ type: 'PRICING_FACTORS' }],
+                  retrievedContext: [{ sourceType: 'skill_section', readIntent: { type: 'PRICING_FACTORS' } }],
+                  responseContract: {
+                    structure: 'answer_then_advance',
+                    primaryMove: 'answer',
+                    followUpMove: 'invite_next_step',
+                  },
+                },
+              },
           bodyText: transportErrorKind
             ? 'fetch failed; patient_session=session-cookie-123; patient_restore=restore-cookie-123'
             : JSON.stringify({ failureCategory }),
@@ -280,7 +317,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
       makeFailureScenario({
         scenarioId: 'chat_transport_timeout',
         outcome: 'HARD_FAIL',
-        failureCategory: 'chat_transport',
+        failureCategory: 'transport',
         failedPhase: 'chat',
         usableForControlPlaneJudgment: false,
         sessionId: 'sess_transport',
@@ -289,7 +326,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
       makeFailureScenario({
         scenarioId: 'chat_http_500',
         outcome: 'HARD_FAIL',
-        failureCategory: 'chat_http',
+        failureCategory: 'transport',
         failedPhase: 'chat',
         usableForControlPlaneJudgment: false,
         sessionId: 'sess_http',
@@ -298,7 +335,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
       makeFailureScenario({
         scenarioId: 'control_plane_wrong_next_action',
         outcome: 'HARD_FAIL',
-        failureCategory: 'control_plane',
+        failureCategory: 'read_planning',
         failedPhase: 'evaluation',
         usableForControlPlaneJudgment: true,
         sessionId: 'sess_control',
@@ -307,7 +344,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
       makeFailureScenario({
         scenarioId: 'composer_copy_quality',
         outcome: 'SOFT_FAIL',
-        failureCategory: 'agent_or_composer',
+        failureCategory: 'response_quality',
         failedPhase: 'evaluation',
         usableForControlPlaneJudgment: true,
         sessionId: 'sess_agent',
@@ -332,6 +369,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
       scenarioId: string;
       outcome: ScenarioOutcome['outcome'];
       summary: string;
+      qualityGate?: string;
       failureCategory?: DogfoodFailureCategory;
       failedPhase?: DogfoodFailurePhase;
       usableForControlPlaneJudgment?: boolean;
@@ -353,26 +391,34 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
   for (const section of [
     '## Environment Failures',
     '## Bootstrap Failures',
-    '## Chat Transport / HTTP Failures',
-    '## Control-Plane Failures',
-    '## Agent / Composer Failures',
+    '## Transport Failures',
+    '## Read-Planning Failures',
+    '## Response-Quality Failures',
     '## Passed Control-Plane Evidence',
+    '## Quality Evidence',
   ]) {
     assert.match(reportMarkdown, new RegExp(section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 
   assert.match(
     reportMarkdown,
-    /\| Scenario \| Outcome \| Category \| Phase \| Control-plane usable \| Session \| Summary \|/,
+    /\| Scenario \| Quality gate \| Outcome \| Category \| Phase \| Control-plane usable \| Session \| Summary \|/,
   );
   assert.match(
     reportMarkdown,
-    /\| `preflight_environment_missing_key` \| `HARD_FAIL` \| `environment` \| `preflight` \| `false` \| _none_ \| preflight missing API key \\\| retry later<br>check env \|/,
+    /\| `preflight_environment_missing_key` \| _unknown_ \| `HARD_FAIL` \| `environment` \| `preflight` \| `false` \| _none_ \| preflight missing API key \\\| retry later<br>check env \|/,
   );
   assert.match(
     reportMarkdown,
-    /\| `control_plane_wrong_next_action` \| `HARD_FAIL` \| `control_plane` \| `evaluation` \| `true` \| `sess_control` \| JourneyReducer selected wrong nextAction \|/,
+    /\| `control_plane_wrong_next_action` \| _unknown_ \| `HARD_FAIL` \| `read_planning` \| `evaluation` \| `true` \| `sess_control` \| JourneyReducer selected wrong nextAction \|/,
   );
+  assert.match(reportMarkdown, /selectedDomainSkills/);
+  assert.match(reportMarkdown, /loadedSkillSections/);
+  assert.match(reportMarkdown, /readIntents/);
+  assert.match(reportMarkdown, /retrievedContext counts/);
+  assert.match(reportMarkdown, /minimalContractChecks/);
+  assert.match(reportMarkdown, /skillBehaviorChecks/);
+  assert.match(reportMarkdown, /llmJudgeSummary/);
   assert.match(
     reportMarkdown,
     /python3 '\/Users\/haowang\/Desktop\/claws\/medical-crm-v2\/\.worktrees\/phase1-event-reducer\/scripts\/tail_journalctl\.py'[\s\S]*sess_transport\|sess_http\|sess_control\|sess_agent\|widget-chat-session-123/,
@@ -383,7 +429,7 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
     bugBacklogMarkdown,
     /\| `preflight_environment_missing_key` \| `HARD_FAIL` \| `environment` \| `preflight` \| preflight missing API key \\\| retry later<br>check env \|/,
   );
-  assert.match(bugBacklogMarkdown, /\| `chat_transport_timeout` \| `HARD_FAIL` \| `chat_transport` \| `chat` \| timeout calling chat API \|/);
+  assert.match(bugBacklogMarkdown, /\| `chat_transport_timeout` \| `HARD_FAIL` \| `transport` \| `chat` \| timeout calling chat API \|/);
 
   const environmentTranscript = transcriptsJson.scenarioTranscripts.find(
     (scenario) => scenario.scenarioId === 'preflight_environment_missing_key',
@@ -412,9 +458,34 @@ test('reporting groups scenario outcomes and preserves structured transcript fie
   assert.deepEqual(transportTurn?.request.body, { sessionId: 'sess_transport', message: 'Fixture for chat_transport_timeout' });
   assert.equal(transportTurn?.request.headers.cookie, 'patient_session=REDACTED; patient_restore=REDACTED; restore_token=REDACTED');
   assert.equal(transportTurn?.response.status, 0);
-  assert.deepEqual(transportTurn?.response.body, { ok: false, failureCategory: 'chat_transport' });
+  assert.deepEqual(transportTurn?.response.body, { ok: false, failureCategory: 'transport' });
   assert.equal(transportTurn?.response.bodyText, 'fetch failed; patient_session=REDACTED; patient_restore=REDACTED');
   assert.equal(transportTranscript?.chatAttempts?.[0]?.transportErrorKind, 'timeout');
+
+  const passedTranscript = transcriptsJson.scenarioTranscripts.find(
+    (scenario) => scenario.scenarioId === 'allowed_after_patient_session',
+  ) as (typeof transcriptsJson.scenarioTranscripts)[number] & {
+    qualityEvidence?: {
+      selectedDomainSkills: string[];
+      loadedSkillSections: unknown[];
+      readIntents: unknown[];
+      retrievedContextCounts: { total: number };
+      minimalContractChecks: unknown[];
+      skillBehaviorChecks: unknown[];
+      llmJudgeSummary: { status: string; summary: string };
+    };
+  };
+  assert.deepEqual(passedTranscript?.qualityEvidence?.selectedDomainSkills, ['pricing', 'faq']);
+  assert.equal(passedTranscript?.qualityGate, 'required');
+  assert.equal(passedTranscript?.qualityEvidence?.loadedSkillSections.length, 2);
+  assert.equal(passedTranscript?.qualityEvidence?.readIntents.length, 2);
+  assert.equal(passedTranscript?.qualityEvidence?.retrievedContextCounts.total, 3);
+  assert.ok(Array.isArray(passedTranscript?.qualityEvidence?.minimalContractChecks));
+  assert.ok(Array.isArray(passedTranscript?.qualityEvidence?.skillBehaviorChecks));
+  assert.deepEqual(passedTranscript?.qualityEvidence?.llmJudgeSummary, {
+    status: 'not_run',
+    summary: 'LLM judge not enabled for this run.',
+  });
 
   for (const scenario of transcriptsJson.scenarioTranscripts.filter((entry) => entry.outcome !== 'PASS')) {
     assert.ok(scenario.failureCategory, `${scenario.scenarioId} should include failureCategory`);

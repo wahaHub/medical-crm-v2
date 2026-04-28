@@ -137,18 +137,18 @@ test('bootstrap failures are classified as hard failures outside control-plane j
   assert.deepEqual(result.notes, []);
 });
 
-test('agent or composer failures are classified as soft failures with usable control-plane evidence', () => {
+test('response quality failures are classified as soft failures with usable control-plane evidence', () => {
   const result = evaluator.buildClassifiedScenarioOutcome({
     scenarioId: 'faq_side_path_preserves_stage',
     summary: 'FAQ agent fell back after reducer selected the FAQ side-path',
-    failureCategory: 'agent_or_composer',
+    failureCategory: 'response_quality',
     failedPhase: 'evaluation',
     usableForControlPlaneJudgment: true,
   });
 
-  assert.equal(evaluator.defaultOutcomeForFailureCategory('agent_or_composer'), 'SOFT_FAIL');
+  assert.equal(evaluator.defaultOutcomeForFailureCategory('response_quality'), 'SOFT_FAIL');
   assert.equal(result.outcome, 'SOFT_FAIL');
-  assert.equal(result.failureCategory, 'agent_or_composer');
+  assert.equal(result.failureCategory, 'response_quality');
   assert.equal(result.failedPhase, 'evaluation');
   assert.equal(result.usableForControlPlaneJudgment, true);
 });
@@ -183,7 +183,7 @@ test('non-pass classified outcomes require failure category, failed phase, and u
         scenarioId: 'missing_usability',
         outcome: 'HARD_FAIL',
         summary: 'usability was not supplied',
-        failureCategory: 'chat_transport',
+        failureCategory: 'transport',
         failedPhase: 'chat',
       }),
     /usableForControlPlaneJudgment/,
@@ -240,7 +240,7 @@ test('bootstrap failure results normalize into bootstrap hard failures outside c
   assert.equal(result.sessionId, null);
 });
 
-test('chat response status 0 classifies as chat transport hard failure outside control-plane judgment', () => {
+test('chat response status 0 classifies as transport hard failure outside control-plane judgment', () => {
   const result = evaluator.classifyChatFailureOutcome({
     scenarioId: 'intake_to_triage_opening',
     status: 0,
@@ -261,14 +261,14 @@ test('chat response status 0 classifies as chat transport hard failure outside c
   });
 
   assert.equal(result.outcome, 'HARD_FAIL');
-  assert.equal(result.failureCategory, 'chat_transport');
+  assert.equal(result.failureCategory, 'transport');
   assert.equal(result.failedPhase, 'chat');
   assert.equal(result.usableForControlPlaneJudgment, false);
   assert.equal(result.sessionId, 'sess_transport');
   assert.equal(result.chatAttempts[0]?.transportErrorKind, 'timeout');
 });
 
-test('chat response 5xx classifies as chat HTTP hard failure outside control-plane judgment', () => {
+test('chat response 5xx also classifies as transport hard failure outside control-plane judgment', () => {
   const result = evaluator.classifyChatFailureOutcome({
     scenarioId: 'triage_to_recommendation',
     status: 500,
@@ -277,13 +277,13 @@ test('chat response 5xx classifies as chat HTTP hard failure outside control-pla
   });
 
   assert.equal(result.outcome, 'HARD_FAIL');
-  assert.equal(result.failureCategory, 'chat_http');
+  assert.equal(result.failureCategory, 'transport');
   assert.equal(result.failedPhase, 'chat');
   assert.equal(result.usableForControlPlaneJudgment, false);
   assert.equal(result.sessionId, 'sess_http');
 });
 
-test('HTTP 200 with wrong journey oracle classifies as usable control-plane hard failure', () => {
+test('HTTP 200 with wrong journey oracle classifies as usable read planning hard failure', () => {
   const result = evaluator.classifyEvaluationOutcome({
     scenarioId: 'faq_detour_no_progression',
     summary: 'journey: expected FAQ side-path to preserve stage, got TRIAGE',
@@ -294,13 +294,13 @@ test('HTTP 200 with wrong journey oracle classifies as usable control-plane hard
   });
 
   assert.equal(result.outcome, 'HARD_FAIL');
-  assert.equal(result.failureCategory, 'control_plane');
+  assert.equal(result.failureCategory, 'read_planning');
   assert.equal(result.failedPhase, 'evaluation');
   assert.equal(result.usableForControlPlaneJudgment, true);
   assert.equal(result.sessionId, 'sess_control');
 });
 
-test('HTTP 200 with acceptable journey but degraded output classifies as usable agent/composer soft failure', () => {
+test('HTTP 200 with acceptable journey but degraded output classifies as usable response quality soft failure', () => {
   const result = evaluator.classifyEvaluationOutcome({
     scenarioId: 'recommendation_selected_to_consult',
     summary: 'response: reducer selected consult flow but composer omitted the card',
@@ -311,10 +311,48 @@ test('HTTP 200 with acceptable journey but degraded output classifies as usable 
   });
 
   assert.equal(result.outcome, 'SOFT_FAIL');
-  assert.equal(result.failureCategory, 'agent_or_composer');
+  assert.equal(result.failureCategory, 'response_quality');
   assert.equal(result.failedPhase, 'evaluation');
   assert.equal(result.usableForControlPlaneJudgment, true);
   assert.equal(result.sessionId, 'sess_agent');
+});
+
+test('deterministic contract failures classify as hard agent contract failures', () => {
+  const result = evaluator.classifyEvaluationOutcome({
+    scenarioId: 'intake_to_triage_opening',
+    summary: 'response contract failed: missing next-step invite and wrong card payload',
+    journey: { result: 'PASS' },
+    response: {
+      result: 'HARD_FAIL',
+      reason: 'response contract failed: missing next-step invite and wrong card payload',
+    },
+    continuity: { result: 'PASS' },
+    sessionId: 'sess_contract',
+  });
+
+  assert.equal(result.outcome, 'HARD_FAIL');
+  assert.equal(result.failureCategory, 'agent_contract');
+  assert.equal(result.failedPhase, 'evaluation');
+  assert.equal(result.usableForControlPlaneJudgment, true);
+});
+
+test('deterministic skill behavior failures classify as hard skill behavior failures', () => {
+  const result = evaluator.classifyEvaluationOutcome({
+    scenarioId: 'triage_to_recommendation',
+    summary: 'selected skill behavior missing expected pricing explainer',
+    journey: { result: 'PASS' },
+    response: {
+      result: 'HARD_FAIL',
+      reason: 'selected skill behavior missing expected pricing explainer',
+    },
+    continuity: { result: 'PASS' },
+    sessionId: 'sess_skill_behavior',
+  });
+
+  assert.equal(result.outcome, 'HARD_FAIL');
+  assert.equal(result.failureCategory, 'skill_behavior');
+  assert.equal(result.failedPhase, 'evaluation');
+  assert.equal(result.usableForControlPlaneJudgment, true);
 });
 
 test('classified run rollup helper preserves full scenario outcomes for artifact publishing', () => {

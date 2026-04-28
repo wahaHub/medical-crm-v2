@@ -137,7 +137,7 @@ export function evaluateScenarioOutcome(
 }
 
 export function defaultOutcomeForFailureCategory(category: DogfoodFailureCategory): DogfoodAxisOutcome {
-  return category === 'agent_or_composer' ? 'SOFT_FAIL' : 'HARD_FAIL';
+  return category === 'response_quality' ? 'SOFT_FAIL' : 'HARD_FAIL';
 }
 
 export function buildClassifiedScenarioOutcome(input: BuildClassifiedScenarioOutcomeInput): ScenarioOutcome {
@@ -194,7 +194,7 @@ export function classifyChatFailureOutcome(input: ClassifyChatFailureOutcomeInpu
   if (input.status === 0) {
     return buildClassifiedScenarioOutcome({
       ...input,
-      failureCategory: 'chat_transport',
+      failureCategory: 'transport',
       failedPhase: 'chat',
       usableForControlPlaneJudgment: false,
     });
@@ -203,7 +203,7 @@ export function classifyChatFailureOutcome(input: ClassifyChatFailureOutcomeInpu
   if (input.status >= 400) {
     return buildClassifiedScenarioOutcome({
       ...input,
-      failureCategory: 'chat_http',
+      failureCategory: 'transport',
       failedPhase: 'chat',
       usableForControlPlaneJudgment: false,
     });
@@ -229,15 +229,34 @@ export function classifyEvaluationOutcome(input: ClassifyEvaluationOutcomeInput)
     });
   }
 
-  const hasControlPlaneFailure =
-    input.journey.result !== 'PASS' || input.continuity.result !== 'PASS';
-  const failureCategory: DogfoodFailureCategory = hasControlPlaneFailure
-    ? 'control_plane'
-    : 'agent_or_composer';
+  let failureCategory: DogfoodFailureCategory;
+  let outcome: DogfoodAxisOutcome = evaluated.outcome;
+
+  if (input.journey.result !== 'PASS') {
+    failureCategory = 'read_planning';
+  } else if (input.continuity.result !== 'PASS') {
+    failureCategory = 'control_plane';
+  } else {
+    const responseReason = input.response.reason?.toLowerCase() ?? '';
+    if (input.response.result === 'HARD_FAIL') {
+      if (responseReason.includes('contract')) {
+        failureCategory = 'agent_contract';
+      } else if (responseReason.includes('skill behavior')) {
+        failureCategory = 'skill_behavior';
+      } else if (responseReason.includes('skill routing')) {
+        failureCategory = 'skill_routing';
+      } else {
+        failureCategory = 'response_quality';
+      }
+    } else {
+      failureCategory = 'response_quality';
+      outcome = 'SOFT_FAIL';
+    }
+  }
 
   return buildClassifiedScenarioOutcome({
     ...input,
-    outcome: failureCategory === 'agent_or_composer' ? 'SOFT_FAIL' : evaluated.outcome,
+    outcome,
     summary: input.summary || evaluated.reason,
     failureCategory,
     failedPhase: 'evaluation',

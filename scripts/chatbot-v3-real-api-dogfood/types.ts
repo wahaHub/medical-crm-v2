@@ -12,10 +12,13 @@ export interface DogfoodConfig {
 export type DogfoodFailureCategory =
   | 'environment'
   | 'bootstrap'
-  | 'chat_transport'
-  | 'chat_http'
   | 'control_plane'
-  | 'agent_or_composer';
+  | 'skill_routing'
+  | 'read_planning'
+  | 'agent_contract'
+  | 'skill_behavior'
+  | 'response_quality'
+  | 'transport';
 
 export type DogfoodFailurePhase =
   | 'preflight'

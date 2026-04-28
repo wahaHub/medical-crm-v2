@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type {
   IInboundEmailEventRepository,
   InboundEmailClaimInput,
@@ -138,27 +138,59 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
     input: InboundEmailClaimInput,
     db: CrmDb,
   ): Promise<InboundEmailEvent> {
-    const set: Partial<typeof inboundEmailEvents.$inferInsert> = {};
+    let current = existing;
 
-    if (!existing.providerEventId && input.providerEventId) {
-      set.providerEventId = input.providerEventId;
+    if (!current.providerEventId && input.providerEventId) {
+      current = await this.compareAndSetIdentifier(
+        current,
+        input,
+        db,
+        inboundEmailEvents.providerEventId,
+        { providerEventId: input.providerEventId },
+      );
     }
-    if (!existing.providerMessageId && input.providerMessageId) {
-      set.providerMessageId = input.providerMessageId;
+    if (!current.providerMessageId && input.providerMessageId) {
+      current = await this.compareAndSetIdentifier(
+        current,
+        input,
+        db,
+        inboundEmailEvents.providerMessageId,
+        { providerMessageId: input.providerMessageId },
+      );
     }
 
-    if (Object.keys(set).length === 0) {
-      return existing;
-    }
+    return current;
+  }
 
-    set.updatedAt = new Date().toISOString();
+  private async compareAndSetIdentifier(
+    existing: InboundEmailEvent,
+    input: InboundEmailClaimInput,
+    db: CrmDb,
+    column: typeof inboundEmailEvents.providerEventId | typeof inboundEmailEvents.providerMessageId,
+    set: Pick<Partial<typeof inboundEmailEvents.$inferInsert>, 'providerEventId' | 'providerMessageId'>,
+  ): Promise<InboundEmailEvent> {
+    const values = {
+      ...set,
+      updatedAt: new Date().toISOString(),
+    };
 
-    await db
+    const rows = await db
       .update(inboundEmailEvents)
-      .set(set)
-      .where(eq(inboundEmailEvents.id, existing.id));
+      .set(values)
+      .where(and(eq(inboundEmailEvents.id, existing.id), isNull(column)))
+      .returning();
 
-    return (await this.findClaimedById(existing.id, db)) ?? existing;
+    if (rows[0]) {
+      return this.rowToEntity(rows[0]);
+    }
+
+    const latest = await this.findClaimedById(existing.id, db);
+    if (!latest) {
+      throw new Error('Inbound email claim conflict could not be resolved');
+    }
+
+    this.assertIdentifiersDoNotConflict(latest, input);
+    return latest;
   }
 
   private async findClaimedById(id: string, db: CrmDb): Promise<InboundEmailEvent | null> {

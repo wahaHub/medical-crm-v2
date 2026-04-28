@@ -28,7 +28,12 @@ type EventRow = {
   updatedAt: string;
 };
 
-function makeFakeDb(rows: EventRow[]) {
+function makeFakeDb(
+  rows: EventRow[],
+  options: {
+    beforeUpdate?: (values: Partial<EventRow>, rows: EventRow[]) => void;
+  } = {},
+) {
   const db = {
     select() {
       return {
@@ -101,8 +106,13 @@ function makeFakeDb(rows: EventRow[]) {
         set(values: Partial<EventRow>) {
           return {
             where(condition: unknown) {
-              for (const row of filterRows(rows, condition)) Object.assign(row, values);
-              return Promise.resolve();
+              options.beforeUpdate?.(values, rows);
+              const updatedRows = filterRows(rows, condition);
+              for (const row of updatedRows) Object.assign(row, values);
+              return {
+                returning: async () => updatedRows,
+                then: (resolve: () => void) => Promise.resolve().then(resolve),
+              };
             },
           };
         },
@@ -140,6 +150,7 @@ function matchesCondition(node: unknown, row: EventRow): boolean {
   const clauses = extractClauses(node);
   return clauses.every(({ column, operator, value }) => {
     const rowValue = row[toCamelCase(column) as keyof EventRow];
+    if (operator.includes(' is null')) return rowValue == null;
     if (operator.includes(' = ')) return rowValue === value;
     return true;
   });
@@ -354,6 +365,64 @@ describe('DrizzleInboundEmailEventRepository', () => {
     expect(duplicateByEvent.alreadyClaimed).toBe(true);
     expect(duplicateByEvent.event.id).toBe(first.event.id);
     expect(rows).toHaveLength(1);
+  });
+
+  it('claim throws when provider message id is concurrently enriched to a different value', async () => {
+    let raced = false;
+    repository = new DrizzleInboundEmailEventRepository(makeFakeDb(rows, {
+      beforeUpdate: (values, rowsRef) => {
+        if (!raced && values.providerMessageId === 'msg-1') {
+          raced = true;
+          rowsRef[0]!.providerMessageId = 'msg-2';
+        }
+      },
+    }));
+
+    await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+    });
+
+    await expect(repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    })).rejects.toThrow('Inbound email provider identifiers conflict with an existing event');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-2',
+    });
+  });
+
+  it('claim throws when provider event id is concurrently enriched to a different value', async () => {
+    let raced = false;
+    repository = new DrizzleInboundEmailEventRepository(makeFakeDb(rows, {
+      beforeUpdate: (values, rowsRef) => {
+        if (!raced && values.providerEventId === 'evt-1') {
+          raced = true;
+          rowsRef[0]!.providerEventId = 'evt-2';
+        }
+      },
+    }));
+
+    await repository.claim({
+      provider: 'resend',
+      providerMessageId: 'msg-1',
+    });
+
+    await expect(repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    })).rejects.toThrow('Inbound email provider identifiers conflict with an existing event');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      providerEventId: 'evt-2',
+      providerMessageId: 'msg-1',
+    });
   });
 
   it('complete persists audit and routing fields', async () => {

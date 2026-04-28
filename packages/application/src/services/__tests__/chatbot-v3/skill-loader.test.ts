@@ -11,7 +11,7 @@ const legacyShapedDomainSkill = {
 };
 
 // @ts-expect-error Domain ids must not be assignable through legacy-shaped variables.
-const invalidDomainLoadedSkillFromVariable: LoadedSkillPack = legacyShapedDomainSkill;
+const _invalidDomainLoadedSkillFromVariable: LoadedSkillPack = legacyShapedDomainSkill;
 
 describe('DOMAIN_SKILL_REGISTRY', () => {
   it('contains exactly the Phase 1.2 domain skills', () => {
@@ -116,7 +116,7 @@ describe('loadSkillPacks', () => {
   it('falls back from unknown ids to a valid legacy safe degradation skill', () => {
     const loaded = loadSkillPacks({
       requests: [
-        { skillPackId: 'missing_skill' as any, reasonCode: 'bad' },
+        { skillPackId: 'missing_skill' as never, reasonCode: 'bad' },
       ],
       maxSkillSnippets: 6,
     });

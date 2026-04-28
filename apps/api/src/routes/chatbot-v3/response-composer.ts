@@ -340,9 +340,11 @@ function readRecordsAssistantText(
     return null;
   }
 
-  return [followUp, questions.join('\n')]
-    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
-    .join('\n');
+  if (followUp) {
+    return followUp;
+  }
+
+  return questions[0] ?? null;
 }
 
 function readRecommendationAssistantText(

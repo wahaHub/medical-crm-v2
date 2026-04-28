@@ -2441,8 +2441,8 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
-    expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
+    expect(body.messages[0].text).toContain('We already received your basic intake');
+    expect(body.messages[0].text).not.toContain('What is the main symptom, diagnosis, or medical problem right now?');
   });
 
   it('persists minimalTriageComplete only when RecordsAgent triage determines completion', async () => {
@@ -3206,8 +3206,8 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
-    expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
+    expect(body.messages[0].text).toContain('We already received your basic intake');
+    expect(body.messages[0].text).not.toContain('What is the main symptom, diagnosis, or medical problem right now?');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'UPLOAD_RECORDS',
@@ -3291,8 +3291,8 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
-    expect(body.messages[0].text).toContain('What tests, treatments, medicines, or diagnoses already exist?');
+    expect(body.messages[0].text).toContain('We already received your basic intake');
+    expect(body.messages[0].text).not.toContain('What tests, treatments, medicines, or diagnoses already exist?');
     expect(body.cards).toEqual(expect.not.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',

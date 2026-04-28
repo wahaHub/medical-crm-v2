@@ -378,7 +378,7 @@ describe('ResponseComposer', () => {
     expect(PROCESS_OVERVIEW_TEXT).toContain('consult');
   });
 
-  it('surfaces RecordsAgent triage follow-up and the 3 key questions on incomplete minimal triage turns', () => {
+  it('surfaces only the focused RecordsAgent triage follow-up on incomplete minimal triage turns', () => {
     const response = composeResponse({
       body: createRequest({
         message: 'What do you need from me first?',
@@ -416,9 +416,9 @@ describe('ResponseComposer', () => {
 
     expect(response.messages[0]?.text).toContain('We already received your basic intake');
     expect(response.messages[0]?.text).toContain('or you can skip them if you prefer');
-    expect(response.messages[0]?.text).toContain('1. What is the main symptom');
-    expect(response.messages[0]?.text).toContain('2. When did it start');
-    expect(response.messages[0]?.text).toContain('3. What tests, treatments');
+    expect(response.messages[0]?.text).not.toContain('1. What is the main symptom');
+    expect(response.messages[0]?.text).not.toContain('2. When did it start');
+    expect(response.messages[0]?.text).not.toContain('3. What tests, treatments');
   });
 
   it('uses post-intake opening wording when the current turn has a triage status patch before persistence', () => {

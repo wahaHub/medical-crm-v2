@@ -143,8 +143,8 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   },
   {
     id: 'handoff_denied_returns_to_current_step',
-    v1Status: 'required',
-    qualityGate: 'required',
+    v1Status: 'deferred',
+    qualityGate: 'local_only',
     group: 'dirty_path',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -169,8 +169,8 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   },
   {
     id: 'direct_human_request_to_handoff',
-    v1Status: 'deferred',
-    qualityGate: 'observed',
+    v1Status: 'required',
+    qualityGate: 'required',
     group: 'core_journey',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -292,7 +292,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
           qualityGate: scenario.qualityGate,
-          why: 'Verifies denied escalation recovers by returning to the current step.',
+          why: 'Synthetic-only coverage for denied escalation recovery; real allowed bootstrap can create handoff tickets.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
         };
@@ -312,7 +312,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
           qualityGate: scenario.qualityGate,
-          why: 'Useful follow-up coverage once basic consult continuity is proven.',
+          why: 'Verifies direct human escalation on the real API once the allowed patient session can create tickets.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
         };

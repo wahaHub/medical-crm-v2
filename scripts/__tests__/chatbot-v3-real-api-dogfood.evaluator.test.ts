@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as evaluator from '../chatbot-v3-real-api-dogfood/evaluator.ts';
-import { buildScenarioTurns } from '../chatbot-v3-real-api-dogfood.ts';
+import {
+  buildScenarioTurns,
+  evaluateJourneyFromRuntime,
+} from '../chatbot-v3-real-api-dogfood.ts';
 import {
   DOGFOOD_SCENARIO_IDS,
   QUALITY_GATE_EXECUTED_SCENARIO_IDS,
@@ -32,10 +35,14 @@ function buildScenarioOutcome(
 function buildTurnTranscript(overrides: Partial<TurnTranscript['response']> & {
   body?: unknown;
   bodyText?: string | null;
+  journeySummary?: TurnTranscript['journeySummary'];
+  turnIndex?: number;
+  scenarioId?: string;
 } = {}): TurnTranscript {
   return {
-    scenarioId: 'triage_to_recommendation',
-    turnIndex: 0,
+    scenarioId: overrides.scenarioId ?? 'triage_to_recommendation',
+    turnIndex: overrides.turnIndex ?? 0,
+    journeySummary: overrides.journeySummary,
     request: {
       method: 'POST',
       path: '/api/v3/chatbot/chat',
@@ -51,6 +58,26 @@ function buildTurnTranscript(overrides: Partial<TurnTranscript['response']> & {
       bodyText: overrides.bodyText ?? null,
       headers: overrides.headers ?? {},
     },
+  };
+}
+
+function buildRuntimeDebug(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    responseContract: {
+      constraints: {
+        maxQuestions: 2,
+        avoidMultipleCTAs: false,
+      },
+      forbiddenClaims: [],
+    },
+    loadedSkillSections: [],
+    minimalContractChecks: [],
+    skillBehaviorChecks: [],
+    llmJudgeSummary: {
+      status: 'pass',
+      summary: 'No issues found.',
+    },
+    ...overrides,
   };
 }
 
@@ -192,7 +219,6 @@ test('quality gate execution filter includes observed scenarios and excludes loc
     'triage_to_recommendation',
     'recommendation_selected_to_consult',
     'faq_detour_no_progression',
-    'handoff_denied_returns_to_current_step',
     'recommendation_to_explain',
     'direct_human_request_to_handoff',
     'recommendation_revisit_compare',
@@ -204,14 +230,21 @@ test('quality gate execution filter includes observed scenarios and excludes loc
 
 test('quality-gated observed scenarios have explicit turn scripts', () => {
   assert.deepEqual(buildScenarioTurns('recommendation_to_explain'), [
+    {
+      message: 'Main problem: chest pain. It started 3 days ago, feels moderate, and I already had a blood test.',
+      action: { type: 'TRIAGE_SUBMITTED' },
+    },
     { message: 'Please explain the process first.' },
-    { message: 'What should I do next?' },
   ]);
   assert.deepEqual(buildScenarioTurns('direct_human_request_to_handoff'), [
     { message: 'Need a human now' },
     { message: 'Any update from the human team?' },
   ]);
   assert.deepEqual(buildScenarioTurns('recommendation_revisit_compare'), [
+    {
+      message: 'Main problem: chest pain. It started 3 days ago, feels moderate, and I already had a blood test.',
+      action: { type: 'TRIAGE_SUBMITTED' },
+    },
     { message: 'Compare the hospitals for me.' },
     { message: 'Compare them again and explain the differences.' },
     { message: 'Show me the hospital options again.' },
@@ -220,6 +253,89 @@ test('quality-gated observed scenarios have explicit turn scripts', () => {
     { message: 'Please explain the process again.' },
     { message: 'What should I do next?' },
   ]);
+});
+
+test('journey oracle fails when triage scenario does not reach recommendation', () => {
+  const result = evaluateJourneyFromRuntime('triage_to_recommendation', [
+    buildTurnTranscript({
+      scenarioId: 'triage_to_recommendation',
+      journeySummary: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+    }),
+  ]);
+
+  assert.deepEqual(result, {
+    result: 'HARD_FAIL',
+    reason: 'expected final journey RECOMMENDATION/active, got COLLECT_MINIMAL_MEDICAL_FACTS/active',
+  });
+});
+
+test('journey oracle fails when FAQ detour advances the stage', () => {
+  const result = evaluateJourneyFromRuntime('faq_detour_no_progression', [
+    buildTurnTranscript({
+      scenarioId: 'faq_detour_no_progression',
+      journeySummary: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+    }),
+    buildTurnTranscript({
+      scenarioId: 'faq_detour_no_progression',
+      turnIndex: 1,
+      journeySummary: { stage: 'RECOMMENDATION', phase: 'active' },
+    }),
+  ]);
+
+  assert.deepEqual(result, {
+    result: 'HARD_FAIL',
+    reason: 'expected final journey COLLECT_MINIMAL_MEDICAL_FACTS/active, got RECOMMENDATION/active',
+  });
+});
+
+test('journey oracle fails when direct human request does not reach handoff', () => {
+  const result = evaluateJourneyFromRuntime('direct_human_request_to_handoff', [
+    buildTurnTranscript({
+      scenarioId: 'direct_human_request_to_handoff',
+      journeySummary: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+    }),
+  ]);
+
+  assert.deepEqual(result, {
+    result: 'HARD_FAIL',
+    reason: 'expected final journey HUMAN_HANDOFF/active, got COLLECT_MINIMAL_MEDICAL_FACTS/active',
+  });
+});
+
+test('journey oracle expects handoff denial to return to the current step', () => {
+  assert.deepEqual(
+    evaluateJourneyFromRuntime('handoff_denied_returns_to_current_step', [
+      buildTurnTranscript({
+        scenarioId: 'handoff_denied_returns_to_current_step',
+        journeySummary: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+      }),
+    ]),
+    { result: 'PASS' },
+  );
+
+  assert.deepEqual(
+    evaluateJourneyFromRuntime('handoff_denied_returns_to_current_step', [
+      buildTurnTranscript({
+        scenarioId: 'handoff_denied_returns_to_current_step',
+        journeySummary: { stage: 'HUMAN_HANDOFF', phase: 'active' },
+      }),
+    ]),
+    {
+      result: 'HARD_FAIL',
+      reason: 'expected final journey COLLECT_MINIMAL_MEDICAL_FACTS/active, got HUMAN_HANDOFF/active',
+    },
+  );
+});
+
+test('journey oracle passes when the final stage matches scenario expectation', () => {
+  const result = evaluateJourneyFromRuntime('triage_to_recommendation', [
+    buildTurnTranscript({
+      scenarioId: 'triage_to_recommendation',
+      journeySummary: { stage: 'RECOMMENDATION', phase: 'active' },
+    }),
+  ]);
+
+  assert.deepEqual(result, { result: 'PASS' });
 });
 
 test('non-pass classified outcomes require failure category, failed phase, and usability before serialization', () => {
@@ -406,7 +522,7 @@ test('runtime response evaluator classifies deterministic minimal contract failu
     buildTurnTranscript({
       body: {
         messages: [{ role: 'assistant', text: 'Can you share the report?' }],
-        runtimeDebug: {
+        runtimeDebug: buildRuntimeDebug({
           responseContract: {
             constraints: {
               maxQuestions: 0,
@@ -414,7 +530,7 @@ test('runtime response evaluator classifies deterministic minimal contract failu
             },
             forbiddenClaims: [],
           },
-        },
+        }),
       },
     }),
   ]);
@@ -428,12 +544,79 @@ test('runtime response evaluator classifies deterministic minimal contract failu
   });
 });
 
+test('runtime response evaluator requires runtimeDebug on successful turns', () => {
+  const evaluated = evaluator.evaluateResponseQualityFromRuntime([
+    buildTurnTranscript({
+      body: {
+        messages: [{ role: 'assistant', text: 'Here is the answer.' }],
+      },
+    }),
+  ]);
+
+  assert.deepEqual(evaluated, {
+    response: {
+      result: 'HARD_FAIL',
+      reason: 'runtimeDebug missing from successful chat response on turn 1.',
+    },
+    failureCategory: 'environment',
+  });
+});
+
+test('runtime response evaluator requires complete runtimeDebug quality evidence', () => {
+  const malformedValues: Record<string, unknown> = {
+    responseContract: null,
+    loadedSkillSections: {},
+    minimalContractChecks: {},
+    skillBehaviorChecks: {},
+  };
+
+  for (const missingField of Object.keys(malformedValues)) {
+    const debug = buildRuntimeDebug();
+    delete debug[missingField];
+
+    const evaluated = evaluator.evaluateResponseQualityFromRuntime([
+      buildTurnTranscript({
+        body: {
+          messages: [{ role: 'assistant', text: 'Here is the answer.' }],
+          runtimeDebug: debug,
+        },
+      }),
+    ]);
+
+    assert.deepEqual(evaluated, {
+      response: {
+        result: 'HARD_FAIL',
+        reason: `runtimeDebug ${missingField} missing or malformed on successful chat response turn 1.`,
+      },
+      failureCategory: 'environment',
+    });
+
+    const malformedDebug = buildRuntimeDebug({ [missingField]: malformedValues[missingField] });
+    const malformedEvaluated = evaluator.evaluateResponseQualityFromRuntime([
+      buildTurnTranscript({
+        body: {
+          messages: [{ role: 'assistant', text: 'Here is the answer.' }],
+          runtimeDebug: malformedDebug,
+        },
+      }),
+    ]);
+
+    assert.deepEqual(malformedEvaluated, {
+      response: {
+        result: 'HARD_FAIL',
+        reason: `runtimeDebug ${missingField} missing or malformed on successful chat response turn 1.`,
+      },
+      failureCategory: 'environment',
+    });
+  }
+});
+
 test('runtime response evaluator classifies deterministic skill behavior failures as hard skill behavior failures', () => {
   const evaluated = evaluator.evaluateResponseQualityFromRuntime([
     buildTurnTranscript({
       body: {
         messages: [{ role: 'assistant', text: 'The fixed price is $5000.' }],
-        runtimeDebug: {
+        runtimeDebug: buildRuntimeDebug({
           loadedSkillSections: [{
             skillId: 'pricing_skill',
             sectionIds: ['overview'],
@@ -441,7 +624,7 @@ test('runtime response evaluator classifies deterministic skill behavior failure
             handlingGuidance: [],
             policyText: [],
           }],
-        },
+        }),
       },
     }),
   ]);
@@ -460,12 +643,12 @@ test('runtime response evaluator sends llm judge failures to the soft response q
     buildTurnTranscript({
       body: {
         messages: [{ role: 'assistant', text: 'Here is the answer.' }],
-        runtimeDebug: {
+        runtimeDebug: buildRuntimeDebug({
           llmJudgeSummary: {
             status: 'fail',
             summary: 'Too terse for the scenario.',
           },
-        },
+        }),
       },
     }),
   ]);
@@ -485,7 +668,7 @@ test('runtime response evaluator preserves an earlier hard deterministic failure
       body: {
         messages: [{ role: 'assistant', text: 'Can you share the report?' }],
         journey: { stage: 'RECOMMENDATION', phase: 'active' },
-        runtimeDebug: {
+        runtimeDebug: buildRuntimeDebug({
           responseContract: {
             constraints: {
               maxQuestions: 0,
@@ -493,14 +676,14 @@ test('runtime response evaluator preserves an earlier hard deterministic failure
             },
             forbiddenClaims: [],
           },
-        },
+        }),
       },
     }),
     buildTurnTranscript({
       body: {
         messages: [{ role: 'assistant', text: 'Here is the answer.' }],
         journey: { stage: 'RECOMMENDATION', phase: 'active' },
-        runtimeDebug: {
+        runtimeDebug: buildRuntimeDebug({
           responseContract: {
             constraints: {
               maxQuestions: 2,
@@ -508,7 +691,7 @@ test('runtime response evaluator preserves an earlier hard deterministic failure
             },
             forbiddenClaims: [],
           },
-        },
+        }),
       },
     }),
   ]);

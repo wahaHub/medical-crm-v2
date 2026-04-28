@@ -79,6 +79,7 @@ export interface ClassifyEvaluationOutcomeInput extends BaseClassifiedFailureInp
 }
 
 export type ResponseEvaluationFailureCategory =
+  | 'environment'
   | 'agent_contract'
   | 'skill_behavior'
   | 'skill_routing'
@@ -372,33 +373,54 @@ function evaluateSuccessfulTurnResponseQuality(
   const responseText = extractAssistantResponseText(turn);
   const debug = extractRuntimeResponseDebug(turn);
 
+  if (!debug) {
+    return {
+      response: {
+        result: 'HARD_FAIL',
+        reason: `runtimeDebug missing from successful chat response on turn ${turn.turnIndex + 1}.`,
+      },
+      failureCategory: 'environment',
+    };
+  }
+
+  const missingEvidence = findMissingRuntimeQualityEvidence(debug);
+  if (missingEvidence) {
+    return {
+      response: {
+        result: 'HARD_FAIL',
+        reason: `runtimeDebug ${missingEvidence} missing or malformed on successful chat response turn ${turn.turnIndex + 1}.`,
+      },
+      failureCategory: 'environment',
+    };
+  }
+
   const reportedContractFailure = findReportedDeterministicFailure(
-    debug?.minimalContractChecks,
+    debug.minimalContractChecks,
     'agent_contract',
   );
   if (reportedContractFailure) {
     return reportedContractFailure;
   }
 
-  const localContractFailure = findLocalMinimalContractFailure(responseText, debug?.responseContract);
+  const localContractFailure = findLocalMinimalContractFailure(responseText, debug.responseContract);
   if (localContractFailure) {
     return localContractFailure;
   }
 
   const reportedSkillBehaviorFailure = findReportedDeterministicFailure(
-    debug?.skillBehaviorChecks,
+    debug.skillBehaviorChecks,
     'skill_behavior',
   );
   if (reportedSkillBehaviorFailure) {
     return reportedSkillBehaviorFailure;
   }
 
-  const localSkillBehaviorFailure = findLocalSkillBehaviorFailure(responseText, debug?.loadedSkillSections);
+  const localSkillBehaviorFailure = findLocalSkillBehaviorFailure(responseText, debug.loadedSkillSections);
   if (localSkillBehaviorFailure) {
     return localSkillBehaviorFailure;
   }
 
-  const llmJudgeIssue = findLlmJudgeIssue(debug?.llmJudgeSummary);
+  const llmJudgeIssue = findLlmJudgeIssue(debug.llmJudgeSummary);
   if (llmJudgeIssue) {
     return llmJudgeIssue;
   }
@@ -416,6 +438,26 @@ function evaluateSuccessfulTurnResponseQuality(
   return {
     response: { result: 'PASS' },
   };
+}
+
+function findMissingRuntimeQualityEvidence(debug: RuntimeResponseDebugPayload): string | null {
+  if (!debug.responseContract || typeof debug.responseContract !== 'object') {
+    return 'responseContract';
+  }
+
+  if (!Array.isArray(debug.loadedSkillSections)) {
+    return 'loadedSkillSections';
+  }
+
+  if (!Array.isArray(debug.minimalContractChecks)) {
+    return 'minimalContractChecks';
+  }
+
+  if (!Array.isArray(debug.skillBehaviorChecks)) {
+    return 'skillBehaviorChecks';
+  }
+
+  return null;
 }
 
 function extractRuntimeResponseDebug(turn: TurnTranscript): RuntimeResponseDebugPayload | null {

@@ -16,6 +16,7 @@ export interface ChatRunnerScenario {
 
 export interface ChatRunnerTurnInput {
   message: string;
+  action?: unknown;
   attachments?: unknown[];
   pageContext?: unknown;
 }
@@ -172,6 +173,7 @@ export async function runChatSession({
     const requestPayload = {
       sessionId: bootstrap.widgetChatTargetSessionId,
       message: turn.message,
+      ...(turn.action ? { action: turn.action } : {}),
       ...(turn.attachments ? { attachments: turn.attachments } : {}),
       ...(turn.pageContext ? { pageContext: turn.pageContext } : {}),
     };

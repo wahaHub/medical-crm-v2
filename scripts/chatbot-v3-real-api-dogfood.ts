@@ -9,10 +9,11 @@ import {
   type BootstrapSuccessResult,
 } from './chatbot-v3-real-api-dogfood/bootstrap.ts';
 import { createDogfoodHttpClient } from './chatbot-v3-real-api-dogfood/http-client.ts';
-import { parseDogfoodConfig } from './chatbot-v3-real-api-dogfood/config.ts';
+import { parseDogfoodConfig, requireDogfoodRuntimeDebugSecret } from './chatbot-v3-real-api-dogfood/config.ts';
 import {
   getScenarioById,
   QUALITY_GATE_EXECUTED_SCENARIO_IDS,
+  type ScenarioJourneyExpectation,
 } from './chatbot-v3-real-api-dogfood/scenarios.ts';
 import { runChatSession, type ChatRunnerResult } from './chatbot-v3-real-api-dogfood/chat-runner.ts';
 import {
@@ -36,19 +37,55 @@ export function buildScenarioTurns(scenarioId: string) {
     case 'intake_to_triage_opening':
       return [{ message: 'Hello' }, { message: 'I am here for my intake.' }];
     case 'triage_to_recommendation':
-      return [{ message: 'I have symptoms.' }, { message: 'What should I do next?' }];
+      return [
+        {
+          message: 'Main problem: chest pain. It started 3 days ago, feels moderate, and I already had a blood test.',
+          action: { type: 'TRIAGE_SUBMITTED' },
+        },
+        { message: 'What should I do next?' },
+      ];
     case 'recommendation_selected_to_consult':
-      return [{ message: 'I accepted the recommendation.' }, { message: 'Please arrange a consult.' }];
+      return [
+        {
+          message: 'Main problem: chest pain. It started 3 days ago, feels moderate, and I already had a blood test.',
+          action: { type: 'TRIAGE_SUBMITTED' },
+        },
+        {
+          message: '',
+          action: { type: 'RECOMMENDATION_SELECTED', hospitalId: 'hospital-1' },
+        },
+        { message: 'I understand the process.' },
+        {
+          message: 'Here is my diagnosis proof.',
+          attachments: [{
+            fileName: 'diagnosis-proof.pdf',
+            fileSize: 2048,
+            mimeType: 'application/pdf',
+            storageKey: 'dogfood/chatbot-v3/diagnosis-proof.pdf',
+          }],
+        },
+        { message: 'Please arrange a consult.' },
+      ];
     case 'faq_detour_no_progression':
       return [{ message: 'What are your hours?' }, { message: 'What is your pricing?' }];
     case 'handoff_denied_returns_to_current_step':
       return [{ message: 'I want a human.' }, { message: 'Okay, continue the current step.' }];
     case 'recommendation_to_explain':
-      return [{ message: 'Please explain the process first.' }, { message: 'What should I do next?' }];
+      return [
+        {
+          message: 'Main problem: chest pain. It started 3 days ago, feels moderate, and I already had a blood test.',
+          action: { type: 'TRIAGE_SUBMITTED' },
+        },
+        { message: 'Please explain the process first.' },
+      ];
     case 'direct_human_request_to_handoff':
       return [{ message: 'Need a human now' }, { message: 'Any update from the human team?' }];
     case 'recommendation_revisit_compare':
       return [
+        {
+          message: 'Main problem: chest pain. It started 3 days ago, feels moderate, and I already had a blood test.',
+          action: { type: 'TRIAGE_SUBMITTED' },
+        },
         { message: 'Compare the hospitals for me.' },
         { message: 'Compare them again and explain the differences.' },
         { message: 'Show me the hospital options again.' },
@@ -97,19 +134,93 @@ function buildAxis(result: 'PASS' | 'SOFT_FAIL' | 'HARD_FAIL', reason?: string):
   return result === 'PASS' ? { result } : { result, reason };
 }
 
-function evaluateJourneyFromRuntime(turnTranscripts: TurnTranscript[]): DogfoodAxisEvaluation {
+type ExpectedJourneySummary = NonNullable<TurnTranscript['journeySummary']>;
+
+function getFinalJourney(turnTranscripts: TurnTranscript[]): ExpectedJourneySummary | null {
+  return turnTranscripts
+    .filter((turn) => turn.response.status > 0 && turn.response.status < 400)
+    .map((turn) => turn.journeySummary ?? null)
+    .at(-1) ?? null;
+}
+
+function journeyMatches(
+  actual: ExpectedJourneySummary | null,
+  expected: ExpectedJourneySummary,
+): boolean {
+  return actual?.stage === expected.stage && actual.phase === expected.phase;
+}
+
+function expectedFinalJourneyForScenario(
+  expectation: ScenarioJourneyExpectation,
+): ExpectedJourneySummary | null {
+  switch (expectation) {
+    case 'allowed_bootstrap':
+    case 'intake_opening':
+    case 'faq_detour_no_progression':
+    case 'repeat_explain':
+      return { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' };
+    case 'triage_progression':
+    case 'recommendation_progression':
+    case 'recommendation_explain':
+    case 'recommendation_revisit_compare':
+      return { stage: 'RECOMMENDATION', phase: 'active' };
+    case 'consult_progression':
+      return { stage: 'ONLINE_CONSULT', phase: 'active' };
+    case 'handoff_denied_returns_to_current_step':
+      return { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' };
+    case 'direct_handoff_request':
+      return { stage: 'HUMAN_HANDOFF', phase: 'active' };
+    case 'blocked_gate':
+    case 'degraded_retry':
+      return null;
+  }
+
+  const exhaustive: never = expectation;
+  throw new Error(`Unhandled journey expectation: ${exhaustive}`);
+}
+
+export function evaluateJourneyFromRuntime(
+  scenarioId: string,
+  turnTranscripts: TurnTranscript[],
+): DogfoodAxisEvaluation {
   const missingJourneyTurn = turnTranscripts.find(
     (turn) => turn.response.status > 0 && turn.response.status < 400 && !turn.journeySummary,
   );
 
-  if (!missingJourneyTurn) {
+  if (missingJourneyTurn) {
+    return buildAxis(
+      'HARD_FAIL',
+      `journey summary missing from successful chat response on turn ${missingJourneyTurn.turnIndex + 1}`,
+    );
+  }
+
+  const scenario = getScenarioById(scenarioId);
+  const expectedFinalJourney = expectedFinalJourneyForScenario(scenario.expected.journey);
+  if (!expectedFinalJourney) {
     return buildAxis('PASS');
   }
 
-  return buildAxis(
-    'HARD_FAIL',
-    `journey summary missing from successful chat response on turn ${missingJourneyTurn.turnIndex + 1}`,
-  );
+  const actualFinalJourney = getFinalJourney(turnTranscripts);
+  if (!journeyMatches(actualFinalJourney, expectedFinalJourney)) {
+    return buildAxis(
+      'HARD_FAIL',
+      `expected final journey ${expectedFinalJourney.stage}/${expectedFinalJourney.phase}, got ${actualFinalJourney?.stage ?? 'missing'}/${actualFinalJourney?.phase ?? 'missing'}`,
+    );
+  }
+
+  if (scenario.expected.journey === 'faq_detour_no_progression') {
+    const advancedTurn = turnTranscripts.find(
+      (turn) => turn.journeySummary && !journeyMatches(turn.journeySummary, expectedFinalJourney),
+    );
+    if (advancedTurn) {
+      return buildAxis(
+        'HARD_FAIL',
+        `expected FAQ detour to preserve ${expectedFinalJourney.stage}/${expectedFinalJourney.phase}, got ${advancedTurn.journeySummary?.stage}/${advancedTurn.journeySummary?.phase} on turn ${advancedTurn.turnIndex + 1}`,
+      );
+    }
+  }
+
+  return buildAxis('PASS');
 }
 
 function slugifyEmailPart(value: string) {
@@ -226,7 +337,7 @@ function evaluateAllowedScenario(
     bootstrap.bootstrapMode === 'chat_allowed' ? 'PASS' : 'HARD_FAIL',
     'chat was not allowed after patient bootstrap',
   );
-  const journey = evaluateJourneyFromRuntime(turnTranscripts);
+  const journey = evaluateJourneyFromRuntime(scenarioId, turnTranscripts);
   const responseEvaluation = evaluateResponseQualityFromRuntime(turnTranscripts);
   const continuity = buildAxis(chatResult.stoppedEarly ? 'HARD_FAIL' : 'PASS', chatResult.stoppedEarly ? 'conversation stopped early' : undefined);
 
@@ -262,6 +373,7 @@ function evaluateAllowedScenario(
 }
 
 async function run() {
+  requireDogfoodRuntimeDebugSecret();
   const config = parseDogfoodConfig();
   const workspaceRoot = process.cwd();
   const client = createDogfoodHttpClient({

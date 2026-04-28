@@ -181,6 +181,21 @@ describe('buildSkillPolicy', () => {
     });
   });
 
+  it('falls back to minimal triage action routing when the event target is unmapped treatment', () => {
+    expect(requests({
+      event: event({ eventType: 'USER_EXPRESSED_NEED', target: 'treatment', modifier: 'ask' }),
+      turnPlan: plan({
+        primaryAction: { type: 'REQUEST_INFO', target: 'minimal_triage' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'GeneralResponseAgent',
+    })[0]).toMatchObject({
+      skillId: 'documents_skill',
+      role: 'primary',
+      sectionHints: { target: 'medical_facts' },
+    });
+  });
+
   it('routes preference requests to hospital recommendation with recommendation section hints', () => {
     expect(requests({
       event: event({ target: 'unknown' }),

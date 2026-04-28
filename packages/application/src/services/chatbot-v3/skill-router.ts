@@ -83,10 +83,10 @@ function primaryRouteFor(input: {
   const actionTarget = 'target' in input.turnPlan.primaryAction
     ? input.turnPlan.primaryAction.target
     : undefined;
-  const primaryTarget = input.event.target && input.event.target !== 'unknown'
-    ? input.event.target
-    : actionTarget;
-  return routeForTarget(primaryTarget);
+  const eventRoute = input.event.target && input.event.target !== 'unknown'
+    ? routeForTarget(input.event.target)
+    : null;
+  return eventRoute ?? routeForTarget(actionTarget) ?? clarificationRoute();
 }
 
 function routeForFollowUpAction(followUpAction: TurnPlan['followUpAction']): SkillRoute | null {
@@ -97,7 +97,7 @@ function routeForFollowUpAction(followUpAction: TurnPlan['followUpAction']): Ski
   return routeForTarget(followUpAction.target);
 }
 
-function routeForTarget(target: string | undefined): SkillRoute {
+function routeForTarget(target: string | undefined): SkillRoute | null {
   switch (target) {
     case 'pricing':
       return { skillId: 'pricing_skill', sectionTarget: 'pricing' };
@@ -130,8 +130,12 @@ function routeForTarget(target: string | undefined): SkillRoute {
       return { skillId: 'human_handoff_skill', sectionTarget: 'contact' };
     case 'unknown':
     default:
-      return { skillId: 'clarification_recovery_skill', sectionTarget: 'unknown' };
+      return null;
   }
+}
+
+function clarificationRoute(): SkillRoute {
+  return { skillId: 'clarification_recovery_skill', sectionTarget: 'unknown' };
 }
 
 function reasonCodeForPrimaryAction(turnPlan: TurnPlan): string {

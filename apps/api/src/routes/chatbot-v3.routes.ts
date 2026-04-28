@@ -87,6 +87,16 @@ function buildInternalFaqHospitalActor(hospitalId: string) {
 
 export const chatbotV3PublicRoutes = new Hono();
 
+function shouldIncludeRuntimeDebug(c: Context) {
+  if (process.env.NODE_ENV !== 'production') {
+    return true;
+  }
+
+  const configuredSecret = process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET?.trim();
+  const suppliedSecret = c.req.header('x-chatbot-v3-dogfood-debug')?.trim();
+  return Boolean(configuredSecret && suppliedSecret && suppliedSecret === configuredSecret);
+}
+
 chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
   const body = chatbotV3ChatRequestSchema.parse(await c.req.json());
   const traceId = resolveTraceId(c);
@@ -164,7 +174,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
     body,
     result,
     sessionStatusSnapshot: session?.statusSnapshot,
-    includeRuntimeDebug: process.env.NODE_ENV !== 'production',
+    includeRuntimeDebug: shouldIncludeRuntimeDebug(c),
   }));
   if (session) {
     await persistChatbotV3TurnHistory({

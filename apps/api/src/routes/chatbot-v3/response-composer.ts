@@ -13,6 +13,10 @@ import type {
   ToolResult,
 } from './tool-gateway.js';
 import {
+  checkMinimalContract,
+  checkSkillBehavior,
+} from './response-quality-checker.js';
+import {
   RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
 } from './records-prompts.js';
 
@@ -24,6 +28,8 @@ export interface ResponseComposerInput {
 }
 
 export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, then you can upload supporting documents, and after that we can move toward online consult.';
+export const SAFE_MEDICAL_REDIRECT_TEXT = 'Medora can help with hospital or doctor matching and care coordination, but we cannot provide specific medical advice here. A licensed doctor should advise on diagnosis or treatment. Would you like us to help arrange a doctor consultation?';
+export const OUT_OF_SCOPE_REDIRECT_TEXT = 'Medora focuses on medical travel coordination, hospital and doctor matching, records collection, and consult setup. I can redirect this back to the care path or connect you with our team if needed.';
 const FAQ_DEGRADED_TEXT = 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.';
 const FAQ_MISS_TEXT = 'I could not find a reliable FAQ answer right now, but your current stage is still saved. You can continue the current step or ask for a human if needed.';
 const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
@@ -43,6 +49,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
     input.sessionStatusSnapshot,
     input.result.writeIntents?.statusPatch,
   );
+  const assistantText = buildAssistantText(input.result, effectiveStatusSnapshot);
   const visibleJourney = buildVisibleJourney(
     input.result.journey,
     input.sessionStatusSnapshot,
@@ -52,7 +59,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
   const response: ChatbotV3ChatResponse = {
     messages: [{
       role: 'assistant',
-      text: buildAssistantText(input.result, effectiveStatusSnapshot),
+      text: assistantText,
     }],
     turnOutcome: input.result.turnOutcome,
     cards: buildCards(input.body, input.result, visibleJourney, effectiveStatusSnapshot),
@@ -66,15 +73,50 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
   };
 
   if (input.includeRuntimeDebug) {
+    const runtimeDebug = input.result.runtimeDebug;
     response.runtimeDebug = {
-      traceId: input.result.runtimeDebug.traceId,
-      idempotencyKey: input.result.runtimeDebug.idempotencyKey,
-      ...(input.result.runtimeDebug.lastDispatchSource
-        ? { lastDispatchSource: input.result.runtimeDebug.lastDispatchSource }
+      traceId: runtimeDebug.traceId,
+      idempotencyKey: runtimeDebug.idempotencyKey,
+      ...(runtimeDebug.lastDispatchSource
+        ? { lastDispatchSource: runtimeDebug.lastDispatchSource }
         : {}),
-      ...(input.result.runtimeDebug.replayLineage
-        ? { replayLineage: input.result.runtimeDebug.replayLineage }
+      ...(runtimeDebug.replayLineage
+        ? { replayLineage: runtimeDebug.replayLineage }
         : {}),
+      ...(runtimeDebug.selectedDomainSkills
+        ? { selectedDomainSkills: runtimeDebug.selectedDomainSkills }
+        : {}),
+      ...(runtimeDebug.loadedSkillSections
+        ? { loadedSkillSections: runtimeDebug.loadedSkillSections }
+        : {}),
+      ...(runtimeDebug.readIntents
+        ? { readIntents: runtimeDebug.readIntents }
+        : {}),
+      ...(runtimeDebug.retrievedContext
+        ? { retrievedContext: runtimeDebug.retrievedContext }
+        : {}),
+      ...(typeof runtimeDebug.retrievedContextCount === 'number'
+        ? { retrievedContextCount: runtimeDebug.retrievedContextCount }
+        : {}),
+      ...(runtimeDebug.responseContract
+        ? { responseContract: runtimeDebug.responseContract }
+        : {}),
+      minimalContractChecks: runtimeDebug.responseContract
+        ? checkMinimalContract(
+            assistantText,
+            runtimeDebug.responseContract,
+          )
+        : [],
+      skillBehaviorChecks: runtimeDebug.loadedSkillSections
+        ? checkSkillBehavior(
+            assistantText,
+            runtimeDebug.loadedSkillSections,
+          )
+        : [],
+      llmJudgeSummary: {
+        status: 'not_run',
+        summary: 'LLM judge not enabled for this run.',
+      },
     };
   }
 
@@ -100,6 +142,14 @@ export function buildAssistantText(
 
   if (result.render.path === 'PROCESS_OVERVIEW') {
     return PROCESS_OVERVIEW_TEXT;
+  }
+
+  if (result.render.path === 'SAFE_MEDICAL_REDIRECT') {
+    return SAFE_MEDICAL_REDIRECT_TEXT;
+  }
+
+  if (result.render.path === 'OUT_OF_SCOPE_REDIRECT') {
+    return OUT_OF_SCOPE_REDIRECT_TEXT;
   }
 
   const recordsAssistantText = readRecordsAssistantText(result);
@@ -243,8 +293,9 @@ function readFaqAnswer(
   const citedFaqIds = asArray(data['citedFaqIds'])
     .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
   const confidence = asString(data['confidence']);
+  const policyGrounded = data['policyGrounded'] === true;
 
-  if (citedFaqIds.length === 0 || confidence === 'low') {
+  if ((!policyGrounded && citedFaqIds.length === 0) || confidence === 'low') {
     return null;
   }
 
@@ -289,9 +340,11 @@ function readRecordsAssistantText(
     return null;
   }
 
-  return [followUp, questions.join('\n')]
-    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
-    .join('\n');
+  if (followUp) {
+    return followUp;
+  }
+
+  return questions[0] ?? null;
 }
 
 function readRecommendationAssistantText(
@@ -493,6 +546,14 @@ function buildVisibleJourney(
   sessionStatusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
   statusPatch: Partial<AiChatStatusSnapshot> | null | undefined,
 ): ConversationOrchestratorV3TurnResult['journey'] {
+  const effectiveStatusSnapshot = buildEffectiveStatusSnapshot(sessionStatusSnapshot, statusPatch);
+  if (hasActiveHandoffStatus(effectiveStatusSnapshot) || hasCrisisSafetySignal(effectiveStatusSnapshot)) {
+    return {
+      stage: 'HUMAN_HANDOFF',
+      phase: 'active',
+    };
+  }
+
   const persistedJourneyStage = readJourneyStage(statusPatch)
     ?? readJourneyStage(sessionStatusSnapshot)
     ?? resultJourney.stage;

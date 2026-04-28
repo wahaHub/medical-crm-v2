@@ -133,6 +133,18 @@ const chatbotV3RuntimeDebugSchema = z.object({
   idempotencyKey: z.string().min(1),
   lastDispatchSource: z.literal('journey-runtime-authority').optional(),
   replayLineage: chatbotV3ReplayLineageSchema.optional(),
+  selectedDomainSkills: z.array(z.string()).optional(),
+  loadedSkillSections: z.array(z.unknown()).optional(),
+  readIntents: z.array(z.unknown()).optional(),
+  retrievedContext: z.array(z.unknown()).optional(),
+  retrievedContextCount: z.number().int().nonnegative().optional(),
+  responseContract: z.unknown().optional(),
+  minimalContractChecks: z.array(z.unknown()).optional(),
+  skillBehaviorChecks: z.array(z.unknown()).optional(),
+  llmJudgeSummary: z.object({
+    status: z.string().min(1),
+    summary: z.string().min(1),
+  }).strict().optional(),
 }).strict();
 
 const chatbotV3ProcessGuideCardSchema = z.object({

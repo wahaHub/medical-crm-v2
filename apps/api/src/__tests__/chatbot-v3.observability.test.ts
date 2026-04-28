@@ -114,6 +114,59 @@ describe('chatbot-v3 observability', () => {
     ]);
   });
 
+  it('preserves reducer-era event, state diff, side path, and invariant metadata', () => {
+    const capturedEvents: Array<Record<string, unknown>> = [];
+    const emitter = createChatbotV3RuntimeNodeEventEmitter({
+      emit: (event) => {
+        capturedEvents.push(event as Record<string, unknown>);
+      },
+    });
+
+    const event = emitter.emit({
+      traceId: 'trace-reducer-observe-1',
+      sessionId: 'session-reducer-observe-1',
+      turnId: 'turn-reducer-observe-1',
+      node: 'JourneyReducer',
+      action: 'state_diff',
+      status: 'completed',
+      latencyMs: 4,
+      eventType: 'USER_ASKED_FAQ',
+      eventSource: 'llm',
+      confidence: 0.91,
+      nextAction: 'ANSWER_FAQ',
+      reasonCode: 'user_asked_faq_answer_faq',
+      stateDiff: {
+        beforeStage: 'COLLECT_MEDICAL_INPUTS',
+        afterStage: 'COLLECT_MEDICAL_INPUTS',
+        factsPatch: {},
+      },
+      sidePath: true,
+      sidePathType: 'faq',
+      primaryStagePreserved: true,
+      invariantName: 'projection_matches_reducer',
+    } satisfies ChatbotV3RuntimeNodeEventInput);
+
+    expect(event).toMatchObject({
+      node: 'JourneyReducer',
+      action: 'state_diff',
+      eventType: 'USER_ASKED_FAQ',
+      eventSource: 'llm',
+      confidence: 0.91,
+      nextAction: 'ANSWER_FAQ',
+      reasonCode: 'user_asked_faq_answer_faq',
+      stateDiff: {
+        beforeStage: 'COLLECT_MEDICAL_INPUTS',
+        afterStage: 'COLLECT_MEDICAL_INPUTS',
+        factsPatch: {},
+      },
+      sidePath: true,
+      sidePathType: 'faq',
+      primaryStagePreserved: true,
+      invariantName: 'projection_matches_reducer',
+    });
+    expect(capturedEvents).toHaveLength(1);
+  });
+
   it('emits required M0 event set with required decision fields', () => {
     const capturedEvents: unknown[] = [];
     const emitter = createChatbotV3EventEmitter({

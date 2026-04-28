@@ -9,6 +9,35 @@ export interface DogfoodConfig {
   artifactSchemaVersion: 1;
 }
 
+export type DogfoodFailureCategory =
+  | 'environment'
+  | 'bootstrap'
+  | 'control_plane'
+  | 'skill_routing'
+  | 'read_planning'
+  | 'agent_contract'
+  | 'skill_behavior'
+  | 'response_quality'
+  | 'transport';
+
+export type DogfoodFailurePhase =
+  | 'preflight'
+  | 'bootstrap'
+  | 'chat'
+  | 'evaluation'
+  | 'reporting';
+
+export interface DogfoodAttemptSummary {
+  phase: 'bootstrap' | 'chat';
+  turnIndex: number | null;
+  attempt: number;
+  durationMs: number;
+  status?: number;
+  transportErrorKind?: 'timeout' | 'transport_error';
+  errorMessage?: string;
+  retried: boolean;
+}
+
 export interface BootstrapResult {
   scenarioId: DogfoodScenarioId;
   baseUrl: string;
@@ -24,6 +53,14 @@ export interface BootstrapResult {
 export interface TurnTranscript {
   scenarioId: DogfoodScenarioId;
   turnIndex: number;
+  requestUrl?: string;
+  requestAttempt?: number;
+  durationMs?: number;
+  transportErrorKind?: 'timeout' | 'transport_error';
+  journeySummary?: {
+    stage: string;
+    phase: string;
+  } | null;
   request: {
     method: string;
     path: string;
@@ -42,7 +79,14 @@ export interface ScenarioOutcome {
   scenarioId: DogfoodScenarioId;
   outcome: 'PASS' | 'SOFT_FAIL' | 'HARD_FAIL';
   summary: string;
+  failureCategory?: DogfoodFailureCategory;
+  failedPhase?: DogfoodFailurePhase;
+  usableForControlPlaneJudgment: boolean;
+  bootstrapAttempts: DogfoodAttemptSummary[];
+  chatAttempts: DogfoodAttemptSummary[];
+  sessionId: string | null;
   turns: TurnTranscript[];
+  notes: string[];
 }
 
 export interface RunRollup {

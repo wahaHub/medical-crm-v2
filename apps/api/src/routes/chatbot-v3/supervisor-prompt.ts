@@ -1,107 +1,91 @@
-import type { SupervisorGatewayInput } from '@medical-crm/application';
+import type { SemanticSupervisorEventType, SupervisorEventType, SupervisorGatewayInput } from '@medical-crm/application';
 import {
-  SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT,
+  getAllowedSupervisorEvents as getApplicationAllowedSupervisorEvents,
 } from '@medical-crm/application';
 
-export const SUPERVISOR_PROMPT_VERSION = 'supervisor-prompt-v2';
+export const SUPERVISOR_PROMPT_VERSION = 'supervisor-prompt-v3-events';
+
+const SEMANTIC_EVENT_CLASSIFICATION_GUIDE: Record<SemanticSupervisorEventType, string> = {
+  USER_EXPRESSED_NEED: 'user asks for a result, service, or goal, such as treatment in China, hospital recommendation, consult, or human help.',
+  USER_ASKED_QUESTION: 'user asks a question about next step, process, pricing, documents, payment, travel, hospital, or consult.',
+  USER_PROVIDED_INFORMATION: 'user gives facts, preferences, records, medical details, document availability, or contact information.',
+  USER_RESPONDED_TO_REQUEST: 'user replies to the previous assistant request or CTA; use last_question context when available.',
+  USER_REQUESTED_HUMAN: 'user asks to speak with a human, coordinator, advisor, staff member, or asks to be contacted.',
+  USER_ASKED_RISKY_MEDICAL_ADVICE: 'user asks for diagnosis, treatment decision, medication advice, urgent medical judgment, or outcome guarantee.',
+  USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE: 'user asks Medora to perform a service that is not part of the supported medical-travel coordination workflows listed below.',
+  USER_MESSAGE_UNCLEAR: 'no allowed event fits or the latest message is too vague to map confidently.',
+};
+
+const MEDORA_SUPPORTED_SERVICE_SCOPE = [
+  'understanding the patient\'s condition, destination, timing, preferences, and contact details',
+  'collecting or explaining needed medical records and supporting documents',
+  'matching the patient with hospitals, doctors, packages, or treatment-path options',
+  'explaining Medora process, pricing, payments, timelines, travel logistics, or document requirements when related to treatment coordination',
+  'arranging or preparing records-based review, online consults, appointments, or human coordinator handoff for the medical-travel case',
+] as const;
+
+function isSemanticSupervisorEventType(eventType: SupervisorEventType): eventType is SemanticSupervisorEventType {
+  return eventType in SEMANTIC_EVENT_CLASSIFICATION_GUIDE;
+}
+
+function buildAllowedEventClassificationGuide(allowedEvents: readonly SupervisorEventType[]) {
+  return allowedEvents
+    .filter(isSemanticSupervisorEventType)
+    .map((eventType) => `${eventType}: ${SEMANTIC_EVENT_CLASSIFICATION_GUIDE[eventType]}`);
+}
 
 export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
-  const fetchedDomainReads = input.domainReadResults
-    ? Object.entries(input.domainReadResults)
-      .map(([domain, value]) => `${domain}=${JSON.stringify(value)}`)
-      .join('\n')
-    : 'none';
   const supportingDocuments = input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments ?? [];
-  const supportingDocumentsSummary = supportingDocuments.length === 0
-    ? '[]'
-    : JSON.stringify(supportingDocuments.map((document) => ({
-        name: document.name,
-        path: document.path,
-      })));
   const recommendationSelectionStatus = input.recommendationSelectionStatus
     ?? input.statusSnapshot?.recommendationSelectionStatus
     ?? 'none';
-  const selectedHospitalIds = input.recommendationSelectedHospitalIds
-    ?? input.statusSnapshot?.recommendationSelectedHospitalIds
-    ?? [];
   const processExplained = input.processExplained
     ?? input.statusSnapshot?.processExplained
     ?? false;
-  const minimalTriageAnswersSummary = input.minimalTriageAnswersSummary
-    ?? input.statusSnapshot?.minimalTriageAnswersSummary
-    ?? null;
+  const allowedEvents = getAllowedSupervisorEvents(input);
+  const allowedEventGuide = buildAllowedEventClassificationGuide(allowedEvents);
+  const lastQuestion = (input as SupervisorGatewayInput & {
+    lastQuestion?: { questionType?: string | null; expectedAnswerType?: string | null };
+  }).lastQuestion;
 
   return [
     'You are SupervisorRouter for chatbot-v3.',
-    'Choose exactly one next action for the latest user message.',
-    'Return exactly one JSON object. No markdown. No commentary.',
-    'Use only the exact allowed values below. Do not invent new intent names, stage names, agent names, or keys.',
-    'Required output keys: intent, suggestedStage.',
-    'Optional keys: dispatchAgent, task, reason.',
-    'Include dispatchAgent and task together whenever a real agent should run.',
-    'For non-detour EXPLAIN_PROCESS progression, omit dispatchAgent and task.',
-    'If task is present, it must include exactly: goal, latestUserMessage, necessaryFacts.',
-    'Read-domain rule: only return {"requestedReadDomains":[...]} when the latest user message explicitly depends on prior persisted state, such as previously uploaded records, previous recommendations, current case progress, or handoff status.',
-    'If the latest user message can be routed from the context below, do not request read domains.',
-    'If fetched domain reads are already provided below, prefer the final proposal instead of requesting more reads.',
-    'Do not write journey state directly. JourneyRuntimeAuthority is the final writer.',
+    'Your only job is to classify the latest user message into one allowed eventType, target, and modifier.',
+    'Return exactly one JSON object matching the provided schema. No markdown. No commentary.',
+    'Required keys: eventType, target, modifier, confidence.',
     '',
-    'Allowed intent values:',
-    'faq, progression, resource, consult, handoff, unknown',
+    'You may only return one of these allowed eventType values:',
+    allowedEvents.join(', '),
     '',
-    'Allowed suggestedStage values:',
-    'COLLECT_MINIMAL_MEDICAL_FACTS, RECOMMENDATION, EXPLAIN_PROCESS, COLLECT_MEDICAL_INPUTS, ONLINE_CONSULT, HUMAN_HANDOFF',
+    'Classification guide:',
+    ...allowedEventGuide,
     '',
-    'Allowed dispatchAgent values when dispatchAgent is present:',
-    'FaqAgent, RecordsAgent, RecommendationAgent, ConsultAgent, HandoffAgent',
+    'Important:',
+    'If an event is not in the allowed list for this turn, do not return it.',
+    'If multiple events seem possible, choose the primary user intent.',
+    'Medora supported service scope:',
+    ...MEDORA_SUPPORTED_SERVICE_SCOPE.map((item) => `- ${item}.`),
+    'Classify requests for a service outside that supported scope as USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE.',
+    'Classify guarantee/promise/ensure outcome wording as USER_ASKED_RISKY_MEDICAL_ADVICE, not USER_EXPRESSED_NEED.',
+    'If uncertain, use USER_MESSAGE_UNCLEAR with target=unknown and modifier=unknown.',
     '',
-    'Compact agent guide:',
-    '- FaqAgent: FAQ, process question, service clarification, or factual side question.',
-    '- RecordsAgent: minimal triage follow-up or diagnosis-proof upload guidance.',
-    '- RecommendationAgent: recommend, compare, refresh, or explain hospitals.',
-    '- ConsultAgent: move or continue the deterministic online consult step.',
-    '- HandoffAgent: direct human request or active human handoff.',
+    'Target guide: treatment, recommendation, documents, consult, pricing, next_step, process, travel, payment, hospital, hospital_selection, medical_facts, contact, human, unknown.',
+    'Modifier guide: ask, provide, confirm, reject, hesitate, revisit, unknown.',
     '',
-    'Hard routing rules:',
-    '1. If the user is clearly asking a FAQ, process, pricing, timeline, visa, payment, or service clarification question, use intent=faq and dispatchAgent=FaqAgent while keeping the current primary stage unless the context below makes another stage explicit.',
-    '2. If the user clearly requests a human, use intent=handoff, suggestedStage=HUMAN_HANDOFF, dispatchAgent=HandoffAgent.',
-    '3. If minimal_triage_answers_summary is non-empty and recommendation_selection_status=none, use intent=progression, suggestedStage=RECOMMENDATION, and dispatchAgent=RecommendationAgent.',
-    '4. If the workflow is still gathering minimal triage follow-up and minimal_triage_answers_summary is empty, use suggestedStage=COLLECT_MINIMAL_MEDICAL_FACTS and dispatchAgent=RecordsAgent.',
-    '5. If the workflow is gathering diagnosis proof or supporting diagnosis documents, use suggestedStage=COLLECT_MEDICAL_INPUTS and dispatchAgent=RecordsAgent.',
-    '6. If recommendation work is next, use suggestedStage=RECOMMENDATION and dispatchAgent=RecommendationAgent.',
-    '7. If the user is ready for online consultation progression, use suggestedStage=ONLINE_CONSULT and dispatchAgent=ConsultAgent.',
-    '8. Do not use EXPLAIN_PROCESS before recommendation_selection_status is selected or skipped, unless the user is asking a real FAQ/resource detour.',
-    '9. EXPLAIN_PROCESS is the system-rendered process-overview stage. For normal progression into EXPLAIN_PROCESS, omit dispatchAgent and task.',
-    '10. Use FaqAgent inside EXPLAIN_PROCESS only for a real FAQ/resource detour, not for the normal process overview.',
-    '',
-    'Conversation Summary Contract:',
-    `owner=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.owner}`,
-    `refresh_trigger=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.refreshTrigger}`,
-    `size_discipline=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.sizeDiscipline}`,
-    `freshness=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.freshness}`,
-    `persistence_strategy=${SUPERVISOR_CONVERSATION_SUMMARY_CONTRACT.persistenceStrategy}`,
-    '',
-    'Available domain reads:',
-    input.availableReadDomains.join(', ') || 'none',
-    '',
-    'Fetched domain read results:',
-    fetchedDomainReads,
-    '',
-    'Minimal context:',
+    'Context:',
     `current_stage=${input.currentStage}`,
-    `conversation_summary=${input.conversationSummary}`,
     `latest_user_message=${input.latestUserMessage}`,
-    `intake_condition=${input.intake.condition ?? ''}`,
-    `intake_target_destination=${input.intake.targetDestination ?? ''}`,
-    `intake_language=${input.intake.language ?? ''}`,
-    `intake_gender=${input.intake.gender ?? ''}`,
-    `minimal_triage_answers_summary=${minimalTriageAnswersSummary ?? ''}`,
-    '',
-    'Structured post-recommendation state:',
-    `recommendation_selection_status=${recommendationSelectionStatus}`,
-    `process.explained=${processExplained}`,
-    `selected_hospital_ids=${JSON.stringify(selectedHospitalIds)}`,
+    `conversation_summary=${input.conversationSummary}`,
+    `last_question_type=${lastQuestion?.questionType ?? ''}`,
+    `last_question_expected_answer_type=${lastQuestion?.expectedAnswerType ?? ''}`,
+    `known_condition=${input.intake.condition ?? ''}`,
+    `known_destination=${input.intake.targetDestination ?? ''}`,
+    `recommendation_status=${recommendationSelectionStatus}`,
+    `process_explained=${processExplained}`,
     `supporting_documents_count=${supportingDocuments.length}`,
-    `supporting_documents=${supportingDocumentsSummary}`,
   ].join('\n');
+}
+
+export function getAllowedSupervisorEvents(input: SupervisorGatewayInput): readonly SupervisorEventType[] {
+  return getApplicationAllowedSupervisorEvents(input);
 }

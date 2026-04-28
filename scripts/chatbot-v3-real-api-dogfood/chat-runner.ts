@@ -1,15 +1,22 @@
 import type { BootstrapSuccessResult } from './bootstrap.ts';
-import { type DogfoodHttpClient } from './http-client.ts';
+import {
+  type DogfoodHttpClient,
+  DogfoodHttpTransportError,
+} from './http-client.ts';
+import type { DogfoodAttemptSummary } from './types.ts';
 
 export type ChatRunnerRetryPolicy = 'stop_on_hard_failure' | 'allow_retry_after_hard_failure';
+export type ChatRunnerTransportRetryPolicy = 'none' | 'retry_once_if_safe';
 
 export interface ChatRunnerScenario {
   id: string;
   retryPolicy: ChatRunnerRetryPolicy;
+  transportRetryPolicy?: ChatRunnerTransportRetryPolicy;
 }
 
 export interface ChatRunnerTurnInput {
   message: string;
+  action?: unknown;
   attachments?: unknown[];
   pageContext?: unknown;
 }
@@ -34,6 +41,7 @@ export interface ChatRunnerResult {
   scenarioId: string;
   stoppedEarly: boolean;
   bootstrapMode: BootstrapSuccessResult['bootstrapMode'];
+  chatAttempts: DogfoodAttemptSummary[];
   turns: ChatRunnerTurnTranscript[];
 }
 
@@ -94,6 +102,10 @@ function isHardFailureStatus(status: number) {
   return status >= 400;
 }
 
+function durationSince(startedAt: number) {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
 function captureTranscript({
   requestUrl,
   requestPayload,
@@ -131,6 +143,10 @@ function buildRedactedChatRequestHeaders(client: DogfoodHttpClient) {
     'x-medora-site': client.site,
   };
 
+  if (process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET?.trim()) {
+    headers['x-chatbot-v3-dogfood-debug'] = '<redacted>';
+  }
+
   if (client.cookieJar.getRedactedCookies().length > 0) {
     headers.cookie = '<redacted>';
   }
@@ -149,52 +165,102 @@ export async function runChatSession({
   seedBootstrapCookies(client, bootstrap);
 
   const transcripts: ChatRunnerTurnTranscript[] = [];
+  const chatAttempts: DogfoodAttemptSummary[] = [];
   let stoppedEarly = false;
+  const dogfoodDebugSecret = process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET?.trim();
 
-  for (const turn of turns) {
+  for (const [turnIndex, turn] of turns.entries()) {
     const requestPayload = {
       sessionId: bootstrap.widgetChatTargetSessionId,
       message: turn.message,
+      ...(turn.action ? { action: turn.action } : {}),
       ...(turn.attachments ? { attachments: turn.attachments } : {}),
       ...(turn.pageContext ? { pageContext: turn.pageContext } : {}),
     };
+    const maxAttempts = scenario.transportRetryPolicy === 'retry_once_if_safe' ? 2 : 1;
 
-    try {
-      const exchange = await client.request({
-        method: 'POST',
-        path: '/api/v3/chatbot/chat',
-        body: requestPayload,
-        ...(requestTimeoutMs !== undefined ? { timeoutMs: requestTimeoutMs } : {}),
-      });
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const startedAt = performance.now();
 
-      transcripts.push(captureTranscript({
-        requestUrl: exchange.url,
-        requestPayload,
-        exchange,
-      }));
+      try {
+        const exchange = await client.request({
+          method: 'POST',
+          path: '/api/v3/chatbot/chat',
+          ...(dogfoodDebugSecret
+            ? {
+                headers: {
+                  'x-chatbot-v3-dogfood-debug': dogfoodDebugSecret,
+                },
+              }
+            : {}),
+          body: requestPayload,
+          timeoutMs: requestTimeoutMs ?? 60_000,
+        });
 
-      if (isHardFailureStatus(exchange.response.status) && scenario.retryPolicy === 'stop_on_hard_failure') {
-        stoppedEarly = true;
+        chatAttempts.push({
+          phase: 'chat',
+          turnIndex,
+          attempt,
+          durationMs: durationSince(startedAt),
+          status: exchange.response.status,
+          retried: false,
+        });
+
+        transcripts.push(captureTranscript({
+          requestUrl: exchange.url,
+          requestPayload,
+          exchange,
+        }));
+
+        if (isHardFailureStatus(exchange.response.status) && scenario.retryPolicy === 'stop_on_hard_failure') {
+          stoppedEarly = true;
+        }
+
+        break;
+      } catch (error) {
+        const responseText =
+          error instanceof Error ? error.message : `Request failed: ${String(error)}`;
+        const isRetryableTransportError = error instanceof DogfoodHttpTransportError
+          && (error.kind === 'timeout' || error.kind === 'transport_error');
+        const shouldRetry = isRetryableTransportError && attempt < maxAttempts;
+
+        chatAttempts.push({
+          phase: 'chat',
+          turnIndex,
+          attempt,
+          durationMs: durationSince(startedAt),
+          transportErrorKind: error instanceof DogfoodHttpTransportError ? error.kind : 'transport_error',
+          errorMessage: responseText,
+          retried: shouldRetry,
+        });
+
+        const finalTransportTranscript: ChatRunnerTurnTranscript = {
+          requestUrl: new URL('/api/v3/chatbot/chat', `${client.baseUrl}/`).toString(),
+          requestPayload,
+          requestHeaders: buildRedactedChatRequestHeaders(client),
+          responseStatus: 0,
+          responseBody: responseText,
+          responseBodyText: responseText,
+          responseHeaders: {},
+          journeySummary: null,
+        };
+
+        if (shouldRetry) {
+          continue;
+        }
+
+        transcripts.push(finalTransportTranscript);
+
+        if (scenario.retryPolicy === 'stop_on_hard_failure') {
+          stoppedEarly = true;
+        }
+
         break;
       }
-    } catch (error) {
-      const responseText =
-        error instanceof Error ? error.message : `Request failed: ${String(error)}`;
-      transcripts.push({
-        requestUrl: new URL('/api/v3/chatbot/chat', `${client.baseUrl}/`).toString(),
-        requestPayload,
-        requestHeaders: buildRedactedChatRequestHeaders(client),
-        responseStatus: 0,
-        responseBody: responseText,
-        responseBodyText: responseText,
-        responseHeaders: {},
-        journeySummary: null,
-      });
+    }
 
-      if (scenario.retryPolicy === 'stop_on_hard_failure') {
-        stoppedEarly = true;
-        break;
-      }
+    if (stoppedEarly) {
+      break;
     }
   }
 
@@ -202,6 +268,7 @@ export async function runChatSession({
     scenarioId: scenario.id,
     stoppedEarly,
     bootstrapMode: bootstrap.bootstrapMode,
+    chatAttempts,
     turns: transcripts,
   };
 }

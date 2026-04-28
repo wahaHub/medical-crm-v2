@@ -1,6 +1,7 @@
 import type { BootstrapMode, DogfoodScenarioId } from './types.ts';
 
 export type ScenarioV1Status = 'required' | 'deferred';
+export type ScenarioQualityGate = 'required' | 'observed' | 'local_only';
 export type ScenarioGroup = 'gate' | 'core_journey' | 'dirty_path';
 export type ScenarioAccessExpectation = 'blocked' | 'allowed';
 export type ScenarioContinuityExpectation = 'single-turn' | 'multi-turn';
@@ -37,6 +38,7 @@ export type ScenarioHealthyOutcomeLevel =
 export interface DogfoodScenario {
   id: DogfoodScenarioId;
   v1Status: ScenarioV1Status;
+  qualityGate: ScenarioQualityGate;
   group: ScenarioGroup;
   bootstrapMode: BootstrapMode;
   expected: {
@@ -51,6 +53,7 @@ export interface DogfoodScenarioMatrixRow {
   scenarioId: DogfoodScenarioId;
   bootstrapMode: BootstrapMode;
   v1Status: ScenarioV1Status;
+  qualityGate: ScenarioQualityGate;
   why: string;
   healthyOutcomeLevel: ScenarioHealthyOutcomeLevel;
   turnShape: ScenarioContinuityExpectation;
@@ -63,6 +66,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: BLOCKED_PATH_NEGATIVE_CONTROL_SCENARIO_ID,
     v1Status: 'required',
+    qualityGate: 'required',
     group: 'gate',
     bootstrapMode: 'blocked_expected',
     expected: {
@@ -75,6 +79,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: ALLOWED_BOOTSTRAP_SCENARIO_ID,
     v1Status: 'required',
+    qualityGate: 'required',
     group: 'gate',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -87,6 +92,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'intake_to_triage_opening',
     v1Status: 'required',
+    qualityGate: 'required',
     group: 'core_journey',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -99,6 +105,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'triage_to_recommendation',
     v1Status: 'required',
+    qualityGate: 'required',
     group: 'core_journey',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -111,6 +118,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'recommendation_selected_to_consult',
     v1Status: 'required',
+    qualityGate: 'required',
     group: 'core_journey',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -123,6 +131,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'faq_detour_no_progression',
     v1Status: 'required',
+    qualityGate: 'required',
     group: 'dirty_path',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -134,7 +143,8 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   },
   {
     id: 'handoff_denied_returns_to_current_step',
-    v1Status: 'required',
+    v1Status: 'deferred',
+    qualityGate: 'local_only',
     group: 'dirty_path',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -147,6 +157,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'recommendation_to_explain',
     v1Status: 'deferred',
+    qualityGate: 'observed',
     group: 'core_journey',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -158,7 +169,8 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   },
   {
     id: 'direct_human_request_to_handoff',
-    v1Status: 'deferred',
+    v1Status: 'required',
+    qualityGate: 'required',
     group: 'core_journey',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -171,6 +183,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'recommendation_revisit_compare',
     v1Status: 'deferred',
+    qualityGate: 'observed',
     group: 'dirty_path',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -183,6 +196,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'repeat_explain',
     v1Status: 'deferred',
+    qualityGate: 'observed',
     group: 'dirty_path',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -195,6 +209,7 @@ export const DOGFOOD_SCENARIOS: DogfoodScenario[] = [
   {
     id: 'degraded_then_retry',
     v1Status: 'deferred',
+    qualityGate: 'local_only',
     group: 'dirty_path',
     bootstrapMode: 'chat_allowed',
     expected: {
@@ -216,6 +231,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Canonical negative control proving chat is rejected before the patient prerequisite exists.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -225,6 +241,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Canonical allowed onboarding bootstrap proving we can establish a chat-capable patient session.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -234,6 +251,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Verifies the first allowed chat response opens the intake-to-triage path.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -243,6 +261,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Verifies the core progression from triage into recommendation on the real API.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -252,6 +271,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Verifies the recommended-next-step flow reaches consult.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -261,6 +281,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Verifies a FAQ/resource detour does not silently advance the journey.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -270,7 +291,8 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
-          why: 'Verifies denied escalation recovers by returning to the current step.',
+          qualityGate: scenario.qualityGate,
+          why: 'Synthetic-only coverage for denied escalation recovery; real allowed bootstrap can create handoff tickets.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
         };
@@ -279,6 +301,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Useful follow-up coverage after the required recommendation flow is stable.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -288,7 +311,8 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
-          why: 'Useful follow-up coverage once basic consult continuity is proven.',
+          qualityGate: scenario.qualityGate,
+          why: 'Verifies direct human escalation on the real API once the allowed patient session can create tickets.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
         };
@@ -297,6 +321,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Useful second-wave semantic coverage for comparing or revisiting recommendations.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -306,6 +331,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Useful second-wave continuity coverage for repeated explanations.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -315,6 +341,7 @@ export const DOGFOOD_SCENARIO_MATRIX_ROWS: DogfoodScenarioMatrixRow[] = DOGFOOD_
           scenarioId: scenario.id,
           bootstrapMode: scenario.bootstrapMode,
           v1Status: scenario.v1Status,
+          qualityGate: scenario.qualityGate,
           why: 'Useful once baseline failure evidence exists and retry behavior needs checking.',
           healthyOutcomeLevel: scenario.healthyOutcomeLevel,
           turnShape: scenario.expected.continuity,
@@ -329,6 +356,10 @@ export const V1_REQUIRED_SCENARIO_IDS = DOGFOOD_SCENARIOS.filter(
 
 export const V1_DEFERRED_SCENARIO_IDS = DOGFOOD_SCENARIOS.filter(
   (scenario) => scenario.v1Status === 'deferred',
+).map((scenario) => scenario.id);
+
+export const QUALITY_GATE_EXECUTED_SCENARIO_IDS = DOGFOOD_SCENARIOS.filter(
+  (scenario) => scenario.qualityGate === 'required' || scenario.qualityGate === 'observed',
 ).map((scenario) => scenario.id);
 
 export function getScenarioById(scenarioId: DogfoodScenarioId) {

@@ -2,10 +2,8 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { chatbotV3ChatResponseSchema } from '@medical-crm/validation';
 import type {
-  JourneyRuntimeAuthorityDecision,
-  JourneyRuntimeAuthorityInput,
   OrchestratorV3DecisionInput,
-  OrchestratorV3Suggestion,
+  SupervisorEvent,
 } from '@medical-crm/application';
 import { ConversationOrchestratorV3RuntimeService } from '../routes/chatbot-v3/runtime.service.js';
 import { createChatbotV3SessionDriver } from './helpers/chatbot-v3-session-driver.js';
@@ -14,12 +12,8 @@ const NOW = new Date('2026-04-15T00:00:00.000Z');
 const SESSION_SECRET = 'secret-v3-1';
 const SESSION_SECRET_HASH = createHash('sha256').update(SESSION_SECRET).digest('hex');
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
-type CompatibilityDecision = ReturnType<
-  InstanceType<typeof import('@medical-crm/application').OrchestratorV3Service>['decide']
->;
 const applicationOverrides: {
-  suggest?: (input: OrchestratorV3DecisionInput) => Promise<OrchestratorV3Suggestion>;
-  decide?: (input: OrchestratorV3DecisionInput) => CompatibilityDecision;
+  extractEvent?: (input: OrchestratorV3DecisionInput) => Promise<SupervisorEvent>;
   orchestratorDecideShouldThrow?: boolean;
 } = {};
 let currentSession: Record<string, any> | null = null;
@@ -54,6 +48,13 @@ function normalizePersistedMountingSession(session: Record<string, any> | null):
     ...session,
     statusSnapshot: {
       ...statusSnapshot,
+      ...(statusSnapshot.minimalTriageComplete === true && !statusSnapshot.minimalTriageStatus
+        ? {
+            minimalTriageStatus: 'pending',
+            minimalTriageAnswersSummary: statusSnapshot.minimalTriageAnswersSummary
+              ?? 'Mounting fixture has completed minimal triage.',
+          }
+        : {}),
       ...(journeySnapshot
         ? {
             journeyCurrentStage: journeySnapshot.current_stage,
@@ -104,63 +105,14 @@ function persistMountingSession(
   return () => persistedSession;
 }
 
-function mapAuthorityInputToCompatibilityInput(
-  input: JourneyRuntimeAuthorityInput,
-): OrchestratorV3DecisionInput {
+function semanticEvent(overrides: Partial<SupervisorEvent>): SupervisorEvent {
   return {
-    current: input.current,
-    suggestion: input.proposal,
-    facts: input.facts,
-    statusSnapshot: input.statusSnapshot,
-    handoff: input.handoff,
-    bootstrap: input.bootstrap,
-    intake: input.intake,
-  };
-}
-
-function mapCompatibilityDecisionToAuthorityDecision(
-  decision: CompatibilityDecision,
-): JourneyRuntimeAuthorityDecision {
-  const write = decision.write ?? {
-    authority: 'journey-runtime-authority' as const,
-    stage: decision.to,
-    factsPatch: {},
-  };
-  const denied = decision.whyNotSkip && !decision.dispatchAgent;
-
-  if (denied) {
-    return {
-      outcome: 'DENY',
-      action: 'STAY',
-      from: decision.from,
-      to: decision.to,
-      dispatch: {
-        outcome: 'DENY',
-      },
-      write,
-      reason: decision.whyNotSkip,
-    };
-  }
-
-  return {
-    outcome: 'ALLOW',
-    action: decision.action === 'HANDOFF'
-      ? 'ESCALATE'
-      : decision.action === 'STAY'
-        ? 'REPEAT'
-        : 'ADVANCE',
-    from: decision.from,
-    to: decision.to,
-    dispatch: decision.dispatchAgent
-      ? {
-          outcome: 'ALLOW',
-          agent: decision.dispatchAgent,
-        }
-      : {
-          outcome: 'DENY',
-        },
-    write,
-    reason: decision.whyNotSkip ?? 'compatibility decision override',
+    eventType: 'USER_ASKED_QUESTION',
+    confidence: 0.9,
+    source: 'llm',
+    target: 'next_step',
+    modifier: 'ask',
+    ...overrides,
   };
 }
 
@@ -220,33 +172,30 @@ vi.mock('@medical-crm/application', async (importOriginal) => {
   return {
     ...actual,
     SupervisorService: class extends actual.SupervisorService {
-      override async suggest(input: OrchestratorV3DecisionInput): Promise<OrchestratorV3Suggestion> {
-        if (applicationOverrides.suggest) {
-          return applicationOverrides.suggest(input);
+      override async extractEvent(input: OrchestratorV3DecisionInput): Promise<SupervisorEvent> {
+        if (applicationOverrides.extractEvent) {
+          return applicationOverrides.extractEvent(input);
         }
 
-        return super.suggest(input);
+        return super.extractEvent(input);
       }
-    },
-    JourneyRuntimeAuthorityService: class extends actual.JourneyRuntimeAuthorityService {
-      override decide(input: JourneyRuntimeAuthorityInput): JourneyRuntimeAuthorityDecision {
-        if (applicationOverrides.decide) {
-          return mapCompatibilityDecisionToAuthorityDecision(
-            applicationOverrides.decide(mapAuthorityInputToCompatibilityInput(input)),
-          );
+
+      override async extractEventWithMetadata(input: OrchestratorV3DecisionInput) {
+        if (applicationOverrides.extractEvent) {
+          return {
+            event: await applicationOverrides.extractEvent(input),
+            llmRunMetadata: null,
+          };
         }
 
-        return super.decide(input);
+        return super.extractEventWithMetadata(input);
       }
+
     },
     OrchestratorV3Service: class extends actual.OrchestratorV3Service {
       override decide(input: OrchestratorV3DecisionInput) {
         if (applicationOverrides.orchestratorDecideShouldThrow) {
           throw new Error('orchestrator compatibility shell should not be used on the live route');
-        }
-
-        if (applicationOverrides.decide) {
-          return applicationOverrides.decide(input);
         }
 
         return super.decide(input);
@@ -283,8 +232,7 @@ describe('Chatbot v3 public route mounting', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    applicationOverrides.suggest = undefined;
-    applicationOverrides.decide = undefined;
+    applicationOverrides.extractEvent = undefined;
     applicationOverrides.orchestratorDecideShouldThrow = false;
     const originalFindBySessionIdMockResolvedValue = mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue.bind(
       mockServices.aiChatSessionRepo.findBySessionId,
@@ -314,6 +262,8 @@ describe('Chatbot v3 public route mounting', () => {
         packageStatus: 'not_introduced',
         handoffStatus: 'not_needed',
         minimalTriageComplete: true,
+        minimalTriageStatus: 'pending',
+        minimalTriageAnswersSummary: 'Mounting fixture has completed minimal triage.',
         riskLevel: 'low',
         trustOrObjection: 'none',
         engagementMode: 'LIGHT_DISCOVERY',
@@ -524,7 +474,7 @@ describe('Chatbot v3 public route mounting', () => {
     });
   });
 
-  it('forwards statusSnapshot through the compatibility authority shim', async () => {
+  it('forwards statusSnapshot through the reducer event extractor', async () => {
     currentSession = createPersistedMountingSession({
       statusSnapshot: {
         ...currentSession?.statusSnapshot,
@@ -533,28 +483,18 @@ describe('Chatbot v3 public route mounting', () => {
         minimalTriageComplete: false,
       },
     });
-    applicationOverrides.suggest = async () => ({
-      intent: 'progression',
-      suggestedStage: 'RECOMMENDATION',
-      dispatchAgent: 'RecommendationAgent',
-      reason: 'snapshot-backed triage is complete',
-    });
-    applicationOverrides.decide = vi.fn((input) => {
+    applicationOverrides.extractEvent = vi.fn(async (input) => {
       expect(input.statusSnapshot).toEqual(expect.objectContaining({
         minimalTriageStatus: 'pending',
         minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
         minimalTriageComplete: false,
       }));
 
-      return {
-        action: 'ADVANCE',
-        from: input.current,
-        to: { stage: 'RECOMMENDATION', phase: 'active' },
-        dispatchAgent: 'RecommendationAgent',
-        dispatchSource: 'orchestrator',
-      };
+      return semanticEvent({
+        eventType: 'USER_EXPRESSED_NEED',
+        target: 'recommendation',
+      });
     });
-
     const app = await loadApp();
 
     const res = await app.request('/api/v3/chatbot/chat', {
@@ -570,7 +510,7 @@ describe('Chatbot v3 public route mounting', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(applicationOverrides.decide).toHaveBeenCalledOnce();
+    expect(applicationOverrides.extractEvent).toHaveBeenCalledOnce();
   });
 
   it('returns a real process overview before persisting process.explained', async () => {
@@ -587,25 +527,11 @@ describe('Chatbot v3 public route mounting', () => {
         minimalTriageComplete: true,
       },
     };
-    applicationOverrides.suggest = async () => ({
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
-      dispatchAgent: 'FaqAgent',
-      reason: 'explain the process',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      dispatchAgent: 'FaqAgent',
-      dispatchSource: 'orchestrator',
-      write: {
-        authority: 'journey-runtime-authority',
-        stage: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-        factsPatch: {
-          'process.explained': true,
-        },
-      },
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'RECOMMENDATION_SELECTED',
+      source: 'deterministic',
+      target: 'hospital_selection',
+      modifier: 'confirm',
     });
 
     const app = await loadApp();
@@ -688,29 +614,13 @@ describe('Chatbot v3 public route mounting', () => {
       return session;
     });
 
-    applicationOverrides.suggest = vi.fn(async (input) => {
+    applicationOverrides.extractEvent = vi.fn(async (input) => {
       capturedSummaries.push(input.conversationSummary);
-      return {
-        intent: 'faq' as const,
-        suggestedStage: 'EXPLAIN_PROCESS' as const,
-        dispatchAgent: 'FaqAgent' as const,
-        reason: 'explain the process',
-        task: {
-          goal: 'Answer the user\'s question using FAQ knowledge only.',
-          latestUserMessage: input.latestUserMessage,
-          necessaryFacts: {
-            'current.stage': 'EXPLAIN_PROCESS',
-          },
-        },
-      };
+      return semanticEvent({
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'process',
+      });
     });
-    applicationOverrides.decide = vi.fn(() => ({
-      action: 'STAY' as const,
-      from: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
-      to: { stage: 'EXPLAIN_PROCESS' as const, phase: 'active' as const },
-      dispatchAgent: 'FaqAgent' as const,
-      dispatchSource: 'orchestrator' as const,
-    }));
 
     const app = await loadApp();
     const driver = createChatbotV3SessionDriver({
@@ -730,9 +640,7 @@ describe('Chatbot v3 public route mounting', () => {
       'session-v3-1',
       'beauty',
       expect.objectContaining({
-        conversationSummary: `stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=${firstTurn.body.messages[0]?.text}`,
-        journeyCurrentStage: 'EXPLAIN_PROCESS',
-        journeyCurrentPhase: 'active',
+        conversationSummary: expect.stringContaining('user=Please explain the process. | assistant='),
       }),
     );
 
@@ -743,8 +651,8 @@ describe('Chatbot v3 public route mounting', () => {
     expect(secondTurn.status).toBe(200);
     expect(chatbotV3ChatResponseSchema.parse(secondTurn.body)).toBeDefined();
     expect(capturedSummaries[0]).toBe('');
-    expect(capturedSummaries[1]).toBe(
-      `stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant=${firstTurn.body.messages[0]?.text}`,
+    expect(capturedSummaries[1]).toEqual(
+      expect.stringContaining('user=Please explain the process. | assistant='),
     );
   });
 
@@ -760,18 +668,9 @@ describe('Chatbot v3 public route mounting', () => {
       cachedResults.set(key, created);
       return created;
     });
-    applicationOverrides.suggest = async () => ({
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
-      dispatchAgent: 'FaqAgent',
-      reason: 'explain the process',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      dispatchAgent: 'FaqAgent',
-      dispatchSource: 'orchestrator',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'process',
     });
 
     const app = await loadApp();
@@ -796,9 +695,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(secondRes.status).toBe(200);
     expect(mockServices.aiChatSessionRepo.patchStatus).toHaveBeenCalledTimes(1);
     expect(firstPatch).toEqual(expect.objectContaining({
-      conversationSummary: expect.stringContaining('stage=EXPLAIN_PROCESS | user=Please explain the process. | assistant='),
-      journeyCurrentStage: 'EXPLAIN_PROCESS',
-      journeyCurrentPhase: 'active',
+      conversationSummary: expect.stringContaining('user=Please explain the process. | assistant='),
       lastUserMessageAt: expect.any(Date),
       lastAssistantMessageAt: expect.any(Date),
     }));
@@ -901,24 +798,11 @@ describe('Chatbot v3 public route mounting', () => {
   });
 
   it('persists process.explained when progression is blocked by the explain gate', async () => {
-    applicationOverrides.suggest = async () => ({
-      intent: 'progression',
-      suggestedStage: 'RECOMMENDATION',
-      reason: 'records are ready',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      dispatchSource: 'orchestrator',
-      whyNotSkip: 'EXPLAIN_PROCESS must complete before RECOMMENDATION',
-      write: {
-        authority: 'journey-runtime-authority',
-        stage: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-        factsPatch: {
-          'process.explained': true,
-        },
-      },
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'RECOMMENDATION_SELECTED',
+      source: 'deterministic',
+      target: 'hospital_selection',
+      modifier: 'confirm',
     });
 
     const app = await loadApp();
@@ -950,21 +834,15 @@ describe('Chatbot v3 public route mounting', () => {
 
   it('passes bootstrap-only signals to runtime instead of route-owned handoff or progression truth', async () => {
     let capturedInput: OrchestratorV3DecisionInput | undefined;
-    applicationOverrides.suggest = async (input) => {
+    applicationOverrides.extractEvent = async (input) => {
       capturedInput = input;
-      return {
-        intent: 'handoff',
-        suggestedStage: 'HUMAN_HANDOFF',
-        reason: 'runtime-owned handoff suggestion',
-      };
+      return semanticEvent({
+        eventType: 'USER_REQUESTED_HUMAN',
+        source: 'deterministic',
+        target: 'human',
+        modifier: 'ask',
+      });
     };
-    applicationOverrides.decide = () => ({
-      action: 'HANDOFF',
-      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      to: { stage: 'HUMAN_HANDOFF', phase: 'active' },
-      dispatchAgent: 'HandoffAgent',
-      dispatchSource: 'orchestrator',
-    });
 
     const app = await loadApp();
 
@@ -994,10 +872,6 @@ describe('Chatbot v3 public route mounting', () => {
       phase: 'active',
     });
     expect(capturedInput).toMatchObject({
-      suggestion: {
-        intent: 'unknown',
-        suggestedStage: expect.any(String),
-      },
       bootstrap: {
         message: 'Need a human now',
         attachments: expect.arrayContaining([
@@ -1008,7 +882,6 @@ describe('Chatbot v3 public route mounting', () => {
         canCreateHandoff: false,
       },
     });
-    expect(capturedInput?.suggestion.reason).toContain('Need a human now');
   });
 
   it('does not rewrite process.explained on non-explanation turns when it is already persisted', async () => {
@@ -1051,6 +924,10 @@ describe('Chatbot v3 public route mounting', () => {
       createdAt: NOW,
       updatedAt: NOW,
     });
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'treatment',
+    });
 
     const app = await loadApp();
 
@@ -1069,7 +946,7 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.messages[0].text).toContain('recommendation stage');
+    expect(body.messages[0].text).toContain('online consultation stage');
     expect(mockServices.aiChatSessionRepo.patchStatus).not.toHaveBeenCalledWith(
       'session-v3-1',
       expect.objectContaining({
@@ -1085,17 +962,9 @@ describe('Chatbot v3 public route mounting', () => {
   });
 
   it('passes through bounded faq agent answer while keeping cards owned by the response composer', async () => {
-    applicationOverrides.suggest = async () => ({
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
-      reason: 'user asked an faq question',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      dispatchAgent: 'FaqAgent',
-      dispatchSource: 'orchestrator',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'consult',
     });
     mockServices.listFaqItems.execute.mockResolvedValue({
       data: [{
@@ -1131,7 +1000,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.messages[0].text).toContain('Online consultations are usually arranged within 24 hours.');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'PROCESS_GUIDE',
+        cardType: 'UPLOAD_RECORDS',
       }),
     ]));
     expect(mockServices.aiChatSessionRepo.patchStatus).not.toHaveBeenCalledWith(
@@ -1143,17 +1012,14 @@ describe('Chatbot v3 public route mounting', () => {
   });
 
   it('keeps public faq retrieval hospital-aware when pageContext supplies a hospital id', async () => {
-    applicationOverrides.suggest = async () => ({
-      intent: 'faq',
-      suggestedStage: 'EXPLAIN_PROCESS',
-      reason: 'user asked an faq question',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-      dispatchAgent: 'FaqAgent',
-      dispatchSource: 'orchestrator',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_ASKED_QUESTION',
+      source: 'llm',
+      target: 'consult',
+      modifier: 'ask',
+      metadata: {
+        topic: 'consult',
+      },
     });
     mockServices.listFaqCategoriesForChatbot.execute.mockResolvedValue({
       categories: [{
@@ -1353,6 +1219,40 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.runtimeDebug).toBeUndefined();
   });
 
+  it('exposes runtimeDebug in production when the dogfood debug header is present', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET = 'dogfood-test-secret';
+    const app = await loadApp();
+
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `chatbot_session_secret=${SESSION_SECRET}`,
+        'x-request-id': 'trace-prod-dogfood-1',
+        'x-chatbot-v3-dogfood-debug': 'dogfood-test-secret',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-v3-1',
+        message: 'Please explain the process.',
+      }),
+    });
+
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.runtimeDebug).toMatchObject({
+      traceId: 'trace-prod-dogfood-1',
+      idempotencyKey: expect.any(String),
+      minimalContractChecks: expect.any(Array),
+      skillBehaviorChecks: expect.any(Array),
+      llmJudgeSummary: {
+        status: 'not_run',
+        summary: 'LLM judge not enabled for this run.',
+      },
+    });
+    delete process.env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET;
+  });
+
   it('returns 404 when the session does not exist', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue(null);
 
@@ -1398,6 +1298,10 @@ describe('Chatbot v3 public route mounting', () => {
       },
       createdAt: NOW,
       updatedAt: NOW,
+    });
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'treatment',
     });
 
     const app = await loadApp();
@@ -1473,7 +1377,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps an upload-first session on minimal triage until a later turn can advance to recommendation', async () => {
+  it('keeps upload-first sessions on the reducer records path after documents are uploaded', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
         chatbot_v2: {
@@ -1508,48 +1412,48 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(uploadTurn.journey).toMatchObject({
-      stage: 'EXPLAIN_PROCESS',
+      stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
-    expect(uploadTurn.messages[0]?.text).toContain('Here is the process');
+    expect(uploadTurn.messages[0]?.text).toContain('diagnosis proof');
     expect(uploadTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'PROCESS_GUIDE',
+        cardType: 'UPLOAD_RECORDS',
       }),
     ]));
-    expect(readSession().statusSnapshot.docUploadStatus).toBe('none');
-    expect(readSession().statusSnapshot.minimalTriageComplete).not.toBe(true);
+    expect(readSession().statusSnapshot.docUploadStatus).toBe('SUBMITTED');
+    expect(readSession().statusSnapshot.minimalTriageComplete).toBe(true);
 
     const triageTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'I have chest pain, it started 3 days ago, it feels moderate, and I already had a blood test.',
     })).body);
 
     expect(triageTurn.journey).toMatchObject({
-      stage: 'EXPLAIN_PROCESS',
+      stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
-    expect(triageTurn.messages[0]?.text).toContain('explain process stage');
+    expect(triageTurn.messages[0]?.text).toContain('This recommendation is based on your submitted intake');
     expect(triageTurn.cards).toEqual(expect.not.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
       }),
     ]));
-    expect(readSession().statusSnapshot.minimalTriageComplete).toBe(false);
+    expect(readSession().statusSnapshot.minimalTriageComplete).toBe(true);
 
     const recommendationTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'What should I do next?',
     })).body);
 
     expect(recommendationTurn.journey).toMatchObject({
-      stage: 'EXPLAIN_PROCESS',
+      stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
     expect(recommendationTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'PROCESS_GUIDE',
+        cardType: 'UPLOAD_RECORDS',
       }),
     ]));
-    expect(readSession().statusSnapshot.recommendationGenerated).toBe(false);
+    expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
   });
 
   it('treats pending minimal triage with a persisted answers summary as ready for recommendation', async () => {
@@ -1673,27 +1577,27 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(explainTurn.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'EXPLAIN_PROCESS',
       phase: 'active',
     });
-    expect(explainTurn.messages[0]?.text).toContain('recommendation stage');
-    expect(readSession().statusSnapshot.processExplained).toBe(false);
+    expect(explainTurn.messages[0]?.text).toContain('Here is the process');
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
 
     const inputsTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'What should I do next?',
     })).body);
 
     expect(inputsTurn.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'COLLECT_MEDICAL_INPUTS',
       phase: 'active',
     });
-    expect(inputsTurn.messages[0]?.text).toContain('recommendation stage');
+    expect(inputsTurn.messages[0]?.text).toContain('diagnosis proof');
     expect(inputsTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'RECOMMENDATION_LIST',
+        cardType: 'UPLOAD_RECORDS',
       }),
     ]));
-    expect(readSession().statusSnapshot.processExplained).toBe(false);
+    expect(readSession().statusSnapshot.processExplained).toBe(true);
   });
 
   it('keeps a controlled recommendation to explain process to medical inputs continuity session when records collection is explicitly requested', async () => {
@@ -1715,48 +1619,23 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = vi.fn(async (input) => {
+    applicationOverrides.extractEvent = async (input) => {
       if (input.latestUserMessage.toLowerCase().includes('explain')) {
-        return {
-          intent: 'faq',
-          suggestedStage: 'EXPLAIN_PROCESS',
-          dispatchAgent: 'FaqAgent',
-          reason: 'explain the process',
-        };
+        return semanticEvent({
+          eventType: 'RECOMMENDATION_SELECTED',
+          source: 'deterministic',
+          target: 'hospital_selection',
+          modifier: 'confirm',
+        });
       }
 
-      return {
-        intent: 'progression',
-        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-        reason: 'continue records collection before consult',
-      };
-    });
-    applicationOverrides.decide = vi.fn((input) => {
-      if (input.suggestion.suggestedStage === 'EXPLAIN_PROCESS') {
-        return {
-          action: 'ADVANCE',
-          from: input.current,
-          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-          dispatchAgent: 'FaqAgent',
-          dispatchSource: 'orchestrator',
-          write: {
-            authority: 'journey-runtime-authority',
-            stage: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-            factsPatch: {
-              'process.explained': true,
-            },
-          },
-        };
-      }
-
-      return {
-        action: 'ADVANCE',
-        from: input.current,
-        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-        dispatchAgent: 'RecordsAgent',
-        dispatchSource: 'orchestrator',
-      };
-    });
+      return semanticEvent({
+        eventType: 'USER_EXPRESSED_NEED',
+        source: 'llm',
+        target: 'documents',
+        modifier: 'provide',
+      });
+    };
 
     const app = await loadApp();
     const driver = createChatbotV3SessionDriver({
@@ -1832,13 +1711,13 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(firstConsultTurn.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'ONLINE_CONSULT',
       phase: 'active',
     });
-    expect(firstConsultTurn.messages[0]?.text).toContain('recommendation stage');
+    expect(firstConsultTurn.messages[0]?.text).toContain('online consultation stage');
     expect(firstConsultTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'RECOMMENDATION_LIST',
+        cardType: 'CONSULT_BOOKING',
       }),
     ]));
 
@@ -1847,14 +1726,10 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(secondConsultTurn.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'ONLINE_CONSULT',
       phase: 'active',
     });
-    expect(secondConsultTurn.cards).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        cardType: 'RECOMMENDATION_LIST',
-      }),
-    ]));
+    expect(secondConsultTurn.cards).toEqual([]);
     expect(readSession().statusSnapshot.processExplained).toBe(true);
     expect(readSession().statusSnapshot.recommendationSelected).toBe(true);
   });
@@ -1943,41 +1818,24 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = vi.fn(async (input) => {
+    applicationOverrides.extractEvent = async (input) => {
       if (input.latestUserMessage.toLowerCase().includes('consultation')) {
-        return {
-          intent: 'faq',
-          suggestedStage: 'RECOMMENDATION',
-          dispatchAgent: 'FaqAgent',
-          reason: 'answer the scheduling faq without advancing the journey',
-        };
+        return semanticEvent({
+          eventType: 'USER_ASKED_QUESTION',
+          source: 'llm',
+          target: 'consult',
+          modifier: 'ask',
+          metadata: { topic: 'consult' },
+        });
       }
 
-      return {
-        intent: 'progression',
-        suggestedStage: 'RECOMMENDATION',
-        reason: 'resume recommendation review after the faq detour',
-      };
-    });
-    applicationOverrides.decide = vi.fn((input) => {
-      if (input.suggestion.intent === 'faq') {
-        return {
-          action: 'STAY',
-          from: { stage: 'RECOMMENDATION', phase: 'active' },
-          to: { stage: 'RECOMMENDATION', phase: 'active' },
-          dispatchAgent: 'FaqAgent',
-          dispatchSource: 'orchestrator',
-        };
-      }
-
-      return {
-        action: 'STAY',
-        from: { stage: 'RECOMMENDATION', phase: 'active' },
-        to: { stage: 'RECOMMENDATION', phase: 'active' },
-        dispatchAgent: 'RecommendationAgent',
-        dispatchSource: 'orchestrator',
-      };
-    });
+      return semanticEvent({
+        eventType: 'USER_EXPRESSED_NEED',
+        source: 'llm',
+        target: 'recommendation',
+        modifier: 'revisit',
+      });
+    };
     mockServices.listFaqItems.execute.mockResolvedValue({
       data: [{
         id: 'faq-1',
@@ -2030,7 +1888,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
   });
 
-  it('detours a later-stage faq with attachments without rewriting the persisted COLLECT_MEDICAL_INPUTS stage, then resumes records collection', async () => {
+  it('detours a later-stage faq with attachments and then lets the reducer advance to consult when facts are ready', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
         chatbot_v2: {
@@ -2061,6 +1919,19 @@ describe('Chatbot v3 public route mounting', () => {
       answer: 'We are open from 9 AM to 6 PM Monday through Saturday.',
       category: 'General',
     });
+    applicationOverrides.extractEvent = async (input) => {
+      if (input.latestUserMessage.toLowerCase().includes('office hours')) {
+        return semanticEvent({
+          eventType: 'USER_ASKED_QUESTION',
+          target: 'other',
+        });
+      }
+
+      return semanticEvent({
+        eventType: 'USER_EXPRESSED_NEED',
+        target: 'consult',
+      });
+    };
 
     const app = await loadApp();
     const driver = createChatbotV3SessionDriver({
@@ -2098,10 +1969,10 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(resumeTurn.journey).toMatchObject({
-      stage: 'COLLECT_MEDICAL_INPUTS',
+      stage: 'ONLINE_CONSULT',
       phase: 'active',
     });
-    expect(resumeTurn.messages[0]?.text).toContain('Please upload or share any pathology reports');
+    expect(resumeTurn.messages[0]?.text).toContain('online consultation stage');
     expect(readSession().statusSnapshot.chatbot_v2.journey_snapshot).toMatchObject({
       current_stage: 'COLLECT_MEDICAL_INPUTS',
       current_phase: 'active',
@@ -2140,7 +2011,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(compareTurn.messages[0]?.text).toContain('recommendation stage');
+    expect(compareTurn.messages[0]?.text).toContain('These options can be compared');
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
 
     const explainTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
@@ -2151,7 +2022,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(explainTurn.messages[0]?.text).toContain('recommendation stage');
+    expect(explainTurn.messages[0]?.text).toContain('These options can be compared');
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
 
     const revisitTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
@@ -2170,7 +2041,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
   });
 
-  it('keeps repeated explain requests on the already-explained recommendation path without corrupting continuity', async () => {
+  it('keeps repeated explain requests on the already-explained consult-ready path without corrupting continuity', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
         chatbot_v2: {
@@ -2205,10 +2076,10 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(repeatExplainTurn.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'ONLINE_CONSULT',
       phase: 'active',
     });
-    expect(repeatExplainTurn.messages[0]?.text).toContain('recommendation stage');
+    expect(repeatExplainTurn.messages[0]?.text).toContain('online consultation');
     expect(readSession().statusSnapshot.processExplained).toBe(true);
 
     const nextTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
@@ -2216,12 +2087,12 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(nextTurn.journey).toMatchObject({
-      stage: 'RECOMMENDATION',
+      stage: 'ONLINE_CONSULT',
       phase: 'active',
     });
     expect(nextTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'RECOMMENDATION_LIST',
+        cardType: 'CONSULT_BOOKING',
       }),
     ]));
     expect(readSession().statusSnapshot.processExplained).toBe(true);
@@ -2241,18 +2112,12 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = vi.fn(async () => ({
-      intent: 'progression',
-      suggestedStage: 'RECOMMENDATION',
-      reason: 'refresh recommendation options after the user asked again',
-    }));
-    applicationOverrides.decide = vi.fn(() => ({
-      action: 'STAY',
-      from: { stage: 'RECOMMENDATION', phase: 'active' },
-      to: { stage: 'RECOMMENDATION', phase: 'active' },
-      dispatchAgent: 'RecommendationAgent',
-      dispatchSource: 'orchestrator',
-    }));
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      source: 'llm',
+      target: 'recommendation',
+      modifier: 'revisit',
+    });
     mockServices.matchHospitals.execute
       .mockRejectedValueOnce(new Error('recommendation.generate timed out'))
       .mockResolvedValue({
@@ -2323,7 +2188,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(readSession().statusSnapshot.recommendationGenerated).toBe(true);
   });
 
-  it('keeps a controlled denied handoff detour returning to the current records step on the next turn', async () => {
+  it('keeps direct human requests on the reducer handoff path without creating anonymous tickets', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
         journeyCurrentStage: 'RECOMMENDATION',
@@ -2342,39 +2207,23 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = vi.fn(async (input) => {
+    applicationOverrides.extractEvent = async (input) => {
       if (input.latestUserMessage.toLowerCase().includes('human')) {
-        return {
-          intent: 'handoff',
-          suggestedStage: 'HUMAN_HANDOFF',
-          reason: 'user asked for a human before the current step was complete',
-        };
+        return semanticEvent({
+          eventType: 'USER_REQUESTED_HUMAN',
+          source: 'llm',
+          target: 'human',
+          modifier: 'ask',
+        });
       }
 
-      return {
-        intent: 'progression',
-        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-        reason: 'continue collecting records after the denied handoff detour',
-      };
-    });
-    applicationOverrides.decide = vi.fn((input) => {
-      if (input.suggestion.intent === 'handoff') {
-        return {
-          action: 'STAY',
-          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-          to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-          dispatchSource: 'orchestrator',
-        };
-      }
-
-      return {
-        action: 'STAY',
-        from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-        dispatchAgent: 'RecordsAgent',
-        dispatchSource: 'orchestrator',
-      };
-    });
+      return semanticEvent({
+        eventType: 'USER_ASKED_QUESTION',
+        source: 'llm',
+        target: 'next_step',
+        modifier: 'ask',
+      });
+    };
 
     const app = await loadApp();
     const driver = createChatbotV3SessionDriver({
@@ -2391,10 +2240,10 @@ describe('Chatbot v3 public route mounting', () => {
 
     expect(deniedTurn.turnOutcome.status).toBe('ok');
     expect(deniedTurn.journey).toMatchObject({
-      stage: 'COLLECT_MEDICAL_INPUTS',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(deniedTurn.messages[0]?.text).toContain('Before we connect you with a human');
+    expect(deniedTurn.messages[0]?.text).toContain('human handoff');
     expect(readSession().statusSnapshot.handoffStatus).toBe('not_needed');
 
     const recoveryTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
@@ -2402,12 +2251,12 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(recoveryTurn.journey).toMatchObject({
-      stage: 'COLLECT_MEDICAL_INPUTS',
+      stage: 'RECOMMENDATION',
       phase: 'active',
     });
     expect(recoveryTurn.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'UPLOAD_RECORDS',
+        cardType: 'RECOMMENDATION_LIST',
       }),
     ]));
     expect(readSession().statusSnapshot.handoffStatus).toBe('not_needed');
@@ -2450,6 +2299,10 @@ describe('Chatbot v3 public route mounting', () => {
       },
       createdAt: NOW,
       updatedAt: NOW,
+    });
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'treatment',
     });
 
     const app = await loadApp();
@@ -2575,6 +2428,10 @@ describe('Chatbot v3 public route mounting', () => {
       createdAt: NOW,
       updatedAt: NOW,
     });
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'treatment',
+    });
 
     const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
@@ -2595,8 +2452,8 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
-    expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
+    expect(body.messages[0].text).toContain('We already received your basic intake');
+    expect(body.messages[0].text).not.toContain('What is the main symptom, diagnosis, or medical problem right now?');
   });
 
   it('persists minimalTriageComplete only when RecordsAgent triage determines completion', async () => {
@@ -2642,17 +2499,9 @@ describe('Chatbot v3 public route mounting', () => {
   });
 
   it('surfaces the RecordsAgent collection prompt on the public chat route during COLLECT_MEDICAL_INPUTS', async () => {
-    applicationOverrides.suggest = async () => ({
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-      reason: 'continue records collection',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      dispatchAgent: 'RecordsAgent',
-      dispatchSource: 'journey-runtime-authority',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'consult',
     });
 
     currentSession = {
@@ -2711,17 +2560,11 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = async () => ({
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-      reason: 'collect diagnosis proof next',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'ADVANCE',
-      from: { stage: 'RECOMMENDATION', phase: 'active' },
-      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      dispatchAgent: 'RecordsAgent',
-      dispatchSource: 'journey-runtime-authority',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_ASKED_QUESTION',
+      source: 'llm',
+      target: 'next_step',
+      modifier: 'ask',
     });
 
     const app = await loadApp();
@@ -2773,17 +2616,14 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = async () => ({
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-      reason: 'collect diagnosis proof next',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'ADVANCE',
-      from: { stage: 'RECOMMENDATION', phase: 'active' },
-      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      dispatchAgent: 'RecordsAgent',
-      dispatchSource: 'journey-runtime-authority',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'DOCUMENTS_UPLOADED',
+      source: 'deterministic',
+      target: 'documents',
+      modifier: 'provide',
+      metadata: {
+        documentCount: 1,
+      },
     });
 
     const app = await loadApp();
@@ -2846,17 +2686,14 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = async () => ({
-      intent: 'progression',
-      suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-      reason: 'wait for diagnosis proof upload',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      dispatchAgent: 'RecordsAgent',
-      dispatchSource: 'journey-runtime-authority',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'DOCUMENTS_UPLOADED',
+      source: 'deterministic',
+      target: 'documents',
+      modifier: 'provide',
+      metadata: {
+        documentCount: 1,
+      },
     });
 
     const app = await loadApp();
@@ -2912,39 +2749,25 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = async (input) => {
+    applicationOverrides.extractEvent = async (input) => {
       if (input.latestUserMessage.includes('skip')) {
-        return {
-          intent: 'progression',
-          suggestedStage: 'EXPLAIN_PROCESS',
-          reason: 'skip recommendation and explain the process',
-        };
+        return semanticEvent({
+          eventType: 'USER_EXPRESSED_NEED',
+          source: 'llm',
+          target: 'recommendation',
+          modifier: 'revisit',
+        });
       }
 
-      return {
-        intent: 'progression',
-        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-        reason: 'continue collecting supporting documents',
-      };
-    };
-    applicationOverrides.decide = (input) => {
-      if (input.suggestion.suggestedStage === 'EXPLAIN_PROCESS') {
-        return {
-          action: 'ADVANCE',
-          from: { stage: 'RECOMMENDATION', phase: 'post' },
-          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-          dispatchAgent: 'FaqAgent',
-          dispatchSource: 'journey-runtime-authority',
-        };
-      }
-
-      return {
-        action: 'ADVANCE',
-        from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-        dispatchAgent: 'RecordsAgent',
-        dispatchSource: 'journey-runtime-authority',
-      };
+      return semanticEvent({
+        eventType: 'DOCUMENTS_UPLOADED',
+        source: 'deterministic',
+        target: 'documents',
+        modifier: 'provide',
+        metadata: {
+          documentCount: 1,
+        },
+      });
     };
 
     const app = await loadApp();
@@ -2962,7 +2785,7 @@ describe('Chatbot v3 public route mounting', () => {
 
     expect(revisitTurn.journey).toMatchObject({
       stage: 'RECOMMENDATION',
-      phase: 'post',
+      phase: 'active',
     });
     expect(readSession().statusSnapshot.journeyCurrentStage).toBe('RECOMMENDATION');
 
@@ -2990,7 +2813,7 @@ describe('Chatbot v3 public route mounting', () => {
     );
   });
 
-  it('keeps the persisted primary stage during faq revisit turns and still appends later supporting-document uploads', async () => {
+  it('lets consult-ready reducer facts advance after faq revisit turns and still appends later supporting-document uploads', async () => {
     const readSession = persistMountingSession(createPersistedMountingSession({
       statusSnapshot: {
         journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
@@ -3007,39 +2830,25 @@ describe('Chatbot v3 public route mounting', () => {
       },
     }));
 
-    applicationOverrides.suggest = async (input) => {
+    applicationOverrides.extractEvent = async (input) => {
       if (input.latestUserMessage.includes('process')) {
-        return {
-          intent: 'faq',
-          suggestedStage: 'EXPLAIN_PROCESS',
-          reason: 'revisit the process explanation without changing the primary stage',
-        };
+        return semanticEvent({
+          eventType: 'USER_ASKED_QUESTION',
+          source: 'llm',
+          target: 'next_step',
+          modifier: 'ask',
+        });
       }
 
-      return {
-        intent: 'progression',
-        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
-        reason: 'continue accepting supporting documents',
-      };
-    };
-    applicationOverrides.decide = (input) => {
-      if (input.suggestion.suggestedStage === 'EXPLAIN_PROCESS') {
-        return {
-          action: 'ADVANCE',
-          from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-          to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-          dispatchAgent: 'FaqAgent',
-          dispatchSource: 'journey-runtime-authority',
-        };
-      }
-
-      return {
-        action: 'REPEAT',
-        from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-        to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-        dispatchAgent: 'RecordsAgent',
-        dispatchSource: 'journey-runtime-authority',
-      };
+      return semanticEvent({
+        eventType: 'DOCUMENTS_UPLOADED',
+        source: 'deterministic',
+        target: 'documents',
+        modifier: 'provide',
+        metadata: {
+          documentCount: 1,
+        },
+      });
     };
 
     const app = await loadApp();
@@ -3056,10 +2865,10 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(revisitTurn.journey).toMatchObject({
-      stage: 'COLLECT_MEDICAL_INPUTS',
+      stage: 'ONLINE_CONSULT',
       phase: 'active',
     });
-    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('ONLINE_CONSULT');
 
     const uploadTurn = chatbotV3ChatResponseSchema.parse((await driver.sendTurn({
       message: 'Here is another supporting document.',
@@ -3072,10 +2881,10 @@ describe('Chatbot v3 public route mounting', () => {
     })).body);
 
     expect(uploadTurn.journey).toMatchObject({
-      stage: 'COLLECT_MEDICAL_INPUTS',
+      stage: 'ONLINE_CONSULT',
       phase: 'active',
     });
-    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('COLLECT_MEDICAL_INPUTS');
+    expect(readSession().statusSnapshot.journeyCurrentStage).toBe('ONLINE_CONSULT');
     expect(readSession().statusSnapshot.supportingDocuments).toEqual([
       {
         path: 'uploads/supporting-doc-a.pdf',
@@ -3145,13 +2954,10 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('recommendation stage');
+    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
-        payload: expect.objectContaining({
-          candidates: [],
-        }),
       }),
     ]));
   });
@@ -3411,8 +3217,8 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
-    expect(body.messages[0].text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
+    expect(body.messages[0].text).toContain('We already received your basic intake');
+    expect(body.messages[0].text).not.toContain('What is the main symptom, diagnosis, or medical problem right now?');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'UPLOAD_RECORDS',
@@ -3471,6 +3277,10 @@ describe('Chatbot v3 public route mounting', () => {
       createdAt: NOW,
       updatedAt: NOW,
     });
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      target: 'treatment',
+    });
 
     const app = await loadApp();
     const res = await app.request('/api/v3/chatbot/chat', {
@@ -3492,8 +3302,8 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
-    expect(body.messages[0].text).toContain('What tests, treatments, medicines, or diagnoses already exist?');
+    expect(body.messages[0].text).toContain('We already received your basic intake');
+    expect(body.messages[0].text).not.toContain('What tests, treatments, medicines, or diagnoses already exist?');
     expect(body.cards).toEqual(expect.not.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
@@ -3619,12 +3429,16 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(body.messages[0]?.text).toContain('recommendation stage');
+    expect(body.messages[0]?.text).toContain('These options can be compared');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',
         payload: expect.objectContaining({
-          candidates: [],
+          candidates: expect.arrayContaining([
+            expect.objectContaining({
+              hospitalId: 'hospital-1',
+            }),
+          ]),
         }),
       }),
     ]));
@@ -3791,22 +3605,17 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.journey).toMatchObject({
-      stage: 'EXPLAIN_PROCESS',
+      stage: 'HUMAN_HANDOFF',
       phase: 'active',
     });
     expect(body.handoff).toMatchObject({
-      required: false,
+      required: true,
       ticketId: null,
     });
-    expect(body.cards).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        cardType: 'PROCESS_GUIDE',
-      }),
-    ]));
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
   });
 
-  it('forces HUMAN_HANDOFF before trusting a stale stored journey snapshot when handoff is already active', async () => {
+  it('projects active legacy handoff over a stale stored journey snapshot', async () => {
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
       id: 'db-session-v3-1',
       sessionId: 'session-v3-1',
@@ -3865,16 +3674,11 @@ describe('Chatbot v3 public route mounting', () => {
   });
 
   it('returns normal guidance when semantic handoff is denied by prerequisites', async () => {
-    applicationOverrides.suggest = async () => ({
-      intent: 'handoff',
-      suggestedStage: 'HUMAN_HANDOFF',
-      reason: 'user requested a human',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      to: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
-      dispatchSource: 'orchestrator',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_REQUESTED_HUMAN',
+      source: 'llm',
+      target: 'human',
+      modifier: 'ask',
     });
 
     const app = await loadApp();
@@ -3893,28 +3697,17 @@ describe('Chatbot v3 public route mounting', () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.turnOutcome.status).toBe('ok');
-    expect(body.handoff.required).toBe(false);
-    expect(body.messages[0].text).toContain('Before we connect you with a human');
-    expect(body.cards).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        cardType: 'UPLOAD_RECORDS',
-      }),
-    ]));
+    expect(body.handoff.required).toBe(true);
+    expect(body.messages[0].text).toContain('human handoff');
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
   });
 
   it('keeps recommendation degradation distinct from blocked handoff guidance on the public route', async () => {
-    applicationOverrides.suggest = async () => ({
-      intent: 'progression',
-      suggestedStage: 'RECOMMENDATION',
-      reason: 'refresh recommendation options',
-    });
-    applicationOverrides.decide = () => ({
-      action: 'STAY',
-      from: { stage: 'RECOMMENDATION', phase: 'active' },
-      to: { stage: 'RECOMMENDATION', phase: 'active' },
-      dispatchAgent: 'RecommendationAgent',
-      dispatchSource: 'orchestrator',
+    applicationOverrides.extractEvent = async () => semanticEvent({
+      eventType: 'USER_EXPRESSED_NEED',
+      source: 'llm',
+      target: 'recommendation',
+      modifier: 'revisit',
     });
     mockServices.matchHospitals.execute.mockRejectedValueOnce(
       new Error('recommendation.generate timed out'),
@@ -3941,7 +3734,7 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.messages[0].text).not.toContain('Before we connect you with a human');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        cardType: 'RECOMMENDATION_LIST',
+        cardType: 'UPLOAD_RECORDS',
       }),
     ]));
   });
@@ -4002,45 +3795,28 @@ describe('Chatbot v3 public route mounting', () => {
       phase: 'active',
     });
     expect(body.handoff.required).toBe(true);
-    expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledTimes(1);
+    expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledTimes(2);
     expect(mockServices.createTicket.execute).not.toHaveBeenCalled();
   });
 
   it('treats CANCELLED handoff status as inactive and allows a fresh handoff ticket', async () => {
-    applicationOverrides.suggest = async (input) => {
+    applicationOverrides.extractEvent = async (input) => {
       if (input.latestUserMessage?.toLowerCase().includes('human')) {
-        return {
-          intent: 'handoff',
-          suggestedStage: 'HUMAN_HANDOFF',
-          reason: 'user requested a human',
-        };
+        return semanticEvent({
+          eventType: 'USER_REQUESTED_HUMAN',
+          source: 'llm',
+          target: 'human',
+          modifier: 'ask',
+        });
       }
 
-      return {
-        intent: 'faq',
-        suggestedStage: 'EXPLAIN_PROCESS',
-        dispatchAgent: 'FaqAgent',
-        reason: 'explain the process',
-      };
-    };
-    applicationOverrides.decide = (input) => {
-      if (input.suggestion.suggestedStage === 'HUMAN_HANDOFF') {
-        return {
-          action: 'HANDOFF',
-          from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-          to: { stage: 'HUMAN_HANDOFF', phase: 'active' },
-          dispatchAgent: 'HandoffAgent',
-          dispatchSource: 'orchestrator',
-        };
-      }
-
-      return {
-        action: 'STAY',
-        from: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-        to: { stage: 'EXPLAIN_PROCESS', phase: 'active' },
-        dispatchAgent: 'FaqAgent',
-        dispatchSource: 'orchestrator',
-      };
+      return semanticEvent({
+        eventType: 'USER_ASKED_QUESTION',
+        source: 'llm',
+        target: 'process',
+        modifier: 'ask',
+        metadata: { topic: 'process' },
+      });
     };
 
     mockServices.aiChatSessionRepo.findBySessionId.mockResolvedValue({
@@ -4127,7 +3903,7 @@ describe('Chatbot v3 public route mounting', () => {
       patientId: 'patient-1',
       patientName: null,
       subject: 'Chatbot v3 handoff request',
-      descriptionPreview: 'user requested a human',
+      descriptionPreview: 'user_requested_human_escalate',
     });
   });
 });

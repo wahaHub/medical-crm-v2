@@ -1,6 +1,7 @@
 import type {
   ChatbotV3ReplayLineage,
 } from '@medical-crm/application';
+import type { ChatbotV3LlmFailureMetadata } from './llm-route-error.js';
 
 export interface ChatbotV3CorrelationContext {
   traceId: string;
@@ -11,7 +12,11 @@ export interface ChatbotV3CorrelationContext {
 
 export type ChatbotV3RuntimeNode =
   | 'Supervisor'
+  | 'EventExtractionSummary'
+  | 'JourneyReducer'
+  | 'NextActionResolver'
   | 'JourneyRuntimeAuthority'
+  | 'Invariant'
   | 'Subagent'
   | 'Tool'
   | 'Turn';
@@ -22,7 +27,7 @@ export type ChatbotV3RuntimeNodeStatus =
   | 'failed'
   | 'timeout';
 
-export interface ChatbotV3RuntimeNodeEventInput {
+export interface ChatbotV3RuntimeNodeEventInput extends ChatbotV3LlmFailureMetadata {
   traceId: string;
   sessionId: string;
   turnId: string;
@@ -41,6 +46,24 @@ export interface ChatbotV3RuntimeNodeEventInput {
   outcomeStatus?: 'ok' | 'degraded';
   degradedErrorCode?: 'TIMEOUT' | 'UPSTREAM_UNAVAILABLE' | 'UNKNOWN' | null;
   replayLineage?: ChatbotV3ReplayLineage;
+  eventType?: string;
+  eventSource?: string;
+  confidence?: number;
+  nextAction?: string;
+  primaryAction?: unknown;
+  reasonCode?: string;
+  stateDiff?: {
+    beforeStage?: string;
+    afterStage?: string;
+    factsPatch?: unknown;
+  };
+  sidePath?: boolean;
+  sidePathType?: 'faq' | 'safety' | 'out_of_scope' | 'clarification' | 'none';
+  primaryStagePreserved?: boolean;
+  invariantName?: string;
+  readPlan?: unknown;
+  resolvedAgent?: unknown;
+  skillWarnings?: string[];
 }
 
 export interface ChatbotV3RuntimeNodeEvent extends ChatbotV3RuntimeNodeEventInput {

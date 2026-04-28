@@ -130,6 +130,58 @@ test('onboarding success captures patient_session, patient_restore, and widgetCh
   ]);
 });
 
+test('bootstrap forwards the explicit dogfood onboarding bypass token when configured', async () => {
+  const originalBypassToken = process.env.DOGFOOD_DEBUG_BYPASS_TOKEN;
+  process.env.DOGFOOD_DEBUG_BYPASS_TOKEN = 'dogfood-bypass-token';
+
+  try {
+    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createDogfoodHttpClient({
+      baseUrl: 'https://crm.example.com',
+      site: 'beauty',
+      fetchImpl: async (url, init) => {
+        fetchCalls.push({ url: String(url), init });
+        return makeResponse({
+          jsonBody: {
+            patientId: 'patient-1',
+            caseId: 'case-1',
+            widgetChatTarget: {
+              kind: 'CHATBOT_SESSION',
+              sessionId: 'widget-chat:patient-1:case-1',
+            },
+          },
+          setCookies: [
+            'patient_session=session-cookie-123; Path=/; HttpOnly',
+            'patient_restore=restore-cookie-123; Path=/; HttpOnly',
+          ],
+        });
+      },
+    });
+
+    await bootstrapRealApiSession({
+      client,
+      scenarioId: 'allowed_after_patient_session',
+      bootstrapMode: 'chat_allowed',
+      onboardingPayload: {
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        destination: 'Shenzhen',
+      },
+      timestamp: '2026-04-18T14-05-09Z',
+    });
+
+    const requestHeaders = fetchCalls[0]?.init?.headers as Headers;
+    assert.equal(requestHeaders.get('x-debug-bypass-token'), 'dogfood-bypass-token');
+  } finally {
+    if (originalBypassToken === undefined) {
+      delete process.env.DOGFOOD_DEBUG_BYPASS_TOKEN;
+    } else {
+      process.env.DOGFOOD_DEBUG_BYPASS_TOKEN = originalBypassToken;
+    }
+  }
+});
+
 test('blocked-path setup without allowed bootstrap evidence is classified as blocked, not bootstrap success', async () => {
   const client = createDogfoodHttpClient({
     baseUrl: 'https://crm.example.com',
@@ -278,6 +330,296 @@ test('allowed-path non-200 statuses are preserved as bootstrap failures', async 
   assert.equal(result.bootstrapMode, 'bootstrap_failed');
   assert.equal(result.failureKind, 'http_status');
   assert.equal(result.status, 429);
+});
+
+test('bootstrap timeout is retried once and records both attempts', async () => {
+  let abortsObserved = 0;
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async (_url, init) =>
+      new Promise((resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          reject(new Error('missing abort signal'));
+          return;
+        }
+
+        signal.addEventListener('abort', () => {
+          abortsObserved += 1;
+          reject(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+        });
+      }),
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'allowed_after_patient_session',
+    bootstrapMode: 'chat_allowed',
+    onboardingPayload: {
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+    },
+    timestamp: '2026-04-18T14-05-09Z',
+    timeoutMs: 1,
+    maxAttempts: 2,
+  });
+
+  assert.equal(abortsObserved, 2);
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'timeout');
+  assert.equal(result.attempts.length, 2);
+  assert.deepEqual(
+    result.attempts.map(({ phase, turnIndex, attempt, transportErrorKind, retried }) => ({
+      phase,
+      turnIndex,
+      attempt,
+      transportErrorKind,
+      retried,
+    })),
+    [
+      { phase: 'bootstrap', turnIndex: null, attempt: 1, transportErrorKind: 'timeout', retried: true },
+      { phase: 'bootstrap', turnIndex: null, attempt: 2, transportErrorKind: 'timeout', retried: false },
+    ],
+  );
+  assert.ok(result.attempts.every((attempt) => attempt.durationMs >= 0));
+});
+
+test('bootstrap fetch failed is retried once and recorded as transport bootstrap evidence', async () => {
+  let fetchCalls = 0;
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      throw new TypeError('fetch failed');
+    },
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'allowed_after_patient_session',
+    bootstrapMode: 'chat_allowed',
+    onboardingPayload: {
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+    },
+    timestamp: '2026-04-18T14-05-09Z',
+    maxAttempts: 2,
+  });
+
+  assert.equal(fetchCalls, 2);
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'transport_error');
+  assert.deepEqual(
+    result.attempts.map(({ phase, turnIndex, attempt, transportErrorKind, retried }) => ({
+      phase,
+      turnIndex,
+      attempt,
+      transportErrorKind,
+      retried,
+    })),
+    [
+      { phase: 'bootstrap', turnIndex: null, attempt: 1, transportErrorKind: 'transport_error', retried: true },
+      { phase: 'bootstrap', turnIndex: null, attempt: 2, transportErrorKind: 'transport_error', retried: false },
+    ],
+  );
+});
+
+test('bootstrap transport errors are not retried unless maxAttempts opts in', async () => {
+  let fetchCalls = 0;
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      throw new TypeError('fetch failed');
+    },
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'allowed_after_patient_session',
+    bootstrapMode: 'chat_allowed',
+    onboardingPayload: {
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+    },
+    timestamp: '2026-04-18T14-05-09Z',
+  });
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'transport_error');
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.attempts[0]?.retried, false);
+});
+
+test('bootstrap HTTP 400 and 429 responses are not retried and record status attempts', async () => {
+  const makeClient = (status: 400 | 429) => {
+    let fetchCalls = 0;
+    const client = createDogfoodHttpClient({
+      baseUrl: 'https://crm.example.com',
+      site: 'beauty',
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        return makeResponse({ status, textBody: `HTTP ${status}` });
+      },
+    });
+
+    return { client, getFetchCalls: () => fetchCalls };
+  };
+
+  for (const status of [400, 429] as const) {
+    const { client, getFetchCalls } = makeClient(status);
+    const result = await bootstrapRealApiSession({
+      client,
+      scenarioId: 'allowed_after_patient_session',
+      bootstrapMode: 'chat_allowed',
+      onboardingPayload: {
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        destination: 'Shenzhen',
+      },
+      timestamp: '2026-04-18T14-05-09Z',
+      maxAttempts: 2,
+    });
+
+    assert.equal(getFetchCalls(), 1);
+    assert.equal(result.bootstrapMode, 'bootstrap_failed');
+    assert.equal(result.failureKind, 'http_status');
+    assert.equal(result.status, status);
+    assert.equal(result.attempts.length, 1);
+    assert.equal(result.attempts[0]?.status, status);
+    assert.equal(result.attempts[0]?.retried, false);
+  }
+});
+
+test('HTTP 200 missing patient_session records one status attempt as missing allowed evidence', async () => {
+  let fetchCalls = 0;
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return makeResponse({
+        jsonBody: {
+          widgetChatTarget: { kind: 'CHATBOT_SESSION', sessionId: 'widget-chat:patient-1:case-1' },
+        },
+        setCookies: ['patient_restore=restore-cookie-123; Path=/; HttpOnly'],
+      });
+    },
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'allowed_after_patient_session',
+    bootstrapMode: 'chat_allowed',
+    onboardingPayload: {
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+    },
+    timestamp: '2026-04-18T14-05-09Z',
+    maxAttempts: 2,
+  });
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'missing_allowed_evidence');
+  assert.equal(result.status, 200);
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.attempts[0]?.status, 200);
+  assert.equal(result.attempts[0]?.retried, false);
+});
+
+test('HTTP 200 missing patient_restore records one status attempt as missing allowed evidence', async () => {
+  let fetchCalls = 0;
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return makeResponse({
+        jsonBody: {
+          widgetChatTarget: { kind: 'CHATBOT_SESSION', sessionId: 'widget-chat:patient-1:case-1' },
+        },
+        setCookies: ['patient_session=session-cookie-123; Path=/; HttpOnly'],
+      });
+    },
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'allowed_after_patient_session',
+    bootstrapMode: 'chat_allowed',
+    onboardingPayload: {
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+    },
+    timestamp: '2026-04-18T14-05-09Z',
+    maxAttempts: 2,
+  });
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'missing_allowed_evidence');
+  assert.equal(result.status, 200);
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.attempts[0]?.status, 200);
+  assert.equal(result.attempts[0]?.retried, false);
+});
+
+test('HTTP 200 missing widgetChatTarget.sessionId records one status attempt as missing allowed evidence', async () => {
+  let fetchCalls = 0;
+  const client = createDogfoodHttpClient({
+    baseUrl: 'https://crm.example.com',
+    site: 'beauty',
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return makeResponse({
+        jsonBody: {
+          widgetChatTarget: { kind: 'CHATBOT_SESSION' },
+        },
+        setCookies: [
+          'patient_session=session-cookie-123; Path=/; HttpOnly',
+          'patient_restore=restore-cookie-123; Path=/; HttpOnly',
+        ],
+      });
+    },
+  });
+
+  const result = await bootstrapRealApiSession({
+    client,
+    scenarioId: 'allowed_after_patient_session',
+    bootstrapMode: 'chat_allowed',
+    onboardingPayload: {
+      email: 'new@example.com',
+      name: 'New User',
+      preferredLanguage: 'en',
+      destination: 'Shenzhen',
+    },
+    timestamp: '2026-04-18T14-05-09Z',
+    maxAttempts: 2,
+  });
+
+  assert.equal(fetchCalls, 1);
+  assert.equal(result.bootstrapMode, 'bootstrap_failed');
+  assert.equal(result.failureKind, 'missing_allowed_evidence');
+  assert.equal(result.status, 200);
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.attempts[0]?.status, 200);
+  assert.equal(result.attempts[0]?.retried, false);
 });
 
 test('401 and 403 during bootstrap are preserved as bootstrap failures', async () => {

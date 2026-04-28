@@ -71,6 +71,7 @@ export type {
   ChatbotV3ConversationSummaryContract,
   ChatbotV3BootstrapSignals,
   ChatbotV3DispatchAgent,
+  ChatbotV3FaqResolution,
   ChatbotV3Facts,
   ChatbotV3GlobalPolicies,
   ChatbotV3HandoffSignals,
@@ -104,6 +105,80 @@ export type {
   SupervisorSuggestionSeed,
   SupervisorTask,
 } from './services/chatbot-v3/types.js';
+export type {
+  DomainFacts,
+  JourneyReduction,
+  JourneyState,
+  MedicalFactPatchCandidate,
+  NextAction,
+  FollowUpAction,
+  PrimaryAction,
+  ReducerReasonCode,
+  SupervisorEvent,
+  SupervisorEventMetadata,
+  SupervisorEventModifier,
+  SupervisorEventSource,
+  SupervisorEventTarget,
+  SupervisorEventType,
+  SemanticSupervisorEventType,
+  SidePathType,
+  TurnPlan,
+} from './services/chatbot-v3/supervisor-event.types.js';
+export {
+  getAllowedSupervisorEvents,
+  SEMANTIC_SUPERVISOR_EVENT_TYPES,
+  SUPERVISOR_EVENT_MODIFIERS,
+  SUPERVISOR_EVENT_TARGETS,
+  SUPERVISOR_EVENT_TYPES,
+} from './services/chatbot-v3/supervisor-event.types.js';
+export { normalizeFactsFromStatusSnapshot } from './services/chatbot-v3/domain-facts-normalizer.js';
+export { extractDeterministicEvent } from './services/chatbot-v3/deterministic-event-extractor.js';
+export {
+  applyFactsPatch,
+  buildReasonCode,
+  decideNextAction,
+  decideNextStepFromFacts,
+  deriveFactsPatch,
+  deriveNextStage,
+  normalizeFacts,
+  reduceJourney,
+} from './services/chatbot-v3/journey-reducer.js';
+export { resolveNextActionExecution } from './services/chatbot-v3/next-action-resolver.js';
+export { resolveAgent } from './services/chatbot-v3/agent-resolver.js';
+export { loadSkillPacks, loadSkillSections } from './services/chatbot-v3/skill-loader.js';
+export { buildSkillPolicy } from './services/chatbot-v3/skill-router.js';
+export { buildAgentTask } from './services/chatbot-v3/task-builder.js';
+export { buildReadPlan } from './services/chatbot-v3/read-planner.js';
+export { projectLegacyCompatibilityView } from './services/chatbot-v3/legacy-compatibility-view.js';
+export type {
+  DomainFactsPatch,
+  JourneyReducerOutput,
+} from './services/chatbot-v3/journey-reducer.js';
+export type { NextActionExecution } from './services/chatbot-v3/next-action-resolver.js';
+export type { AgentRole, PhysicalAgent, ResolvedAgent } from './services/chatbot-v3/agent-resolver.js';
+export type {
+  LoadedSkillPolicy,
+  LoadedSkillSectionsPolicy,
+  LoadSkillPacksInput,
+  LoadSkillSectionsInput,
+} from './services/chatbot-v3/skill-loader.js';
+export type { SkillPolicy } from './services/chatbot-v3/skill-router.js';
+export type { AgentTask, ResponseContract, RetrievedContextEntry } from './services/chatbot-v3/task-builder.js';
+export type {
+  LoadedSkillPack,
+  LoadedSkillSection,
+  DomainSkillRequest,
+  SkillKind,
+  SkillPackDefinition,
+  SkillPackId,
+  SkillRequest,
+} from './services/chatbot-v3/skill-packs.js';
+export type { ReadIntent, ReadPlan } from './services/chatbot-v3/read-planner.js';
+export type {
+  LegacyCompatibilityView,
+  LegacyCompatibilityViewInput,
+  ProjectedDecision,
+} from './services/chatbot-v3/legacy-compatibility-view.js';
 export type { ChatbotV3ReplayLineage } from '@medical-crm/validation';
 export {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,

@@ -262,6 +262,60 @@ describe('DrizzleInboundEmailEventRepository', () => {
     expect(rows).toHaveLength(2);
   });
 
+  it('claim enriches missing provider message id after an event-only claim', async () => {
+    const first = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+    });
+    const enriched = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+    const duplicateByMessage = await repository.claim({
+      provider: 'resend',
+      providerMessageId: 'msg-1',
+    });
+
+    expect(enriched.alreadyClaimed).toBe(true);
+    expect(enriched.event.id).toBe(first.event.id);
+    expect(rows[0]).toMatchObject({
+      id: first.event.id,
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+    expect(duplicateByMessage.alreadyClaimed).toBe(true);
+    expect(duplicateByMessage.event.id).toBe(first.event.id);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('claim enriches missing provider event id after a message-only claim', async () => {
+    const first = await repository.claim({
+      provider: 'resend',
+      providerMessageId: 'msg-1',
+    });
+    const enriched = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+    const duplicateByEvent = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+    });
+
+    expect(enriched.alreadyClaimed).toBe(true);
+    expect(enriched.event.id).toBe(first.event.id);
+    expect(rows[0]).toMatchObject({
+      id: first.event.id,
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+    expect(duplicateByEvent.alreadyClaimed).toBe(true);
+    expect(duplicateByEvent.event.id).toBe(first.event.id);
+    expect(rows).toHaveLength(1);
+  });
+
   it('complete persists audit and routing fields', async () => {
     const claimed = await repository.claim({
       provider: 'resend',

@@ -50,7 +50,8 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
       throw new Error('Inbound email claim conflict could not be resolved');
     }
 
-    return { event: existing, alreadyClaimed: true };
+    const enriched = await this.enrichClaimedIdentifiers(existing, input, db);
+    return { event: enriched, alreadyClaimed: true };
   }
 
   async complete(input: {
@@ -111,6 +112,44 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
     }
 
     return eventIdMatch ?? messageIdMatch;
+  }
+
+  private async enrichClaimedIdentifiers(
+    existing: InboundEmailEvent,
+    input: InboundEmailClaimInput,
+    db: CrmDb,
+  ): Promise<InboundEmailEvent> {
+    const set: Partial<typeof inboundEmailEvents.$inferInsert> = {};
+
+    if (!existing.providerEventId && input.providerEventId) {
+      set.providerEventId = input.providerEventId;
+    }
+    if (!existing.providerMessageId && input.providerMessageId) {
+      set.providerMessageId = input.providerMessageId;
+    }
+
+    if (Object.keys(set).length === 0) {
+      return existing;
+    }
+
+    set.updatedAt = new Date().toISOString();
+
+    await db
+      .update(inboundEmailEvents)
+      .set(set)
+      .where(eq(inboundEmailEvents.id, existing.id));
+
+    return (await this.findClaimedById(existing.id, db)) ?? existing;
+  }
+
+  private async findClaimedById(id: string, db: CrmDb): Promise<InboundEmailEvent | null> {
+    const rows = await db
+      .select()
+      .from(inboundEmailEvents)
+      .where(eq(inboundEmailEvents.id, id))
+      .limit(1);
+
+    return rows[0] ? this.rowToEntity(rows[0]) : null;
   }
 
   private async findClaimedByIdentifier(

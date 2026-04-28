@@ -1849,6 +1849,63 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
+  it('allows negated fixed-price guidance while still failing fixed-price promises', () => {
+    const section = {
+      skillId: 'pricing_skill',
+      role: 'primary',
+      reasonCode: 'pricing_question',
+      sectionIds: ['pricing_uncertainty'],
+      readIntentTypes: ['PRICING_FACTORS'],
+      policyText: ['Explain pricing factors without promising a fixed total.'],
+      retrievalGuidance: [],
+      handlingGuidance: ['Do not give guaranteed fixed prices.'],
+    } as const;
+
+    const safeOfferChecks = checkSkillBehavior(
+      'We do not offer a fixed price because final cost depends on the hospital and treatment plan.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+    const safeStatementChecks = checkSkillBehavior(
+      'This is not a fixed price; it is only a rough estimate until doctors review the case.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+    const unsafeChecks = checkSkillBehavior(
+      'We can offer a fixed price for the full treatment package.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(safeOfferChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(safeStatementChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(unsafeChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
   it('fails pricing when a disclaimer is followed by a guaranteed fixed price', () => {
     const checks = checkSkillBehavior(
       'We cannot give a fixed price before review. After that, the package is a $10,000 guaranteed fixed price.',
@@ -1958,6 +2015,28 @@ describe('ResponseQualityChecker', () => {
       skillId: 'hospital_recommendation_skill',
       result: 'fail',
       severity: 'hard',
+    }));
+  });
+
+  it('skips hospital invention checks when no candidate metadata is provided', () => {
+    const checks = checkSkillBehavior(
+      'I recommend Cleveland Clinic as the best option for you.',
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      result: 'pass',
+      severity: 'observed',
     }));
   });
 

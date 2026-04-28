@@ -369,6 +369,8 @@ function hasUnsupportedFixedPrice(responseText: string): boolean {
 function stripPricingUncertaintyDisclaimers(normalized: string): string {
   return normalized
     .replace(/\b(cannot|can not|can't|unable to|not able to)\s+(give|provide|quote|promise)\s+(a\s+)?fixed\s+price\s+before\s+(review|assessment|evaluation)\b/g, ' ')
+    .replace(/\b(do\s+not|don't|cannot|can not|can't)\s+(offer|give|provide|quote|promise)\s+(a\s+)?fixed\s+price\b/g, ' ')
+    .replace(/\b(this|that|it)\s+is\s+not\s+(a\s+)?fixed\s+price\b/g, ' ')
     .replace(/\b(no|not)\s+(fixed|guaranteed)\s+price\s+(before|until)\s+(review|assessment|evaluation)\b/g, ' ');
 }
 
@@ -413,15 +415,19 @@ function stripMedicationSafetyDisclaimers(normalized: string): string {
 }
 
 function mentionsInventedHospital(responseText: string, options: SkillBehaviorCheckOptions): boolean {
+  if (!options.candidateHospitalIds && !options.candidateHospitalNames) {
+    return false;
+  }
+
   const candidateIds = new Set((options.candidateHospitalIds ?? []).map(normalize));
   const mentionedIds = normalize(responseText).match(/\bhospital-[a-z0-9-]+\b/g) ?? [];
-  if (mentionedIds.some((id) => !candidateIds.has(id))) {
+  if (options.candidateHospitalIds && mentionedIds.some((id) => !candidateIds.has(id))) {
     return true;
   }
 
   const candidateNames = new Set((options.candidateHospitalNames ?? []).map(normalize));
   const mentionedNames = extractHospitalNames(responseText).map(normalize);
-  return mentionedNames.some((name) => !candidateNames.has(name));
+  return Boolean(options.candidateHospitalNames && mentionedNames.some((name) => !candidateNames.has(name)));
 }
 
 function extractHospitalNames(responseText: string): string[] {

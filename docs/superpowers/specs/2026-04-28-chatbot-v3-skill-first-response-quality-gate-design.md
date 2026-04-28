@@ -186,12 +186,12 @@ Covers medical facts, records, document upload, document questions, rejection, a
 
 ### `process_skill`
 
-Covers process questions and current-case next-step questions.
+Covers process questions, current-case next-step questions, and Phase 1.2 travel or payment support questions.
 
-- Targets: `process`, `next_step`
+- Targets: `process`, `next_step`, `travel`, `payment`
 - Typical events: `USER_ASKED_QUESTION`
-- Reads: `PROCESS_POLICY`, optional `GENERAL_FAQ(process)`
-- Strategy: answer the process or next-step question, then return to the current workflow when appropriate. A normal process FAQ must not write or imply `process.explained=true`; only the reducer-owned formal overview action can do that.
+- Reads: `PROCESS_POLICY`, optional `GENERAL_FAQ(process)`, `TRAVEL_SUPPORT_SCOPE` for travel questions, and `PAYMENT_POLICY` for payment questions.
+- Strategy: answer the process, next-step, travel, or payment question, then return to the current workflow when appropriate. A normal process FAQ must not write or imply `process.explained=true`; only the reducer-owned formal overview action can do that. Travel and payment remain under `process_skill` for Phase 1.2 so the router has deterministic ownership; a separate `logistics_skill` is deferred until travel/payment content becomes large enough to need its own domain.
 
 ### `hospital_recommendation_skill`
 
@@ -283,6 +283,7 @@ Target mapping:
 pricing -> pricing_skill
 documents, medical_facts -> documents_skill
 process, next_step -> process_skill
+travel, payment -> process_skill
 recommendation, hospital, hospital_selection -> hospital_recommendation_skill
 consult -> consult_skill
 human, contact -> human_handoff_skill
@@ -677,6 +678,6 @@ Extend `scripts/chatbot-v3-real-api-dogfood` to:
 
 ## Open Questions
 
-1. Should `travel` and `payment` remain under `process_skill` or become a separate `logistics_skill` later?
+1. Should `travel` and `payment` become a separate `logistics_skill` later if their content grows beyond process ownership?
 2. Should `recommendation_to_explain` be `required` immediately, or remain `observed` until candidate recommendation data is stable enough?
 3. Should the lightweight LLM judge run in CI, only in manual dogfood, or only when an API key is explicitly configured?

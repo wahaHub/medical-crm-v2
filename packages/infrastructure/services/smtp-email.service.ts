@@ -177,10 +177,14 @@ export class SmtpEmailService implements IEmailService {
     locale?: string | null;
     replyTo?: string | null;
   }): Promise<void> {
-    const content = buildPatientNewMessageEmail(params);
+    const replyTo = formatPatientReplyTo(params.replyTo);
+    const content = buildPatientNewMessageEmail({
+      ...params,
+      replyEnabled: Boolean(replyTo),
+    });
     await this.sendRaw(params.to, content.subject, content.text, content.html, {
       from: PATIENT_NOTIFICATION_FROM,
-      replyTo: formatPatientReplyTo(params.replyTo),
+      replyTo,
     });
   }
 
@@ -194,6 +198,7 @@ export class SmtpEmailService implements IEmailService {
     locale?: string | null;
     replyTo?: string | null;
   }): Promise<void> {
+    const replyTo = formatPatientReplyTo(params.replyTo);
     const content = buildPatientNewMessageEmail({
       ...params,
       preheader: 'Open your patient dashboard to review the latest update.',
@@ -203,10 +208,11 @@ export class SmtpEmailService implements IEmailService {
       body: params.bodyLines,
       primaryActionLabel: 'Review case update',
       speaker: 'Medora case update',
+      replyEnabled: Boolean(replyTo),
     });
     await this.sendRaw(params.to, content.subject, content.text, content.html, {
       from: PATIENT_NOTIFICATION_FROM,
-      replyTo: formatPatientReplyTo(params.replyTo),
+      replyTo,
     });
   }
 

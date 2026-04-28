@@ -111,11 +111,25 @@ describe('SmtpEmailService patient notifications', () => {
 });
 
 describe('buildPatientNewMessageEmail', () => {
-  it('tells patients they can reply directly', () => {
+  it('uses a safe non-replying footer when reply routing is not enabled', () => {
     const email = buildPatientNewMessageEmail({
       patientName: 'Patient One',
       messagePreview: 'Your care team replied.',
       dashboardLink: 'https://patient.example.com/dashboard',
+    });
+
+    expect(email.text).toContain('Please do not reply directly to this message.');
+    expect(email.text).not.toContain(
+      'You can reply directly to this email. Your message and attachments will be added to your Medora case.',
+    );
+  });
+
+  it('tells patients they can reply directly when reply routing is enabled', () => {
+    const email = buildPatientNewMessageEmail({
+      patientName: 'Patient One',
+      messagePreview: 'Your care team replied.',
+      dashboardLink: 'https://patient.example.com/dashboard',
+      replyEnabled: true,
     });
 
     expect(email.text).toContain(

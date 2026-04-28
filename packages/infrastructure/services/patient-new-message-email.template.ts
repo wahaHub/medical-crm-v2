@@ -13,6 +13,7 @@ export function buildPatientNewMessageEmail(params: {
   introLine?: string;
   primaryActionLabel?: string;
   speaker?: string;
+  replyEnabled?: boolean;
 }) {
   return buildTransactionalEmail({
     locale: params.locale ?? 'en',
@@ -36,7 +37,9 @@ export function buildPatientNewMessageEmail(params: {
     },
     footerLines: [
       'This email was sent automatically by Medora Health.',
-      'You can reply directly to this email. Your message and attachments will be added to your Medora case.',
+      params.replyEnabled
+        ? 'You can reply directly to this email. Your message and attachments will be added to your Medora case.'
+        : 'Please do not reply directly to this message.',
     ],
     fallbackLink: params.dashboardLink,
   });

@@ -262,6 +262,46 @@ describe('DrizzleInboundEmailEventRepository', () => {
     expect(rows).toHaveLength(2);
   });
 
+  it('claim throws when provider message id contradicts the matched event row', async () => {
+    await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+
+    await expect(repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-2',
+    })).rejects.toThrow('Inbound email provider identifiers conflict with an existing event');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+  });
+
+  it('claim throws when provider event id contradicts the matched message row', async () => {
+    await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+
+    await expect(repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-2',
+      providerMessageId: 'msg-1',
+    })).rejects.toThrow('Inbound email provider identifiers conflict with an existing event');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+  });
+
   it('claim enriches missing provider message id after an event-only claim', async () => {
     const first = await repository.claim({
       provider: 'resend',

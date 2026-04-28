@@ -50,6 +50,7 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
       throw new Error('Inbound email claim conflict could not be resolved');
     }
 
+    this.assertIdentifiersDoNotConflict(existing, input);
     const enriched = await this.enrichClaimedIdentifiers(existing, input, db);
     return { event: enriched, alreadyClaimed: true };
   }
@@ -112,6 +113,24 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
     }
 
     return eventIdMatch ?? messageIdMatch;
+  }
+
+  private assertIdentifiersDoNotConflict(existing: InboundEmailEvent, input: InboundEmailClaimInput): void {
+    if (
+      existing.providerEventId &&
+      input.providerEventId &&
+      existing.providerEventId !== input.providerEventId
+    ) {
+      throw new Error('Inbound email provider identifiers conflict with an existing event');
+    }
+
+    if (
+      existing.providerMessageId &&
+      input.providerMessageId &&
+      existing.providerMessageId !== input.providerMessageId
+    ) {
+      throw new Error('Inbound email provider identifiers conflict with an existing event');
+    }
   }
 
   private async enrichClaimedIdentifiers(

@@ -6,6 +6,24 @@ Date: 2026-04-27
 
 Approved design direction pending final user review.
 
+## Phase 1.2 Alignment Note
+
+This Phase 1.1 document remains the source of truth for the generic supervisor event taxonomy, `TurnPlan`, reducer authority, and runtime control-plane ownership.
+
+The runtime skill-loading shape in the original Phase 1.1 design was intentionally early and has been superseded for future work by:
+
+- `docs/superpowers/specs/2026-04-28-chatbot-v3-skill-first-response-quality-gate-design.md`
+- `docs/superpowers/plans/2026-04-28-chatbot-v3-skill-first-response-quality-gate-implementation.md`
+
+When implementing new response-quality work, preserve the Phase 1.1 control-plane invariants from this document but use the Phase 1.2 skill model:
+
+- `ResponseContract` is a minimal guardrail only.
+- Skill packs are target-domain capabilities, not tiny retrieval/explanation/objection fragments.
+- `SkillRouter` selects at most one primary and one auxiliary domain skill.
+- `SkillLoader` trims sectionable domain skills by deterministic turn hints.
+- `ReadPlanner` derives reads from domain skills plus hints and returns `ReadIntent`-aligned context.
+- Worker tasks use `currentStage` and `primaryStage`, not `fromStage` and `toStage`.
+
 This document specifies the Phase 1.1 control-plane refactor for chatbot-v3:
 
 - Replace overly specific semantic supervisor event names with generic semantic events plus `target` and `modifier`.
@@ -576,6 +594,25 @@ return general('general_response_default');
 
 ## Runtime Skill Loading
 
+### Phase 1.2 Supersession
+
+The detailed Phase 1.1 skill inventory below is historical context for the first TurnPlan runtime integration. It should not be used as the forward implementation target for response-quality hardening.
+
+For Phase 1.2 and later work, replace the fragmented skill ids in this section with the target-domain model from `2026-04-28-chatbot-v3-skill-first-response-quality-gate-design.md`:
+
+```text
+pricing_skill
+documents_skill
+process_skill
+hospital_recommendation_skill
+consult_skill
+human_handoff_skill
+safety_scope_skill
+clarification_recovery_skill
+```
+
+The conceptual boundary still applies: skills are runtime capabilities, not workflow actions or generic response constraints. The implementation model changes from "load many small fragments" to "select one primary domain skill plus at most one auxiliary domain skill, then trim relevant sections."
+
 The runtime should load skills dynamically per turn, but "skill" must mean a real capability package, not a flow shape or generic response constraint.
 
 Not skills:
@@ -597,6 +634,37 @@ Skills are capabilities that tell an agent how to do a bounded class of work:
 The reducer still owns workflow truth. Skill loading only changes the agent's available instructions and data access strategy for composing the current reply. Skill packs may propose candidate fields or payload context, but only reducer/runtime authority may apply `factsPatch`, write snapshots, create handoff records, or persist contact/record updates.
 
 ### Runtime Shape
+
+The Phase 1.1 shape below is retained only to explain the shipped first implementation. It is superseded by the Phase 1.2 domain skill shape for new work:
+
+```ts
+type DomainSkillPack = {
+  id: DomainSkillId;
+  target: DomainSkillTarget;
+  description: string;
+  policySections: Array<{
+    id: string;
+    appliesTo: SkillSectionApplicability;
+    text: string;
+  }>;
+  retrieval: {
+    sections: Array<{
+      id: string;
+      appliesTo: SkillSectionApplicability;
+      readIntentTypes: ReadIntent['type'][];
+      searchGuidance: string;
+    }>;
+  };
+  handling: Partial<Record<
+    SupervisorEventType,
+    Partial<Record<SupervisorEventModifier, string>>
+  >>;
+  futureCms?: {
+    editable: boolean;
+    owner: 'clinical' | 'ops' | 'growth' | 'engineering';
+  };
+};
+```
 
 ```ts
 type SkillKind =
@@ -659,6 +727,8 @@ The loader deduplicates by `id`, keeps the highest priority reason, and caps loa
 ## Skill Pack Registry
 
 Phase 1.1 uses a code-defined registry.
+
+For Phase 1.2 response-quality work, the registry remains code-defined but the ids below are replaced by target-domain skills. Do not add more tiny fragments such as one-off `search_*`, `answer_*`, `explain_*`, or `handle_*` packs unless a later design explicitly reopens that decision.
 
 ```ts
 type SkillPackId =
@@ -771,7 +841,9 @@ type SkillPolicy = {
 };
 ```
 
-No `forbiddenSkillPacks` in Phase 1.1. Safety and scope boundaries belong in `ResponseContract.safetyRules`.
+No `forbiddenSkillPacks` in Phase 1.1. In Phase 1.2, safety and scope boundaries belong to `safety_scope_skill` plus the minimal `ResponseContract.forbiddenClaims`; they should not be modeled as a large response contract.
+
+For new response-quality work, `SkillRouter` should return domain skill requests rather than the fragmented skill request examples retained below as Phase 1.1 history.
 
 SkillRouter is deterministic:
 
@@ -822,6 +894,8 @@ Default `maxSkillPacks` should be 6.
 ## AgentTask
 
 TaskBuilder constructs the agent task from reducer truth, facts, retrieved context, and skills.
+
+For Phase 1.2, worker task adapters should use `currentStage`, `primaryStage`, `loadedSkillSections`, `ReadIntent[]`, and `ReadIntent`-aligned `retrievedContext`. They should not introduce or preserve `fromStage`/`toStage` as agent-facing stage-transition fields.
 
 ```ts
 type AgentTask = {
@@ -882,6 +956,8 @@ The agent receives enough context to write naturally, but not enough authority t
 ## Read Planning
 
 `ReadPlanner` is separate from `SkillLoader`.
+
+For Phase 1.2, `ReadPlanner` derives read intents from selected domain skills plus deterministic section hints. Retrieved context embeds the original `ReadIntent` and a stable per-turn `readIntentId`, instead of loosely bucketed snippet arrays.
 
 ```ts
 type ReadIntent =

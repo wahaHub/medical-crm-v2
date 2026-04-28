@@ -10,9 +10,31 @@
 
 ---
 
+## Phase 1.2 Alignment Note
+
+This plan is the completed Phase 1.1 implementation plan for generic events, `TurnPlan`, authority, and the first runtime skill-loading integration. It should remain useful as implementation archaeology and as the control-plane baseline.
+
+Do not use the fragmented skill-pack chunks in this plan as the forward implementation target for response-quality hardening. Phase 1.2 supersedes those chunks with:
+
+- Spec: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/docs/superpowers/specs/2026-04-28-chatbot-v3-skill-first-response-quality-gate-design.md`
+- Plan: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/docs/superpowers/plans/2026-04-28-chatbot-v3-skill-first-response-quality-gate-implementation.md`
+
+Forward rules for Phase 1.2:
+
+- Keep Phase 1.1 supervisor, reducer, `TurnPlan`, and authority invariants stable.
+- Keep `ResponseContract` minimal.
+- Replace fragmented skill ids with target-domain skills.
+- Route one primary skill plus at most one auxiliary skill.
+- Trim loaded skill sections deterministically.
+- Plan reads from domain skill plus section hints.
+- Pass retrieved context aligned to the original `ReadIntent`.
+- Remove agent-facing `fromStage`/`toStage` in favor of `currentStage` and `primaryStage`.
+
 ## Reference Documents
 
 - Spec: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/docs/superpowers/specs/2026-04-27-chatbot-v3-generic-events-turnplan-design.md`
+- Phase 1.2 response quality spec: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/docs/superpowers/specs/2026-04-28-chatbot-v3-skill-first-response-quality-gate-design.md`
+- Phase 1.2 response quality plan: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/docs/superpowers/plans/2026-04-28-chatbot-v3-skill-first-response-quality-gate-implementation.md`
 - Current control-plane types: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/supervisor-event.types.ts`
 - Current reducer: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/journey-reducer.ts`
 - Current read planner: `/Users/haowang/Desktop/claws/medical-crm-v2/.worktrees/phase1-test-doc/packages/application/src/services/chatbot-v3/read-planner.ts`
@@ -783,6 +805,8 @@ git commit -m "feat(chatbot-v3): authorize turn plan writes"
 
 ## Chunk 4: Agent Resolver, Skills, And Read Planning
 
+> Phase 1.2 note: The AgentResolver portions of this chunk remain valid baseline context. The fragmented skill-pack and read-planning tasks in this chunk are historical Phase 1.1 work and are superseded for response-quality hardening by `2026-04-28-chatbot-v3-skill-first-response-quality-gate-implementation.md`.
+
 ### Task 7: Add deterministic agent resolver
 
 **Files:**
@@ -1106,6 +1130,8 @@ git commit -m "feat(chatbot-v3): plan data reads from skills"
 ---
 
 ## Chunk 5: Task Builder, Response Contract, And API Runtime
+
+> Phase 1.2 note: The runtime pipeline sequence in this chunk remains the baseline. The future-facing task shape and response contract should follow the Phase 1.2 plan: minimal `ResponseContract`, `loadedSkillSections`, ReadIntent-aligned `retrievedContext`, and `currentStage`/`primaryStage` instead of `fromStage`/`toStage`.
 
 ### Task 10: Add application task builder and response contract tests
 

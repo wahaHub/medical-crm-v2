@@ -4,7 +4,9 @@ Date: 2026-04-28
 
 ## Status
 
-Draft approved in conversation, pending spec review and user review.
+Reviewed and approved through the spec-review loop. Implementation plan drafted at:
+
+- `docs/superpowers/plans/2026-04-28-chatbot-v3-skill-first-response-quality-gate-implementation.md`
 
 ## Context
 

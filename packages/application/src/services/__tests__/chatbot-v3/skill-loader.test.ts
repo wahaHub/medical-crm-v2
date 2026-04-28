@@ -1,41 +1,67 @@
 import { describe, expect, it } from 'vitest';
 import { loadSkillPacks } from '../../chatbot-v3/skill-loader.js';
-import { SKILL_PACK_REGISTRY } from '../../chatbot-v3/skill-packs.js';
+import { DOMAIN_SKILL_REGISTRY } from '../../chatbot-v3/skill-packs.js';
+
+describe('DOMAIN_SKILL_REGISTRY', () => {
+  it('contains exactly the Phase 1.2 domain skills', () => {
+    expect(Object.keys(DOMAIN_SKILL_REGISTRY).sort()).toEqual([
+      'clarification_recovery_skill',
+      'consult_skill',
+      'documents_skill',
+      'hospital_recommendation_skill',
+      'human_handoff_skill',
+      'pricing_skill',
+      'process_skill',
+      'safety_scope_skill',
+    ].sort());
+  });
+
+  it('keeps each domain skill sectionable without heavy prompt fields', () => {
+    for (const skill of Object.values(DOMAIN_SKILL_REGISTRY)) {
+      expect(skill).toHaveProperty('policySections');
+      expect(skill).toHaveProperty('retrieval.sections');
+      expect(skill).toHaveProperty('handling');
+      expect(skill).not.toHaveProperty('examples');
+      expect(skill).not.toHaveProperty('requiredBehaviors');
+      expect(skill).not.toHaveProperty('forbiddenBehaviors');
+    }
+  });
+});
 
 describe('loadSkillPacks', () => {
-  it('loads code-defined skills from the in-memory registry only', () => {
+  it('loads code-defined domain skills from the in-memory registry only', () => {
     const loaded = loadSkillPacks({
       requests: [
-        { skillPackId: 'service_scope_boundary', reasonCode: 'out_of_scope' },
-        { skillPackId: 'service_scope_boundary', reasonCode: 'duplicate' },
-        { skillPackId: 'derive_record_inventory_candidate', reasonCode: 'records' },
+        { skillPackId: 'safety_scope_skill', reasonCode: 'out_of_scope' },
+        { skillPackId: 'safety_scope_skill', reasonCode: 'duplicate' },
+        { skillPackId: 'documents_skill', reasonCode: 'records' },
       ],
       maxSkillSnippets: 6,
     });
 
     expect(loaded.skillPacks.map((skill) => skill.id)).toEqual([
-      'service_scope_boundary',
-      'derive_record_inventory_candidate',
+      'safety_scope_skill',
+      'documents_skill',
     ]);
     expect(loaded.warnings).toEqual([]);
-    expect(SKILL_PACK_REGISTRY.service_scope_boundary.kind).toBe('boundary_policy');
-    expect(SKILL_PACK_REGISTRY.derive_record_inventory_candidate.kind).toBe('extraction_strategy');
+    expect(DOMAIN_SKILL_REGISTRY.safety_scope_skill.target).toBe('safety_scope');
+    expect(DOMAIN_SKILL_REGISTRY.documents_skill.target).toBe('documents');
   });
 
-  it('caps loaded skills and falls back safely for unknown ids', () => {
+  it('caps loaded domain skills', () => {
     const loaded = loadSkillPacks({
       requests: [
-        { skillPackId: 'missing_skill' as any, reasonCode: 'bad' },
-        { skillPackId: 'explain_pricing_uncertainty', reasonCode: 'pricing' },
-        { skillPackId: 'medical_safety_boundary', reasonCode: 'safety' },
+        { skillPackId: 'pricing_skill', reasonCode: 'pricing' },
+        { skillPackId: 'safety_scope_skill', reasonCode: 'safety' },
+        { skillPackId: 'process_skill', reasonCode: 'process' },
       ],
       maxSkillSnippets: 2,
     });
 
     expect(loaded.skillPacks.map((skill) => skill.id)).toEqual([
-      'safe_degradation_when_uncertain',
-      'explain_pricing_uncertainty',
+      'pricing_skill',
+      'safety_scope_skill',
     ]);
-    expect(loaded.warnings).toContain('unknown skill pack: missing_skill');
+    expect(loaded.warnings).toEqual([]);
   });
 });

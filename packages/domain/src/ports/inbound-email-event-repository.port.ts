@@ -1,18 +1,37 @@
 import type {
   InboundEmailEvent,
+  InboundEmailProvider,
   InboundEmailStatus,
 } from '../entities/inbound-email-event.entity.js';
+import type { Transaction } from './transaction-runner.port.js';
+
+export type InboundEmailClaimInput = {
+  provider: InboundEmailProvider;
+} & (
+  | {
+      providerEventId: string;
+      providerMessageId?: string | null;
+    }
+  | {
+      providerEventId?: string | null;
+      providerMessageId: string;
+    }
+);
 
 export interface IInboundEmailEventRepository {
-  claim(input: {
-    provider: 'resend';
-    providerEventId?: string | null;
-    providerMessageId?: string | null;
-  }): Promise<{ event: InboundEmailEvent; alreadyClaimed: boolean }>;
+  claim(
+    input: InboundEmailClaimInput,
+    tx?: Transaction,
+  ): Promise<{ event: InboundEmailEvent; alreadyClaimed: boolean }>;
   complete(input: {
     id: string;
     status: InboundEmailStatus;
+    replyTokenId?: string | null;
+    conversationId?: string | null;
+    caseId?: string | null;
+    fromEmail?: string | null;
+    subject?: string | null;
     createdMessageId?: string | null;
     error?: string | null;
-  }): Promise<void>;
+  }, tx?: Transaction): Promise<void>;
 }

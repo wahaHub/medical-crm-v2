@@ -91,7 +91,7 @@ export type { IEmailService } from './ports/email-service.port.js';
 export type { IConversationRepository, ConversationListQuery } from './ports/conversation-repository.port.js';
 export type { IMessageRepository, MessageListQuery } from './ports/message-repository.port.js';
 export type { IEmailReplyTokenRepository } from './ports/email-reply-token-repository.port.js';
-export type { IInboundEmailEventRepository } from './ports/inbound-email-event-repository.port.js';
+export type { IInboundEmailEventRepository, InboundEmailClaimInput } from './ports/inbound-email-event-repository.port.js';
 export type { IMessageTaskQueue, MessageTask } from './ports/message-task-queue.port.js';
 export type { ITranslationService } from './ports/translation-service.port.js';
 

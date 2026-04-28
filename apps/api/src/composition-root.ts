@@ -1065,7 +1065,7 @@ export function getServices(): AppServices {
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
       updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo, syncService),
       getHospitalCases: new GetHospitalCasesUseCase(hospitalManagementRepo, listCases),
-      generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo, emailService),
+      generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo, emailService, userRepo, keycloakAdmin),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
       validateRegistrationToken: new ValidateRegistrationTokenUseCase(registrationTokenRepo, hospitalManagementRepo),
 

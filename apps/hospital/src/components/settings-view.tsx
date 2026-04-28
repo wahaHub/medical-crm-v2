@@ -20,6 +20,7 @@ const SAFE_USER_ERROR_PATTERNS = [
   /^add\b/i,
   /^remove\b/i,
   /^set\b/i,
+  /^this\b/i,
   /\brequired\b/i,
   /\binvalid\b/i,
   /\bmissing\b/i,
@@ -46,10 +47,22 @@ const UNSAFE_USER_ERROR_PATTERNS = [
 ];
 
 function getErrorDetail(err: unknown): string | null {
-  if (!(err instanceof Error)) return null;
+  let rawDetail: string | null = null;
 
-  const rawDetail = err.message.trim();
-  const detail = rawDetail.replace(/\s+/g, ' ');
+  if (
+    typeof err === 'object'
+    && err !== null
+    && 'body' in err
+    && typeof (err as { body?: { error?: unknown } }).body?.error === 'string'
+  ) {
+    rawDetail = (err as { body: { error: string } }).body.error;
+  } else if (err instanceof Error) {
+    rawDetail = err.message;
+  }
+
+  if (!rawDetail) return null;
+
+  const detail = rawDetail.trim().replace(/\s+/g, ' ');
   if (
     !detail
     || /[\r\n]/.test(rawDetail)

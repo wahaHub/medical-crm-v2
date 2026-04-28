@@ -122,8 +122,10 @@ function createMockUserRepo(): IUserRepository {
       hospitalId: null,
       notificationSettings: null,
     }),
+    findByEmail: vi.fn(),
     update: vi.fn(),
     listAdminEmails: vi.fn(),
+    listHospitalEmails: vi.fn(),
   };
 }
 

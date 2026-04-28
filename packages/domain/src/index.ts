@@ -51,6 +51,18 @@ export { Conversation } from './entities/conversation.entity.js';
 export type { ConversationProps } from './entities/conversation.entity.js';
 export { Message } from './entities/message.entity.js';
 export type { MessageProps, Attachment } from './entities/message.entity.js';
+export { EmailReplyToken } from './entities/email-reply-token.entity.js';
+export type {
+  EmailReplyChannel,
+  EmailReplyTokenProps,
+  EmailReplyTokenStatus,
+} from './entities/email-reply-token.entity.js';
+export { InboundEmailEvent } from './entities/inbound-email-event.entity.js';
+export type {
+  InboundEmailEventProps,
+  InboundEmailProvider,
+  InboundEmailStatus,
+} from './entities/inbound-email-event.entity.js';
 export { Consultation } from './entities/consultation.entity.js';
 export type { ConsultationProps, VideoInfo } from './entities/consultation.entity.js';
 export { ConsultationTranscript } from './entities/consultation-transcript.entity.js';
@@ -78,6 +90,8 @@ export type { IEmailService } from './ports/email-service.port.js';
 // Phase 2BC Ports — Messaging
 export type { IConversationRepository, ConversationListQuery } from './ports/conversation-repository.port.js';
 export type { IMessageRepository, MessageListQuery } from './ports/message-repository.port.js';
+export type { IEmailReplyTokenRepository } from './ports/email-reply-token-repository.port.js';
+export type { IInboundEmailEventRepository } from './ports/inbound-email-event-repository.port.js';
 export type { IMessageTaskQueue, MessageTask } from './ports/message-task-queue.port.js';
 export type { ITranslationService } from './ports/translation-service.port.js';
 

@@ -94,6 +94,13 @@ export function parseDogfoodConfig(
   };
 }
 
+export function requireDogfoodRuntimeDebugSecret(env: NodeJS.ProcessEnv = process.env): string {
+  return requireNonEmpty(
+    env.CHATBOT_V3_DOGFOOD_DEBUG_SECRET,
+    'CHATBOT_V3_DOGFOOD_DEBUG_SECRET is required for real API dogfood runtimeDebug quality gates.',
+  );
+}
+
 export function buildRunMetadata({
   config,
   executedScenarioIds,

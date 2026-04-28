@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 
 import { buildRunMetadata } from './config.ts';
 import type { BootstrapSuccessResult } from './bootstrap.ts';
+import { getScenarioById } from './scenarios.ts';
 import type { DogfoodConfig, DogfoodFailureCategory, RunMetadata, RunRollup, ScenarioOutcome, TurnTranscript } from './types.ts';
 
 export interface WriteDogfoodArtifactsOptions {
@@ -23,6 +24,7 @@ interface TranscriptArtifact {
   rollup: RunRollup;
   scenarioTranscripts: Array<{
     scenarioId: string;
+    qualityGate?: 'required' | 'observed' | 'local_only';
     outcome: ScenarioOutcome['outcome'];
     summary: string;
     failureCategory?: ScenarioOutcome['failureCategory'];
@@ -32,8 +34,31 @@ interface TranscriptArtifact {
     chatAttempts: ScenarioOutcome['chatAttempts'];
     sessionId: string | null;
     notes: string[];
+    qualityEvidence?: ReturnType<typeof extractQualityEvidence>;
     turns: TurnTranscript[];
   }>;
+}
+
+interface QualityEvidenceCheck {
+  label: string;
+  passed: boolean;
+  details: string;
+}
+
+interface QualityEvidenceSummary {
+  selectedDomainSkills: string[];
+  loadedSkillSections: unknown[];
+  readIntents: unknown[];
+  retrievedContextCounts: {
+    total: number;
+    bySourceType: Record<string, number>;
+  };
+  minimalContractChecks: QualityEvidenceCheck[];
+  skillBehaviorChecks: QualityEvidenceCheck[];
+  llmJudgeSummary: {
+    status: string;
+    summary: string;
+  };
 }
 
 const SENSITIVE_COOKIE_PATTERNS: Array<[RegExp, string]> = [
@@ -110,6 +135,208 @@ function sanitizeTurnTranscript(turn: TurnTranscript) {
   };
 }
 
+function scenarioQualityGateLabel(scenarioId: string) {
+  try {
+    return getScenarioById(scenarioId).qualityGate;
+  } catch {
+    return null;
+  }
+}
+
+function getScenarioDebugPayload(outcome: ScenarioOutcome) {
+  let lastDebugPayload: {
+    selectedDomainSkills?: unknown;
+    loadedSkillSections?: unknown;
+    readIntents?: unknown;
+    retrievedContext?: unknown;
+    responseContract?: unknown;
+    minimalContractChecks?: unknown;
+    skillBehaviorChecks?: unknown;
+    llmJudgeSummary?: unknown;
+  } | null = null;
+
+  for (let index = outcome.turns.length - 1; index >= 0; index -= 1) {
+    const body = outcome.turns[index]?.response.body;
+    if (!body || typeof body !== 'object') {
+      continue;
+    }
+
+    const debug = (body as { runtimeDebug?: unknown }).runtimeDebug;
+    if (debug && typeof debug === 'object') {
+      const typedDebug = debug as {
+        selectedDomainSkills?: unknown;
+        loadedSkillSections?: unknown;
+        readIntents?: unknown;
+        retrievedContext?: unknown;
+        responseContract?: unknown;
+        minimalContractChecks?: unknown;
+        skillBehaviorChecks?: unknown;
+        llmJudgeSummary?: unknown;
+      };
+      lastDebugPayload = typedDebug;
+      if (hasFailingQualityEvidence(typedDebug)) {
+        return typedDebug;
+      }
+    }
+  }
+
+  return lastDebugPayload;
+}
+
+function arrayValue(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function hasFailingQualityEvidence(debug: {
+  minimalContractChecks?: unknown;
+  skillBehaviorChecks?: unknown;
+  llmJudgeSummary?: unknown;
+}) {
+  const checkArrays = [debug.minimalContractChecks, debug.skillBehaviorChecks];
+  for (const checks of checkArrays) {
+    if (!Array.isArray(checks)) {
+      continue;
+    }
+
+    if (checks.some((check) =>
+      check
+      && typeof check === 'object'
+      && (check as { result?: unknown }).result === 'fail',
+    )) {
+      return true;
+    }
+  }
+
+  const llmJudgeSummary = debug.llmJudgeSummary;
+  if (llmJudgeSummary && typeof llmJudgeSummary === 'object') {
+    const status = (llmJudgeSummary as { status?: unknown }).status;
+    return status === 'warn' || status === 'fail';
+  }
+
+  return false;
+}
+
+function normalizeQualityEvidenceChecks(checks: unknown): QualityEvidenceCheck[] {
+  if (!Array.isArray(checks)) {
+    return [];
+  }
+
+  return checks.flatMap((check): QualityEvidenceCheck[] => {
+    if (!check || typeof check !== 'object') {
+      return [];
+    }
+
+    const label = typeof (check as { label?: unknown }).label === 'string'
+      ? String((check as { label?: unknown }).label)
+      : typeof (check as { id?: unknown }).id === 'string'
+        ? String((check as { id?: unknown }).id)
+        : 'unknown';
+    const details = typeof (check as { details?: unknown }).details === 'string'
+      ? String((check as { details?: unknown }).details)
+      : typeof (check as { reason?: unknown }).reason === 'string' && String((check as { reason?: unknown }).reason).trim()
+        ? String((check as { reason?: unknown }).reason)
+        : `result=${String((check as { result?: unknown }).result ?? 'unknown')}`;
+    const passed = typeof (check as { passed?: unknown }).passed === 'boolean'
+      ? Boolean((check as { passed?: unknown }).passed)
+      : (check as { result?: unknown }).result === 'pass';
+
+    return [{
+      label,
+      passed,
+      details,
+    }];
+  });
+}
+
+function extractQualityEvidence(outcome: ScenarioOutcome): QualityEvidenceSummary | null {
+  const debug = getScenarioDebugPayload(outcome);
+  if (!debug) {
+    return null;
+  }
+
+  const selectedDomainSkills = arrayValue(debug.selectedDomainSkills).filter(
+    (entry): entry is string => typeof entry === 'string' && entry.trim().length > 0,
+  );
+  const loadedSkillSections = arrayValue(debug.loadedSkillSections);
+  const readIntents = arrayValue(debug.readIntents);
+  const retrievedContext = arrayValue(debug.retrievedContext);
+  const responseContract = debug.responseContract && typeof debug.responseContract === 'object'
+    ? debug.responseContract as Record<string, unknown>
+    : {};
+
+  const bySourceType: Record<string, number> = {};
+  for (const entry of retrievedContext) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const sourceType = (entry as { sourceType?: unknown }).sourceType;
+    if (typeof sourceType === 'string' && sourceType.trim().length > 0) {
+      bySourceType[sourceType] = (bySourceType[sourceType] ?? 0) + 1;
+    }
+  }
+
+  const minimalContractChecks = Array.isArray(debug.minimalContractChecks)
+    ? redactDeep(normalizeQualityEvidenceChecks(debug.minimalContractChecks)) as QualityEvidenceCheck[]
+    : [
+        {
+          label: 'structure',
+          passed: typeof responseContract.structure === 'string',
+          details: typeof responseContract.structure === 'string' ? String(responseContract.structure) : 'missing',
+        },
+        {
+          label: 'primaryMove',
+          passed: typeof responseContract.primaryMove === 'string',
+          details: typeof responseContract.primaryMove === 'string' ? String(responseContract.primaryMove) : 'missing',
+        },
+        {
+          label: 'followUpMove',
+          passed: typeof responseContract.followUpMove === 'string',
+          details: typeof responseContract.followUpMove === 'string' ? String(responseContract.followUpMove) : 'missing',
+        },
+      ];
+
+  const skillBehaviorChecks = Array.isArray(debug.skillBehaviorChecks)
+    ? redactDeep(normalizeQualityEvidenceChecks(debug.skillBehaviorChecks)) as QualityEvidenceCheck[]
+    : [
+        {
+          label: 'selectedDomainSkills',
+          passed: selectedDomainSkills.length > 0,
+          details: `${selectedDomainSkills.length} selected`,
+        },
+        {
+          label: 'loadedSkillSections',
+          passed: loadedSkillSections.length > 0,
+          details: `${loadedSkillSections.length} loaded`,
+        },
+        {
+          label: 'retrievedContext',
+          passed: retrievedContext.length > 0,
+          details: `${retrievedContext.length} retrieved`,
+        },
+      ];
+
+  const llmJudgeSummary = debug.llmJudgeSummary && typeof debug.llmJudgeSummary === 'object'
+    ? redactDeep(debug.llmJudgeSummary) as QualityEvidenceSummary['llmJudgeSummary']
+    : {
+        status: 'not_run',
+        summary: 'LLM judge not enabled for this run.',
+      };
+
+  return {
+    selectedDomainSkills: redactDeep(selectedDomainSkills),
+    loadedSkillSections: redactDeep(loadedSkillSections),
+    readIntents: redactDeep(readIntents),
+    retrievedContextCounts: {
+      total: retrievedContext.length,
+      bySourceType,
+    },
+    minimalContractChecks,
+    skillBehaviorChecks,
+    llmJudgeSummary,
+  };
+}
+
 function uniqueRedactedCookies(bootstrapResults: BootstrapSuccessResult[]) {
   return Array.from(new Set(bootstrapResults.flatMap((result) => result.redactedCookies))).sort((left, right) =>
     left.localeCompare(right),
@@ -132,8 +359,8 @@ function renderBootstrapSection(bootstrapResults: BootstrapSuccessResult[]) {
   return lines.join('\n');
 }
 
-const SCENARIO_ROW_HEADER = '| Scenario | Outcome | Category | Phase | Control-plane usable | Session | Summary |';
-const SCENARIO_ROW_DIVIDER = '|---|---|---|---|---|---|---|';
+const SCENARIO_ROW_HEADER = '| Scenario | Quality gate | Outcome | Category | Phase | Control-plane usable | Session | Summary |';
+const SCENARIO_ROW_DIVIDER = '|---|---|---|---|---|---|---|---|';
 
 function scenarioCategoryLabel(outcome: ScenarioOutcome) {
   return outcome.failureCategory ? `\`${outcome.failureCategory}\`` : '_none_';
@@ -147,9 +374,15 @@ function scenarioSessionLabel(outcome: ScenarioOutcome) {
   return outcome.sessionId ? `\`${redactSensitiveText(outcome.sessionId)}\`` : '_none_';
 }
 
+function scenarioQualityGateCell(scenarioId: string) {
+  const qualityGate = scenarioQualityGateLabel(scenarioId);
+  return qualityGate ? `\`${qualityGate}\`` : '_unknown_';
+}
+
 function renderScenarioRow(outcome: ScenarioOutcome) {
   return [
     `\`${outcome.scenarioId}\``,
+    scenarioQualityGateCell(outcome.scenarioId),
     `\`${outcome.outcome}\``,
     scenarioCategoryLabel(outcome),
     scenarioPhaseLabel(outcome),
@@ -163,7 +396,7 @@ function renderGroupedScenarioSection(title: string, outcomes: ScenarioOutcome[]
   const lines = [`## ${title}`, '', SCENARIO_ROW_HEADER, SCENARIO_ROW_DIVIDER];
 
   if (outcomes.length === 0) {
-    lines.push('| _none_ | _none_ | _none_ | _none_ | _none_ | _none_ | _none_ |');
+    lines.push('| _none_ | _none_ | _none_ | _none_ | _none_ | _none_ | _none_ | _none_ |');
     return lines.join('\n');
   }
 
@@ -182,9 +415,13 @@ function renderScenarioSections(rollup: RunRollup) {
   const sections = [
     renderGroupedScenarioSection('Environment Failures', byCategory(['environment'])),
     renderGroupedScenarioSection('Bootstrap Failures', byCategory(['bootstrap'])),
-    renderGroupedScenarioSection('Chat Transport / HTTP Failures', byCategory(['chat_transport', 'chat_http'])),
+    renderGroupedScenarioSection('Transport Failures', byCategory(['transport'])),
     renderGroupedScenarioSection('Control-Plane Failures', byCategory(['control_plane'])),
-    renderGroupedScenarioSection('Agent / Composer Failures', byCategory(['agent_or_composer'])),
+    renderGroupedScenarioSection('Skill-Routing Failures', byCategory(['skill_routing'])),
+    renderGroupedScenarioSection('Read-Planning Failures', byCategory(['read_planning'])),
+    renderGroupedScenarioSection('Agent-Contract Failures', byCategory(['agent_contract'])),
+    renderGroupedScenarioSection('Skill-Behavior Failures', byCategory(['skill_behavior'])),
+    renderGroupedScenarioSection('Response-Quality Failures', byCategory(['response_quality'])),
     renderGroupedScenarioSection('Passed Control-Plane Evidence', passedControlPlaneEvidence),
   ];
 
@@ -216,6 +453,58 @@ function renderLightsailLogCommand(rollup: RunRollup, workspaceRoot: string) {
     `  --lines 1200 | rg '${sessionPattern}|chatbot-v3.node-event|JourneyReducer|NextActionResolver|fallbackUsed|schemaValidationFailed'`,
     '```',
   ].join('\n');
+}
+
+function renderCheckList(checks: QualityEvidenceCheck[]) {
+  if (checks.length === 0) {
+    return '_none_';
+  }
+
+  return checks
+    .map((check) => `${check.label}=${check.passed ? 'pass' : 'fail'} (${check.details})`)
+    .map((entry) => `\`${markdownTableCell(entry)}\``)
+    .join(', ');
+}
+
+function renderQualityEvidenceSection(rollup: RunRollup) {
+  const scenariosWithEvidence = rollup.scenarioOutcomes
+    .map((outcome) => ({ outcome, evidence: extractQualityEvidence(outcome) }))
+    .filter((entry): entry is { outcome: ScenarioOutcome; evidence: QualityEvidenceSummary } => entry.evidence !== null);
+
+  const lines = [
+    '## Quality Evidence',
+    '',
+    '| Scenario | Quality gate | selectedDomainSkills | loadedSkillSections | readIntents | retrievedContext counts | minimalContractChecks | skillBehaviorChecks | llmJudgeSummary |',
+    '|---|---|---|---|---|---|---|---|---|',
+  ];
+
+  if (scenariosWithEvidence.length === 0) {
+    lines.push('| _none_ | _none_ | _none_ | _none_ | _none_ | _none_ | _none_ | _none_ | _none_ |');
+    return lines.join('\n');
+  }
+
+  for (const { outcome, evidence } of scenariosWithEvidence) {
+    const retrievedContextCounts = [
+      `total=${evidence.retrievedContextCounts.total}`,
+      ...Object.entries(evidence.retrievedContextCounts.bySourceType).map(([sourceType, count]) => `${sourceType}=${count}`),
+    ].join(', ');
+
+    lines.push(`| ${
+      [
+        `\`${outcome.scenarioId}\``,
+        scenarioQualityGateCell(outcome.scenarioId),
+        markdownTableCell(evidence.selectedDomainSkills.join(', ') || '_none_'),
+        markdownTableCell(String(evidence.loadedSkillSections.length)),
+        markdownTableCell(String(evidence.readIntents.length)),
+        markdownTableCell(retrievedContextCounts),
+        renderCheckList(evidence.minimalContractChecks),
+        renderCheckList(evidence.skillBehaviorChecks),
+        markdownTableCell(`${evidence.llmJudgeSummary.status}: ${evidence.llmJudgeSummary.summary}`),
+      ].join(' | ')
+    } |`);
+  }
+
+  return lines.join('\n');
 }
 
 function renderBugBacklogCategorySection(category: DogfoodFailureCategory, outcomes: ScenarioOutcome[]) {
@@ -256,6 +545,8 @@ function renderReportMarkdown({
     '',
     renderScenarioSections(rollup),
     '',
+    renderQualityEvidenceSection(rollup),
+    '',
     renderLightsailLogCommand(rollup, workspaceRoot),
     '',
   ].join('\n');
@@ -291,10 +582,13 @@ function renderBugBacklogMarkdown({
   const categories: DogfoodFailureCategory[] = [
     'environment',
     'bootstrap',
-    'chat_transport',
-    'chat_http',
     'control_plane',
-    'agent_or_composer',
+    'skill_routing',
+    'read_planning',
+    'agent_contract',
+    'skill_behavior',
+    'response_quality',
+    'transport',
   ];
 
   for (const category of categories) {
@@ -325,6 +619,9 @@ function serializeTranscripts({
     rollup: redactDeep(rollup),
     scenarioTranscripts: rollup.scenarioOutcomes.map((scenarioOutcome) => ({
       scenarioId: scenarioOutcome.scenarioId,
+      ...(scenarioQualityGateLabel(scenarioOutcome.scenarioId)
+        ? { qualityGate: scenarioQualityGateLabel(scenarioOutcome.scenarioId) ?? undefined }
+        : {}),
       outcome: scenarioOutcome.outcome,
       summary: redactStructuredText(scenarioOutcome.summary),
       ...(scenarioOutcome.failureCategory ? { failureCategory: scenarioOutcome.failureCategory } : {}),
@@ -334,6 +631,9 @@ function serializeTranscripts({
       chatAttempts: redactDeep(scenarioOutcome.chatAttempts),
       sessionId: scenarioOutcome.sessionId ? redactSensitiveText(scenarioOutcome.sessionId) : null,
       notes: scenarioOutcome.notes.map((note) => redactStructuredText(note)),
+      ...(extractQualityEvidence(scenarioOutcome)
+        ? { qualityEvidence: redactDeep(extractQualityEvidence(scenarioOutcome)) }
+        : {}),
       turns: scenarioOutcome.turns.map((turn) => sanitizeTurnTranscript(turn)),
     })),
   };

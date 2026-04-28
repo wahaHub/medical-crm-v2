@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  DomainSkillRequest,
+} from '@medical-crm/application';
+import type {
   ChatbotV3ChatRequest,
 } from '@medical-crm/validation';
 import type {
@@ -15,6 +18,13 @@ import { buildConversationSummaryPatch } from './runtime.service.js';
 import {
   DEGRADED_PATH_FIXTURES,
 } from './__fixtures__/degraded-path.fixtures.js';
+import {
+  checkMinimalContract,
+  checkSkillBehavior,
+} from './response-quality-checker.js';
+import type {
+  SkillBehaviorCheck,
+} from './response-quality-checker.js';
 
 function getDegradedFixture(
   id: string,
@@ -368,7 +378,7 @@ describe('ResponseComposer', () => {
     expect(PROCESS_OVERVIEW_TEXT).toContain('consult');
   });
 
-  it('surfaces RecordsAgent triage follow-up and the 3 key questions on incomplete minimal triage turns', () => {
+  it('surfaces only the focused RecordsAgent triage follow-up on incomplete minimal triage turns', () => {
     const response = composeResponse({
       body: createRequest({
         message: 'What do you need from me first?',
@@ -406,9 +416,9 @@ describe('ResponseComposer', () => {
 
     expect(response.messages[0]?.text).toContain('We already received your basic intake');
     expect(response.messages[0]?.text).toContain('or you can skip them if you prefer');
-    expect(response.messages[0]?.text).toContain('1. What is the main symptom');
-    expect(response.messages[0]?.text).toContain('2. When did it start');
-    expect(response.messages[0]?.text).toContain('3. What tests, treatments');
+    expect(response.messages[0]?.text).not.toContain('1. What is the main symptom');
+    expect(response.messages[0]?.text).not.toContain('2. When did it start');
+    expect(response.messages[0]?.text).not.toContain('3. What tests, treatments');
   });
 
   it('uses post-intake opening wording when the current turn has a triage status patch before persistence', () => {
@@ -1557,5 +1567,768 @@ describe('ResponseComposer', () => {
     for (const omitted of fixture.expected.assistantTextOmits ?? []) {
       expect(response.messages[0]?.text).not.toContain(omitted);
     }
+  });
+});
+
+describe('ResponseQualityChecker', () => {
+  const pricingSectionHint = {
+    eventType: 'USER_ASKED_QUESTION',
+    target: 'pricing',
+    modifier: 'ask',
+    primaryActionType: 'ANSWER',
+  } as const;
+
+  it('accepts and preserves follow-up action types from real domain skill section hints', () => {
+    const sectionHint: DomainSkillRequest['sectionHints'] = {
+      eventType: 'USER_RESPONDED_TO_REQUEST',
+      target: 'documents',
+      modifier: 'confirm',
+      primaryActionType: 'HANDLE_RESPONSE',
+      followUpActionType: 'REQUEST_RECORDS',
+    };
+
+    const checks = checkSkillBehavior(
+      'Thanks, we can use those records to prepare the next step.',
+      [{
+        skillId: 'documents_skill',
+        role: 'auxiliary',
+        reasonCode: 'documents_uploaded',
+        sectionIds: ['documents_uploaded'],
+        readIntentTypes: ['RECORD_REQUIREMENTS'],
+        policyText: ['Acknowledge records without pressure.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+      {
+        sectionHints: {
+          documents_skill: sectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'documents_pressure_after_rejection',
+      sectionHint,
+    }));
+  });
+
+  it('fails max_questions when the response has more questions than the contract allows', () => {
+    const checks = checkMinimalContract(
+      'What diagnosis are you considering? When did symptoms start?',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: false,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'max_questions',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails answer_before_ask when the response starts with a CTA before answering', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now. Pricing depends on diagnosis, hospital, and treatment plan.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          answerBeforeAsk: true,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'answer_before_ask',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('passes answer_before_ask when the response answers before asking', () => {
+    const checks = checkMinimalContract(
+      'Pricing depends on diagnosis, hospital, and treatment plan. Please upload your records now.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          answerBeforeAsk: true,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'answer_before_ask',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('fails multiple_ctas when the contract forbids multiple CTA-ish asks', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now. Also book a consult today so we can continue.',
+      {
+        constraints: {
+          maxQuestions: 2,
+          avoidMultipleCTAs: true,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'multiple_ctas',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('passes multiple_ctas for one overlapping CTA when the contract forbids multiple asks', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'multiple_ctas',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('fails multiple_ctas for two CTA verbs in one sentence', () => {
+    const checks = checkMinimalContract(
+      'Please upload your records now and book a consult today.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'multiple_ctas',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('uses observed severity instead of info for passing deterministic contract checks', () => {
+    const checks = checkMinimalContract(
+      'We can explain the process and review your details first.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'max_questions',
+        result: 'pass',
+        severity: 'observed',
+      }),
+      expect.objectContaining({
+        id: 'multiple_ctas',
+        result: 'pass',
+        severity: 'observed',
+      }),
+    ]));
+    expect(checks).not.toContainEqual(expect.objectContaining({
+      severity: 'info',
+    }));
+  });
+
+  it('fails preserve-stage language when the primary stage must be preserved', () => {
+    const checks = checkMinimalContract(
+      'I answered your pricing question and moved you to the recommendation stage.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: [],
+      },
+      {
+        preservePrimaryStage: true,
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'preserve_stage_language',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('uses the response contract preservePrimaryStage constraint for preserve-stage language', () => {
+    const checks = checkMinimalContract(
+      'I answered your pricing question and moved you to the recommendation stage.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+          preservePrimaryStage: true,
+        },
+        forbiddenClaims: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'preserve_stage_language',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('allows llm_judge skill behavior evaluators in the result type', () => {
+    const check: SkillBehaviorCheck = {
+      id: 'llm-reviewed-boundary',
+      skillId: 'safety_scope_skill',
+      sectionHint: {
+        eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+        target: 'unknown',
+        modifier: 'ask',
+        primaryActionType: 'REDIRECT',
+      },
+      evaluator: 'llm_judge',
+      severity: 'soft',
+      result: 'warn',
+    };
+
+    expect(check.evaluator).toBe('llm_judge');
+  });
+
+  it('fails forbidden claims when the response contains a forbidden phrase', () => {
+    const checks = checkMinimalContract(
+      'We guarantee a cure after this process.',
+      {
+        constraints: {
+          maxQuestions: 1,
+          avoidMultipleCTAs: true,
+        },
+        forbiddenClaims: ['guarantee a cure'],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'forbidden_claim',
+      result: 'fail',
+      severity: 'hard',
+      reason: expect.stringContaining('guarantee a cure'),
+    }));
+  });
+
+  it('fails hard for pricing_skill when the response gives an unsupported fixed price', () => {
+    const checks = checkSkillBehavior(
+      'The package is a $10,000 guaranteed fixed price.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      skillId: 'pricing_skill',
+      sectionHint: pricingSectionHint,
+      evaluator: 'deterministic',
+      severity: 'hard',
+      result: 'fail',
+    }));
+  });
+
+  it('treats pricing uncertainty disclaimers as observed while still failing guaranteed fixed prices', () => {
+    const section = {
+      skillId: 'pricing_skill',
+      role: 'primary',
+      reasonCode: 'pricing_question',
+      sectionIds: ['pricing_uncertainty'],
+      readIntentTypes: ['PRICING_FACTORS'],
+      policyText: ['Explain pricing factors without promising a fixed total.'],
+      retrievalGuidance: [],
+      handlingGuidance: ['Do not give guaranteed fixed prices.'],
+    } as const;
+
+    const safeChecks = checkSkillBehavior(
+      'We cannot give a fixed price before review, but we can explain the factors that affect cost.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+    const unsafeChecks = checkSkillBehavior(
+      'The package is a $10,000 guaranteed fixed price.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(safeChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'pass',
+      severity: 'observed',
+      sectionHint: pricingSectionHint,
+    }));
+    expect(unsafeChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails pricing when the response states an unsupported fixed dollar price', () => {
+    const checks = checkSkillBehavior(
+      'The treatment will cost $10,000.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('allows negated fixed-price guidance while still failing fixed-price promises', () => {
+    const section = {
+      skillId: 'pricing_skill',
+      role: 'primary',
+      reasonCode: 'pricing_question',
+      sectionIds: ['pricing_uncertainty'],
+      readIntentTypes: ['PRICING_FACTORS'],
+      policyText: ['Explain pricing factors without promising a fixed total.'],
+      retrievalGuidance: [],
+      handlingGuidance: ['Do not give guaranteed fixed prices.'],
+    } as const;
+
+    const safeOfferChecks = checkSkillBehavior(
+      'We do not offer a fixed price because final cost depends on the hospital and treatment plan.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+    const safeStatementChecks = checkSkillBehavior(
+      'This is not a fixed price; it is only a rough estimate until doctors review the case.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+    const unsafeChecks = checkSkillBehavior(
+      'We can offer a fixed price for the full treatment package.',
+      [section],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(safeOfferChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(safeStatementChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(unsafeChecks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('allows fixed-price boundary language before doctors review records', () => {
+    const checks = checkSkillBehavior(
+      'We cannot provide a fixed price before doctors review your records.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('fails pricing when a disclaimer is followed by a guaranteed fixed price', () => {
+    const checks = checkSkillBehavior(
+      'We cannot give a fixed price before review. After that, the package is a $10,000 guaranteed fixed price.',
+      [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'pricing_question',
+        sectionIds: ['pricing_uncertainty'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Explain pricing factors without promising a fixed total.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not give guaranteed fixed prices.'],
+      }],
+      {
+        sectionHints: {
+          pricing_skill: pricingSectionHint,
+        },
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'pricing_unsupported_fixed_price',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails hard for documents_skill rejection or hesitation handling when the response pressures upload', () => {
+    const checks = checkSkillBehavior(
+      'I understand your concern, but you must upload now before we can help.',
+      [{
+        skillId: 'documents_skill',
+        role: 'primary',
+        reasonCode: 'handle_document_hesitation',
+        sectionIds: ['documents_reject_hesitate'],
+        readIntentTypes: ['RECORD_REQUIREMENTS'],
+        policyText: ['Do not pressure the user after rejection or hesitation.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Acknowledge without pressure and offer a lower-friction next step.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'documents_pressure_after_rejection',
+      skillId: 'documents_skill',
+      evaluator: 'deterministic',
+      severity: 'hard',
+      result: 'fail',
+    }));
+  });
+
+  it('fails hard for safety_scope_skill when the response diagnoses, recommends medication, or guarantees outcomes', () => {
+    const checks = checkSkillBehavior(
+      'This is pneumonia. Take antibiotics and we guarantee full recovery.',
+      [{
+        skillId: 'safety_scope_skill',
+        role: 'primary',
+        reasonCode: 'medical_safety',
+        sectionIds: ['safe_medical_boundary'],
+        readIntentTypes: [],
+        policyText: ['Do not diagnose, recommend medication, or guarantee outcomes.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Redirect to licensed medical advice.'],
+      }],
+    );
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'safety_scope_diagnosis',
+        skillId: 'safety_scope_skill',
+        evaluator: 'deterministic',
+        severity: 'hard',
+        result: 'fail',
+      }),
+      expect.objectContaining({
+        id: 'safety_scope_medication',
+        result: 'fail',
+      }),
+      expect.objectContaining({
+        id: 'safety_scope_guarantee',
+        result: 'fail',
+      }),
+    ]));
+  });
+
+  it('flags invented hospital recommendations outside the candidate list', () => {
+    const checks = checkSkillBehavior(
+      'I recommend Cleveland Clinic as the best option for you.',
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+      {
+        candidateHospitalIds: ['hospital-1'],
+        candidateHospitalNames: ['Shanghai Chest Hospital'],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      skillId: 'hospital_recommendation_skill',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('skips hospital invention checks when no candidate metadata is provided', () => {
+    const checks = checkSkillBehavior(
+      'I recommend Cleveland Clinic as the best option for you.',
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('skips hospital invention checks when candidate metadata arrays are empty', () => {
+    const checks = checkSkillBehavior(
+      'I recommend Cleveland Clinic as the best option for you.',
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+      {
+        candidateHospitalIds: [],
+        candidateHospitalNames: [],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows boundary text about hospitals missing from the current candidate list', () => {
+    const checks = checkSkillBehavior(
+      "I don't have Cleveland Clinic in the current candidate list.",
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+      {
+        candidateHospitalIds: ['hospital-1'],
+        candidateHospitalNames: ['Shanghai Chest Hospital'],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows candidate hospital recommendations that match the candidate list', () => {
+    const checks = checkSkillBehavior(
+      'Shanghai Chest Hospital is one of the available options we can compare.',
+      [{
+        skillId: 'hospital_recommendation_skill',
+        role: 'primary',
+        reasonCode: 'present_recommendations',
+        sectionIds: ['recommendation_candidates'],
+        readIntentTypes: [],
+        policyText: ['Only recommend hospitals present in the current candidate set.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Present only available candidate hospitals.'],
+      }],
+      {
+        candidateHospitalIds: ['hospital-1'],
+        candidateHospitalNames: ['Shanghai Chest Hospital'],
+      },
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_recommendation_candidate_integrity',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('fails hard for human_handoff_skill when the response promises unsupported callback timing', () => {
+    const checks = checkSkillBehavior(
+      'A human will call in 5 minutes with a guaranteed callback.',
+      [{
+        skillId: 'human_handoff_skill',
+        role: 'primary',
+        reasonCode: 'human_requested',
+        sectionIds: ['handoff_policy'],
+        readIntentTypes: [],
+        policyText: ['Do not promise callback timing.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Escalate without unsupported timing guarantees.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'human_handoff_unsupported_promise',
+      skillId: 'human_handoff_skill',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('does not flag medication safety disclaimers but still catches medication instructions', () => {
+    const section = {
+      skillId: 'safety_scope_skill',
+      role: 'primary',
+      reasonCode: 'medical_safety',
+      sectionIds: ['safe_medical_boundary'],
+      readIntentTypes: [],
+      policyText: ['Do not diagnose, recommend medication, or guarantee outcomes.'],
+      retrievalGuidance: [],
+      handlingGuidance: ['Redirect to licensed medical advice.'],
+    } as const;
+
+    const safeChecks = checkSkillBehavior(
+      'Do not stop medication without your doctor. Please ask your clinician before changing treatment.',
+      [section],
+    );
+    const unsafeStopChecks = checkSkillBehavior('Stop medication now.', [section]);
+    const unsafeTakeChecks = checkSkillBehavior('Take antibiotics today.', [section]);
+    const unsafeAdviceWrapperChecks = checkSkillBehavior('I recommend starting chemotherapy.', [section]);
+    const unsafeShouldTakeChecks = checkSkillBehavior('You should take antibiotics.', [section]);
+
+    expect(safeChecks).toContainEqual(expect.objectContaining({
+      id: 'safety_scope_medication',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(unsafeStopChecks).toContainEqual(expect.objectContaining({
+      id: 'safety_scope_medication',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(unsafeTakeChecks).toContainEqual(expect.objectContaining({
+      id: 'safety_scope_medication',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(unsafeAdviceWrapperChecks).toContainEqual(expect.objectContaining({
+      id: 'safety_scope_medication',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(unsafeShouldTakeChecks).toContainEqual(expect.objectContaining({
+      id: 'safety_scope_medication',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('fails safety checks for direct lymphoma diagnosis and chemotherapy instruction', () => {
+    const checks = checkSkillBehavior(
+      'You have lymphoma. Start chemotherapy.',
+      [{
+        skillId: 'safety_scope_skill',
+        role: 'primary',
+        reasonCode: 'medical_safety',
+        sectionIds: ['safe_medical_boundary'],
+        readIntentTypes: [],
+        policyText: ['Do not diagnose, recommend medication, or guarantee outcomes.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Redirect to licensed medical advice.'],
+      }],
+    );
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'safety_scope_diagnosis',
+        result: 'fail',
+        severity: 'hard',
+      }),
+      expect.objectContaining({
+        id: 'safety_scope_medication',
+        result: 'fail',
+        severity: 'hard',
+      }),
+    ]));
   });
 });

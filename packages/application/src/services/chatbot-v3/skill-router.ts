@@ -1,9 +1,9 @@
 import type { AgentRole } from './agent-resolver.js';
-import type { DomainFacts, SupervisorEvent, TurnPlan } from './supervisor-event.types.js';
-import type { SkillPackId, SkillRequest } from './skill-packs.js';
+import type { DomainFacts, SupervisorEvent, SupervisorEventTarget, TurnPlan } from './supervisor-event.types.js';
+import type { DomainSkillId, DomainSkillRequest } from './skill-packs.js';
 
 export interface SkillPolicy {
-  requests: SkillRequest[];
+  requests: DomainSkillRequest[];
   maxSkillSnippets: number;
 }
 
@@ -13,17 +13,39 @@ export function buildSkillPolicy(input: {
   agentRole: AgentRole;
   facts: DomainFacts;
 }): SkillPolicy {
-  const requests: SkillRequest[] = [];
-  const add = (skillPackId: SkillPackId, reasonCode: string) => {
-    if (!requests.some((request) => request.skillPackId === skillPackId)) {
-      requests.push({ skillPackId, reasonCode });
+  const requests: DomainSkillRequest[] = [];
+  const add = (
+    route: SkillRoute,
+    role: DomainSkillRequest['role'],
+    reasonCode: string,
+  ) => {
+    if (requests.length >= 2 || requests.some((request) => request.skillId === route.skillId)) {
+      return;
     }
+
+    requests.push({
+      skillId: route.skillId,
+      role,
+      reasonCode,
+      sectionHints: {
+        eventType: input.event.eventType,
+        target: route.sectionTarget,
+        modifier: input.event.modifier ?? 'unknown',
+        primaryActionType: input.turnPlan.primaryAction.type,
+        ...(input.turnPlan.followUpAction && input.turnPlan.followUpAction.type !== 'NONE'
+          ? { followUpActionType: input.turnPlan.followUpAction.type }
+          : {}),
+      },
+    });
   };
 
-  addSkillsByPrimaryAction(add, input.turnPlan.primaryAction);
-  addSkillsByFollowUpAction(add, input.turnPlan.followUpAction);
-  addSkillsByEvent(add, input.event);
-  addSkillsByAgentRole(add, input.agentRole);
+  add(primaryRouteFor(input), 'primary', reasonCodeForPrimaryAction(input.turnPlan));
+
+  const followUpAction = input.turnPlan.followUpAction;
+  const auxiliaryRoute = routeForFollowUpAction(followUpAction);
+  if (auxiliaryRoute && followUpAction) {
+    add(auxiliaryRoute, 'auxiliary', reasonCodeForFollowUpAction(followUpAction));
+  }
 
   return {
     requests,
@@ -31,138 +53,105 @@ export function buildSkillPolicy(input: {
   };
 }
 
-function addSkillsByPrimaryAction(
-  add: (skillPackId: SkillPackId, reasonCode: string) => void,
-  action: TurnPlan['primaryAction'],
-) {
-  switch (action.type) {
-    case 'ANSWER':
-      if (action.target === 'pricing') {
-        add('search_general_faq_by_category', 'answer_pricing_question');
-        add('answer_general_faq_from_admin_source', 'answer_pricing_question');
-        add('explain_pricing_uncertainty', 'answer_pricing_question');
-      }
-      if (action.target === 'process') {
-        add('load_process_policy', 'answer_process_question');
-        add('explain_medora_process', 'answer_process_question');
-      }
-      if (action.target === 'documents') {
-        add('load_records_requirement_data', 'answer_documents_question');
-        add('explain_records_preparation', 'answer_documents_question');
-      }
-      if (action.target === 'travel' || action.target === 'payment') {
-        add('search_general_faq_by_category', 'answer_travel_or_payment_question');
-        add('answer_general_faq_from_admin_source', 'answer_travel_or_payment_question');
-        add('explain_travel_or_payment_scope', 'answer_travel_or_payment_question');
-      }
-      if (action.target === 'hospital' || action.target === 'hospital_selection') {
-        add('search_hospital_faq_by_category', 'answer_hospital_question');
-        add('answer_hospital_faq_from_admin_source', 'answer_hospital_question');
-        add('explain_hospital_selection_logic', 'answer_hospital_question');
-      }
-      if (action.target === 'consult') {
-        add('search_general_faq_by_category', 'answer_consult_question');
-        add('answer_general_faq_from_admin_source', 'answer_consult_question');
-        add('load_consult_readiness_criteria', 'answer_consult_question');
-        add('explain_online_consult', 'answer_consult_question');
-      }
-      return;
-    case 'REQUEST_INFO':
-      if (action.target === 'documents' || action.target === 'medical_facts' || action.target === 'minimal_triage') {
-        add('load_records_requirement_data', 'request_records_owned_info');
-        add('explain_records_preparation', 'request_records_owned_info');
-      }
-      return;
-    case 'PRESENT_OPTIONS':
-      if (action.target === 'hospital') {
-        add('search_hospital_candidates', 'present_hospital_options');
-        add('search_doctor_matching_context', 'present_hospital_options');
-        add('explain_hospital_selection_logic', 'present_hospital_options');
-      } else {
-        add('load_consult_readiness_criteria', 'present_consult_options');
-        add('explain_online_consult', 'present_consult_options');
-      }
-      return;
-    case 'REDIRECT':
-      add(action.reasonCode === 'medical_safety' ? 'medical_safety_boundary' : 'service_scope_boundary', action.reasonCode);
-      add('safe_degradation_when_uncertain', action.reasonCode);
-      return;
-    case 'HANDLE_RESPONSE':
-      if (action.target === 'documents') {
-        add('handle_document_hesitation', 'handle_documents_objection');
-      }
-      if (action.target === 'contact') {
-        add('handle_contact_hesitation', 'handle_contact_objection');
-      }
-      if (action.target === 'pricing') {
-        add('handle_price_objection', 'handle_price_objection');
-      }
-      add('low_friction_alternative_step', 'handle_response_to_request');
-      return;
-    case 'ESCALATE':
-      add('build_handoff_payload_context', 'human_escalation');
-      add('soft_human_handoff', 'human_escalation');
-      return;
-    case 'CLARIFY':
-      add('clarify_ambiguous_reply', action.reasonCode);
-      return;
-    case 'ACKNOWLEDGE':
-      return;
+interface SkillRoute {
+  skillId: DomainSkillId;
+  sectionTarget: SupervisorEventTarget;
+}
+
+function primaryRouteFor(input: {
+  event: SupervisorEvent;
+  turnPlan: TurnPlan;
+  agentRole: AgentRole;
+  facts: DomainFacts;
+}): SkillRoute {
+  if (
+    input.event.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
+    || input.event.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
+    || input.turnPlan.primaryAction.type === 'REDIRECT'
+  ) {
+    return { skillId: 'safety_scope_skill', sectionTarget: input.event.target ?? 'unknown' };
+  }
+
+  if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
+    return { skillId: 'clarification_recovery_skill', sectionTarget: input.event.target ?? 'unknown' };
+  }
+
+  if (input.turnPlan.primaryAction.type === 'ESCALATE' || input.event.eventType === 'USER_REQUESTED_HUMAN') {
+    return { skillId: 'human_handoff_skill', sectionTarget: 'human' };
+  }
+
+  const actionTarget = 'target' in input.turnPlan.primaryAction
+    ? input.turnPlan.primaryAction.target
+    : undefined;
+  const eventRoute = input.event.target && input.event.target !== 'unknown'
+    ? routeForTarget(input.event.target)
+    : null;
+  return eventRoute ?? routeForTarget(actionTarget) ?? clarificationRoute();
+}
+
+function routeForFollowUpAction(followUpAction: TurnPlan['followUpAction']): SkillRoute | null {
+  if (!followUpAction || followUpAction.type === 'NONE') {
+    return null;
+  }
+
+  return routeForTarget(followUpAction.target);
+}
+
+function routeForTarget(target: string | undefined): SkillRoute | null {
+  switch (target) {
+    case 'pricing':
+      return { skillId: 'pricing_skill', sectionTarget: 'pricing' };
+    case 'documents':
+      return { skillId: 'documents_skill', sectionTarget: 'documents' };
+    case 'medical_facts':
+    case 'minimal_triage':
+      return { skillId: 'documents_skill', sectionTarget: 'medical_facts' };
+    case 'process':
+      return { skillId: 'process_skill', sectionTarget: 'process' };
+    case 'next_step':
+      return { skillId: 'process_skill', sectionTarget: 'next_step' };
+    case 'travel':
+      return { skillId: 'process_skill', sectionTarget: 'travel' };
+    case 'payment':
+      return { skillId: 'process_skill', sectionTarget: 'payment' };
+    case 'recommendation':
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'recommendation' };
+    case 'preference':
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'recommendation' };
+    case 'hospital':
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'hospital' };
+    case 'hospital_selection':
+      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'hospital_selection' };
+    case 'consult':
+      return { skillId: 'consult_skill', sectionTarget: 'consult' };
+    case 'human':
+      return { skillId: 'human_handoff_skill', sectionTarget: 'human' };
+    case 'contact':
+      return { skillId: 'human_handoff_skill', sectionTarget: 'contact' };
+    case 'unknown':
+    default:
+      return null;
   }
 }
 
-function addSkillsByFollowUpAction(
-  add: (skillPackId: SkillPackId, reasonCode: string) => void,
-  followUpAction: TurnPlan['followUpAction'],
-) {
-  if (!followUpAction) {
-    return;
-  }
-
-  if (followUpAction.type === 'INVITE_NEXT_STEP' && followUpAction.target === 'documents') {
-    add('load_records_requirement_data', 'followup_invite_documents');
-    add('explain_records_preparation', 'followup_invite_documents');
-  }
-
-  if (followUpAction.type === 'GO_DEEP') {
-    if (followUpAction.target === 'consult') {
-      add('load_consult_readiness_criteria', 'followup_go_deep_consult');
-      add('explain_online_consult', 'followup_go_deep_consult');
-    }
-    if (followUpAction.target === 'hospital') {
-      add('search_hospital_faq_by_category', 'followup_go_deep_hospital');
-      add('explain_hospital_selection_logic', 'followup_go_deep_hospital');
-    }
-  }
+function clarificationRoute(): SkillRoute {
+  return { skillId: 'clarification_recovery_skill', sectionTarget: 'unknown' };
 }
 
-function addSkillsByEvent(
-  add: (skillPackId: SkillPackId, reasonCode: string) => void,
-  event: SupervisorEvent,
-) {
-  if (event.eventType === 'DOCUMENTS_UPLOADED' || event.target === 'documents') {
-    add('derive_record_inventory_candidate', 'document_or_record_event');
+function reasonCodeForPrimaryAction(turnPlan: TurnPlan): string {
+  const action = turnPlan.primaryAction;
+  if ('reasonCode' in action && action.reasonCode) {
+    return action.reasonCode;
   }
-
-  if (event.eventType === 'USER_PROVIDED_INFORMATION' && event.target === 'medical_facts') {
-    add('extract_medical_facts_candidate', 'medical_facts_provided');
-  }
-
-  if (event.eventType === 'USER_PROVIDED_INFORMATION' && event.target === 'contact') {
-    add('extract_contact_info_candidate', 'contact_info_provided');
-    add('build_handoff_payload_context', 'contact_info_provided');
-    add('soft_human_handoff', 'contact_info_provided');
-  }
+  return turnPlan.reasonCode;
 }
 
-function addSkillsByAgentRole(
-  add: (skillPackId: SkillPackId, reasonCode: string) => void,
-  agentRole: AgentRole,
-) {
-  if (agentRole === 'RecommendationAgent') {
-    add('trust_building_for_medical_travel', 'recommendation_agent_context');
+function reasonCodeForFollowUpAction(followUpAction: Exclude<TurnPlan['followUpAction'], undefined>): string {
+  if (followUpAction.type === 'INVITE_NEXT_STEP') {
+    return followUpAction.reason ?? 'followup_invite_next_step';
   }
-  if (agentRole === 'HandoffAgent') {
-    add('soft_human_handoff', 'handoff_agent_context');
+  if ('reasonCode' in followUpAction && followUpAction.reasonCode) {
+    return followUpAction.reasonCode;
   }
+  return `followup_${followUpAction.type.toLowerCase()}`;
 }

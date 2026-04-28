@@ -13,11 +13,12 @@ import {
   buildAgentTask,
   buildReadPlan,
   buildSkillPolicy,
-  loadSkillPacks,
+  loadSkillSections,
   type MinimalIntakeSeed,
   type NextAction,
   type PrimaryAction,
   type ReadPlan,
+  type RetrievedContextEntry,
   normalizeFactsFromStatusSnapshot,
   projectLegacyCompatibilityView,
   reduceJourney,
@@ -215,6 +216,12 @@ export interface ConversationOrchestratorV3TurnResult {
     idempotencyKey: string;
     lastDispatchSource?: 'journey-runtime-authority';
     replayLineage?: ChatbotV3ReplayLineage;
+    selectedDomainSkills?: string[];
+    loadedSkillSections?: AgentTask['loadedSkillSections'];
+    readIntents?: AgentTask['readIntents'];
+    retrievedContext?: AgentTask['retrievedContext'];
+    retrievedContextCount?: number;
+    responseContract?: AgentTask['responseContract'];
   };
   render: ConversationOrchestratorV3RenderState;
 }
@@ -451,6 +458,7 @@ export class ConversationOrchestratorV3RuntimeService {
       idempotencyKey,
       lastDispatchSource: 'journey-runtime-authority',
       ...(replayLineage ? { replayLineage } : {}),
+      ...projectRuntimeDebugAgentTaskEvidence(decision.agentTask),
     } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
 
     if (!decision.dispatchAgent) {
@@ -721,24 +729,26 @@ export class ConversationOrchestratorV3RuntimeService {
       agentRole: resolvedAgent.conceptualRole,
       facts: reduction.facts,
     });
-    const loadedSkillPolicy = loadSkillPacks({
+    const loadedSkillPolicy = loadSkillSections({
       requests: skillPolicy.requests,
-      maxSkillSnippets: skillPolicy.maxSkillSnippets,
     });
     const readPlan = buildReadPlan({
       event,
       turnPlan: reduction.turnPlan,
-      loadedSkills: loadedSkillPolicy.skillPacks,
+      loadedSkillSections: loadedSkillPolicy.skillSections,
     });
+    const retrievedContext = buildRetrievedContextEntries(readPlan);
     const agentTask = buildAgentTask({
       event,
       turnPlan: reduction.turnPlan,
+      currentStage: decisionInput.current.stage,
       resolvedAgent,
       latestUserMessage: normalizedInput.message,
       conversationSummary: normalizedInput.statusSnapshot?.conversationSummary ?? '',
       knownFacts: reduction.facts,
-      loadedSkills: loadedSkillPolicy.skillPacks,
+      loadedSkillSections: loadedSkillPolicy.skillSections,
       readPlan,
+      retrievedContext,
     });
     const compatibilityView = projectLegacyCompatibilityView({
       currentStage: decisionInput.current.stage,
@@ -838,6 +848,7 @@ export class ConversationOrchestratorV3RuntimeService {
       replayLineage: {
         matchedRuleId: reduction.reasonCode,
       },
+      ...projectRuntimeDebugAgentTaskEvidence(agentTask),
     } satisfies ConversationOrchestratorV3TurnResult['runtimeDebug'];
 
     if (!decision.dispatchAgent) {
@@ -2093,8 +2104,8 @@ function buildWorkerTask(
   suggestion: ConversationOrchestratorV3Suggestion,
 ): WorkerTask {
   const baseTask = {
-    fromStage: decision.from.stage,
-    toStage: decision.to.stage,
+    currentStage: decision.agentTask?.currentStage ?? decision.from.stage,
+    primaryStage: decision.agentTask?.primaryStage ?? decision.to.stage,
     intent: suggestion.intent,
     supervisorReason: normalizeReason(suggestion.reason),
     latestUserMessage: input.message,
@@ -2102,8 +2113,10 @@ function buildWorkerTask(
       ? {
           primaryAction: decision.agentTask.primaryAction,
           followUpAction: decision.agentTask.followUpAction,
-          allowedSkillPacks: decision.agentTask.skillPolicy.allowedSkillPacks,
-          readIntents: decision.agentTask.readPlan.readIntents.map(describeReadIntent),
+          selectedDomainSkills: decision.agentTask.loadedSkillSections.map((section) => section.skillId),
+          loadedSkillSections: decision.agentTask.loadedSkillSections,
+          readIntents: decision.agentTask.readIntents,
+          retrievedContext: decision.agentTask.retrievedContext,
           responseContract: decision.agentTask.responseContract,
         }
       : {}),
@@ -2138,14 +2151,57 @@ function buildWorkerTask(
   }
 }
 
-function describeReadIntent(intent: ReadPlan['readIntents'][number]): string {
-  switch (intent.type) {
-    case 'GENERAL_FAQ':
-    case 'HOSPITAL_FAQ':
-      return `${intent.type}:${intent.category}`;
-    default:
-      return intent.type;
+export function buildRetrievedContextEntries(readPlan: ReadPlan): RetrievedContextEntry[] {
+  return readPlan.readIntents.map((readIntent) => ({
+    readIntentId: buildReadIntentId(readIntent),
+    readIntent,
+    snippets: [],
+  }));
+}
+
+function buildReadIntentId(readIntent: ReadPlan['readIntents'][number]): string {
+  return `read-${hashString(stableStringify(readIntent))}`;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
   }
+
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function hashString(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function projectRuntimeDebugAgentTaskEvidence(
+  agentTask: AgentTask | undefined,
+): Partial<ConversationOrchestratorV3TurnResult['runtimeDebug']> {
+  if (!agentTask) {
+    return {};
+  }
+
+  return {
+    selectedDomainSkills: agentTask.loadedSkillSections.map((section) => section.skillId),
+    loadedSkillSections: agentTask.loadedSkillSections,
+    readIntents: agentTask.readIntents,
+    retrievedContext: agentTask.retrievedContext,
+    retrievedContextCount: agentTask.retrievedContext.length,
+    responseContract: agentTask.responseContract,
+  };
 }
 
 function resolveRecordsMinimalTriageComplete(

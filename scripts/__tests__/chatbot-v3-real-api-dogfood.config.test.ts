@@ -8,6 +8,7 @@ import {
   buildRunMetadata,
   formatUtcRunId,
   parseDogfoodConfig,
+  requireDogfoodRuntimeDebugSecret,
 } from '../chatbot-v3-real-api-dogfood/config.ts';
 
 test('missing base URL fails loudly', () => {
@@ -27,6 +28,18 @@ test('missing site fails loudly', () => {
       assert.match(error.message, /site/i);
       return true;
     },
+  );
+});
+
+test('missing runtime debug secret fails loudly for real API dogfood quality gates', () => {
+  assert.throws(
+    () => requireDogfoodRuntimeDebugSecret({}),
+    /CHATBOT_V3_DOGFOOD_DEBUG_SECRET/,
+  );
+
+  assert.equal(
+    requireDogfoodRuntimeDebugSecret({ CHATBOT_V3_DOGFOOD_DEBUG_SECRET: 'secret-1' }),
+    'secret-1',
   );
 });
 
@@ -105,12 +118,12 @@ test('pins the v1 scenario matrix and matrix doc', async () => {
     'triage_to_recommendation',
     'recommendation_selected_to_consult',
     'faq_detour_no_progression',
-    'handoff_denied_returns_to_current_step',
+    'direct_human_request_to_handoff',
   ]);
 
   assert.deepEqual(scenarios.V1_DEFERRED_SCENARIO_IDS, [
+    'handoff_denied_returns_to_current_step',
     'recommendation_to_explain',
-    'direct_human_request_to_handoff',
     'recommendation_revisit_compare',
     'repeat_explain',
     'degraded_then_retry',
@@ -124,6 +137,11 @@ test('pins the v1 scenario matrix and matrix doc', async () => {
   assert.equal(scenarios.getScenarioById('blocked_without_prereq').expected.access, 'blocked');
   assert.equal(scenarios.getScenarioById('allowed_after_patient_session').expected.access, 'allowed');
   assert.equal(scenarios.getScenarioById('faq_detour_no_progression').expected.continuity, 'multi-turn');
+  assert.equal(scenarios.getScenarioById('blocked_without_prereq').qualityGate, 'required');
+  assert.equal(scenarios.getScenarioById('handoff_denied_returns_to_current_step').qualityGate, 'local_only');
+  assert.equal(scenarios.getScenarioById('direct_human_request_to_handoff').qualityGate, 'required');
+  assert.equal(scenarios.getScenarioById('recommendation_to_explain').qualityGate, 'observed');
+  assert.equal(scenarios.getScenarioById('degraded_then_retry').qualityGate, 'local_only');
 
   const matrixDocPath = resolve(
     fileURLToPath(new URL('../..', import.meta.url)),
@@ -144,9 +162,10 @@ test('pins the v1 scenario matrix and matrix doc', async () => {
         scenarioId: cells[0],
         bootstrapMode: cells[1],
         v1Status: cells[2],
-        why: cells[3],
-        healthyOutcomeLevel: cells[4],
-        turnShape: cells[5],
+        qualityGate: cells[3],
+        why: cells[4],
+        healthyOutcomeLevel: cells[5],
+        turnShape: cells[6],
       };
     });
 

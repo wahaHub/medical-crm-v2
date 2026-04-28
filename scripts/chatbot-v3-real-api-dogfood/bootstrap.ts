@@ -298,6 +298,7 @@ export async function bootstrapRealApiSession({
   timeoutMs,
   maxAttempts,
 }: BootstrapRealApiSessionOptions): Promise<BootstrapOutcome> {
+  const dogfoodDebugBypassToken = process.env.DOGFOOD_DEBUG_BYPASS_TOKEN?.trim();
   const payload =
     bootstrapMode === 'chat_allowed'
       ? requireAllowedPayload(onboardingPayload)
@@ -320,6 +321,9 @@ export async function bootstrapRealApiSession({
         timeoutMs: requestTimeoutMs,
         headers: {
           'Content-Type': 'application/json',
+          ...(dogfoodDebugBypassToken
+            ? { 'x-debug-bypass-token': dogfoodDebugBypassToken }
+            : {}),
         },
       });
 

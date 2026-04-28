@@ -49,8 +49,8 @@ export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string
     'role=records minimal triage worker',
     'instructions=Return only the exact structured JSON fields required below. Do not add any extra keys, explanations, nested objects, or alternative field names.',
     'We already have the submitted intake, so this step is only the 3-question follow-up needed to refine recommendation.',
-    `from_stage=${task.fromStage}`,
-    `to_stage=${task.toStage}`,
+    `current_stage=${renderCurrentStage(task)}`,
+    `primary_stage=${renderPrimaryStage(task)}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
     ...buildTaskContextLines(task),
     `latest_user_message=${task.latestUserMessage}`,
@@ -82,8 +82,8 @@ export function buildRecordsCollectionPrompt(task: RecordsWorkerTask): string {
     'role=diagnosis proof upload worker',
     'instructions=Return only the exact structured JSON fields required below. Do not add any extra keys or explanations.',
     'Ask only for diagnosis proof, a diagnosis certificate, or another supporting diagnosis document for this stage. Do not reopen generic symptom, medication, pathology, scan, or treatment-history interviews. Preserve records.minimal_triage.complete.',
-    `from_stage=${task.fromStage}`,
-    `to_stage=${task.toStage}`,
+    `current_stage=${renderCurrentStage(task)}`,
+    `primary_stage=${renderPrimaryStage(task)}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
     ...buildTaskContextLines(task),
     `latest_user_message=${task.latestUserMessage}`,
@@ -99,14 +99,60 @@ function buildTaskContextLines(task: RecordsWorkerTask): string[] {
   return [
     `primary_action=${stringifyTaskField(task.primaryAction)}`,
     `follow_up_action=${stringifyTaskField(task.followUpAction)}`,
-    `allowed_skill_packs=${task.allowedSkillPacks?.join(', ') ?? 'none'}`,
-    `read_intents=${task.readIntents?.join(', ') ?? 'none'}`,
+    `loaded_skill_sections=${formatLoadedSkillSections(task.loadedSkillSections)}`,
+    `read_intents=${formatReadIntents(task.readIntents)}`,
     `response_contract=${stringifyTaskField(task.responseContract)}`,
   ];
 }
 
 function stringifyTaskField(value: unknown): string {
   return value === undefined ? 'none' : JSON.stringify(value);
+}
+
+function renderCurrentStage(task: RecordsWorkerTask): string {
+  return task.currentStage ?? (task as { fromStage?: string }).fromStage ?? 'unknown';
+}
+
+function renderPrimaryStage(task: RecordsWorkerTask): string {
+  return task.primaryStage ?? (task as { toStage?: string }).toStage ?? 'unknown';
+}
+
+function formatLoadedSkillSections(
+  sections: RecordsWorkerTask['loadedSkillSections'],
+): string {
+  if (!sections || sections.length === 0) {
+    return 'none';
+  }
+
+  return JSON.stringify(sections.map((section) => ({
+    skillId: section.skillId,
+    role: section.role,
+    reasonCode: section.reasonCode,
+    sectionIds: section.sectionIds,
+    policyText: section.policyText,
+    retrievalGuidance: section.retrievalGuidance,
+    handlingGuidance: section.handlingGuidance,
+    ...(section.readIntentTypes.length > 0 ? { readIntentTypes: section.readIntentTypes } : {}),
+  })));
+}
+
+function formatReadIntents(readIntents: RecordsWorkerTask['readIntents']): string {
+  if (!readIntents || readIntents.length === 0) {
+    return 'none';
+  }
+
+  return readIntents.map((intent) => {
+    if (typeof intent === 'string') {
+      return intent;
+    }
+
+    const stableIntent = {
+      type: intent.type,
+      ...('category' in intent ? { category: intent.category } : {}),
+      reasonCode: intent.reasonCode,
+    };
+    return JSON.stringify(stableIntent);
+  }).join(', ');
 }
 
 export function buildRecordsMinimalTriageInitialFollowUp(): string {

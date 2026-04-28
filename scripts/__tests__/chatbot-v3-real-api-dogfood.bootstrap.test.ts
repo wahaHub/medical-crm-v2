@@ -130,6 +130,58 @@ test('onboarding success captures patient_session, patient_restore, and widgetCh
   ]);
 });
 
+test('bootstrap forwards the explicit dogfood onboarding bypass token when configured', async () => {
+  const originalBypassToken = process.env.DOGFOOD_DEBUG_BYPASS_TOKEN;
+  process.env.DOGFOOD_DEBUG_BYPASS_TOKEN = 'dogfood-bypass-token';
+
+  try {
+    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+    const client = createDogfoodHttpClient({
+      baseUrl: 'https://crm.example.com',
+      site: 'beauty',
+      fetchImpl: async (url, init) => {
+        fetchCalls.push({ url: String(url), init });
+        return makeResponse({
+          jsonBody: {
+            patientId: 'patient-1',
+            caseId: 'case-1',
+            widgetChatTarget: {
+              kind: 'CHATBOT_SESSION',
+              sessionId: 'widget-chat:patient-1:case-1',
+            },
+          },
+          setCookies: [
+            'patient_session=session-cookie-123; Path=/; HttpOnly',
+            'patient_restore=restore-cookie-123; Path=/; HttpOnly',
+          ],
+        });
+      },
+    });
+
+    await bootstrapRealApiSession({
+      client,
+      scenarioId: 'allowed_after_patient_session',
+      bootstrapMode: 'chat_allowed',
+      onboardingPayload: {
+        email: 'new@example.com',
+        name: 'New User',
+        preferredLanguage: 'en',
+        destination: 'Shenzhen',
+      },
+      timestamp: '2026-04-18T14-05-09Z',
+    });
+
+    const requestHeaders = fetchCalls[0]?.init?.headers as Headers;
+    assert.equal(requestHeaders.get('x-debug-bypass-token'), 'dogfood-bypass-token');
+  } finally {
+    if (originalBypassToken === undefined) {
+      delete process.env.DOGFOOD_DEBUG_BYPASS_TOKEN;
+    } else {
+      process.env.DOGFOOD_DEBUG_BYPASS_TOKEN = originalBypassToken;
+    }
+  }
+});
+
 test('blocked-path setup without allowed bootstrap evidence is classified as blocked, not bootstrap success', async () => {
   const client = createDogfoodHttpClient({
     baseUrl: 'https://crm.example.com',

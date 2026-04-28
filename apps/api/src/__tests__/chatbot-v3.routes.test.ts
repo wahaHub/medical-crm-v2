@@ -19,6 +19,7 @@ import {
 } from '../routes/chatbot-v3.routes.js';
 import {
   buildConversationSummaryPatch,
+  buildRetrievedContextEntries,
   ConversationOrchestratorV3RuntimeService,
   InvalidChatbotV3ActionError,
   deriveCurrentStageFromStatusSnapshot,
@@ -2592,7 +2593,7 @@ describe('chatbot-v3 runtime', () => {
       type: 'records.status',
       meta: expect.objectContaining({
         task: expect.objectContaining({
-          toStage: 'COLLECT_MEDICAL_INPUTS',
+          primaryStage: 'COLLECT_MEDICAL_INPUTS',
           mode: 'medical_collection',
         }),
       }),
@@ -4618,8 +4619,8 @@ describe('chatbot-v3 runtime', () => {
       meta: expect.objectContaining({
         task: expect.objectContaining({
           agent: 'RecommendationAgent',
-          fromStage: 'COLLECT_MEDICAL_INPUTS',
-          toStage: 'RECOMMENDATION',
+          currentStage: 'COLLECT_MEDICAL_INPUTS',
+          primaryStage: 'RECOMMENDATION',
         }),
       }),
     }));
@@ -4688,8 +4689,8 @@ describe('chatbot-v3 runtime', () => {
     const call = recommendationAgent.execute.mock.calls[0]?.[0];
     expect(call?.meta?.task).toEqual(expect.objectContaining({
       agent: 'RecommendationAgent',
-      fromStage: 'COLLECT_MEDICAL_INPUTS',
-      toStage: 'RECOMMENDATION',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      primaryStage: 'RECOMMENDATION',
       latestUserMessage: 'please continue',
       recommendationTask: 'generate',
     }));
@@ -4753,8 +4754,8 @@ describe('chatbot-v3 runtime', () => {
     const call = recommendationAgent.execute.mock.calls[0]?.[0];
     expect(call?.meta?.task).toEqual({
       agent: 'RecommendationAgent',
-      fromStage: 'COLLECT_MEDICAL_INPUTS',
-      toStage: 'RECOMMENDATION',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      primaryStage: 'RECOMMENDATION',
       intent: 'progression',
       supervisorReason: 'continue',
       latestUserMessage: 'please continue',
@@ -5070,8 +5071,8 @@ describe('chatbot-v3 runtime', () => {
     expect(call?.type).toBe('records.status');
     expect(call?.meta?.task).toEqual(expect.objectContaining({
       agent: 'RecordsAgent',
-      fromStage: 'COLLECT_MEDICAL_INPUTS',
-      toStage: 'COLLECT_MEDICAL_INPUTS',
+      currentStage: 'COLLECT_MEDICAL_INPUTS',
+      primaryStage: 'COLLECT_MEDICAL_INPUTS',
       latestUserMessage: 'I can share more reports.',
       mode: 'medical_collection',
       minimalTriageComplete: true,
@@ -5240,7 +5241,7 @@ describe('chatbot-v3 runtime', () => {
       meta: expect.objectContaining({
         task: expect.objectContaining({
           agent: 'RecommendationAgent',
-          toStage: 'RECOMMENDATION',
+          primaryStage: 'RECOMMENDATION',
           recommendationBasis: 'INTAKE_AND_FOLLOW_UP_SUMMARY',
           minimalTriageAnswersSummary: 'Chest pain for three days; moderate severity; blood test already completed.',
         }),
@@ -5356,7 +5357,7 @@ describe('chatbot-v3 runtime', () => {
       meta: expect.objectContaining({
         task: expect.objectContaining({
           agent: 'RecommendationAgent',
-          toStage: 'RECOMMENDATION',
+          primaryStage: 'RECOMMENDATION',
         }),
       }),
     }));
@@ -6052,8 +6053,8 @@ describe('chatbot-v3 runtime', () => {
       meta: expect.objectContaining({
         task: expect.objectContaining({
           agent: 'FaqAgent',
-          fromStage: 'EXPLAIN_PROCESS',
-          toStage: 'EXPLAIN_PROCESS',
+          currentStage: 'EXPLAIN_PROCESS',
+          primaryStage: 'EXPLAIN_PROCESS',
           latestUserMessage: 'How long does online consultation usually take to schedule?',
           intent: 'faq',
           supervisorReason: 'user_asked_question_answer',
@@ -6065,14 +6066,27 @@ describe('chatbot-v3 runtime', () => {
             type: 'GO_DEEP',
             target: 'consult',
           }),
-          allowedSkillPacks: expect.arrayContaining([
-            'search_general_faq_by_category',
-            'answer_general_faq_from_admin_source',
-            'load_consult_readiness_criteria',
+          selectedDomainSkills: expect.arrayContaining([
+            'consult_skill',
+          ]),
+          loadedSkillSections: expect.arrayContaining([
+            expect.objectContaining({
+              skillId: 'consult_skill',
+              sectionIds: expect.any(Array),
+            }),
           ]),
           readIntents: expect.arrayContaining([
-            'GENERAL_FAQ:consult',
-            'CONSULT_READINESS',
+            expect.objectContaining({ type: 'GENERAL_FAQ', category: 'consult' }),
+            expect.objectContaining({ type: 'CONSULT_READINESS' }),
+          ]),
+          retrievedContext: expect.arrayContaining([
+            expect.objectContaining({
+              readIntentId: expect.any(String),
+              readIntent: expect.objectContaining({
+                type: expect.any(String),
+              }),
+              snippets: [],
+            }),
           ]),
           responseContract: expect.objectContaining({
             structure: 'answer_then_advance',
@@ -6081,7 +6095,127 @@ describe('chatbot-v3 runtime', () => {
         }),
       }),
     }));
+    expect(call?.meta?.task?.fromStage).toBeUndefined();
+    expect(call?.meta?.task?.toStage).toBeUndefined();
     expect(call?.meta).not.toHaveProperty('historySummary');
+  });
+
+  it('bridges pricing FAQ turns into Phase 1.2 skill-section worker task evidence', async () => {
+    const faqAgent = {
+      execute: vi.fn(async () => ({
+        status: 'ok' as const,
+        data: {
+          answer: 'Pricing depends on your records, hospital plan, and care needs.',
+          citedFaqIds: ['faq-pricing-1'],
+          confidence: 'high' as const,
+        },
+      })),
+    };
+    const runtime = new ConversationOrchestratorV3RuntimeService({
+      idempotency: { execute: vi.fn(async (_key, _operation, fn) => fn()) },
+      supervisor: {
+        suggest: vi.fn(async () => ({
+          intent: 'faq' as const,
+          suggestedStage: 'EXPLAIN_PROCESS' as const,
+          reason: 'user is asking about pricing',
+        })),
+        extractEvent: vi.fn(async () => ({
+          eventType: 'USER_ASKED_QUESTION' as const,
+          target: 'pricing' as const,
+          modifier: 'ask' as const,
+          confidence: 0.94,
+          source: 'llm' as const,
+        })),
+      },
+      journeyRuntimeAuthority: {
+        decide: vi.fn(() => {
+          throw new Error('legacy authority must not decide reducer path');
+        }),
+      },
+      gateway: {
+        status: {
+          query: vi.fn(async () => ({
+            status: 'ok' as const,
+            data: { snapshot: {} },
+          })),
+        },
+      } as any,
+      agents: {
+        FaqAgent: faqAgent,
+      },
+    });
+
+    const result = await runtime.handleTurn({
+      traceId: 'trace-faq-pricing-skill-section-1',
+      sessionId: 'session-faq-pricing-skill-section-1',
+      site: 'china',
+      turnId: 'turn-faq-pricing-skill-section-1',
+      message: 'How much does Medora usually cost?',
+      current: {
+        stage: 'EXPLAIN_PROCESS',
+        phase: 'active',
+      },
+      facts: {
+        'records.saved': false,
+      },
+    });
+
+    const task = faqAgent.execute.mock.calls[0]?.[0]?.meta?.task;
+    expect(task).toEqual(expect.objectContaining({
+      agent: 'FaqAgent',
+      currentStage: 'EXPLAIN_PROCESS',
+      primaryStage: 'EXPLAIN_PROCESS',
+      latestUserMessage: 'How much does Medora usually cost?',
+      selectedDomainSkills: expect.arrayContaining(['pricing_skill']),
+      loadedSkillSections: expect.arrayContaining([
+        expect.objectContaining({
+          skillId: 'pricing_skill',
+          sectionIds: expect.any(Array),
+        }),
+      ]),
+      readIntents: expect.arrayContaining([
+        expect.objectContaining({
+          type: expect.any(String),
+        }),
+      ]),
+      retrievedContext: expect.any(Array),
+      responseContract: expect.objectContaining({
+        primaryMove: 'answer',
+      }),
+    }));
+    expect(task?.fromStage).toBeUndefined();
+    expect(task?.toStage).toBeUndefined();
+    expect(task?.retrievedContext).toHaveLength(task?.readIntents?.length ?? 0);
+    task?.retrievedContext?.forEach((entry: unknown, index: number) => {
+      expect(entry).toEqual(expect.objectContaining({
+        readIntentId: expect.stringMatching(/^read-[a-z0-9]+$/),
+        readIntent: expect.objectContaining({
+          type: expect.any(String),
+        }),
+        snippets: [],
+      }));
+      expect(entry).toEqual(expect.objectContaining({
+        readIntentId: buildRetrievedContextEntries({
+          reasonCode: 'pricing_question',
+          readIntents: [task.readIntents[index]],
+        })[0]?.readIntentId,
+      }));
+    });
+    expect(result.runtimeDebug).toMatchObject({
+      selectedDomainSkills: expect.arrayContaining(['pricing_skill']),
+      loadedSkillSections: expect.arrayContaining([
+        expect.objectContaining({
+          skillId: 'pricing_skill',
+          sectionIds: expect.any(Array),
+        }),
+      ]),
+      readIntents: task?.readIntents,
+      retrievedContextCount: task?.readIntents?.length,
+      responseContract: expect.objectContaining({
+        primaryMove: 'answer',
+      }),
+    });
+    expect((result.runtimeDebug as any).retrievedContext).toEqual(task?.retrievedContext);
   });
 
   it('emits llm observability metadata from supervisor and FAQ worker runtime nodes', async () => {
@@ -6777,6 +6911,32 @@ describe('chatbot-v3 public route validation', () => {
         ],
       } as any,
     )).toEqual({});
+  });
+});
+
+describe('chatbot-v3 retrieved context ids', () => {
+  it('derives readIntentId from intent content instead of position', () => {
+    const pricingIntent = {
+      type: 'GENERAL_FAQ' as const,
+      category: 'pricing',
+      reasonCode: 'pricing_skill:pricing_sources',
+    };
+    const withoutPreceding = buildRetrievedContextEntries({
+      reasonCode: 'pricing_question',
+      readIntents: [
+        pricingIntent,
+      ],
+    });
+    const withPreceding = buildRetrievedContextEntries({
+      reasonCode: 'pricing_question',
+      readIntents: [
+        { type: 'PRICING_FACTORS' as const, reasonCode: 'pricing_skill:pricing_sources' },
+        pricingIntent,
+      ],
+    });
+
+    expect(withoutPreceding[0]?.readIntentId).toBe(withPreceding[1]?.readIntentId);
+    expect(withPreceding[1]?.readIntentId).not.toBe('read-1');
   });
 });
 

@@ -13,6 +13,10 @@ import type {
   ToolResult,
 } from './tool-gateway.js';
 import {
+  checkMinimalContract,
+  checkSkillBehavior,
+} from './response-quality-checker.js';
+import {
   RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE,
 } from './records-prompts.js';
 
@@ -45,6 +49,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
     input.sessionStatusSnapshot,
     input.result.writeIntents?.statusPatch,
   );
+  const assistantText = buildAssistantText(input.result, effectiveStatusSnapshot);
   const visibleJourney = buildVisibleJourney(
     input.result.journey,
     input.sessionStatusSnapshot,
@@ -54,7 +59,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
   const response: ChatbotV3ChatResponse = {
     messages: [{
       role: 'assistant',
-      text: buildAssistantText(input.result, effectiveStatusSnapshot),
+      text: assistantText,
     }],
     turnOutcome: input.result.turnOutcome,
     cards: buildCards(input.body, input.result, visibleJourney, effectiveStatusSnapshot),
@@ -68,15 +73,50 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
   };
 
   if (input.includeRuntimeDebug) {
+    const runtimeDebug = input.result.runtimeDebug;
     response.runtimeDebug = {
-      traceId: input.result.runtimeDebug.traceId,
-      idempotencyKey: input.result.runtimeDebug.idempotencyKey,
-      ...(input.result.runtimeDebug.lastDispatchSource
-        ? { lastDispatchSource: input.result.runtimeDebug.lastDispatchSource }
+      traceId: runtimeDebug.traceId,
+      idempotencyKey: runtimeDebug.idempotencyKey,
+      ...(runtimeDebug.lastDispatchSource
+        ? { lastDispatchSource: runtimeDebug.lastDispatchSource }
         : {}),
-      ...(input.result.runtimeDebug.replayLineage
-        ? { replayLineage: input.result.runtimeDebug.replayLineage }
+      ...(runtimeDebug.replayLineage
+        ? { replayLineage: runtimeDebug.replayLineage }
         : {}),
+      ...(runtimeDebug.selectedDomainSkills
+        ? { selectedDomainSkills: runtimeDebug.selectedDomainSkills }
+        : {}),
+      ...(runtimeDebug.loadedSkillSections
+        ? { loadedSkillSections: runtimeDebug.loadedSkillSections }
+        : {}),
+      ...(runtimeDebug.readIntents
+        ? { readIntents: runtimeDebug.readIntents }
+        : {}),
+      ...(runtimeDebug.retrievedContext
+        ? { retrievedContext: runtimeDebug.retrievedContext }
+        : {}),
+      ...(typeof runtimeDebug.retrievedContextCount === 'number'
+        ? { retrievedContextCount: runtimeDebug.retrievedContextCount }
+        : {}),
+      ...(runtimeDebug.responseContract
+        ? { responseContract: runtimeDebug.responseContract }
+        : {}),
+      minimalContractChecks: runtimeDebug.responseContract
+        ? checkMinimalContract(
+            assistantText,
+            runtimeDebug.responseContract,
+          )
+        : [],
+      skillBehaviorChecks: runtimeDebug.loadedSkillSections
+        ? checkSkillBehavior(
+            assistantText,
+            runtimeDebug.loadedSkillSections,
+          )
+        : [],
+      llmJudgeSummary: {
+        status: 'not_run',
+        summary: 'LLM judge not enabled for this run.',
+      },
     };
   }
 
@@ -300,9 +340,11 @@ function readRecordsAssistantText(
     return null;
   }
 
-  return [followUp, questions.join('\n')]
-    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
-    .join('\n');
+  if (followUp) {
+    return followUp;
+  }
+
+  return questions[0] ?? null;
 }
 
 function readRecommendationAssistantText(

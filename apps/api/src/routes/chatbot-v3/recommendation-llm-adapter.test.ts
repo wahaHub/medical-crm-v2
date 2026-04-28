@@ -42,6 +42,68 @@ describe('RecommendationLlmAdapter', () => {
     expect(intakeOnlyPrompt).not.toContain('Follow-up summary:');
   });
 
+  it('surfaces loaded recommendation skill sections as explicit prompt context', () => {
+    const prompt = buildRecommendationWorkerPrompt({
+      task: createRecommendationTask('Please recommend hospitals for lung cancer.', {
+        currentStage: 'RECOMMENDATION',
+        primaryStage: 'RECOMMENDATION',
+        loadedSkillSections: [{
+          skillId: 'hospital_recommendation_skill',
+          role: 'primary',
+          reasonCode: 'recommend_hospitals',
+          sectionIds: ['recommendation_policy', 'candidate_retrieval', 'safe_handling'],
+          readIntentTypes: ['HOSPITAL_RECOMMENDATION'],
+          policyText: ['Use only candidate recommendations, retrieved context, and known facts; do not invent hospitals or rankings.'],
+          retrievalGuidance: ['Rank and explain only the supplied candidate recommendations.'],
+          handlingGuidance: ['When evidence is missing, say the recommendation can be refined instead of creating new options.'],
+        }],
+      }),
+      recommendations: [],
+    });
+
+    expect(prompt).toContain('loaded_skill_sections=');
+    expect(prompt).toContain('hospital_recommendation_skill');
+    expect(prompt).toContain('"sectionIds":["recommendation_policy","candidate_retrieval","safe_handling"]');
+    expect(prompt).toContain('Use only candidate recommendations, retrieved context, and known facts; do not invent hospitals or rankings.');
+    expect(prompt).toContain('Rank and explain only the supplied candidate recommendations.');
+    expect(prompt).toContain('When evidence is missing, say the recommendation can be refined instead of creating new options.');
+    expect(prompt).toContain('"readIntentTypes":["HOSPITAL_RECOMMENDATION"]');
+    expect(prompt).not.toContain('allowed_skill_packs=');
+    expect(prompt).not.toContain('hospitalRecommendationSkill');
+    expect(prompt).not.toContain('hospital_recommendation_policy_skill');
+    expect(prompt).not.toContain('[object Object]');
+  });
+
+  it('renders stage labels from current fields with legacy fallback and no undefined values', () => {
+    const currentPrompt = buildRecommendationWorkerPrompt({
+      task: createRecommendationTask('Compare these hospitals.', {
+        currentStage: 'RECOMMENDATION',
+        primaryStage: 'SELECT_HOSPITAL',
+      }),
+      recommendations: [],
+    });
+
+    expect(currentPrompt).toContain('current_stage=RECOMMENDATION');
+    expect(currentPrompt).toContain('primary_stage=SELECT_HOSPITAL');
+    expect(currentPrompt).not.toContain('current_stage=undefined');
+    expect(currentPrompt).not.toContain('primary_stage=undefined');
+
+    const legacyPrompt = buildRecommendationWorkerPrompt({
+      task: createRecommendationTask('Compare these hospitals.', {
+        currentStage: undefined,
+        primaryStage: undefined,
+        fromStage: 'RECOMMENDATION',
+        toStage: 'SELECT_HOSPITAL',
+      } as Partial<RecommendationWorkerTask>),
+      recommendations: [],
+    });
+
+    expect(legacyPrompt).toContain('current_stage=RECOMMENDATION');
+    expect(legacyPrompt).toContain('primary_stage=SELECT_HOSPITAL');
+    expect(legacyPrompt).not.toContain('current_stage=undefined');
+    expect(legacyPrompt).not.toContain('primary_stage=undefined');
+  });
+
   it('uses structured recommendation task metadata instead of parsing taskPrompt lines', async () => {
     const adapter = new RecommendationLlmAdapter({
       worker: {

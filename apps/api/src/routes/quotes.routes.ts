@@ -128,6 +128,7 @@ app.openapi(sendQuoteRoute, async (c) => {
   const result = await svc.sendQuote.execute(id, actor);
 
   if (actor.role === 'HOSPITAL') {
+    const hospitalId = actor.hospitalId ?? undefined;
     const caseId = 'caseId' in result && typeof result.caseId === 'string' ? result.caseId : null;
     if (caseId) {
       try {
@@ -141,6 +142,18 @@ app.openapi(sendQuoteRoute, async (c) => {
             subject: 'Your treatment quote is ready',
             messagePreview: 'Your hospital sent a treatment quote with one or more quoted items.',
             dedupeKey: `quote:${id}`,
+            channel: 'HOSPITAL_PATIENT',
+            hospitalId,
+            sourceKind: 'quote',
+            sourceId: id,
+            resolveConversationId: async () => {
+              const conversation = await svc.createConversation.execute({
+                category: 'HOSPITAL_PATIENT',
+                caseId,
+                hospitalId,
+              }, actor);
+              return conversation.id;
+            },
           });
         }
       } catch (error) {

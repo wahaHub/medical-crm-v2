@@ -2,7 +2,7 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { assertHospitalCaseAccess, hasHospitalCaseAccess, toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import { uploadDocumentSchema } from '@medical-crm/validation';
-import { ValidationError } from '@medical-crm/utils';
+import { NotFoundError, ValidationError } from '@medical-crm/utils';
 import { access, readdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,20 +31,15 @@ const notifyDocumentBodySchema = z.object({
 }).strict();
 
 const translateDocumentSchema = z.object({
+  conversationId: z.string().min(1).optional(),
+  messageId: z.string().min(1).optional(),
+  storageKey: z.string().min(1).optional(),
   inputPath: z.string().min(1).optional(),
   sourceUrl: z.string().url().optional(),
   fileName: z.string().min(1).optional(),
   targetLanguage: z.string().min(2),
   sourceLanguage: z.string().min(2).optional(),
   outputMode: z.enum(['mono', 'dual', 'both']).default('mono'),
-}).superRefine((value, ctx) => {
-  if (!value.inputPath && !value.sourceUrl) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['inputPath'],
-      message: 'Either inputPath or sourceUrl is required',
-    });
-  }
 });
 
 const translatedFileQuerySchema = z.object({
@@ -65,25 +60,57 @@ function getBabelDocConfig() {
   };
 }
 
-async function resolvePdfTranslationInput(input: z.infer<typeof translateDocumentSchema>): Promise<string> {
+function isCallerSuppliedUrlLikeStorageKey(storageKey: string): boolean {
+  return /^(https?:|data:|blob:)/i.test(storageKey);
+}
+
+async function resolvePdfTranslationInput(
+  input: z.infer<typeof translateDocumentSchema>,
+  actor: ReturnType<typeof toActor>,
+  svc: ReturnType<typeof getServices>,
+): Promise<string> {
   if (input.inputPath) {
-    if (extname(input.inputPath).toLowerCase() !== '.pdf') {
-      throw new ValidationError('PDF translation preview currently supports PDF inputs only. Image translation is not wired yet.');
-    }
-    await access(input.inputPath, fsConstants.R_OK);
-    return input.inputPath;
+    throw new ValidationError('inputPath is not accepted for document translation previews');
   }
 
-  if (!input.sourceUrl) {
-    throw new ValidationError('Either inputPath or sourceUrl is required');
+  if (input.sourceUrl) {
+    throw new ValidationError('sourceUrl is not accepted for document translation previews');
   }
 
-  const fileName = input.fileName?.trim() || 'document.pdf';
+  if (!input.conversationId || !input.messageId || !input.storageKey) {
+    throw new ValidationError('conversationId, messageId, and storageKey are required');
+  }
+
+  if (isCallerSuppliedUrlLikeStorageKey(input.storageKey)) {
+    throw new ValidationError('Attachment storageKey must be an internal storage key');
+  }
+
+  await svc.getConversation.execute(input.conversationId, actor);
+  const message = await svc.messageRepo.findById(input.messageId);
+  if (!message || message.conversationId !== input.conversationId) {
+    throw new NotFoundError('Message not found');
+  }
+
+  const attachment = message.attachments.find((item) => item.storageKey === input.storageKey);
+  if (!attachment) {
+    throw new NotFoundError('Attachment not found');
+  }
+
+  if (isCallerSuppliedUrlLikeStorageKey(attachment.storageKey)) {
+    throw new ValidationError('Attachment storageKey must be an internal storage key');
+  }
+
+  const fileName = input.fileName?.trim() || attachment.fileName || 'document.pdf';
   if (extname(fileName).toLowerCase() !== '.pdf') {
     throw new ValidationError('PDF translation preview currently supports PDF inputs only. Image translation is not wired yet.');
   }
 
-  const response = await fetch(input.sourceUrl);
+  if (attachment.mimeType !== 'application/pdf') {
+    throw new ValidationError('PDF translation preview currently supports PDF inputs only. Image translation is not wired yet.');
+  }
+
+  const signedUrl = await svc.storage.getSignedUrl(attachment.storageKey);
+  const response = await fetch(signedUrl);
   if (!response.ok) {
     throw new ValidationError(`Failed to download source PDF: ${response.status}`);
   }
@@ -168,15 +195,19 @@ async function readNotifyDocumentBody(request: Request): Promise<
   return parsed.data.hospitalId ? { ok: true, hospitalId: parsed.data.hospitalId } : { ok: true };
 }
 
-async function runBabelDocTranslation(input: z.infer<typeof translateDocumentSchema>) {
+async function runBabelDocTranslation(
+  input: z.infer<typeof translateDocumentSchema>,
+  actor: ReturnType<typeof toActor>,
+  svc: ReturnType<typeof getServices>,
+) {
   const config = getBabelDocConfig();
+  const inputPath = await resolvePdfTranslationInput(input, actor, svc);
   await access(config.pythonBin, fsConstants.X_OK);
 
   if (!config.apiKey) {
     throw new ValidationError('BABELDOC_OPENAI_API_KEY or OPENAI_API_KEY is required');
   }
 
-  const inputPath = await resolvePdfTranslationInput(input);
   const outputDir = await mkdtemp(join(tmpdir(), 'babeldoc-'));
   const args = [
     '-m',
@@ -410,22 +441,36 @@ const translateDocumentRoute = createRoute({
 app.openapi(translateDocumentRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
 
   if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
     return c.json({ error: 'Only admin and hospital users can translate documents' }, 403);
   }
 
+  if (body.inputPath) {
+    return c.json({ error: 'inputPath is not accepted for document translation previews' }, 400);
+  }
+  if (body.sourceUrl) {
+    return c.json({ error: 'sourceUrl is not accepted for document translation previews' }, 400);
+  }
+  if (body.storageKey && isCallerSuppliedUrlLikeStorageKey(body.storageKey)) {
+    return c.json({ error: 'Attachment storageKey must be an internal storage key' }, 400);
+  }
+
   console.info('[debug][documents.translate] enter', {
     actorRole: actor.role,
-    inputPath: body.inputPath ?? null,
-    sourceUrl: body.sourceUrl ?? null,
+    conversationId: body.conversationId ?? null,
+    messageId: body.messageId ?? null,
+    storageKey: body.storageKey ?? null,
+    inputPath: body.inputPath ? '[rejected]' : null,
+    sourceUrl: body.sourceUrl ? '[rejected]' : null,
     fileName: body.fileName ?? null,
     targetLanguage: body.targetLanguage,
     outputMode: body.outputMode,
   });
 
   try {
-    const result = await runBabelDocTranslation(body);
+    const result = await runBabelDocTranslation(body, actor, svc);
     console.info('[debug][documents.translate] success', {
       inputFileName: result.inputFileName,
       outputDir: result.outputDir,
@@ -434,8 +479,11 @@ app.openapi(translateDocumentRoute, async (c) => {
     return c.json(result, 200);
   } catch (error) {
     console.error('[debug][documents.translate] failed', {
-      inputPath: body.inputPath ?? null,
-      sourceUrl: body.sourceUrl ?? null,
+      conversationId: body.conversationId ?? null,
+      messageId: body.messageId ?? null,
+      storageKey: body.storageKey ?? null,
+      inputPath: body.inputPath ? '[rejected]' : null,
+      sourceUrl: body.sourceUrl ? '[rejected]' : null,
       fileName: body.fileName ?? null,
       targetLanguage: body.targetLanguage,
       error: error instanceof Error ? error.message : String(error),

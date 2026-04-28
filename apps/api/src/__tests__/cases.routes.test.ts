@@ -23,6 +23,7 @@ const mockServices = {
   addCaseProgress: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
+  createConversation: { execute: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
 };
 
@@ -96,6 +97,12 @@ describe('Cases routes', () => {
     mockServices.patientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       site: 'beauty',
+    });
+    mockServices.createConversation.execute.mockResolvedValue({
+      id: 'conversation-1',
+      caseId: VALID_UUID,
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
     });
   });
 
@@ -388,7 +395,20 @@ describe('Cases routes', () => {
           'Your personalized treatment plan',
           'We prepared a personalized treatment plan for your case.\n\nPlease reply to discuss next steps.',
         ),
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        sourceKind: 'marketing-email',
+        sourceId: expect.stringContaining(`marketing-email:${VALID_UUID}:`),
+        resolveConversationId: expect.any(Function),
       });
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: VALID_UUID,
+        hospitalId: 'hospital-1',
+      }, expect.anything());
     });
 
     it('uses a distinct dedupe key when the subject stays the same but the body changes', async () => {

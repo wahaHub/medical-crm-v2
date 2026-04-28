@@ -254,6 +254,38 @@ describe('DrizzleInboundEmailEventRepository', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('claim atomically reclaims a failed event with no created message and losers observe processing', async () => {
+    rows.push(makeEventRow({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+      status: 'FAILED',
+      createdMessageId: null,
+      error: 'temporary delivery failure',
+    }));
+
+    const retry = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+    const loser = await repository.claim({
+      provider: 'resend',
+      providerEventId: 'evt-1',
+      providerMessageId: 'msg-1',
+    });
+
+    expect(retry.alreadyClaimed).toBe(false);
+    expect(retry.event.status).toBe('PROCESSING');
+    expect(rows[0]).toMatchObject({
+      status: 'PROCESSING',
+      createdMessageId: null,
+      error: null,
+    });
+    expect(loser.alreadyClaimed).toBe(true);
+    expect(loser.event.status).toBe('PROCESSING');
+  });
+
   it('claim throws when duplicate identifiers resolve to different rows', async () => {
     await repository.claim({
       provider: 'resend',

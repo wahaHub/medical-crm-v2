@@ -58,12 +58,25 @@ vi.mock('@medical-crm/ui', () => ({
   AsyncStatusCard: ({ title }: { title: string }) => <div>{title}</div>,
   ChatLayout: ({
     header,
+    messages,
+    onOpenAttachment,
   }: {
     header?: { action?: React.ReactNode };
+    messages?: Array<{ attachments?: Array<{ name?: string; storageKey?: string; url?: string; type?: string }> }>;
+    onOpenAttachment?: (attachment: { name?: string; storageKey?: string; url?: string; type?: string }) => void;
   }) => (
     <div>
       <div>Chat Layout</div>
       <div data-testid="chat-layout-header-action">{header?.action}</div>
+      {messages?.flatMap((message) => message.attachments ?? []).map((attachment, index) => (
+        <button
+          key={`${attachment.storageKey ?? attachment.url ?? index}`}
+          type="button"
+          onClick={() => onOpenAttachment?.(attachment)}
+        >
+          Open {attachment.name ?? 'attachment'}
+        </button>
+      ))}
     </div>
   ),
   EmptyState: ({ title }: { title: string }) => <div>{title}</div>,
@@ -309,6 +322,66 @@ describe('message attachment PDF previews', () => {
 
     expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).toBe(signedUrl);
     expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).not.toContain('/api/documents/preview');
+  });
+
+  it('requests translation by authorized message attachment identifiers, not by signed URL', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      inputFileName: 'report.pdf',
+      outputDir: '/tmp/babeldoc-1',
+      outputFiles: [{ fileName: 'report.zh.pdf', path: '/tmp/babeldoc-1/report.zh.pdf' }],
+      stdout: '',
+      stderr: '',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })));
+    mockUseMessages.mockReturnValue({
+      data: [{
+        id: 'message-1',
+        content: '',
+        senderRole: 'PATIENT',
+        senderName: 'Patient One',
+        createdAt: '2026-04-28T10:00:00.000Z',
+        attachments: [{
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          storageKey: 'crm/dev/messages/conversation-1/asset-1/report.pdf',
+          url: 'https://signed.example.com/report.pdf?token=abc',
+        }],
+      }],
+      refetch: mockRefetch,
+    });
+
+    render(
+      <ChatPanel
+        conversation={{
+          id: 'conversation-1',
+          category: 'ADMIN_PATIENT',
+          participantName: 'Patient One',
+        }}
+        showInfoPanel={false}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open report.pdf' }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/documents/translate', expect.objectContaining({
+        method: 'POST',
+      }));
+    });
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body).toMatchObject({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      storageKey: 'crm/dev/messages/conversation-1/asset-1/report.pdf',
+      fileName: 'report.pdf',
+      targetLanguage: 'en',
+      outputMode: 'mono',
+    });
+    expect(body).not.toHaveProperty('sourceUrl');
+    expect(JSON.stringify(body)).not.toContain('https://signed.example.com');
   });
 });
 

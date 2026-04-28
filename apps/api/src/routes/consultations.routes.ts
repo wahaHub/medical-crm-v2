@@ -63,6 +63,7 @@ app.openapi(createConsultationRoute, async (c) => {
   }, actor);
 
   if (actor.role === 'HOSPITAL') {
+    const hospitalId = actor.hospitalId ?? undefined;
     try {
       const caseEntity = await svc.caseRepo.findById(body.caseId);
       if (caseEntity) {
@@ -74,6 +75,18 @@ app.openapi(createConsultationRoute, async (c) => {
           subject: 'Your consultation has been scheduled',
           messagePreview: 'Your hospital scheduled a consultation and added the appointment to your case.',
           dedupeKey: `consultation:${result.id}`,
+          channel: 'HOSPITAL_PATIENT',
+          hospitalId,
+          sourceKind: 'consultation',
+          sourceId: result.id,
+          resolveConversationId: async () => {
+            const conversation = await svc.createConversation.execute({
+              category: 'HOSPITAL_PATIENT',
+              caseId: body.caseId,
+              hospitalId,
+            }, actor);
+            return conversation.id;
+          },
         });
       }
     } catch (error) {

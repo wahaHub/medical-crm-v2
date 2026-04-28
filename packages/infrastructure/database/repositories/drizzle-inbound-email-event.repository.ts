@@ -52,7 +52,11 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
 
     this.assertIdentifiersDoNotConflict(existing, input);
     const enriched = await this.enrichClaimedIdentifiers(existing, input, db);
-    return { event: enriched, alreadyClaimed: true };
+    const reclaimed = await this.reclaimFailedEvent(enriched, db);
+    if (reclaimed.reclaimed) {
+      return { event: reclaimed.event, alreadyClaimed: false };
+    }
+    return { event: reclaimed.event, alreadyClaimed: true };
   }
 
   async complete(input: {
@@ -191,6 +195,39 @@ export class DrizzleInboundEmailEventRepository implements IInboundEmailEventRep
 
     this.assertIdentifiersDoNotConflict(latest, input);
     return latest;
+  }
+
+  private async reclaimFailedEvent(
+    existing: InboundEmailEvent,
+    db: CrmDb,
+  ): Promise<{ event: InboundEmailEvent; reclaimed: boolean }> {
+    if (existing.status !== 'FAILED' || existing.createdMessageId) {
+      return { event: existing, reclaimed: false };
+    }
+
+    const rows = await db
+      .update(inboundEmailEvents)
+      .set({
+        status: 'PROCESSING',
+        error: null,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(and(
+        eq(inboundEmailEvents.id, existing.id),
+        eq(inboundEmailEvents.status, 'FAILED'),
+        isNull(inboundEmailEvents.createdMessageId),
+      ))
+      .returning();
+
+    if (rows[0]) {
+      return { event: this.rowToEntity(rows[0]), reclaimed: true };
+    }
+
+    const latest = await this.findClaimedById(existing.id, db);
+    if (!latest) {
+      throw new Error('Inbound email claim conflict could not be resolved');
+    }
+    return { event: latest, reclaimed: false };
   }
 
   private async findClaimedById(id: string, db: CrmDb): Promise<InboundEmailEvent | null> {

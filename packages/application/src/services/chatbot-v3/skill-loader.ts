@@ -1,5 +1,5 @@
 import {
-  SKILL_PACK_REGISTRY,
+  SKILL_LOADER_REGISTRY,
   type LoadedSkillPack,
   type SkillPackId,
   type SkillRequest,
@@ -21,7 +21,7 @@ export function loadSkillPacks(input: LoadSkillPacksInput): LoadedSkillPolicy {
   const warnings: string[] = [];
 
   for (const request of input.requests) {
-    if (!Object.hasOwn(SKILL_PACK_REGISTRY, request.skillPackId)) {
+    if (!Object.hasOwn(SKILL_LOADER_REGISTRY, request.skillPackId)) {
       warnings.push(`unknown skill pack: ${request.skillPackId}`);
       addRequest(requestsBySkill, 'safe_degradation_when_uncertain', request.reasonCode);
       continue;
@@ -33,7 +33,7 @@ export function loadSkillPacks(input: LoadSkillPacksInput): LoadedSkillPolicy {
   const skillPacks = [...requestsBySkill.entries()]
     .slice(0, maxSkillSnippets)
     .map(([skillPackId, reasonCodes]) => ({
-      ...SKILL_PACK_REGISTRY[skillPackId],
+      ...SKILL_LOADER_REGISTRY[skillPackId],
       reasonCodes,
     }));
 

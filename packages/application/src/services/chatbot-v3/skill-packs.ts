@@ -95,7 +95,7 @@ export interface LoadedSkillSection {
   handlingGuidance: string[];
 }
 
-type LegacySkillPackId =
+export type LegacySkillPackId =
   | 'clarify_ambiguous_reply'
   | 'service_scope_boundary'
   | 'medical_safety_boundary'
@@ -135,7 +135,7 @@ type LegacySkillPackId =
 export type SkillPackId = DomainSkillId | LegacySkillPackId;
 
 export interface LegacySkillPackDefinition {
-  id: SkillPackId;
+  id: LegacySkillPackId;
   kind: SkillKind;
   description: string;
 }
@@ -147,7 +147,11 @@ export interface SkillRequest {
   reasonCode: string;
 }
 
-export type LoadedSkillPack = SkillPackDefinition & {
+export type LoadedSkillPack = (
+  | DomainSkillPack
+  | LegacySkillPackDefinition
+  | { id: SkillPackId; kind: SkillKind; description: string }
+) & {
   reasonCodes: string[];
 };
 
@@ -482,7 +486,9 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
   },
 };
 
-export const SKILL_PACK_REGISTRY = {
+export const SKILL_PACK_REGISTRY = LEGACY_SKILL_PACK_REGISTRY;
+
+export const SKILL_LOADER_REGISTRY = {
   ...LEGACY_SKILL_PACK_REGISTRY,
   ...DOMAIN_SKILL_REGISTRY,
 } satisfies Record<SkillPackId, SkillPackDefinition>;

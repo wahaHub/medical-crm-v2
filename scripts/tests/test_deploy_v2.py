@@ -50,5 +50,28 @@ class ResolveVercelDeployContextTest(unittest.TestCase):
             self.assertEqual(context.env, {})
 
 
+class RemoteApiEnvValidationTest(unittest.TestCase):
+    def test_rejects_localhost_production_origins(self) -> None:
+        env = {
+            "ADMIN_ORIGIN": "http://localhost:3002",
+            "HOSPITAL_ORIGIN": "https://hospital.medicaltourismchina.health",
+            "NODE_ENV": "production",
+        }
+
+        with self.assertRaises(MODULE.CommandError) as context:
+            MODULE.validate_remote_api_env_values(env)
+
+        self.assertIn("ADMIN_ORIGIN must not point to localhost in production", str(context.exception))
+
+    def test_accepts_public_production_origins(self) -> None:
+        env = {
+            "ADMIN_ORIGIN": "https://admin.medicaltourismchina.health",
+            "HOSPITAL_ORIGIN": "https://hospital.medicaltourismchina.health",
+            "NODE_ENV": "production",
+        }
+
+        MODULE.validate_remote_api_env_values(env)
+
+
 if __name__ == "__main__":
     unittest.main()

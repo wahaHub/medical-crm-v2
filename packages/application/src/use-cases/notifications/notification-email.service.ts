@@ -56,7 +56,12 @@ function preferenceEnabled(
 }
 
 function getAdminOrigin(): string {
-  return (process.env['ADMIN_ORIGIN'] ?? 'http://localhost:3002').replace(/\/+$/, '');
+  const origin = process.env['ADMIN_ORIGIN']?.trim();
+  if (origin) return origin.replace(/\/+$/, '');
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error('ADMIN_ORIGIN is required to generate admin notification links');
+  }
+  return 'http://localhost:3002';
 }
 
 export class NotificationEmailService {

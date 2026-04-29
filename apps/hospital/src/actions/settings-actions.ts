@@ -30,6 +30,15 @@ function hasApiErrorBody(error: unknown): error is { body: unknown } {
     );
 }
 
+function resolveAdminOrigin(): string {
+  const origin = (process.env.ADMIN_ORIGIN ?? process.env.NEXT_PUBLIC_ADMIN_ORIGIN)?.trim();
+  if (origin) return origin.replace(/\/+$/, '');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ADMIN_ORIGIN is required to generate hospital registration links');
+  }
+  return 'http://localhost:3002';
+}
+
 export async function changePassword(data: {
   currentPassword: string;
   newPassword: string;
@@ -84,7 +93,6 @@ export async function inviteHospitalEmail(email: string): Promise<{
   }
 
   revalidatePath('/settings');
-  const adminOrigin = process.env.ADMIN_ORIGIN ?? process.env.NEXT_PUBLIC_ADMIN_ORIGIN ?? 'http://localhost:3002';
-  const registrationUrl = `${adminOrigin}/auth/hospital/register?token=${encodeURIComponent(result.token)}`;
+  const registrationUrl = `${resolveAdminOrigin()}/auth/hospital/register?token=${encodeURIComponent(result.token)}`;
   return { ...result, registrationUrl };
 }

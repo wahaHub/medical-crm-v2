@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GenerateRegistrationTokenUseCase } from '../src/use-cases/hospitals/generate-registration-token.use-case.js';
 import type {
+  IEmailService,
   IHospitalManagementRepository,
   IKeycloakAdminService,
   IRegistrationTokenRepository,
@@ -15,6 +16,11 @@ describe('GenerateRegistrationTokenUseCase', () => {
   let mockTokenRepo: IRegistrationTokenRepository;
   let mockUserRepo: IUserRepository;
   let mockKeycloakAdmin: IKeycloakAdminService;
+  let mockEmailService: IEmailService;
+  const originalEnv = {
+    ADMIN_ORIGIN: process.env.ADMIN_ORIGIN,
+    NODE_ENV: process.env.NODE_ENV,
+  };
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -88,6 +94,24 @@ describe('GenerateRegistrationTokenUseCase', () => {
       updateUserEmail: vi.fn(),
       verifyPassword: vi.fn(),
     };
+
+    mockEmailService = {
+      sendHospitalInvitation: vi.fn().mockResolvedValue(undefined),
+      sendPatientMagicLink: vi.fn(),
+      sendPatientOnboardingConfirmation: vi.fn(),
+      sendAdminNewCaseAlert: vi.fn(),
+      sendAdminNewMessageAlert: vi.fn(),
+      sendAdminNewTicketAlert: vi.fn(),
+      sendPatientNewMessageAlert: vi.fn(),
+      sendPatientCaseUpdateAlert: vi.fn(),
+    };
+
+    if (originalEnv.ADMIN_ORIGIN === undefined) {
+      delete process.env.ADMIN_ORIGIN;
+    } else {
+      process.env.ADMIN_ORIGIN = originalEnv.ADMIN_ORIGIN;
+    }
+    process.env.NODE_ENV = originalEnv.NODE_ENV;
 
     useCase = new GenerateRegistrationTokenUseCase(
       mockHospitalRepo,
@@ -263,5 +287,42 @@ describe('GenerateRegistrationTokenUseCase', () => {
       useCase.execute('hosp-1', 'keycloak@test.com', hospitalActor),
     ).rejects.toThrow('This email is already registered.');
     expect(mockTokenRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('sends hospital invitation email with the configured admin origin', async () => {
+    process.env.ADMIN_ORIGIN = 'https://admin.medicaltourismchina.health/';
+    useCase = new GenerateRegistrationTokenUseCase(
+      mockHospitalRepo,
+      mockTokenRepo,
+      mockEmailService,
+      mockUserRepo,
+      mockKeycloakAdmin,
+    );
+
+    const result = await useCase.execute('hosp-1', ' Invite@Test.COM ', adminActor);
+
+    expect(mockEmailService.sendHospitalInvitation).toHaveBeenCalledWith({
+      to: 'invite@test.com',
+      hospitalName: 'Test Hospital',
+      registrationUrl: `https://admin.medicaltourismchina.health/auth/hospital/register?token=${result.token}`,
+    });
+  });
+
+  it('does not silently generate a localhost invitation URL in production when ADMIN_ORIGIN is missing', async () => {
+    delete process.env.ADMIN_ORIGIN;
+    process.env.NODE_ENV = 'production';
+    useCase = new GenerateRegistrationTokenUseCase(
+      mockHospitalRepo,
+      mockTokenRepo,
+      mockEmailService,
+      mockUserRepo,
+      mockKeycloakAdmin,
+    );
+
+    await expect(
+      useCase.execute('hosp-1', 'invite@test.com', adminActor),
+    ).rejects.toThrow('ADMIN_ORIGIN is required to generate hospital registration links');
+    expect(mockTokenRepo.save).not.toHaveBeenCalled();
+    expect(mockEmailService.sendHospitalInvitation).not.toHaveBeenCalled();
   });
 });

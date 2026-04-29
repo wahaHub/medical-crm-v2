@@ -11,6 +11,11 @@ describe('NotificationEmailService', () => {
   let cooldownRepo: IEmailNotificationCooldownRepository;
   let emailService: IEmailService;
   let service: NotificationEmailService;
+  const originalEnv = {
+    ADMIN_ORIGIN: process.env.ADMIN_ORIGIN,
+    NODE_ENV: process.env.NODE_ENV,
+    PATIENT_APP_ORIGIN: process.env.PATIENT_APP_ORIGIN,
+  };
 
   beforeEach(() => {
     recipientRepo = {
@@ -51,6 +56,7 @@ describe('NotificationEmailService', () => {
     };
 
     process.env.ADMIN_ORIGIN = 'https://admin.example.com';
+    process.env.NODE_ENV = originalEnv.NODE_ENV;
     process.env.PATIENT_APP_ORIGIN = 'https://www.medicaltourismchina.health';
 
     service = new NotificationEmailService(
@@ -77,6 +83,38 @@ describe('NotificationEmailService', () => {
         adminPortalLink: 'https://admin.example.com/cases/case-1',
       }),
     );
+  });
+
+  it('normalizes the configured admin origin in admin alert links', async () => {
+    process.env.ADMIN_ORIGIN = 'https://admin.medicaltourismchina.health/';
+
+    await service.notifyAdminsOfNewCase({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      patientName: 'Patient One',
+      patientEmail: 'patient@example.com',
+      site: 'china',
+    });
+
+    expect(emailService.sendAdminNewCaseAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        adminPortalLink: 'https://admin.medicaltourismchina.health/cases/case-1',
+      }),
+    );
+  });
+
+  it('does not send localhost admin alert links in production when ADMIN_ORIGIN is missing', async () => {
+    delete process.env.ADMIN_ORIGIN;
+    process.env.NODE_ENV = 'production';
+
+    await expect(service.notifyAdminsOfNewCase({
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      patientName: 'Patient One',
+      patientEmail: 'patient@example.com',
+      site: 'china',
+    })).rejects.toThrow('ADMIN_ORIGIN is required to generate admin notification links');
+    expect(emailService.sendAdminNewCaseAlert).not.toHaveBeenCalled();
   });
 
   it('does not email admins who were active within the offline window', async () => {

@@ -15,6 +15,15 @@ async function readErrorMessage(
   return payload.message ?? payload.error ?? payload.code ?? fallback;
 }
 
+function resolveAdminOrigin(): string {
+  const origin = (process.env.ADMIN_ORIGIN ?? process.env.NEXT_PUBLIC_ADMIN_ORIGIN)?.trim();
+  if (origin) return origin.replace(/\/+$/, '');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ADMIN_ORIGIN is required to generate hospital registration links');
+  }
+  return 'http://localhost:3002';
+}
+
 export async function updateHospitalStatus(hospitalId: string, status: string) {
   const res = await apiFetch(`/api/v2/hospitals/${hospitalId}/status`, {
     method: 'PATCH',
@@ -41,8 +50,7 @@ export async function generateRegistrationToken(hospitalId: string, email: strin
   }
 
   const payload = await res.json() as { token: string; expiresAt: string };
-  const adminOrigin = process.env.ADMIN_ORIGIN ?? process.env.NEXT_PUBLIC_ADMIN_ORIGIN ?? 'http://localhost:3002';
-  const registrationUrl = `${adminOrigin}/auth/hospital/register?token=${encodeURIComponent(payload.token)}`;
+  const registrationUrl = `${resolveAdminOrigin()}/auth/hospital/register?token=${encodeURIComponent(payload.token)}`;
   return { ...payload, registrationUrl };
 }
 

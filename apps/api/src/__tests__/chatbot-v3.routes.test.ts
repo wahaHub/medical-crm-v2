@@ -13,6 +13,7 @@ import { buildRecordsMinimalTriagePrompt } from '../routes/chatbot-v3/records-pr
 import { createChatbotV3RuntimeNodeEventEmitter } from '../routes/chatbot-v3/observability.js';
 import {
   chatbotV3PublicRoutes,
+  buildRecentMessagesForChatbotV3Turn,
   deriveRecommendationState,
   filterUnchangedStatusPatch,
   serializeStatusSnapshot,
@@ -39,6 +40,7 @@ const routeMockServices = vi.hoisted(() => ({
   aiChatMessageRepo: {
     create: vi.fn(async (entity: unknown) => entity),
     updateMessage: vi.fn(),
+    listBySession: vi.fn(async () => []),
   },
   aiChatSessionRepo: {
     findBySessionId: vi.fn(),
@@ -1619,7 +1621,7 @@ describe('chatbot-v3 runtime', () => {
     expect(result.writeIntents?.canonicalTruthPatch).not.toHaveProperty('handoffActive');
   });
 
-  it('routes risky medical advice redirects through bounded FAQ response policy', async () => {
+  it('routes medical advice redirects through bounded FAQ response policy', async () => {
     const faqAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
@@ -1637,7 +1639,7 @@ describe('chatbot-v3 runtime', () => {
           throw new Error('legacy suggestion must not decide reducer path');
         }),
         extractEvent: vi.fn(async () => ({
-          eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE' as const,
+          eventType: 'USER_ASKED_MEDICAL_ADVICE' as const,
           confidence: 0.94,
           source: 'llm' as const,
           metadata: {
@@ -2232,7 +2234,7 @@ describe('chatbot-v3 runtime', () => {
     expect(consultAgent.execute).not.toHaveBeenCalled();
   });
 
-  it('routes no-gateway risky medical advice through bounded FAQ policy', async () => {
+  it('does not regex-route no-gateway medical advice through the bounded FAQ policy', async () => {
     const faqAgent = {
       execute: vi.fn(async () => ({
         status: 'ok' as const,
@@ -2283,7 +2285,10 @@ describe('chatbot-v3 runtime', () => {
       type: 'faq.answer',
       meta: expect.objectContaining({
         task: expect.objectContaining({
-          responseMode: 'safe_medical_redirect',
+          primaryAction: expect.objectContaining({
+            type: 'CLARIFY',
+          }),
+          selectedDomainSkills: ['clarification_recovery_skill'],
         }),
       }),
     }));
@@ -6067,17 +6072,17 @@ describe('chatbot-v3 runtime', () => {
             target: 'consult',
           }),
           selectedDomainSkills: expect.arrayContaining([
-            'consult_skill',
+            'policy_skill',
           ]),
           loadedSkillSections: expect.arrayContaining([
             expect.objectContaining({
-              skillId: 'consult_skill',
+              skillId: 'policy_skill',
               sectionIds: expect.any(Array),
             }),
           ]),
           readIntents: expect.arrayContaining([
             expect.objectContaining({ type: 'GENERAL_FAQ', category: 'consult' }),
-            expect.objectContaining({ type: 'CONSULT_READINESS' }),
+            expect.objectContaining({ type: 'PROCESS_POLICY' }),
           ]),
           retrievedContext: expect.arrayContaining([
             expect.objectContaining({
@@ -6202,6 +6207,13 @@ describe('chatbot-v3 runtime', () => {
       }));
     });
     expect(result.runtimeDebug).toMatchObject({
+      event: {
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'pricing',
+        modifier: 'ask',
+        source: 'llm',
+        confidence: 0.94,
+      },
       selectedDomainSkills: expect.arrayContaining(['pricing_skill']),
       loadedSkillSections: expect.arrayContaining([
         expect.objectContaining({
@@ -6811,6 +6823,52 @@ describe('chatbot-v3 public route validation', () => {
       createdAt: Date;
     };
     expect(persistedUserMessage.createdAt.getTime()).toBeLessThan(persistedAssistantMessage.createdAt.getTime());
+  });
+
+  it('builds recent messages chronologically while retaining the latest persisted assistant reply', async () => {
+    routeMockServices.aiChatMessageRepo.listBySession.mockResolvedValueOnce(
+      Array.from({ length: 8 }, (_, index) => {
+        const newestFirstIndex = 8 - index;
+        return {
+          id: `persisted-${newestFirstIndex}`,
+          role: newestFirstIndex % 2 === 0 ? 'ASSISTANT' : 'USER',
+          content: newestFirstIndex === 8
+            ? 'Latest assistant asked for diagnosis proof.'
+            : `Persisted message ${newestFirstIndex}`,
+          createdAt: new Date(`2026-04-29T07:0${newestFirstIndex}:00.000Z`),
+        };
+      }),
+    );
+
+    const recentMessages = await buildRecentMessagesForChatbotV3Turn({
+      services: routeMockServices as any,
+      sessionId: 'db-session-v3-route-recent-1',
+      turnId: 'turn-v3-route-recent-1',
+      message: 'What proof do you mean?',
+    });
+
+    expect(routeMockServices.aiChatMessageRepo.listBySession).toHaveBeenCalledWith(
+      'db-session-v3-route-recent-1',
+      8,
+    );
+    expect(recentMessages.slice(0, -1).map((message) => message.id)).toEqual([
+      'persisted-2',
+      'persisted-3',
+      'persisted-4',
+      'persisted-5',
+      'persisted-6',
+      'persisted-7',
+      'persisted-8',
+    ]);
+    expect(recentMessages.at(-2)).toMatchObject({
+      id: 'persisted-8',
+      role: 'ASSISTANT',
+      content: 'Latest assistant asked for diagnosis proof.',
+    });
+    expect(recentMessages.at(-1)).toMatchObject({
+      role: 'USER',
+      content: 'What proof do you mean?',
+    });
   });
 
   it('advances a supporting-doc follow-up into ONLINE_CONSULT once at least one persisted document exists', async () => {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SEMANTIC_SUPERVISOR_EVENT_TYPES,
+  SUPERVISOR_EVENT_MODIFIERS,
+  SUPERVISOR_EVENT_TARGETS,
   SUPERVISOR_EVENT_TYPES,
   getAllowedSupervisorEvents,
   type DomainFacts,
@@ -11,27 +14,81 @@ import {
 
 describe('supervisor-event.types', () => {
   it('defines generic semantic supervisor events and retires legacy semantic names', () => {
+    expect(SEMANTIC_SUPERVISOR_EVENT_TYPES).toEqual([
+      'USER_EXPRESSED_INTEREST',
+      'USER_ASKED_QUESTION',
+      'USER_PROVIDED_INFORMATION',
+      'USER_RESPONDED_TO_REQUEST',
+      'USER_REQUESTED_ACTION',
+      'USER_REQUESTED_HUMAN',
+      'USER_MESSAGE_UNCLEAR',
+    ]);
+
     expect(SUPERVISOR_EVENT_TYPES).toEqual(expect.arrayContaining([
       'TRIAGE_SUBMITTED',
       'TRIAGE_SKIPPED',
       'RECOMMENDATION_SELECTED',
       'RECOMMENDATION_SKIPPED',
       'DOCUMENTS_UPLOADED',
-      'USER_EXPRESSED_NEED',
+      'USER_EXPRESSED_INTEREST',
       'USER_ASKED_QUESTION',
       'USER_PROVIDED_INFORMATION',
       'USER_RESPONDED_TO_REQUEST',
+      'USER_REQUESTED_ACTION',
       'USER_REQUESTED_HUMAN',
-      'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
       'USER_MESSAGE_UNCLEAR',
     ]));
 
+    expect(SUPERVISOR_EVENT_TYPES).not.toContain('USER_ASKED_RISKY_MEDICAL_ADVICE');
+    expect(SUPERVISOR_EVENT_TYPES).not.toContain('USER_ASKED_MEDICAL_ADVICE');
+    expect(SUPERVISOR_EVENT_TYPES).not.toContain('USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE');
     expect(SUPERVISOR_EVENT_TYPES).not.toContain('USER_ASKED_FAQ');
     expect(SUPERVISOR_EVENT_TYPES).not.toContain('USER_ASKED_NEXT_STEP');
     expect(SUPERVISOR_EVENT_TYPES).not.toContain('USER_WANTS_TREATMENT_IN_CHINA');
     expect(SUPERVISOR_EVENT_TYPES).not.toContain('USER_PROVIDED_CONTACT_INFO');
     expect(SUPERVISOR_EVENT_TYPES).not.toContain('UNKNOWN_MESSAGE');
+  });
+
+  it('aligns supervisor targets with the accepted skill taxonomy', () => {
+    expect(SUPERVISOR_EVENT_TARGETS).toEqual([
+      'service_scope',
+      'policy',
+      'medical_advice',
+      'hospital',
+      'treatment',
+      'pricing',
+      'payment',
+      'travel',
+      'sales',
+      'faq',
+      'handoff',
+      'unknown',
+    ]);
+
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('records');
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('eligibility_intake');
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('documents');
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('process');
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('recommendation');
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('consult');
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('contact');
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('human');
+  });
+
+  it('supports the full posture modifier matrix', () => {
+    expect(SUPERVISOR_EVENT_MODIFIERS).toEqual([
+      'ask',
+      'provide',
+      'confirm',
+      'reject',
+      'hesitate',
+      'correct',
+      'compare',
+      'revisit',
+      'request_action',
+      'urgent',
+      'unknown',
+    ]);
   });
 
   it('supports generic event targets and modifiers on semantic events', () => {

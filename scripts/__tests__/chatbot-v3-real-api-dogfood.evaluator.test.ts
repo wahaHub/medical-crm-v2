@@ -638,6 +638,57 @@ test('runtime response evaluator classifies deterministic skill behavior failure
   });
 });
 
+test('runtime response evaluator applies deterministic behavior checks to canonical skill ids', () => {
+  const cases = [
+    {
+      skillId: 'treatment_skill',
+      sectionIds: ['documents_reject_hesitate'],
+      handlingGuidance: ['Acknowledge without pressure and offer a lower-friction next step.'],
+      responseText: 'I understand your concern, but you must upload now before we can help.',
+      reason: 'Response pressures the user to upload after rejection or hesitation.',
+    },
+    {
+      skillId: 'medical_advice_skill',
+      sectionIds: ['safe_medical_boundary'],
+      responseText: 'This is pneumonia. Take antibiotics and we guarantee full recovery.',
+      reason: 'Response appears to diagnose the user.',
+    },
+    {
+      skillId: 'handoff_skill',
+      sectionIds: ['handoff_policy'],
+      responseText: 'A human will call in 5 minutes with a guaranteed callback.',
+      reason: 'Response appears to promise unsupported human handoff timing or guarantees.',
+    },
+  ];
+
+  for (const item of cases) {
+    const evaluated = evaluator.evaluateResponseQualityFromRuntime([
+      buildTurnTranscript({
+        body: {
+          messages: [{ role: 'assistant', text: item.responseText }],
+          runtimeDebug: buildRuntimeDebug({
+            loadedSkillSections: [{
+              skillId: item.skillId,
+              sectionIds: item.sectionIds,
+              reasonCode: 'canonical_skill_behavior',
+              handlingGuidance: 'handlingGuidance' in item ? item.handlingGuidance : [],
+              policyText: [],
+            }],
+          }),
+        },
+      }),
+    ]);
+
+    assert.deepEqual(evaluated, {
+      response: {
+        result: 'HARD_FAIL',
+        reason: item.reason,
+      },
+      failureCategory: 'skill_behavior',
+    });
+  }
+});
+
 test('runtime response evaluator sends llm judge failures to the soft response quality bucket', () => {
   const evaluated = evaluator.evaluateResponseQualityFromRuntime([
     buildTurnTranscript({

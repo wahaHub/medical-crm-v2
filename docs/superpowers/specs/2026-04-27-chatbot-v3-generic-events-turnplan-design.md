@@ -118,7 +118,7 @@ type SemanticEventType =
   | 'USER_PROVIDED_INFORMATION'
   | 'USER_RESPONDED_TO_REQUEST'
   | 'USER_REQUESTED_HUMAN'
-  | 'USER_ASKED_RISKY_MEDICAL_ADVICE'
+  | 'USER_ASKED_MEDICAL_ADVICE'
   | 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
   | 'USER_MESSAGE_UNCLEAR';
 ```
@@ -385,7 +385,7 @@ switch (event.eventType) {
     return handleResponseToRequest(event, facts, state);
   case 'USER_REQUESTED_HUMAN':
     return createHandoffPlan(event, facts, state);
-  case 'USER_ASKED_RISKY_MEDICAL_ADVICE':
+  case 'USER_ASKED_MEDICAL_ADVICE':
     return safetyRedirectPlan(event, facts, state);
   case 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE':
     return outOfScopeRedirectPlan(event, facts, state);

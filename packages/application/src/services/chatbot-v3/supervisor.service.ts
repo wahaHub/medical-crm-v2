@@ -81,12 +81,21 @@ const SEMANTIC_FORBIDDEN_EVENT_TYPES = new Set<SupervisorEvent['eventType']>([
   'RECOMMENDATION_SKIPPED',
   'DOCUMENTS_UPLOADED',
 ]);
-
-const DIRECT_HUMAN_REQUEST_PATTERNS = [
-  /\bneed (?:a |to talk to a |to speak to a )?(?:human|person|advisor|agent|operator|representative)\b/i,
-  /\b(?:want|wanna|would like) (?:a |to talk to a |to speak to a )?(?:human|person|advisor|agent|operator|representative)\b/i,
-  /\b(?:talk|speak|chat|connect|transfer|handoff|escalat(?:e|ion)?)\b[\s\w]*\b(?:human|person|advisor|agent|operator|representative)\b/i,
-  /\b(?:live|real) (?:agent|person|human)\b/i,
+const LEGACY_SEMANTIC_EVENT_TYPES = [
+  'USER_EXPRESSED_NEED',
+  'USER_ASKED_MEDICAL_ADVICE',
+  'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
+] as const;
+const LEGACY_SEMANTIC_TARGETS = [
+  'recommendation',
+  'documents',
+  'consult',
+  'next_step',
+  'process',
+  'hospital_selection',
+  'medical_facts',
+  'contact',
+  'human',
 ] as const;
 
 const FAQ_QUESTION_PATTERNS = [
@@ -95,34 +104,11 @@ const FAQ_QUESTION_PATTERNS = [
   /\b(?:can you|could you|would you|do you|does it|do we|is it|is that|are you|am i|should i|would it|what are|what is|how long|how much|how often|why is|where is|when is)\b/i,
 ] as const;
 
-const RISKY_MEDICAL_ADVICE_PATTERNS = [
-  /\bshould (?:i|we|he|she|they|my|our|the patient)\b.*\b(?:start|stop|take|use|change|increase|decrease|skip|avoid)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|medicine|medication|drug|dose|dosage|treatment|therapy)\b/i,
-  /\bshould (?:i|we|he|she|they|my|our|the patient)\b.*\b(?:get|receive|undergo|have)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|medicine|medication|drug|dose|dosage|treatment|therapy)\b/i,
-  /\b(?:start|stop|take|use|change|increase|decrease|skip|avoid)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|medicine|medication|drug|dose|dosage|treatment|therapy)\b/i,
-  /\b(?:get|receive|undergo|have)\b.*\b(?:chemo(?:therapy)?|radiation|surgery|treatment|therapy)\b.*\b(?:now|today|right away|immediately)\b/i,
-  /\b(?:diagnose|diagnosis|treat|treatment|prescribe|dosage|dose)\b.*\b(?:now|today|right away|immediately)\b/i,
-  /\b(?:guarantee|guaranteed|promise|ensure|assure)\b.*\b(?:cure|cured|heal|healed|healing|recover|recovered|recovery|survive|survives|survival|success|succeeds|outcome|recurrence|disappear|disappears|disappeared)\b/i,
-  /\b(?:cure|cured|heal|healed|healing|recover|recovered|recovery|survive|survives|survival|success|succeeds|outcome|recurrence|disappear|disappears|disappeared)\b.*\b(?:guarantee|guaranteed|promise|ensure|assure)\b/i,
-  /(?:保证|承诺|确保).*(?:治好|治愈|痊愈|康复|存活|成功|不复发)/,
-  /(?:治好|治愈|痊愈|康复|存活|成功|不复发).*(?:保证|承诺|确保)/,
-] as const;
-
-const OUT_OF_SCOPE_OR_RESTRICTED_SERVICE_PATTERNS = [
-  /\b(?:can you|could you|would you|will you|do you|does medora|can medora|could medora|would medora|your team)\s+(?:help me\s+)?(?:apply for|obtain|file|process|handle|arrange)\b.{0,80}\b(?:green card|permanent residence|permanent residency|immigration application|immigrant visa|citizenship|naturalization|asylum|work permit|employment visa)\b/i,
-  /\b(?:help me|need (?:you|medora) to)\s+(?:apply for|obtain|file|process|handle|arrange)\b.{0,80}\b(?:green card|permanent residence|permanent residency|immigration application|immigrant visa|citizenship|naturalization|asylum|work permit|employment visa)\b/i,
-  /\b(?:can you|could you|would you|will you|do you|does medora|can medora|could medora|would medora|your team)\s+(?:help me\s+)?(?:handle|provide|arrange|file|buy|rent|register|draft|find|apply for)\b.{0,80}\b(?:lawyer|legal advice|lawsuit|court case|contract dispute|tax filing|investment|loan|mortgage|real estate|apartment|housing|school admission|job placement|find (?:me )?a job|get (?:me )?a job|employment contract)\b/i,
-  /\b(?:help me|need (?:you|medora) to)\s+(?:handle|provide|arrange|file|buy|rent|register|draft|find|apply for)\b.{0,80}\b(?:lawyer|legal advice|lawsuit|court case|contract dispute|tax filing|investment|loan|mortgage|real estate|apartment|housing|school admission|job placement|find (?:me )?a job|get (?:me )?a job|employment contract)\b/i,
-  /\b(?:find me a job|help me find a job|get me a job|help me get a job)\b/i,
-  /(?:你们能|你们可以|你们会|可以帮我|能帮我|帮我|请帮我)[^，。！？?]{0,40}(?:办理|处理|申请|安排|提供|办)[^，。！？?]{0,40}(?:绿卡|移民|永久居留|入籍|庇护|工签|工作签证|法律咨询|律师|诉讼|贷款|房贷|买房|租房|入学)/,
-  /(?:你们能|你们可以|你们会|可以帮我|能帮我|帮我|请帮我)[^，。！？?]{0,40}(?:租房|买房)/,
-  /(?:你们能|你们可以|你们会|可以帮我|能帮我|帮我|请帮我)[^，。！？?]{0,40}找工作/,
-] as const;
-
-const TREATMENT_TRAVEL_HOUSING_CONTEXT_PATTERN = /(?:\b(?:housing|apartment|rent)\b.*\b(?:hospital|treatment|medical|appointment)\b|\b(?:hospital|treatment|medical|appointment)\b.*\b(?:housing|apartment|rent)\b|(?:租房|住房|住宿|公寓).*(?:医院|治疗|看病|就医|预约)|(?:医院|治疗|看病|就医|预约).*(?:租房|住房|住宿|公寓))/i;
-
 const WORKFLOW_QUESTION_PATTERNS = [
   /\bwhat (?:should|do) i do (?:next|now|from here)\b/i,
   /\bwhat(?:'s| is) next\b/i,
+  /\bwhat(?:'s| is) the next step\b/i,
+  /\bnext step\b/i,
 ] as const;
 
 const EXPLICIT_PROGRESSION_PATTERNS = [
@@ -228,13 +214,6 @@ export class SupervisorService {
     }
 
     const heuristicEvent = buildHeuristicSupervisorEvent(input);
-    if (
-      heuristicEvent.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
-      || heuristicEvent.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
-    ) {
-      this.lastRunMetadata = null;
-      return { event: heuristicEvent, llmRunMetadata: null };
-    }
 
     if (deterministicEvent) {
       this.lastRunMetadata = null;
@@ -375,29 +354,132 @@ function sanitizeSemanticSupervisorEvent(
     || key === 'modifier'
   ));
 
+  const normalized = normalizeSemanticSupervisorEventParts(record);
+
   if (
     !hasOnlyEventKeys
-    || !isSupervisorEventType(record.eventType)
-    || !allowedEvents.includes(record.eventType)
-    || !isSupervisorEventTarget(record.target)
+    || !normalized
+    || !allowedEvents.includes(normalized.eventType)
     || !isSupervisorEventModifier(record.modifier)
     || typeof record.confidence !== 'number'
     || !Number.isFinite(record.confidence)
     || record.confidence < 0
     || record.confidence > 1
     || (record.source !== undefined && record.source !== 'llm')
-    || SEMANTIC_FORBIDDEN_EVENT_TYPES.has(record.eventType)
+    || SEMANTIC_FORBIDDEN_EVENT_TYPES.has(normalized.eventType)
   ) {
     return buildFallbackUnknownEvent('supervisor semantic event extraction failed');
   }
 
   return {
-    eventType: record.eventType,
+    eventType: normalized.eventType,
     confidence: record.confidence,
     source: 'llm',
-    target: record.target,
+    target: normalized.target,
     modifier: record.modifier,
   };
+}
+
+function normalizeSemanticSupervisorEventParts(
+  record: Record<string, unknown>,
+): Pick<SupervisorEvent, 'eventType' | 'target'> | null {
+  const eventType = normalizeSemanticSupervisorEventType(record.eventType);
+  if (!eventType) {
+    return null;
+  }
+
+  const target = normalizeSemanticSupervisorEventTarget(
+    record.target,
+    eventType,
+    record.eventType,
+    record.modifier,
+  );
+  if (!target) {
+    return null;
+  }
+
+  return { eventType, target };
+}
+
+function normalizeSemanticSupervisorEventType(value: unknown): SupervisorEvent['eventType'] | null {
+  if (isSupervisorEventType(value)) {
+    return value;
+  }
+
+  if (typeof value !== 'string' || !(LEGACY_SEMANTIC_EVENT_TYPES as readonly string[]).includes(value)) {
+    return null;
+  }
+
+  switch (value) {
+    case 'USER_EXPRESSED_NEED':
+      return 'USER_EXPRESSED_INTEREST';
+    case 'USER_ASKED_MEDICAL_ADVICE':
+    case 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE':
+      return 'USER_ASKED_QUESTION';
+    default:
+      return null;
+  }
+}
+
+function normalizeSemanticSupervisorEventTarget(
+  value: unknown,
+  eventType: SupervisorEvent['eventType'],
+  rawEventType: unknown,
+  modifier: unknown,
+): NonNullable<SupervisorEvent['target']> | null {
+  if (rawEventType === 'USER_ASKED_MEDICAL_ADVICE') {
+    return 'medical_advice';
+  }
+
+  if (rawEventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE') {
+    return 'service_scope';
+  }
+
+  if (eventType === 'USER_REQUESTED_HUMAN') {
+    return 'handoff';
+  }
+
+  if (value === 'medical_facts' || value === 'medical_advice') {
+    return 'medical_advice';
+  }
+
+  if (value === 'unknown') {
+    return 'unknown';
+  }
+
+  if (value === 'service_scope') {
+    return 'service_scope';
+  }
+
+  if (value === 'recommendation' || value === 'hospital_selection') {
+    return 'hospital';
+  }
+
+  if (value === 'documents') {
+    return 'treatment';
+  }
+
+  if (value === 'process' || value === 'next_step') {
+    return 'policy';
+  }
+
+  if (value === 'contact' || value === 'human') {
+    return 'handoff';
+  }
+
+  if (value === 'consult') {
+    return eventType === 'USER_REQUESTED_ACTION' || modifier === 'request_action'
+      ? 'handoff'
+      : 'policy';
+  }
+
+  if (isSupervisorEventTarget(value)) {
+    return value;
+  }
+
+  return typeof value === 'string' && (LEGACY_SEMANTIC_TARGETS as readonly string[]).includes(value)
+    ? 'unknown'
+    : null;
 }
 
 function buildFallbackUnknownEvent(rawText: string): SupervisorEvent {
@@ -415,31 +497,14 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
   const rawText = resolveLatestUserMessage(input);
   const metadata = rawText ? { rawText } : undefined;
 
-  if (looksLikeRiskyMedicalAdvice(rawText)) {
+  if (WORKFLOW_QUESTION_PATTERNS.some((pattern) => pattern.test(rawText))) {
     return {
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      confidence: 0.9,
-      source: 'deterministic',
-      target: 'medical_facts',
-      modifier: 'ask',
-      metadata: {
-        ...(metadata ?? {}),
-        riskType: 'medical_advice',
-      },
-    };
-  }
-
-  if (looksLikeOutOfScopeOrRestrictedService(rawText)) {
-    return {
-      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
-      confidence: 0.9,
-      source: 'deterministic',
-      target: 'unknown',
-      modifier: 'ask',
-      metadata: {
-        ...(metadata ?? {}),
-        redirectTarget: 'medical_travel_support',
-      },
+      eventType: 'USER_REQUESTED_ACTION',
+      confidence: 0.75,
+      source: 'llm',
+      target: 'policy',
+      modifier: 'request_action',
+      ...(metadata ? { metadata } : {}),
     };
   }
 
@@ -456,10 +521,10 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
 
   if (/\b(?:recommend|recommendation|hospital|hospitals|clinic|clinics|option|options)\b/i.test(rawText)) {
     return {
-      eventType: 'USER_EXPRESSED_NEED',
+      eventType: 'USER_EXPRESSED_INTEREST',
       confidence: 0.65,
       source: 'llm',
-      target: 'recommendation',
+      target: 'hospital',
       modifier: /\b(?:again|another|other|different|refresh|revisit|change|switch|换|重新|别的|其他)\b/i.test(rawText)
         ? 'revisit'
         : 'ask',
@@ -474,7 +539,7 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
       eventType: 'USER_REQUESTED_HUMAN',
       confidence: 0.8,
       source: 'deterministic',
-      target: 'human',
+      target: 'handoff',
       modifier: 'ask',
       ...(metadata ? { metadata } : {}),
     };
@@ -493,11 +558,11 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
 
   if (suggestion.intent === 'consult') {
     return {
-      eventType: 'USER_EXPRESSED_NEED',
+      eventType: 'USER_REQUESTED_ACTION',
       confidence: 0.7,
       source: 'llm',
-      target: 'consult',
-      modifier: 'ask',
+      target: 'handoff',
+      modifier: 'request_action',
       ...(metadata ? { metadata } : {}),
     };
   }
@@ -507,7 +572,7 @@ function buildHeuristicSupervisorEvent(input: OrchestratorV3DecisionInput): Supe
       eventType: 'USER_ASKED_QUESTION',
       confidence: 0.65,
       source: 'llm',
-      target: 'next_step',
+      target: 'policy',
       modifier: 'ask',
       ...(metadata ? { metadata } : {}),
     };
@@ -585,6 +650,7 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
   const minimalTriageComplete = hasStructuredMinimalTriageComplete(input);
   const processExplained = resolveProcessExplained(input);
   const supportingDocuments = input.supportingDocuments ?? input.statusSnapshot?.supportingDocuments ?? [];
+  const latestUserMessage = resolveLatestUserMessage(input);
 
   if (input.suggestion.intent === 'handoff' || currentStage === 'HUMAN_HANDOFF') {
     return {
@@ -630,6 +696,23 @@ function heuristicSuggest(input: OrchestratorV3DecisionInput): SupervisorSuggest
   const recommendationSelected = recommendationSelectionStatus === 'selected'
     || input.facts?.['recommendation.selected'] === true;
   const recommendationSkipped = recommendationSelectionStatus === 'skipped';
+
+  if (WORKFLOW_QUESTION_PATTERNS.some((pattern) => pattern.test(latestUserMessage))) {
+    if (recommendationSelected && processExplained === true && supportingDocuments.length === 0) {
+      return {
+        intent: 'progression',
+        suggestedStage: 'COLLECT_MEDICAL_INPUTS',
+        reason: clampReason('next-step request should resume supporting-document collection'),
+      };
+    }
+    if (recommendationSelected && processExplained === true && supportingDocuments.length > 0) {
+      return {
+        intent: 'consult',
+        suggestedStage: 'ONLINE_CONSULT',
+        reason: clampReason('next-step request should continue to online consult readiness'),
+      };
+    }
+  }
 
   if (currentStage === 'RECOMMENDATION' || recommendationSelectionStatus !== null || recommendationSelected) {
     if (recommendationSkipped) {
@@ -775,25 +858,25 @@ function isSupervisorEventModifier(value: unknown): value is NonNullable<Supervi
 
 function inferQuestionTarget(message: string): NonNullable<SupervisorEvent['target']> {
   if (/\b(?:next step|what next|now what|do next|下一步|接下来|然后呢)\b/i.test(message)) {
-    return 'next_step';
+    return 'policy';
   }
   if (/\b(?:price|cost|fee|fees|expensive|cheap|payment|pay|多少钱|费用|价格|付款|付费|太贵)\b/i.test(message)) {
     return /\b(?:payment|pay|付款|付费)\b/i.test(message) ? 'payment' : 'pricing';
   }
   if (/\b(?:document|documents|record|records|mri|ct|pathology|report|资料|病历|报告|片子|病理)\b/i.test(message)) {
-    return 'documents';
+    return 'treatment';
   }
   if (/\b(?:hospital|doctor|clinic|specialist|医院|医生|专家)\b/i.test(message)) {
     return 'hospital';
   }
   if (/\b(?:consult|consultation|appointment|call|问诊|会诊|咨询|预约)\b/i.test(message)) {
-    return 'consult';
+    return 'policy';
   }
   if (/\b(?:travel|visa|flight|hotel|trip|签证|机票|酒店|赴华|行程)\b/i.test(message)) {
     return 'travel';
   }
   if (/\b(?:process|timeline|how long|流程|多久|时间)\b/i.test(message)) {
-    return 'process';
+    return 'policy';
   }
   return 'unknown';
 }
@@ -826,18 +909,6 @@ function looksLikeFaqQuestion(message: string): boolean {
   }
 
   return FAQ_QUESTION_PATTERNS.some((pattern) => pattern.test(normalized));
-}
-
-function looksLikeRiskyMedicalAdvice(message: string): boolean {
-  return RISKY_MEDICAL_ADVICE_PATTERNS.some((pattern) => pattern.test(message));
-}
-
-function looksLikeOutOfScopeOrRestrictedService(message: string): boolean {
-  if (TREATMENT_TRAVEL_HOUSING_CONTEXT_PATTERN.test(message)) {
-    return false;
-  }
-
-  return OUT_OF_SCOPE_OR_RESTRICTED_SERVICE_PATTERNS.some((pattern) => pattern.test(message));
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -909,7 +980,10 @@ function isDirectHumanRequest(bootstrap: OrchestratorV3BootstrapSignals | undefi
     return false;
   }
 
-  return DIRECT_HUMAN_REQUEST_PATTERNS.some((pattern) => pattern.test(message));
+  return extractDeterministicEvent({
+    message,
+    attachments: [],
+  })?.eventType === 'USER_REQUESTED_HUMAN';
 }
 
 function resolveBootstrapOverride(
@@ -1110,6 +1184,7 @@ function buildGatewayInput(input: OrchestratorV3DecisionInput): SupervisorGatewa
       : undefined,
     processExplained: structuredState.processExplained,
     conversationSummary: input.conversationSummary ?? '',
+    recentMessages: input.recentMessages ?? [],
     latestUserMessage: resolveLatestUserMessage(input),
     intake: resolveIntake(input),
     availableReadDomains: input.availableReadDomains ?? [],

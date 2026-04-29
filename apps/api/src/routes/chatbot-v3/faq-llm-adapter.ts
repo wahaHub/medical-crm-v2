@@ -208,9 +208,9 @@ function composeRedirectFallbackAnswer(task: FaqWorkerTask | undefined): FaqAnsw
   if (task.responseMode === 'safe_medical_redirect') {
     return {
       answer: [
-        'I cannot diagnose, choose treatment, recommend medication, or guarantee an outcome here.',
-        'Medora can help arrange a records-based doctor or hospital review in China so the right clinical team can assess the case.',
-        'If symptoms are urgent or worsening, please seek local emergency care now. A safe next step is to share available records for review.',
+        'I cannot replace a licensed clinician or make a diagnosis or treatment decision here.',
+        'I can help you organize the question for a clinician and arrange a records-based doctor or hospital review in China.',
+        'If symptoms feel urgent, suddenly worsen, or involve red flags, please seek local emergency care now; otherwise the safe next step is to share the relevant records or symptom summary for review.',
       ].join(' '),
       citedFaqIds: [],
       confidence: 'medium',

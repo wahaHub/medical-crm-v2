@@ -102,6 +102,8 @@ function buildTaskContextLines(task: RecordsWorkerTask): string[] {
     `loaded_skill_sections=${formatLoadedSkillSections(task.loadedSkillSections)}`,
     `read_intents=${formatReadIntents(task.readIntents)}`,
     `response_contract=${stringifyTaskField(task.responseContract)}`,
+    `conversation_summary=${task.conversationSummary?.trim() || 'none'}`,
+    `recent_messages=${JSON.stringify(task.recentMessages ?? [])}`,
   ];
 }
 

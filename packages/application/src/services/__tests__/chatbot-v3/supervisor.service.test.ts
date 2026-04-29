@@ -941,6 +941,7 @@ describe('SupervisorService', () => {
         supportingDocuments: [],
       },
       conversationSummary: 'The session just started and no recommendation has been shown yet.',
+      recentMessages: [],
       latestUserMessage: 'Please recommend hospitals for me.',
       intake: {
         condition: 'lung cancer',
@@ -1665,7 +1666,7 @@ describe('SupervisorService event extraction', () => {
     });
   });
 
-  it('keeps risky medical advice ahead of attachment extraction', async () => {
+  it('keeps attachments deterministic when the semantic gateway is disabled instead of using medical-advice regex', async () => {
     const supervisor = new SupervisorService();
 
     await expect(supervisor.extractEvent({
@@ -1676,16 +1677,15 @@ describe('SupervisorService event extraction', () => {
         attachments: [{ fileName: 'labs.pdf' }],
       },
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      eventType: 'DOCUMENTS_UPLOADED',
       source: 'deterministic',
       metadata: {
-        rawText: 'I attached labs, should I stop chemo?',
-        riskType: 'medical_advice',
+        documentCount: 1,
       },
     });
   });
 
-  it('keeps outcome guarantees on the medical-safety path ahead of attachment extraction', async () => {
+  it('keeps attachments deterministic for outcome-guarantee wording when the semantic gateway is disabled', async () => {
     const supervisor = new SupervisorService();
 
     await expect(supervisor.extractEvent({
@@ -1696,30 +1696,28 @@ describe('SupervisorService event extraction', () => {
         attachments: [{ fileName: 'records.pdf' }],
       },
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
+      eventType: 'DOCUMENTS_UPLOADED',
       source: 'deterministic',
       metadata: {
-        rawText: 'I attached records, can you guarantee she will be cured?',
-        riskType: 'medical_advice',
+        documentCount: 1,
       },
     });
   });
 
-  it('classifies clear risky medical advice as a safety redirect when the semantic gateway is disabled', async () => {
+  it('falls back to question-shaped extraction for medical advice when the semantic gateway is disabled', async () => {
     const supervisor = new SupervisorService();
 
     await expect(supervisor.extractEvent({
       ...eventInput,
       latestUserMessage: 'Should my wife start chemotherapy now?',
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      confidence: 0.9,
-      source: 'deterministic',
-      target: 'medical_facts',
+      eventType: 'USER_ASKED_QUESTION',
+      confidence: 0.75,
+      source: 'llm',
+      target: 'unknown',
       modifier: 'ask',
       metadata: {
         rawText: 'Should my wife start chemotherapy now?',
-        riskType: 'medical_advice',
       },
     });
   });
@@ -1727,18 +1725,17 @@ describe('SupervisorService event extraction', () => {
   it.each([
     'Should my wife get chemotherapy now?',
     'Should she undergo surgery now?',
-  ])('classifies risky treatment-decision wording as safety redirect: %s', async (latestUserMessage) => {
+  ])('does not regex-classify treatment-decision wording without the semantic gateway: %s', async (latestUserMessage) => {
     const supervisor = new SupervisorService();
 
     await expect(supervisor.extractEvent({
       ...eventInput,
       latestUserMessage,
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      source: 'deterministic',
+      eventType: 'USER_ASKED_QUESTION',
+      source: 'llm',
       metadata: {
         rawText: latestUserMessage,
-        riskType: 'medical_advice',
       },
     });
   });
@@ -1763,15 +1760,15 @@ describe('SupervisorService event extraction', () => {
     });
   });
 
-  it('short-circuits clear safety heuristics before the semantic gateway', async () => {
+  it('uses the semantic gateway for medical advice instead of local regex short-circuiting', async () => {
     let gatewayCalled = false;
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => {
         gatewayCalled = true;
         return {
-          eventType: 'USER_ASKED_QUESTION',
-          target: 'pricing',
+          eventType: 'USER_ASKED_MEDICAL_ADVICE',
+          target: 'medical_facts',
           modifier: 'ask',
           confidence: 0.99,
         };
@@ -1782,25 +1779,23 @@ describe('SupervisorService event extraction', () => {
       ...eventInput,
       latestUserMessage: 'Should my wife get chemotherapy now?',
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      source: 'deterministic',
-      metadata: {
-        rawText: 'Should my wife get chemotherapy now?',
-        riskType: 'medical_advice',
-      },
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'medical_advice',
+      modifier: 'ask',
+      source: 'llm',
     });
-    expect(gatewayCalled).toBe(false);
+    expect(gatewayCalled).toBe(true);
   });
 
-  it('short-circuits clear outcome-guarantee heuristics before the semantic gateway as medical safety', async () => {
+  it('lets the semantic gateway classify outcome guarantees as medical advice', async () => {
     let gatewayCalled = false;
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => {
         gatewayCalled = true;
         return {
-          eventType: 'USER_ASKED_QUESTION',
-          target: 'pricing',
+          eventType: 'USER_ASKED_MEDICAL_ADVICE',
+          target: 'treatment',
           modifier: 'ask',
           confidence: 0.99,
         };
@@ -1811,14 +1806,12 @@ describe('SupervisorService event extraction', () => {
       ...eventInput,
       latestUserMessage: 'Can you guarantee my wife will be cured?',
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      source: 'deterministic',
-      metadata: {
-        rawText: 'Can you guarantee my wife will be cured?',
-        riskType: 'medical_advice',
-      },
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'medical_advice',
+      modifier: 'ask',
+      source: 'llm',
     });
-    expect(gatewayCalled).toBe(false);
+    expect(gatewayCalled).toBe(true);
   });
 
   it.each([
@@ -1832,14 +1825,14 @@ describe('SupervisorService event extraction', () => {
     'Promise that chemo succeeds.',
     'Ensure no recurrence.',
     'Guarantee success before I pay.',
-  ])('short-circuits outcome guarantee wording before the semantic gateway as medical safety: %s', async (latestUserMessage) => {
+  ])('lets the semantic gateway classify outcome guarantee wording as medical advice: %s', async (latestUserMessage) => {
     let gatewayCalled = false;
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => {
         gatewayCalled = true;
         return {
-          eventType: 'USER_EXPRESSED_NEED',
+          eventType: 'USER_ASKED_MEDICAL_ADVICE',
           target: 'treatment',
           modifier: 'ask',
           confidence: 0.99,
@@ -1851,16 +1844,12 @@ describe('SupervisorService event extraction', () => {
       ...eventInput,
       latestUserMessage,
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      source: 'deterministic',
-      target: 'medical_facts',
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'medical_advice',
       modifier: 'ask',
-      metadata: {
-        rawText: latestUserMessage,
-        riskType: 'medical_advice',
-      },
+      source: 'llm',
     });
-    expect(gatewayCalled).toBe(false);
+    expect(gatewayCalled).toBe(true);
   });
 
   it.each([
@@ -1871,14 +1860,14 @@ describe('SupervisorService event extraction', () => {
     'Can you help me find a job in China?',
     'Can you rent an apartment in China?',
     '能帮我在中国租房吗？',
-  ])('short-circuits true out-of-scope service requests before the semantic gateway: %s', async (latestUserMessage) => {
+  ])('lets the semantic gateway classify true out-of-scope service requests: %s', async (latestUserMessage) => {
     let gatewayCalled = false;
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
       run: async () => {
         gatewayCalled = true;
         return {
-          eventType: 'USER_EXPRESSED_NEED',
+          eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
           target: 'unknown',
           modifier: 'ask',
           confidence: 0.99,
@@ -1890,16 +1879,91 @@ describe('SupervisorService event extraction', () => {
       ...eventInput,
       latestUserMessage,
     })).resolves.toMatchObject({
-      eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
-      source: 'deterministic',
-      target: 'unknown',
+      eventType: 'USER_ASKED_QUESTION',
+      source: 'llm',
+      target: 'service_scope',
       modifier: 'ask',
-      metadata: {
-        rawText: latestUserMessage,
-        redirectTarget: 'medical_travel_support',
-      },
     });
-    expect(gatewayCalled).toBe(false);
+    expect(gatewayCalled).toBe(true);
+  });
+
+  it('normalizes legacy semantic interest and target labels from the gateway', async () => {
+    const supervisorWithGateway = new SupervisorService({
+      promptVersion: 'supervisor-prompt-v3-events',
+      run: async () => ({
+        eventType: 'USER_EXPRESSED_NEED',
+        target: 'recommendation',
+        modifier: 'revisit',
+        confidence: 0.88,
+      }),
+    });
+
+    await expect(supervisorWithGateway.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'Can you recommend different hospitals?',
+    })).resolves.toMatchObject({
+      eventType: 'USER_EXPRESSED_INTEREST',
+      target: 'hospital',
+      modifier: 'revisit',
+      confidence: 0.88,
+      source: 'llm',
+    });
+  });
+
+  it('normalizes legacy contact and consult targets to their canonical domains', async () => {
+    const outputs = [
+      {
+        raw: {
+          eventType: 'USER_PROVIDED_INFORMATION',
+          target: 'contact',
+          modifier: 'provide',
+          confidence: 0.91,
+        },
+        expected: {
+          eventType: 'USER_PROVIDED_INFORMATION',
+          target: 'handoff',
+          modifier: 'provide',
+        },
+      },
+      {
+        raw: {
+          eventType: 'USER_REQUESTED_ACTION',
+          target: 'consult',
+          modifier: 'request_action',
+          confidence: 0.91,
+        },
+        expected: {
+          eventType: 'USER_REQUESTED_ACTION',
+          target: 'handoff',
+          modifier: 'request_action',
+        },
+      },
+      {
+        raw: {
+          eventType: 'USER_ASKED_QUESTION',
+          target: 'consult',
+          modifier: 'ask',
+          confidence: 0.91,
+        },
+        expected: {
+          eventType: 'USER_ASKED_QUESTION',
+          target: 'policy',
+          modifier: 'ask',
+        },
+      },
+    ];
+
+    for (const { raw, expected } of outputs) {
+      const supervisorWithGateway = new SupervisorService({
+        promptVersion: 'supervisor-prompt-v3-events',
+        run: async () => raw,
+      });
+
+      await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toMatchObject({
+        ...expected,
+        source: 'llm',
+      });
+    }
   });
 
   it.each([
@@ -2056,7 +2120,7 @@ describe('SupervisorService event extraction', () => {
 
     await expect(supervisorWithGateway.extractEvent(eventInput)).resolves.toEqual({
       eventType: 'USER_REQUESTED_HUMAN',
-      target: 'human',
+      target: 'handoff',
       modifier: 'ask',
       confidence: 0.8,
       source: 'llm',

@@ -48,7 +48,7 @@ describe('RecommendationLlmAdapter', () => {
         currentStage: 'RECOMMENDATION',
         primaryStage: 'RECOMMENDATION',
         loadedSkillSections: [{
-          skillId: 'hospital_recommendation_skill',
+          skillId: 'hospital_skill',
           role: 'primary',
           reasonCode: 'recommend_hospitals',
           sectionIds: ['recommendation_policy', 'candidate_retrieval', 'safe_handling'],
@@ -62,7 +62,7 @@ describe('RecommendationLlmAdapter', () => {
     });
 
     expect(prompt).toContain('loaded_skill_sections=');
-    expect(prompt).toContain('hospital_recommendation_skill');
+    expect(prompt).toContain('hospital_skill');
     expect(prompt).toContain('"sectionIds":["recommendation_policy","candidate_retrieval","safe_handling"]');
     expect(prompt).toContain('Use only candidate recommendations, retrieved context, and known facts; do not invent hospitals or rankings.');
     expect(prompt).toContain('Rank and explain only the supplied candidate recommendations.');

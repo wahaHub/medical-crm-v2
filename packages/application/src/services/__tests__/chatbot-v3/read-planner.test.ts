@@ -3,8 +3,6 @@ import { buildReadPlan } from '../../chatbot-v3/read-planner.js';
 import type { SupervisorEvent, TurnPlan } from '../../chatbot-v3/supervisor-event.types.js';
 import type {
   DomainSkillId,
-  LegacySkillPackId,
-  LoadedSkillPack,
   LoadedSkillSection,
 } from '../../chatbot-v3/skill-packs.js';
 
@@ -31,15 +29,6 @@ describe('buildReadPlan', () => {
     };
   }
 
-  function skill(id: LegacySkillPackId): LoadedSkillPack {
-    return {
-      id,
-      kind: 'retrieval_strategy',
-      description: id,
-      reasonCodes: ['test'],
-    };
-  }
-
   function loadedSection(
     skillId: DomainSkillId,
     overrides: Partial<LoadedSkillSection> = {},
@@ -57,38 +46,45 @@ describe('buildReadPlan', () => {
     };
   }
 
-  it('plans admin FAQ reads from FAQ retrieval skills', () => {
+  it('plans admin FAQ reads from loaded pricing skill sections', () => {
     const plan = buildReadPlan({
       event: event({ target: 'pricing' }),
       turnPlan: turnPlan({}),
-      loadedSkills: [
-        skill('search_general_faq_by_category'),
-        skill('answer_general_faq_from_admin_source'),
+      loadedSkillSections: [
+        loadedSection('pricing_skill', {
+          sectionIds: ['pricing_sources'],
+          readIntentTypes: ['GENERAL_FAQ'],
+        }),
       ],
     });
 
     expect(plan.readIntents).toContainEqual({
       type: 'GENERAL_FAQ',
       category: 'pricing',
-      reasonCode: 'search_general_faq_by_category',
+      reasonCode: 'pricing_skill:pricing_sources',
     });
   });
 
-  it('plans hospital and records reads from skill requests and turn plan', () => {
+  it('plans hospital and records reads from loaded domain skill sections', () => {
     const plan = buildReadPlan({
       event: event({ target: 'hospital' }),
       turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'hospital' } }),
-      loadedSkills: [
-        skill('search_hospital_candidates'),
-        skill('search_hospital_faq_by_category'),
-        skill('load_records_requirement_data'),
+      loadedSkillSections: [
+        loadedSection('hospital_skill', {
+          sectionIds: ['hospital_sources'],
+          readIntentTypes: ['HOSPITAL_CANDIDATES', 'HOSPITAL_FAQ'],
+        }),
+        loadedSection('treatment_skill', {
+          sectionIds: ['treatment_requirements'],
+          readIntentTypes: ['RECORD_REQUIREMENTS'],
+        }),
       ],
     });
 
     expect(plan.readIntents).toEqual(expect.arrayContaining([
-      { type: 'HOSPITAL_CANDIDATES', reasonCode: 'search_hospital_candidates' },
-      { type: 'HOSPITAL_FAQ', category: 'hospital', reasonCode: 'search_hospital_faq_by_category' },
-      { type: 'RECORD_REQUIREMENTS', reasonCode: 'load_records_requirement_data' },
+      { type: 'HOSPITAL_CANDIDATES', reasonCode: 'hospital_skill:hospital_sources' },
+      { type: 'HOSPITAL_FAQ', category: 'hospital', reasonCode: 'hospital_skill:hospital_sources' },
+      { type: 'RECORD_REQUIREMENTS', reasonCode: 'treatment_skill:treatment_requirements' },
     ]));
   });
 
@@ -114,11 +110,11 @@ describe('buildReadPlan', () => {
 
   it('plans record requirements from loaded documents skill sections', () => {
     const plan = buildReadPlan({
-      event: event({ target: 'documents' }),
-      turnPlan: turnPlan({ primaryAction: { type: 'HANDLE_RESPONSE', target: 'documents', modifier: 'reject' } }),
+      event: event({ target: 'treatment' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'HANDLE_RESPONSE', target: 'treatment', modifier: 'reject' } }),
       loadedSkillSections: [
-        loadedSection('documents_skill', {
-          sectionIds: ['document_requirements'],
+        loadedSection('treatment_skill', {
+          sectionIds: ['treatment_requirements'],
           retrievalGuidance: ['Use record requirements to name the next useful document set.'],
         }),
       ],
@@ -126,17 +122,17 @@ describe('buildReadPlan', () => {
 
     expect(plan.readIntents).toContainEqual({
       type: 'RECORD_REQUIREMENTS',
-      reasonCode: 'documents_skill:document_requirements',
+      reasonCode: 'treatment_skill:treatment_requirements',
     });
   });
 
   it('plans process, travel, and payment reads from loaded process sections and hints', () => {
     const processPlan = buildReadPlan({
-      event: event({ target: 'next_step' }),
-      turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'next_step', mode: 'faq' } }),
+      event: event({ target: 'policy' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'policy', mode: 'faq' } }),
       loadedSkillSections: [
-        loadedSection('process_skill', {
-          sectionIds: ['process_policy'],
+        loadedSection('policy_skill', {
+          sectionIds: ['policy_sources'],
           retrievalGuidance: ['Use process policy first; use process FAQ for direct user questions.'],
         }),
       ],
@@ -145,7 +141,7 @@ describe('buildReadPlan', () => {
       event: event({ target: 'travel' }),
       turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'travel', mode: 'faq' } }),
       loadedSkillSections: [
-        loadedSection('process_skill', {
+        loadedSection('policy_skill', {
           sectionIds: ['travel_support_scope'],
           retrievalGuidance: ['Use treatment-related travel support scope for visa, flight, hotel, or trip questions.'],
         }),
@@ -155,7 +151,7 @@ describe('buildReadPlan', () => {
       event: event({ target: 'payment' }),
       turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'payment', mode: 'faq' } }),
       loadedSkillSections: [
-        loadedSection('process_skill', {
+        loadedSection('policy_skill', {
           sectionIds: ['payment_policy'],
           retrievalGuidance: ['Use payment policy for payment method, timing, and payment support questions.'],
         }),
@@ -164,25 +160,25 @@ describe('buildReadPlan', () => {
 
     expect(processPlan.readIntents).toContainEqual({
       type: 'PROCESS_POLICY',
-      reasonCode: 'process_skill:process_policy',
+      reasonCode: 'policy_skill:policy_sources',
     });
     expect(travelPlan.readIntents).toContainEqual({
       type: 'TRAVEL_SUPPORT_SCOPE',
-      reasonCode: 'process_skill:travel_support_scope',
+      reasonCode: 'policy_skill:travel_support_scope',
     });
     expect(paymentPlan.readIntents).toContainEqual({
       type: 'PAYMENT_POLICY',
-      reasonCode: 'process_skill:payment_policy',
+      reasonCode: 'policy_skill:payment_policy',
     });
   });
 
   it('plans hospital candidates and hospital FAQ from loaded recommendation guidance', () => {
     const plan = buildReadPlan({
-      event: event({ target: 'recommendation' }),
+      event: event({ target: 'hospital' }),
       turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'hospital' } }),
       loadedSkillSections: [
-        loadedSection('hospital_recommendation_skill', {
-          sectionIds: ['recommendation_sources'],
+        loadedSection('hospital_skill', {
+          sectionIds: ['hospital_sources'],
           retrievalGuidance: [
             'Use approved recommendation candidates and hospital context before comparing options.',
           ],
@@ -191,22 +187,22 @@ describe('buildReadPlan', () => {
     });
 
     expect(plan.readIntents).toEqual(expect.arrayContaining([
-      { type: 'HOSPITAL_CANDIDATES', reasonCode: 'hospital_recommendation_skill:recommendation_sources' },
+      { type: 'HOSPITAL_CANDIDATES', reasonCode: 'hospital_skill:hospital_sources' },
       {
         type: 'HOSPITAL_FAQ',
         category: 'hospital',
-        reasonCode: 'hospital_recommendation_skill:recommendation_sources',
+        reasonCode: 'hospital_skill:hospital_sources',
       },
     ]));
   });
 
   it('plans doctor matching context from structured recommendation read intent types without prose signals', () => {
     const plan = buildReadPlan({
-      event: event({ target: 'recommendation' }),
+      event: event({ target: 'hospital' }),
       turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'hospital' } }),
       loadedSkillSections: [
-        loadedSection('hospital_recommendation_skill', {
-          sectionIds: ['recommendation_sources'],
+        loadedSection('hospital_skill', {
+          sectionIds: ['hospital_sources'],
           retrievalGuidance: [
             'Use approved recommendation candidates and hospital context before comparing options.',
           ],
@@ -221,17 +217,17 @@ describe('buildReadPlan', () => {
 
     expect(plan.readIntents).toContainEqual({
       type: 'DOCTOR_MATCHING_CONTEXT',
-      reasonCode: 'hospital_recommendation_skill:recommendation_sources',
+      reasonCode: 'hospital_skill:hospital_sources',
     });
   });
 
   it('plans consult readiness from loaded consult sections', () => {
     const plan = buildReadPlan({
-      event: event({ target: 'consult' }),
-      turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'consult' } }),
+      event: event({ target: 'treatment' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'treatment' } }),
       loadedSkillSections: [
-        loadedSection('consult_skill', {
-          sectionIds: ['consult_sources'],
+        loadedSection('treatment_skill', {
+          sectionIds: ['treatment_sources'],
           retrievalGuidance: ['Use consult readiness first; use consult FAQ for direct policy questions.'],
         }),
       ],
@@ -239,16 +235,16 @@ describe('buildReadPlan', () => {
 
     expect(plan.readIntents).toContainEqual({
       type: 'CONSULT_READINESS',
-      reasonCode: 'consult_skill:consult_sources',
+      reasonCode: 'treatment_skill:treatment_sources',
     });
   });
 
   it('plans service scope from loaded safety scope sections', () => {
     const plan = buildReadPlan({
-      event: event({ eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE', target: 'unknown' }),
-      turnPlan: turnPlan({ primaryAction: { type: 'REDIRECT', target: 'unknown', reasonCode: 'out_of_scope' } }),
+      event: event({ eventType: 'USER_ASKED_QUESTION', target: 'service_scope' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'REDIRECT', target: 'service_scope', reasonCode: 'out_of_scope' } }),
       loadedSkillSections: [
-        loadedSection('safety_scope_skill', {
+        loadedSection('service_scope_skill', {
           sectionIds: ['service_scope'],
           retrievalGuidance: [
             'Use service scope for out-of-scope or restricted-service boundaries; do not perform medical lookup.',
@@ -259,7 +255,7 @@ describe('buildReadPlan', () => {
 
     expect(plan.readIntents).toContainEqual({
       type: 'SERVICE_SCOPE',
-      reasonCode: 'safety_scope_skill:service_scope',
+      reasonCode: 'service_scope_skill:service_scope',
     });
   });
 
@@ -287,18 +283,4 @@ describe('buildReadPlan', () => {
     ]);
   });
 
-  it('falls back to legacy loaded skills when loaded skill sections are empty', () => {
-    const plan = buildReadPlan({
-      event: event({ target: 'hospital' }),
-      turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'hospital' } }),
-      loadedSkillSections: [],
-      loadedSkills: [
-        skill('search_doctor_matching_context'),
-      ],
-    });
-
-    expect(plan.readIntents).toEqual([
-      { type: 'DOCTOR_MATCHING_CONTEXT', reasonCode: 'search_doctor_matching_context' },
-    ]);
-  });
 });

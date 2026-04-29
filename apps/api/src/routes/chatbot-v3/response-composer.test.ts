@@ -1581,7 +1581,7 @@ describe('ResponseQualityChecker', () => {
   it('accepts and preserves follow-up action types from real domain skill section hints', () => {
     const sectionHint: DomainSkillRequest['sectionHints'] = {
       eventType: 'USER_RESPONDED_TO_REQUEST',
-      target: 'documents',
+      target: 'treatment',
       modifier: 'confirm',
       primaryActionType: 'HANDLE_RESPONSE',
       followUpActionType: 'REQUEST_RECORDS',
@@ -1590,7 +1590,7 @@ describe('ResponseQualityChecker', () => {
     const checks = checkSkillBehavior(
       'Thanks, we can use those records to prepare the next step.',
       [{
-        skillId: 'documents_skill',
+        skillId: 'treatment_skill',
         role: 'auxiliary',
         reasonCode: 'documents_uploaded',
         sectionIds: ['documents_uploaded'],
@@ -1601,7 +1601,7 @@ describe('ResponseQualityChecker', () => {
       }],
       {
         sectionHints: {
-          documents_skill: sectionHint,
+          treatment_skill: sectionHint,
         },
       },
     );
@@ -1800,7 +1800,7 @@ describe('ResponseQualityChecker', () => {
   it('allows llm_judge skill behavior evaluators in the result type', () => {
     const check: SkillBehaviorCheck = {
       id: 'llm-reviewed-boundary',
-      skillId: 'safety_scope_skill',
+      skillId: 'medical_advice_skill',
       sectionHint: {
         eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
         target: 'unknown',
@@ -2047,11 +2047,11 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
-  it('fails hard for documents_skill rejection or hesitation handling when the response pressures upload', () => {
+  it('fails hard for treatment_skill rejection or hesitation handling when the response pressures upload', () => {
     const checks = checkSkillBehavior(
       'I understand your concern, but you must upload now before we can help.',
       [{
-        skillId: 'documents_skill',
+        skillId: 'treatment_skill',
         role: 'primary',
         reasonCode: 'handle_document_hesitation',
         sectionIds: ['documents_reject_hesitate'],
@@ -2064,18 +2064,18 @@ describe('ResponseQualityChecker', () => {
 
     expect(checks).toContainEqual(expect.objectContaining({
       id: 'documents_pressure_after_rejection',
-      skillId: 'documents_skill',
+      skillId: 'treatment_skill',
       evaluator: 'deterministic',
       severity: 'hard',
       result: 'fail',
     }));
   });
 
-  it('fails hard for safety_scope_skill when the response diagnoses, recommends medication, or guarantees outcomes', () => {
+  it('fails hard for medical_advice_skill when the response diagnoses, recommends medication, or guarantees outcomes', () => {
     const checks = checkSkillBehavior(
       'This is pneumonia. Take antibiotics and we guarantee full recovery.',
       [{
-        skillId: 'safety_scope_skill',
+        skillId: 'medical_advice_skill',
         role: 'primary',
         reasonCode: 'medical_safety',
         sectionIds: ['safe_medical_boundary'],
@@ -2089,7 +2089,7 @@ describe('ResponseQualityChecker', () => {
     expect(checks).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'safety_scope_diagnosis',
-        skillId: 'safety_scope_skill',
+        skillId: 'medical_advice_skill',
         evaluator: 'deterministic',
         severity: 'hard',
         result: 'fail',
@@ -2109,7 +2109,7 @@ describe('ResponseQualityChecker', () => {
     const checks = checkSkillBehavior(
       'I recommend Cleveland Clinic as the best option for you.',
       [{
-        skillId: 'hospital_recommendation_skill',
+        skillId: 'hospital_skill',
         role: 'primary',
         reasonCode: 'present_recommendations',
         sectionIds: ['recommendation_candidates'],
@@ -2126,7 +2126,7 @@ describe('ResponseQualityChecker', () => {
 
     expect(checks).toContainEqual(expect.objectContaining({
       id: 'hospital_recommendation_candidate_integrity',
-      skillId: 'hospital_recommendation_skill',
+      skillId: 'hospital_skill',
       result: 'fail',
       severity: 'hard',
     }));
@@ -2136,7 +2136,7 @@ describe('ResponseQualityChecker', () => {
     const checks = checkSkillBehavior(
       'I recommend Cleveland Clinic as the best option for you.',
       [{
-        skillId: 'hospital_recommendation_skill',
+        skillId: 'hospital_skill',
         role: 'primary',
         reasonCode: 'present_recommendations',
         sectionIds: ['recommendation_candidates'],
@@ -2158,7 +2158,7 @@ describe('ResponseQualityChecker', () => {
     const checks = checkSkillBehavior(
       'I recommend Cleveland Clinic as the best option for you.',
       [{
-        skillId: 'hospital_recommendation_skill',
+        skillId: 'hospital_skill',
         role: 'primary',
         reasonCode: 'present_recommendations',
         sectionIds: ['recommendation_candidates'],
@@ -2184,7 +2184,7 @@ describe('ResponseQualityChecker', () => {
     const checks = checkSkillBehavior(
       "I don't have Cleveland Clinic in the current candidate list.",
       [{
-        skillId: 'hospital_recommendation_skill',
+        skillId: 'hospital_skill',
         role: 'primary',
         reasonCode: 'present_recommendations',
         sectionIds: ['recommendation_candidates'],
@@ -2210,7 +2210,7 @@ describe('ResponseQualityChecker', () => {
     const checks = checkSkillBehavior(
       'Shanghai Chest Hospital is one of the available options we can compare.',
       [{
-        skillId: 'hospital_recommendation_skill',
+        skillId: 'hospital_skill',
         role: 'primary',
         reasonCode: 'present_recommendations',
         sectionIds: ['recommendation_candidates'],
@@ -2232,11 +2232,11 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
-  it('fails hard for human_handoff_skill when the response promises unsupported callback timing', () => {
+  it('fails hard for handoff_skill when the response promises unsupported callback timing', () => {
     const checks = checkSkillBehavior(
       'A human will call in 5 minutes with a guaranteed callback.',
       [{
-        skillId: 'human_handoff_skill',
+        skillId: 'handoff_skill',
         role: 'primary',
         reasonCode: 'human_requested',
         sectionIds: ['handoff_policy'],
@@ -2249,7 +2249,7 @@ describe('ResponseQualityChecker', () => {
 
     expect(checks).toContainEqual(expect.objectContaining({
       id: 'human_handoff_unsupported_promise',
-      skillId: 'human_handoff_skill',
+      skillId: 'handoff_skill',
       result: 'fail',
       severity: 'hard',
     }));
@@ -2257,7 +2257,7 @@ describe('ResponseQualityChecker', () => {
 
   it('does not flag medication safety disclaimers but still catches medication instructions', () => {
     const section = {
-      skillId: 'safety_scope_skill',
+      skillId: 'medical_advice_skill',
       role: 'primary',
       reasonCode: 'medical_safety',
       sectionIds: ['safe_medical_boundary'],
@@ -2307,7 +2307,7 @@ describe('ResponseQualityChecker', () => {
     const checks = checkSkillBehavior(
       'You have lymphoma. Start chemotherapy.',
       [{
-        skillId: 'safety_scope_skill',
+        skillId: 'medical_advice_skill',
         role: 'primary',
         reasonCode: 'medical_safety',
         sectionIds: ['safe_medical_boundary'],

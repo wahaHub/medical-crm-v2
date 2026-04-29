@@ -233,7 +233,7 @@ function buildReducerAuthorityFactsPatch(
 
   if (execution.isSystemRendered
     && reduction.turnPlan.primaryAction.type === 'ANSWER'
-    && reduction.turnPlan.primaryAction.target === 'process'
+    && (reduction.turnPlan.primaryAction.target === 'policy' || reduction.turnPlan.primaryAction.target === 'process')
     && reduction.turnPlan.primaryAction.mode === 'formal_overview') {
     factsPatch['process.explained'] = true;
   }

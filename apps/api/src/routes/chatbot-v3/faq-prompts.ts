@@ -23,6 +23,7 @@ export function buildFaqPlanPrompt(input: FaqPlanInput): string {
     `loaded_skill_sections=${formatLoadedSkillSections(input.task.loadedSkillSections)}`,
     `read_intents=${formatReadIntents(input.task.readIntents)}`,
     `response_contract=${stringifyTaskField(input.task.responseContract)}`,
+    ...buildConversationContextLines(input.task),
     `latest_user_message=${input.task.latestUserMessage}`,
   ].join('\n');
 }
@@ -46,6 +47,7 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
     `loaded_skill_sections=${formatLoadedSkillSections(input.task.loadedSkillSections)}`,
     `read_intents=${formatReadIntents(input.task.readIntents)}`,
     `response_contract=${stringifyTaskField(input.task.responseContract)}`,
+    ...buildConversationContextLines(input.task),
     `latest_user_message=${input.task.latestUserMessage}`,
     `plan_query=${input.plan.query}`,
     `plan_category=${input.plan.category ?? 'none'}`,
@@ -56,6 +58,13 @@ export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
 
 function stringifyTaskField(value: unknown): string {
   return value === undefined ? 'none' : JSON.stringify(value);
+}
+
+function buildConversationContextLines(task: FaqWorkerTask): string[] {
+  return [
+    `conversation_summary=${task.conversationSummary?.trim() || 'none'}`,
+    `recent_messages=${JSON.stringify(task.recentMessages ?? [])}`,
+  ];
 }
 
 function renderCurrentStage(task: FaqWorkerTask): string {

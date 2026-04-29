@@ -29,7 +29,7 @@ function event(overrides: Partial<SupervisorEvent>): SupervisorEvent {
 function plan(overrides: Partial<TurnPlan>): TurnPlan {
   return {
     primaryAction: { type: 'ANSWER', target: 'pricing', mode: 'faq' },
-    followUpAction: { type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'pricing_requires_records' },
+    followUpAction: { type: 'INVITE_NEXT_STEP', target: 'treatment', reason: 'pricing_requires_records' },
     primaryStage: 'COLLECT_MEDICAL_INPUTS',
     factsPatch: {},
     reasonCode: 'test_plan',
@@ -49,80 +49,80 @@ describe('buildSkillPolicy', () => {
       agentRole: 'GeneralResponseAgent',
     })).toMatchObject([
       { skillId: 'pricing_skill', role: 'primary', sectionHints: { target: 'pricing' } },
-      { skillId: 'documents_skill', role: 'auxiliary', sectionHints: { target: 'documents' } },
+      { skillId: 'treatment_skill', role: 'auxiliary', sectionHints: { target: 'treatment' } },
     ]);
   });
 
-  it('routes document rejection to documents as the primary domain skill', () => {
+  it('routes treatment input rejection to treatment as the primary domain skill', () => {
     expect(requests({
-      event: event({ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'documents', modifier: 'reject' }),
+      event: event({ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'treatment', modifier: 'reject' }),
       turnPlan: plan({
-        primaryAction: { type: 'HANDLE_RESPONSE', target: 'documents', modifier: 'reject' },
+        primaryAction: { type: 'HANDLE_RESPONSE', target: 'treatment', modifier: 'reject' },
         followUpAction: { type: 'NONE' },
       }),
       agentRole: 'RecordsAgent',
     })).toMatchObject([
-      { skillId: 'documents_skill', role: 'primary' },
+      { skillId: 'treatment_skill', role: 'primary' },
     ]);
   });
 
-  it('routes next-step questions during records collection to process with documents auxiliary', () => {
+  it('routes next-step questions during treatment input collection to policy with treatment auxiliary', () => {
     expect(requests({
-      event: event({ target: 'next_step' }),
+      event: event({ target: 'policy' }),
       turnPlan: plan({
-        primaryAction: { type: 'ANSWER', target: 'next_step', mode: 'faq' },
-        followUpAction: { type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'resume_records' },
+        primaryAction: { type: 'ANSWER', target: 'policy', mode: 'faq' },
+        followUpAction: { type: 'INVITE_NEXT_STEP', target: 'treatment', reason: 'resume_records' },
       }),
       agentRole: 'RecordsAgent',
     })).toMatchObject([
-      { skillId: 'process_skill', role: 'primary' },
-      { skillId: 'documents_skill', role: 'auxiliary' },
+      { skillId: 'policy_skill', role: 'primary' },
+      { skillId: 'treatment_skill', role: 'auxiliary' },
     ]);
   });
 
-  it('routes out-of-scope redirects to the safety scope domain skill', () => {
+  it('routes service-scope redirects to the service scope domain skill', () => {
     expect(requests({
-      event: event({ eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE', target: 'unknown' }),
+      event: event({ eventType: 'USER_ASKED_QUESTION', target: 'service_scope' }),
       turnPlan: plan({
-        primaryAction: { type: 'REDIRECT', target: 'unknown', reasonCode: 'out_of_scope' },
+        primaryAction: { type: 'REDIRECT', target: 'service_scope', reasonCode: 'out_of_scope' },
         followUpAction: { type: 'NONE' },
       }),
       agentRole: 'GeneralResponseAgent',
     })[0]).toMatchObject({
-      skillId: 'safety_scope_skill',
+      skillId: 'service_scope_skill',
       role: 'primary',
     });
   });
 
   it('routes provided contact information to human handoff as the primary domain skill', () => {
     expect(requests({
-      event: event({ eventType: 'USER_PROVIDED_INFORMATION', target: 'contact', modifier: 'provide' }),
+      event: event({ eventType: 'USER_PROVIDED_INFORMATION', target: 'handoff', modifier: 'provide' }),
       turnPlan: plan({
-        primaryAction: { type: 'ACKNOWLEDGE', target: 'contact' },
+        primaryAction: { type: 'ACKNOWLEDGE', target: 'handoff' },
         followUpAction: { type: 'NONE' },
       }),
       agentRole: 'HandoffAgent',
     })[0]).toMatchObject({
-      skillId: 'human_handoff_skill',
+      skillId: 'handoff_skill',
       role: 'primary',
     });
   });
 
-  it('routes recommendation revisits to the hospital recommendation domain skill', () => {
+  it('routes hospital revisits to the hospital domain skill', () => {
     expect(requests({
-      event: event({ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'recommendation', modifier: 'revisit' }),
+      event: event({ eventType: 'USER_RESPONDED_TO_REQUEST', target: 'hospital', modifier: 'revisit' }),
       turnPlan: plan({
-        primaryAction: { type: 'HANDLE_RESPONSE', target: 'recommendation', modifier: 'revisit' },
+        primaryAction: { type: 'HANDLE_RESPONSE', target: 'hospital', modifier: 'revisit' },
         followUpAction: { type: 'NONE' },
       }),
       agentRole: 'RecommendationAgent',
     })[0]).toMatchObject({
-      skillId: 'hospital_recommendation_skill',
+      skillId: 'hospital_skill',
       role: 'primary',
     });
   });
 
-  it('routes travel questions to the process domain skill', () => {
+  it('routes travel questions to the travel domain skill', () => {
     expect(requests({
       event: event({ target: 'travel' }),
       turnPlan: plan({
@@ -131,7 +131,7 @@ describe('buildSkillPolicy', () => {
       }),
       agentRole: 'GeneralResponseAgent',
     })[0]).toMatchObject({
-      skillId: 'process_skill',
+      skillId: 'travel_skill',
       role: 'primary',
     });
   });
@@ -155,7 +155,7 @@ describe('buildSkillPolicy', () => {
     expect(requests({
       event: event({ target: 'pricing' }),
       turnPlan: plan({
-        primaryAction: { type: 'ANSWER', target: 'documents', mode: 'faq' },
+        primaryAction: { type: 'ANSWER', target: 'treatment', mode: 'faq' },
         followUpAction: { type: 'NONE' },
       }),
       agentRole: 'GeneralResponseAgent',
@@ -175,28 +175,28 @@ describe('buildSkillPolicy', () => {
       }),
       agentRole: 'GeneralResponseAgent',
     })[0]).toMatchObject({
-      skillId: 'documents_skill',
+      skillId: 'medical_advice_skill',
       role: 'primary',
-      sectionHints: { target: 'medical_facts' },
+      sectionHints: { target: 'medical_advice' },
     });
   });
 
-  it('falls back to minimal triage action routing when the event target is unmapped treatment', () => {
+  it('routes medical-advice events to the medical advice skill before action fallback', () => {
     expect(requests({
-      event: event({ eventType: 'USER_EXPRESSED_NEED', target: 'treatment', modifier: 'ask' }),
+      event: event({ eventType: 'USER_ASKED_QUESTION', target: 'medical_advice', modifier: 'ask' }),
       turnPlan: plan({
         primaryAction: { type: 'REQUEST_INFO', target: 'minimal_triage' },
         followUpAction: { type: 'NONE' },
       }),
       agentRole: 'GeneralResponseAgent',
     })[0]).toMatchObject({
-      skillId: 'documents_skill',
+      skillId: 'medical_advice_skill',
       role: 'primary',
-      sectionHints: { target: 'medical_facts' },
+      sectionHints: { target: 'medical_advice' },
     });
   });
 
-  it('routes preference requests to hospital recommendation with recommendation section hints', () => {
+  it('routes preference requests to hospital with hospital section hints', () => {
     expect(requests({
       event: event({ target: 'unknown' }),
       turnPlan: plan({
@@ -205,9 +205,9 @@ describe('buildSkillPolicy', () => {
       }),
       agentRole: 'GeneralResponseAgent',
     })[0]).toMatchObject({
-      skillId: 'hospital_recommendation_skill',
+      skillId: 'hospital_skill',
       role: 'primary',
-      sectionHints: { target: 'recommendation' },
+      sectionHints: { target: 'hospital' },
     });
   });
 

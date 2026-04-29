@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import {
   JourneyRuntimeAuthorityService,
+  type ChatbotV3RecentMessage,
   type MinimalIntakeSeed,
   SupervisorService,
 } from '@medical-crm/application';
@@ -123,6 +124,12 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
 
   let result: ConversationOrchestratorV3TurnResult;
   try {
+    const recentMessages = await buildRecentMessagesForChatbotV3Turn({
+      services,
+      sessionId: session.id,
+      turnId,
+      message: body.message ?? '',
+    });
     result = await getChatbotV3Runtime().handleTurn({
       traceId,
       sessionId: body.sessionId,
@@ -141,6 +148,7 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
         attachments: body.attachments,
         canCreateHandoff: canCreateHandoffTicket(session, services),
       },
+      recentMessages,
     });
   } catch (error) {
     if (error instanceof InvalidChatbotV3ActionError) {
@@ -514,6 +522,34 @@ async function persistChatbotV3TurnHistory(input: {
     createdAt: assistantCreatedAt,
   });
   await createOrUpdateAiChatHistoryMessage(input.services, assistantMessage);
+}
+
+export async function buildRecentMessagesForChatbotV3Turn(input: {
+  services: AppServices;
+  sessionId: string;
+  turnId: string;
+  message: string;
+}): Promise<ChatbotV3RecentMessage[]> {
+  const persisted = typeof input.services.aiChatMessageRepo.listBySession === 'function'
+    ? await input.services.aiChatMessageRepo.listBySession(input.sessionId, 8)
+    : [];
+  const mapped = [...persisted].reverse().map(toChatbotV3RecentMessage);
+  const inFlightUserMessage: ChatbotV3RecentMessage = {
+    id: createDeterministicTurnMessageId(input.sessionId, input.turnId, 'USER'),
+    role: 'USER',
+    content: input.message,
+  };
+
+  return [...mapped, inFlightUserMessage].slice(-8);
+}
+
+function toChatbotV3RecentMessage(message: AiChatMessage): ChatbotV3RecentMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt.toISOString(),
+  };
 }
 
 async function createOrUpdateAiChatHistoryMessage(

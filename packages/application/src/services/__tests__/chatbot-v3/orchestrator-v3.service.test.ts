@@ -34,7 +34,6 @@ describe('OrchestratorV3Service', () => {
       action: authorityDecision.action,
       from: authorityDecision.from,
       to: authorityDecision.to,
-      dispatchAgent: 'RecommendationAgent',
       dispatchSource: 'orchestrator',
     });
   });
@@ -117,7 +116,6 @@ describe('OrchestratorV3Service', () => {
         stage: 'RECOMMENDATION',
         phase: 'post',
       },
-      dispatchAgent: 'RecommendationAgent',
       dispatchSource: 'orchestrator',
     });
   });

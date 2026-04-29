@@ -8,7 +8,6 @@ import {
   type LoadedSkillPack,
   type SkillSectionApplicability,
   type SkillPackId,
-  type SkillRequest,
 } from './skill-packs.js';
 import {
   SUPERVISOR_EVENT_MODIFIERS,
@@ -17,7 +16,7 @@ import {
 } from './supervisor-event.types.js';
 
 export interface LoadSkillPacksInput {
-  requests: readonly (DomainSkillRequest | SkillRequest)[];
+  requests: readonly DomainSkillRequest[];
   maxSkillSnippets?: number;
 }
 
@@ -72,10 +71,10 @@ export function loadSkillPacks(input: LoadSkillPacksInput): LoadedSkillPolicy {
   const warnings: string[] = [];
 
   for (const request of input.requests) {
-    const skillPackId = 'skillId' in request ? request.skillId : request.skillPackId;
+    const skillPackId = request.skillId;
     if (!Object.hasOwn(SKILL_LOADER_REGISTRY, skillPackId)) {
       warnings.push(`unknown skill pack: ${skillPackId}`);
-      addRequest(requestsBySkill, 'safe_degradation_when_uncertain', request.reasonCode);
+      addRequest(requestsBySkill, 'clarification_recovery_skill', request.reasonCode);
       continue;
     }
 
@@ -224,15 +223,23 @@ function pickOptionalAllowed<T extends string>(
 
 function shouldUseSafetyFallback(request: DomainSkillRequest): boolean {
   const hints = request.sectionHints;
-  return hints?.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
-    || hints?.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
+  if (hints?.eventType === 'USER_MESSAGE_UNCLEAR') {
+    return false;
+  }
+
+  return hints?.target === 'medical_advice'
+    || hints?.target === 'service_scope'
     || hints?.primaryActionType === 'REDIRECT';
 }
 
 function resolveFallbackSkillId(request: DomainSkillRequest): DomainSkillId {
-  return shouldUseSafetyFallback(request)
-    ? 'safety_scope_skill'
-    : 'clarification_recovery_skill';
+  if (!shouldUseSafetyFallback(request)) {
+    return 'clarification_recovery_skill';
+  }
+
+  return request.sectionHints?.target === 'medical_advice'
+    ? 'medical_advice_skill'
+    : 'service_scope_skill';
 }
 
 function loadSingleSkillSection(

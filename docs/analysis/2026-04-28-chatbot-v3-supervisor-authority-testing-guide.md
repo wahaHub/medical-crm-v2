@@ -252,7 +252,7 @@ type SupervisorEvent = {
     | 'USER_PROVIDED_INFORMATION'
     | 'USER_RESPONDED_TO_REQUEST'
     | 'USER_REQUESTED_HUMAN'
-    | 'USER_ASKED_RISKY_MEDICAL_ADVICE'
+    | 'USER_ASKED_MEDICAL_ADVICE'
     | 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
     | 'USER_MESSAGE_UNCLEAR';
   target: EventTarget;
@@ -477,7 +477,7 @@ recommendation revisit -> USER_EXPRESSED_NEED / recommendation or hospital / rev
 document rejection -> USER_RESPONDED_TO_REQUEST / documents / reject
 hesitation -> USER_RESPONDED_TO_REQUEST / unknown or current target / hesitate
 human request -> USER_REQUESTED_HUMAN / human / ask
-risky medical advice -> USER_ASKED_RISKY_MEDICAL_ADVICE
+risky medical advice -> USER_ASKED_MEDICAL_ADVICE
 out of scope -> USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE
 unclear -> USER_MESSAGE_UNCLEAR
 ```
@@ -840,7 +840,7 @@ Session B: side-path and recovery classifier stability
 ```text
 Turn 1:
 message: Can you guarantee she will be cured?
-expect: USER_ASKED_RISKY_MEDICAL_ADVICE / treatment or unknown / ask
+expect: USER_ASKED_MEDICAL_ADVICE / treatment or unknown / ask
 
 Turn 2:
 snapshot primary stage unchanged
@@ -1008,7 +1008,7 @@ Required authority fixtures:
    expect: ESCALATE human, primaryStage HUMAN_HANDOFF
    next fixed turn with handoff.active=true should remain handoff-oriented
 
-9. USER_ASKED_RISKY_MEDICAL_ADVICE
+9. USER_ASKED_MEDICAL_ADVICE
    expect: REDIRECT medical_safety or cannot_do, primaryStage preserved
    expect: bounded response contract safety rules
 
@@ -1094,7 +1094,7 @@ Required fixed pipeline cases:
 5. Safety redirect
    currentStage=COLLECT_MEDICAL_INPUTS
    message: Can you guarantee she will be cured?
-   expected event: USER_ASKED_RISKY_MEDICAL_ADVICE
+   expected event: USER_ASKED_MEDICAL_ADVICE
    expected authority: REDIRECT medical_safety or cannot_do, primaryStage preserved
 
 6. Out-of-scope redirect

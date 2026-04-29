@@ -16,6 +16,21 @@ function createFaqTask(latestUserMessage: string): FaqWorkerTask {
     latestUserMessage,
     intent: 'faq',
     supervisorReason: 'user is asking an faq question',
+    conversationSummary: 'Earlier: user selected hospital-1 and asked about consult timing.',
+    recentMessages: [
+      {
+        id: 'm-1',
+        role: 'USER',
+        content: 'I selected Shanghai Chest Hospital.',
+        createdAt: '2026-04-29T07:00:00.000Z',
+      },
+      {
+        id: 'm-2',
+        role: 'ASSISTANT',
+        content: 'I can explain the next consult step.',
+        createdAt: '2026-04-29T07:01:00.000Z',
+      },
+    ],
   };
 }
 
@@ -188,11 +203,18 @@ describe('FaqLlmAdapter', () => {
       }],
       details: [],
     })).resolves.toEqual({
-      answer: expect.stringContaining('cannot diagnose'),
+      answer: expect.stringContaining('can help you organize the question for a clinician'),
       citedFaqIds: [],
       confidence: 'medium',
       policyGrounded: true,
     });
+    const answer = (await adapter.answer({
+      task,
+      plan: { query: 'guarantee outcome', reason: 'safety redirect' },
+      matches: [],
+      details: [],
+    })).answer;
+    expect(answer).not.toContain('I cannot diagnose, choose treatment, recommend medication, or guarantee an outcome here.');
   });
 
   it('passes rejection and hesitation task rules through FAQ prompts', () => {
@@ -277,7 +299,7 @@ describe('FaqLlmAdapter', () => {
         'load_consult_readiness_criteria',
       ],
       loadedSkillSections: [{
-        skillId: 'consult_skill',
+        skillId: 'faq_skill',
         role: 'primary',
         reasonCode: 'answer_consult_faq',
         sectionIds: ['consult_readiness', 'consult_sources'],
@@ -320,6 +342,8 @@ describe('FaqLlmAdapter', () => {
     expect(buildFaqPlanPrompt({ task })).not.toContain('to_stage=undefined');
     expect(buildFaqPlanPrompt({ task })).not.toContain('[object Object]');
     expect(buildFaqPlanPrompt({ task })).toContain('read_intents={"type":"GENERAL_FAQ","category":"consult","reasonCode":"answer_consult_faq"}, {"type":"CONSULT_READINESS","reasonCode":"go_deep_consult"}');
+    expect(buildFaqPlanPrompt({ task })).toContain('conversation_summary=Earlier: user selected hospital-1 and asked about consult timing.');
+    expect(buildFaqPlanPrompt({ task })).toContain('recent_messages=[{"id":"m-1","role":"USER","content":"I selected Shanghai Chest Hospital.","createdAt":"2026-04-29T07:00:00.000Z"},{"id":"m-2","role":"ASSISTANT","content":"I can explain the next consult step.","createdAt":"2026-04-29T07:01:00.000Z"}]');
     const answerPrompt = buildFaqAnswerPrompt({
       task,
       plan: { query: 'consult timing', reason: 'consult faq' },
@@ -329,6 +353,8 @@ describe('FaqLlmAdapter', () => {
     expect(answerPrompt).toContain('loaded_skill_sections=');
     expect(answerPrompt).not.toContain('allowed_skill_packs=');
     expect(answerPrompt).toContain('"followUpMove":"go_deep"');
+    expect(answerPrompt).toContain('conversation_summary=Earlier: user selected hospital-1 and asked about consult timing.');
+    expect(answerPrompt).toContain('recent_messages=[{"id":"m-1","role":"USER","content":"I selected Shanghai Chest Hospital.","createdAt":"2026-04-29T07:00:00.000Z"},{"id":"m-2","role":"ASSISTANT","content":"I can explain the next consult step.","createdAt":"2026-04-29T07:01:00.000Z"}]');
     expect(buildFaqAnswerPrompt({
       task,
       plan: { query: 'consult timing', reason: 'consult faq' },

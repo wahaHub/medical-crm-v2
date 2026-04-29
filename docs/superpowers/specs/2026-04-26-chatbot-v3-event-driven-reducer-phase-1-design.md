@@ -231,7 +231,7 @@ The Phase 1 event set is:
 - `USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING`
 - `USER_PROVIDED_MEDICAL_FACTS`
 - `USER_INTERESTED_IN_CONSULT`
-- `USER_ASKED_RISKY_MEDICAL_ADVICE`
+- `USER_ASKED_MEDICAL_ADVICE`
 - `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE`
 - `USER_AMBIGUOUS_REPLY`
 - `UNKNOWN_MESSAGE`
@@ -257,7 +257,7 @@ For the implemented Phase 1 OpenAI route, semantic metadata is intentionally exc
 This means:
 - `USER_ASKED_FAQ` may not include a semantic `topic`
 - `USER_PROVIDED_MEDICAL_FACTS` may not include semantic `extractedFacts`
-- `USER_ASKED_RISKY_MEDICAL_ADVICE` may not include semantic `riskType`
+- `USER_ASKED_MEDICAL_ADVICE` may not include semantic `riskType`
 - `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` may not include semantic `redirectTarget`
 
 Those enrichments are not control-plane blockers in Phase 1.
@@ -441,7 +441,7 @@ Phase 1 should implement these rules clearly.
 
 ### Highest-priority overrides
 - `USER_REQUESTED_HUMAN` -> `CREATE_HANDOFF`
-- `USER_ASKED_RISKY_MEDICAL_ADVICE` -> `SAFE_MEDICAL_REDIRECT`
+- `USER_ASKED_MEDICAL_ADVICE` -> `SAFE_MEDICAL_REDIRECT`
 - `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` -> `OUT_OF_SCOPE_REDIRECT`
 
 ### Detours

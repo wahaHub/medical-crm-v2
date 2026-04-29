@@ -62,6 +62,7 @@ export type {
   ChatbotV3JumpRule,
   ChatbotV3PolicyConfig,
   ChatbotV3PolicyConfigInput,
+  ChatbotV3RecentMessage,
   ChatbotV3Suggestion,
   ChatbotV3StagePrerequisite,
   ChatbotV3StagePrerequisites,
@@ -151,10 +152,7 @@ export type {
   LoadedSkillPack,
   LoadedSkillSection,
   DomainSkillRequest,
-  SkillKind,
-  SkillPackDefinition,
   SkillPackId,
-  SkillRequest,
 } from './services/chatbot-v3/skill-packs.js';
 export type { ReadIntent, ReadPlan } from './services/chatbot-v3/read-planner.js';
 export type {

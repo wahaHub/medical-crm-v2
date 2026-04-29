@@ -94,6 +94,13 @@ export interface SupervisorTask {
   necessaryFacts: ChatbotV3Facts;
 }
 
+export interface ChatbotV3RecentMessage {
+  id: string;
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  content: string;
+  createdAt?: string;
+}
+
 export interface SupervisorSuggestionSeed {
   intent: ChatbotV3Intent;
   suggestedStage: ChatJourneyStage;
@@ -138,6 +145,7 @@ export interface SupervisorGatewayInput {
   supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];
   statusSnapshot?: ChatbotV3StatusSnapshot | null;
   conversationSummary: string;
+  recentMessages?: readonly ChatbotV3RecentMessage[];
   latestUserMessage: string;
   intake: MinimalIntakeSeed;
   availableReadDomains: SupervisorReadHints;
@@ -156,6 +164,7 @@ export interface OrchestratorV3DecisionInput {
   recommendationSelectedHospitalIds?: string[] | null;
   supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];
   conversationSummary?: string;
+  recentMessages?: readonly ChatbotV3RecentMessage[];
   latestUserMessage?: string;
   intake?: MinimalIntakeSeed;
   availableReadDomains?: readonly SupervisorReadDomain[];

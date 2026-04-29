@@ -29,7 +29,7 @@ export function resolveAgent(input: {
   const action = turnPlan.primaryAction;
   const followUpAction = turnPlan.followUpAction;
 
-  if (action.type === 'ESCALATE' && action.target === 'human') {
+  if (action.type === 'ESCALATE' && (action.target === 'handoff' || action.target === 'human')) {
     return handoff('primary_action_escalate_human');
   }
 
@@ -42,12 +42,12 @@ export function resolveAgent(input: {
   }
 
   if (action.type === 'REQUEST_INFO'
-    && ['minimal_triage', 'medical_facts', 'documents'].includes(action.target)) {
+    && ['minimal_triage', 'medical_advice', 'medical_facts', 'treatment', 'documents'].includes(action.target)) {
     return records('request_info_records_owned_target');
   }
 
   if (event.eventType === 'USER_PROVIDED_INFORMATION'
-    && (event.target === 'medical_facts' || event.target === 'documents')) {
+    && (event.target === 'medical_advice' || event.target === 'medical_facts' || event.target === 'treatment' || event.target === 'documents')) {
     return records('provided_records_or_medical_facts');
   }
 
@@ -60,6 +60,7 @@ export function resolveAgent(input: {
     || event.target === 'hospital_selection') {
     if (event.modifier === 'revisit'
       || action.type === 'PRESENT_OPTIONS'
+      || isFollowUpAnyTarget(followUpAction, 'hospital')
       || isFollowUpAnyTarget(followUpAction, 'recommendation')) {
       return recommendation('recommendation_or_hospital_revisit');
     }

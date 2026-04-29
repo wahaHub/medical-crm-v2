@@ -173,18 +173,26 @@ export function decidePrimaryAction(input: {
   const { event, facts } = input;
 
   if (facts.handoff.active) {
-    return { type: 'ESCALATE', target: 'human', reasonCode: 'handoff_active' };
+    return { type: 'ESCALATE', target: 'handoff', reasonCode: 'handoff_active' };
   }
 
   switch (event.eventType) {
     case 'USER_REQUESTED_HUMAN':
-      return { type: 'ESCALATE', target: 'human', reasonCode: 'human_requested' };
-    case 'USER_ASKED_RISKY_MEDICAL_ADVICE':
-      return { type: 'REDIRECT', target: event.target ?? 'medical_facts', reasonCode: 'medical_safety' };
+      return { type: 'ESCALATE', target: 'handoff', reasonCode: 'human_requested' };
+    case 'USER_REQUESTED_ACTION':
+      return decideNextStepFromFacts(facts);
+    case 'USER_ASKED_MEDICAL_ADVICE':
+      return { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' };
     case 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE':
-      return { type: 'REDIRECT', target: event.target ?? 'unknown', reasonCode: 'out_of_scope' };
+      return { type: 'REDIRECT', target: 'service_scope', reasonCode: 'out_of_scope' };
     case 'USER_ASKED_QUESTION':
-      if (event.target === 'next_step') {
+      if (event.target === 'medical_advice') {
+        return { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' };
+      }
+      if (event.target === 'service_scope') {
+        return { type: 'REDIRECT', target: 'service_scope', reasonCode: 'out_of_scope' };
+      }
+      if (event.target === 'next_step' || event.modifier === 'request_action') {
         return decideNextStepFromFacts(facts);
       }
       if (event.target === 'hospital' || event.target === 'hospital_selection') {
@@ -195,8 +203,8 @@ export function decidePrimaryAction(input: {
       }
       return { type: 'CLARIFY', target: 'unknown', reasonCode: 'ambiguous_message' };
     case 'USER_PROVIDED_INFORMATION':
-      if (event.target === 'contact') {
-        return { type: 'ESCALATE', target: 'human', reasonCode: 'contact_info_provided' };
+      if (event.target === 'handoff') {
+        return { type: 'ESCALATE', target: 'handoff', reasonCode: 'contact_info_provided' };
       }
       return decideNextStepFromFacts(facts);
     case 'USER_RESPONDED_TO_REQUEST':
@@ -209,24 +217,19 @@ export function decidePrimaryAction(input: {
       return { type: 'PRESENT_OPTIONS', target: 'hospital' };
     case 'RECOMMENDATION_SELECTED':
       if (!facts.process.explained) {
-        return { type: 'ANSWER', target: 'process', mode: 'formal_overview' };
+        return { type: 'ANSWER', target: 'policy', mode: 'formal_overview' };
       }
       if (facts.records.supportingDocumentsCount === 0) {
-        return { type: 'REQUEST_INFO', target: 'documents' };
+        return { type: 'REQUEST_INFO', target: 'treatment' };
       }
       return { type: 'PRESENT_OPTIONS', target: 'consult' };
     case 'RECOMMENDATION_SKIPPED':
-      return { type: 'ANSWER', target: 'process', mode: 'formal_overview' };
+      return { type: 'ANSWER', target: 'policy', mode: 'formal_overview' };
     case 'DOCUMENTS_UPLOADED':
       return decidePrimaryActionAfterDocuments(facts);
-    case 'USER_EXPRESSED_NEED':
-      if (event.target === 'recommendation' && event.modifier === 'revisit') {
+    case 'USER_EXPRESSED_INTEREST':
+      if (event.target === 'hospital' && event.modifier === 'revisit') {
         return { type: 'PRESENT_OPTIONS', target: 'hospital' };
-      }
-      if (event.target === 'consult') {
-        return facts.records.supportingDocumentsCount === 0
-          ? { type: 'REQUEST_INFO', target: 'documents' }
-          : { type: 'PRESENT_OPTIONS', target: 'consult' };
       }
       return decideNextStepFromFacts(facts);
     case 'USER_MESSAGE_UNCLEAR':
@@ -246,10 +249,10 @@ export function decideNextStepFromFacts(facts: DomainFacts): PrimaryAction {
     return { type: 'PRESENT_OPTIONS', target: 'hospital' };
   }
   if (facts.recommendation.status === 'selected' && !facts.process.explained) {
-    return { type: 'ANSWER', target: 'process', mode: 'formal_overview' };
+    return { type: 'ANSWER', target: 'policy', mode: 'formal_overview' };
   }
   if (facts.records.supportingDocumentsCount === 0) {
-    return { type: 'REQUEST_INFO', target: 'documents' };
+    return { type: 'REQUEST_INFO', target: 'treatment' };
   }
   if (facts.consult.status === 'not_started') {
     return { type: 'PRESENT_OPTIONS', target: 'consult' };
@@ -318,7 +321,7 @@ function decidePrimaryActionAfterDocuments(facts: DomainFacts): PrimaryAction {
   // A document-upload event has a required upload side effect. Keep this turn
   // on RecordsAgent; the next turn can offer consult once the persisted
   // supporting document is visible in DomainFacts.
-  return { type: 'REQUEST_INFO', target: 'documents' };
+  return { type: 'REQUEST_INFO', target: 'treatment' };
 }
 
 function classifySidePath(action: PrimaryAction): SidePathType {
@@ -339,7 +342,7 @@ function classifySidePath(action: PrimaryAction): SidePathType {
 function deriveFollowUpAction(action: PrimaryAction, facts: DomainFacts): TurnPlan['followUpAction'] {
   if (action.type === 'ANSWER' && action.mode === 'faq') {
     if (action.target === 'pricing' && facts.records.supportingDocumentsCount === 0) {
-      return { type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'pricing_requires_records' };
+      return { type: 'INVITE_NEXT_STEP', target: 'treatment', reason: 'pricing_requires_records' };
     }
     if (action.target === 'consult') {
       return { type: 'GO_DEEP', target: 'consult', reasonCode: 'user_requested_more_detail' };

@@ -110,7 +110,7 @@ describe('reduceJourney', () => {
       event: event('RECOMMENDATION_SELECTED', { selectedHospitalIds: ['h1'] }),
     });
 
-    expect(needsProcess.turnPlan.primaryAction).toEqual({ type: 'ANSWER', target: 'process', mode: 'formal_overview' });
+    expect(needsProcess.turnPlan.primaryAction).toEqual({ type: 'ANSWER', target: 'policy', mode: 'formal_overview' });
     expect(needsProcess.state.primaryStage).toBe('EXPLAIN_PROCESS');
     expect(needsProcess.factsPatch.recommendation?.status).toBe('selected');
 
@@ -124,7 +124,7 @@ describe('reduceJourney', () => {
       event: event('RECOMMENDATION_SELECTED', { selectedHospitalIds: ['h1'] }),
     });
 
-    expect(needsDocs.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'documents' });
+    expect(needsDocs.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'treatment' });
     expect(needsDocs.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
   });
 
@@ -140,7 +140,7 @@ describe('reduceJourney', () => {
     });
 
     expect(result.facts.records.supportingDocumentsCount).toBe(2);
-    expect(result.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'documents' });
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'treatment' });
     expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
   });
 
@@ -156,7 +156,7 @@ describe('reduceJourney', () => {
     });
 
     expect(result.facts.records.supportingDocumentsCount).toBe(1);
-    expect(result.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'documents' });
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'treatment' });
     expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
   });
 
@@ -170,9 +170,9 @@ describe('reduceJourney', () => {
         records: { supportingDocumentsCount: 1, availableDocumentTypes: [], missingDocumentTypes: [] },
       }),
       event: {
-        eventType: 'USER_ASKED_QUESTION',
-        target: 'next_step',
-        modifier: 'ask',
+        eventType: 'USER_REQUESTED_ACTION',
+        target: 'policy',
+        modifier: 'request_action',
         confidence: 0.9,
         source: 'llm',
       },
@@ -180,6 +180,28 @@ describe('reduceJourney', () => {
 
     expect(result.turnPlan.primaryAction).toEqual({ type: 'PRESENT_OPTIONS', target: 'consult' });
     expect(result.state.primaryStage).toBe('ONLINE_CONSULT');
+  });
+
+  it('treats legacy next-step question targets as workflow progression', () => {
+    const result = reduceJourney({
+      state: state('RECOMMENDATION'),
+      facts: facts({
+        intake: { minimalTriageStatus: 'submitted' },
+        recommendation: { status: 'selected', selectedHospitalIds: ['h1'] },
+        process: { explained: true },
+        records: { supportingDocumentsCount: 0, availableDocumentTypes: [], missingDocumentTypes: [] },
+      }),
+      event: {
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'next_step',
+        modifier: 'ask',
+        confidence: 1,
+        source: 'llm',
+      },
+    });
+
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'treatment' });
+    expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
   });
 
   it('only moves to EXPLAIN_PROCESS through SHOW_PROCESS_OVERVIEW', () => {
@@ -191,14 +213,14 @@ describe('reduceJourney', () => {
       }),
       event: {
         eventType: 'USER_ASKED_QUESTION',
-        target: 'process',
+        target: 'policy',
         modifier: 'ask',
         confidence: 0.9,
         source: 'llm',
       },
     });
 
-    expect(result.turnPlan.primaryAction).toEqual({ type: 'ANSWER', target: 'process', mode: 'faq' });
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'ANSWER', target: 'policy', mode: 'faq' });
     expect(result.state.primaryStage).toBe('RECOMMENDATION');
     expect(result.isSidePath).toBe(true);
     expect(result.sidePathType).toBe('faq');
@@ -228,7 +250,7 @@ describe('reduceJourney', () => {
       event: event('USER_REQUESTED_HUMAN'),
     });
 
-    expect(result.turnPlan.primaryAction).toEqual({ type: 'ESCALATE', target: 'human', reasonCode: 'human_requested' });
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'ESCALATE', target: 'handoff', reasonCode: 'human_requested' });
     expect(result.state.primaryStage).toBe('HUMAN_HANDOFF');
     expect(result.factsPatch.handoff).toBeUndefined();
     expect(result.facts.handoff.active).toBe(false);
@@ -244,14 +266,14 @@ describe('reduceJourney', () => {
       }),
       event: {
         eventType: 'USER_RESPONDED_TO_REQUEST',
-        target: 'documents',
+        target: 'treatment',
         modifier: 'hesitate',
         confidence: 0.9,
         source: 'llm',
       },
     });
 
-    expect(result.turnPlan.primaryAction).toEqual({ type: 'HANDLE_RESPONSE', target: 'documents', modifier: 'hesitate' });
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'HANDLE_RESPONSE', target: 'treatment', modifier: 'hesitate' });
     expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
     expect(result.isSidePath).toBe(true);
     expect(result.sidePathType).toBe('faq');
@@ -268,14 +290,14 @@ describe('reduceJourney', () => {
       }),
       event: {
         eventType: 'USER_PROVIDED_INFORMATION',
-        target: 'contact',
+        target: 'handoff',
         modifier: 'provide',
         confidence: 0.96,
         source: 'llm',
       },
     });
 
-    expect(result.turnPlan.primaryAction).toEqual({ type: 'ESCALATE', target: 'human', reasonCode: 'contact_info_provided' });
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'ESCALATE', target: 'handoff', reasonCode: 'contact_info_provided' });
     expect(result.state.primaryStage).toBe('HUMAN_HANDOFF');
     expect(result.factsPatch.handoff).toBeUndefined();
     expect(result.facts.handoff.active).toBe(false);

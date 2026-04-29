@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadSkillPacks, loadSkillSections } from '../../chatbot-v3/skill-loader.js';
-import { DOMAIN_SKILL_REGISTRY, SKILL_PACK_REGISTRY } from '../../chatbot-v3/skill-packs.js';
+import { DOMAIN_SKILL_REGISTRY } from '../../chatbot-v3/skill-packs.js';
 import type { DomainSkillRequest, LoadedSkillPack } from '../../chatbot-v3/skill-packs.js';
 
 const legacyShapedDomainSkill = {
@@ -17,13 +17,17 @@ describe('DOMAIN_SKILL_REGISTRY', () => {
   it('contains exactly the Phase 1.2 domain skills', () => {
     expect(Object.keys(DOMAIN_SKILL_REGISTRY).sort()).toEqual([
       'clarification_recovery_skill',
-      'consult_skill',
-      'documents_skill',
-      'hospital_recommendation_skill',
-      'human_handoff_skill',
+      'faq_skill',
+      'handoff_skill',
+      'hospital_skill',
+      'medical_advice_skill',
+      'payment_skill',
       'pricing_skill',
-      'process_skill',
-      'safety_scope_skill',
+      'policy_skill',
+      'sales_skill',
+      'service_scope_skill',
+      'travel_skill',
+      'treatment_skill',
     ].sort());
   });
 
@@ -39,17 +43,22 @@ describe('DOMAIN_SKILL_REGISTRY', () => {
   });
 });
 
-describe('SKILL_PACK_REGISTRY', () => {
-  it('keeps the legacy export legacy-shaped for untouched consumers', () => {
-    for (const skill of Object.values(SKILL_PACK_REGISTRY)) {
-      expect(skill).toHaveProperty('id');
-      expect(skill).toHaveProperty('kind');
-      expect(skill).toHaveProperty('description');
-    }
-  });
-});
-
 describe('loadSkillPacks', () => {
+  const domainRequest = (
+    skillId: DomainSkillRequest['skillId'],
+    reasonCode: string,
+  ): DomainSkillRequest => ({
+    skillId,
+    role: 'primary',
+    reasonCode,
+    sectionHints: {
+      eventType: 'USER_ASKED_QUESTION',
+      target: skillId === 'policy_skill' ? 'process' : 'pricing',
+      modifier: 'ask',
+      primaryActionType: 'ANSWER',
+    },
+  });
+
   it('loads domain skill request objects emitted by the router', () => {
     const loaded = loadSkillPacks({
       requests: [
@@ -83,35 +92,35 @@ describe('loadSkillPacks', () => {
   it('loads code-defined domain skills from the in-memory registry only', () => {
     const loaded = loadSkillPacks({
       requests: [
-        { skillPackId: 'safety_scope_skill', reasonCode: 'out_of_scope' },
-        { skillPackId: 'safety_scope_skill', reasonCode: 'duplicate' },
-        { skillPackId: 'documents_skill', reasonCode: 'records' },
+        domainRequest('service_scope_skill', 'out_of_scope'),
+        domainRequest('service_scope_skill', 'duplicate'),
+        domainRequest('treatment_skill', 'records'),
       ],
       maxSkillSnippets: 6,
     });
 
     expect(loaded.skillPacks.map((skill) => skill.id)).toEqual([
-      'safety_scope_skill',
-      'documents_skill',
+      'service_scope_skill',
+      'treatment_skill',
     ]);
     expect(loaded.warnings).toEqual([]);
-    expect(DOMAIN_SKILL_REGISTRY.safety_scope_skill.target).toBe('safety_scope');
-    expect(DOMAIN_SKILL_REGISTRY.documents_skill.target).toBe('documents');
+    expect(DOMAIN_SKILL_REGISTRY.service_scope_skill.target).toBe('service_scope');
+    expect(DOMAIN_SKILL_REGISTRY.treatment_skill.target).toBe('treatment');
   });
 
   it('caps loaded domain skills', () => {
     const loaded = loadSkillPacks({
       requests: [
-        { skillPackId: 'pricing_skill', reasonCode: 'pricing' },
-        { skillPackId: 'safety_scope_skill', reasonCode: 'safety' },
-        { skillPackId: 'process_skill', reasonCode: 'process' },
+        domainRequest('pricing_skill', 'pricing'),
+        domainRequest('service_scope_skill', 'safety'),
+        domainRequest('policy_skill', 'process'),
       ],
       maxSkillSnippets: 2,
     });
 
     expect(loaded.skillPacks.map((skill) => skill.id)).toEqual([
       'pricing_skill',
-      'safety_scope_skill',
+      'service_scope_skill',
     ]);
     expect(loaded.skillPacks[0]).toEqual(expect.objectContaining({
       id: 'pricing_skill',
@@ -123,38 +132,18 @@ describe('loadSkillPacks', () => {
     expect(loaded.warnings).toEqual([]);
   });
 
-  it('loads legacy skill ids with their legacy metadata for untouched consumers', () => {
+  it('falls back from unknown ids to a valid domain safe recovery skill', () => {
     const loaded = loadSkillPacks({
       requests: [
-        { skillPackId: 'search_general_faq_by_category', reasonCode: 'faq' },
+        domainRequest('missing_skill' as never, 'bad'),
       ],
       maxSkillSnippets: 6,
     });
 
     expect(loaded.skillPacks).toEqual([
       expect.objectContaining({
-        id: 'search_general_faq_by_category',
-        kind: 'retrieval_strategy',
-        description: expect.any(String),
-        reasonCodes: ['faq'],
-      }),
-    ]);
-    expect(loaded.skillPacks[0]?.description).not.toBe('');
-    expect(loaded.warnings).toEqual([]);
-  });
-
-  it('falls back from unknown ids to a valid legacy safe degradation skill', () => {
-    const loaded = loadSkillPacks({
-      requests: [
-        { skillPackId: 'missing_skill' as never, reasonCode: 'bad' },
-      ],
-      maxSkillSnippets: 6,
-    });
-
-    expect(loaded.skillPacks).toEqual([
-      expect.objectContaining({
-        id: 'safe_degradation_when_uncertain',
-        kind: 'degradation_policy',
+        id: 'clarification_recovery_skill',
+        target: 'clarification',
         description: expect.any(String),
         reasonCodes: ['bad'],
       }),
@@ -178,12 +167,12 @@ describe('loadSkillSections', () => {
   };
 
   const documentsAuxiliaryRequest: DomainSkillRequest = {
-    skillId: 'documents_skill',
+    skillId: 'treatment_skill',
     role: 'auxiliary',
     reasonCode: 'pricing_requires_records',
     sectionHints: {
       eventType: 'USER_ASKED_QUESTION',
-      target: 'documents',
+      target: 'treatment',
       modifier: 'ask',
       primaryActionType: 'ANSWER',
       followUpActionType: 'INVITE_NEXT_STEP',
@@ -214,7 +203,7 @@ describe('loadSkillSections', () => {
       expect.stringContaining('pricing question'),
     ]);
     expect(loaded.skillSections[1]).toMatchObject({
-      skillId: 'documents_skill',
+      skillId: 'treatment_skill',
       role: 'auxiliary',
       reasonCode: 'pricing_requires_records',
     });
@@ -224,12 +213,12 @@ describe('loadSkillSections', () => {
     const loaded = loadSkillSections({
       requests: [
         {
-          skillId: 'documents_skill',
+          skillId: 'treatment_skill',
           role: 'primary',
           reasonCode: 'documents_rejected',
           sectionHints: {
             eventType: 'USER_RESPONDED_TO_REQUEST',
-            target: 'documents',
+            target: 'treatment',
             modifier: 'reject',
             primaryActionType: 'HANDLE_RESPONSE',
           },
@@ -241,7 +230,7 @@ describe('loadSkillSections', () => {
     expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
       'documents_request_scope',
       'documents_lower_friction',
-      'document_requirements',
+      'treatment_requirements',
       'USER_RESPONDED_TO_REQUEST.reject',
     ]));
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('alternatives');
@@ -257,12 +246,12 @@ describe('loadSkillSections', () => {
     const loaded = loadSkillSections({
       requests: [
         {
-          skillId: 'hospital_recommendation_skill',
+          skillId: 'hospital_skill',
           role: 'primary',
           reasonCode: 'recommend_hospital',
           sectionHints: {
             eventType: 'USER_ASKED_QUESTION',
-            target: 'recommendation',
+            target: 'hospital',
             modifier: 'ask',
             primaryActionType: 'PRESENT_OPTIONS',
           },
@@ -270,12 +259,81 @@ describe('loadSkillSections', () => {
       ],
     });
 
-    expect(loaded.skillSections[0]?.sectionIds).toContain('recommendation_sources');
+    expect(loaded.skillSections[0]?.sectionIds).toContain('hospital_sources');
     expect(loaded.skillSections[0]?.readIntentTypes).toEqual([
       'HOSPITAL_CANDIDATES',
       'HOSPITAL_FAQ',
       'DOCTOR_MATCHING_CONTEXT',
     ]);
+  });
+
+  it('loads medical advice subtype guidance without blanket dismissal', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'medical_advice_skill',
+          role: 'primary',
+          reasonCode: 'medical_advice_boundary',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'medical_advice',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'medical_advice_triage_or_urgency',
+      'medical_advice_specialty_or_department',
+      'medical_advice_diagnosis_uncertainty',
+      'medical_advice_medication_or_prescription',
+      'medical_advice_treatment_decision',
+      'medical_advice_outcome_guarantee',
+    ]));
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('red-flag symptoms');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('specialty_or_department_question');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('trigeminal');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('pregabalin');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('second opinion');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('guarantee cure');
+    expect(loaded.skillSections[0]?.handlingGuidance.join('\n')).toContain('Do not blanket dismiss');
+  });
+
+  it('loads detailed process guidance for process, next-step, travel, payment, and detours', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'policy_skill',
+          role: 'primary',
+          reasonCode: 'answer_process_question',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'policy',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'process_answer_and_return',
+      'process_stage_preservation',
+      'process_overview_boundary',
+      'process_next_step_routing',
+      'process_timeline_boundary',
+      'process_travel_scope',
+      'process_payment_scope',
+    ]));
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('formal overview');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('journey stage');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('travel logistics');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('payment timing');
+    expect(loaded.skillSections[0]?.handlingGuidance.join('\n')).toContain('Answer the detour');
   });
 
   it('makes unknown domain skill fallback observable and uses clarification recovery for ambiguous unknowns', () => {
@@ -289,7 +347,7 @@ describe('loadSkillSections', () => {
             eventType: 'USER_MESSAGE_UNCLEAR',
             target: 'unknown',
             modifier: 'unknown',
-            primaryActionType: 'ASK',
+            primaryActionType: 'CLARIFY',
           },
         } as never,
       ],
@@ -386,12 +444,12 @@ describe('loadSkillSections', () => {
         pricingRequest,
         documentsAuxiliaryRequest,
         {
-          skillId: 'process_skill',
+          skillId: 'policy_skill',
           role: 'auxiliary',
           reasonCode: 'process_detour',
           sectionHints: {
             eventType: 'USER_ASKED_QUESTION',
-            target: 'process',
+            target: 'policy',
             modifier: 'ask',
             primaryActionType: 'ANSWER',
           },
@@ -401,7 +459,7 @@ describe('loadSkillSections', () => {
 
     expect(loaded.skillSections.map((section) => section.skillId)).toEqual([
       'pricing_skill',
-      'documents_skill',
+      'treatment_skill',
     ]);
   });
 
@@ -411,12 +469,12 @@ describe('loadSkillSections', () => {
         pricingRequest,
         documentsAuxiliaryRequest,
         {
-          skillId: 'process_skill',
+          skillId: 'policy_skill',
           role: 'auxiliary',
           reasonCode: 'process_detour',
           sectionHints: {
             eventType: 'USER_ASKED_QUESTION',
-            target: 'process',
+            target: 'policy',
             modifier: 'ask',
             primaryActionType: 'ANSWER',
           },

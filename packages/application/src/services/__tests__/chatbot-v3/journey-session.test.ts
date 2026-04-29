@@ -14,7 +14,7 @@ describe('chatbot-v3 generic event sessions', () => {
     const session = createSession();
 
     session.turn({
-      eventType: 'USER_EXPRESSED_NEED',
+      eventType: 'USER_EXPRESSED_INTEREST',
       target: 'treatment',
       modifier: 'ask',
       confidence: 0.9,
@@ -26,7 +26,7 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'TRIAGE_SUBMITTED',
-      target: 'medical_facts',
+      target: 'medical_advice',
       modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
@@ -37,25 +37,25 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'RECOMMENDATION_SELECTED',
-      target: 'recommendation',
+      target: 'hospital',
       modifier: 'confirm',
       confidence: 1,
       source: 'deterministic',
       metadata: { selectedHospitalIds: ['hospital-1'] },
     }, {
-      primaryAction: { type: 'ANSWER', target: 'process', mode: 'formal_overview' },
+      primaryAction: { type: 'ANSWER', target: 'policy', mode: 'formal_overview' },
       stage: 'EXPLAIN_PROCESS',
     });
 
     session.turn({
       eventType: 'DOCUMENTS_UPLOADED',
-      target: 'documents',
+      target: 'treatment',
       modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
       metadata: { documentCount: 1 },
     }, {
-      primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
+      primaryAction: { type: 'REQUEST_INFO', target: 'treatment' },
       stage: 'COLLECT_MEDICAL_INPUTS',
       facts: { supportingDocumentsCount: 1 },
     });
@@ -90,7 +90,7 @@ describe('chatbot-v3 generic event sessions', () => {
     });
 
     session.turn(nextStepEvent(), {
-      primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
+      primaryAction: { type: 'REQUEST_INFO', target: 'treatment' },
       stage: 'COLLECT_MEDICAL_INPUTS',
     });
   });
@@ -108,12 +108,12 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'USER_ASKED_QUESTION',
-      target: 'process',
+      target: 'policy',
       modifier: 'ask',
       confidence: 0.88,
       source: 'llm',
     }, {
-      primaryAction: { type: 'ANSWER', target: 'process', mode: 'faq' },
+      primaryAction: { type: 'ANSWER', target: 'policy', mode: 'faq' },
       stage: 'ONLINE_CONSULT',
       sidePathType: 'faq',
       primaryStagePreserved: true,
@@ -132,13 +132,13 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'DOCUMENTS_UPLOADED',
-      target: 'documents',
+      target: 'treatment',
       modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
       metadata: { documentCount: 1 },
     }, {
-      primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
+      primaryAction: { type: 'REQUEST_INFO', target: 'treatment' },
       stage: 'COLLECT_MEDICAL_INPUTS',
       facts: { supportingDocumentsCount: 1 },
     });
@@ -153,7 +153,7 @@ describe('chatbot-v3 generic event sessions', () => {
     const session = createSession();
 
     session.turn({
-      eventType: 'USER_EXPRESSED_NEED',
+      eventType: 'USER_EXPRESSED_INTEREST',
       target: 'treatment',
       modifier: 'ask',
       confidence: 0.9,
@@ -165,7 +165,7 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'DOCUMENTS_UPLOADED',
-      target: 'documents',
+      target: 'treatment',
       modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
@@ -178,7 +178,7 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'TRIAGE_SUBMITTED',
-      target: 'medical_facts',
+      target: 'medical_advice',
       modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
@@ -190,12 +190,12 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'RECOMMENDATION_SELECTED',
-      target: 'recommendation',
+      target: 'hospital',
       modifier: 'confirm',
       confidence: 1,
       source: 'deterministic',
     }, {
-      primaryAction: { type: 'ANSWER', target: 'process', mode: 'formal_overview' },
+      primaryAction: { type: 'ANSWER', target: 'policy', mode: 'formal_overview' },
       stage: 'EXPLAIN_PROCESS',
       facts: { supportingDocumentsCount: 1 },
     });
@@ -218,13 +218,13 @@ describe('chatbot-v3 generic event sessions', () => {
     });
 
     session.turn({
-      eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE',
-      target: 'medical_facts',
+      eventType: 'USER_ASKED_QUESTION',
+      target: 'medical_advice',
       modifier: 'ask',
       confidence: 0.9,
       source: 'llm',
     }, {
-      primaryAction: { type: 'REDIRECT', target: 'medical_facts', reasonCode: 'medical_safety' },
+      primaryAction: { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' },
       stage: 'COLLECT_MEDICAL_INPUTS',
       sidePathType: 'safety',
       primaryStagePreserved: true,
@@ -232,13 +232,13 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'DOCUMENTS_UPLOADED',
-      target: 'documents',
+      target: 'treatment',
       modifier: 'provide',
       confidence: 1,
       source: 'deterministic',
       metadata: { documentCount: 1 },
     }, {
-      primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
+      primaryAction: { type: 'REQUEST_INFO', target: 'treatment' },
       stage: 'COLLECT_MEDICAL_INPUTS',
       facts: { supportingDocumentsCount: 1 },
     });
@@ -255,18 +255,18 @@ describe('chatbot-v3 generic event sessions', () => {
 
     session.turn({
       eventType: 'USER_REQUESTED_HUMAN',
-      target: 'human',
+      target: 'handoff',
       modifier: 'ask',
       confidence: 1,
       source: 'deterministic',
     }, {
-      primaryAction: { type: 'ESCALATE', target: 'human', reasonCode: 'human_requested' },
+      primaryAction: { type: 'ESCALATE', target: 'handoff', reasonCode: 'human_requested' },
       stage: 'HUMAN_HANDOFF',
       facts: { handoffActive: true },
     });
 
     session.turn(nextStepEvent(), {
-      primaryAction: { type: 'ESCALATE', target: 'human', reasonCode: 'handoff_active' },
+      primaryAction: { type: 'ESCALATE', target: 'handoff', reasonCode: 'handoff_active' },
       stage: 'HUMAN_HANDOFF',
       facts: { handoffActive: true },
     });
@@ -291,8 +291,8 @@ describe('chatbot-v3 generic event sessions', () => {
     });
 
     session.turn({
-      eventType: 'USER_EXPRESSED_NEED',
-      target: 'recommendation',
+      eventType: 'USER_EXPRESSED_INTEREST',
+      target: 'hospital',
       modifier: 'ask',
       confidence: 0.86,
       source: 'llm',
@@ -305,9 +305,9 @@ describe('chatbot-v3 generic event sessions', () => {
 
 function nextStepEvent(): SupervisorEvent {
   return {
-    eventType: 'USER_ASKED_QUESTION',
-    target: 'next_step',
-    modifier: 'ask',
+    eventType: 'USER_REQUESTED_ACTION',
+    target: 'policy',
+    modifier: 'request_action',
     confidence: 0.9,
     source: 'llm',
   };
@@ -339,7 +339,7 @@ function createSession(input: {
 
       facts = applyFactsPatch(result.facts, result.factsPatch);
       if (result.turnPlan.primaryAction.type === 'ANSWER'
-        && result.turnPlan.primaryAction.target === 'process'
+        && result.turnPlan.primaryAction.target === 'policy'
         && result.turnPlan.primaryAction.mode === 'formal_overview') {
         facts = {
           ...facts,

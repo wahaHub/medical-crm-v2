@@ -7,6 +7,7 @@ import type {
 } from '@medical-crm/domain';
 import {
   CHATBOT_V3_CONVERSATION_SUMMARY_CONTRACT,
+  type ChatbotV3RecentMessage,
   type ChatbotV3ConversationSummaryContract,
   type ChatbotV3FaqResolution,
   type ChatbotV3ReplayLineage,
@@ -117,6 +118,7 @@ export interface ConversationOrchestratorV3DecisionInput {
   supportingDocuments?: AiChatStatusSnapshot['supportingDocuments'];
   conversationSummary?: string;
   latestUserMessage?: string;
+  recentMessages?: readonly ChatbotV3RecentMessage[];
   userAction?: ChatbotV3ChatAction;
   intake?: MinimalIntakeSeed;
   availableReadDomains?: readonly SupervisorReadDomain[];
@@ -197,6 +199,7 @@ export interface ConversationOrchestratorV3HandleTurnInput {
   handoff?: ConversationOrchestratorV3HandoffSignals;
   bootstrap?: ConversationOrchestratorV3BootstrapSignals;
   suggestion?: ConversationOrchestratorV3Suggestion;
+  recentMessages?: readonly ChatbotV3RecentMessage[];
 }
 
 export interface ConversationOrchestratorV3TurnResult {
@@ -215,6 +218,14 @@ export interface ConversationOrchestratorV3TurnResult {
     traceId: string;
     idempotencyKey: string;
     lastDispatchSource?: 'journey-runtime-authority';
+    event?: {
+      eventType: SupervisorEvent['eventType'];
+      target?: SupervisorEvent['target'];
+      modifier?: SupervisorEvent['modifier'];
+      source: SupervisorEvent['source'];
+      confidence: number;
+      metadata?: Record<string, unknown>;
+    };
     replayLineage?: ChatbotV3ReplayLineage;
     selectedDomainSkills?: string[];
     loadedSkillSections?: AgentTask['loadedSkillSections'];
@@ -422,6 +433,7 @@ export class ConversationOrchestratorV3RuntimeService {
         suggestion,
       });
       decision = preserveLaterStageSidePathDetour(authorityDecision, decisionInput.current, suggestion);
+      suggestion = alignSuggestionWithAuthorityDecision(suggestion, decision);
       const authorityReplayLineage = compactReplayLineage({
         ...supervisorReplayLineage,
         ...(decision.matchedRuleId ? { matchedRuleId: decision.matchedRuleId } : {}),
@@ -745,6 +757,7 @@ export class ConversationOrchestratorV3RuntimeService {
       resolvedAgent,
       latestUserMessage: normalizedInput.message,
       conversationSummary: normalizedInput.statusSnapshot?.conversationSummary ?? '',
+      recentMessages: normalizedInput.recentMessages ?? [],
       knownFacts: reduction.facts,
       loadedSkillSections: loadedSkillPolicy.skillSections,
       readPlan,
@@ -845,6 +858,7 @@ export class ConversationOrchestratorV3RuntimeService {
       traceId: normalizedInput.traceId,
       idempotencyKey,
       lastDispatchSource: 'journey-runtime-authority',
+      event: projectRuntimeDebugSupervisorEvent(event),
       replayLineage: {
         matchedRuleId: reduction.reasonCode,
       },
@@ -1097,6 +1111,7 @@ export class ConversationOrchestratorV3RuntimeService {
       recommendationSelectedHospitalIds: structuredState.recommendationSelectedHospitalIds,
       supportingDocuments: structuredState.supportingDocuments,
       conversationSummary: input.statusSnapshot?.conversationSummary ?? '',
+      recentMessages: input.recentMessages ?? [],
       latestUserMessage: input.message,
       userAction: input.userAction,
       intake: input.intake,
@@ -2109,6 +2124,7 @@ function buildWorkerTask(
     intent: suggestion.intent,
     supervisorReason: normalizeReason(suggestion.reason),
     latestUserMessage: input.message,
+    ...resolveWorkerTaskContextFields(input, decision.agentTask),
     ...(decision.agentTask
       ? {
           primaryAction: decision.agentTask.primaryAction,
@@ -2149,6 +2165,18 @@ function buildWorkerTask(
         ...baseTask,
       } satisfies FaqWorkerTask;
   }
+}
+
+function resolveWorkerTaskContextFields(
+  input: ConversationOrchestratorV3HandleTurnInput,
+  agentTask: AgentTask | undefined,
+): Pick<WorkerTask, 'recentMessages' | 'conversationSummary'> {
+  const recentMessages = agentTask?.recentMessages ?? input.recentMessages ?? [];
+  const conversationSummary = agentTask?.conversationSummary ?? input.statusSnapshot?.conversationSummary ?? '';
+  return {
+    ...(recentMessages.length > 0 ? { recentMessages: [...recentMessages] } : {}),
+    ...(conversationSummary.trim().length > 0 ? { conversationSummary } : {}),
+  };
 }
 
 export function buildRetrievedContextEntries(readPlan: ReadPlan): RetrievedContextEntry[] {
@@ -2201,6 +2229,19 @@ function projectRuntimeDebugAgentTaskEvidence(
     retrievedContext: agentTask.retrievedContext,
     retrievedContextCount: agentTask.retrievedContext.length,
     responseContract: agentTask.responseContract,
+  };
+}
+
+function projectRuntimeDebugSupervisorEvent(
+  event: SupervisorEvent,
+): NonNullable<ConversationOrchestratorV3TurnResult['runtimeDebug']['event']> {
+  return {
+    eventType: event.eventType,
+    ...(event.target ? { target: event.target } : {}),
+    ...(event.modifier ? { modifier: event.modifier } : {}),
+    source: event.source,
+    confidence: event.confidence,
+    ...(event.metadata ? { metadata: { ...event.metadata } } : {}),
   };
 }
 
@@ -2499,7 +2540,7 @@ function resolveTurnPlanExecution(
 ): TurnPlanExecution {
   const primaryAction = turnPlan.primaryAction;
   if (primaryAction.type === 'ANSWER'
-    && primaryAction.target === 'process'
+    && (primaryAction.target === 'policy' || primaryAction.target === 'process')
     && primaryAction.mode === 'formal_overview') {
     return { agent: null, isSystemRendered: true };
   }
@@ -2556,7 +2597,7 @@ function buildReducerRuntimeFactsPatch(
   const primaryAction = reduction.turnPlan.primaryAction;
   if (isSystemRendered
     && primaryAction.type === 'ANSWER'
-    && primaryAction.target === 'process'
+    && (primaryAction.target === 'policy' || primaryAction.target === 'process')
     && primaryAction.mode === 'formal_overview') {
     factsPatch['process.explained'] = true;
   }
@@ -2594,6 +2635,20 @@ function preserveLaterStageSidePathDetour(
       factsPatch: {},
     },
   };
+}
+
+function alignSuggestionWithAuthorityDecision(
+  suggestion: ConversationOrchestratorV3Suggestion,
+  decision: ConversationOrchestratorV3Decision,
+): ConversationOrchestratorV3Suggestion {
+  if (decision.turnPlan && suggestion.suggestedStage !== decision.to.stage) {
+    return {
+      ...suggestion,
+      suggestedStage: decision.to.stage,
+    };
+  }
+
+  return suggestion;
 }
 
 function shouldPreserveLaterStageSidePathDetour(
@@ -2745,7 +2800,7 @@ function resolveReducerSystemRenderPath(
   }
 
   if (primaryAction.type === 'ANSWER'
-    && primaryAction.target === 'process'
+    && (primaryAction.target === 'policy' || primaryAction.target === 'process')
     && primaryAction.mode === 'formal_overview') {
     return 'PROCESS_OVERVIEW';
   }

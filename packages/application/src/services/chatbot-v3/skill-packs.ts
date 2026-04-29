@@ -8,33 +8,32 @@ import type {
 } from './supervisor-event.types.js';
 
 export type DomainSkillId =
+  | 'service_scope_skill'
+  | 'policy_skill'
+  | 'medical_advice_skill'
+  | 'hospital_skill'
+  | 'treatment_skill'
   | 'pricing_skill'
-  | 'documents_skill'
-  | 'process_skill'
-  | 'hospital_recommendation_skill'
-  | 'consult_skill'
-  | 'human_handoff_skill'
-  | 'safety_scope_skill'
+  | 'payment_skill'
+  | 'travel_skill'
+  | 'sales_skill'
+  | 'faq_skill'
+  | 'handoff_skill'
   | 'clarification_recovery_skill';
 
 export type DomainSkillTarget =
+  | 'service_scope'
+  | 'policy'
+  | 'medical_advice'
+  | 'hospital'
+  | 'treatment'
   | 'pricing'
-  | 'documents'
-  | 'process'
-  | 'hospital_recommendation'
-  | 'consult'
-  | 'human_handoff'
-  | 'safety_scope'
+  | 'payment'
+  | 'travel'
+  | 'sales'
+  | 'faq'
+  | 'handoff'
   | 'clarification';
-
-export type SkillKind =
-  | 'retrieval_strategy'
-  | 'extraction_strategy'
-  | 'payload_strategy'
-  | 'degradation_policy'
-  | 'boundary_policy'
-  | 'explanation_method'
-  | 'sales_playbook';
 
 export interface SkillSectionApplicability {
   eventTypes?: SupervisorEventType[];
@@ -96,107 +95,154 @@ export interface LoadedSkillSection {
   handlingGuidance: string[];
 }
 
-export type LegacySkillPackId =
-  | 'clarify_ambiguous_reply'
-  | 'service_scope_boundary'
-  | 'medical_safety_boundary'
-  | 'safe_degradation_when_uncertain'
-  | 'search_general_faq_by_category'
-  | 'answer_general_faq_from_admin_source'
-  | 'search_hospital_faq_by_category'
-  | 'answer_hospital_faq_from_admin_source'
-  | 'load_medora_service_scope'
-  | 'load_pricing_factors'
-  | 'load_process_policy'
-  | 'load_travel_support_scope'
-  | 'load_payment_policy'
-  | 'load_records_requirement_data'
-  | 'search_hospital_candidates'
-  | 'search_doctor_matching_context'
-  | 'load_consult_readiness_criteria'
-  | 'extract_medical_facts_candidate'
-  | 'derive_record_inventory_candidate'
-  | 'extract_contact_info_candidate'
-  | 'build_handoff_payload_context'
-  | 'explain_pricing_uncertainty'
-  | 'explain_medora_process'
-  | 'explain_records_preparation'
-  | 'explain_online_consult'
-  | 'explain_travel_or_payment_scope'
-  | 'handle_price_objection'
-  | 'handle_document_hesitation'
-  | 'handle_contact_hesitation'
-  | 'low_friction_alternative_step'
-  | 'trust_building_for_medical_travel'
-  | 'soft_human_handoff'
-  | 'revisit_recommendation_step'
-  | 'compare_recommendation_options'
-  | 'explain_hospital_selection_logic';
+export type SkillPackId = DomainSkillId;
 
-export type SkillPackId = DomainSkillId | LegacySkillPackId;
-
-export interface LegacySkillPackDefinition {
-  id: LegacySkillPackId;
-  kind: SkillKind;
-  description: string;
-}
-
-export type SkillPackDefinition = DomainSkillPack | LegacySkillPackDefinition;
-
-export interface SkillRequest {
-  skillPackId: SkillPackId;
-  reasonCode: string;
-}
-
-export type LoadedSkillPack = SkillPackDefinition & {
+export type LoadedSkillPack = DomainSkillPack & {
   reasonCodes: string[];
 };
 
 const appliesToAll: SkillSectionApplicability = {};
 
-function legacySkill(id: LegacySkillPackId, kind: SkillKind, description: string): LegacySkillPackDefinition {
-  return { id, kind, description };
-}
-
-export const LEGACY_SKILL_PACK_REGISTRY: Record<LegacySkillPackId, LegacySkillPackDefinition> = {
-  clarify_ambiguous_reply: legacySkill('clarify_ambiguous_reply', 'degradation_policy', 'Clarify vague replies without advancing the journey.'),
-  service_scope_boundary: legacySkill('service_scope_boundary', 'boundary_policy', 'Explain Medora service boundaries and redirect to supported medical travel workflows.'),
-  medical_safety_boundary: legacySkill('medical_safety_boundary', 'boundary_policy', 'Avoid diagnosis, treatment decisions, medication advice, and outcome guarantees.'),
-  safe_degradation_when_uncertain: legacySkill('safe_degradation_when_uncertain', 'degradation_policy', 'Use a conservative fallback when skill routing or data is incomplete.'),
-  search_general_faq_by_category: legacySkill('search_general_faq_by_category', 'retrieval_strategy', 'Plan retrieval from admin FAQ categories.'),
-  answer_general_faq_from_admin_source: legacySkill('answer_general_faq_from_admin_source', 'retrieval_strategy', 'Ground FAQ answers in admin-maintained general FAQ content.'),
-  search_hospital_faq_by_category: legacySkill('search_hospital_faq_by_category', 'retrieval_strategy', 'Plan retrieval from admin hospital FAQ categories.'),
-  answer_hospital_faq_from_admin_source: legacySkill('answer_hospital_faq_from_admin_source', 'retrieval_strategy', 'Ground hospital answers in admin-maintained hospital FAQ content.'),
-  load_medora_service_scope: legacySkill('load_medora_service_scope', 'retrieval_strategy', 'Load static Medora service scope guidance.'),
-  load_pricing_factors: legacySkill('load_pricing_factors', 'retrieval_strategy', 'Load pricing-factor guidance without quoting fixed prices.'),
-  load_process_policy: legacySkill('load_process_policy', 'retrieval_strategy', 'Load process policy and journey explanation guidance.'),
-  load_travel_support_scope: legacySkill('load_travel_support_scope', 'retrieval_strategy', 'Load travel support scope for treatment-related logistics.'),
-  load_payment_policy: legacySkill('load_payment_policy', 'retrieval_strategy', 'Load payment policy guidance.'),
-  load_records_requirement_data: legacySkill('load_records_requirement_data', 'retrieval_strategy', 'Load records and document requirement guidance.'),
-  search_hospital_candidates: legacySkill('search_hospital_candidates', 'retrieval_strategy', 'Plan hospital candidate search.'),
-  search_doctor_matching_context: legacySkill('search_doctor_matching_context', 'retrieval_strategy', 'Plan doctor matching context search.'),
-  load_consult_readiness_criteria: legacySkill('load_consult_readiness_criteria', 'retrieval_strategy', 'Load online consult readiness criteria.'),
-  extract_medical_facts_candidate: legacySkill('extract_medical_facts_candidate', 'extraction_strategy', 'Extract candidate medical facts for runtime-authority review.'),
-  derive_record_inventory_candidate: legacySkill('derive_record_inventory_candidate', 'extraction_strategy', 'Derive candidate record inventory from upload or message context.'),
-  extract_contact_info_candidate: legacySkill('extract_contact_info_candidate', 'extraction_strategy', 'Extract candidate phone, email, WeChat, or other contact handles.'),
-  build_handoff_payload_context: legacySkill('build_handoff_payload_context', 'payload_strategy', 'Build handoff payload context for runtime-controlled escalation.'),
-  explain_pricing_uncertainty: legacySkill('explain_pricing_uncertainty', 'explanation_method', 'Explain why pricing depends on records, hospital, and treatment plan.'),
-  explain_medora_process: legacySkill('explain_medora_process', 'explanation_method', 'Explain Medora process and next steps.'),
-  explain_records_preparation: legacySkill('explain_records_preparation', 'explanation_method', 'Explain medical record preparation and upload expectations.'),
-  explain_online_consult: legacySkill('explain_online_consult', 'explanation_method', 'Explain online consultation purpose and readiness.'),
-  explain_travel_or_payment_scope: legacySkill('explain_travel_or_payment_scope', 'explanation_method', 'Explain treatment-related travel or payment support scope.'),
-  handle_price_objection: legacySkill('handle_price_objection', 'sales_playbook', 'Handle price hesitation with a lower-friction records-first next step.'),
-  handle_document_hesitation: legacySkill('handle_document_hesitation', 'sales_playbook', 'Handle hesitation to upload records without pressure.'),
-  handle_contact_hesitation: legacySkill('handle_contact_hesitation', 'sales_playbook', 'Handle reluctance to leave contact information.'),
-  low_friction_alternative_step: legacySkill('low_friction_alternative_step', 'sales_playbook', 'Offer a smaller next step when the user hesitates.'),
-  trust_building_for_medical_travel: legacySkill('trust_building_for_medical_travel', 'sales_playbook', 'Build trust for international medical travel decisions.'),
-  soft_human_handoff: legacySkill('soft_human_handoff', 'sales_playbook', 'Offer human coordinator support without overpromising.'),
-  revisit_recommendation_step: legacySkill('revisit_recommendation_step', 'sales_playbook', 'Handle recommendation revisit requests.'),
-  compare_recommendation_options: legacySkill('compare_recommendation_options', 'explanation_method', 'Compare recommendation options.'),
-  explain_hospital_selection_logic: legacySkill('explain_hospital_selection_logic', 'explanation_method', 'Explain hospital selection logic.'),
-};
-
 export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
+  service_scope_skill: {
+    id: 'service_scope_skill',
+    target: 'service_scope',
+    description: 'Medora supported service scope, unsupported requests, and service-boundary redirects.',
+    policySections: [
+      {
+        id: 'service_scope_supported_work',
+        appliesTo: { targets: ['service_scope'] },
+        text: 'Medora can support medical-travel coordination, hospital and doctor matching, records-based review preparation, online consult setup, treatment-related travel logistics, pricing/process guidance, and human coordinator handoff.',
+      },
+      {
+        id: 'service_scope_redirect',
+        appliesTo: { targets: ['service_scope'], primaryActionTypes: ['REDIRECT'] },
+        text: 'For requests outside Medora-supported medical travel, briefly state the boundary and offer the closest supported medical-travel alternative without debating the unrelated request.',
+      },
+    ],
+    retrieval: {
+      sections: [
+        {
+          id: 'service_scope_sources',
+          appliesTo: { targets: ['service_scope'], primaryActionTypes: ['REDIRECT'] },
+          readIntentTypes: ['SERVICE_SCOPE'],
+          searchGuidance: 'Use service scope for unsupported service boundaries and supported Medora alternatives.',
+        },
+      ],
+    },
+    handling: {
+      USER_ASKED_QUESTION: {
+        ask: 'Answer within Medora scope; if unsupported, redirect to a supported medical-travel workflow.',
+      },
+      USER_REQUESTED_ACTION: {
+        request_action: 'Decline unsupported action requests and offer a supported Medora next step.',
+      },
+    },
+    futureCms: { editable: true, owner: 'ops' },
+  },
+  payment_skill: {
+    id: 'payment_skill',
+    target: 'payment',
+    description: 'Payment methods, deposits, billing timing, refunds, and payment hesitation.',
+    policySections: [
+      {
+        id: 'payment_policy_boundary',
+        appliesTo: { targets: ['payment'] },
+        text: 'Answer payment method, deposit, refund, invoice, and billing-timing questions only from retrieved payment policy. Do not invent discounts, financing terms, fixed totals, or refund guarantees.',
+      },
+      {
+        id: 'payment_hesitation',
+        appliesTo: { targets: ['payment'], modifiers: ['hesitate', 'reject'] },
+        text: 'For payment hesitation, lower pressure and offer policy clarification, coordinator support, or a records-first estimate path.',
+      },
+    ],
+    retrieval: {
+      sections: [
+        {
+          id: 'payment_policy_sources',
+          appliesTo: { targets: ['payment'] },
+          readIntentTypes: ['PAYMENT_POLICY'],
+          searchGuidance: 'Use payment policy for methods, timing, deposits, refunds, and billing support.',
+        },
+      ],
+    },
+    handling: {
+      USER_ASKED_QUESTION: {
+        ask: 'Answer payment policy questions from retrieved policy and avoid inventing commercial terms.',
+      },
+    },
+    futureCms: { editable: true, owner: 'growth' },
+  },
+  travel_skill: {
+    id: 'travel_skill',
+    target: 'travel',
+    description: 'Treatment-related travel logistics such as visa timing context, hotels, airport pickup, local transport, and trip coordination.',
+    policySections: [
+      {
+        id: 'travel_treatment_scope',
+        appliesTo: { targets: ['travel'] },
+        text: 'Keep travel support tied to medical travel: treatment itinerary, visa timing context, flights, hotels, airport pickup, local transport, hospital appointment logistics, and travel document preparation.',
+      },
+      {
+        id: 'travel_scope_boundary',
+        appliesTo: { targets: ['travel'] },
+        text: 'Do not offer unrelated immigration, long-term housing, school, job, legal, or non-treatment concierge services.',
+      },
+    ],
+    retrieval: {
+      sections: [
+        {
+          id: 'travel_support_sources',
+          appliesTo: { targets: ['travel'] },
+          readIntentTypes: ['TRAVEL_SUPPORT_SCOPE'],
+          searchGuidance: 'Use treatment-related travel support scope for visa, flight, hotel, pickup, and local logistics questions.',
+        },
+      ],
+    },
+    handling: {
+      USER_ASKED_QUESTION: {
+        ask: 'Answer treatment-related travel logistics and route unrelated service requests to service scope.',
+      },
+    },
+    futureCms: { editable: true, owner: 'ops' },
+  },
+  sales_skill: {
+    id: 'sales_skill',
+    target: 'sales',
+    description: 'Commercial intent, persuasion boundaries, trust questions, and conversion-sensitive hesitation.',
+    policySections: [
+      {
+        id: 'sales_no_pressure',
+        appliesTo: { targets: ['sales'] },
+        text: 'Address trust, hesitation, and purchase intent without pressure. Do not overpromise clinical outcome, price, timing, doctor availability, or human response time.',
+      },
+      {
+        id: 'sales_next_step',
+        appliesTo: { targets: ['sales'] },
+        text: 'Offer one low-friction next step such as sharing records, clarifying condition goals, comparing hospitals, asking payment/process questions, or requesting a coordinator.',
+      },
+    ],
+    retrieval: {
+      sections: [
+        {
+          id: 'sales_faq_sources',
+          appliesTo: { targets: ['sales'] },
+          readIntentTypes: ['GENERAL_FAQ'],
+          searchGuidance: 'Use general FAQ for trust, process, and service positioning questions.',
+        },
+      ],
+    },
+    handling: {
+      USER_EXPRESSED_INTEREST: {
+        ask: 'Acknowledge interest and invite one low-friction supported next step.',
+      },
+      USER_RESPONDED_TO_REQUEST: {
+        hesitate: 'Acknowledge hesitation, avoid pressure, and offer a smaller alternative.',
+        reject: 'Respect rejection and keep a supported path open.',
+      },
+    },
+    futureCms: { editable: true, owner: 'growth' },
+  },
   pricing_skill: {
     id: 'pricing_skill',
     target: 'pricing',
@@ -206,6 +252,21 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
         id: 'pricing_explain_uncertainty',
         appliesTo: { targets: ['pricing'], modifiers: ['ask', 'hesitate', 'reject'] },
         text: 'Explain that pricing depends on records, hospital choice, and treatment plan; avoid fixed prices unless retrieved policy supports them.',
+      },
+      {
+        id: 'pricing_factor_breakdown',
+        appliesTo: { targets: ['pricing'] },
+        text: 'When discussing cost, break uncertainty into clinical plan, hospital level, doctor review, tests, procedure or medication choices, inpatient days, travel logistics, and currency/payment timing when relevant.',
+      },
+      {
+        id: 'pricing_no_quote_without_basis',
+        appliesTo: { targets: ['pricing'] },
+        text: 'Do not quote a package total, discount, deposit, refund, financing, or "typical" price unless retrieved pricing policy or FAQ provides it. Say what information is needed before a reliable estimate.',
+      },
+      {
+        id: 'pricing_hesitation_lower_friction',
+        appliesTo: { modifiers: ['hesitate', 'reject'] },
+        text: 'For price hesitation or rejection, acknowledge the concern, avoid pressure, and offer a smaller step such as records-first estimate, coordinator explanation, or general factor list.',
       },
       {
         id: 'pricing_next_step',
@@ -234,15 +295,30 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     },
     futureCms: { editable: true, owner: 'growth' },
   },
-  documents_skill: {
-    id: 'documents_skill',
-    target: 'documents',
+  treatment_skill: {
+    id: 'treatment_skill',
+    target: 'treatment',
     description: 'Medical facts, records, document upload, and document hesitation.',
     policySections: [
       {
         id: 'documents_request_scope',
-        appliesTo: { targets: ['documents', 'medical_facts'] },
+        appliesTo: { targets: ['treatment', 'documents', 'medical_facts'] },
         text: 'Ask only for useful records or facts at the current stage; do not pressure the user.',
+      },
+      {
+        id: 'documents_minimal_medical_facts',
+        appliesTo: { targets: ['treatment', 'medical_facts'] },
+        text: 'When facts are missing, ask for the smallest useful set: diagnosis or suspected condition, main symptoms and duration, prior tests or treatments, and destination/timing constraints when relevant.',
+      },
+      {
+        id: 'documents_record_inventory',
+        appliesTo: { targets: ['treatment', 'documents'] },
+        text: 'When records are discussed, distinguish imaging reports, lab results, pathology, discharge summaries, medication lists, treatment history, referral letters, and existing doctor notes.',
+      },
+      {
+        id: 'documents_privacy_and_pressure_boundary',
+        appliesTo: { targets: ['treatment', 'documents', 'medical_facts'] },
+        text: 'Do not imply care is impossible without immediate upload. Offer alternatives such as a brief symptom summary, one key report, or a coordinator handoff.',
       },
       {
         id: 'documents_lower_friction',
@@ -253,8 +329,8 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     retrieval: {
       sections: [
         {
-          id: 'document_requirements',
-          appliesTo: { targets: ['documents', 'medical_facts'] },
+          id: 'treatment_requirements',
+          appliesTo: { targets: ['treatment', 'documents', 'medical_facts'] },
           readIntentTypes: ['RECORD_REQUIREMENTS'],
           searchGuidance: 'Use record requirements to name the next useful document set.',
         },
@@ -271,20 +347,45 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     },
     futureCms: { editable: true, owner: 'clinical' },
   },
-  process_skill: {
-    id: 'process_skill',
-    target: 'process',
+  policy_skill: {
+    id: 'policy_skill',
+    target: 'policy',
     description: 'Process, next-step, travel, and payment support questions.',
     policySections: [
       {
         id: 'process_answer_and_return',
-        appliesTo: { targets: ['process', 'next_step'] },
-        text: 'Answer the process or next-step question, then return to the current workflow when appropriate.',
+        appliesTo: { targets: ['policy', 'process', 'next_step'] },
+        text: 'Answer the process or next-step question directly, then return to the current workflow. Do not turn a detour answer into a new journey stage unless the reducer primary action explicitly does that.',
       },
       {
-        id: 'process_state_boundary',
+        id: 'process_stage_preservation',
         appliesTo: { primaryActionTypes: ['ANSWER'] },
-        text: 'Do not imply process.explained=true for normal FAQ answers; only reducer-owned formal overview actions set it.',
+        text: 'For FAQ detours, preserve the current primary journey stage and avoid silently advancing or resetting the user. Make the next Medora step match the existing stage.',
+      },
+      {
+        id: 'process_overview_boundary',
+        appliesTo: { primaryActionTypes: ['ANSWER'] },
+        text: 'Do not imply process.explained=true for normal FAQ answers. Only reducer-owned formal overview actions set the formal overview flag.',
+      },
+      {
+        id: 'process_next_step_routing',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'For next-step questions, map the answer to the current journey state: minimal triage, recommendation review, process overview, records upload, consult readiness, or human handoff. Ask only one next action.',
+      },
+      {
+        id: 'process_timeline_boundary',
+        appliesTo: { targets: ['policy', 'process'] },
+        text: 'For timeline questions, explain dependencies such as records, hospital review, doctor availability, travel logistics, and payment timing. Do not promise exact turnaround or human response time unless retrieved policy supports it.',
+      },
+      {
+        id: 'process_travel_scope',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'For travel logistics, stay within treatment-related support such as visa timing context, flights, hotels, local transport, hospital appointment logistics, and travel document preparation. Do not offer unrelated immigration, housing, school, job, or legal services.',
+      },
+      {
+        id: 'process_payment_scope',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'For payment questions, explain payment timing, methods, deposits, refunds, and billing uncertainty only from retrieved payment policy. Do not invent discounts, fixed totals, guarantees, or financing terms.',
       },
       {
         id: 'travel_payment_scope',
@@ -295,8 +396,8 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     retrieval: {
       sections: [
         {
-          id: 'process_policy',
-          appliesTo: { targets: ['process', 'next_step'] },
+          id: 'policy_sources',
+          appliesTo: { targets: ['policy', 'process', 'next_step'] },
           readIntentTypes: ['PROCESS_POLICY', 'GENERAL_FAQ'],
           searchGuidance: 'Use process policy first; use process FAQ for direct user questions.',
         },
@@ -316,20 +417,35 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     },
     handling: {
       USER_ASKED_QUESTION: {
-        ask: 'Answer the detour clearly, then resume the journey step.',
+        ask: 'Answer the detour clearly, preserve the journey stage, and resume with one current next step. If the user asks process, explain the relevant slice; if next_step, choose the current state action; if travel or payment, stay inside treatment-related logistics or payment policy.',
       },
     },
     futureCms: { editable: true, owner: 'ops' },
   },
-  hospital_recommendation_skill: {
-    id: 'hospital_recommendation_skill',
-    target: 'hospital_recommendation',
+  hospital_skill: {
+    id: 'hospital_skill',
+    target: 'hospital',
     description: 'Recommendations, hospital selection, comparison, and preference changes.',
     policySections: [
       {
         id: 'recommendation_grounding',
         appliesTo: { targets: ['recommendation', 'hospital', 'hospital_selection'] },
         text: 'Use candidate recommendations, retrieved hospital context, known facts, and user preferences.',
+      },
+      {
+        id: 'recommendation_match_dimensions',
+        appliesTo: { targets: ['recommendation', 'hospital', 'hospital_selection'] },
+        text: 'Explain matching using observable dimensions: condition fit, department or specialty relevance, available records, patient destination or timing, consult readiness, and user-stated preferences.',
+      },
+      {
+        id: 'recommendation_compare_without_ranking_invention',
+        appliesTo: { targets: ['recommendation', 'hospital', 'hospital_selection'] },
+        text: 'When comparing options, compare only known facts from candidates or retrieved context. Do not invent rankings, success rates, doctor superiority, or hidden quality scores.',
+      },
+      {
+        id: 'recommendation_revisit_handling',
+        appliesTo: { modifiers: ['revisit', 'reject', 'hesitate'] },
+        text: 'For revisit, rejection, or hesitation, ask what criterion changed and offer to refine by specialty, location, budget, timeline, language support, or consult preference.',
       },
       {
         id: 'recommendation_no_invention',
@@ -340,7 +456,7 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     retrieval: {
       sections: [
         {
-          id: 'recommendation_sources',
+          id: 'hospital_sources',
           appliesTo: { targets: ['recommendation', 'hospital', 'hospital_selection'] },
           readIntentTypes: ['HOSPITAL_CANDIDATES', 'HOSPITAL_FAQ', 'DOCTOR_MATCHING_CONTEXT'],
           searchGuidance: 'Use approved recommendation candidates and hospital context before comparing options.',
@@ -348,7 +464,7 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
       ],
     },
     handling: {
-      USER_EXPRESSED_NEED: {
+      USER_EXPRESSED_INTEREST: {
         provide: 'Connect the expressed need to the current recommendation options.',
       },
       USER_RESPONDED_TO_REQUEST: {
@@ -357,15 +473,30 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     },
     futureCms: { editable: true, owner: 'clinical' },
   },
-  consult_skill: {
-    id: 'consult_skill',
-    target: 'consult',
+  faq_skill: {
+    id: 'faq_skill',
+    target: 'faq',
     description: 'Online consult questions and consult readiness.',
     policySections: [
       {
         id: 'consult_readiness',
         appliesTo: { targets: ['consult'] },
         text: 'Explain what is needed before doctor review and which records help readiness.',
+      },
+      {
+        id: 'consult_scope',
+        appliesTo: { targets: ['consult'] },
+        text: 'Frame online consult as records-based doctor review, second opinion preparation, or appointment readiness. Do not imply diagnosis, prescription, or treatment plan is confirmed by chat.',
+      },
+      {
+        id: 'consult_next_requirements',
+        appliesTo: { targets: ['consult'] },
+        text: 'Name concrete readiness inputs when useful: diagnosis or suspected condition, imaging/lab/pathology records, current treatment history, medication list, and the user question for the doctor.',
+      },
+      {
+        id: 'consult_timing_boundary',
+        appliesTo: { targets: ['consult'] },
+        text: 'Do not promise exact consult scheduling or doctor response time unless retrieved policy supports it. Explain that scheduling depends on records completeness and doctor availability.',
       },
       {
         id: 'consult_confirmation_boundary',
@@ -390,15 +521,30 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     },
     futureCms: { editable: true, owner: 'ops' },
   },
-  human_handoff_skill: {
-    id: 'human_handoff_skill',
-    target: 'human_handoff',
+  handoff_skill: {
+    id: 'handoff_skill',
+    target: 'handoff',
     description: 'Human coordinator requests and contact information.',
     policySections: [
       {
         id: 'handoff_confirm',
         appliesTo: { targets: ['human', 'contact'] },
         text: 'Confirm the handoff and summarize what will be passed to the coordinator.',
+      },
+      {
+        id: 'handoff_contact_use',
+        appliesTo: { targets: ['contact'] },
+        text: 'When contact information is provided, acknowledge receipt without repeating sensitive details unnecessarily and explain it will be used for the medical-travel coordination case.',
+      },
+      {
+        id: 'handoff_when_denied',
+        appliesTo: { targets: ['human'] },
+        text: 'If handoff is not available yet, explain the current prerequisite and offer the smallest next step rather than pretending a ticket was created.',
+      },
+      {
+        id: 'handoff_summary_payload',
+        appliesTo: { targets: ['human', 'contact'] },
+        text: 'Summarize only relevant context for the coordinator: condition summary, current stage, documents status, recommendation or consult status, and user request.',
       },
       {
         id: 'handoff_no_overpromise',
@@ -419,19 +565,49 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     },
     futureCms: { editable: true, owner: 'ops' },
   },
-  safety_scope_skill: {
-    id: 'safety_scope_skill',
-    target: 'safety_scope',
-    description: 'Risky medical advice, out-of-scope, and restricted-service requests.',
+  medical_advice_skill: {
+    id: 'medical_advice_skill',
+    target: 'medical_advice',
+    description: 'Medical advice boundaries, out-of-scope, and restricted-service requests.',
     policySections: [
       {
         id: 'medical_safety_boundary',
-        appliesTo: { eventTypes: ['USER_ASKED_RISKY_MEDICAL_ADVICE'] },
-        text: 'Avoid diagnosis, medication advice, treatment decisions, and outcome guarantees; advise local emergency care for urgent symptoms.',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'For medical advice questions, do not make a diagnosis, choose treatment, prescribe medication, give dosing, or guarantee outcomes. Classify the user need into the safest subtype and preserve the Medora next step.',
+      },
+      {
+        id: 'medical_advice_triage_or_urgency',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'triage_or_urgency_question: for questions like "is this dangerous?" or "ER or appointment?", do not diagnose; give general safety triage principles, mention red-flag symptoms and local emergency care for urgent or worsening symptoms, then continue the Medora records/review path.',
+      },
+      {
+        id: 'medical_advice_specialty_or_department',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'specialty_or_department_question: for questions like "respiratory or oncology?" or "ENT, neuro, or emergency?", do not make the final clinical routing decision; help organize facts for an appropriate specialty, doctor, hospital review, or second opinion and ask for useful records.',
+      },
+      {
+        id: 'medical_advice_diagnosis_uncertainty',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'diagnosis_uncertainty_question: for questions like "is this cancer?" or "is this trigeminal neuralgia?", say this cannot be confirmed in chat; explain that a clinician needs history, exam, imaging, labs, or prior notes, and ask for records or symptom details that support review.',
+      },
+      {
+        id: 'medical_advice_medication_or_prescription',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'medication_or_prescription_question: for questions like "can I take pregabalin?" or requests for medicine names, do not give medication choice, dose, start, stop, or change instructions; say a doctor must judge from history, contraindications, current medicines, and test results.',
+      },
+      {
+        id: 'medical_advice_treatment_decision',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'treatment_decision_question: for questions like "avoid surgery?" or "do conservative treatment?", do not decide treatment for the user; offer records-based review, second opinion, and comparison of options through a licensed clinician.',
+      },
+      {
+        id: 'medical_advice_outcome_guarantee',
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        text: 'outcome_guarantee_request: for questions like "guarantee cure" or "90% recovery", clearly decline cure, recovery, survival, success, timing, or recurrence guarantees; offer doctor assessment and risk explanation instead.',
       },
       {
         id: 'scope_redirect',
-        appliesTo: { eventTypes: ['USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'], primaryActionTypes: ['REDIRECT'] },
+        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'], primaryActionTypes: ['REDIRECT'] },
         text: 'Redirect to supported workflows such as records-based review, doctor matching, online consult, or treatment-related travel support.',
       },
     ],
@@ -446,11 +622,8 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
       ],
     },
     handling: {
-      USER_ASKED_RISKY_MEDICAL_ADVICE: {
-        ask: 'Decline risky advice and redirect to safe support.',
-      },
-      USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE: {
-        ask: 'Explain the service boundary and offer a supported alternative.',
+      USER_ASKED_QUESTION: {
+        ask: 'Do not blanket dismiss medical advice questions. Identify the closest subtype: triage_or_urgency_question, specialty_or_department_question, diagnosis_uncertainty_question, medication_or_prescription_question, treatment_decision_question, or outcome_guarantee_request. State the boundary, give the allowed safe guidance for that subtype, and ask one Medora next step such as records upload, symptom summary, doctor review, hospital review, or second opinion.',
       },
     },
     futureCms: { editable: true, owner: 'clinical' },
@@ -464,6 +637,16 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
         id: 'clarify_without_advancing',
         appliesTo: { targets: ['unknown'], eventTypes: ['USER_MESSAGE_UNCLEAR'] },
         text: 'Ask a focused clarifying question and do not advance the journey on ambiguous input.',
+      },
+      {
+        id: 'clarify_preserve_context',
+        appliesTo: appliesToAll,
+        text: 'State the most likely understood context in plain language, then ask one clarifying question tied to the current journey stage.',
+      },
+      {
+        id: 'clarify_no_fake_confidence',
+        appliesTo: appliesToAll,
+        text: 'Do not pretend to understand garbled, contradictory, or extremely vague input. Do not create facts, recommendations, or handoff actions from unclear text.',
       },
       {
         id: 'safe_recovery',
@@ -483,9 +666,4 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
   },
 };
 
-export const SKILL_PACK_REGISTRY = LEGACY_SKILL_PACK_REGISTRY;
-
-export const SKILL_LOADER_REGISTRY = {
-  ...LEGACY_SKILL_PACK_REGISTRY,
-  ...DOMAIN_SKILL_REGISTRY,
-} satisfies Record<SkillPackId, SkillPackDefinition>;
+export const SKILL_LOADER_REGISTRY = DOMAIN_SKILL_REGISTRY satisfies Record<SkillPackId, DomainSkillPack>;

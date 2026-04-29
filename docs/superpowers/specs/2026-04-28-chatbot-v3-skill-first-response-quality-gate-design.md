@@ -227,7 +227,7 @@ Covers human requests and contact information.
 
 Covers risky medical advice and out-of-scope or restricted-service requests.
 
-- Trigger: `USER_ASKED_RISKY_MEDICAL_ADVICE`, `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE`, or a `REDIRECT` primary action.
+- Trigger: `USER_ASKED_MEDICAL_ADVICE`, `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE`, or a `REDIRECT` primary action.
 - Reads: `SERVICE_SCOPE`; no medical diagnosis lookup.
 - Strategy: avoid diagnosis, medication advice, treatment decisions, and outcome guarantees. For urgent symptoms, advise local emergency care. Redirect to Medora-supported workflows such as records-based review, doctor matching, online consult, or treatment-related travel support.
 

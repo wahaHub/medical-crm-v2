@@ -39,6 +39,8 @@ interface WorkerTaskBase<TAgent extends 'FaqAgent' | 'RecordsAgent' | 'Recommend
   currentStage: ChatJourneyStage;
   primaryStage: ChatJourneyStage;
   latestUserMessage: string;
+  recentMessages?: Array<{ id: string; role: 'USER' | 'ASSISTANT' | 'SYSTEM'; content: string; createdAt?: string }>;
+  conversationSummary?: string;
   intent?: WorkerTaskIntent;
   supervisorReason?: string;
   primaryAction?: PrimaryAction;

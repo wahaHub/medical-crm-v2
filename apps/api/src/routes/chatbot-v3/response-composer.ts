@@ -83,6 +83,9 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
       ...(runtimeDebug.replayLineage
         ? { replayLineage: runtimeDebug.replayLineage }
         : {}),
+      ...(runtimeDebug.event
+        ? { event: runtimeDebug.event }
+        : {}),
       ...(runtimeDebug.selectedDomainSkills
         ? { selectedDomainSkills: runtimeDebug.selectedDomainSkills }
         : {}),

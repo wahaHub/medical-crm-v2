@@ -17,6 +17,21 @@ function createRecordsTask(
     latestUserMessage,
     mode: 'minimal_triage',
     minimalTriageComplete: false,
+    conversationSummary: 'Earlier: user reported chronic pain and possible nerve symptoms.',
+    recentMessages: [
+      {
+        id: 'r-1',
+        role: 'USER',
+        content: 'I have chronic pain and maybe nerve pain.',
+        createdAt: '2026-04-29T07:10:00.000Z',
+      },
+      {
+        id: 'r-2',
+        role: 'ASSISTANT',
+        content: 'Please share the diagnosis or suspected condition.',
+        createdAt: '2026-04-29T07:11:00.000Z',
+      },
+    ],
     ...overrides,
   };
 }
@@ -87,11 +102,11 @@ describe('RecordsLlmAdapter', () => {
       primaryStage: 'COLLECT_MEDICAL_INPUTS',
       mode: 'medical_collection',
       minimalTriageComplete: true,
-      primaryAction: { type: 'REQUEST_INFO', target: 'documents' },
+      primaryAction: { type: 'REQUEST_INFO', target: 'treatment' },
       followUpAction: { type: 'NONE' },
       allowedSkillPacks: ['load_records_requirement_data', 'derive_record_inventory_candidate'],
       loadedSkillSections: [{
-        skillId: 'documents_skill',
+        skillId: 'treatment_skill',
         role: 'primary',
         reasonCode: 'collect_documents',
         sectionIds: ['documents_request_scope', 'document_requirements'],
@@ -119,7 +134,7 @@ describe('RecordsLlmAdapter', () => {
       },
     }));
 
-    expect(prompt).toContain('primary_action={"type":"REQUEST_INFO","target":"documents"}');
+    expect(prompt).toContain('primary_action={"type":"REQUEST_INFO","target":"treatment"}');
     expect(prompt).toContain('current_stage=COLLECT_MEDICAL_INPUTS');
     expect(prompt).toContain('primary_stage=COLLECT_MEDICAL_INPUTS');
     expect(prompt).not.toContain('from_stage=undefined');
@@ -132,8 +147,17 @@ describe('RecordsLlmAdapter', () => {
     expect(prompt).toContain('"readIntentTypes":["RECORD_REQUIREMENTS"]');
     expect(prompt).not.toContain('allowed_skill_packs=');
     expect(prompt).toContain('read_intents={"type":"RECORD_REQUIREMENTS","reasonCode":"collect_documents"}');
+    expect(prompt).toContain('conversation_summary=Earlier: user reported chronic pain and possible nerve symptoms.');
+    expect(prompt).toContain('recent_messages=[{"id":"r-1","role":"USER","content":"I have chronic pain and maybe nerve pain.","createdAt":"2026-04-29T07:10:00.000Z"},{"id":"r-2","role":"ASSISTANT","content":"Please share the diagnosis or suspected condition.","createdAt":"2026-04-29T07:11:00.000Z"}]');
     expect(prompt).not.toContain('[object Object]');
     expect(prompt).toContain('"primaryMove":"acknowledge"');
+  });
+
+  it('passes conversation context through minimal triage records prompts', () => {
+    const prompt = buildRecordsWorkerPrompt(createRecordsTask('I am confused, what do you need?'));
+
+    expect(prompt).toContain('conversation_summary=Earlier: user reported chronic pain and possible nerve symptoms.');
+    expect(prompt).toContain('recent_messages=[{"id":"r-1","role":"USER","content":"I have chronic pain and maybe nerve pain.","createdAt":"2026-04-29T07:10:00.000Z"},{"id":"r-2","role":"ASSISTANT","content":"Please share the diagnosis or suspected condition.","createdAt":"2026-04-29T07:11:00.000Z"}]');
   });
 
   it('uses structured task metadata to choose collection mode without parsing string envelopes', async () => {

@@ -197,7 +197,7 @@ Goal: prove `event + facts -> nextAction + nextStage + factsPatch` is stable.
 | `USER_ASKED_FAQ` while `currentStage=COLLECT_MEDICAL_INPUTS` | `nextAction=ANSWER_FAQ`, stage remains `COLLECT_MEDICAL_INPUTS`, `isSidePath=true`, `sidePathType=faq`, `primaryStagePreserved=true`. |
 | `USER_REJECTED_OR_HESITATED` | Downgrade to `nextAction=ANSWER_FAQ`, stage stays current, no facts patch. |
 | `USER_PROVIDED_CONTACT_INFO` | `nextAction=CREATE_HANDOFF`, `nextStage=HUMAN_HANDOFF`; do not mark `handoff.active=true` until runtime confirms handoff creation. |
-| `USER_ASKED_RISKY_MEDICAL_ADVICE` | `nextAction=SAFE_MEDICAL_REDIRECT`, stage stays current. |
+| `USER_ASKED_MEDICAL_ADVICE` | `nextAction=SAFE_MEDICAL_REDIRECT`, stage stays current. |
 | `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` | `nextAction=OUT_OF_SCOPE_REDIRECT`, stage stays current. |
 | `UNKNOWN_MESSAGE` | `nextAction=CLARIFY_INTENT`, stage stays current. |
 
@@ -383,7 +383,7 @@ records.supportingDocumentsCount=0
 
 | Turn | Input | Expected |
 |---|---|---|
-| 1 | `你能不能保证治好？` | `USER_ASKED_RISKY_MEDICAL_ADVICE`, `SAFE_MEDICAL_REDIRECT`, stage remains `COLLECT_MEDICAL_INPUTS`. |
+| 1 | `你能不能保证治好？` | `USER_ASKED_MEDICAL_ADVICE`, `SAFE_MEDICAL_REDIRECT`, stage remains `COLLECT_MEDICAL_INPUTS`. |
 | 2 | `那我上传资料吧` | `DOCUMENTS_UPLOADED`, `REQUEST_MEDICAL_DOCUMENTS`. |
 
 ### Session 7: Human Request Is Strong State
@@ -568,7 +568,7 @@ records.supportingDocumentsCount=0
 | Turn | Input | Expected |
 |---|---|---|
 | 1 | `大概多少钱？` | `USER_ASKED_FAQ`, `ANSWER_FAQ`, primary stage preserved. |
-| 2 | `能保证治好吗？` | `USER_ASKED_RISKY_MEDICAL_ADVICE`, `SAFE_MEDICAL_REDIRECT`, same primary stage preserved. |
+| 2 | `能保证治好吗？` | `USER_ASKED_MEDICAL_ADVICE`, `SAFE_MEDICAL_REDIRECT`, same primary stage preserved. |
 | 3 | `下一步呢？` | `USER_ASKED_NEXT_STEP`, `REQUEST_MEDICAL_DOCUMENTS`, still based on original facts. |
 
 This catches cumulative side-path drift.
@@ -622,7 +622,7 @@ records.supportingDocumentsCount=0
 
 | Turn | Input | Expected |
 |---|---|---|
-| 1 | `你能保证治好我吗？` | `USER_ASKED_RISKY_MEDICAL_ADVICE`, safe redirect, stage preserved. |
+| 1 | `你能保证治好我吗？` | `USER_ASKED_MEDICAL_ADVICE`, safe redirect, stage preserved. |
 | 2 | `那让顾问联系我吧` | `USER_REQUESTED_HUMAN`, `CREATE_HANDOFF`, `stage=HUMAN_HANDOFF`. |
 | 3 | `下一步呢？` | Continues handoff path, not document collection. |
 
@@ -673,7 +673,7 @@ Add focused short sessions for events not naturally covered above:
 | `USER_INTERESTED_IN_CONSULT` | Session 11, Session 12. |
 | `USER_REJECTED_OR_HESITATED` | Session 12A. |
 | `USER_PROVIDED_CONTACT_INFO` | Session 12B. |
-| `USER_ASKED_RISKY_MEDICAL_ADVICE` | Session 6, Session 16, Session 19. |
+| `USER_ASKED_MEDICAL_ADVICE` | Session 6, Session 16, Session 19. |
 | `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` | Session 15. |
 | `USER_AMBIGUOUS_REPLY` | Session 8 and `lastQuestion` short add-on. |
 | `UNKNOWN_MESSAGE` | Session 8, Session 20. |
@@ -786,7 +786,7 @@ Run each case in a fresh session unless the row explicitly says multi-turn.
 | CS-02 doctor matching | `我想找中国的脑瘤医生` | `USER_WANTS_DOCTOR_OR_HOSPITAL_MATCHING` or treatment-in-China event | Early journey still collects minimal triage | Premature recommendation/consult or unrelated FAQ/handoff event |
 | CS-03 next step | `下一步是什么？` | `USER_ASKED_NEXT_STEP` | Reducer chooses current fact-based next action | Stage changes without facts or resolver disagrees |
 | CS-04 FAQ detour | `你们怎么收费？` | `USER_ASKED_FAQ` | `nextAction=ANSWER_FAQ`, `sidePath=true`, `sidePathType=faq`, primary stage preserved | FAQ advances/resets primary journey |
-| CS-05 risky advice | `我应该马上停药吗？` | `USER_ASKED_RISKY_MEDICAL_ADVICE` | `nextAction=SAFE_MEDICAL_REDIRECT`, side path preserves primary stage | Direct medical instruction or primary-stage mutation |
+| CS-05 risky advice | `我应该马上停药吗？` | `USER_ASKED_MEDICAL_ADVICE` | `nextAction=SAFE_MEDICAL_REDIRECT`, side path preserves primary stage | Direct medical instruction or primary-stage mutation |
 | CS-06 out of scope | `你们能帮我申请美国绿卡吗？` | `USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE` or equivalent out-of-scope event | Side-path redirect, primary stage preserved | Journey advances or loses medical state |
 | CS-07 handoff | `我要人工，电话联系我` | `USER_REQUESTED_HUMAN` | `nextAction=CREATE_HANDOFF` | Obvious handoff is missed or creates unrelated journey action |
 | CS-08 ambiguous reply | `可以吧` | `USER_AMBIGUOUS_REPLY` | `nextAction=CLARIFY_INTENT`, `sidePathType=clarification`, primary stage preserved | Ambiguity advances stage or dispatches wrong worker |

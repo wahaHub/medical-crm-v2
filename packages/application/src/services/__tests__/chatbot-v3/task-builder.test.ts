@@ -124,7 +124,7 @@ describe('buildAgentTask', () => {
 
   it('builds strict redirect contracts for safety actions', () => {
     const task = buildAgentTask({
-      event: { eventType: 'USER_ASKED_RISKY_MEDICAL_ADVICE', target: 'medical_facts', modifier: 'ask', confidence: 0.9, source: 'llm' },
+      event: { eventType: 'USER_ASKED_MEDICAL_ADVICE', target: 'medical_facts', modifier: 'ask', confidence: 0.9, source: 'llm' },
       turnPlan: {
         primaryAction: { type: 'REDIRECT', target: 'medical_facts', reasonCode: 'medical_safety' },
         followUpAction: { type: 'NONE' },

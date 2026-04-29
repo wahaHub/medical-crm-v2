@@ -64,12 +64,12 @@ function primaryRouteFor(input: {
   agentRole: AgentRole;
   facts: DomainFacts;
 }): SkillRoute {
-  if (
-    input.event.eventType === 'USER_ASKED_RISKY_MEDICAL_ADVICE'
-    || input.event.eventType === 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE'
-    || input.turnPlan.primaryAction.type === 'REDIRECT'
-  ) {
-    return { skillId: 'safety_scope_skill', sectionTarget: input.event.target ?? 'unknown' };
+  if (input.event.target === 'medical_advice') {
+    return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
+  }
+
+  if (input.event.target === 'service_scope' || input.turnPlan.primaryAction.type === 'REDIRECT') {
+    return { skillId: 'service_scope_skill', sectionTarget: input.event.target ?? 'service_scope' };
   }
 
   if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
@@ -77,7 +77,7 @@ function primaryRouteFor(input: {
   }
 
   if (input.turnPlan.primaryAction.type === 'ESCALATE' || input.event.eventType === 'USER_REQUESTED_HUMAN') {
-    return { skillId: 'human_handoff_skill', sectionTarget: 'human' };
+    return { skillId: 'handoff_skill', sectionTarget: 'handoff' };
   }
 
   const actionTarget = 'target' in input.turnPlan.primaryAction
@@ -101,33 +101,39 @@ function routeForTarget(target: string | undefined): SkillRoute | null {
   switch (target) {
     case 'pricing':
       return { skillId: 'pricing_skill', sectionTarget: 'pricing' };
-    case 'documents':
-      return { skillId: 'documents_skill', sectionTarget: 'documents' };
+    case 'payment':
+      return { skillId: 'payment_skill', sectionTarget: 'payment' };
+    case 'travel':
+      return { skillId: 'travel_skill', sectionTarget: 'travel' };
+    case 'sales':
+      return { skillId: 'sales_skill', sectionTarget: 'sales' };
+    case 'faq':
+      return { skillId: 'faq_skill', sectionTarget: 'faq' };
+    case 'service_scope':
+      return { skillId: 'service_scope_skill', sectionTarget: 'service_scope' };
+    case 'policy':
+      return { skillId: 'policy_skill', sectionTarget: 'policy' };
+    case 'medical_advice':
     case 'medical_facts':
     case 'minimal_triage':
-      return { skillId: 'documents_skill', sectionTarget: 'medical_facts' };
+      return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
+    case 'treatment':
+    case 'documents':
+      return { skillId: 'treatment_skill', sectionTarget: 'treatment' };
     case 'process':
-      return { skillId: 'process_skill', sectionTarget: 'process' };
     case 'next_step':
-      return { skillId: 'process_skill', sectionTarget: 'next_step' };
-    case 'travel':
-      return { skillId: 'process_skill', sectionTarget: 'travel' };
-    case 'payment':
-      return { skillId: 'process_skill', sectionTarget: 'payment' };
+      return { skillId: 'policy_skill', sectionTarget: 'policy' };
     case 'recommendation':
-      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'recommendation' };
     case 'preference':
-      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'recommendation' };
     case 'hospital':
-      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'hospital' };
     case 'hospital_selection':
-      return { skillId: 'hospital_recommendation_skill', sectionTarget: 'hospital_selection' };
+      return { skillId: 'hospital_skill', sectionTarget: 'hospital' };
     case 'consult':
-      return { skillId: 'consult_skill', sectionTarget: 'consult' };
+      return { skillId: 'policy_skill', sectionTarget: 'policy' };
+    case 'handoff':
     case 'human':
-      return { skillId: 'human_handoff_skill', sectionTarget: 'human' };
     case 'contact':
-      return { skillId: 'human_handoff_skill', sectionTarget: 'contact' };
+      return { skillId: 'handoff_skill', sectionTarget: 'handoff' };
     case 'unknown':
     default:
       return null;

@@ -68,19 +68,21 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
       }),
     }));
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).toEqual(expect.arrayContaining([
-      'USER_EXPRESSED_NEED',
+      'USER_EXPRESSED_INTEREST',
       'USER_ASKED_QUESTION',
+      'USER_REQUESTED_ACTION',
       'USER_PROVIDED_INFORMATION',
       'USER_RESPONDED_TO_REQUEST',
       'USER_REQUESTED_HUMAN',
       'USER_MESSAGE_UNCLEAR',
     ]));
+    expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('USER_ASKED_RISKY_MEDICAL_ADVICE');
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('TRIAGE_SUBMITTED');
     expect(payload.response_format.json_schema.schema.properties.eventType.enum).not.toContain('RECOMMENDATION_SELECTED');
     expect(payload.response_format.json_schema.schema.required).toEqual(['eventType', 'target', 'modifier', 'confidence']);
     expect(payload.response_format.json_schema.schema.properties.target).toEqual(expect.objectContaining({
       type: 'string',
-      enum: expect.arrayContaining(['pricing', 'next_step', 'hospital', 'unknown']),
+      enum: expect.arrayContaining(['pricing', 'policy', 'hospital', 'unknown']),
     }));
     expect(payload.response_format.json_schema.schema.properties.modifier).toEqual(expect.objectContaining({
       type: 'string',
@@ -202,8 +204,8 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
           choices: [{
             message: {
               content: JSON.stringify({
-                eventType: 'USER_EXPRESSED_NEED',
-                target: 'recommendation',
+                eventType: 'USER_EXPRESSED_INTEREST',
+                target: 'hospital',
                 modifier: 'ask',
                 confidence: 0.87,
               }),
@@ -221,8 +223,8 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
     });
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
-      eventType: 'USER_EXPRESSED_NEED',
-      target: 'recommendation',
+      eventType: 'USER_EXPRESSED_INTEREST',
+      target: 'hospital',
       modifier: 'ask',
       confidence: 0.87,
       source: 'llm',
@@ -239,7 +241,7 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
             message: {
               content: JSON.stringify({
                 eventType: 'TRIAGE_SUBMITTED',
-                target: 'medical_facts',
+                target: 'medical_advice',
                 modifier: 'provide',
                 confidence: 0.93,
               }),
@@ -254,7 +256,7 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
             message: {
               content: JSON.stringify({
                 eventType: 'USER_ASKED_QUESTION',
-                target: 'next_step',
+                target: 'policy',
                 modifier: 'ask',
                 confidence: 0.66,
               }),
@@ -273,7 +275,7 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
 
     await expect(adapter?.run(gatewayInput)).resolves.toEqual({
       eventType: 'USER_ASKED_QUESTION',
-      target: 'next_step',
+      target: 'policy',
       modifier: 'ask',
       confidence: 0.66,
       source: 'llm',
@@ -332,7 +334,7 @@ describe('createChatbotV3SupervisorRouteAdapter', () => {
         choices: [{
           message: {
             content: JSON.stringify({
-              eventType: 'USER_EXPRESSED_NEED',
+              eventType: 'USER_EXPRESSED_INTEREST',
               target: 'budget',
               modifier: 'refine',
               confidence: 0.8,

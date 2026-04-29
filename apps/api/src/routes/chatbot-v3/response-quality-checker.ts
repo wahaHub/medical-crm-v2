@@ -116,13 +116,13 @@ export function checkSkillBehavior(
     switch (section.skillId) {
       case 'pricing_skill':
         return checkPricingSkill(responseText, section, options);
-      case 'documents_skill':
+      case 'treatment_skill':
         return checkDocumentsSkill(responseText, section, options);
-      case 'safety_scope_skill':
+      case 'medical_advice_skill':
         return checkSafetyScopeSkill(responseText, section, options);
-      case 'hospital_recommendation_skill':
+      case 'hospital_skill':
         return checkHospitalRecommendationSkill(responseText, section, options);
-      case 'human_handoff_skill':
+      case 'handoff_skill':
         return checkHumanHandoffSkill(responseText, section, options);
       default:
         return [];
@@ -272,31 +272,31 @@ function fallbackSectionHint(skillId: LoadedSkillSection['skillId']): DomainSkil
         modifier: 'ask',
         primaryActionType: 'ANSWER',
       };
-    case 'documents_skill':
+    case 'treatment_skill':
       return {
         eventType: 'USER_RESPONDED_TO_REQUEST',
-        target: 'documents',
+        target: 'treatment',
         modifier: 'unknown',
         primaryActionType: 'HANDLE_RESPONSE',
       };
-    case 'safety_scope_skill':
+    case 'medical_advice_skill':
       return {
-        eventType: 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE',
-        target: 'unknown',
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'medical_advice',
         modifier: 'ask',
         primaryActionType: 'REDIRECT',
       };
-    case 'hospital_recommendation_skill':
+    case 'hospital_skill':
       return {
         eventType: 'USER_ASKED_QUESTION',
-        target: 'recommendation',
+        target: 'hospital',
         modifier: 'ask',
         primaryActionType: 'PRESENT_OPTIONS',
       };
-    case 'human_handoff_skill':
+    case 'handoff_skill':
       return {
         eventType: 'USER_REQUESTED_HUMAN',
-        target: 'human',
+        target: 'handoff',
         modifier: 'ask',
         primaryActionType: 'ESCALATE',
       };

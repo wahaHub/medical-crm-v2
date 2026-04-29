@@ -1,6 +1,7 @@
 import type { ResolvedAgent } from './agent-resolver.js';
 import type { ReadIntent, ReadPlan } from './read-planner.js';
 import type { LoadedSkillSection } from './skill-packs.js';
+import type { ChatbotV3RecentMessage } from './types.js';
 import type { DomainFacts, SupervisorEvent, TurnPlan } from './supervisor-event.types.js';
 
 export interface ResponseContract {
@@ -32,6 +33,7 @@ export interface AgentTask {
   primaryStage: TurnPlan['primaryStage'];
   latestUserMessage: string;
   conversationSummary: string;
+  recentMessages: readonly ChatbotV3RecentMessage[];
   knownFacts: DomainFacts;
   resolvedAgent: ResolvedAgent;
   loadedSkillSections: LoadedSkillSection[];
@@ -47,6 +49,7 @@ export function buildAgentTask(input: {
   resolvedAgent: ResolvedAgent;
   latestUserMessage: string;
   conversationSummary: string;
+  recentMessages?: readonly ChatbotV3RecentMessage[];
   knownFacts: DomainFacts;
   loadedSkillSections: LoadedSkillSection[];
   readPlan: ReadPlan;
@@ -60,6 +63,7 @@ export function buildAgentTask(input: {
     primaryStage: input.turnPlan.primaryStage,
     latestUserMessage: input.latestUserMessage,
     conversationSummary: input.conversationSummary,
+    recentMessages: input.recentMessages ?? [],
     knownFacts: input.knownFacts,
     resolvedAgent: input.resolvedAgent,
     loadedSkillSections: input.loadedSkillSections,

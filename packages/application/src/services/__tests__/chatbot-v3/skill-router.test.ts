@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { loadSkillSections } from '../../chatbot-v3/skill-loader.js';
 import { buildSkillPolicy } from '../../chatbot-v3/skill-router.js';
 import type { AgentRole } from '../../chatbot-v3/agent-resolver.js';
 import type { DomainFacts, SupervisorEvent, TurnPlan } from '../../chatbot-v3/supervisor-event.types.js';
@@ -134,6 +135,33 @@ describe('buildSkillPolicy', () => {
       skillId: 'travel_skill',
       role: 'primary',
     });
+  });
+
+  it('routes consult FAQ turns to consult FAQ skill sections', () => {
+    const policy = buildSkillPolicy({
+      event: event({ target: 'unknown' }),
+      turnPlan: plan({
+        primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' },
+        followUpAction: { type: 'NONE' },
+      }),
+      agentRole: 'FaqAgent',
+      facts: facts(),
+    });
+
+    expect(policy.requests[0]).toMatchObject({
+      skillId: 'faq_skill',
+      role: 'primary',
+      sectionHints: { target: 'consult' },
+    });
+
+    const loaded = loadSkillSections({ requests: policy.requests });
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'consult_readiness',
+      'consult_scope',
+      'consult_sources',
+    ]));
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('online consult');
+    expect(loaded.skillSections[0]?.readIntentTypes).toContain('CONSULT_READINESS');
   });
 
   it('uses the primary action target for section hints when the event target is unknown', () => {

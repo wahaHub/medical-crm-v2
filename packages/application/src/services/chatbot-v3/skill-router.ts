@@ -129,7 +129,7 @@ function routeForTarget(target: string | undefined): SkillRoute | null {
     case 'hospital_selection':
       return { skillId: 'hospital_skill', sectionTarget: 'hospital' };
     case 'consult':
-      return { skillId: 'policy_skill', sectionTarget: 'policy' };
+      return { skillId: 'faq_skill', sectionTarget: 'consult' };
     case 'handoff':
     case 'human':
     case 'contact':

@@ -348,10 +348,8 @@ describe('loadSkillSections', () => {
       'policy_document_review',
       'policy_insurance_boundary',
     ]));
-    expect(loaded.skillSections[0]?.sectionIds).not.toEqual(expect.arrayContaining([
-      'process_travel_scope',
-      'process_payment_scope',
-    ]));
+    expect(loaded.skillSections[0]?.sectionIds).not.toContain('process_travel_scope');
+    expect(loaded.skillSections[0]?.sectionIds).not.toContain('process_payment_scope');
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('USD 400');
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('within 48 hours');
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('does not provide claims support');

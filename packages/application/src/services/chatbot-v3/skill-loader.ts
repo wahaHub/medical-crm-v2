@@ -65,6 +65,19 @@ const FOLLOW_UP_ACTION_TYPES = [
   'NONE',
 ] as const;
 
+const SECTION_HINT_TARGETS = [
+  ...SUPERVISOR_EVENT_TARGETS,
+  'recommendation',
+  'documents',
+  'consult',
+  'next_step',
+  'process',
+  'hospital_selection',
+  'medical_facts',
+  'contact',
+  'human',
+] as const;
+
 export function loadSkillPacks(input: LoadSkillPacksInput): LoadedSkillPolicy {
   const maxSkillSnippets = input.maxSkillSnippets ?? 6;
   const requestsBySkill = new Map<SkillPackId, string[]>();
@@ -162,7 +175,7 @@ function normalizeDomainSkillRequest(
 
   const normalizedHints: DomainSkillRequest['sectionHints'] = {
     eventType: pickAllowed(hints.eventType, SUPERVISOR_EVENT_TYPES, DEFAULT_CLARIFICATION_SECTION_HINTS.eventType),
-    target: pickAllowed(hints.target, SUPERVISOR_EVENT_TARGETS, DEFAULT_CLARIFICATION_SECTION_HINTS.target),
+    target: pickAllowed(hints.target, SECTION_HINT_TARGETS, DEFAULT_CLARIFICATION_SECTION_HINTS.target),
     modifier: pickAllowed(hints.modifier, SUPERVISOR_EVENT_MODIFIERS, DEFAULT_CLARIFICATION_SECTION_HINTS.modifier),
     primaryActionType: pickAllowed(
       hints.primaryActionType,

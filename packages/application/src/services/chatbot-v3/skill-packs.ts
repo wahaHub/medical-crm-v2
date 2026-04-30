@@ -517,21 +517,6 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
         appliesTo: { targets: ['policy', 'process'] },
         text: 'Collect only information needed for medical-travel coordination and share sensitive records only with necessary parties for service coordination, hospital/doctor review, translation, logistics, billing, neutral document organization, medical liability insurance support, or follow-up. Do not invent retention periods, encryption claims, legal certifications, refund outcomes, diagnosis, prescriptions, guaranteed acceptance, exact dates, visa approval, final price, outcome guarantees, or insurance approval.',
       },
-      {
-        id: 'process_travel_scope',
-        appliesTo: { targets: ['travel'], eventTypes: ['USER_ASKED_QUESTION'] },
-        text: 'For travel logistics, stay within treatment-related support such as visa timing context, flights, hotels, local transport, hospital appointment logistics, and travel document preparation. Do not offer unrelated immigration, housing, school, job, or legal services.',
-      },
-      {
-        id: 'process_payment_scope',
-        appliesTo: { targets: ['payment'], eventTypes: ['USER_ASKED_QUESTION'] },
-        text: 'For payment questions, explain payment timing, methods, deposits, refunds, and billing uncertainty only from retrieved payment policy. Do not invent discounts, fixed totals, guarantees, or financing terms.',
-      },
-      {
-        id: 'travel_payment_scope',
-        appliesTo: { targets: ['travel', 'payment'] },
-        text: 'Keep travel and payment support under process ownership; answer from retrieved treatment-related logistics or payment policy.',
-      },
     ],
     retrieval: {
       sections: [
@@ -540,18 +525,6 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
           appliesTo: { targets: ['policy', 'process', 'next_step'] },
           readIntentTypes: ['PROCESS_POLICY', 'GENERAL_FAQ'],
           searchGuidance: 'Use process policy first; use process FAQ for direct user questions.',
-        },
-        {
-          id: 'travel_support_scope',
-          appliesTo: { targets: ['travel'] },
-          readIntentTypes: ['TRAVEL_SUPPORT_SCOPE'],
-          searchGuidance: 'Use treatment-related travel support scope for visa, flight, hotel, or trip questions.',
-        },
-        {
-          id: 'payment_policy',
-          appliesTo: { targets: ['payment'] },
-          readIntentTypes: ['PAYMENT_POLICY'],
-          searchGuidance: 'Use payment policy for payment method, timing, and payment support questions.',
         },
       ],
     },

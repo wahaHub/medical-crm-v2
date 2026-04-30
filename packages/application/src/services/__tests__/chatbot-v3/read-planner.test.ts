@@ -126,7 +126,7 @@ describe('buildReadPlan', () => {
     });
   });
 
-  it('plans process, travel, and payment reads from loaded process sections and hints', () => {
+  it('plans process, travel, and payment reads from their loaded domain sections', () => {
     const processPlan = buildReadPlan({
       event: event({ target: 'policy' }),
       turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'policy', mode: 'faq' } }),
@@ -141,8 +141,8 @@ describe('buildReadPlan', () => {
       event: event({ target: 'travel' }),
       turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'travel', mode: 'faq' } }),
       loadedSkillSections: [
-        loadedSection('policy_skill', {
-          sectionIds: ['travel_support_scope'],
+        loadedSection('travel_skill', {
+          sectionIds: ['travel_support_sources'],
           retrievalGuidance: ['Use treatment-related travel support scope for visa, flight, hotel, or trip questions.'],
         }),
       ],
@@ -151,8 +151,8 @@ describe('buildReadPlan', () => {
       event: event({ target: 'payment' }),
       turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'payment', mode: 'faq' } }),
       loadedSkillSections: [
-        loadedSection('policy_skill', {
-          sectionIds: ['payment_policy'],
+        loadedSection('payment_skill', {
+          sectionIds: ['payment_policy_sources'],
           retrievalGuidance: ['Use payment policy for payment method, timing, and payment support questions.'],
         }),
       ],
@@ -164,11 +164,11 @@ describe('buildReadPlan', () => {
     });
     expect(travelPlan.readIntents).toContainEqual({
       type: 'TRAVEL_SUPPORT_SCOPE',
-      reasonCode: 'policy_skill:travel_support_scope',
+      reasonCode: 'travel_skill:travel_support_sources',
     });
     expect(paymentPlan.readIntents).toContainEqual({
       type: 'PAYMENT_POLICY',
-      reasonCode: 'policy_skill:payment_policy',
+      reasonCode: 'payment_skill:payment_policy_sources',
     });
   });
 

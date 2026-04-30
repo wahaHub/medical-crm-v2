@@ -74,6 +74,31 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).not.toContain('USER_WANTS_TREATMENT_IN_CHINA:');
   });
 
+  it('explains the eventType, target, and modifier boundary', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('eventType is the user action shape');
+    expect(prompt).toContain('target is the business domain');
+    expect(prompt).toContain('modifier is the user posture');
+    expect(prompt).toContain('Do not create skill-specific event types');
+  });
+
+  it('includes detailed guidance for semantic event classification', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('USER_EXPRESSED_INTEREST: goal/desire, not a concrete action.');
+    expect(prompt).toContain('USER_ASKED_QUESTION: information/explanation/feasibility/policy/medical-orientation question.');
+    expect(prompt).toContain('USER_PROVIDED_INFORMATION: facts, files, contact details, corrections.');
+    expect(prompt).toContain('USER_RESPONDED_TO_REQUEST: answer to previous assistant request.');
+    expect(prompt).toContain('USER_REQUESTED_ACTION: operational request for Medora to do something.');
+    expect(prompt).toContain('USER_REQUESTED_HUMAN: explicit human/coordinator/contact request, always target=handoff.');
+    expect(prompt).toContain('USER_MESSAGE_UNCLEAR: too unclear to classify safely.');
+    expect(prompt).toContain('medical-advice questions use USER_ASKED_QUESTION with target=medical_advice');
+    expect(prompt).toContain('outside Medora scope uses target=service_scope');
+    expect(prompt).toContain('USER_REQUESTED_HUMAN always uses target=handoff');
+    expect(prompt).toContain('Do not represent human requests as modifier=request_action');
+  });
+
   it('defines supported service scope instead of enumerating out-of-scope examples', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 

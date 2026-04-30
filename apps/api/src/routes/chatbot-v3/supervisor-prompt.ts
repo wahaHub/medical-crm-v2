@@ -15,6 +15,24 @@ const SEMANTIC_EVENT_CLASSIFICATION_GUIDE: Record<SemanticSupervisorEventType, s
   USER_MESSAGE_UNCLEAR: 'no allowed event fits or the latest message is too vague to map confidently.',
 };
 
+const EVENT_TARGET_MODIFIER_BOUNDARY_GUIDE = [
+  'eventType is the user action shape.',
+  'target is the business domain / skill-aligned topic.',
+  'modifier is the user posture.',
+  'Do not create skill-specific event types.',
+  'A medical, pricing, hospital, travel, payment, sales, or policy question can all be USER_ASKED_QUESTION; the domain difference belongs in target.',
+].join('\n');
+
+const DETAILED_SEMANTIC_EVENT_GUIDE = [
+  'USER_EXPRESSED_INTEREST: goal/desire, not a concrete action.',
+  'USER_ASKED_QUESTION: information/explanation/feasibility/policy/medical-orientation question.',
+  'USER_PROVIDED_INFORMATION: facts, files, contact details, corrections.',
+  'USER_RESPONDED_TO_REQUEST: answer to previous assistant request.',
+  'USER_REQUESTED_ACTION: operational request for Medora to do something.',
+  'USER_REQUESTED_HUMAN: explicit human/coordinator/contact request, always target=handoff.',
+  'USER_MESSAGE_UNCLEAR: too unclear to classify safely.',
+].join('\n');
+
 const MEDORA_SUPPORTED_SERVICE_SCOPE = [
   'understanding the patient\'s condition, destination, timing, preferences, and contact details',
   'collecting or explaining needed medical records and supporting documents',
@@ -59,9 +77,18 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'Classification guide:',
     ...allowedEventGuide,
     '',
+    EVENT_TARGET_MODIFIER_BOUNDARY_GUIDE,
+    '',
+    'Semantic event guide:',
+    DETAILED_SEMANTIC_EVENT_GUIDE,
+    '',
     'Important:',
     'If an event is not in the allowed list for this turn, do not return it.',
     'If multiple events seem possible, choose the primary user intent.',
+    'medical-advice questions use USER_ASKED_QUESTION with target=medical_advice.',
+    'outside Medora scope uses target=service_scope.',
+    'USER_REQUESTED_HUMAN always uses target=handoff.',
+    'Do not represent human requests as modifier=request_action.',
     'Medora supported service scope:',
     ...MEDORA_SUPPORTED_SERVICE_SCOPE.map((item) => `- ${item}.`),
     'Classify requests for a service outside that supported scope as USER_ASKED_QUESTION or USER_REQUESTED_ACTION with target=service_scope.',

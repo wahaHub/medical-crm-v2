@@ -144,7 +144,7 @@ describe('buildSkillPolicy', () => {
         primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' },
         followUpAction: { type: 'NONE' },
       }),
-      agentRole: 'FaqAgent',
+      agentRole: 'GeneralResponseAgent',
       facts: facts(),
     });
 

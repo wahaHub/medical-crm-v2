@@ -60,7 +60,7 @@ describe('extractDeterministicEvent', () => {
     });
 
     expect(event?.eventType).toBe('USER_REQUESTED_HUMAN');
-    expect(event?.target).toBe('human');
+    expect(event?.target).toBe('handoff');
     expect(event?.modifier).toBe('ask');
     expect(event?.source).toBe('deterministic');
   });
@@ -120,6 +120,17 @@ describe('extractDeterministicEvent', () => {
     })).toBeNull();
     expect(extractDeterministicEvent({
       message: '流程是什么？',
+      attachments: [],
+    })).toBeNull();
+  });
+
+  it('does not treat a medical specialist request as an explicit human handoff', () => {
+    expect(extractDeterministicEvent({
+      message: "How much to see a pain specialist? I don't want to come if too expensive.",
+      attachments: [],
+    })).toBeNull();
+    expect(extractDeterministicEvent({
+      message: 'Can I talk to a pain specialist about my back?',
       attachments: [],
     })).toBeNull();
   });

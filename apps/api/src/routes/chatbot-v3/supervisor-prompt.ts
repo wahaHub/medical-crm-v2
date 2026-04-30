@@ -7,7 +7,7 @@ export const SUPERVISOR_PROMPT_VERSION = 'supervisor-prompt-v3-events';
 
 const SEMANTIC_EVENT_CLASSIFICATION_GUIDE: Record<SemanticSupervisorEventType, string> = {
   USER_EXPRESSED_INTEREST: 'user expresses a service goal or desire, such as treatment in China, hospital matching, pricing, travel support, or Medora help.',
-  USER_ASKED_QUESTION: 'user asks an informational question about service scope, policy, medical advice, hospital, treatment, pricing, payment, travel, sales, FAQ, or handoff.',
+  USER_ASKED_QUESTION: 'user asks an informational question about service scope, policy, medical advice, hospital, treatment, pricing, payment, travel, sales, online consultation, or handoff.',
   USER_PROVIDED_INFORMATION: 'user gives facts, preferences, records, medical details, document availability, or contact information.',
   USER_RESPONDED_TO_REQUEST: 'user replies to the previous assistant request or CTA; use last_question context when available.',
   USER_REQUESTED_ACTION: 'user asks Medora to do something, such as arrange, prepare, compare, estimate, schedule, or hand off.',
@@ -15,12 +15,46 @@ const SEMANTIC_EVENT_CLASSIFICATION_GUIDE: Record<SemanticSupervisorEventType, s
   USER_MESSAGE_UNCLEAR: 'no allowed event fits or the latest message is too vague to map confidently.',
 };
 
+const EVENT_TARGET_MODIFIER_BOUNDARY_GUIDE = [
+  'eventType is the user action shape.',
+  'target is the business domain / skill-aligned topic.',
+  'modifier is the user posture.',
+  'Do not create skill-specific event types.',
+  'A medical, pricing, hospital, travel, payment, sales, consult, or policy question can all be USER_ASKED_QUESTION; the domain difference belongs in target.',
+].join('\n');
+
+const DETAILED_SEMANTIC_EVENT_GUIDE = [
+  'USER_EXPRESSED_INTEREST: goal/desire, not a concrete action.',
+  'USER_ASKED_QUESTION: information/explanation/feasibility/policy/medical-orientation question.',
+  'USER_PROVIDED_INFORMATION: facts, files, contact details, corrections.',
+  'USER_RESPONDED_TO_REQUEST: answer to previous assistant request.',
+  'USER_REQUESTED_ACTION: operational request for Medora to do something.',
+  'USER_REQUESTED_HUMAN: explicit human/coordinator/contact request, always target=handoff.',
+  'USER_MESSAGE_UNCLEAR: too unclear to classify safely.',
+].join('\n');
+
 const MEDORA_SUPPORTED_SERVICE_SCOPE = [
   'understanding the patient\'s condition, destination, timing, preferences, and contact details',
   'collecting or explaining needed medical records and supporting documents',
   'matching the patient with hospitals, doctors, packages, or treatment-path options',
   'explaining Medora process, pricing, payments, timelines, travel logistics, or document requirements when related to treatment coordination',
   'arranging or preparing records-based review, online consults, appointments, or human coordinator handoff for the medical-travel case',
+] as const;
+
+const CONCRETE_TAXONOMY_EXAMPLES = [
+  '"Can I talk to a human coordinator?" -> eventType=USER_REQUESTED_HUMAN, target=handoff, modifier=ask.',
+  '"Could this be trigeminal neuralgia?" -> eventType=USER_ASKED_QUESTION, target=medical_advice, modifier=ask.',
+  '"Can you help me get a work visa?" -> eventType=USER_ASKED_QUESTION, target=service_scope, modifier=ask.',
+  '"Please help me get school admission." -> eventType=USER_REQUESTED_ACTION, target=service_scope, modifier=request_action.',
+  '"Can Medora submit my insurance claim or get reimbursement approval?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.',
+  '"Is the $400 online consultation refundable if I don\'t come to China?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.',
+  '"How long does online consultation take?" -> eventType=USER_ASKED_QUESTION, target=consult, modifier=ask.',
+  '"Recommend hospitals in Shanghai for lung cancer." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
+  '"Which doctor should I see?" -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
+  '"Recommend a doctor for my CT results." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
+  'Unclear messages -> eventType=USER_MESSAGE_UNCLEAR, target=unknown, modifier=unknown.',
+  'Doctor matching belongs to target=hospital, not target=medical_advice.',
+  'Do not add legacy out-of-scope or medical-advice event types for these scenarios.',
 ] as const;
 
 function isSemanticSupervisorEventType(eventType: SupervisorEventType): eventType is SemanticSupervisorEventType {
@@ -59,16 +93,29 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'Classification guide:',
     ...allowedEventGuide,
     '',
+    EVENT_TARGET_MODIFIER_BOUNDARY_GUIDE,
+    '',
+    'Semantic event guide:',
+    DETAILED_SEMANTIC_EVENT_GUIDE,
+    '',
     'Important:',
     'If an event is not in the allowed list for this turn, do not return it.',
     'If multiple events seem possible, choose the primary user intent.',
+    'medical-advice questions use USER_ASKED_QUESTION with target=medical_advice.',
+    'online consultation timing, readiness, scheduling, or process questions use target=consult unless the user asks refund/payment policy.',
+    'outside Medora scope uses target=service_scope.',
+    'USER_REQUESTED_HUMAN always uses target=handoff.',
+    'Do not represent human requests as modifier=request_action.',
     'Medora supported service scope:',
     ...MEDORA_SUPPORTED_SERVICE_SCOPE.map((item) => `- ${item}.`),
     'Classify requests for a service outside that supported scope as USER_ASKED_QUESTION or USER_REQUESTED_ACTION with target=service_scope.',
     'Classify guarantee/promise/ensure outcome wording as USER_ASKED_QUESTION with target=medical_advice, not USER_EXPRESSED_INTEREST.',
     'If uncertain, use USER_MESSAGE_UNCLEAR with target=unknown and modifier=unknown.',
     '',
-    'Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, handoff, unknown.',
+    'Concrete taxonomy examples:',
+    ...CONCRETE_TAXONOMY_EXAMPLES,
+    '',
+    'Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, consult, handoff, unknown.',
     'Modifier guide: ask, provide, confirm, reject, hesitate, correct, compare, revisit, request_action, urgent, unknown.',
     '',
     'Context:',

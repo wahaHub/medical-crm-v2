@@ -44,11 +44,14 @@ export function buildRecordsWorkerPrompt(task: RecordsWorkerTask): string {
 }
 
 export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string {
+  const maxQuestions = resolveMaxQuestions(task);
+  const focusedQuestions = RECORDS_MINIMAL_TRIAGE_QUESTIONS.slice(0, Math.max(1, maxQuestions));
+
   return [
     `version=${RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION}`,
     'role=records minimal triage worker',
     'instructions=Return only the exact structured JSON fields required below. Do not add any extra keys, explanations, nested objects, or alternative field names.',
-    'We already have the submitted intake, so this step is only the 3-question follow-up needed to refine recommendation.',
+    'We already have the submitted intake, so this step is only a focused follow-up needed to refine recommendation.',
     `current_stage=${renderCurrentStage(task)}`,
     `primary_stage=${renderPrimaryStage(task)}`,
     `minimal_triage_complete=${String(task.minimalTriageComplete)}`,
@@ -59,7 +62,7 @@ export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string
     '{"records.minimal_triage.complete":true}',
     'When triage is incomplete, return exactly these keys:',
     '- "records.minimal_triage.complete": false',
-    '- "questions": array of exactly the 3 canonical question strings below, in the same order',
+    `- "questions": array of at most ${maxQuestions} focused question string(s) below, in the same order`,
     '- "followUp": one string',
     '- "missing": array using only these exact enum values: symptom_or_diagnosis, duration_or_severity, existing_tests_or_treatments',
     'Never return:',
@@ -68,11 +71,9 @@ export function buildRecordsMinimalTriagePrompt(task: RecordsWorkerTask): string
     '- object items inside questions',
     '- free-text missing labels',
     '- any extra keys',
-    'Use the canonical question strings exactly as written below. Do not translate or paraphrase them.',
+    'Use the focused question string(s) exactly as written below. Do not translate or paraphrase them.',
     'questions=',
-    `1. ${RECORDS_MINIMAL_TRIAGE_QUESTIONS[0]}`,
-    `2. ${RECORDS_MINIMAL_TRIAGE_QUESTIONS[1]}`,
-    `3. ${RECORDS_MINIMAL_TRIAGE_QUESTIONS[2]}`,
+    ...focusedQuestions.map((question, index) => `${index + 1}. ${question}`),
   ].join('\n');
 }
 
@@ -158,7 +159,7 @@ function formatReadIntents(readIntents: RecordsWorkerTask['readIntents']): strin
 }
 
 export function buildRecordsMinimalTriageInitialFollowUp(): string {
-  return 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.';
+  return 'We already received your basic intake. Please share the main symptom or diagnosis, when it started and how severe it is, plus any tests, treatments, medicines, or diagnoses so far.';
 }
 
 export function buildRecordsMinimalTriageInsufficientFollowUp(): string {
@@ -209,6 +210,11 @@ function joinWithCommasAnd(values: readonly string[]): string {
   }
 
   return `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`;
+}
+
+function resolveMaxQuestions(task: RecordsWorkerTask): 1 | 2 {
+  const maxQuestions = task.responseContract?.constraints?.maxQuestions;
+  return maxQuestions === 2 ? 2 : 1;
 }
 
 function buildDurationOrSeverityClarifyingLabel(

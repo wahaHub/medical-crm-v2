@@ -328,7 +328,7 @@ describe('ResponseComposer', () => {
       },
     });
 
-    expect(response.messages[0]?.text).toContain('reliable FAQ answer');
+    expect(response.messages[0]?.text).toContain('reliable answer');
     expect(response.messages[0]?.text).not.toContain('3 follow-up questions');
     expect(response.messages[0]?.text).not.toContain('Please upload your diagnosis proof');
     expect(response.cards).toEqual([]);
@@ -451,7 +451,7 @@ describe('ResponseComposer', () => {
     });
 
     expect(response.messages[0]?.text).toContain('already received your basic intake');
-    expect(response.messages[0]?.text).toContain('3 follow-up questions');
+    expect(response.messages[0]?.text).toContain('Please share the main symptom or diagnosis');
     expect(response.messages[0]?.text).not.toContain('share the key medical facts and any records you already have');
   });
 
@@ -1289,7 +1289,7 @@ describe('ResponseComposer', () => {
     });
 
     expect(response.messages[0]?.text).toContain('outside Medora scope');
-    expect(response.messages[0]?.text).not.toContain('could not find a reliable FAQ answer');
+    expect(response.messages[0]?.text).not.toContain('could not find a reliable answer');
   });
 
   it('uses faq-specific degraded guidance for faq failures', () => {
@@ -1303,7 +1303,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.',
+      'I could not load that answer just now, but your current stage is still saved. Please try asking again.',
     );
   });
 
@@ -1576,6 +1576,19 @@ describe('ResponseQualityChecker', () => {
     target: 'pricing',
     modifier: 'ask',
     primaryActionType: 'ANSWER',
+  } as const;
+  const policySection = {
+    skillId: 'policy_skill',
+    role: 'primary',
+    reasonCode: 'policy_question',
+    sectionIds: ['insurance_claims_boundary', 'online_consultation_fee'],
+    readIntentTypes: [],
+    policyText: [
+      'Medora does not handle, submit, manage, follow up, guarantee reimbursement, approve coverage, or provide direct billing approval for insurance claims.',
+      'The online consultation fee is USD 400, is kept if the user does not come, and is applied toward treatment cost if the user comes.',
+    ],
+    retrievalGuidance: [],
+    handlingGuidance: ['Keep insurance and online consultation fee boundaries clear.'],
   } as const;
 
   it('accepts and preserves follow-up action types from real domain skill section hints', () => {
@@ -2047,6 +2060,156 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
+  it('fails policy_skill when the response claims Medora handles insurance claims or reimbursement', () => {
+    const checks = checkSkillBehavior(
+      'Medora will submit your insurance claim, follow up with your insurer, and guarantee reimbursement approval.',
+      [policySection],
+    );
+
+    expect(checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'policy_insurance_claims_boundary',
+        skillId: 'policy_skill',
+        evaluator: 'deterministic',
+        severity: 'hard',
+        result: 'fail',
+      }),
+    ]));
+  });
+
+  it('allows policy_skill insurance boundary language for insurer claims and neutral documents', () => {
+    const checks = checkSkillBehavior(
+      'For claims, coverage, and reimbursement, please contact your insurer directly. Medora can organize neutral hospital documents and ask the hospital about medical liability insurance.',
+      [policySection],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows policy_skill insurance disclaimers that deny direct billing approval', () => {
+    const cannotChecks = checkSkillBehavior(
+      'Medora cannot provide direct billing approval for insurance claims.',
+      [policySection],
+    );
+    const doesNotChecks = checkSkillBehavior(
+      'Medora does not provide direct billing approval for insurance claims.',
+      [policySection],
+    );
+
+    expect(cannotChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(doesNotChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('fails policy_skill when the response promises insurance claims support', () => {
+    const supportChecks = checkSkillBehavior(
+      'Medora can support your insurance claim.',
+      [policySection],
+    );
+    const genericSupportChecks = checkSkillBehavior(
+      'Medora can provide claims support.',
+      [policySection],
+    );
+    const helpChecks = checkSkillBehavior(
+      'Medora can help with your insurance claims.',
+      [policySection],
+    );
+    const helpYouChecks = checkSkillBehavior(
+      'Medora can help you with insurance claims.',
+      [policySection],
+    );
+    const safeSupportDenialChecks = checkSkillBehavior(
+      'Medora does not provide claims support.',
+      [policySection],
+    );
+
+    expect(supportChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(genericSupportChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(helpChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(helpYouChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(safeSupportDenialChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('fails policy_skill when the online consultation fee is described as free, refundable, or optional before standard China travel', () => {
+    const checks = checkSkillBehavior(
+      'The USD 400 online consultation is free and refundable if you do not come, and it is not required before China travel.',
+      [policySection],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'policy_online_consultation_fee_boundary',
+      skillId: 'policy_skill',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('allows policy_skill online consultation fee boundary language', () => {
+    const checks = checkSkillBehavior(
+      'The online consultation fee is USD 400. It is kept if you do not come, and applied toward treatment cost if you come.',
+      [policySection],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'policy_online_consultation_fee_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows policy_skill online consultation fee negations', () => {
+    const notRefundableChecks = checkSkillBehavior(
+      'The online consultation fee is USD 400 and is not refundable if you do not come.',
+      [policySection],
+    );
+    const notFreeChecks = checkSkillBehavior(
+      'The online consultation is not free; the fee is USD 400.',
+      [policySection],
+    );
+
+    expect(notRefundableChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_online_consultation_fee_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(notFreeChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_online_consultation_fee_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
   it('fails hard for treatment_skill rejection or hesitation handling when the response pressures upload', () => {
     const checks = checkSkillBehavior(
       'I understand your concern, but you must upload now before we can help.',
@@ -2232,6 +2395,73 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
+  it('flags chatbot doctor recommendations from symptoms alone without records', () => {
+    const checks = checkSkillBehavior(
+      'Based on your symptoms alone, I recommend Dr. Li for you. No records are needed for this doctor recommendation.',
+      [{
+        skillId: 'hospital_skill',
+        role: 'primary',
+        reasonCode: 'doctor_matching',
+        sectionIds: ['doctor_matching_boundary'],
+        readIntentTypes: [],
+        policyText: ['Upload records first; the human team reviews before doctor matching.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not name or recommend a doctor from symptoms alone.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_doctor_matching_boundary',
+      skillId: 'hospital_skill',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
+  it('allows doctor matching boundary language that asks for records before human review', () => {
+    const checks = checkSkillBehavior(
+      'Please upload your records first. The Medora human team will review them before doctor matching.',
+      [{
+        skillId: 'hospital_skill',
+        role: 'primary',
+        reasonCode: 'doctor_matching',
+        sectionIds: ['doctor_matching_boundary'],
+        readIntentTypes: [],
+        policyText: ['Upload records first; the human team reviews before doctor matching.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not name or recommend a doctor from symptoms alone.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_doctor_matching_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows doctor matching boundary language that names a doctor only inside a refusal', () => {
+    const checks = checkSkillBehavior(
+      'I cannot recommend Dr. Li from symptoms alone. Please upload records first so the human team can review before doctor matching.',
+      [{
+        skillId: 'hospital_skill',
+        role: 'primary',
+        reasonCode: 'doctor_matching',
+        sectionIds: ['doctor_matching_boundary'],
+        readIntentTypes: [],
+        policyText: ['Upload records first; the human team reviews before doctor matching.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not name or recommend a doctor from symptoms alone.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_doctor_matching_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
   it('fails hard for handoff_skill when the response promises unsupported callback timing', () => {
     const checks = checkSkillBehavior(
       'A human will call in 5 minutes with a guaranteed callback.',
@@ -2252,6 +2482,28 @@ describe('ResponseQualityChecker', () => {
       skillId: 'handoff_skill',
       result: 'fail',
       severity: 'hard',
+    }));
+  });
+
+  it('allows the approved 48-hour review promise after the user submits medical files', () => {
+    const checks = checkSkillBehavior(
+      'After you submit your medical files, Medora human team will review them and contact you within 48 hours.',
+      [{
+        skillId: 'handoff_skill',
+        role: 'primary',
+        reasonCode: 'human_requested',
+        sectionIds: ['handoff_policy'],
+        readIntentTypes: [],
+        policyText: ['After medical files are submitted, the human team or doctor reviews where appropriate and contacts within 48 hours.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not promise unsupported immediate callback timing.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'human_handoff_unsupported_promise',
+      result: 'pass',
+      severity: 'observed',
     }));
   });
 

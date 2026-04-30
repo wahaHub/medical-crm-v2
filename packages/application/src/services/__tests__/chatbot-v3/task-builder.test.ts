@@ -92,7 +92,16 @@ describe('buildAgentTask', () => {
     expect(task.primaryAction).toEqual({ type: 'ANSWER', target: 'pricing', mode: 'faq' });
     expect(task.followUpAction).toEqual({ type: 'INVITE_NEXT_STEP', target: 'documents', reason: 'pricing_requires_records' });
     expect(task.loadedSkillSections).toEqual(loadedSkillSections);
-    expect(task.loadedSkillSections[0]?.readIntentTypes).toEqual(['PRICING_FACTORS', 'GENERAL_FAQ']);
+    expect(task.loadedSkillSections[0]).toEqual({
+      skillId: 'pricing_skill',
+      role: 'primary',
+      reasonCode: 'pricing_question',
+      sectionIds: ['pricing_sources', 'pricing_response_policy'],
+      readIntentTypes: ['PRICING_FACTORS', 'GENERAL_FAQ'],
+      policyText: ['Never quote fixed prices without records.'],
+      retrievalGuidance: ['Use pricing factors before explaining estimated costs.'],
+      handlingGuidance: ['Explain why records are needed before inviting upload.'],
+    });
     expect(task.readIntents).toBe(readPlan.readIntents);
     expect(task.retrievedContext).toEqual([
       {

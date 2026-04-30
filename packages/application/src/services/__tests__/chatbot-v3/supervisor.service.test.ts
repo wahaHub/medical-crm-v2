@@ -1603,7 +1603,7 @@ describe('SupervisorService event extraction', () => {
       eventType: 'USER_REQUESTED_HUMAN',
       confidence: 1,
       source: 'deterministic',
-      target: 'human',
+      target: 'handoff',
       modifier: 'ask',
       metadata: {
         rawText: 'Please connect me with a human advisor.',
@@ -1626,7 +1626,7 @@ describe('SupervisorService event extraction', () => {
       eventType: 'USER_REQUESTED_HUMAN',
       confidence: 1,
       source: 'deterministic',
-      target: 'human',
+      target: 'handoff',
       modifier: 'ask',
       metadata: {
         rawText: 'I attached my report and want to talk to a human.',
@@ -1887,6 +1887,46 @@ describe('SupervisorService event extraction', () => {
     expect(gatewayCalled).toBe(true);
   });
 
+  it('classifies consult policy wording as the consult target when the semantic gateway is unavailable', async () => {
+    const supervisor = new SupervisorService();
+
+    await expect(supervisor.extractEvent({
+      ...eventInput,
+      latestUserMessage: 'How long does online consultation take?',
+    })).resolves.toMatchObject({
+      eventType: 'USER_ASKED_QUESTION',
+      source: 'llm',
+      target: 'consult',
+      modifier: 'ask',
+      metadata: {
+        rawText: 'How long does online consultation take?',
+      },
+    });
+  });
+
+  it('keeps online consultation refund questions on policy when the semantic gateway is unavailable', async () => {
+    const supervisor = new SupervisorService();
+
+    for (const latestUserMessage of [
+      'Is the $400 online consultation refundable if I do not come to China?',
+      'Is the online consultation fee refundable if I do not come to China?',
+      'Can I get a refund for the online consultation cost?',
+    ]) {
+      await expect(supervisor.extractEvent({
+        ...eventInput,
+        latestUserMessage,
+      })).resolves.toMatchObject({
+        eventType: 'USER_ASKED_QUESTION',
+        source: 'llm',
+        target: 'policy',
+        modifier: 'ask',
+        metadata: {
+          rawText: latestUserMessage,
+        },
+      });
+    }
+  });
+
   it('normalizes legacy semantic interest and target labels from the gateway', async () => {
     const supervisorWithGateway = new SupervisorService({
       promptVersion: 'supervisor-prompt-v3-events',
@@ -1947,7 +1987,7 @@ describe('SupervisorService event extraction', () => {
         },
         expected: {
           eventType: 'USER_ASKED_QUESTION',
-          target: 'policy',
+          target: 'consult',
           modifier: 'ask',
         },
       },

@@ -74,6 +74,32 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).not.toContain('USER_WANTS_TREATMENT_IN_CHINA:');
   });
 
+  it('explains the eventType, target, and modifier boundary', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('eventType is the user action shape');
+    expect(prompt).toContain('target is the business domain');
+    expect(prompt).toContain('modifier is the user posture');
+    expect(prompt).toContain('Do not create skill-specific event types');
+  });
+
+  it('includes detailed guidance for semantic event classification', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('USER_EXPRESSED_INTEREST: goal/desire, not a concrete action.');
+    expect(prompt).toContain('USER_ASKED_QUESTION: information/explanation/feasibility/policy/medical-orientation question.');
+    expect(prompt).toContain('USER_PROVIDED_INFORMATION: facts, files, contact details, corrections.');
+    expect(prompt).toContain('USER_RESPONDED_TO_REQUEST: answer to previous assistant request.');
+    expect(prompt).toContain('USER_REQUESTED_ACTION: operational request for Medora to do something.');
+    expect(prompt).toContain('USER_REQUESTED_HUMAN: explicit human/coordinator/contact request, always target=handoff.');
+    expect(prompt).toContain('USER_MESSAGE_UNCLEAR: too unclear to classify safely.');
+    expect(prompt).toContain('medical-advice questions use USER_ASKED_QUESTION with target=medical_advice');
+    expect(prompt).toContain('online consultation timing, readiness, scheduling, or process questions use target=consult unless the user asks refund/payment policy');
+    expect(prompt).toContain('outside Medora scope uses target=service_scope');
+    expect(prompt).toContain('USER_REQUESTED_HUMAN always uses target=handoff');
+    expect(prompt).toContain('Do not represent human requests as modifier=request_action');
+  });
+
   it('defines supported service scope instead of enumerating out-of-scope examples', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 
@@ -155,10 +181,29 @@ describe('buildSupervisorPrompt', () => {
   it('lists only skill-aligned targets and the canonical posture modifiers', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 
-    expect(prompt).toContain('Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, handoff, unknown.');
+    expect(prompt).toContain('Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, consult, handoff, unknown.');
     expect(prompt).toContain('Modifier guide: ask, provide, confirm, reject, hesitate, correct, compare, revisit, request_action, urgent, unknown.');
     expect(prompt).not.toContain('Target guide: treatment, recommendation, documents');
     expect(prompt).not.toContain('medical_facts');
     expect(prompt).not.toContain('contact, human');
+  });
+
+  it('locks refined taxonomy classification scenarios with concrete examples', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('Concrete taxonomy examples:');
+    expect(prompt).toContain('"Can I talk to a human coordinator?" -> eventType=USER_REQUESTED_HUMAN, target=handoff, modifier=ask.');
+    expect(prompt).toContain('"Could this be trigeminal neuralgia?" -> eventType=USER_ASKED_QUESTION, target=medical_advice, modifier=ask.');
+    expect(prompt).toContain('"Can you help me get a work visa?" -> eventType=USER_ASKED_QUESTION, target=service_scope, modifier=ask.');
+    expect(prompt).toContain('"Please help me get school admission." -> eventType=USER_REQUESTED_ACTION, target=service_scope, modifier=request_action.');
+    expect(prompt).toContain('"Can Medora submit my insurance claim or get reimbursement approval?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.');
+    expect(prompt).toContain('"Is the $400 online consultation refundable if I don\'t come to China?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.');
+    expect(prompt).toContain('"How long does online consultation take?" -> eventType=USER_ASKED_QUESTION, target=consult, modifier=ask.');
+    expect(prompt).toContain('"Recommend hospitals in Shanghai for lung cancer." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
+    expect(prompt).toContain('"Which doctor should I see?" -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
+    expect(prompt).toContain('"Recommend a doctor for my CT results." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
+    expect(prompt).toContain('Unclear messages -> eventType=USER_MESSAGE_UNCLEAR, target=unknown, modifier=unknown.');
+    expect(prompt).toContain('Doctor matching belongs to target=hospital, not target=medical_advice.');
+    expect(prompt).toContain('Do not add legacy out-of-scope or medical-advice event types for these scenarios.');
   });
 });

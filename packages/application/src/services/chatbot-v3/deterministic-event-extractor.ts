@@ -13,8 +13,8 @@ const STRUCTURED_ACTION_EVENT_TYPES = new Set<SupervisorEventType>([
 ]);
 
 const HUMAN_REQUEST_PATTERNS = [
-  /\b(?:human|person|agent|advisor|representative|specialist|staff)\b/i,
-  /\b(?:talk|speak|chat|connect|transfer|handoff)\s+(?:to|with)\b/i,
+  /\b(?:human|person|agent|advisor|representative|staff)\b/i,
+  /\b(?:talk|speak|chat|connect|transfer|handoff)\s+(?:to|with)\s+(?:a\s+)?(?:human|person|agent|advisor|representative|specialist|staff)\b/i,
   /真人|人工|客服|顾问|专员|人工服务|转人工/,
 ];
 
@@ -39,7 +39,7 @@ export function extractDeterministicEvent(
 
   if (isExplicitHumanRequest(message)) {
     return buildEvent('USER_REQUESTED_HUMAN', {
-      target: 'human',
+      target: 'handoff',
       modifier: 'ask',
       metadata: { rawText: message },
     });

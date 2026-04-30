@@ -61,7 +61,7 @@ describe('resolveAgent', () => {
     }).physicalAgent).toBe('RecommendationAgent');
   });
 
-  it('routes consult options to ConsultAgent while consult FAQ language stays with FaqAgent', () => {
+  it('routes consult options to ConsultAgent while consult policy language stays with FaqAgent', () => {
     expect(resolveAgent({
       event: event({ eventType: 'USER_EXPRESSED_NEED', target: 'consult', modifier: 'ask' }),
       turnPlan: plan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'consult' }, primaryStage: 'ONLINE_CONSULT' }),

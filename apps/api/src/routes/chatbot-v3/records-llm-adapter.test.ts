@@ -40,10 +40,10 @@ describe('RecordsLlmAdapter', () => {
   it('frames minimal triage as a post-intake follow-up instead of a cold-start intake', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask('What do you need from me first?'));
     expect(prompt).toContain(
-      'We already have the submitted intake, so this step is only the 3-question follow-up needed to refine recommendation.',
+      'We already have the submitted intake, so this step is only a focused follow-up needed to refine recommendation.',
     );
     expect(prompt).toContain('Return only the exact structured JSON fields required below.');
-    expect(prompt).toContain('Use the canonical question strings exactly as written below. Do not translate or paraphrase them.');
+    expect(prompt).toContain('Use the focused question string(s) exactly as written below. Do not translate or paraphrase them.');
   });
 
   it('frames medical collection mode as diagnosis-proof upload guidance instead of a generic records interview', () => {
@@ -195,8 +195,6 @@ describe('RecordsLlmAdapter', () => {
       'records.minimal_triage.complete': false,
       questions: [
         'What is the main symptom, diagnosis, or medical problem right now?',
-        'When did it start, how long has it been going on, and how severe is it?',
-        'What tests, treatments, medicines, or diagnoses already exist?',
       ],
       followUp: 'Please tell me what tests, treatments, medicines, or diagnoses already exist.',
       missing: ['existing_tests_or_treatments'],
@@ -225,10 +223,8 @@ describe('RecordsLlmAdapter', () => {
       'records.minimal_triage.complete': false,
       questions: [
         'What is the main symptom, diagnosis, or medical problem right now?',
-        'When did it start, how long has it been going on, and how severe is it?',
-        'What tests, treatments, medicines, or diagnoses already exist?',
       ],
-      followUp: 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.',
+      followUp: 'We already received your basic intake. Please share the main symptom or diagnosis, when it started and how severe it is, plus any tests, treatments, medicines, or diagnoses so far.',
       missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
     });
 

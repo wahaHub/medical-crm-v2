@@ -17,7 +17,6 @@ describe('DOMAIN_SKILL_REGISTRY', () => {
   it('contains exactly the Phase 1.2 domain skills', () => {
     expect(Object.keys(DOMAIN_SKILL_REGISTRY).sort()).toEqual([
       'clarification_recovery_skill',
-      'faq_skill',
       'handoff_skill',
       'hospital_skill',
       'medical_advice_skill',
@@ -40,6 +39,32 @@ describe('DOMAIN_SKILL_REGISTRY', () => {
       expect(skill).not.toHaveProperty('requiredBehaviors');
       expect(skill).not.toHaveProperty('forbiddenBehaviors');
     }
+  });
+
+  it('contains required detailed Medora policy anchors', () => {
+    const allPolicyText = (skillId: keyof typeof DOMAIN_SKILL_REGISTRY) =>
+      DOMAIN_SKILL_REGISTRY[skillId].policySections.map((section) => section.text).join('\n');
+
+    expect(allPolicyText('service_scope_skill')).toContain('RM H2 4/F CENTURY IND CTR');
+    expect(allPolicyText('service_scope_skill')).toContain('US +1 4708613825');
+    expect(allPolicyText('service_scope_skill')).toContain('contact@medicaltourismchina.health');
+
+    expect(allPolicyText('policy_skill')).toContain('USD 400');
+    expect(allPolicyText('policy_skill')).toContain('within 48 hours');
+    expect(allPolicyText('policy_skill')).toContain('does not provide claims support');
+
+    expect(allPolicyText('medical_advice_skill')).toContain('online consultation');
+    expect(allPolicyText('hospital_skill')).toContain('hospital API');
+    expect(allPolicyText('hospital_skill')).toContain('specific doctor');
+    expect(allPolicyText('treatment_skill')).toContain('required step before coming to China');
+    expect(allPolicyText('treatment_skill')).toContain('within 48 hours');
+
+    expect(allPolicyText('pricing_skill')).toContain('Hospital medical cost vs Medora service fee');
+    expect(allPolicyText('payment_skill')).toContain('Payee distinction');
+    expect(allPolicyText('travel_skill')).toContain('medical path first');
+    expect(allPolicyText('sales_skill')).toContain('low-friction');
+    expect(allPolicyText('handoff_skill')).toContain('Handoff summary');
+    expect(allPolicyText('clarification_recovery_skill')).toContain('Safe-assumption');
   });
 });
 
@@ -242,6 +267,121 @@ describe('loadSkillSections', () => {
     ]);
   });
 
+  it('loads upload-review promise on deterministic document upload turns', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'treatment_skill',
+          role: 'primary',
+          reasonCode: 'documents_uploaded',
+          sectionHints: {
+            eventType: 'DOCUMENTS_UPLOADED',
+            target: 'documents',
+            modifier: 'provide',
+            primaryActionType: 'REQUEST_INFO',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'documents_upload_review_promise',
+      'DOCUMENTS_UPLOADED.provide',
+    ]));
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('Medora human team will review');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('within 48 hours');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('Do not imply the chatbot has clinically reviewed');
+  });
+
+  it('loads detailed sections for canonical service scope and handoff requests', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'handoff_skill',
+          role: 'primary',
+          reasonCode: 'canonical_handoff',
+          sectionHints: {
+            eventType: 'USER_REQUESTED_HUMAN',
+            target: 'handoff',
+            modifier: 'ask',
+            primaryActionType: 'ESCALATE',
+          },
+        },
+        {
+          skillId: 'service_scope_skill',
+          role: 'auxiliary',
+          reasonCode: 'canonical_service_scope',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'service_scope',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(2);
+    expect(loaded.warnings).toEqual([]);
+
+    const handoff = loaded.skillSections[0];
+    expect(handoff).toMatchObject({
+      skillId: 'handoff_skill',
+      reasonCode: 'canonical_handoff',
+    });
+    expect(handoff?.sectionIds).toEqual(expect.arrayContaining([
+      'handoff_readiness',
+      'handoff_minimum_context',
+      'handoff_summary_payload',
+    ]));
+    expect(handoff?.policyText.join('\n')).toContain('Handoff summary');
+
+    const serviceScope = loaded.skillSections[1];
+    expect(serviceScope).toMatchObject({
+      skillId: 'service_scope_skill',
+      reasonCode: 'canonical_service_scope',
+    });
+    expect(serviceScope?.sectionIds).toEqual(expect.arrayContaining([
+      'service_scope_identity_contact',
+      'service_scope_catalog',
+      'service_scope_boundary',
+    ]));
+    expect(serviceScope?.policyText.join('\n')).toContain('RM H2 4/F CENTURY IND CTR');
+    expect(serviceScope?.policyText.join('\n')).toContain('Service catalog');
+  });
+
+  it('loads focused Medora policy essentials for canonical policy requests', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'policy_skill',
+          role: 'primary',
+          reasonCode: 'canonical_policy',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'policy',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.warnings).toEqual([]);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'policy_online_consultation',
+      'policy_document_review',
+      'policy_insurance_boundary',
+    ]));
+    expect(loaded.skillSections[0]?.sectionIds).not.toContain('process_travel_scope');
+    expect(loaded.skillSections[0]?.sectionIds).not.toContain('process_payment_scope');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('USD 400');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('within 48 hours');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('does not provide claims support');
+  });
+
   it('exposes structured read intent types from matching retrieval sections', () => {
     const loaded = loadSkillSections({
       requests: [
@@ -302,7 +442,7 @@ describe('loadSkillSections', () => {
     expect(loaded.skillSections[0]?.handlingGuidance.join('\n')).toContain('Do not blanket dismiss');
   });
 
-  it('loads detailed process guidance for process, next-step, travel, payment, and detours', () => {
+  it('loads detailed process guidance for canonical policy detours', () => {
     const loaded = loadSkillSections({
       requests: [
         {
@@ -326,13 +466,9 @@ describe('loadSkillSections', () => {
       'process_overview_boundary',
       'process_next_step_routing',
       'process_timeline_boundary',
-      'process_travel_scope',
-      'process_payment_scope',
     ]));
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('formal overview');
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('journey stage');
-    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('travel logistics');
-    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('payment timing');
     expect(loaded.skillSections[0]?.handlingGuidance.join('\n')).toContain('Answer the detour');
   });
 

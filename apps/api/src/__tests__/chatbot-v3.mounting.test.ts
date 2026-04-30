@@ -173,6 +173,9 @@ const mockServices = {
   aiUserProfileRepo: {
     findByAnonymousKeyOrPatient: vi.fn(),
   },
+  patientRepo: {
+    findById: vi.fn(),
+  },
   matchHospitals: {
     execute: vi.fn(),
   },
@@ -355,6 +358,10 @@ describe('Chatbot v3 public route mounting', () => {
     });
     mockServices.getFaqItem.execute.mockResolvedValue(null);
     mockServices.aiUserProfileRepo.findByAnonymousKeyOrPatient.mockResolvedValue(null);
+    mockServices.patientRepo.findById.mockResolvedValue({
+      id: 'patient-1',
+      preferredLanguage: 'en',
+    });
     mockServices.resolveHospitalType.mockResolvedValue('COSMETIC');
     mockServices.matchHospitals.execute.mockResolvedValue({
       hospitals: [
@@ -3053,7 +3060,7 @@ describe('Chatbot v3 public route mounting', () => {
       stage: 'RECOMMENDATION',
       phase: 'active',
     });
-    expect(body.messages[0].text).toContain('Please answer these 3 follow-up questions');
+    expect(body.messages[0].text).toContain('Please share the main symptom or diagnosis');
     expect(body.cards).toEqual(expect.arrayContaining([
       expect.objectContaining({
         cardType: 'RECOMMENDATION_LIST',

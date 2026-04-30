@@ -16,6 +16,7 @@ import {
   buildRecentMessagesForChatbotV3Turn,
   deriveRecommendationState,
   filterUnchangedStatusPatch,
+  resolveSupervisorIntakeSeed,
   serializeStatusSnapshot,
 } from '../routes/chatbot-v3.routes.js';
 import {
@@ -46,6 +47,12 @@ const routeMockServices = vi.hoisted(() => ({
     findBySessionId: vi.fn(),
     save: vi.fn(),
     patchStatus: vi.fn(),
+  },
+  aiUserProfileRepo: {
+    findByAnonymousKeyOrPatient: vi.fn(),
+  },
+  patientRepo: {
+    findById: vi.fn(),
   },
   patientAuthService: {
     verifySessionToken: vi.fn(),
@@ -121,6 +128,23 @@ type FaqStagePreservationScenario = {
   expectAssistantText: string;
   expectHandOffRequired?: boolean;
 };
+
+describe('resolveSupervisorIntakeSeed', () => {
+  it('falls back to the patient preferred language when no AI profile exists', async () => {
+    routeMockServices.aiUserProfileRepo.findByAnonymousKeyOrPatient.mockResolvedValueOnce(null);
+    routeMockServices.patientRepo.findById.mockResolvedValueOnce({
+      id: 'patient-1',
+      preferredLanguage: 'en',
+    });
+
+    await expect(resolveSupervisorIntakeSeed(routeMockServices as any, {
+      patientId: 'patient-1',
+      site: 'china',
+    } as any)).resolves.toMatchObject({
+      language: 'en',
+    });
+  });
+});
 
 async function runFaqStagePreservationScenario(scenario: FaqStagePreservationScenario) {
   const faqAgent = {
@@ -400,7 +424,7 @@ describe('chatbot-v3 agents', () => {
     });
   });
 
-  it('returns the 3 key medical questions on the initial minimal triage path', async () => {
+  it('returns one focused medical question on the initial minimal triage path', async () => {
     const gateway = createToolGateway({ handlers: {} });
     const agent = new RecordsAgent(gateway);
 
@@ -418,10 +442,8 @@ describe('chatbot-v3 agents', () => {
         'records.minimal_triage.complete': false,
         questions: [
           'What is the main symptom, diagnosis, or medical problem right now?',
-          'When did it start, how long has it been going on, and how severe is it?',
-          'What tests, treatments, medicines, or diagnoses already exist?',
         ],
-        followUp: 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.',
+        followUp: 'We already received your basic intake. Please share the main symptom or diagnosis, when it started and how severe it is, plus any tests, treatments, medicines, or diagnoses so far.',
         missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
       },
     });
@@ -445,8 +467,6 @@ describe('chatbot-v3 agents', () => {
         'records.minimal_triage.complete': false,
         questions: [
           'What is the main symptom, diagnosis, or medical problem right now?',
-          'When did it start, how long has it been going on, and how severe is it?',
-          'What tests, treatments, medicines, or diagnoses already exist?',
         ],
         followUp: 'Please tell me what tests, treatments, medicines, or diagnoses already exist.',
         missing: ['existing_tests_or_treatments'],
@@ -472,8 +492,6 @@ describe('chatbot-v3 agents', () => {
         'records.minimal_triage.complete': false,
         questions: [
           'What is the main symptom, diagnosis, or medical problem right now?',
-          'When did it start, how long has it been going on, and how severe is it?',
-          'What tests, treatments, medicines, or diagnoses already exist?',
         ],
         followUp: 'Please tell me when it started, how long it has been going on, and how severe it is and what tests, treatments, medicines, or diagnoses already exist.',
         missing: ['duration_or_severity', 'existing_tests_or_treatments'],
@@ -563,8 +581,6 @@ describe('chatbot-v3 agents', () => {
         'records.minimal_triage.complete': false,
         questions: [
           'What is the main symptom, diagnosis, or medical problem right now?',
-          'When did it start, how long has it been going on, and how severe is it?',
-          'What tests, treatments, medicines, or diagnoses already exist?',
         ],
         followUp: 'Please tell me what tests, treatments, medicines, or diagnoses already exist.',
         missing: ['existing_tests_or_treatments'],
@@ -590,8 +606,6 @@ describe('chatbot-v3 agents', () => {
         'records.minimal_triage.complete': false,
         questions: [
           'What is the main symptom, diagnosis, or medical problem right now?',
-          'When did it start, how long has it been going on, and how severe is it?',
-          'What tests, treatments, medicines, or diagnoses already exist?',
         ],
         followUp: 'Please share clearer medical details, including the main problem, how long it has been happening, how severe it is, and any tests, treatments, medicines, or diagnoses so far.',
         missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
@@ -617,8 +631,6 @@ describe('chatbot-v3 agents', () => {
         'records.minimal_triage.complete': false,
         questions: [
           'What is the main symptom, diagnosis, or medical problem right now?',
-          'When did it start, how long has it been going on, and how severe is it?',
-          'What tests, treatments, medicines, or diagnoses already exist?',
         ],
         followUp: 'Please share clearer medical details, including how severe it is and any tests, treatments, medicines, or diagnoses so far.',
         missing: ['duration_or_severity', 'existing_tests_or_treatments'],
@@ -1337,14 +1349,14 @@ describe('chatbot-v3 structured action runtime normalization', () => {
 });
 
 describe('chatbot-v3 records triage prompt', () => {
-  it('asks the 3 key medical questions in the minimal triage prompt', () => {
+  it('asks one focused medical question in the minimal triage prompt', () => {
     const prompt = buildRecordsMinimalTriagePrompt(
       createRecordsTask('What do you need from me first?'),
     );
 
     expect(prompt).toContain('What is the main symptom, diagnosis, or medical problem right now?');
-    expect(prompt).toContain('When did it start, how long has it been going on, and how severe is it?');
-    expect(prompt).toContain('What tests, treatments, medicines, or diagnoses already exist?');
+    expect(prompt).not.toContain('When did it start, how long has it been going on, and how severe is it?');
+    expect(prompt).not.toContain('What tests, treatments, medicines, or diagnoses already exist?');
     expect(prompt).toContain('When triage is incomplete, return exactly these keys');
   });
 });
@@ -3083,11 +3095,9 @@ describe('chatbot-v3 runtime', () => {
         status: 'ok' as const,
         data: {
           'records.minimal_triage.complete': false,
-          questions: [
-            'What is the main symptom, diagnosis, or medical problem right now?',
-            'When did it start, how long has it been going on, and how severe is it?',
-            'What tests, treatments, medicines, or diagnoses already exist?',
-          ],
+        questions: [
+          'What is the main symptom, diagnosis, or medical problem right now?',
+        ],
           followUp: 'Please answer these 3 questions so I can capture the essential medical details.',
           missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
         },
@@ -3881,7 +3891,7 @@ describe('chatbot-v3 runtime', () => {
     });
 
     expect(response.messages[0]?.text).toBe(PROCESS_OVERVIEW_TEXT);
-    expect(response.messages[0]?.text).not.toContain('reliable FAQ answer');
+    expect(response.messages[0]?.text).not.toContain('reliable answer');
     expect(response.journey).toEqual({
       stage: 'EXPLAIN_PROCESS',
       phase: 'active',
@@ -5630,7 +5640,7 @@ describe('chatbot-v3 runtime', () => {
     }));
     expect(response.cards).toEqual([]);
     expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).toContain(
-      'reliable FAQ answer',
+      'reliable answer',
     );
     expect(result.writeIntents?.conversationSummaryPatch?.statusPatch.conversationSummary).not.toContain(
       'Please upload your diagnosis proof',
@@ -5722,7 +5732,7 @@ describe('chatbot-v3 runtime', () => {
     expect(result.render).toEqual({
       path: 'FAQ_MISS',
     });
-    expect(response.messages[0]?.text).toContain('reliable FAQ answer');
+    expect(response.messages[0]?.text).toContain('reliable answer');
     expect(response.journey).toEqual({
       stage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
       phase: 'active',
@@ -5877,7 +5887,7 @@ describe('chatbot-v3 runtime', () => {
         consultationStatus: 'not_introduced',
       } as const,
       expectRenderPath: 'FAQ_MISS' as const,
-      expectAssistantText: 'reliable FAQ answer',
+      expectAssistantText: 'reliable answer',
     },
   ])(
     'keeps FAQ miss responses on the persisted primary stage in %s',
@@ -5902,7 +5912,7 @@ describe('chatbot-v3 runtime', () => {
         processExplained: true,
       } as const,
       expectRenderPath: 'FAQ_MISS',
-      expectAssistantText: 'I could not find a reliable FAQ answer right now',
+      expectAssistantText: 'I could not find a reliable answer right now',
     };
 
     const { result, response } = await runFaqStagePreservationScenario(scenario);
@@ -5911,7 +5921,7 @@ describe('chatbot-v3 runtime', () => {
       path: 'FAQ_MISS',
     });
     expect(response.messages[0]?.text).toContain(
-      'I could not find a reliable FAQ answer right now',
+      'I could not find a reliable answer right now',
     );
     expect(response.messages[0]?.text).not.toBe(PROCESS_OVERVIEW_TEXT);
     expect(result.writeIntents?.statusPatch?.journeyCurrentStage).toBeUndefined();
@@ -6082,7 +6092,7 @@ describe('chatbot-v3 runtime', () => {
           ]),
           readIntents: expect.arrayContaining([
             expect.objectContaining({ type: 'GENERAL_FAQ', category: 'consult' }),
-            expect.objectContaining({ type: 'PROCESS_POLICY' }),
+            expect.objectContaining({ type: 'CONSULT_READINESS' }),
           ]),
           retrievedContext: expect.arrayContaining([
             expect.objectContaining({

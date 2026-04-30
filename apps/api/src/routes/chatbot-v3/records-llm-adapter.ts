@@ -189,7 +189,7 @@ function buildFallbackRecordsMinimalTriageResult(task: RecordsWorkerTask): Recor
   if (analysis.reason === 'insufficient') {
     return {
       'records.minimal_triage.complete': false,
-      questions: RECORDS_MINIMAL_TRIAGE_QUESTIONS,
+      questions: getFocusedMinimalTriageQuestions(task),
       followUp: buildRecordsMinimalTriageClarifyingFollowUp(analysis.missing, analysis.detected),
       missing: analysis.missing,
     };
@@ -197,12 +197,17 @@ function buildFallbackRecordsMinimalTriageResult(task: RecordsWorkerTask): Recor
 
   return {
     'records.minimal_triage.complete': false,
-    questions: RECORDS_MINIMAL_TRIAGE_QUESTIONS,
+    questions: getFocusedMinimalTriageQuestions(task),
     followUp: analysis.reason === 'initial' && analysis.missing.length === RECORDS_MINIMAL_TRIAGE_MISSING_FIELDS.length
       ? buildRecordsMinimalTriageInitialFollowUp()
       : buildRecordsMinimalTriageMissingFollowUp(analysis.missing),
     missing: analysis.missing,
   };
+}
+
+function getFocusedMinimalTriageQuestions(task: RecordsWorkerTask): readonly string[] {
+  const maxQuestions = task.responseContract?.constraints?.maxQuestions === 2 ? 2 : 1;
+  return RECORDS_MINIMAL_TRIAGE_QUESTIONS.slice(0, maxQuestions);
 }
 
 function resolveRecordsNodePromptVersion(

@@ -167,7 +167,7 @@ export const DEGRADED_PATH_FIXTURES: DegradedPathFixture[] = [
     }),
     sessionStatusSnapshot: null,
     expected: {
-      assistantTextContains: 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.',
+      assistantTextContains: 'I could not load that answer just now, but your current stage is still saved. Please try asking again.',
       cardType: 'PROCESS_GUIDE',
       handoffRequired: false,
       turnOutcomeStatus: 'degraded',

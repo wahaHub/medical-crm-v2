@@ -64,16 +64,16 @@ function primaryRouteFor(input: {
   agentRole: AgentRole;
   facts: DomainFacts;
 }): SkillRoute {
+  if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
+    return clarificationRoute();
+  }
+
   if (input.event.target === 'medical_advice') {
     return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
   }
 
   if (input.event.target === 'service_scope' || input.turnPlan.primaryAction.type === 'REDIRECT') {
     return { skillId: 'service_scope_skill', sectionTarget: input.event.target ?? 'service_scope' };
-  }
-
-  if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
-    return { skillId: 'clarification_recovery_skill', sectionTarget: input.event.target ?? 'unknown' };
   }
 
   if (input.turnPlan.primaryAction.type === 'ESCALATE' || input.event.eventType === 'USER_REQUESTED_HUMAN') {
@@ -107,8 +107,6 @@ function routeForTarget(target: string | undefined): SkillRoute | null {
       return { skillId: 'travel_skill', sectionTarget: 'travel' };
     case 'sales':
       return { skillId: 'sales_skill', sectionTarget: 'sales' };
-    case 'faq':
-      return { skillId: 'faq_skill', sectionTarget: 'faq' };
     case 'service_scope':
       return { skillId: 'service_scope_skill', sectionTarget: 'service_scope' };
     case 'policy':
@@ -129,7 +127,7 @@ function routeForTarget(target: string | undefined): SkillRoute | null {
     case 'hospital_selection':
       return { skillId: 'hospital_skill', sectionTarget: 'hospital' };
     case 'consult':
-      return { skillId: 'policy_skill', sectionTarget: 'policy' };
+      return { skillId: 'policy_skill', sectionTarget: 'consult' };
     case 'handoff':
     case 'human':
     case 'contact':

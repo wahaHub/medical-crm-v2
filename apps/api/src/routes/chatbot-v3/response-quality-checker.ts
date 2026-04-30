@@ -114,6 +114,8 @@ export function checkSkillBehavior(
 ): SkillBehaviorCheck[] {
   return loadedSkillSections.flatMap((section) => {
     switch (section.skillId) {
+      case 'policy_skill':
+        return checkPolicySkill(responseText, section, options);
       case 'pricing_skill':
         return checkPricingSkill(responseText, section, options);
       case 'treatment_skill':
@@ -128,6 +130,32 @@ export function checkSkillBehavior(
         return [];
     }
   });
+}
+
+function checkPolicySkill(
+  responseText: string,
+  section: LoadedSkillSection,
+  options: SkillBehaviorCheckOptions,
+): SkillBehaviorCheck[] {
+  if (!isInsuranceBoundarySection(section) && !isOnlineConsultationFeeBoundarySection(section)) {
+    return [];
+  }
+
+  const checks: SkillBehaviorCheck[] = [];
+
+  if (isInsuranceBoundarySection(section)) {
+    checks.push(hasUnsupportedInsuranceClaim(responseText)
+      ? failCheck('policy_insurance_claims_boundary', section, options, 'Response appears to claim Medora handles insurance claims, coverage approval, direct billing approval, or reimbursement.')
+      : passCheck('policy_insurance_claims_boundary', section, options));
+  }
+
+  if (isOnlineConsultationFeeBoundarySection(section)) {
+    checks.push(hasUnsupportedOnlineConsultationFeeClaim(responseText)
+      ? failCheck('policy_online_consultation_fee_boundary', section, options, 'Response appears to misstate the USD 400 online consultation fee boundary.')
+      : passCheck('policy_online_consultation_fee_boundary', section, options));
+  }
+
+  return checks;
 }
 
 function checkPricingSkill(
@@ -195,16 +223,24 @@ function checkHospitalRecommendationSkill(
   section: LoadedSkillSection,
   options: SkillBehaviorCheckOptions,
 ): SkillBehaviorCheck[] {
-  if (!mentionsInventedHospital(responseText, options)) {
-    return [passCheck('hospital_recommendation_candidate_integrity', section, options)];
+  const checks = [
+    mentionsInventedHospital(responseText, options)
+      ? failCheck(
+        'hospital_recommendation_candidate_integrity',
+        section,
+        options,
+        'Response appears to recommend a hospital outside the provided candidate set.',
+      )
+      : passCheck('hospital_recommendation_candidate_integrity', section, options),
+  ];
+
+  if (isDoctorMatchingBoundarySection(section)) {
+    checks.push(hasUnsupportedDoctorMatchingClaim(responseText)
+      ? failCheck('hospital_doctor_matching_boundary', section, options, 'Response appears to recommend a doctor from symptoms alone or without records.')
+      : passCheck('hospital_doctor_matching_boundary', section, options));
   }
 
-  return [failCheck(
-    'hospital_recommendation_candidate_integrity',
-    section,
-    options,
-    'Response appears to recommend a hospital outside the provided candidate set.',
-  )];
+  return checks;
 }
 
 function checkHumanHandoffSkill(
@@ -269,6 +305,13 @@ function fallbackSectionHint(skillId: LoadedSkillSection['skillId']): DomainSkil
       return {
         eventType: 'USER_ASKED_QUESTION',
         target: 'pricing',
+        modifier: 'ask',
+        primaryActionType: 'ANSWER',
+      };
+    case 'policy_skill':
+      return {
+        eventType: 'USER_ASKED_QUESTION',
+        target: 'policy',
         modifier: 'ask',
         primaryActionType: 'ANSWER',
       };
@@ -379,13 +422,62 @@ function stripPricingUncertaintyDisclaimers(normalized: string): string {
     .replace(/\b(no|not)\s+(fixed|guaranteed)\s+price\s+(before|until)\s+(review|assessment|evaluation)\b/g, ' ');
 }
 
-function isRejectionOrHesitationSection(section: LoadedSkillSection): boolean {
-  const sectionContext = normalize([
+function isInsuranceBoundarySection(section: LoadedSkillSection): boolean {
+  const sectionContext = normalize(sectionContextText(section));
+  return /\binsurance\b/.test(sectionContext) && /\b(claims?|coverage|reimbursement|direct billing)\b/.test(sectionContext);
+}
+
+function hasUnsupportedInsuranceClaim(responseText: string): boolean {
+  const normalized = stripInsuranceBoundaryDisclaimers(normalize(responseText));
+  return /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\b(handle|submit|manage|follow up|file|process)\s+[^.!?]{0,50}\binsurance\s+claims?\b/.test(normalized)
+    || /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\binsurance\s+claims?\b[^.!?]{0,50}\b(handle|submit|manage|follow up|file|process)\b/.test(normalized)
+    || /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\b(support|help with)\s+(your\s+)?insurance\s+claims?\b/.test(normalized)
+    || /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\b(provide|offer|give)\s+claims?\s+support\b/.test(normalized)
+    || /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\bhelp\s+(you\s+)?with\s+insurance\s+claims?\b/.test(normalized)
+    || /\b(guarantee|approve)\s+[^.!?]{0,30}\b(reimbursement|coverage)\b/.test(normalized)
+    || /\b(reimbursement|coverage)\s+[^.!?]{0,30}\b(guaranteed|approved)\b/.test(normalized)
+    || /\b(direct billing|coverage)\s+approval\b/.test(normalized);
+}
+
+function stripInsuranceBoundaryDisclaimers(normalized: string): string {
+  return normalized
+    .replace(/\b(contact|ask|check with)\s+(your\s+)?insurer\s+(directly\s+)?(?:for|about)\s+(claims?|coverage|reimbursement)\b/g, ' ')
+    .replace(/\bmedora\s+can\s+organize\s+neutral\s+hospital\s+documents\b/g, ' ')
+    .replace(/\bask\s+the\s+hospital\s+about\s+medical\s+liability\s+insurance\b/g, ' ')
+    .replace(/\bmedora\s+(does\s+not|doesn't|cannot|can't|will\s+not|won't)\s+[^.!?]{0,50}\b(handle|submit|manage|follow up|file|process|approve|guarantee|provide|support|help with)\s+[^.!?]{0,50}\b(insurance\s+claims?|claims?|coverage|reimbursement|direct billing)\b/g, ' ')
+    .replace(/\bmedora\s+(does\s+not|doesn't|cannot|can't|will\s+not|won't)\s+[^.!?]{0,50}\b(provide|offer|give)\s+claims?\s+support\b/g, ' ')
+    .replace(/\bmedora\s+(does\s+not|doesn't|cannot|can't|will\s+not|won't)\s+[^.!?]{0,50}\bprovide\s+direct billing approval\s+for\s+insurance\s+claims?\b/g, ' ');
+}
+
+function isOnlineConsultationFeeBoundarySection(section: LoadedSkillSection): boolean {
+  const sectionContext = normalize(sectionContextText(section));
+  return /\bonline consultation\b/.test(sectionContext) && /\busd\s*400\b/.test(sectionContext);
+}
+
+function hasUnsupportedOnlineConsultationFeeClaim(responseText: string): boolean {
+  const normalized = stripOnlineConsultationFeeBoundaryDisclaimers(normalize(responseText));
+  return /\b(usd\s*400|\$400|400\s*(?:usd|dollars?)|online consultation(?: fee)?)\b[^.!?]{0,80}\b(free|refundable|refund(?:ed)?|not required|optional)\b/.test(normalized)
+    || /\b(free|refundable|refund(?:ed)?|not required|optional)\b[^.!?]{0,80}\b(usd\s*400|\$400|400\s*(?:usd|dollars?)|online consultation(?: fee)?)\b/.test(normalized)
+    || /\bonline consultation(?: fee)?\b[^.!?]{0,80}\b(not required|optional)\b[^.!?]{0,60}\b(before|prior to)\s+(china\s+)?travel\b/.test(normalized);
+}
+
+function stripOnlineConsultationFeeBoundaryDisclaimers(normalized: string): string {
+  return normalized
+    .replace(/\bonline consultation(?: fee)?\b[^.!?]{0,80}\bis\s+not\s+(free|refundable)\b/g, ' ')
+    .replace(/\b(usd\s*400|\$400|400\s*(?:usd|dollars?)|fee)\b[^.!?]{0,80}\bis\s+not\s+refundable\b/g, ' ');
+}
+
+function sectionContextText(section: LoadedSkillSection): string {
+  return [
     section.reasonCode,
     ...section.sectionIds,
     ...section.handlingGuidance,
     ...section.policyText,
-  ].join(' '));
+  ].join(' ');
+}
+
+function isRejectionOrHesitationSection(section: LoadedSkillSection): boolean {
+  const sectionContext = normalize(sectionContextText(section));
 
   return /\b(reject|rejection|hesitat|objection|without pressure|lower-friction)\b/.test(sectionContext);
 }
@@ -453,6 +545,23 @@ function stripCandidateBoundaryHospitalMentions(responseText: string): string {
     /\b(?:i|we)\s+(?:do\s+not|don't|cannot|can't)\s+have\s+\b[A-Z][A-Za-z&'.-]*(?:\s+[A-Z][A-Za-z&'.-]*){0,5}\s+(?:Hospital|Clinic|Medical Center|Cancer Center|Medical Centre)\b\s+in\s+the\s+(?:current\s+)?candidate\s+list\b/gi,
     ' ',
   );
+}
+
+function isDoctorMatchingBoundarySection(section: LoadedSkillSection): boolean {
+  return /\bdoctor matching|doctor recommendation|recommend a doctor\b/.test(normalize(sectionContextText(section)));
+}
+
+function hasUnsupportedDoctorMatchingClaim(responseText: string): boolean {
+  const normalized = stripDoctorMatchingBoundaryDisclaimers(normalize(responseText));
+  return /\b(recommend|match|choose)\s+(?:dr\.?|doctor|professor)\s+[a-z][a-z'.-]*\b/.test(normalized)
+    || /\b(?:dr\.?|doctor|professor)\s+[a-z][a-z'.-]*\s+[^.!?]{0,60}\b(best|right|recommended|good fit)\b/.test(normalized)
+    || /\b(symptoms?\s+alone|based on your symptoms?)\b[^.!?]{0,80}\b(recommend|match|choose)\s+(?:a\s+)?(?:dr\.?|doctor)\b/.test(normalized)
+    || /\bno\s+(medical\s+)?records?\s+(are\s+)?needed\s+[^.!?]{0,60}\bdoctor\s+recommendation\b/.test(normalized);
+}
+
+function stripDoctorMatchingBoundaryDisclaimers(normalized: string): string {
+  return normalized
+    .replace(/\b(?:i|we|medora)\s+(cannot|can't|can not|do\s+not|don't|will\s+not|won't)\s+recommend\s+(?:dr\.?|doctor|professor)\s+[a-z][a-z'.-]*\s+from\s+symptoms?\s+alone\b/g, ' ');
 }
 
 function hasUnsupportedHandoffPromise(responseText: string): boolean {

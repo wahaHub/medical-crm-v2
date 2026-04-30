@@ -88,12 +88,6 @@ function addReadIntentsForLoadedSection(
       }
       return;
     case 'policy_skill':
-      if (hasSignal('travel')) {
-        add({ type: 'TRAVEL_SUPPORT_SCOPE', reasonCode });
-      }
-      if (hasSignal('payment')) {
-        add({ type: 'PAYMENT_POLICY', reasonCode });
-      }
       if (hasSignal('process', 'next-step', 'next step')) {
         add({ type: 'PROCESS_POLICY', reasonCode });
       }
@@ -119,7 +113,6 @@ function addReadIntentsForLoadedSection(
       add({ type: 'TRAVEL_SUPPORT_SCOPE', reasonCode });
       return;
     case 'sales_skill':
-    case 'faq_skill':
       if (hasSignal('faq')) {
         add({ type: 'GENERAL_FAQ', category: resolveGeneralFaqCategory(input.event, input.turnPlan), reasonCode });
       }
